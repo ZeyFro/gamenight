@@ -1,0 +1,23 @@
+// Schéma Prisma — GameNight
+// Voir SPEC-gamenight.md §5 pour le modèle de données complet.
+// Seul le modèle User (F1 — Auth Discord) est implémenté à ce stade ;
+// les autres modèles seront ajoutés au fil des features F2 à F8.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  discordId     String   @unique
+  discordName   String
+  discordAvatar String?
+  steamId64     String?  @unique
+  steamPublic   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
