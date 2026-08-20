@@ -54,13 +54,24 @@ Puis remplir chaque variable :
 
 ## 3. Base de données
 
-Appliquer le schéma Prisma sur la base Neon :
+Le dossier `prisma/migrations/` contient déjà la migration initiale (table
+`User`). Pour l'appliquer sur ta base Neon :
 
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate deploy
 ```
 
-(Régénère aussi le client Prisma. En cas de besoin manuel : `npx prisma generate`.)
+- En local, `npx prisma migrate dev` fonctionne aussi (applique les
+  migrations existantes, et t'en fait créer une nouvelle si tu modifies le
+  schéma).
+- `migrate deploy` est la commande recommandée pour un environnement
+  serverless/CI (Vercel, etc.) : elle ne crée pas de base de données
+  *shadow* et n'est jamais interactive, contrairement à `migrate dev`. On
+  évite volontairement `prisma db push`, qui ne garde pas d'historique de
+  migrations versionné.
+- Le client Prisma se régénère automatiquement après chaque `npm install`
+  grâce au script `postinstall` (`prisma generate`) — utile en local comme
+  sur Vercel.
 
 ## 4. Lancer en local
 
@@ -73,6 +84,32 @@ Ouvrir [http://localhost:3000](http://localhost:3000), cliquer sur
 Discord s'affichent automatiquement, et un `User` correspondant est créé (ou
 mis à jour) en base.
 
+## 5. Déploiement Vercel
+
+1. Importer le repo sur [vercel.com](https://vercel.com), renseigner les
+   mêmes variables d'environnement que dans `.env.local` (Project Settings →
+   Environment Variables) : `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`
+   (l'URL de prod, ex. `https://ton-projet.vercel.app`),
+   `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`.
+2. Ajouter l'URL de callback de prod
+   (`https://ton-projet.vercel.app/api/auth/callback/discord`) dans les
+   **Redirects** de l'application Discord.
+3. `npm install` régénère automatiquement le client Prisma (script
+   `postinstall`) — rien à configurer côté build command pour ça.
+4. Les migrations ne se lancent **pas** automatiquement au build (pour
+   éviter qu'un déploiement échoue si la base est injoignable, ou
+   qu'une migration parte par erreur avant d'être relue). Après chaque
+   migration ajoutée en local, l'appliquer sur Neon avant/après le
+   déploiement :
+
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+   (à lancer avec `DATABASE_URL` pointant vers la base Neon de prod — en
+   local avec la variable exportée, ou via `vercel env pull` puis
+   `npx dotenv -e .env.production.local -- npx prisma migrate deploy`.)
+
 ## Scripts disponibles
 
 | Commande | Description |
@@ -82,7 +119,8 @@ mis à jour) en base.
 | `npm run start` | Démarre le build de production |
 | `npm run lint` | Lint ESLint |
 | `npx prisma studio` | Explorateur visuel de la base de données |
-| `npx prisma migrate dev` | Applique les migrations en local |
+| `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
+| `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
 
 ## Structure du projet
 
