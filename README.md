@@ -44,7 +44,7 @@ Puis remplir chaque variable :
 
 | Variable | Où la récupérer |
 | --- | --- |
-| `DATABASE_URL` | [console.neon.tech](https://console.neon.tech) → ton projet → **Connection string** (choisir la variante *pooled connection*, compatible avec l'adapter serverless). |
+| `DATABASE_URL` | [console.neon.tech](https://console.neon.tech) → ton projet → **Connection string**. Utiliser la variante **directe/non-poolée** (sans `-pooler` dans l'hostname) : l'adapter `@neondatabase/serverless` gère déjà son propre pooling via WebSocket, et `prisma migrate deploy` (verrou d'avisory lock) est plus fiable sans PgBouncer devant. |
 | `AUTH_SECRET` | Génère une valeur aléatoire avec `npx auth secret` (ou `openssl rand -base64 32`). |
 | `AUTH_URL` | `http://localhost:3000` en local, l'URL de prod (ex. Vercel) en production. |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → onglet **OAuth2** → *Client ID* / *Client Secret*. Ajouter l'URL de redirection `http://localhost:3000/api/auth/callback/discord` (et l'équivalent en prod) dans **Redirects**. |
@@ -72,6 +72,9 @@ npx prisma migrate deploy
 - Le client Prisma se régénère automatiquement après chaque `npm install`
   grâce au script `postinstall` (`prisma generate`) — utile en local comme
   sur Vercel.
+- La commande `npm run build` lance `prisma migrate deploy` avant `next
+  build` : toute migration ajoutée au repo est donc appliquée
+  automatiquement à chaque déploiement Vercel (voir §5).
 
 ## 4. Lancer en local
 
@@ -96,19 +99,14 @@ mis à jour) en base.
    **Redirects** de l'application Discord.
 3. `npm install` régénère automatiquement le client Prisma (script
    `postinstall`) — rien à configurer côté build command pour ça.
-4. Les migrations ne se lancent **pas** automatiquement au build (pour
-   éviter qu'un déploiement échoue si la base est injoignable, ou
-   qu'une migration parte par erreur avant d'être relue). Après chaque
-   migration ajoutée en local, l'appliquer sur Neon avant/après le
-   déploiement :
-
-   ```bash
-   npx prisma migrate deploy
-   ```
-
-   (à lancer avec `DATABASE_URL` pointant vers la base Neon de prod — en
-   local avec la variable exportée, ou via `vercel env pull` puis
-   `npx dotenv -e .env.production.local -- npx prisma migrate deploy`.)
+4. `npm run build` (la build command par défaut, utilisée par Vercel) lance
+   `prisma migrate deploy` avant `next build` : les migrations du dossier
+   `prisma/migrations/` sont donc appliquées automatiquement sur
+   `DATABASE_URL` à chaque déploiement — aucune étape manuelle nécessaire
+   après le premier déploiement avec les bonnes variables d'environnement.
+   Si `DATABASE_URL` est injoignable ou mal configurée, le build échoue
+   (volontairement, plutôt que de déployer une app qui pointerait vers une
+   base sans les bonnes tables).
 
 ## Scripts disponibles
 
