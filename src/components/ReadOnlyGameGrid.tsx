@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -102,7 +103,9 @@ function ReadOnlyGameCard({ game }: { game: ReadOnlyGame }) {
   const owners = game.owners ?? [];
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
+    <Link
+      href={`/jeux/${game.id}`}
+      className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200 hover:card-glow">
       <div className="relative aspect-[2/3] w-full bg-surface-hover">
         {game.coverUrl && (
           <Image
@@ -150,6 +153,6 @@ function ReadOnlyGameCard({ game }: { game: ReadOnlyGame }) {
           </p>
         )}
       </div>
-    </div>
+    </Link>
   );
 }

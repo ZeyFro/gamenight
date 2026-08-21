@@ -78,6 +78,10 @@ export function igdbCoverUrl(imageId: string): string {
   return `https://images.igdb.com/igdb/image/upload/t_cover_big/${imageId}.jpg`;
 }
 
+export function igdbScreenshotUrl(imageId: string): string {
+  return `https://images.igdb.com/igdb/image/upload/t_screenshot_big/${imageId}.jpg`;
+}
+
 /**
  * Recherche des jeux sur IGDB. La couverture des joueurs (`multiplayer_modes`)
  * est parfois vide même pour des jeux coop connus (cf. §4 du spec) : on
@@ -140,4 +144,100 @@ export async function searchIgdbGames(
       maxPlayers,
     };
   });
+}
+
+interface IgdbInvolvedCompany {
+  company: { name: string };
+  developer: boolean;
+  publisher: boolean;
+}
+
+interface IgdbGameDetailsResponse {
+  id: number;
+  name: string;
+  summary?: string;
+  total_rating?: number;
+  cover?: { image_id: string };
+  screenshots?: { image_id: string }[];
+  videos?: { video_id: string }[];
+  platforms?: { name: string }[];
+  genres?: { name: string }[];
+  first_release_date?: number; // timestamp Unix (secondes)
+  involved_companies?: IgdbInvolvedCompany[];
+}
+
+export interface IgdbGameDetails {
+  igdbId: number;
+  name: string;
+  summary: string | null;
+  /** Note globale IGDB (`total_rating`), arrondie sur 100. */
+  totalRating: number | null;
+  coverUrl: string | null;
+  screenshotUrls: string[];
+  /** Ids de vidéos YouTube (champ IGDB `videos.video_id`). */
+  youtubeVideoIds: string[];
+  platforms: string[];
+  genres: string[];
+  /** ISO 8601, ou `null` si inconnue. */
+  releaseDate: string | null;
+  developers: string[];
+  publishers: string[];
+}
+
+/**
+ * Récupère la fiche détaillée d'un jeu IGDB par son id (pas de recherche
+ * par nom ici — appelé une fois l'`igdbId` déjà connu, soit depuis l'ajout
+ * manuel enrichi, soit depuis un import Steam déjà matché). Ne fait
+ * aucun cache : c'est `src/lib/game-details.ts` qui gère le cache en base
+ * et l'appel à la demande.
+ */
+export async function fetchIgdbGameDetails(
+  igdbId: number
+): Promise<IgdbGameDetails | null> {
+  const [token, clientId] = [
+    await getIgdbToken(),
+    process.env.IGDB_CLIENT_ID!.trim(),
+  ];
+
+  const res = await fetch("https://api.igdb.com/v4/games", {
+    method: "POST",
+    headers: {
+      "Client-ID": clientId,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "text/plain",
+    },
+    body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher; limit 1;`,
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`IGDB (fiche jeu #${igdbId}) a répondu ${res.status}: ${body}`);
+  }
+
+  const [game] = (await res.json()) as IgdbGameDetailsResponse[];
+  if (!game) return null;
+
+  const companies = game.involved_companies ?? [];
+
+  return {
+    igdbId: game.id,
+    name: game.name,
+    summary: game.summary ?? null,
+    totalRating:
+      typeof game.total_rating === "number"
+        ? Math.round(game.total_rating)
+        : null,
+    coverUrl: game.cover?.image_id ? igdbCoverUrl(game.cover.image_id) : null,
+    screenshotUrls: (game.screenshots ?? []).map((s) =>
+      igdbScreenshotUrl(s.image_id)
+    ),
+    youtubeVideoIds: (game.videos ?? []).map((v) => v.video_id),
+    platforms: (game.platforms ?? []).map((p) => p.name),
+    genres: (game.genres ?? []).map((g) => g.name),
+    releaseDate: game.first_release_date
+      ? new Date(game.first_release_date * 1000).toISOString()
+      : null,
+    developers: companies.filter((c) => c.developer).map((c) => c.company.name),
+    publishers: companies.filter((c) => c.publisher).map((c) => c.company.name),
+  };
 }
