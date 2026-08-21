@@ -42,6 +42,21 @@ export async function createSession(formData: FormData) {
     data: { date, votingDeadline },
   });
 
+  // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
+  // jeu") : on le propose directement, sans passer par le formulaire de
+  // /sessions/[id]. Best-effort — un gameId invalide/déjà retiré ne doit
+  // pas empêcher la création de la session.
+  const preselectedGameId = String(formData.get("gameId") ?? "").trim();
+  if (preselectedGameId) {
+    try {
+      await prisma.proposal.create({
+        data: { sessionId: session.id, gameId: preselectedGameId, proposedById: user.id },
+      });
+    } catch {
+      // Jeu inexistant, ou contrainte unique — on ignore, la session reste utilisable.
+    }
+  }
+
   revalidatePath("/sessions");
   redirect(`/sessions/${session.id}`);
 }

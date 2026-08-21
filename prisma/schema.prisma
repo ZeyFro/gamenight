@@ -52,6 +52,16 @@ model Game {
   addedById  String
   createdAt  DateTime   @default(now())
 
+  // Cache de la fiche IGDB détaillée (F : fiche jeu), rempli à la demande
+  // au premier clic sur la fiche — jamais à l'import Steam (évite un
+  // timeout Vercel si on enrichissait toute une biblio importée d'un coup).
+  // `null` tant que jamais fetché (ou si IGDB n'a rien trouvé). Structure
+  // libre en JSON (voir `IgdbGameDetails` dans src/lib/igdb.ts) : pas de
+  // colonnes dédiées, cette donnée est display-only et sa forme suit celle
+  // de l'API IGDB.
+  igdbDetails          Json?
+  igdbDetailsFetchedAt DateTime?
+
   addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
   userGames UserGame[]
 

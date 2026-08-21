@@ -49,13 +49,16 @@ function SessionRow({ session }: { session: SessionRowData }) {
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; gameId?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { error } = await searchParams;
+  const { error, gameId } = await searchParams;
   const errorMessage = error ? CREATE_ERROR_MESSAGES[error] : null;
+  const preselectedGame = gameId
+    ? await prisma.game.findUnique({ where: { id: gameId } })
+    : null;
 
   const dueSessions = await prisma.session.findMany({
     where: { status: "VOTING", date: { lte: new Date() } },
@@ -90,6 +93,15 @@ export default async function SessionsPage({
       <Card>
         <form action={createSession} className="flex flex-col gap-3">
           <h2 className="font-semibold text-foreground">Nouvelle soirée</h2>
+
+          {preselectedGame && (
+            <div className="flex items-center gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              <input type="hidden" name="gameId" value={preselectedGame.id} />
+              🎮 Cette soirée proposera automatiquement{" "}
+              <strong>{preselectedGame.name}</strong>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="session-date">

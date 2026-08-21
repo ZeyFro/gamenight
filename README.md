@@ -259,6 +259,64 @@ Pas de nouveau modèle Prisma : ces deux vues ne font que ré-agréger
 `User`/`Game`/`UserGame` existants (jointures en lecture seule, aucune
 donnée dupliquée).
 
+## Fiche jeu détaillée
+
+Clic sur un jeu (depuis `/bibliotheque`, `/bibliotheque/groupe`, ou la
+biblio d'un pote) → **`/jeux/[id]`**, la fiche complète.
+
+**Enrichissement IGDB à la demande, avec cache en base.** Contrairement à
+l'ajout manuel/import Steam (F3, qui ne récupère que `cover`/`isCoop`/
+`maxPlayers` à la création), la fiche jeu affiche le maximum de ce
+qu'IGDB fournit — résumé, note globale (`total_rating`), captures d'écran,
+trailer YouTube, plateformes, genres, date de sortie, développeur/éditeur.
+Cet enrichissement est **volontairement différé** :
+
+- Il ne se déclenche **jamais** à l'import Steam (importer toute une
+  biblio d'un coup + un appel IGDB détaillé par jeu ferait dépasser le
+  timeout d'une fonction Vercel, cf. discussion précédente sur F3).
+- Il se déclenche **à la demande**, au premier affichage de `/jeux/[id]`
+  (uniquement si le jeu a un `igdbId` connu — un ajout manuel resté sans
+  correspondance IGDB ne déclenche aucun appel).
+- Le résultat est mis en cache dans `Game.igdbDetails` (JSON) +
+  `Game.igdbDetailsFetchedAt`. Les ouvertures suivantes de la fiche sont
+  instantanées (aucun appel IGDB), jusqu'à ce que quelqu'un clique sur
+  **« Rafraîchir les infos »** (`refreshGameDetails`, `src/app/jeux/actions.ts`),
+  qui force un nouvel appel et remplace le cache.
+- Toute la logique cache-ou-fetch vit dans `src/lib/game-details.ts`
+  (`getGameDetails`) ; `src/lib/igdb.ts` expose `fetchIgdbGameDetails`, qui
+  ne fait qu'un appel réseau brut (pas de cache, pas de DB) — les deux
+  responsabilités sont séparées.
+- **Panne IGDB ou jeu introuvable** : si `fetchIgdbGameDetails` échoue
+  (réseau, credentials, 404 IGDB) et qu'un cache existant est disponible
+  (même périmé), on le sert quand même plutôt que de casser la fiche. Sans
+  aucun cache, la fiche affiche juste les infos qu'on a déjà en base
+  (cover, nom, min/max joueurs, source) avec le message
+  *« Pas d'infos supplémentaires trouvées »* (ou un message dédié si
+  l'erreur vient d'une panne réseau plutôt que d'un jeu inconnu d'IGDB).
+- **Pour tester avec un jeu IGDB « propre »** (couverture complète :
+  résumé, captures, trailer, plateformes…) : ajoute un jeu récent et connu
+  depuis `/bibliotheque/ajouter` en utilisant la recherche IGDB (ex.
+  *Hades*, *Hollow Knight*, *Portal 2*) — les jeux très récents ou de
+  niche ont parfois des fiches IGDB incomplètes (pas de trailer/captures).
+
+**Nombre de joueurs éditable directement sur la fiche** : si tu possèdes
+le jeu, le bouton crayon (`EditGameDialog`, déjà utilisé sur
+`/bibliotheque`) est affiché à côté du nombre de joueurs — même
+composant, même validations, pas de duplication.
+
+**Actions rapides** :
+
+- **« Proposer une soirée avec ce jeu »** → `/sessions?gameId=<id>`. Le
+  formulaire de création de soirée (`/sessions`) affiche alors un bandeau
+  « Cette soirée proposera automatiquement *{jeu}* » et transmet un champ
+  caché `gameId` ; `createSession` (`src/app/sessions/actions.ts`) crée la
+  `Proposal` correspondante juste après avoir créé la session, en plus du
+  flux existant (proposer un jeu après coup depuis `/sessions/[id]`, qui
+  continue de fonctionner normalement). Best-effort : un `gameId` invalide
+  n'empêche pas la création de la session.
+- **« Qui d'autre possède ce jeu »** : liste des membres du groupe qui
+  l'ont dans leur biblio (avatar + pseudo, `(toi)` si c'est toi).
+
 ## Disponibilités & exceptions (F4)
 
 - `/disponibilites` : un éditeur par jour de la semaine (`WeeklyAvailability`,
@@ -513,7 +571,8 @@ prisma/schema.prisma        # Schéma de données complet (§5)
 src/auth.ts                 # Config Auth.js (provider Discord, callbacks)
 src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
 src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
-src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche jeux)
+src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche + fiche détaillée)
+src/lib/game-details.ts     # Cache-ou-fetch de la fiche IGDB (Game.igdbDetails)
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
@@ -540,6 +599,8 @@ src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
 src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
+src/app/jeux/[id]/page.tsx              # Fiche jeu détaillée (IGDB à la demande, cache)
+src/app/jeux/actions.ts                 # Server action "Rafraîchir les infos"
 src/app/disponibilites/page.tsx         # Planning hebdo + exceptions
 src/app/disponibilites/actions.ts       # Server actions dispos
 src/app/sessions/page.tsx               # Liste des soirées + création
