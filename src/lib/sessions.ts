@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
+import { announceSessionResult } from "@/lib/discord-announce";
+import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, Session, User } from "@prisma/client";
 
 /**
@@ -22,34 +24,71 @@ export function isVotingOpen(
   );
 }
 
+export interface CloseSessionResult {
+  discord: PostToDiscordResult;
+}
+
 /**
- * Clôture une session VOTING : le jeu gagnant est la proposition la plus
- * votée (égalité → la plus ancienne proposition, cf. tri par createdAt).
- * Sans proposition, la session est automatiquement annulée. Un seul jeu
- * gagnant par soirée — cohérent avec le champ unique `decidedGameId` du
- * schéma et avec le roadmap v2 (§7), qui traite la file de jeux multiples
- * comme un sujet à part entière.
+ * Clôture une session VOTING et poste le résultat dans Discord (F6).
+ *
+ * Le jeu gagnant est la proposition **jouable** (cf. `getProposalAvailability`)
+ * la plus votée (égalité → la plus ancienne proposition, cf. tri par
+ * createdAt). Sans proposition jouable — y compris s'il y a des
+ * propositions mais qu'aucune n'a assez de joueurs dispos-possesseurs —
+ * la session est annulée plutôt que planifiée avec un jeu injouable : on
+ * revient ici sur le choix initial de F5 ("les votes restent souverains
+ * même si pas jouable"), qui n'avait pas de conséquence visible ailleurs
+ * que le badge ; poster un résultat Discord pour un jeu que personne ne
+ * peut effectivement jouer serait trompeur pour le groupe.
+ *
+ * Un seul jeu gagnant par soirée — cohérent avec le champ unique
+ * `decidedGameId` du schéma et avec le roadmap v2 (§7), qui traite la
+ * file de jeux multiples comme un sujet à part entière.
  */
-export async function closeSession(sessionId: string): Promise<void> {
+export async function closeSession(
+  sessionId: string
+): Promise<CloseSessionResult | null> {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: {
-      proposals: { include: { votes: true }, orderBy: { createdAt: "asc" } },
+      proposals: {
+        include: { game: true, votes: { include: { user: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
-  if (!session || session.status !== "VOTING") return;
+  if (!session || session.status !== "VOTING") return null;
 
   if (session.proposals.length === 0) {
     await prisma.session.update({
       where: { id: sessionId },
       data: { status: "CANCELLED" },
     });
-    return;
+    return { discord: await announceSessionResult(session, null, false) };
   }
 
-  const winner = session.proposals.reduce((best, proposal) =>
+  const availability = await getProposalAvailability(
+    session.date,
+    session.proposals.map((p) => p.game)
+  );
+  const jouableProposals = session.proposals.filter(
+    (p) => availability.get(p.gameId)?.jouable
+  );
+
+  if (jouableProposals.length === 0) {
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { status: "CANCELLED" },
+    });
+    return { discord: await announceSessionResult(session, null, false) };
+  }
+
+  const winner = jouableProposals.reduce((best, proposal) =>
     proposal.votes.length > best.votes.length ? proposal : best
   );
+  const tie =
+    jouableProposals.filter((p) => p.votes.length === winner.votes.length)
+      .length > 1;
 
   await prisma.session.update({
     where: { id: sessionId },
@@ -59,12 +98,19 @@ export async function closeSession(sessionId: string): Promise<void> {
       decidedTime: session.date,
     },
   });
+
+  return {
+    discord: await announceSessionResult(session, winner, tie),
+  };
 }
 
 /**
  * Clôture "auto" paresseuse : appelée à la lecture, pas de cron (F7).
  * Se déclenche dès que la deadline de vote (ou, à défaut, l'heure de la
- * session) est franchie.
+ * session) est franchie. Le résultat Discord n'est pas remonté à un
+ * utilisateur particulier ici (déclenché en arrière-plan par n'importe
+ * quelle page chargée) : un échec est simplement loggué par
+ * `postToDiscord`.
  */
 export async function closeSessionIfDue(sessionId: string): Promise<void> {
   const session = await prisma.session.findUnique({
@@ -88,6 +134,47 @@ export async function markSessionDone(sessionId: string): Promise<void> {
     where: { id: sessionId, status: "SCHEDULED" },
     data: { status: "DONE" },
   });
+}
+
+/** Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée. */
+export async function resendSessionAnnouncement(
+  sessionId: string
+): Promise<PostToDiscordResult> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      proposals: {
+        include: { game: true, votes: { include: { user: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  if (!session) return { ok: false, error: "session_introuvable" };
+
+  if (session.status === "CANCELLED") {
+    return announceSessionResult(session, null, false);
+  }
+
+  if (
+    (session.status === "SCHEDULED" || session.status === "DONE") &&
+    session.decidedGameId
+  ) {
+    const winner = session.proposals.find(
+      (p) => p.gameId === session.decidedGameId
+    );
+    if (!winner) return { ok: false, error: "gagnant_introuvable" };
+
+    const maxVotes = Math.max(
+      ...session.proposals.map((p) => p.votes.length)
+    );
+    const tie =
+      winner.votes.length === maxVotes &&
+      session.proposals.filter((p) => p.votes.length === maxVotes).length > 1;
+
+    return announceSessionResult(session, winner, tie);
+  }
+
+  return { ok: false, error: "session_pas_encore_cloturee" };
 }
 
 export interface ProposalAvailability {

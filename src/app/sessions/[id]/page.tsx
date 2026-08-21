@@ -23,17 +23,30 @@ import {
   closeSessionAction,
   markSessionDoneAction,
   proposeGame,
+  resendDiscordAction,
 } from "../actions";
+
+const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
+  echec: {
+    text: "Résultat sauvegardé mais l'envoi Discord a échoué.",
+    tone: "warning",
+  },
+  envoye: { text: "Message envoyé dans Discord.", tone: "accent" },
+};
 
 export default async function SessionDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ discord?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
+  const { discord } = await searchParams;
+  const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
 
   await closeSessionIfDue(id);
 
@@ -90,6 +103,18 @@ export default async function SessionDetailPage({
         )}
       </div>
 
+      {discordMessage && (
+        <p
+          className={`rounded-lg p-3 text-sm ${
+            discordMessage.tone === "warning"
+              ? "bg-warning/10 text-warning"
+              : "bg-accent/10 text-accent"
+          }`}
+        >
+          {discordMessage.text}
+        </p>
+      )}
+
       {(session.status === "SCHEDULED" || session.status === "DONE") &&
         session.decidedGame && (
           <Card
@@ -127,6 +152,17 @@ export default async function SessionDetailPage({
         <Card>
           <p className="text-sm text-muted">Cette soirée a été annulée.</p>
         </Card>
+      )}
+
+      {(session.status === "SCHEDULED" ||
+        session.status === "DONE" ||
+        session.status === "CANCELLED") && (
+        <form action={resendDiscordAction}>
+          <input type="hidden" name="sessionId" value={session.id} />
+          <Button type="submit" variant="secondary" size="sm">
+            Renvoyer dans Discord
+          </Button>
+        </form>
       )}
 
       {session.status === "VOTING" && (

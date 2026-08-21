@@ -116,7 +116,7 @@ Puis remplir chaque variable :
 | `AUTH_SECRET` | Génère une valeur aléatoire avec `npx auth secret` (ou `openssl rand -base64 32`). |
 | `AUTH_URL` | `http://localhost:3000` en local, l'URL de prod (ex. Vercel) en production. |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → onglet **OAuth2** → *Client ID* / *Client Secret*. Ajouter l'URL de redirection `http://localhost:3000/api/auth/callback/discord` (et l'équivalent en prod) dans **Redirects**. |
-| `DISCORD_WEBHOOK_URL` | Dans le salon Discord cible → **Modifier le salon** → **Intégrations** → **Webhooks** → **Créer un webhook**. *(Pas encore utilisée à ce stade — nécessaire pour F6/F7.)* |
+| `DISCORD_WEBHOOK_URL` | Dans le salon Discord cible → **Modifier le salon** → **Intégrations** → **Webhooks** → **Créer un webhook**. Utilisée pour poster le résultat de clôture d'une soirée (F6) — voir la section dédiée ci-dessous. *(F7 — rappels — pas encore implémentée.)* |
 | `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (nécessite un compte Steam ayant dépensé au moins 5$). Utilisée pour l'import de bibliothèque (`GetOwnedGames`). *(F8 — présence — pas encore implémentée.)* |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). Utilisées pour la recherche/enrichissement de jeux ajoutés manuellement. |
 
@@ -223,6 +223,19 @@ permet d'en ajouter/retirer.
 - **Token IGDB (OAuth Twitch)** : mis en cache en mémoire du process
   (`src/lib/igdb.ts`) entre les appels, régénéré uniquement à expiration —
   pas d'appel `id.twitch.tv` à chaque recherche.
+- **Édition d'un jeu déjà en biblio** : sur chaque carte de
+  `/bibliotheque`, une icône crayon (à côté de la corbeille) ouvre un
+  **panneau modal** (`EditGameDialog.tsx`, `@radix-ui/react-dialog` pour
+  le focus trap/l'accessibilité clavier) — plein écran depuis le bas sur
+  mobile, centré sur desktop. On y modifie `isCoop`, `minPlayers`,
+  `maxPlayers` (mêmes validations que l'ajout manuel : 1-100,
+  maximum ≥ minimum), et le **nom uniquement si `source = MANUAL`** (un
+  jeu Steam/IGDB garde le nom de sa source — champ non affiché sinon).
+  Toast `sonner` de confirmation à la sauvegarde, panneau qui se ferme
+  automatiquement ; les erreurs de validation s'affichent inline dans le
+  panneau (pas de rechargement de page, l'action serveur est appelée
+  directement depuis le composant client et renvoie un résultat plutôt
+  que de rediriger).
 
 ## Disponibilités & exceptions (F4)
 
@@ -310,10 +323,103 @@ permet d'en ajouter/retirer.
   (plusieurs jeux à enchaîner) comme un sujet séparé, pas prévu en v1. Sans
   proposition à l'heure de la clôture, la session est automatiquement
   annulée (`CANCELLED`) plutôt que planifiée sans jeu.
+- **Révision F6 : le gagnant doit être JOUABLE.** À l'introduction du
+  webhook Discord (F6), le choix initial ci-dessus (« les votes restent
+  souverains même si le badge n'est pas JOUABLE ») a été revu : la
+  clôture ne retient désormais que les propositions **jouables** comme
+  gagnantes possibles ; s'il y a des propositions mais qu'aucune n'est
+  jouable, la session est annulée plutôt que planifiée avec un jeu que le
+  groupe ne peut pas effectivement réunir. Annoncer dans Discord « soirée
+  validée » pour un jeu injouable aurait été trompeur — le badge n'était
+  plus seulement informatif à partir du moment où un message sort vers
+  tout le monde.
 - Cycle de vie complet : `VOTING → SCHEDULED` (clôture avec gagnant) ou
   `VOTING → CANCELLED` (clôture sans proposition, ou annulation manuelle) ;
   `SCHEDULED → DONE` (bouton « Marquer comme terminée », pratique après coup)
   ou `SCHEDULED → CANCELLED` (plans annulés).
+
+## Résultat poussé dans Discord (F6)
+
+À chaque clôture de session (manuelle **ou** automatique — les deux
+passent par `closeSession` dans `src/lib/sessions.ts`, point d'entrée
+unique), un embed est posté dans `DISCORD_WEBHOOK_URL`
+(`src/lib/discord.ts` + `src/lib/discord-announce.ts`).
+
+**Rendu de l'embed gagnant** (couleur violet `#8b5cf6`, un peu comme ceci) :
+
+```
+┌───────────────────────────────────────────┐
+│ 🎮 Soirée validée : Valheim         [cover]│
+│ dimanche 24 août 21:00                     │
+│                                             │
+│ Joueurs          3                         │
+│ Qui vient        @Max @Sacha @Lea          │
+└───────────────────────────────────────────┘
+@Max @Sacha @Lea
+```
+
+(la ligne `@Max @Sacha @Lea` sous l'embed est le `content` brut du
+message, séparé de l'embed — voir plus bas.)
+
+**Rendu de l'embed « annulée »** (aucune proposition, ou aucune jouable —
+couleur rouge `#ef4444`) :
+
+```
+┌───────────────────────────────────────────┐
+│ ❌ Soirée annulée                          │
+│ Soirée annulée, pas assez de joueurs pour  │
+│ dimanche 24 août 21:00.                    │
+└───────────────────────────────────────────┘
+```
+
+En cas d'égalité de votes entre plusieurs propositions jouables, l'embed
+gagnant ajoute un champ `Note : Égalité de votes — choisi par ancienneté
+de proposition.`
+
+- **Titre** : `🎮 Soirée validée : {jeu}` ou `❌ Soirée annulée`.
+- **Description** : date + heure en français (`formatDateTimeFr`).
+- **Miniature** (`thumbnail`, coin haut-droit de l'embed) : `coverUrl` du
+  jeu gagnant, si disponible.
+- **Champs** : nombre de joueurs (= nombre de votes pour la proposition
+  gagnante) et liste de leurs pseudos.
+- **Détail technique important sur les pings** : Discord ne déclenche une
+  vraie notification push que pour des mentions `<@discordId>` présentes
+  dans le `content` **brut** du message webhook — une mention à
+  l'intérieur d'un embed s'affiche (cliquable, résout le pseudo) mais ne
+  notifie **personne**. Les mentions des votants sont donc envoyées à la
+  fois dans le champ "Qui vient" de l'embed (lisible dans le contexte de
+  la carte) et dans le `content` du message (déclenche la notif sur leur
+  téléphone), pour satisfaire à la fois la lisibilité et le besoin de
+  notification.
+- **Jeu gagnant = doit être JOUABLE** (voir la révision documentée dans la
+  section F5 ci-dessus) : aucune proposition jouable → embed rouge
+  « annulée », jamais un jeu que le groupe ne peut pas réunir.
+
+### Dégradation propre si `DISCORD_WEBHOOK_URL` n'est pas configurée
+
+`postToDiscord` (`src/lib/discord.ts`) vérifie la variable d'abord : si
+elle est absente, elle logue un `console.warn` (`[discord]
+DISCORD_WEBHOOK_URL non configurée — message non envoyé.`) et renvoie
+`{ ok: false, error: "not_configured" }` **sans jamais lever
+d'exception**. `closeSession` (et son appelant `closeSessionAction`)
+poursuivent normalement : le statut de la session est mis à jour en base
+quoi qu'il arrive, l'envoi Discord est un effet secondaire best-effort qui
+ne bloque jamais la clôture. Idem pour toute erreur réseau ou réponse HTTP
+non-2xx du webhook (loggée en détail côté serveur). Sur une clôture
+**manuelle**, si l'envoi Discord échoue, l'utilisateur voit un bandeau
+discret sur la page de la session : « Résultat sauvegardé mais l'envoi
+Discord a échoué. » — jamais un plantage. Sur une clôture **automatique**
+(paresseuse, déclenchée par le chargement d'une page), l'échec est
+seulement loggué côté serveur (pas d'utilisateur précis à qui l'afficher).
+
+### Bonus : renvoyer l'annonce
+
+Sur une session déjà clôturée (`SCHEDULED`, `DONE` ou `CANCELLED`), un
+bouton **« Renvoyer dans Discord »** (`resendDiscordAction` →
+`resendSessionAnnouncement` dans `src/lib/sessions.ts`) reconstruit et
+reposte le même embed — pratique si le webhook a échoué la première fois
+(ou si le message a été supprimé côté Discord). Un bandeau confirme
+l'envoi ou l'échec, même mécanisme que la clôture manuelle.
 
 ## 5. Déploiement Vercel
 
@@ -378,16 +484,19 @@ src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche jeux)
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
-src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable" par jeu
+src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable", annonce Discord
 src/lib/session-status.ts   # Libellés/couleurs des statuts de session
+src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non configuré)
+src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
 src/components/ActionForm.tsx           # Wrapper server action + toast (non redirigeant)
 src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur animé)
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
+src/components/EditGameDialog.tsx       # Panneau modal d'édition d'un jeu (Radix Dialog)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
-src/app/actions.ts          # Server actions bibliothèque (ajout/retrait, réimport Steam)
+src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés
