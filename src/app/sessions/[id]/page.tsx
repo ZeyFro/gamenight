@@ -10,27 +10,30 @@ import {
   votingClosesAt,
 } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
-import { formatDateTimeFr } from "@/lib/wallclock";
+import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
+import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ActionForm } from "@/components/ActionForm";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
+import { EditSessionDialog } from "@/components/EditSessionDialog";
+import { WithdrawProposalDialog } from "@/components/WithdrawProposalDialog";
+import { ProposeGameForm } from "@/components/ProposeGameForm";
 import {
   cancelSessionAction,
   closeSessionAction,
   markSessionDoneAction,
-  proposeGame,
   resendDiscordAction,
 } from "../actions";
 
 const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
   // Texte volontairement générique ("l'action") : ce même statut couvre la
-  // création, la clôture et le renvoi manuel de session — trois contextes
-  // différents qui redirigent tous ici avec `?discord=echec|envoye`.
+  // création, la clôture, la modification et le renvoi manuel de session —
+  // plusieurs contextes différents qui redirigent tous ici avec
+  // `?discord=echec|envoye`.
   echec: {
     text: "L'action a bien été enregistrée, mais l'envoi Discord a échoué.",
     tone: "warning",
@@ -43,15 +46,16 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string; deadline?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string; error?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord, deadline } = await searchParams;
+  const { discord, deadline, error } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
   const deadlineAdjusted = deadline === "ajustee";
+  const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
 
   await closeSessionIfDue(id);
 
@@ -93,6 +97,9 @@ export default async function SessionDetailPage({
   // elle se déclenche à la lecture, sans bouton, donc sans notion de "qui
   // clique".
   const isCreator = session.createdById === user.id;
+  // Modifier n'a de sens que pour une soirée pas encore figée — pas pour
+  // une session DONE (déjà jouée) ou CANCELLED (rien à reprogrammer).
+  const canEdit = session.status === "VOTING" || session.status === "SCHEDULED";
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -114,6 +121,12 @@ export default async function SessionDetailPage({
           <VotingCountdown deadline={votingClosesAt(session).toISOString()} />
         )}
       </div>
+
+      {errorMessage && (
+        <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {errorMessage}
+        </p>
+      )}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
@@ -189,6 +202,15 @@ export default async function SessionDetailPage({
 
       {session.status === "VOTING" && isCreator && (
         <div className="flex flex-wrap gap-3">
+          {canEdit && (
+            <EditSessionDialog
+              sessionId={session.id}
+              dateValue={toDateInputValue(session.date)}
+              timeValue={toTimeInputValue(session.date)}
+              deadlineDateValue={toDateInputValue(votingClosesAt(session))}
+              deadlineTimeValue={toTimeInputValue(votingClosesAt(session))}
+            />
+          )}
           <form action={closeSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
             <Button type="submit" size="sm">
@@ -206,6 +228,15 @@ export default async function SessionDetailPage({
 
       {session.status === "SCHEDULED" && isCreator && (
         <div className="flex flex-wrap gap-3">
+          {canEdit && (
+            <EditSessionDialog
+              sessionId={session.id}
+              dateValue={toDateInputValue(session.date)}
+              timeValue={toTimeInputValue(session.date)}
+              deadlineDateValue={toDateInputValue(votingClosesAt(session))}
+              deadlineTimeValue={toTimeInputValue(votingClosesAt(session))}
+            />
+          )}
           <form action={markSessionDoneAction}>
             <input type="hidden" name="sessionId" value={session.id} />
             <Button type="submit" size="sm">
@@ -254,25 +285,30 @@ export default async function SessionDetailPage({
               <StaggerItem key={proposal.id}>
                 <Card className="flex flex-col gap-3">
                   <div className="flex items-start gap-3">
-                    {proposal.game.coverUrl && (
-                      <Image
-                        src={proposal.game.coverUrl}
-                        alt={proposal.game.name}
-                        width={48}
-                        height={64}
-                        className="shrink-0 rounded object-cover"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground">
-                        {proposal.game.name}
-                      </p>
-                      <p className="text-xs text-muted">
-                        Proposé par {proposal.proposedBy.discordName} ·{" "}
-                        {proposal.game.minPlayers ?? "?"}–
-                        {proposal.game.maxPlayers ?? "?"} joueurs
-                      </p>
-                    </div>
+                    <Link
+                      href={`/jeux/${proposal.gameId}`}
+                      className="flex min-w-0 flex-1 items-start gap-3"
+                    >
+                      {proposal.game.coverUrl && (
+                        <Image
+                          src={proposal.game.coverUrl}
+                          alt={proposal.game.name}
+                          width={48}
+                          height={64}
+                          className="shrink-0 rounded object-cover"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground hover:underline">
+                          {proposal.game.name}
+                        </p>
+                        <p className="text-xs text-muted">
+                          Proposé par {proposal.proposedBy.discordName} ·{" "}
+                          {proposal.game.minPlayers ?? "?"}–
+                          {proposal.game.maxPlayers ?? "?"} joueurs
+                        </p>
+                      </div>
+                    </Link>
                     <Badge
                       tone={stats?.jouable ? "accent" : "neutral"}
                       glow={stats?.jouable}
@@ -295,13 +331,22 @@ export default async function SessionDetailPage({
                     )}
                   </p>
 
-                  <VoteButton
-                    proposalId={proposal.id}
-                    sessionId={session.id}
-                    initialVoted={voted}
-                    initialCount={proposal.votes.length}
-                    disabled={!votingOpen}
-                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <VoteButton
+                      proposalId={proposal.id}
+                      sessionId={session.id}
+                      initialVoted={voted}
+                      initialCount={proposal.votes.length}
+                      disabled={!votingOpen}
+                    />
+                    {votingOpen && proposal.proposedById === user.id && (
+                      <WithdrawProposalDialog
+                        sessionId={session.id}
+                        proposalId={proposal.id}
+                        gameName={proposal.game.name}
+                      />
+                    )}
+                  </div>
                 </Card>
               </StaggerItem>
             );
@@ -329,33 +374,10 @@ export default async function SessionDetailPage({
             </Card>
           ) : (
             <Card>
-              <ActionForm
-                action={proposeGame}
-                successMessage="Jeu proposé"
-                className="flex flex-col gap-3 sm:flex-row sm:items-end"
-              >
-                <input type="hidden" name="sessionId" value={session.id} />
-                <div className="flex flex-1 flex-col gap-1">
-                  <label className="text-xs text-muted" htmlFor="gameId">
-                    Jeu
-                  </label>
-                  <select
-                    id="gameId"
-                    name="gameId"
-                    required
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
-                  >
-                    {availableGames.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button type="submit" variant="primary" fullWidthOnMobile>
-                  Proposer
-                </Button>
-              </ActionForm>
+              <ProposeGameForm
+                sessionId={session.id}
+                games={availableGames.map((g) => ({ id: g.id, name: g.name }))}
+              />
             </Card>
           )}
         </section>
