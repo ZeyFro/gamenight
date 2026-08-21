@@ -1,6 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { auth, signIn, signOut } from "@/auth";
+import { getCurrentUser } from "@/lib/current-user";
+import { prisma } from "@/lib/prisma";
+import { closeSessionIfDue } from "@/lib/sessions";
+import { SESSION_STATUS_LABELS } from "@/lib/session-status";
+import { formatDateTimeFr } from "@/lib/wallclock";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Logo } from "@/components/Logo";
+import { Stagger, StaggerItem } from "@/components/motion";
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   Configuration:
@@ -23,98 +32,182 @@ export default async function Home({
       "La connexion a échoué. Réessaie dans un instant.")
     : null;
 
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-4 font-sans sm:px-6 dark:bg-black">
-      <main className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl bg-white p-6 text-center shadow-sm sm:p-10 dark:bg-zinc-950">
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-          GameNight
-        </h1>
+  if (!session?.user) {
+    return (
+      <div className="bg-hero-gradient flex flex-1 flex-col items-center justify-center px-4 sm:px-6">
+        <Card className="flex w-full max-w-md flex-col items-center gap-6 text-center">
+          <Logo className="text-xl" />
 
-        {errorMessage && (
-          <p className="w-full rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
-            {errorMessage}
+          {errorMessage && (
+            <p className="w-full rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              {errorMessage}
+            </p>
+          )}
+
+          <p className="text-muted">
+            Connecte-toi avec ton compte Discord pour organiser la
+            prochaine soirée jeux.
           </p>
-        )}
+          <form
+            action={async () => {
+              "use server";
+              await signIn("discord");
+            }}
+            className="w-full"
+          >
+            <Button
+              type="submit"
+              variant="primary"
+              fullWidthOnMobile
+              className="w-full gap-2 bg-[#5865F2] hover:bg-[#4752c4]"
+            >
+              Se connecter avec Discord
+            </Button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
 
-        {session?.user ? (
-          <>
-            {session.user.image && (
-              <Image
-                src={session.user.image}
-                alt={`Avatar de ${session.user.name}`}
-                width={80}
-                height={80}
-                className="rounded-full"
-              />
-            )}
-            <p className="text-lg text-zinc-800 dark:text-zinc-200">
-              Connecté en tant que{" "}
-              <span className="font-semibold">{session.user.name}</span>
-            </p>
-            <div className="grid w-full grid-cols-2 gap-3 text-base font-medium sm:text-sm">
-              <Link
-                href="/profil"
-                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Mon profil
-              </Link>
-              <Link
-                href="/bibliotheque"
-                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Ma bibliothèque
-              </Link>
-              <Link
-                href="/disponibilites"
-                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Mes dispos
-              </Link>
-              <Link
-                href="/sessions"
-                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Soirées
-              </Link>
-            </div>
-            <form
-              action={async () => {
-                "use server";
-                await signOut();
-              }}
-              className="w-full sm:w-auto"
-            >
-              <button
-                type="submit"
-                className="w-full rounded-full border border-zinc-300 px-5 py-3 text-base font-medium text-zinc-800 transition-colors hover:bg-zinc-100 sm:w-auto sm:py-2.5 sm:text-sm dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-              >
-                Se déconnecter
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <p className="text-zinc-600 dark:text-zinc-400">
-              Connecte-toi avec ton compte Discord pour organiser la
-              prochaine soirée jeux.
-            </p>
-            <form
-              action={async () => {
-                "use server";
-                await signIn("discord");
-              }}
-              className="w-full"
-            >
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#5865F2] px-5 py-3 text-base font-medium text-white transition-colors hover:bg-[#4752c4] sm:py-2.5 sm:text-sm"
-              >
-                Se connecter avec Discord
-              </button>
-            </form>
-          </>
+  const user = await getCurrentUser();
+  if (!user) {
+    return null;
+  }
+
+  const dueSession = await prisma.session.findFirst({
+    where: { status: "VOTING", date: { lte: new Date() } },
+    select: { id: true },
+    orderBy: { date: "asc" },
+  });
+  if (dueSession) await closeSessionIfDue(dueSession.id);
+
+  const [nextSession, libraryCount, previewGames] = await Promise.all([
+    prisma.session.findFirst({
+      where: { status: { in: ["VOTING", "SCHEDULED"] } },
+      orderBy: { date: "asc" },
+      include: { decidedGame: true, _count: { select: { proposals: true } } },
+    }),
+    prisma.userGame.count({ where: { userId: user.id, owned: true } }),
+    prisma.userGame.findMany({
+      where: { userId: user.id, owned: true },
+      take: 6,
+      include: { game: true },
+      orderBy: { game: { name: "asc" } },
+    }),
+  ]);
+
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="flex items-center gap-4">
+        {session.user.image && (
+          <Image
+            src={session.user.image}
+            alt={`Avatar de ${session.user.name}`}
+            width={56}
+            height={56}
+            className="rounded-full"
+          />
         )}
-      </main>
+        <div>
+          <p className="text-sm text-muted">Salut,</p>
+          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+            {session.user.name}
+          </h1>
+        </div>
+      </div>
+
+      <Stagger className="flex flex-col gap-4">
+        <StaggerItem>
+          {nextSession ? (
+            <Link href={`/sessions/${nextSession.id}`}>
+              <Card glow>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-muted">Prochaine soirée</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground capitalize">
+                      {formatDateTimeFr(nextSession.date)}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      {nextSession.decidedGame
+                        ? nextSession.decidedGame.name
+                        : `${nextSession._count.proposals} proposition${nextSession._count.proposals === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${SESSION_STATUS_LABELS[nextSession.status].className}`}
+                  >
+                    {SESSION_STATUS_LABELS[nextSession.status].label}
+                  </span>
+                </div>
+              </Card>
+            </Link>
+          ) : (
+            <Card>
+              <p className="text-sm text-muted">
+                Aucune soirée prévue pour l&apos;instant.
+              </p>
+              <ButtonLink href="/sessions" variant="primary" className="mt-4">
+                Proposer une soirée
+              </ButtonLink>
+            </Card>
+          )}
+        </StaggerItem>
+
+        <StaggerItem>
+          <Link href="/bibliotheque">
+            <Card glow>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-muted">Ta bibliothèque</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">
+                    {libraryCount} jeu{libraryCount === 1 ? "" : "x"}
+                  </p>
+                </div>
+                {previewGames.length > 0 && (
+                  <div className="flex -space-x-3">
+                    {previewGames.map(({ game }) => (
+                      <div
+                        key={game.id}
+                        className="h-12 w-9 shrink-0 overflow-hidden rounded-md border-2 border-surface bg-surface-hover"
+                      >
+                        {game.coverUrl && (
+                          <Image
+                            src={game.coverUrl}
+                            alt=""
+                            width={36}
+                            height={48}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </Link>
+        </StaggerItem>
+
+        <StaggerItem className="grid grid-cols-2 gap-4">
+          <ButtonLink href="/disponibilites" variant="secondary" size="sm">
+            Mes dispos
+          </ButtonLink>
+          <ButtonLink href="/sessions" variant="secondary" size="sm">
+            Soirées
+          </ButtonLink>
+        </StaggerItem>
+      </Stagger>
+
+      <form
+        action={async () => {
+          "use server";
+          await signOut();
+        }}
+      >
+        <Button type="submit" variant="ghost" size="sm">
+          Se déconnecter
+        </Button>
+      </form>
     </div>
   );
 }
