@@ -36,6 +36,7 @@ model User {
   proposals             Proposal[]
   votes                 Vote[]
   messageTemplates      MessageTemplate[]
+  createdSessions       Session[]
 }
 
 enum GameSource {
@@ -146,6 +147,13 @@ model Session {
   decidedTime    DateTime?
   createdAt      DateTime      @default(now())
 
+  // Créateur de la session — introduit après coup (les sessions créées
+  // avant cette migration ont été backfillées, voir la migration SQL pour
+  // la stratégie exacte). Détermine qui peut modifier/supprimer/clôturer
+  // manuellement/annuler cette session (les autres membres du groupe
+  // peuvent toujours proposer un jeu, voter, et consulter la session).
+  createdById String
+
   // F7 : message de rappel perso, saisi à la création de la session. S'il
   // est renseigné, il remplace le tirage aléatoire dans MessageTemplate
   // pour les deux rappels (24h et 2h) de cette session.
@@ -157,6 +165,7 @@ model Session {
   // src/lib/discord-reminder.ts), pas une invariante du modèle.
   remindersSent  Json          @default("[]")
 
+  createdBy   User       @relation(fields: [createdById], references: [id])
   decidedGame Game?      @relation(fields: [decidedGameId], references: [id])
   proposals   Proposal[]
 }

@@ -1,14 +1,25 @@
 // Seed des messages Discord par défaut (rappels F7 + notifs de
-// création/modification de session). Script Node/ESM autonome (pas de
-// ts-node/tsx en dépendance) — lancer avec :
-//   node prisma/seed.mjs
-// Idempotent PAR CATÉGORIE : chaque groupe de messages n'est inséré que
-// si aucun MessageTemplate existant ne porte déjà une de ses catégories —
-// pas un seul check global, pour rester correct en 2 cas : relancer le
-// script ne duplique rien, ET une base migrée depuis l'ancien
-// ReminderTemplate (9 messages déjà tagués REMINDER_24H/2H par la
-// migration) reçoit quand même les nouveaux messages SESSION_CREATED/
-// SESSION_MODIFIED au lieu d'être bloquée par un check "déjà seedé".
+// création/modification de session). Node/ESM autonome (pas de
+// ts-node/tsx en dépendance).
+//
+// Bug corrigé : ce script n'était appelé QUE manuellement (`npm run
+// seed`) — jamais par le build Vercel. Résultat en prod : les 9 rappels
+// F7 existaient (migrés depuis l'ancien ReminderTemplate), mais les
+// nouveaux messages SESSION_CREATED/SESSION_MODIFIED n'ont jamais été
+// créés, personne n'ayant lancé le seed à la main après la migration —
+// d'où le fallback hardcodé systématique à la création d'une session.
+// Le script tourne maintenant à CHAQUE build (`npm run build` :
+// `prisma migrate deploy && node prisma/seed.mjs && next build`), donc
+// il doit rester silencieux et sûr à rejouer indéfiniment :
+// - Idempotent PAR CATÉGORIE : chaque groupe n'est inséré que si aucun
+//   MessageTemplate existant ne porte déjà une de ses catégories — pas
+//   un seul check global, sinon une base déjà migrée avec les 9 rappels
+//   ne recevrait jamais les nouveaux groupes.
+// - Base toute neuve (déploiement initial, personne ne s'est encore
+//   connecté) : pas d'utilisateur pour porter `createdById` → le script
+//   log un avertissement et NE FAIT RIEN pour ce groupe, sans faire
+//   échouer le build (`process.exitCode` reste à 0). Il se rattrapera
+//   tout seul au prochain déploiement, une fois qu'un compte existera.
 
 import { PrismaClient } from "@prisma/client";
 
@@ -52,10 +63,13 @@ async function seedCategoryGroup(categories, messages, variables) {
 
   const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
   if (!author) {
-    console.error(
-      "Aucun utilisateur en base. Connecte-toi au moins une fois via Discord avant de lancer ce seed."
+    // Pas une erreur de build : arrive normalement au tout premier
+    // déploiement, avant que quiconque se soit connecté. Le prochain
+    // build (déclenché par le prochain déploiement, ou en relançant
+    // manuellement `npm run seed`) réessaiera automatiquement.
+    console.warn(
+      `${categories.join("+")} : aucun utilisateur en base pour l'instant — seed reporté au prochain build.`
     );
-    process.exitCode = 1;
     return;
   }
 

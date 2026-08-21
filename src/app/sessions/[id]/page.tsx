@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ActionForm } from "@/components/ActionForm";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
 import {
   cancelSessionAction,
   closeSessionAction,
@@ -85,6 +86,13 @@ export default async function SessionDetailPage({
     : [];
 
   const status = SESSION_STATUS_LABELS[session.status];
+  // Modifier/supprimer/clôturer manuellement/annuler sont réservés au
+  // créateur — les autres membres du groupe proposent, votent, et
+  // consultent la session normalement. La clôture automatique
+  // (`closeSessionIfDue`, appelée juste au-dessus) reste ouverte à tous :
+  // elle se déclenche à la lecture, sans bouton, donc sans notion de "qui
+  // clique".
+  const isCreator = session.createdById === user.id;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -179,7 +187,7 @@ export default async function SessionDetailPage({
         </form>
       )}
 
-      {session.status === "VOTING" && (
+      {session.status === "VOTING" && isCreator && (
         <div className="flex flex-wrap gap-3">
           <form action={closeSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
@@ -196,7 +204,7 @@ export default async function SessionDetailPage({
         </div>
       )}
 
-      {session.status === "SCHEDULED" && (
+      {session.status === "SCHEDULED" && isCreator && (
         <div className="flex flex-wrap gap-3">
           <form action={markSessionDoneAction}>
             <input type="hidden" name="sessionId" value={session.id} />
@@ -210,6 +218,15 @@ export default async function SessionDetailPage({
               Annuler
             </Button>
           </form>
+        </div>
+      )}
+
+      {isCreator && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <span className="text-xs text-muted">
+            Tu as créé cette soirée —
+          </span>
+          <DeleteSessionDialog sessionId={session.id} />
         </div>
       )}
 
