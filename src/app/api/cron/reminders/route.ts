@@ -13,12 +13,15 @@ function parseRemindersSent(value: unknown): string[] {
 }
 
 /**
- * Route déclenchée par Vercel Cron toutes les 15 min (voir `vercel.json`)
- * — un seul cron (limite du plan Hobby), les fenêtres 24h/2h sont gérées
- * ici plutôt que par plusieurs crons. Si `CRON_SECRET` est configurée, on
- * exige l'en-tête que Vercel Cron envoie automatiquement, pour éviter
- * qu'un tiers déclenche des rappels en tapant l'URL. Sans Vercel Cron
- * configuré (déploiement hors Vercel, ou cron non activé), personne
+ * Route destinée à être appelée toutes les 15 min par un cron externe
+ * (ex. cron-job.org — voir README, section F7). Pas de Vercel Cron ici :
+ * le plan Hobby impose un minimum d'une exécution par jour, incompatible
+ * avec le pas de 15 min dont F7 a besoin pour les fenêtres 24h/2h. Un
+ * seul appel gère les deux fenêtres plutôt que d'avoir deux crons
+ * séparés. Si `CRON_SECRET` est configurée, on exige l'en-tête
+ * `Authorization: Bearer <CRON_SECRET>` (à renseigner manuellement dans
+ * la config du cron externe), pour éviter qu'un tiers déclenche des
+ * rappels en tapant l'URL. Sans cron externe configuré, personne
  * n'appelle jamais cette route : aucun rappel ne part, mais rien ne
  * plante ailleurs dans l'app — dégradation silencieuse, comme pour
  * DISCORD_WEBHOOK_URL non configurée (F6).

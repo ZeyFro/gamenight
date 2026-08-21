@@ -392,9 +392,10 @@ composant, même validations, pas de duplication.
   déclenche automatiquement **à la lecture** (chargement de `/sessions` ou
   `/sessions/[id]`) dès que la deadline de vote — ou, à défaut pour les
   sessions créées avant son ajout, l'heure de la session — est passée ; pas
-  de Vercel Cron ici (F7 uniquement), donc pas de clôture qui se déclenche
-  vraiment "toute seule" en arrière-plan si personne ne consulte la page,
-  mais c'est transparent dès qu'un membre du groupe rouvre l'app.
+  de cron ici (F7 utilise un cron externe, voir plus bas — pas Vercel
+  Cron), donc pas de clôture qui se déclenche vraiment "toute seule" en
+  arrière-plan si personne ne consulte la page, mais c'est transparent dès
+  qu'un membre du groupe rouvre l'app.
 - **Un seul jeu gagnant par soirée — choix assumé** : à la clôture, le jeu
   retenu (`Session.decidedGameId`) est la proposition la plus votée (égalité
   → la plus ancienne proposition). C'est cohérent avec le schéma indicatif
@@ -507,30 +508,61 @@ Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
 et **2h** avant l'heure d'une soirée déjà planifiée (`Session.status =
 SCHEDULED`, jeu décidé).
 
-### Déclenchement : un seul Vercel Cron toutes les 15 min
+### Déclenchement : cron externe toutes les 15 min (pas Vercel Cron)
 
-Le plan Vercel Hobby limite strictement le nombre de crons — `vercel.json`
-en déclare **un seul**, `/api/cron/reminders`, toutes les 15 minutes :
+**Le plan Vercel Hobby n'autorise pas un cron toutes les 15 minutes** —
+la fréquence minimale imposée est d'une exécution par jour (voir la
+[doc officielle Vercel](https://vercel.com/docs/cron-jobs/usage-and-pricing)).
+Un `vercel.json` déclarant `*/15 * * * *` fait donc **échouer le build**
+au déploiement. F7 a besoin d'une vraie granularité de 15 min pour que les
+fenêtres 24h/2h se déclenchent à temps (voir plus bas pourquoi), donc pas
+de solution de repli côté Vercel Cron sans dégrader la fonctionnalité —
+la route est appelée par un **cron externe** à la place (ex.
+[cron-job.org](https://cron-job.org), gratuit, ou tout autre service de
+cron HTTP équivalent — GitHub Actions `schedule`, EasyCron, etc.).
 
-```json
-{ "crons": [{ "path": "/api/cron/reminders", "schedule": "*/15 * * * *" }] }
-```
+1. Créer un cron job pointant vers `https://ton-projet.vercel.app/api/cron/reminders`.
+2. Fréquence recommandée : **toutes les 15 minutes** (`*/15 * * * *`) —
+   c'est le pas de temps qui garantit qu'aucune fenêtre 24h/2h n'est
+   "sautée" : la route calcule à chaque appel le temps restant avant
+   chaque session et déclenche un rappel dès que le seuil est franchi et
+   pas déjà envoyé (anti-doublon via `Session.remindersSent`) ; un
+   intervalle plus large risquerait de rater la fenêtre 2h pour une
+   session créée tardivement, un intervalle plus petit n'apporte rien vu
+   la granularité des fenêtres elles-mêmes.
+3. Méthode `GET`, en-tête `Authorization: Bearer <CRON_SECRET>` si la
+   variable est configurée (fortement recommandé en prod — voir
+   ci-dessous). Exemple d'appel :
 
-À chaque tick, la route (`src/app/api/cron/reminders/route.ts`) parcourt
+   ```bash
+   curl -X GET "https://ton-projet.vercel.app/api/cron/reminders" \
+     -H "Authorization: Bearer $CRON_SECRET"
+   ```
+
+   La plupart des services de cron HTTP (dont cron-job.org) permettent de
+   configurer un en-tête personnalisé sur la requête programmée — c'est
+   là qu'ajouter `Authorization: Bearer <CRON_SECRET>`.
+
+À chaque appel, la route (`src/app/api/cron/reminders/route.ts`) parcourt
 les sessions `SCHEDULED` à jeu décidé et à venir, calcule le nombre
 d'heures avant le début, et envoie le rappel **24h** et/ou **2h** dès que
 le seuil est franchi *et* que la fenêtre n'a pas déjà été envoyée
 (`Session.remindersSent`, tableau JSON du type `["24h"]` — évite les
-doublons si le cron retombe plusieurs fois dans la même fenêtre). Une
-session créée très en retard (moins de 2h avant l'heure) peut recevoir
-les deux rappels **dans le même tick** — les deux fenêtres sont vérifiées
+doublons si le cron retombe plusieurs fois dans la même fenêtre, y
+compris si le service externe déclenche un appel en double). Une session
+créée très en retard (moins de 2h avant l'heure) peut recevoir les deux
+rappels **dans le même appel** — les deux fenêtres sont vérifiées
 indépendamment, pas de fenêtre "manquée" faute d'avoir été créée à temps.
-Pas de rappel à 15 min (décidé volontairement, cf. demande initiale).
+Pas de rappel à 15 min avant la session elle-même (décidé volontairement,
+cf. demande initiale — à ne pas confondre avec le pas de 15 min du cron).
 
 **Sécurité optionnelle** : si `CRON_SECRET` est configurée (variable
-d'env Vercel), la route exige l'en-tête `Authorization: Bearer
-<CRON_SECRET>` que Vercel Cron envoie automatiquement à ses appels
-programmés — évite qu'un tiers déclenche des rappels en devinant l'URL.
+d'env), la route exige l'en-tête `Authorization: Bearer <CRON_SECRET>` —
+à renseigner manuellement dans la config du cron externe (contrairement à
+Vercel Cron, un service tiers ne le fait pas tout seul). Sans
+`CRON_SECRET` configurée, la route reste appelable par n'importe qui
+connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
+`CRON_SECRET` est recommandée dès que l'URL est publique.
 
 ### Contenu du rappel
 
@@ -589,16 +621,16 @@ configurée). La fenêtre 2h sera due immédiatement ; retente 15-20 min
 plus tard une fois la session à moins de 2h pour voir la vraie temporalité,
 ou ajuste directement `Session.date` en base pour un test instantané.
 
-### Dégradation propre si Vercel Cron n'est pas configuré
+### Dégradation propre si le cron externe n'est pas configuré
 
-Cette route n'est **jamais appelée toute seule** — c'est Vercel Cron qui
-la déclenche selon `vercel.json`. Sans Cron configuré (déploiement hors
-Vercel, projet Vercel sans cron activé, ou hors plan compatible) :
+Cette route n'est **jamais appelée toute seule** — c'est le cron externe
+(cron-job.org ou équivalent) qui la déclenche, pas l'app elle-même. Sans
+cron configuré (pas encore mis en place, service en panne, mauvaise URL) :
 personne n'appelle jamais `/api/cron/reminders`, donc **aucun rappel ne
 part**, mais rien d'autre dans l'app n'est affecté — la création de
 session, le vote, la clôture et l'annonce Discord (F6) fonctionnent
 normalement. On peut aussi déclencher la route manuellement à tout moment
-(voir ci-dessus) si on veut des rappels sans dépendre de Vercel Cron.
+(voir ci-dessus) pour vérifier qu'elle répond, indépendamment du cron.
 
 ## 5. Déploiement Vercel
 
@@ -620,15 +652,16 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
    Si `DATABASE_URL` est injoignable ou mal configurée, le build échoue
    (volontairement, plutôt que de déployer une app qui pointerait vers une
    base sans les bonnes tables).
-5. **Vercel Cron (F7)** : `vercel.json` (présent à la racine du repo) est
-   détecté automatiquement au déploiement — vérifie l'onglet **Cron
-   Jobs** du projet Vercel après le premier déploiement pour confirmer
-   que `/api/cron/reminders` (`*/15 * * * *`) y apparaît. Optionnel :
-   ajoute `CRON_SECRET` aux variables d'environnement pour sécuriser la
-   route (voir « Rappels drôles avant session » ci-dessus). Une fois
-   déployé, lance `npm run seed` une fois (en local, pointé sur
-   `DATABASE_URL` de prod, ou via `vercel env pull`) pour peupler les 9
-   messages de rappel initiaux.
+5. **Rappels (F7)** : pas de Vercel Cron — le plan Hobby n'autorise pas
+   une fréquence de 15 min (minimum imposé : 1 exécution/jour, voir « Rappels
+   drôles avant session » ci-dessus). Configure plutôt un cron externe
+   (ex. [cron-job.org](https://cron-job.org)) pointant vers
+   `https://ton-projet.vercel.app/api/cron/reminders` toutes les 15 min,
+   avec l'en-tête `Authorization: Bearer <CRON_SECRET>` si tu as défini
+   `CRON_SECRET` dans les variables d'environnement du projet (recommandé,
+   l'URL étant publique). Une fois déployé, lance `npm run seed` une fois
+   (en local, pointé sur `DATABASE_URL` de prod, ou via `vercel env pull`)
+   pour peupler les 9 messages de rappel initiaux.
 
 ## Dépannage
 
@@ -708,7 +741,7 @@ src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
 src/app/profil/actions.ts   # Server action toggle silence rappels
 src/app/admin/rappels/page.tsx    # CRUD des messages de rappel (F7)
 src/app/admin/rappels/actions.ts  # Server actions messages de rappel
-src/app/api/cron/reminders/route.ts # Route Vercel Cron : envoie les rappels dus (F7)
+src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
