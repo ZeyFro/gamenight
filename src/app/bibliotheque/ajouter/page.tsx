@@ -8,7 +8,7 @@ export default async function AjouterJeuPage() {
   if (!user) redirect("/");
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
         <Link
           href="/bibliotheque"
@@ -16,7 +16,7 @@ export default async function AjouterJeuPage() {
         >
           ← Retour à la bibliothèque
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
+        <h1 className="mt-2 text-xl font-semibold text-zinc-950 sm:text-2xl dark:text-zinc-50">
           Ajouter un jeu
         </h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
