@@ -3,7 +3,12 @@ import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [Discord],
+  providers: [
+    Discord({
+      clientId: process.env.DISCORD_CLIENT_ID,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET,
+    }),
+  ],
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user, profile }) {
