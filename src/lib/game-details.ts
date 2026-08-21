@@ -64,7 +64,24 @@ export async function getGameDetails(
     return { details: null, fetchedAt: null, error: "not_found" };
   }
 
-  if (!forceRefresh && game.igdbDetails) {
+  // Bug corrigé : un jeu dont `igdbDetails` a été mis en cache par une
+  // version de l'app antérieure au champ `descriptionFr` (la fiche jeu
+  // existait avant la traduction DeepL) n'avait tout simplement pas cette
+  // clé dans son JSON — `descriptionFr` valait `undefined`, pas `null`.
+  // Une visite normale de la page (pas de refresh forcé) servait ce cache
+  // pour toujours, sans jamais retenter de traduction : la description
+  // restait en anglais indéfiniment, même avec DEEPL_API_KEY configurée.
+  // On distingue explicitement les deux : `undefined` = cache d'avant la
+  // fonctionnalité → on retraduit une fois pour rattraper ; `null` = la
+  // traduction a déjà été tentée (échec, ou DEEPL_API_KEY absente) → on
+  // respecte le cache et on ne re-tente pas à chaque page vue.
+  const cachedDetails = game.igdbDetails as
+    | (IgdbGameDetails & { descriptionFr?: string | null })
+    | null;
+  const cacheNeedsTranslationRetry =
+    cachedDetails != null && typeof cachedDetails.descriptionFr === "undefined";
+
+  if (!forceRefresh && game.igdbDetails && !cacheNeedsTranslationRetry) {
     return {
       details: game.igdbDetails as unknown as IgdbGameDetails,
       fetchedAt: game.igdbDetailsFetchedAt,
@@ -72,8 +89,19 @@ export async function getGameDetails(
     };
   }
 
+  if (cacheNeedsTranslationRetry) {
+    console.log(
+      `[igdb] Cache de ${game.id} antérieur au champ descriptionFr — retraduction rattrapée.`
+    );
+  }
+
   try {
-    const fetched = await fetchIgdbGameDetails(igdbId);
+    // Cache déjà complet (juste besoin de la traduction) : pas la peine de
+    // refaire l'appel IGDB, seulement DeepL.
+    const fetched =
+      cacheNeedsTranslationRetry && cachedDetails && !forceRefresh
+        ? cachedDetails
+        : await fetchIgdbGameDetails(igdbId);
     if (!fetched) {
       return { details: null, fetchedAt: null, error: "not_found" };
     }
@@ -87,6 +115,12 @@ export async function getGameDetails(
       ? await translateToFrench(fetched.summary)
       : null;
     const details: IgdbGameDetails = { ...fetched, descriptionFr };
+
+    console.log(
+      `[igdb] Fiche ${game.id} mise en cache — descriptionFr ${
+        descriptionFr ? "présente" : "absente (VO conservée)"
+      }.`
+    );
 
     const fetchedAt = new Date();
     await prisma.game.update({

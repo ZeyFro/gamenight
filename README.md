@@ -275,6 +275,11 @@ pseudo) → Dispos → Bibliothèque — les dispos étaient initialement tout e
 bas, sous la biblio entière, ce qui les rendait quasi invisibles sur un
 pote qui possède beaucoup de jeux ; remontées juste après le header, même
 ordre en mobile qu'en desktop (pas de réorganisation par breakpoint).
+**Section compactée (corrigé)** : une carte par jour de la semaine, même
+vide, faisait dépasser 700px sur mobile. `AvailabilityView` n'affiche
+maintenant une carte que pour les jours qui ont réellement un créneau ;
+les jours sans créneau sont regroupés dans une seule ligne texte discrète
+(« Pas dispo : Mer, Jeu, Ven, Sam, Dim ») plutôt que 5 cartes vides.
 
 ## Fiche jeu détaillée
 
@@ -372,6 +377,35 @@ l'original :
   affiche l'anglais, pas de toggle. Ajouter `DEEPL_API_KEY` puis cliquer
   « Rafraîchir les infos » sur cette même fiche → la description passe
   en français avec le lien « Voir la VO » qui bascule vers l'original.
+- **Bug corrigé : traduction qui ne se déclenchait jamais.** Un jeu dont
+  `igdbDetails` avait déjà été mis en cache par une version de l'app
+  antérieure au champ `descriptionFr` (fiche jeu déployée avant la
+  traduction DeepL) n'avait tout simplement pas cette clé dans son JSON —
+  `undefined`, pas `null`. Une visite normale servait ce cache pour
+  toujours sans jamais retenter de traduction, même après avoir configuré
+  `DEEPL_API_KEY` : la description restait en anglais indéfiniment.
+  `getGameDetails` distingue maintenant explicitement `undefined`
+  (cache antérieur à la fonctionnalité → retraduction rattrapée une
+  fois, sans refaire l'appel IGDB) de `null` (traduction déjà tentée,
+  échouée ou clé absente → pas de nouvelle tentative à chaque page vue,
+  comportement inchangé). Logging ajouté à chaque étape
+  (`[deepl] Appel traduction…`, `[deepl] Traduction reçue avec succès`,
+  `[igdb] Fiche … mise en cache — descriptionFr présente/absente`) pour
+  diagnostiquer un futur souci sans deviner. Vérifié aussi que la clé
+  DeepL **Free** se termine bien par `:fx` (sinon avertissement explicite
+  dans les logs) — une clé Pro sur `api-free.deepl.com` (ou l'inverse)
+  répond 403 sans autre indice, cause n°1 des échecs DeepL en prod.
+- **Chargement en streaming avec skeleton.** Tout ce qui dépend de
+  `getGameDetails` (note, description, captures, trailer,
+  plateformes/éditeur) est isolé dans un composant serveur async séparé
+  (`GameIgdbSection`), rendu sous `<Suspense>` — le reste de la fiche
+  (cover, nom, joueurs, actions rapides, qui possède le jeu) s'affiche
+  immédiatement, et cette section arrive en streaming une fois l'appel
+  IGDB/DeepL terminé, avec un skeleton (`GameIgdbSectionSkeleton`)
+  pendant l'attente plutôt qu'un chargement bloquant de toute la page.
+  `getGameDetails` n'est appelée qu'une seule fois par rendu (dans ce
+  composant, nulle part ailleurs sur la page) pour ne jamais déclencher
+  deux traductions DeepL sur un même chargement.
 
 **Nombre de joueurs éditable directement sur la fiche** : si tu possèdes
 le jeu, le bouton crayon (`EditGameDialog`, déjà utilisé sur

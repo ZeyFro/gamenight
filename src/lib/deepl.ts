@@ -19,6 +19,21 @@ export async function translateToFrench(text: string): Promise<string | null> {
   }
   if (!text.trim()) return null;
 
+  // Cause n°1 des échecs DeepL en prod : DeepL sépare strictement les
+  // deux plans par endpoint — une clé Free (qui se termine toujours par
+  // `:fx`) n'est valide QUE sur api-free.deepl.com (celui qu'on appelle
+  // ici) ; une clé Pro n'est valide QUE sur api.deepl.com. Utiliser la
+  // mauvaise combinaison renvoie 403 sans autre indice. On log un
+  // avertissement explicite plutôt que de laisser deviner via un 403 nu.
+  if (!apiKey.endsWith(":fx")) {
+    console.warn(
+      "[deepl] DEEPL_API_KEY ne se termine pas par ':fx' (format attendu d'une clé plan Free). " +
+        "On appelle quand même api-free.deepl.com — si c'est une clé Pro, DeepL répondra 403."
+    );
+  }
+
+  console.log(`[deepl] Appel traduction (${text.length} caractères)…`);
+
   try {
     const res = await fetch(DEEPL_FREE_ENDPOINT, {
       method: "POST",
@@ -31,12 +46,24 @@ export async function translateToFrench(text: string): Promise<string | null> {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error(`[deepl] Traduction a échoué (${res.status}): ${body}`);
+      console.error(
+        `[deepl] Traduction a échoué (${res.status})${
+          res.status === 403
+            ? " — vérifie que DEEPL_API_KEY correspond bien au plan Free (suffixe ':fx') et à l'endpoint api-free.deepl.com"
+            : ""
+        }: ${body}`
+      );
       return null;
     }
 
     const data = (await res.json()) as DeeplResponse;
-    return data.translations[0]?.text ?? null;
+    const translated = data.translations[0]?.text ?? null;
+    console.log(
+      translated
+        ? "[deepl] Traduction reçue avec succès."
+        : "[deepl] Réponse DeepL 200 mais sans texte traduit exploitable (structure inattendue)."
+    );
+    return translated;
   } catch (err) {
     console.error("[deepl] Erreur réseau lors de la traduction", err);
     return null;
