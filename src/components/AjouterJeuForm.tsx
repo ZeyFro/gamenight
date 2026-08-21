@@ -7,8 +7,8 @@ import { addManualGame } from "@/app/actions";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
-export function AjouterJeuForm() {
-  const [name, setName] = useState("");
+export function AjouterJeuForm({ initialName }: { initialName?: string }) {
+  const [name, setName] = useState(initialName ?? "");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [results, setResults] = useState<IgdbGameCandidate[]>([]);

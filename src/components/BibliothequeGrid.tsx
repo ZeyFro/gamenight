@@ -106,6 +106,14 @@ function GameCard({ game }: { game: BibliothequeGame }) {
         </div>
       </Link>
       <div className="absolute top-1.5 right-1.5 flex gap-1.5">
+        <Link
+          href={`/bibliotheque/ajouter?name=${encodeURIComponent(game.name)}`}
+          aria-label={`Ajouter un jeu similaire à ${game.name}`}
+          title="Ajouter un jeu similaire"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-accent/90"
+        >
+          <PlusIcon className="h-4 w-4" />
+        </Link>
         <EditGameDialog game={game} />
         <form action={removeUserGame}>
           <input type="hidden" name="gameId" value={game.id} />
@@ -120,6 +128,14 @@ function GameCard({ game }: { game: BibliothequeGame }) {
         </form>
       </div>
     </div>
+  );
+}
+
+function PlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z" />
+    </svg>
   );
 }
 

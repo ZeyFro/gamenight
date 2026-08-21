@@ -852,9 +852,109 @@ ouverts à tout le groupe.
   supprimée avec elle). **Aucune notification Discord** : contrairement à
   l'annulation (qui reste annoncée, F6), supprimer une session est traité
   comme du ménage silencieux, pas un événement à communiquer au groupe.
-- Le bouton « Modifier » n'existe pas encore : le champ `createdById` est en
-  place pour le porter, mais l'édition de session (et sa notification
-  `SESSION_MODIFIED`) est le sujet d'une PR séparée.
+- Le bouton « Modifier » est arrivé dans une PR séparée (voir juste
+  ci-dessous) — au moment de l'écriture de la section ci-dessus, seul le
+  champ `createdById` était en place pour le porter.
+
+## Édition de session & notification SESSION_MODIFIED
+
+Bouton « Modifier » (`EditSessionDialog.tsx`), visible uniquement pour le
+créateur, sur `/sessions/[id]` tant que la session est `VOTING` ou
+`SCHEDULED` (modifier une soirée déjà `DONE` ou `CANCELLED` n'a pas de
+sens — rien à reprogrammer). Modal Radix Dialog, même pattern que
+`DeleteSessionDialog`, avec les champs date/heure/deadline de vote
+préremplis avec les valeurs actuelles (contrairement au formulaire de
+création, pas de préréglages "6h avant" ici : on édite un créneau déjà
+choisi, donc on montre directement ses valeurs réelles plutôt que de
+reproposer des raccourcis relatifs).
+
+- **Mutualisation demandée** : la validation (deadline strictement avant
+  la session, ajustement auto si elle tombe dans le passé, refus si la
+  session devient trop proche/passée) vit maintenant dans
+  `resolveSessionSchedule` (`src/lib/session-schedule.ts`), extraite du
+  code de `createSession` sans changement de comportement, et réutilisée
+  telle quelle par `editSessionAction`. Les messages d'erreur FR associés
+  (`SESSION_SCHEDULE_ERROR_MESSAGES`) sont eux aussi mutualisés et
+  affichés aussi bien sur `/sessions` (création) que sur `/sessions/[id]`
+  (édition, nouveau `?error=` sur cette page).
+- Si la session avait déjà un `decidedTime` renseigné (session déjà
+  clôturée avec un gagnant, donc `SCHEDULED`), il est resynchronisé sur la
+  nouvelle date — c'est une simple copie de `date` (cf. commentaire dans le
+  schéma), les laisser diverger n'aurait pas de sens.
+- **Notification `SESSION_MODIFIED`** (`announceSessionModified` dans
+  `src/lib/discord-session-modified.ts`), calquée sur
+  `announceSessionCreated` (F6/notif de création) avec deux différences
+  volontaires :
+  - **Ping ciblé, pas tout le groupe** : seuls les membres ayant déjà voté
+    sur une proposition de cette session sont mentionnés individuellement
+    (`<@id>` dans le `content` brut, en respectant
+    `User.silenceReminders`) — ce sont eux qui ont un intérêt direct à
+    savoir que le créneau a bougé ; quelqu'un qui n'a pas encore voté
+    découvrira le nouveau créneau normalement en votant.
+  - **Embed ancien vs nouveau créneau** : l'ancien est barré (markdown
+    Discord `~~texte~~`, supporté dans les champs d'embed) à côté du
+    nouveau, pour voir l'écart en un coup d'œil plutôt qu'un simple
+    horodatage de dernière modif.
+  - Variables substituées : `{createur}`, `{date}`, `{heure}`,
+    `{ancienne_date}`, `{ancienne_heure}` — tirées au hasard parmi les
+    `MessageTemplate` actifs de la catégorie `SESSION_MODIFIED` (seedés
+    depuis PR 1/3, cf. section MessageTemplate plus haut), avec le même
+    mécanisme de repli/dégradation propre que F6/F7/la notif de création
+    (`postToDiscord` ne lève jamais, un échec d'envoi n'empêche jamais la
+    modification d'être enregistrée — bandeau `?discord=echec` identique
+    aux autres actions).
+
+## Petits fixes UX (PR 18)
+
+Quatre ajustements ponctuels, groupés dans la même PR que l'édition de
+session ci-dessus.
+
+- **Bibliothèque : bouton « + » par carte, pas un bouton flottant.**
+  Ajouté à côté du stylo et de la corbeille sur chaque `GameCard`
+  (`BibliothequeGrid.tsx`), il ouvre `/bibliotheque/ajouter?name=<nom du
+  jeu>` — le formulaire d'ajout manuel préremplit son champ nom avec cette
+  valeur (`AjouterJeuForm` accepte maintenant un `initialName`), utile
+  pour enchaîner l'ajout d'un jeu similaire (DLC, suite, autre jeu du même
+  univers) sans retaper le nom. **Un bouton flottant global a été écarté**
+  volontairement : la page a déjà un CTA « + Ajouter un jeu » bien visible
+  en haut, donc un FAB aurait fait doublon pour le cas générique — et
+  surtout n'aurait eu aucun contexte à partir duquel préremplir un nom,
+  qui est précisément la valeur ajoutée demandée ici. Le bouton par carte,
+  lui, porte ce contexte nativement.
+- **Combobox recherche pour « Proposer un jeu »**
+  (`src/components/ProposeGameForm.tsx`), à la place du `<select>` natif
+  devenu pénible passé une grosse quarantaine de jeux. **Composant maison,
+  pas de nouvelle dépendance** (pas cmdk, pas de Combobox Radix — qui
+  n'existe pas dans leur catalogue) : cohérent avec le reste de l'app, qui
+  n'utilise aucun kit UI et construit toutes ses primitives à la main
+  (`Button`, `Card`, `EditGameDialog`…), et l'interaction voulue ici reste
+  simple — filtrer une liste et choisir un item, sans multi-select ni
+  chargement asynchrone. Champ texte + liste déroulante filtrée en temps
+  réel (substring, insensible à la casse), navigation clavier
+  (flèches/Entrée/Échap), tap targets ≥44px (`min-h-11`) et police d'entrée
+  16px (`text-base`) pour rester mobile-first (évite le zoom auto iOS sur
+  focus). Le bouton « Proposer » reste désactivé tant qu'aucun jeu de la
+  liste n'est sélectionné — pas de `required` sur un champ caché, qui
+  n'est pas fiable sur un `<input type="hidden">` selon la spec HTML.
+- **Retirer sa propre proposition** (`withdrawProposalAction` +
+  `WithdrawProposalDialog.tsx`) : visible uniquement pour
+  `proposedById === user.id`, jamais pour le créateur de la session sur les
+  propositions des autres (lui gère la session dans son ensemble via la
+  suppression complète, pas les propositions individuelles). Modal de
+  confirmation (même pattern que `DeleteSessionDialog`), cascade
+  automatique sur les votes via le schéma (`onDelete: Cascade` sur
+  `Vote.proposal`). Restreint au vote encore ouvert, comme
+  `proposeGame`/`toggleVote` : après clôture, le gagnant est déjà figé
+  dans `Session.decidedGameId` (indépendant de la ligne `Proposal`), donc
+  retirer une proposition n'aurait plus d'effet utile.
+- **Cartes de proposition cliquables** vers `/jeux/[id]` : seuls la cover
+  et le nom du jeu (+ la ligne "Proposé par") sont enveloppés dans un
+  `<Link>`, pas toute la carte — le bouton Voter et le lien "Retirer ma
+  proposition" restent des éléments frères en dehors de ce `<Link>`,
+  plutôt que imbriqués dedans (imbriquer un `<button>`/`<form>` interactif
+  dans un `<a>` est invalide en HTML et aurait fait naviguer au clic sur
+  le bouton). Résout proprement l'exigence "clic sur le jeu → fiche, mais
+  Voter/Retirer ne doivent pas déclencher la navigation".
 
 ## Rappels drôles avant session (F7)
 
@@ -1063,6 +1163,8 @@ src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non
 src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
 src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtres 24h/2h)
 src/lib/discord-session-created.ts # Notif Discord à la création d'une soirée
+src/lib/discord-session-modified.ts # Notif Discord à la modification d'une soirée
+src/lib/session-schedule.ts # resolveSessionSchedule : validation date/deadline mutualisée création+édition
 src/lib/message-templates.ts # pickMessageTemplate + catégories/variables (source de vérité partagée)
 src/lib/deepl.ts            # translateToFrench (API DeepL Free, dégrade sans DEEPL_API_KEY)
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
@@ -1073,6 +1175,10 @@ src/components/ActionForm.tsx           # Wrapper server action + toast (non red
 src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur animé)
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
 src/components/EditGameDialog.tsx       # Panneau modal d'édition d'un jeu (Radix Dialog)
+src/components/DeleteSessionDialog.tsx  # Confirmation de suppression d'une session (créateur only)
+src/components/EditSessionDialog.tsx    # Modal d'édition date/heure/deadline d'une session (créateur only)
+src/components/WithdrawProposalDialog.tsx # Confirmation de retrait de sa propre proposition
+src/components/ProposeGameForm.tsx      # Combobox recherche pour "Proposer un jeu" (remplace le <select>)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)

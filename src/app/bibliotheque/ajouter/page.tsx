@@ -11,12 +11,12 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function AjouterJeuPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; name?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { error } = await searchParams;
+  const { error, name } = await searchParams;
   const errorMessage = error ? ERROR_MESSAGES[error] : null;
 
   return (
@@ -43,7 +43,7 @@ export default async function AjouterJeuPage({
         </p>
       )}
 
-      <AjouterJeuForm />
+      <AjouterJeuForm initialName={name} />
     </div>
   );
 }
