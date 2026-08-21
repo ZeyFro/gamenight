@@ -19,6 +19,8 @@ type SessionRowData = Session & {
 const CREATE_ERROR_MESSAGES: Record<string, string> = {
   deadline_apres_session:
     "La deadline de vote doit être strictement avant l'heure de la session. Choisis une deadline plus tôt.",
+  session_trop_proche:
+    "Cette session est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
 };
 
 function SessionRow({ session }: { session: SessionRowData }) {

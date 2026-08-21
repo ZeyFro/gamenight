@@ -116,9 +116,11 @@ Puis remplir chaque variable :
 | `AUTH_SECRET` | Génère une valeur aléatoire avec `npx auth secret` (ou `openssl rand -base64 32`). |
 | `AUTH_URL` | `http://localhost:3000` en local, l'URL de prod (ex. Vercel) en production. |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → onglet **OAuth2** → *Client ID* / *Client Secret*. Ajouter l'URL de redirection `http://localhost:3000/api/auth/callback/discord` (et l'équivalent en prod) dans **Redirects**. |
-| `DISCORD_WEBHOOK_URL` | Dans le salon Discord cible → **Modifier le salon** → **Intégrations** → **Webhooks** → **Créer un webhook**. Utilisée pour poster le résultat de clôture d'une soirée (F6) — voir la section dédiée ci-dessous. *(F7 — rappels — pas encore implémentée.)* |
+| `DISCORD_WEBHOOK_URL` | Dans le salon Discord cible → **Modifier le salon** → **Intégrations** → **Webhooks** → **Créer un webhook**. Utilisée pour poster le résultat de clôture d'une soirée (F6) et les rappels avant session (F7) — voir les sections dédiées ci-dessous. |
 | `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (nécessite un compte Steam ayant dépensé au moins 5$). Utilisée pour l'import de bibliothèque (`GetOwnedGames`). *(F8 — présence — pas encore implémentée.)* |
-| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). Utilisées pour la recherche/enrichissement de jeux ajoutés manuellement. |
+| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). Utilisées pour la recherche/enrichissement de jeux ajoutés manuellement, et la fiche jeu détaillée. |
+| `DEEPL_API_KEY` | *(Optionnelle)* [deepl.com/pro-api](https://www.deepl.com/pro-api) → créer un compte gratuit (plan **Free**, 500k caractères/mois) → clé dans le compte, onglet API. Traduit en français la description IGDB de la fiche jeu. Sans cette variable : description affichée en anglais (VO), aucun crash. |
+| `CRON_SECRET` | *(Optionnelle, recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège `/api/cron/reminders` (F7) — voir la section dédiée pour la configuration du cron externe. |
 
 ## 3. Base de données
 
@@ -259,6 +261,17 @@ Pas de nouveau modèle Prisma : ces deux vues ne font que ré-agréger
 `User`/`Game`/`UserGame` existants (jointures en lecture seule, aucune
 donnée dupliquée).
 
+**Section « Dispos » sur `/potes/[id]`** : en plus de sa biblio, la fiche
+d'un pote affiche maintenant son planning — les créneaux hebdo qu'il a
+réglés sur `/disponibilites`, jour par jour (lundi → dimanche,
+`AvailabilityView.tsx`), et ses exceptions ponctuelles des **14
+prochains jours** (badge « ⭐ exception dispo » / « 🚫 exception
+indispo »), toujours en lecture seule — aucune action de modification,
+uniquement `WeeklyAvailability`/`AvailabilityOverride` déjà en base pour
+ce `userId`. Réutilise `DAY_LABELS_MON_FIRST`/`formatDateFr` de
+`wallclock.ts`, même identité visuelle (violet, `Stagger`/`StaggerItem`)
+que le reste de l'app.
+
 ## Fiche jeu détaillée
 
 Clic sur un jeu (depuis `/bibliotheque`, `/bibliotheque/groupe`, ou la
@@ -298,6 +311,45 @@ Cet enrichissement est **volontairement différé** :
   depuis `/bibliotheque/ajouter` en utilisant la recherche IGDB (ex.
   *Hades*, *Hollow Knight*, *Portal 2*) — les jeux très récents ou de
   niche ont parfois des fiches IGDB incomplètes (pas de trailer/captures).
+
+**Traduction FR de la description (DeepL, mise en cache).** IGDB ne
+fournit `summary` qu'en anglais. Plutôt que de traduire à l'affichage
+(coût + latence à chaque visite), la traduction se fait **une seule
+fois, au même moment que le fetch IGDB**, et est mise en cache à côté de
+l'original :
+
+- `src/lib/deepl.ts` (`translateToFrench`) appelle l'API DeepL **Free**
+  (`api-free.deepl.com`, plan gratuit — 500k caractères/mois, largement
+  suffisant pour des résumés de jeux). Clé à récupérer sur
+  [deepl.com/pro-api](https://www.deepl.com/pro-api) (compte gratuit,
+  onglet API) → variable d'env `DEEPL_API_KEY` (voir `.env.example`).
+- Appelée depuis `src/lib/game-details.ts` (`getGameDetails`), pas
+  depuis `src/lib/igdb.ts` — même séparation des responsabilités que le
+  reste de la fiche jeu : `igdb.ts` reste un client IGDB pur, sans
+  dépendance à DeepL.
+- Résultat stocké dans `Game.igdbDetails.descriptionFr`, à côté de
+  `summary` (l'original) — pas de nouvelle colonne Prisma, c'est un
+  sous-champ du même JSON déjà en cache.
+- **Le bouton « Rafraîchir les infos » retraduit aussi** : un refresh
+  forcé repasse par le même chemin de code (fetch IGDB + traduction),
+  donc une nouvelle traduction est générée à chaque refresh — pas de
+  traduction qui reste figée sur une ancienne version du résumé.
+- **Sans `DEEPL_API_KEY` configurée : dégradation propre.**
+  `translateToFrench` renvoie `null` (log `[deepl] DEEPL_API_KEY non
+  configurée`), `descriptionFr` reste `null`, et la fiche affiche
+  directement la version originale (anglaise) — aucun crash, aucun appel
+  DeepL tenté. Pareil en cas d'échec réseau/API DeepL (log
+  `[deepl] Traduction a échoué`).
+- **UI** (`src/components/GameDescription.tsx`) : affiche la version FR
+  par défaut si elle existe et diffère de l'original, avec un petit lien
+  discret **« Voir la VO »** pour basculer sur l'anglais (et
+  inversement). Sans traduction disponible, affiche directement
+  l'anglais sans aucun toggle (rien à basculer).
+- **Comment tester** : ajouter un jeu avec une description IGDB connue
+  (ex. *Hades*, *Portal 2*) sans `DEEPL_API_KEY` configurée → la fiche
+  affiche l'anglais, pas de toggle. Ajouter `DEEPL_API_KEY` puis cliquer
+  « Rafraîchir les infos » sur cette même fiche → la description passe
+  en français avec le lien « Voir la VO » qui bascule vers l'original.
 
 **Nombre de joueurs éditable directement sur la fiche** : si tu possèdes
 le jeu, le bouton crayon (`EditGameDialog`, déjà utilisé sur
@@ -371,11 +423,46 @@ composant, même validations, pas de duplication.
   plusieurs interactions sur un petit écran et risque plus l'erreur de
   saisie. Une option avancée repliée (`<details>`, sans JS) permet quand
   même de saisir une date/heure précise pour qui le veut. Contrainte
-  serveur : la deadline doit être strictement avant l'heure de la session,
-  sinon la création est rejetée avec un message clair
-  (`/sessions?error=deadline_apres_session`) — impossible à violer avec les
-  presets (toujours *avant* l'heure choisie par construction), donc ce cas
-  ne peut se produire qu'avec l'option date/heure précise.
+  serveur : la deadline doit toujours rester strictement avant l'heure de
+  la session, sinon la création est rejetée avec un message clair
+  (`/sessions?error=deadline_apres_session`).
+- **Bug corrigé : deadline calculée déjà passée à la création.** Un
+  preset comme « 6h avant » est *relatif à l'heure de la session*, pas à
+  *maintenant* — une session créée l'après-midi pour le soir-même avec un
+  preset trop large (ex. session 17h créée à 13h43, deadline 6h avant =
+  11h) produisait une deadline **déjà dans le passé**. Conséquence en
+  prod : la session se clôturait automatiquement dès la première visite
+  de sa page (`closeSessionIfDue`), avec zéro fenêtre de vote — « Soirée
+  annulée » immédiate, repéré via deux captures d'écran Discord à 13h43 et
+  14h54 après un premier vrai test à deux utilisateurs.
+
+  **Choix fait (parmi les deux proposés) : ajuster automatiquement plutôt
+  que refuser.** `createSession` (`src/app/sessions/actions.ts`) détecte
+  une deadline calculée (preset *ou* date/heure précise) déjà passée ou
+  trop proche de « maintenant », et la repousse à *maintenant + 30 min*
+  (`MIN_VOTING_BUFFER_MS`) — avec un bandeau explicite sur la page de la
+  session qui suit (`?deadline=ajustee`, cf. `SessionDetailPage`) plutôt
+  qu'un simple toast qui disparaîtrait avant la redirection. Si cet
+  ajustement dépasserait l'heure de la session (session très proche), la
+  deadline est recalée à 1 min avant la session au lieu de casser
+  l'invariant « deadline < session ». Enfin, si même après ajustement il
+  ne reste aucune fenêtre de vote viable — la session elle-même est à
+  moins de 30 min (`MIN_SESSION_LEAD_MS`) ou déjà passée — la création est
+  refusée avec un message clair
+  (`/sessions?error=session_trop_proche`) : créer une "soirée" qu'il est
+  structurellement impossible de voter sereinement n'aurait pas de sens,
+  même en repoussant la deadline. Préféré à un refus systématique pour
+  toute deadline passée : l'app est pensée pour des sessions créées à la
+  dernière minute (c'est justement ce qui a déclenché le bug), et ajuster
+  silencieusement-mais-visiblement coûte moins de friction qu'obliger à
+  rouvrir le formulaire avec un preset différent.
+
+  *Comment tester* : créer une session pour aujourd'hui dans 2-3h avec le
+  preset « 6h avant la session » (deadline mécaniquement déjà passée) →
+  la session se crée normalement et le bandeau jaune d'ajustement
+  s'affiche. Créer une session dans 30 min pile avec le même preset → se
+  crée avec une fenêtre de vote de ~29 min. Créer une session dans 10-20
+  min → rejetée avec le message « trop proche ».
 - Affichage en temps réel sur `/sessions/[id]` (« Vote fermé dans 3h » /
   « Vote fermé depuis 1h », composant client `VotingCountdown`, rafraîchi
   toutes les 30s — pas besoin de la seconde près).
@@ -723,6 +810,7 @@ src/lib/session-status.ts   # Libellés/couleurs des statuts de session
 src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non configuré)
 src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
 src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtres 24h/2h)
+src/lib/deepl.ts            # translateToFrench (API DeepL Free, dégrade sans DEEPL_API_KEY)
 prisma/seed.mjs             # Seed des 9 messages de rappel initiaux (npm run seed)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
@@ -732,6 +820,8 @@ src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur anim
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
 src/components/EditGameDialog.tsx       # Panneau modal d'édition d'un jeu (Radix Dialog)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
+src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
+src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
 src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe"
 src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale si pas d'avatar Discord)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav

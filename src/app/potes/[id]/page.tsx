@@ -2,9 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { todayDateOnly } from "@/lib/wallclock";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
+import { AvailabilityView } from "@/components/AvailabilityView";
+
+const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
 export default async function PoteLibraryPage({
   params,
@@ -23,11 +27,25 @@ export default async function PoteLibraryPage({
   const pote = await prisma.user.findUnique({ where: { id } });
   if (!pote) notFound();
 
-  const userGames = await prisma.userGame.findMany({
-    where: { userId: id, owned: true },
-    include: { game: true },
-    orderBy: { game: { name: "asc" } },
-  });
+  const today = todayDateOnly();
+  const [userGames, weeklySlots, overrides] = await Promise.all([
+    prisma.userGame.findMany({
+      where: { userId: id, owned: true },
+      include: { game: true },
+      orderBy: { game: { name: "asc" } },
+    }),
+    prisma.weeklyAvailability.findMany({
+      where: { userId: id },
+      orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.availabilityOverride.findMany({
+      where: {
+        userId: id,
+        date: { gte: today, lte: new Date(today.getTime() + FOURTEEN_DAYS_MS) },
+      },
+      orderBy: { date: "asc" },
+    }),
+  ]);
 
   const games = userGames.map(({ game }) => ({
     id: game.id,
@@ -65,6 +83,11 @@ export default async function PoteLibraryPage({
         games={games}
         emptyMessage={`${pote.discordName} n'a pas encore de jeu dans sa bibliothèque.`}
       />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-foreground">Dispos</h2>
+        <AvailabilityView weeklySlots={weeklySlots} overrides={overrides} />
+      </section>
     </div>
   );
 }

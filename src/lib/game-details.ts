@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { fetchIgdbGameDetails, type IgdbGameDetails } from "@/lib/igdb";
+import { translateToFrench } from "@/lib/deepl";
 import type { Game } from "@prisma/client";
 
 export interface GameDetailsResult {
@@ -34,10 +35,20 @@ export async function getGameDetails(
   }
 
   try {
-    const details = await fetchIgdbGameDetails(game.igdbId);
-    if (!details) {
+    const fetched = await fetchIgdbGameDetails(game.igdbId);
+    if (!fetched) {
       return { details: null, fetchedAt: null, error: "not_found" };
     }
+
+    // Traduction FR faite une seule fois ici (pas dans fetchIgdbGameDetails,
+    // qui reste un client IGDB pur) puis mise en cache avec le reste —
+    // refaite à chaque refresh forcé comme demandé. Dégrade proprement :
+    // sans DEEPL_API_KEY ou en cas d'échec, translateToFrench renvoie
+    // `null` et la fiche retombe sur `summary` (VO) côté UI.
+    const descriptionFr = fetched.summary
+      ? await translateToFrench(fetched.summary)
+      : null;
+    const details: IgdbGameDetails = { ...fetched, descriptionFr };
 
     const fetchedAt = new Date();
     await prisma.game.update({

@@ -170,6 +170,13 @@ export interface IgdbGameDetails {
   igdbId: number;
   name: string;
   summary: string | null;
+  /**
+   * Traduction FR de `summary` (DeepL), remplie par
+   * `src/lib/game-details.ts` après l'appel IGDB — toujours `null` en
+   * sortie de `fetchIgdbGameDetails` elle-même, qui reste un simple
+   * client de l'API IGDB (pas de dépendance à DeepL ici).
+   */
+  descriptionFr: string | null;
   /** Note globale IGDB (`total_rating`), arrondie sur 100. */
   totalRating: number | null;
   coverUrl: string | null;
@@ -223,6 +230,7 @@ export async function fetchIgdbGameDetails(
     igdbId: game.id,
     name: game.name,
     summary: game.summary ?? null,
+    descriptionFr: null,
     totalRating:
       typeof game.total_rating === "number"
         ? Math.round(game.total_rating)
