@@ -118,14 +118,18 @@ enum SessionStatus {
 // création) ; `decidedTime` est renseigné à la clôture (copie de `date`
 // pour l'instant — champ distinct pour une éventuelle renégociation future
 // de l'heure). Un seul jeu gagnant par soirée (`decidedGameId`), cf. §7 —
-// la file de jeux multiples est un sujet v2 dédié.
+// la file de jeux multiples est un sujet v2 dédié. `votingDeadline`
+// (nullable pour les sessions créées avant son ajout) ferme le vote avant
+// l'heure de la session ; nul = pas de deadline distincte, seule l'heure
+// de la session ferme le vote (comportement historique).
 model Session {
-  id            String        @id @default(cuid())
-  date          DateTime
-  status        SessionStatus @default(VOTING)
-  decidedGameId String?
-  decidedTime   DateTime?
-  createdAt     DateTime      @default(now())
+  id             String        @id @default(cuid())
+  date           DateTime
+  votingDeadline DateTime?
+  status         SessionStatus @default(VOTING)
+  decidedGameId  String?
+  decidedTime    DateTime?
+  createdAt      DateTime      @default(now())
 
   decidedGame Game?      @relation(fields: [decidedGameId], references: [id])
   proposals   Proposal[]

@@ -13,6 +13,11 @@ type SessionRowData = Session & {
   _count: { proposals: number };
 };
 
+const CREATE_ERROR_MESSAGES: Record<string, string> = {
+  deadline_apres_session:
+    "La deadline de vote doit être strictement avant l'heure de la session. Choisis une deadline plus tôt.",
+};
+
 function SessionRow({ session }: { session: SessionRowData }) {
   const status = SESSION_STATUS_LABELS[session.status];
   return (
@@ -39,9 +44,16 @@ function SessionRow({ session }: { session: SessionRowData }) {
   );
 }
 
-export default async function SessionsPage() {
+export default async function SessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+
+  const { error } = await searchParams;
+  const errorMessage = error ? CREATE_ERROR_MESSAGES[error] : null;
 
   const dueSessions = await prisma.session.findMany({
     where: { status: "VOTING", date: { lte: new Date() } },
@@ -71,6 +83,12 @@ export default async function SessionsPage() {
           Soirées
         </h1>
       </div>
+
+      {errorMessage && (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+          {errorMessage}
+        </p>
+      )}
 
       <form
         action={createSession}
@@ -106,6 +124,54 @@ export default async function SessionsPage() {
             />
           </div>
         </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-zinc-500" htmlFor="deadline-offset">
+            Deadline de vote
+          </label>
+          <select
+            id="deadline-offset"
+            name="deadlineOffset"
+            defaultValue="6"
+            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            <option value="6">6h avant la session</option>
+            <option value="12">12h avant la session</option>
+            <option value="24">24h avant la session</option>
+            <option value="48">48h avant la session</option>
+          </select>
+        </div>
+
+        <details className="text-sm text-zinc-600 dark:text-zinc-400">
+          <summary className="cursor-pointer select-none py-1">
+            Choisir une date/heure précise à la place
+          </summary>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-zinc-500" htmlFor="deadline-date">
+                Date limite
+              </label>
+              <input
+                id="deadline-date"
+                type="date"
+                name="deadlineDate"
+                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-zinc-500" htmlFor="deadline-time">
+                Heure limite
+              </label>
+              <input
+                id="deadline-time"
+                type="time"
+                name="deadlineTime"
+                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </div>
+          </div>
+        </details>
+
         <button
           type="submit"
           className="w-full rounded-full bg-zinc-950 px-5 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:text-sm dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"

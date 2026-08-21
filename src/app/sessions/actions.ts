@@ -5,7 +5,12 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { parseDateAndTime } from "@/lib/wallclock";
-import { cancelSession, closeSession, markSessionDone } from "@/lib/sessions";
+import {
+  cancelSession,
+  closeSession,
+  isVotingOpen,
+  markSessionDone,
+} from "@/lib/sessions";
 
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
@@ -15,8 +20,25 @@ export async function createSession(formData: FormData) {
   const timeStr = String(formData.get("time") ?? "");
   if (!dateStr || !timeStr) return;
 
+  const date = parseDateAndTime(dateStr, timeStr);
+
+  const deadlineDateStr = String(formData.get("deadlineDate") ?? "").trim();
+  const deadlineTimeStr = String(formData.get("deadlineTime") ?? "").trim();
+
+  let votingDeadline: Date;
+  if (deadlineDateStr && deadlineTimeStr) {
+    votingDeadline = parseDateAndTime(deadlineDateStr, deadlineTimeStr);
+  } else {
+    const offsetHours = Number(formData.get("deadlineOffset") ?? "6") || 6;
+    votingDeadline = new Date(date.getTime() - offsetHours * 60 * 60 * 1000);
+  }
+
+  if (votingDeadline >= date) {
+    redirect("/sessions?error=deadline_apres_session");
+  }
+
   const session = await prisma.session.create({
-    data: { date: parseDateAndTime(dateStr, timeStr) },
+    data: { date, votingDeadline },
   });
 
   revalidatePath("/sessions");
@@ -30,6 +52,12 @@ export async function proposeGame(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   const gameId = String(formData.get("gameId") ?? "");
   if (!sessionId || !gameId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { status: true, date: true, votingDeadline: true },
+  });
+  if (!session || !isVotingOpen(session)) return;
 
   try {
     await prisma.proposal.create({
@@ -48,7 +76,13 @@ export async function toggleVote(formData: FormData) {
 
   const proposalId = String(formData.get("proposalId") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");
-  if (!proposalId) return;
+  if (!proposalId || !sessionId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { status: true, date: true, votingDeadline: true },
+  });
+  if (!session || !isVotingOpen(session)) return;
 
   const existing = await prisma.vote.findUnique({
     where: { proposalId_userId: { proposalId, userId: user.id } },

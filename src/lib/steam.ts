@@ -129,6 +129,11 @@ export async function importSteamLibrary(
         source: GameSource.STEAM,
         steamAppId: game.appid,
         coverUrl: steamCoverUrl(game.appid),
+        // Steam ne fournit pas le nombre de joueurs : 2 par défaut (comme
+        // l'ajout manuel), pas 1 — l'app sert à jouer à plusieurs, et un
+        // minPlayers=1 (ou null mal géré côté calcul) affichait des jeux
+        // multijoueurs comme "jouable" avec une seule personne dispo.
+        minPlayers: 2,
         addedById: userId,
       },
     });

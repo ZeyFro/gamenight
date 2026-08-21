@@ -86,6 +86,16 @@ export function todayDateOnly(): Date {
   );
 }
 
+/** Durée absolue en français, unité la plus lisible ("3 h", "45 min", "2 j"). */
+export function formatDurationFr(ms: number): string {
+  const totalMinutes = Math.max(0, Math.round(ms / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const totalHours = Math.round(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours} h`;
+  const days = Math.round(totalHours / 24);
+  return `${days} j`;
+}
+
 export const DAY_LABELS_MON_FIRST = [
   { dayOfWeek: 1, label: "Lundi" },
   { dayOfWeek: 2, label: "Mardi" },
