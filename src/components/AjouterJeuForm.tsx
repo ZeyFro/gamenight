@@ -49,7 +49,7 @@ export function AjouterJeuForm() {
   return (
     <form
       action={addManualGame}
-      className="flex flex-col gap-5 rounded-2xl bg-white p-6 shadow-sm dark:bg-zinc-950"
+      className="flex flex-col gap-5 rounded-2xl bg-white p-4 shadow-sm sm:p-6 dark:bg-zinc-950"
     >
       {selected && (
         <>
@@ -64,7 +64,7 @@ export function AjouterJeuForm() {
         <label htmlFor="name" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Nom du jeu
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             id="name"
             name="name"
@@ -75,13 +75,13 @@ export function AjouterJeuForm() {
               setSelected(null);
             }}
             placeholder="ex. Minecraft, Valheim, ATM11…"
-            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="flex-1 rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
           />
           <button
             type="button"
             onClick={rechercherSurIgdb}
             disabled={searching || name.trim().length < 2}
-            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            className="shrink-0 rounded-lg border border-zinc-300 px-4 py-3 text-base font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 sm:text-sm dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
           >
             {searching ? "Recherche…" : "Chercher sur IGDB"}
           </button>
@@ -92,27 +92,29 @@ export function AjouterJeuForm() {
       </div>
 
       {results.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-          <p className="text-sm text-zinc-500">Résultats IGDB — choisis une correspondance :</p>
+        <div className="flex flex-col gap-1 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
+          <p className="px-1 py-1 text-sm text-zinc-500">
+            Résultats IGDB — choisis une correspondance :
+          </p>
           {results.map((r) => (
             <button
               key={r.igdbId}
               type="button"
               onClick={() => selectionner(r)}
-              className="flex items-center gap-3 rounded-lg p-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              className="flex items-center gap-3 rounded-lg p-3 text-left hover:bg-zinc-100 dark:hover:bg-zinc-900"
             >
               {r.coverUrl ? (
                 <Image
                   src={r.coverUrl}
                   alt=""
-                  width={32}
-                  height={44}
+                  width={36}
+                  height={48}
                   className="rounded object-cover"
                 />
               ) : (
-                <div className="h-11 w-8 shrink-0 rounded bg-zinc-200 dark:bg-zinc-800" />
+                <div className="h-12 w-9 shrink-0 rounded bg-zinc-200 dark:bg-zinc-800" />
               )}
-              <span className="text-sm">{r.name}</span>
+              <span className="text-base sm:text-sm">{r.name}</span>
             </button>
           ))}
         </div>
@@ -131,19 +133,20 @@ export function AjouterJeuForm() {
         </p>
       )}
 
-      <div className="flex items-center gap-2">
+      <label
+        htmlFor="isCoop"
+        className="flex items-center gap-3 py-1 text-base text-zinc-700 sm:text-sm dark:text-zinc-300"
+      >
         <input
           id="isCoop"
           name="isCoop"
           type="checkbox"
           checked={isCoop}
           onChange={(e) => setIsCoop(e.target.checked)}
-          className="h-4 w-4 rounded border-zinc-300"
+          className="h-5 w-5 rounded border-zinc-300"
         />
-        <label htmlFor="isCoop" className="text-sm text-zinc-700 dark:text-zinc-300">
-          Jouable en coop
-        </label>
-      </div>
+        Jouable en coop
+      </label>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
@@ -157,7 +160,7 @@ export function AjouterJeuForm() {
             min={1}
             value={minPlayers}
             onChange={(e) => setMinPlayers(Number(e.target.value))}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -174,7 +177,7 @@ export function AjouterJeuForm() {
               setMaxPlayers(e.target.value === "" ? "" : Number(e.target.value))
             }
             placeholder="Optionnel"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
           />
         </div>
       </div>
@@ -188,7 +191,7 @@ export function AjouterJeuForm() {
 
       <button
         type="submit"
-        className="self-start rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+        className="w-full rounded-full bg-zinc-950 px-5 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:text-sm dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
       >
         Ajouter à ma bibliothèque
       </button>

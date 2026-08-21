@@ -146,6 +146,25 @@ permet d'en ajouter/retirer.
    (volontairement, plutôt que de déployer une app qui pointerait vers une
    base sans les bonnes tables).
 
+## Dépannage
+
+- **Erreur de connexion Discord (« Server error » / `error=Configuration`)** :
+  Auth.js masque volontairement la vraie cause derrière ce message
+  générique pour ne rien exposer côté client. Le détail (type d'erreur +
+  stack de la cause d'origine) est loggé côté serveur avec les préfixes
+  `[auth][error]` et `[auth][cause]` — cherche-les dans les logs Vercel de
+  la fonction pour diagnostiquer précisément (échec de connexion à la base,
+  vérification OAuth échouée, etc.). La page d'accueil affiche aussi un
+  message en français adapté au type d'erreur (`?error=...`) plutôt que la
+  page blanche par défaut d'Auth.js.
+- **Recherche IGDB qui échoue** : vérifie dans les logs Vercel la ligne
+  `[igdb] Recherche échouée` (route `/api/igdb/search`), qui contient le
+  statut HTTP et le corps de la réponse Twitch/IGDB — utile pour repérer un
+  problème de credentials (`IGDB_CLIENT_ID`/`IGDB_CLIENT_SECRET`, espaces
+  parasites en copier-coller) ou de requête (le format Apicalypse est
+  strict : un champ inexistant dans `fields` fait échouer toute la
+  requête, quel que soit le terme recherché).
+
 ## Scripts disponibles
 
 | Commande | Description |

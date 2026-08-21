@@ -8,8 +8,8 @@ interface CachedToken {
 let cachedToken: CachedToken | null = null;
 
 async function getIgdbToken(): Promise<string> {
-  const clientId = process.env.IGDB_CLIENT_ID;
-  const clientSecret = process.env.IGDB_CLIENT_SECRET;
+  const clientId = process.env.IGDB_CLIENT_ID?.trim();
+  const clientSecret = process.env.IGDB_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
     throw new Error(
       "IGDB_CLIENT_ID / IGDB_CLIENT_SECRET ne sont pas configurées."
@@ -27,7 +27,10 @@ async function getIgdbToken(): Promise<string> {
 
   const res = await fetch(url, { method: "POST" });
   if (!res.ok) {
-    throw new Error(`Twitch OAuth (token IGDB) a répondu ${res.status}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Twitch OAuth (token IGDB) a répondu ${res.status}: ${body}`
+    );
   }
 
   const data = (await res.json()) as {
@@ -47,7 +50,10 @@ interface IgdbMultiplayerMode {
   campaigncoop?: boolean;
   onlinecoopmax?: number;
   offlinecoopmax?: number;
-  lancoopmax?: number;
+  // Champ IGDB réel : `lancoop` (booléen) — il n'existe pas de
+  // `lancoopmax`. Le demander dans `fields` faisait échouer la requête
+  // entière (400) pour toute recherche, quel que soit le jeu.
+  lancoop?: boolean;
   onlinemax?: number;
   offlinemax?: number;
 }
@@ -86,7 +92,7 @@ export async function searchIgdbGames(
 
   const [token, clientId] = [
     await getIgdbToken(),
-    process.env.IGDB_CLIENT_ID!,
+    process.env.IGDB_CLIENT_ID!.trim(),
   ];
 
   const res = await fetch("https://api.igdb.com/v4/games", {
@@ -96,11 +102,12 @@ export async function searchIgdbGames(
       Authorization: `Bearer ${token}`,
       "Content-Type": "text/plain",
     },
-    body: `search "${term}"; fields name,cover.image_id,multiplayer_modes.campaigncoop,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinecoopmax,multiplayer_modes.lancoopmax,multiplayer_modes.onlinemax,multiplayer_modes.offlinemax; limit 8;`,
+    body: `search "${term}"; fields name,cover.image_id,multiplayer_modes.campaigncoop,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinecoopmax,multiplayer_modes.lancoop,multiplayer_modes.onlinemax,multiplayer_modes.offlinemax; limit 8;`,
   });
 
   if (!res.ok) {
-    throw new Error(`IGDB a répondu ${res.status}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(`IGDB a répondu ${res.status}: ${body}`);
   }
 
   const games = (await res.json()) as IgdbGameResponse[];
@@ -111,9 +118,9 @@ export async function searchIgdbGames(
     const isCoop = modes.some(
       (m) =>
         m.campaigncoop ||
+        m.lancoop ||
         (m.onlinecoopmax ?? 0) > 0 ||
-        (m.offlinecoopmax ?? 0) > 0 ||
-        (m.lancoopmax ?? 0) > 0
+        (m.offlinecoopmax ?? 0) > 0
     );
 
     const maxPlayers = modes.reduce<number | null>((max, m) => {

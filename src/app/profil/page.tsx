@@ -16,17 +16,17 @@ export default async function ProfilPage({
   const { steam, count } = await searchParams;
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Accueil
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
+        <h1 className="mt-2 text-xl font-semibold text-zinc-950 sm:text-2xl dark:text-zinc-50">
           Mon profil
         </h1>
       </div>
 
-      <div className="flex items-center gap-4 rounded-2xl bg-white p-6 shadow-sm dark:bg-zinc-950">
+      <div className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm sm:p-6 dark:bg-zinc-950">
         {user.discordAvatar && (
           <Image
             src={user.discordAvatar}
@@ -44,7 +44,7 @@ export default async function ProfilPage({
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm dark:bg-zinc-950">
+      <div className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm sm:p-6 dark:bg-zinc-950">
         <h2 className="font-semibold text-zinc-950 dark:text-zinc-50">
           Compte Steam
         </h2>
@@ -85,7 +85,7 @@ export default async function ProfilPage({
             <form action={reimportSteamLibrary}>
               <button
                 type="submit"
-                className="rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                className="w-full rounded-full border border-zinc-300 px-5 py-3 text-base font-medium text-zinc-800 transition-colors hover:bg-zinc-100 sm:w-auto sm:py-2.5 sm:text-sm dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
               >
                 Réimporter ma bibliothèque Steam
               </button>
@@ -99,7 +99,7 @@ export default async function ProfilPage({
             </p>
             <a
               href="/api/steam/link"
-              className="self-start rounded-full bg-[#1b2838] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2a3f5a]"
+              className="w-full rounded-full bg-[#1b2838] px-5 py-3 text-center text-base font-medium text-white transition-colors hover:bg-[#2a3f5a] sm:w-auto sm:py-2.5 sm:text-sm"
             >
               Lier mon compte Steam
             </a>

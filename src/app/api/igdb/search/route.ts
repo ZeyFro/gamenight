@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   try {
     const results = await searchIgdbGames(query);
     return NextResponse.json({ results });
-  } catch {
+  } catch (error) {
+    console.error("[igdb] Recherche échouée", error);
     return NextResponse.json(
       { error: "La recherche IGDB a échoué." },
       { status: 502 }
