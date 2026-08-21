@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { auth, signIn, signOut } from "@/auth";
 
 export default async function Home() {
@@ -26,6 +27,20 @@ export default async function Home() {
               Connecté en tant que{" "}
               <span className="font-semibold">{session.user.name}</span>
             </p>
+            <div className="flex gap-3 text-sm font-medium">
+              <Link
+                href="/profil"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                Mon profil
+              </Link>
+              <Link
+                href="/bibliotheque"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                Ma bibliothèque
+              </Link>
+            </div>
             <form
               action={async () => {
                 "use server";

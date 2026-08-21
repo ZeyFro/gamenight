@@ -1,7 +1,8 @@
 // Schéma Prisma — GameNight
 // Voir SPEC-gamenight.md §5 pour le modèle de données complet.
-// Seul le modèle User (F1 — Auth Discord) est implémenté à ce stade ;
-// les autres modèles seront ajoutés au fil des features F2 à F8.
+// F1 (Auth Discord) : User.
+// F2/F3 (lien Steam, biblio, ajout manuel, enrichissement IGDB) : Game, UserGame.
+// Les autres modèles seront ajoutés au fil des features F4 à F8.
 
 generator client {
   provider = "prisma-client-js"
@@ -20,4 +21,44 @@ model User {
   steamId64     String?  @unique
   steamPublic   Boolean  @default(false)
   createdAt     DateTime @default(now())
+
+  addedGames Game[]     @relation("GameAddedBy")
+  userGames  UserGame[]
+}
+
+enum GameSource {
+  STEAM
+  IGDB
+  MANUAL
+}
+
+model Game {
+  id         String     @id @default(cuid())
+  name       String
+  source     GameSource
+  steamAppId Int?
+  igdbId     Int?
+  coverUrl   String?
+  isCoop     Boolean    @default(false)
+  minPlayers Int?
+  maxPlayers Int?
+  addedById  String
+  createdAt  DateTime   @default(now())
+
+  addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
+  userGames UserGame[]
+
+  @@unique([steamAppId])
+  @@unique([igdbId])
+}
+
+model UserGame {
+  userId String
+  gameId String
+  owned  Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
 }
