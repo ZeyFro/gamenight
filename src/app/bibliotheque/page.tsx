@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { BibliothequeGrid } from "@/components/BibliothequeGrid";
+import { LibraryTabs } from "@/components/LibraryTabs";
 import { ButtonLink } from "@/components/ui/Button";
 
 export default async function BibliothequePage() {
@@ -34,6 +35,8 @@ export default async function BibliothequePage() {
           + Ajouter un jeu
         </ButtonLink>
       </div>
+
+      <LibraryTabs active="perso" />
 
       <BibliothequeGrid games={games} />
     </div>
