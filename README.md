@@ -7,9 +7,9 @@ présence Steam en direct.
 Voir [`SPEC-gamenight.md`](./SPEC-gamenight.md) pour le cahier des charges
 complet.
 
-**État actuel : F1 — Auth Discord.** Login via Discord uniquement ; les
-autres features (Steam, IGDB, dispos, vote, rappels, présence) arrivent dans
-les prochaines étapes.
+**État actuel : F1 (Auth Discord) + F2/F3 (lien Steam, biblio, ajout manuel,
+enrichissement IGDB).** Les autres features (dispos, vote, rappels,
+présence) arrivent dans les prochaines étapes.
 
 ## Stack
 
@@ -49,8 +49,8 @@ Puis remplir chaque variable :
 | `AUTH_URL` | `http://localhost:3000` en local, l'URL de prod (ex. Vercel) en production. |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → onglet **OAuth2** → *Client ID* / *Client Secret*. Ajouter l'URL de redirection `http://localhost:3000/api/auth/callback/discord` (et l'équivalent en prod) dans **Redirects**. |
 | `DISCORD_WEBHOOK_URL` | Dans le salon Discord cible → **Modifier le salon** → **Intégrations** → **Webhooks** → **Créer un webhook**. *(Pas encore utilisée à ce stade — nécessaire pour F6/F7.)* |
-| `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (nécessite un compte Steam ayant dépensé au moins 5$). *(Pas encore utilisée — nécessaire pour F2/F8.)* |
-| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). *(Pas encore utilisée — nécessaire pour F3.)* |
+| `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (nécessite un compte Steam ayant dépensé au moins 5$). Utilisée pour l'import de bibliothèque (`GetOwnedGames`). *(F8 — présence — pas encore implémentée.)* |
+| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). Utilisées pour la recherche/enrichissement de jeux ajoutés manuellement. |
 
 ## 3. Base de données
 
@@ -86,6 +86,44 @@ Ouvrir [http://localhost:3000](http://localhost:3000), cliquer sur
 **« Se connecter avec Discord »**. Une fois connecté, le pseudo et l'avatar
 Discord s'affichent automatiquement, et un `User` correspondant est créé (ou
 mis à jour) en base.
+
+Depuis **Mon profil** (`/profil`), tu peux lier ton compte Steam et
+consulter ta **bibliothèque** (`/bibliotheque`), qui liste tes jeux et
+permet d'en ajouter/retirer.
+
+## Lien Steam & import de bibliothèque (F2)
+
+- **Lien Steam** : OpenID 2.0 (`/api/steam/link` → redirige vers Steam →
+  `/api/steam/callback` vérifie la réponse signée et stocke le
+  `SteamID64` sur `User.steamId64`). Contrairement à Discord, Steam OpenID
+  n'a **pas** besoin d'être enregistré/configuré dans un portail développeur
+  — aucune URL de redirection à whitelister.
+- **Import automatique** : déclenché juste après le lien (et ré-exécutable
+  depuis `/profil` via « Réimporter ma bibliothèque Steam »). Utilise
+  `IPlayerService/GetOwnedGames` (nécessite `STEAM_API_KEY`) ; chaque jeu
+  est upserté dans `Game` (`source = STEAM`) puis associé à l'utilisateur
+  via `UserGame(owned = true)`.
+- **Profil Steam privé** : `GetOwnedGames` renvoie une réponse vide dans ce
+  cas (aucun crash côté app) — un message explicite s'affiche sur
+  `/profil` avec un lien direct vers les réglages de confidentialité
+  Steam du compte lié.
+- **Cover des jeux Steam** : construite depuis l'URL CDN standard
+  `https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_600x900.jpg`
+  (pas d'appel API supplémentaire ; certains jeux plus anciens peuvent ne
+  pas avoir cette image).
+
+## Ajout manuel & enrichissement IGDB (F3)
+
+- Depuis `/bibliotheque/ajouter` : formulaire nom + recherche optionnelle
+  IGDB (`/api/igdb/search`). En sélectionnant un résultat, la cover,
+  `isCoop` et `maxPlayers` sont pré-remplis (`minPlayers` reste éditable,
+  IGDB ne le fournit pas de façon fiable) ; tout reste modifiable avant
+  validation.
+- Sans correspondance IGDB (ou jeu hors Steam type Minecraft/ATM11) :
+  `source = MANUAL`, `minPlayers = 2` par défaut, tous les champs éditables.
+- **Token IGDB (OAuth Twitch)** : mis en cache en mémoire du process
+  (`src/lib/igdb.ts`) entre les appels, régénéré uniquement à expiration —
+  pas d'appel `id.twitch.tv` à chaque recherche.
 
 ## 5. Déploiement Vercel
 
@@ -123,9 +161,19 @@ mis à jour) en base.
 ## Structure du projet
 
 ```
-prisma/schema.prisma        # Schéma de données (modèle User pour l'instant)
+prisma/schema.prisma        # Schéma de données (User, Game, UserGame)
 src/auth.ts                 # Config Auth.js (provider Discord, callbacks)
 src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
+src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
+src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche jeux)
+src/lib/current-user.ts     # Session Auth.js → ligne User en base
+src/app/actions.ts          # Server actions (ajout/retrait jeu, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
-src/app/api/auth/[...nextauth]/route.ts   # Route handler Auth.js
+src/app/profil/page.tsx     # Profil + lien Steam
+src/app/bibliotheque/page.tsx           # Liste des jeux possédés
+src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
+src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
+src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
+src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe
+src/app/api/igdb/search/route.ts        # Recherche IGDB (utilisée par le form)
 ```
