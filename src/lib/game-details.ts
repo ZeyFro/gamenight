@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { fetchIgdbGameDetails, type IgdbGameDetails } from "@/lib/igdb";
+import {
+  fetchIgdbGameDetails,
+  resolveIgdbIdForSteamGame,
+  type IgdbGameDetails,
+} from "@/lib/igdb";
 import { translateToFrench } from "@/lib/deepl";
 import type { Game } from "@prisma/client";
 
@@ -19,10 +23,44 @@ export interface GameDetailsResult {
  * indique au composant d'afficher un message propre plutôt que de planter.
  */
 export async function getGameDetails(
-  game: Pick<Game, "id" | "igdbId" | "igdbDetails" | "igdbDetailsFetchedAt">,
+  game: Pick<
+    Game,
+    | "id"
+    | "igdbId"
+    | "igdbDetails"
+    | "igdbDetailsFetchedAt"
+    | "source"
+    | "steamAppId"
+    | "name"
+  >,
   { forceRefresh = false }: { forceRefresh?: boolean } = {}
 ): Promise<GameDetailsResult> {
-  if (!game.igdbId) {
+  let igdbId = game.igdbId;
+
+  // Bug corrigé : l'import Steam ne renseignait jamais `igdbId` — la
+  // fiche ne tentait donc jamais de récupérer de description IGDB pour un
+  // jeu Steam, quel que soit son état. On tente une résolution à la
+  // demande (une seule fois : le résultat, trouvé ou non, est persisté).
+  if (!igdbId && game.source === "STEAM" && game.steamAppId) {
+    const resolved = await resolveIgdbIdForSteamGame(game.steamAppId, game.name);
+    if (resolved.igdbId) {
+      igdbId = resolved.igdbId;
+      try {
+        await prisma.game.update({ where: { id: game.id }, data: { igdbId } });
+      } catch (err) {
+        // Collision improbable sur la contrainte unique `igdbId` (deux
+        // jeux Steam résolus vers le même jeu IGDB) : on continue quand
+        // même à afficher les infos pour cette visite, on ne persiste
+        // juste pas le lien.
+        console.error(
+          `[igdb-match] Échec de persistance de igdbId=${igdbId} pour ${game.id}`,
+          err
+        );
+      }
+    }
+  }
+
+  if (!igdbId) {
     return { details: null, fetchedAt: null, error: "not_found" };
   }
 
@@ -35,7 +73,7 @@ export async function getGameDetails(
   }
 
   try {
-    const fetched = await fetchIgdbGameDetails(game.igdbId);
+    const fetched = await fetchIgdbGameDetails(igdbId);
     if (!fetched) {
       return { details: null, fetchedAt: null, error: "not_found" };
     }
