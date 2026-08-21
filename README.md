@@ -482,6 +482,17 @@ l'envoi ou l'échec, même mécanisme que la clôture manuelle.
   parasites en copier-coller) ou de requête (le format Apicalypse est
   strict : un champ inexistant dans `fields` fait échouer toute la
   requête, quel que soit le terme recherché).
+- **500 avec `createMotionComponent() from the server`** (corrigé) : un
+  composant utilisant `motion.xxx` de `framer-motion` (`<Badge animate>`
+  notamment, sur `/sessions/[id]`) sans directive `"use client"` en tête de
+  fichier plante en Server Component — l'accès à `motion.span` déclenche la
+  création du composant animé, qui n'existe que côté client. `Badge.tsx`
+  était le seul composant du projet dans ce cas (tous les autres —
+  `Button`, `EditGameDialog`, `motion.tsx`, `PageTransition`, `VoteButton`,
+  `VotingCountdown` — avaient déjà `"use client"`) ; il a maintenant la
+  directive. `MotionConfig` dans `layout.tsx` n'a pas ce problème : c'est un
+  vrai composant exporté (avec sa propre directive `"use client"` dans le
+  paquet `framer-motion`), pas un accès dynamique `motion.xxx`.
 
 ## Scripts disponibles
 
