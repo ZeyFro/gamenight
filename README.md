@@ -527,18 +527,20 @@ composant, même validations, pas de duplication.
   seulement un formulaire caché côté UI, pour éviter la fenêtre de course
   où quelqu'un aurait la page ouverte au moment où la deadline tombe).
 - **Clôture — choix assumé (créateur manuel + auto paresseuse, les deux)** :
-  n'importe quel utilisateur connecté peut cliquer « Clôturer le vote
-  maintenant » à tout moment tant que la session est en vote (le schéma §5
-  ne définit pas de notion de « créateur » de session, donc pas de
-  restriction de propriétaire — cohérent avec le reste de l'app, pensée
-  pour un petit groupe de confiance). Sans action manuelle, la clôture se
-  déclenche automatiquement **à la lecture** (chargement de `/sessions` ou
+  historiquement (v1 de F5) n'importe quel utilisateur connecté pouvait
+  cliquer « Clôturer le vote maintenant », le schéma ne définissant alors
+  aucune notion de « créateur » de session. **Révisé** depuis l'ajout de
+  `Session.createdById` (voir « Créateur de session, permissions &
+  suppression » plus bas) : la clôture **manuelle** est désormais réservée
+  au créateur. Sans action manuelle, la clôture se déclenche toujours
+  automatiquement **à la lecture** (chargement de `/sessions` ou
   `/sessions/[id]`) dès que la deadline de vote — ou, à défaut pour les
-  sessions créées avant son ajout, l'heure de la session — est passée ; pas
-  de cron ici (F7 utilise un cron externe, voir plus bas — pas Vercel
-  Cron), donc pas de clôture qui se déclenche vraiment "toute seule" en
-  arrière-plan si personne ne consulte la page, mais c'est transparent dès
-  qu'un membre du groupe rouvre l'app.
+  sessions créées avant son ajout, l'heure de la session — est passée, et
+  ça reste ouvert à tout le monde puisque ça n'a pas de bouton donc pas de
+  notion de « qui clique » ; pas de cron ici (F7 utilise un cron externe,
+  voir plus bas — pas Vercel Cron), donc pas de clôture qui se déclenche
+  vraiment "toute seule" en arrière-plan si personne ne consulte la page,
+  mais c'est transparent dès qu'un membre du groupe rouvre l'app.
 - **Un seul jeu gagnant par soirée — choix assumé** : à la clôture, le jeu
   retenu (`Session.decidedGameId`) est la proposition la plus votée (égalité
   → la plus ancienne proposition). C'est cohérent avec le schéma indicatif
@@ -775,6 +777,84 @@ F6/le renvoi manuel).
   Discord spécifique sur le salon (« Mentionner @everyone »/`@here` et
   tous les rôles ») qui peut être désactivée sans que l'app le sache,
   auquel cas la mention serait silencieusement ignorée par Discord.
+
+### Bug corrigé : le seed des messages par défaut ne tournait jamais en prod
+
+En prod, `pickMessageTemplate("SESSION_CREATED", …)` retombait
+systématiquement sur son texte de secours (« 🔔 Nouvelle soirée créée
+pour... ») au lieu de tirer parmi les 4 messages seedés, et
+`/admin/messages` ne listait que les 9 rappels F7 — aucun
+`SESSION_CREATED`/`SESSION_MODIFIED`. Cause : `prisma/seed.mjs` n'était
+déclenché que manuellement (`npm run seed`), jamais par le build Vercel —
+personne ne l'avait relancé après la migration qui a introduit ces deux
+catégories. (`/admin/messages` lui-même n'a jamais filtré par catégorie —
+vérifié, la requête n'a pas de `where` — ce n'était pas la cause.)
+
+Corrigé en ajoutant le seed au script `build` de `package.json` :
+`prisma migrate deploy && node prisma/seed.mjs && next build`, donc
+exécuté à **chaque** déploiement Vercel. Pour rester sûr à rejouer
+indéfiniment dans ce contexte :
+
+- **Idempotent par groupe de catégories**, pas par un seul check global —
+  `seedCategoryGroup` (`prisma/seed.mjs`) ne (re)crée un groupe que si
+  aucun `MessageTemplate` existant ne porte déjà une de ses catégories.
+  Une base déjà seedée avec les 9 rappels F7 reçoit quand même les
+  `SESSION_CREATED`/`SESSION_MODIFIED` manquants ; les futurs groupes de
+  catégories bénéficieront du même mécanisme sans toucher aux messages
+  existants.
+- **Tout premier déploiement, avant toute connexion Discord** : il n'y a
+  encore aucun `User` pour porter `createdById`. Dans ce cas précis le
+  script logue un avertissement et ne fait rien pour ce groupe, sans faire
+  échouer le build (`process.exitCode` reste à `0`) — il se rattrapera
+  tout seul au déploiement suivant.
+
+## Créateur de session, permissions & suppression
+
+`Session.createdById` (`prisma/schema.prisma`) introduit une notion de
+créateur, absente du schéma indicatif du §5. Détermine désormais qui peut
+gérer le cycle de vie d'une soirée ; proposer un jeu et voter restent
+ouverts à tout le groupe.
+
+- **Backfill (migration
+  `prisma/migrations/20260821150558_add_session_created_by`)** : colonne
+  ajoutée nullable, puis backfillée avant d'être passée `NOT NULL`, faute
+  d'avoir jamais enregistré qui cliquait « Créer » avant cette migration.
+  Stratégie à deux niveaux, dans l'ordre : (1) le membre du groupe le plus
+  récemment arrivé mais déjà présent avant la création de la session
+  (`User.createdAt <= Session.createdAt`, le plus récent de ceux-là) —
+  meilleure estimation possible après coup ; (2) à défaut (aucun
+  utilisateur connu avant cette session), le compte le plus ancien du
+  groupe. Toute nouvelle session passe par `createSession`, qui renseigne
+  `createdById` dès la création — le backfill ne concerne que l'historique.
+- **Actions désormais réservées au créateur** (gardées côté serveur dans
+  `src/app/sessions/actions.ts`, jamais seulement côté UI) : clôturer
+  manuellement le vote (`closeSessionAction`), annuler la soirée
+  (`cancelSessionAction`), la marquer comme terminée
+  (`markSessionDoneAction` — pas listée explicitement dans la demande
+  initiale, mais même famille de gestion du cycle de vie que
+  clôturer/annuler, donc alignée par cohérence), et la supprimer (voir
+  ci-dessous). Un utilisateur qui n'est pas le créateur voit ces boutons
+  masqués sur `/sessions/[id]`, et l'action serveur correspondante est un
+  no-op silencieux si jamais elle est appelée directement — la vraie
+  protection est côté serveur, pas le masquage UI. Proposer un jeu, voter
+  et renvoyer l'annonce Discord (`resendDiscordAction`, non destructif)
+  restent ouverts à tout le monde. La clôture **automatique**
+  (`closeSessionIfDue`, à la lecture) reste elle aussi ouverte à tout le
+  monde — voir la révision dans la section F5 ci-dessus.
+- **Suppression (`DeleteSessionDialog.tsx` + `deleteSessionAction`)** :
+  bouton visible uniquement pour le créateur, sur `/sessions/[id]`, derrière
+  une modal de confirmation (Radix Dialog, même pattern que
+  `EditGameDialog`). Suppression définitive de la session ; les
+  `Proposal`/`Vote` associés disparaissent automatiquement via les cascades
+  déjà en place dans le schéma (`onDelete: Cascade` sur `Proposal.session`
+  et `Vote.proposal`) — rien à nettoyer à la main pour eux, ni pour
+  `remindersSent` (simple champ JSON sur la ligne `Session` elle-même,
+  supprimée avec elle). **Aucune notification Discord** : contrairement à
+  l'annulation (qui reste annoncée, F6), supprimer une session est traité
+  comme du ménage silencieux, pas un événement à communiquer au groupe.
+- Le bouton « Modifier » n'existe pas encore : le champ `createdById` est en
+  place pour le porter, mais l'édition de session (et sa notification
+  `SESSION_MODIFIED`) est le sujet d'une PR séparée.
 
 ## Rappels drôles avant session (F7)
 

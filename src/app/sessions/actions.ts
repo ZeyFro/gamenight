@@ -84,7 +84,7 @@ export async function createSession(formData: FormData) {
     String(formData.get("customReminderMessage") ?? "").trim() || null;
 
   const session = await prisma.session.create({
-    data: { date, votingDeadline, customReminderMessage },
+    data: { date, votingDeadline, customReminderMessage, createdById: user.id },
   });
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
@@ -172,6 +172,15 @@ export async function closeSessionAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
+  // Clôture manuelle réservée au créateur — la clôture automatique
+  // (deadline/heure dépassée, `closeSessionIfDue`) reste accessible à
+  // tout le monde puisqu'elle se déclenche à la lecture, sans bouton.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session || session.createdById !== user.id) return;
+
   const result = await closeSession(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
@@ -199,9 +208,45 @@ export async function cancelSessionAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
+  // Annulation manuelle réservée au créateur (même logique que la clôture
+  // manuelle ci-dessus).
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session || session.createdById !== user.id) return;
+
   await cancelSession(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
+}
+
+/**
+ * Suppression définitive d'une session — réservée au créateur, jamais de
+ * notification Discord (contrairement à l'annulation, qui reste annoncée
+ * via F6 : supprimer, c'est du ménage silencieux, pas un événement à
+ * communiquer au groupe). Cascade automatique via le schéma
+ * (`onDelete: Cascade` sur Proposal → Session et Vote → Proposal) : les
+ * propositions et votes liés disparaissent avec la session, et comme les
+ * rappels F7 sont un simple champ JSON sur la ligne Session elle-même
+ * (`remindersSent`), rien à nettoyer séparément pour eux.
+ */
+export async function deleteSessionAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session || session.createdById !== user.id) return;
+
+  await prisma.session.delete({ where: { id: sessionId } });
+  revalidatePath("/sessions");
+  redirect("/sessions");
 }
 
 export async function markSessionDoneAction(formData: FormData) {
@@ -210,6 +255,17 @@ export async function markSessionDoneAction(formData: FormData) {
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
+
+  // Pas explicitement listée dans l'alignement des permissions demandé
+  // (qui nomme "modifier/supprimer/clôturer/annuler"), mais c'est la même
+  // famille d'action de gestion du cycle de vie de la soirée que
+  // clôturer/annuler — cohérent avec "le créateur gère sa soirée, les
+  // autres votent" de restreindre celle-ci aussi.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session || session.createdById !== user.id) return;
 
   await markSessionDone(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
