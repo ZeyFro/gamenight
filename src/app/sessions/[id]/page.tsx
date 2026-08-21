@@ -12,12 +12,17 @@ import {
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { VotingCountdown } from "@/components/VotingCountdown";
+import { VoteButton } from "@/components/VoteButton";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ActionForm } from "@/components/ActionForm";
+import { Stagger, StaggerItem } from "@/components/motion";
 import {
   cancelSessionAction,
   closeSessionAction,
   markSessionDoneAction,
   proposeGame,
-  toggleVote,
 } from "../actions";
 
 export default async function SessionDetailPage({
@@ -67,11 +72,11 @@ export default async function SessionDetailPage({
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
-        <Link href="/sessions" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/sessions" className="text-sm text-muted hover:text-foreground hover:underline">
           ← Soirées
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-zinc-950 capitalize sm:text-2xl dark:text-zinc-50">
+          <h1 className="text-xl font-semibold text-foreground capitalize sm:text-2xl">
             {formatDateTimeFr(session.date)}
           </h1>
           <span
@@ -81,19 +86,15 @@ export default async function SessionDetailPage({
           </span>
         </div>
         {session.status === "VOTING" && (
-          <VotingCountdown
-            deadline={votingClosesAt(session).toISOString()}
-          />
+          <VotingCountdown deadline={votingClosesAt(session).toISOString()} />
         )}
       </div>
 
       {(session.status === "SCHEDULED" || session.status === "DONE") &&
         session.decidedGame && (
-          <div
-            className={`flex items-center gap-4 rounded-2xl p-4 ${
-              session.status === "SCHEDULED"
-                ? "bg-emerald-50 dark:bg-emerald-950/30"
-                : "bg-white shadow-sm dark:bg-zinc-950"
+          <Card
+            className={`flex items-center gap-4 ${
+              session.status === "SCHEDULED" ? "border-accent/40 bg-accent/10" : ""
             }`}
           >
             {session.decidedGame.coverUrl && (
@@ -109,44 +110,38 @@ export default async function SessionDetailPage({
               <p
                 className={
                   session.status === "SCHEDULED"
-                    ? "text-sm text-emerald-700 dark:text-emerald-400"
-                    : "text-sm text-zinc-500"
+                    ? "text-sm text-accent"
+                    : "text-sm text-muted"
                 }
               >
                 {session.status === "SCHEDULED" ? "Jeu retenu" : "Jeu joué"}
               </p>
-              <p className="font-semibold text-zinc-950 dark:text-zinc-50">
+              <p className="font-semibold text-foreground">
                 {session.decidedGame.name}
               </p>
             </div>
-          </div>
+          </Card>
         )}
 
       {session.status === "CANCELLED" && (
-        <p className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
-          Cette soirée a été annulée.
-        </p>
+        <Card>
+          <p className="text-sm text-muted">Cette soirée a été annulée.</p>
+        </Card>
       )}
 
       {session.status === "VOTING" && (
         <div className="flex flex-wrap gap-3">
           <form action={closeSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <button
-              type="submit"
-              className="rounded-full border border-zinc-300 px-4 py-3 text-base font-medium hover:bg-zinc-100 sm:py-2 sm:text-sm dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
+            <Button type="submit" size="sm">
               Clôturer le vote maintenant
-            </button>
+            </Button>
           </form>
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <button
-              type="submit"
-              className="rounded-full border border-red-300 px-4 py-3 text-base font-medium text-red-700 hover:bg-red-50 sm:py-2 sm:text-sm dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
-            >
+            <Button type="submit" variant="destructive" size="sm">
               Annuler la soirée
-            </button>
+            </Button>
           </form>
         </div>
       )}
@@ -155,165 +150,146 @@ export default async function SessionDetailPage({
         <div className="flex flex-wrap gap-3">
           <form action={markSessionDoneAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <button
-              type="submit"
-              className="rounded-full border border-zinc-300 px-4 py-3 text-base font-medium hover:bg-zinc-100 sm:py-2 sm:text-sm dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
+            <Button type="submit" size="sm">
               Marquer comme terminée
-            </button>
+            </Button>
           </form>
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <button
-              type="submit"
-              className="rounded-full border border-red-300 px-4 py-3 text-base font-medium text-red-700 hover:bg-red-50 sm:py-2 sm:text-sm dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
-            >
+            <Button type="submit" variant="destructive" size="sm">
               Annuler
-            </button>
+            </Button>
           </form>
         </div>
       )}
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+        <h2 className="text-lg font-semibold text-foreground">
           Propositions
           {session.proposals.length > 0 && ` (${session.proposals.length})`}
         </h2>
 
         {session.proposals.length === 0 && (
-          <p className="rounded-2xl bg-white p-4 text-sm text-zinc-600 shadow-sm dark:bg-zinc-950 dark:text-zinc-400">
-            Aucun jeu proposé pour l&apos;instant.
-          </p>
+          <Card>
+            <p className="text-sm text-muted">
+              Aucun jeu proposé pour l&apos;instant.
+            </p>
+          </Card>
         )}
 
-        <div className="flex flex-col gap-3">
+        <Stagger className="flex flex-col gap-3">
           {session.proposals.map((proposal) => {
             const stats = availability.get(proposal.gameId);
             const availableCount = stats?.availableOwners.length ?? 0;
             const voted = proposal.votes.some((v) => v.userId === user.id);
 
             return (
-              <div
-                key={proposal.id}
-                className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-950"
-              >
-                <div className="flex items-start gap-3">
-                  {proposal.game.coverUrl && (
-                    <Image
-                      src={proposal.game.coverUrl}
-                      alt={proposal.game.name}
-                      width={48}
-                      height={64}
-                      className="shrink-0 rounded object-cover"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-zinc-950 dark:text-zinc-50">
-                      {proposal.game.name}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      Proposé par {proposal.proposedBy.discordName} ·{" "}
-                      {proposal.game.minPlayers ?? "?"}–
-                      {proposal.game.maxPlayers ?? "?"} joueurs
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      stats?.jouable
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                        : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                    }`}
-                  >
-                    {stats?.jouable ? "JOUABLE" : "PAS ASSEZ DE JOUEURS"}
-                  </span>
-                </div>
-
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  {availableCount} dispo{availableCount > 1 ? "s" : ""} et
-                  possède le jeu
-                  {availableCount > 0 && (
-                    <>
-                      {" : "}
-                      {stats!.availableOwners
-                        .map((o) => o.discordName)
-                        .join(", ")}
-                    </>
-                  )}
-                </p>
-
-                <div className="flex items-center justify-between">
-                  <form action={toggleVote}>
-                    <input type="hidden" name="proposalId" value={proposal.id} />
-                    <input type="hidden" name="sessionId" value={session.id} />
-                    <button
-                      type="submit"
-                      disabled={!votingOpen}
-                      className={`rounded-full px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
-                        voted
-                          ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                          : "border border-zinc-300 text-zinc-800 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-                      }`}
+              <StaggerItem key={proposal.id}>
+                <Card className="flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    {proposal.game.coverUrl && (
+                      <Image
+                        src={proposal.game.coverUrl}
+                        alt={proposal.game.name}
+                        width={48}
+                        height={64}
+                        className="shrink-0 rounded object-cover"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground">
+                        {proposal.game.name}
+                      </p>
+                      <p className="text-xs text-muted">
+                        Proposé par {proposal.proposedBy.discordName} ·{" "}
+                        {proposal.game.minPlayers ?? "?"}–
+                        {proposal.game.maxPlayers ?? "?"} joueurs
+                      </p>
+                    </div>
+                    <Badge
+                      tone={stats?.jouable ? "accent" : "neutral"}
+                      glow={stats?.jouable}
+                      animate
                     >
-                      {voted ? "✓ Voté" : "Voter"}
-                    </button>
-                  </form>
-                  <p className="text-sm text-zinc-500">
-                    {proposal.votes.length} vote
-                    {proposal.votes.length > 1 ? "s" : ""}
+                      {stats?.jouable ? "JOUABLE" : "PAS ASSEZ DE JOUEURS"}
+                    </Badge>
+                  </div>
+
+                  <p className="text-sm text-muted">
+                    {availableCount} dispo{availableCount > 1 ? "s" : ""} et
+                    possède le jeu
+                    {availableCount > 0 && (
+                      <>
+                        {" : "}
+                        {stats!.availableOwners
+                          .map((o) => o.discordName)
+                          .join(", ")}
+                      </>
+                    )}
                   </p>
-                </div>
-              </div>
+
+                  <VoteButton
+                    proposalId={proposal.id}
+                    sessionId={session.id}
+                    initialVoted={voted}
+                    initialCount={proposal.votes.length}
+                    disabled={!votingOpen}
+                  />
+                </Card>
+              </StaggerItem>
             );
           })}
-        </div>
+        </Stagger>
       </section>
 
       {votingOpen && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+          <h2 className="text-lg font-semibold text-foreground">
             Proposer un jeu
           </h2>
           {availableGames.length === 0 ? (
-            <p className="rounded-2xl bg-white p-4 text-sm text-zinc-600 shadow-sm dark:bg-zinc-950 dark:text-zinc-400">
-              Tous les jeux de la biblio commune sont déjà proposés, ou
-              personne n&apos;en possède encore.{" "}
-              <Link
-                href="/bibliotheque/ajouter"
-                className="underline underline-offset-2"
-              >
-                Ajouter un jeu
-              </Link>
-            </p>
-          ) : (
-            <form
-              action={proposeGame}
-              className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm sm:flex-row sm:items-end dark:bg-zinc-950"
-            >
-              <input type="hidden" name="sessionId" value={session.id} />
-              <div className="flex flex-1 flex-col gap-1">
-                <label className="text-xs text-zinc-500" htmlFor="gameId">
-                  Jeu
-                </label>
-                <select
-                  id="gameId"
-                  name="gameId"
-                  required
-                  className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+            <Card>
+              <p className="text-sm text-muted">
+                Tous les jeux de la biblio commune sont déjà proposés, ou
+                personne n&apos;en possède encore.{" "}
+                <Link
+                  href="/bibliotheque/ajouter"
+                  className="text-accent underline underline-offset-2"
                 >
-                  {availableGames.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="w-full rounded-full bg-zinc-950 px-5 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:text-sm dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+                  Ajouter un jeu
+                </Link>
+              </p>
+            </Card>
+          ) : (
+            <Card>
+              <ActionForm
+                action={proposeGame}
+                successMessage="Jeu proposé"
+                className="flex flex-col gap-3 sm:flex-row sm:items-end"
               >
-                Proposer
-              </button>
-            </form>
+                <input type="hidden" name="sessionId" value={session.id} />
+                <div className="flex flex-1 flex-col gap-1">
+                  <label className="text-xs text-muted" htmlFor="gameId">
+                    Jeu
+                  </label>
+                  <select
+                    id="gameId"
+                    name="gameId"
+                    required
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                  >
+                    {availableGames.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button type="submit" variant="primary" fullWidthOnMobile>
+                  Proposer
+                </Button>
+              </ActionForm>
+            </Card>
           )}
         </section>
       )}

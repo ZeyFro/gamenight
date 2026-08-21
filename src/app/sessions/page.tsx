@@ -7,6 +7,9 @@ import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
 import { createSession } from "./actions";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Stagger, StaggerItem } from "@/components/motion";
 
 type SessionRowData = Session & {
   decidedGame: Game | null;
@@ -21,25 +24,24 @@ const CREATE_ERROR_MESSAGES: Record<string, string> = {
 function SessionRow({ session }: { session: SessionRowData }) {
   const status = SESSION_STATUS_LABELS[session.status];
   return (
-    <Link
-      href={`/sessions/${session.id}`}
-      className="flex items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm transition-colors hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-    >
-      <div className="min-w-0">
-        <p className="truncate font-medium text-zinc-950 capitalize dark:text-zinc-50">
-          {formatDateTimeFr(session.date)}
-        </p>
-        <p className="truncate text-sm text-zinc-500">
-          {session.decidedGame
-            ? session.decidedGame.name
-            : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
-        </p>
+    <Link href={`/sessions/${session.id}`}>
+      <div className="card-glow flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 transition-all duration-200">
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground capitalize">
+            {formatDateTimeFr(session.date)}
+          </p>
+          <p className="truncate text-sm text-muted">
+            {session.decidedGame
+              ? session.decidedGame.name
+              : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
+        >
+          {status.label}
+        </span>
       </div>
-      <span
-        className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
-      >
-        {status.label}
-      </span>
     </Link>
   );
 }
@@ -75,133 +77,128 @@ export default async function SessionsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
-      <div>
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">
-          ← Accueil
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold text-zinc-950 sm:text-2xl dark:text-zinc-50">
-          Soirées
-        </h1>
-      </div>
+      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+        Soirées
+      </h1>
 
       {errorMessage && (
-        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+        <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           {errorMessage}
         </p>
       )}
 
-      <form
-        action={createSession}
-        className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-950"
-      >
-        <h2 className="font-semibold text-zinc-950 dark:text-zinc-50">
-          Nouvelle soirée
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500" htmlFor="session-date">
-              Date
-            </label>
-            <input
-              id="session-date"
-              type="date"
-              name="date"
-              required
-              min={toDateInputValue(todayDateOnly())}
-              className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500" htmlFor="session-time">
-              Heure
-            </label>
-            <input
-              id="session-time"
-              type="time"
-              name="time"
-              required
-              className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-zinc-500" htmlFor="deadline-offset">
-            Deadline de vote
-          </label>
-          <select
-            id="deadline-offset"
-            name="deadlineOffset"
-            defaultValue="6"
-            className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
-          >
-            <option value="6">6h avant la session</option>
-            <option value="12">12h avant la session</option>
-            <option value="24">24h avant la session</option>
-            <option value="48">48h avant la session</option>
-          </select>
-        </div>
-
-        <details className="text-sm text-zinc-600 dark:text-zinc-400">
-          <summary className="cursor-pointer select-none py-1">
-            Choisir une date/heure précise à la place
-          </summary>
-          <div className="mt-2 grid grid-cols-2 gap-3">
+      <Card>
+        <form action={createSession} className="flex flex-col gap-3">
+          <h2 className="font-semibold text-foreground">Nouvelle soirée</h2>
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-zinc-500" htmlFor="deadline-date">
-                Date limite
+              <label className="text-xs text-muted" htmlFor="session-date">
+                Date
               </label>
               <input
-                id="deadline-date"
+                id="session-date"
                 type="date"
-                name="deadlineDate"
-                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+                name="date"
+                required
+                min={toDateInputValue(todayDateOnly())}
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-zinc-500" htmlFor="deadline-time">
-                Heure limite
+              <label className="text-xs text-muted" htmlFor="session-time">
+                Heure
               </label>
               <input
-                id="deadline-time"
+                id="session-time"
                 type="time"
-                name="deadlineTime"
-                className="rounded-lg border border-zinc-300 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+                name="time"
+                required
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
               />
             </div>
           </div>
-        </details>
 
-        <button
-          type="submit"
-          className="w-full rounded-full bg-zinc-950 px-5 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 sm:w-auto sm:text-sm dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-        >
-          Créer la soirée
-        </button>
-      </form>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted" htmlFor="deadline-offset">
+              Deadline de vote
+            </label>
+            <select
+              id="deadline-offset"
+              name="deadlineOffset"
+              defaultValue="6"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            >
+              <option value="6">6h avant la session</option>
+              <option value="12">12h avant la session</option>
+              <option value="24">24h avant la session</option>
+              <option value="48">48h avant la session</option>
+            </select>
+          </div>
+
+          <details className="text-sm text-muted">
+            <summary className="cursor-pointer py-1 select-none">
+              Choisir une date/heure précise à la place
+            </summary>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted" htmlFor="deadline-date">
+                  Date limite
+                </label>
+                <input
+                  id="deadline-date"
+                  type="date"
+                  name="deadlineDate"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted" htmlFor="deadline-time">
+                  Heure limite
+                </label>
+                <input
+                  id="deadline-time"
+                  type="time"
+                  name="deadlineTime"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                />
+              </div>
+            </div>
+          </details>
+
+          <Button type="submit" variant="primary" fullWidthOnMobile>
+            Créer la soirée
+          </Button>
+        </form>
+      </Card>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
-          À venir
-        </h2>
+        <h2 className="text-lg font-semibold text-foreground">À venir</h2>
         {upcoming.length === 0 && (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted">
             Aucune soirée prévue pour l&apos;instant.
           </p>
         )}
-        {upcoming.map((session) => (
-          <SessionRow key={session.id} session={session} />
-        ))}
+        <Stagger className="flex flex-col gap-3">
+          {upcoming.map((session) => (
+            <StaggerItem key={session.id}>
+              <SessionRow session={session} />
+            </StaggerItem>
+          ))}
+        </Stagger>
       </section>
 
       {past.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
+          <h2 className="text-lg font-semibold text-foreground">
             Historique
           </h2>
-          {past.map((session) => (
-            <SessionRow key={session.id} session={session} />
-          ))}
+          <Stagger className="flex flex-col gap-3">
+            {past.map((session) => (
+              <StaggerItem key={session.id}>
+                <SessionRow session={session} />
+              </StaggerItem>
+            ))}
+          </Stagger>
         </section>
       )}
     </div>

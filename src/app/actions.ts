@@ -25,6 +25,18 @@ export async function addManualGame(formData: FormData) {
   const minPlayers = minPlayersRaw ? Number(minPlayersRaw) : 2;
   const maxPlayers = maxPlayersRaw ? Number(maxPlayersRaw) : null;
 
+  // Bug corrigé : une saisie manuelle sans borne (ex. minPlayers=999) faussait
+  // le calcul "jouable" de F5. minPlayers doit rester un nombre de joueurs
+  // plausible, et maxPlayers (si renseigné) ne peut pas être sous minPlayers.
+  const invalidMin =
+    !Number.isFinite(minPlayers) || minPlayers < 1 || minPlayers > 100;
+  const invalidMax =
+    maxPlayers !== null &&
+    (!Number.isFinite(maxPlayers) || maxPlayers < minPlayers);
+  if (invalidMin || invalidMax) {
+    redirect("/bibliotheque/ajouter?error=joueurs_invalide");
+  }
+
   const gameData = { name, coverUrl, isCoop, minPlayers, maxPlayers };
 
   const game = igdbId

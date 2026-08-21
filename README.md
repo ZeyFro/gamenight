@@ -19,6 +19,73 @@ présence) arrivent dans les prochaines étapes.
 - [Auth.js (NextAuth v5)](https://authjs.dev) — provider Discord
 - [Prisma](https://www.prisma.io) + [Neon](https://neon.tech) (Postgres
   serverless, via l'adapter `@prisma/adapter-neon`)
+- [Framer Motion](https://motion.dev) pour les animations, [sonner](https://sonner.emilkowal.ski)
+  pour les toasts — voir « Identité visuelle » ci-dessous.
+
+## Identité visuelle
+
+Refonte visuelle (niveau 1 — identité + animations, aucune fonctionnalité
+ajoutée). Toujours sombre : pas de bascule clair/sombre, c'est le thème de
+l'app (référence Linear/Vercel/Raycast).
+
+- **Palette** (`src/app/globals.css`) : fond `#0a0a0a`, surfaces `#161616`
+  / `#1f1f1f` au hover, bordures `#2a2a2a` / `#3a3a3a` au hover, texte
+  `#f5f5f5` (principal) / `#9a9a9a` (meta). **Accent : violet électrique
+  `#8b5cf6`** (hover `#a78bfa`, pressed `#7c3aed`) — boutons primaires,
+  liens actifs, badge JOUABLE, états positifs. Rouge `#ef4444` réservé au
+  destructif/erreur ; ambre `#f59e0b` pour l'urgence (deadline de vote
+  < 1h).
+- **Typo** : Geist Sans (déjà chargée via `next/font/google`, aucune
+  dépendance supplémentaire), corps de texte à 15px.
+- **Composants partagés** (`src/components/ui/`) : `Button`/`ButtonLink`
+  (micro-interaction `whileTap` scale 0.97), `Card` (avec variante `glow`
+  — bordure qui s'illumine en violet au survol, `.card-glow` dans
+  `globals.css`), `Badge` (JOUABLE animé au changement d'état), `Skeleton`.
+- **Animations** (`src/components/motion.tsx`, `framer-motion`) :
+  `Stagger`/`StaggerItem` pour les listes (délai croissant ~40ms/élément,
+  utilisés sur la bibliothèque, les soirées, les propositions, les
+  disponibilités), `PopIn` pour l'apparition d'une nouvelle puce de
+  créneau. Transition de page en fondu (`PageTransition.tsx`,
+  `AnimatePresence` + `usePathname`). Vote : bounce léger sur le bouton +
+  compteur animé (`VoteButton.tsx`). Countdown de deadline : pulse ambre
+  sous 1h (`VotingCountdown.tsx`). `<MotionConfig reducedMotion="user">`
+  dans `layout.tsx` + repli CSS `prefers-reduced-motion` dans
+  `globals.css` : toute animation se coupe si l'utilisateur l'a désactivé
+  au niveau OS.
+- **Toasts** (`sonner`) : confirmation sur vote, ajout de dispo/exception,
+  proposition d'un jeu — via `ActionForm.tsx`, qui appelle la server
+  action directement (au lieu de `<form action=…>`) pour pouvoir déclencher
+  un toast au succès. **Choix assumé** : les actions qui redirigent après
+  coup (ajout manuel d'un jeu, création de session) n'ont pas de toast — la
+  redirection vers la nouvelle page est déjà un feedback fort, un toast
+  juste avant de la quitter n'aurait pas le temps de s'afficher
+  proprement.
+- **Chargement** : `loading.tsx` (squelettes `Skeleton`) sur les routes qui
+  interrogent la base (bibliothèque, dispos, soirées), plutôt qu'un texte
+  « Chargement… » — géré nativement par le Suspense de l'App Router.
+- **Identité** : wordmark `GameNight` (icône lune en accent, `Logo.tsx`),
+  favicon `app/icon.svg` (un « G » sur fond violet). Header sticky avec nav
+  desktop, barre de navigation fixe en bas sur mobile
+  (`Header.tsx`/`BottomNav.tsx`, liens vers bibliothèque/dispos/soirées/
+  profil, affichés uniquement connecté).
+- **3 pages les plus retravaillées** :
+  1. **Page d'accueil** (`src/app/page.tsx`) — avant : juste des liens de
+     nav et le pseudo Discord ; après : un vrai tableau de bord pour
+     l'utilisateur connecté (prochaine soirée avec statut, aperçu de la
+     bibliothèque avec mini-covers empilées, CTA clair), et un écran de
+     login avec dégradé radial discret d'accent en fond pour l'utilisateur
+     déconnecté.
+  2. **Détail d'une soirée** (`src/app/sessions/[id]/page.tsx`) — avant :
+     badges plats, bouton de vote statique ; après : badge JOUABLE avec
+     glow animé, bouton de vote avec bounce + compteur qui s'anime,
+     countdown de deadline qui pulse en ambre sous 1h, propositions qui
+     apparaissent en cascade.
+  3. **Bibliothèque** (`src/components/BibliothequeGrid.tsx`) — avant :
+     grille plate ; après : cartes avec bordure qui s'illumine en violet au
+     survol, apparition en cascade, cohérent avec le nouveau design system
+     partagé (`Card`/`Badge`).
+- Mobile-first maintenu : boutons ≥44px, champs en 16px (évite le zoom
+  Safari iOS), inchangé par rapport aux features précédentes.
 
 ## Prérequis
 
@@ -144,6 +211,15 @@ permet d'en ajouter/retirer.
   validation.
 - Sans correspondance IGDB (ou jeu hors Steam type Minecraft/ATM11) :
   `source = MANUAL`, `minPlayers = 2` par défaut, tous les champs éditables.
+- **Validation ajoutée (bug corrigé)** : une saisie manuelle sans borne
+  avait laissé un Minecraft avec `minPlayers = 999` en base, faussant son
+  statut JOUABLE pour toute soirée. `minPlayers` doit désormais être entre
+  1 et 100 (attributs HTML `min`/`max` côté client, revalidé côté serveur
+  dans `addManualGame`), et `maxPlayers` (si renseigné) doit être ≥
+  `minPlayers` — sinon rejet clair (`?error=joueurs_invalide`). La donnée
+  existante a été corrigée par une migration ciblée
+  (`prisma/migrations/20260821090859_fix_minecraft_minplayers`, ne touche
+  que `Minecraft` avec `minPlayers > 100`).
 - **Token IGDB (OAuth Twitch)** : mis en cache en mémoire du process
   (`src/lib/igdb.ts`) entre les appels, régénéré uniquement à expiration —
   pas d'appel `id.twitch.tv` à chaque recherche.
@@ -304,7 +380,13 @@ src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-mura
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
 src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable" par jeu
 src/lib/session-status.ts   # Libellés/couleurs des statuts de session
+src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
+src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
+src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
+src/components/ActionForm.tsx           # Wrapper server action + toast (non redirigeant)
+src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur animé)
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
+src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam

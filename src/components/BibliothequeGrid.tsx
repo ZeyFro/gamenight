@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import type { SVGProps } from "react";
 import Image from "next/image";
 import { removeUserGame } from "@/app/actions";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Stagger, StaggerItem } from "@/components/motion";
 
 export interface BibliothequeGame {
   id: string;
@@ -32,11 +35,13 @@ export function BibliothequeGrid({ games }: { games: BibliothequeGame[] }) {
 
   if (games.length === 0) {
     return (
-      <p className="rounded-2xl bg-white p-6 text-sm text-zinc-600 shadow-sm dark:bg-zinc-950 dark:text-zinc-400">
-        Ta bibliothèque est vide pour l&apos;instant. Lie ton compte Steam
-        depuis ton profil pour importer tes jeux, ou ajoute-en un
-        manuellement.
-      </p>
+      <Card>
+        <p className="text-sm text-muted">
+          Ta bibliothèque est vide pour l&apos;instant. Lie ton compte Steam
+          depuis ton profil pour importer tes jeux, ou ajoute-en un
+          manuellement.
+        </p>
+      </Card>
     );
   }
 
@@ -48,19 +53,23 @@ export function BibliothequeGrid({ games }: { games: BibliothequeGame[] }) {
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Filtrer par nom…"
         aria-label="Filtrer la bibliothèque par nom"
-        className="w-full rounded-lg border border-zinc-300 px-4 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+        className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
       />
 
       {filtered.length === 0 ? (
-        <p className="rounded-2xl bg-white p-6 text-sm text-zinc-600 shadow-sm dark:bg-zinc-950 dark:text-zinc-400">
-          Aucun jeu ne correspond à « {filter} ».
-        </p>
+        <Card>
+          <p className="text-sm text-muted">
+            Aucun jeu ne correspond à « {filter} ».
+          </p>
+        </Card>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
+        <Stagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
           {filtered.map((game) => (
-            <GameCard key={game.id} game={game} />
+            <StaggerItem key={game.id}>
+              <GameCard game={game} />
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       )}
     </div>
   );
@@ -68,8 +77,8 @@ export function BibliothequeGrid({ games }: { games: BibliothequeGame[] }) {
 
 function GameCard({ game }: { game: BibliothequeGame }) {
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl bg-white shadow-sm dark:bg-zinc-950">
-      <div className="relative aspect-[2/3] w-full bg-zinc-200 dark:bg-zinc-800">
+    <div className="card-glow flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200">
+      <div className="relative aspect-[2/3] w-full bg-surface-hover">
         {game.coverUrl && (
           <Image
             src={game.coverUrl}
@@ -85,20 +94,16 @@ function GameCard({ game }: { game: BibliothequeGame }) {
             type="submit"
             aria-label={`Retirer ${game.name} de ma bibliothèque`}
             title="Retirer de ma bibliothèque"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-red-600/90 active:bg-red-600"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
           >
             <TrashIcon className="h-5 w-5" />
           </button>
         </form>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-          {game.name}
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 dark:bg-zinc-900">
-            {SOURCE_LABELS[game.source] ?? game.source}
-          </span>
+        <p className="text-sm font-medium text-foreground">{game.name}</p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <Badge>{SOURCE_LABELS[game.source] ?? game.source}</Badge>
           {(game.minPlayers || game.maxPlayers) && (
             <span>
               {game.minPlayers ?? "?"}–{game.maxPlayers ?? "?"} joueurs
