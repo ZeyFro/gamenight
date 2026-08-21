@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
@@ -6,11 +7,13 @@ import { prisma } from "@/lib/prisma";
 import { getGameDetails } from "@/lib/game-details";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
 import { GameDescription } from "@/components/GameDescription";
 import { refreshGameDetails } from "../actions";
+import type { Game } from "@prisma/client";
 
 const SOURCE_LABELS: Record<string, string> = {
   STEAM: "Steam",
@@ -26,100 +29,36 @@ function formatReleaseDateFr(iso: string): string {
   }).format(new Date(iso));
 }
 
-export default async function GameDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/");
-
-  const { id } = await params;
-
-  const game = await prisma.game.findUnique({ where: { id } });
-  if (!game) notFound();
-
-  const [{ details, error }, owners, owns] = await Promise.all([
-    getGameDetails(game),
-    prisma.userGame.findMany({
-      where: { gameId: id, owned: true },
-      include: { user: true },
-    }),
-    prisma.userGame.findUnique({
-      where: { userId_gameId: { userId: user.id, gameId: id } },
-    }),
-  ]);
+/**
+ * Tout ce qui dépend de `getGameDetails` (IGDB + traduction DeepL) vit
+ * dans ce composant async séparé, sous `<Suspense>` : la page (cover,
+ * nom, joueurs, actions rapides, qui possède le jeu) s'affiche
+ * immédiatement, et cette section arrive en streaming une fois l'appel
+ * IGDB/DeepL terminé — évite le blanc/l'attente bloquante du premier
+ * chargement (pas encore en cache), avec un skeleton pendant ce temps
+ * plutôt qu'un flash de contenu incomplet. Appelé une seule fois par
+ * rendu de page (jamais dupliqué ailleurs), pour ne jamais déclencher
+ * deux traductions DeepL sur le même chargement.
+ */
+async function GameIgdbSection({ game }: { game: Game }) {
+  const { details, error } = await getGameDetails(game);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <Link
-        href="/bibliotheque"
-        className="text-sm text-muted hover:text-foreground hover:underline"
-      >
-        ← Bibliothèque
-      </Link>
-
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="relative aspect-[2/3] w-40 shrink-0 self-start overflow-hidden rounded-xl bg-surface-hover sm:w-52">
-          {game.coverUrl && (
-            <Image
-              src={game.coverUrl}
-              alt={game.name}
-              fill
-              sizes="(max-width: 640px) 160px, 208px"
-              className="object-cover"
-              priority
-            />
-          )}
+    <>
+      {typeof details?.totalRating === "number" && (
+        <div className="-mt-2">
+          <Badge tone="accent">★ {details.totalRating}/100</Badge>
         </div>
+      )}
 
-        <div className="flex flex-1 flex-col gap-2">
-          <h1 className="text-2xl font-semibold text-foreground sm:text-3xl">
-            {game.name}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>{SOURCE_LABELS[game.source] ?? game.source}</Badge>
-            {typeof details?.totalRating === "number" && (
-              <Badge tone="accent">★ {details.totalRating}/100</Badge>
-            )}
-            {game.isCoop && <Badge tone="accent">Coop</Badge>}
-          </div>
-
-          <p className="text-sm text-muted">
-            {game.minPlayers ?? "?"}–{game.maxPlayers ?? "?"} joueurs
-            {owns && (
-              <span className="ml-2 inline-block align-middle">
-                <EditGameDialog game={game} />
-              </span>
-            )}
-          </p>
-
-          {details && (
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
-              {details.releaseDate && (
-                <span>📅 {formatReleaseDateFr(details.releaseDate)}</span>
-              )}
-              {details.genres.length > 0 && (
-                <span>{details.genres.join(", ")}</span>
-              )}
-            </div>
+      {details && (details.releaseDate || details.genres.length > 0) && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+          {details.releaseDate && (
+            <span>📅 {formatReleaseDateFr(details.releaseDate)}</span>
           )}
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            <ButtonLink href={`/sessions?gameId=${game.id}`} variant="primary">
-              Proposer une soirée avec ce jeu
-            </ButtonLink>
-            {game.igdbId && (
-              <form action={refreshGameDetails}>
-                <input type="hidden" name="gameId" value={game.id} />
-                <Button type="submit" variant="secondary" size="sm">
-                  Rafraîchir les infos
-                </Button>
-              </form>
-            )}
-          </div>
+          {details.genres.length > 0 && <span>{details.genres.join(", ")}</span>}
         </div>
-      </div>
+      )}
 
       {!details && (
         <Card>
@@ -206,6 +145,104 @@ export default async function GameDetailPage({
             )}
           </Card>
         )}
+    </>
+  );
+}
+
+function GameIgdbSectionSkeleton() {
+  return (
+    <Card className="flex flex-col gap-2">
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-2/3" />
+    </Card>
+  );
+}
+
+export default async function GameDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const { id } = await params;
+
+  const game = await prisma.game.findUnique({ where: { id } });
+  if (!game) notFound();
+
+  const [owners, owns] = await Promise.all([
+    prisma.userGame.findMany({
+      where: { gameId: id, owned: true },
+      include: { user: true },
+    }),
+    prisma.userGame.findUnique({
+      where: { userId_gameId: { userId: user.id, gameId: id } },
+    }),
+  ]);
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <Link
+        href="/bibliotheque"
+        className="text-sm text-muted hover:text-foreground hover:underline"
+      >
+        ← Bibliothèque
+      </Link>
+
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="relative aspect-[2/3] w-40 shrink-0 self-start overflow-hidden rounded-xl bg-surface-hover sm:w-52">
+          {game.coverUrl && (
+            <Image
+              src={game.coverUrl}
+              alt={game.name}
+              fill
+              sizes="(max-width: 640px) 160px, 208px"
+              className="object-cover"
+              priority
+            />
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col gap-2">
+          <h1 className="text-2xl font-semibold text-foreground sm:text-3xl">
+            {game.name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{SOURCE_LABELS[game.source] ?? game.source}</Badge>
+            {game.isCoop && <Badge tone="accent">Coop</Badge>}
+          </div>
+
+          <p className="text-sm text-muted">
+            {game.minPlayers ?? "?"}–{game.maxPlayers ?? "?"} joueurs
+            {owns && (
+              <span className="ml-2 inline-block align-middle">
+                <EditGameDialog game={game} />
+              </span>
+            )}
+          </p>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <ButtonLink href={`/sessions?gameId=${game.id}`} variant="primary">
+              Proposer une soirée avec ce jeu
+            </ButtonLink>
+            {game.igdbId && (
+              <form action={refreshGameDetails}>
+                <input type="hidden" name="gameId" value={game.id} />
+                <Button type="submit" variant="secondary" size="sm">
+                  Rafraîchir les infos
+                </Button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <Suspense fallback={<GameIgdbSectionSkeleton />}>
+        <GameIgdbSection game={game} />
+      </Suspense>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-semibold text-foreground">
