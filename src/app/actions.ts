@@ -64,6 +64,65 @@ export async function addManualGame(formData: FormData) {
   redirect("/bibliotheque");
 }
 
+export interface UpdateGameResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Édite un jeu déjà en biblio (isCoop, min/maxPlayers, et le nom si
+ * `source = MANUAL` uniquement — on ne renomme pas un jeu Steam/IGDB dont
+ * le nom vient de la source externe). Invoquée directement depuis un
+ * composant client (pas de `<form action=…>`) : retourne un résultat au
+ * lieu de rediriger, pour piloter le panneau d'édition + le toast sans
+ * navigation.
+ */
+export async function updateGame(formData: FormData): Promise<UpdateGameResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "unauthenticated" };
+
+  const gameId = String(formData.get("gameId") ?? "");
+  if (!gameId) return { ok: false, error: "missing_game" };
+
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game) return { ok: false, error: "not_found" };
+
+  const owns = await prisma.userGame.findUnique({
+    where: { userId_gameId: { userId: user.id, gameId } },
+  });
+  if (!owns) return { ok: false, error: "not_owned" };
+
+  const isCoop = formData.get("isCoop") === "on";
+  const minPlayersRaw = formData.get("minPlayers");
+  const maxPlayersRaw = formData.get("maxPlayers");
+  const minPlayers = minPlayersRaw ? Number(minPlayersRaw) : 2;
+  const maxPlayers = maxPlayersRaw ? Number(maxPlayersRaw) : null;
+
+  const invalidMin =
+    !Number.isFinite(minPlayers) || minPlayers < 1 || minPlayers > 100;
+  const invalidMax =
+    maxPlayers !== null &&
+    (!Number.isFinite(maxPlayers) || maxPlayers < minPlayers);
+  if (invalidMin || invalidMax) {
+    return { ok: false, error: "joueurs_invalide" };
+  }
+
+  let name = game.name;
+  if (game.source === "MANUAL") {
+    const nameRaw = String(formData.get("name") ?? "").trim();
+    if (!nameRaw) return { ok: false, error: "nom_requis" };
+    name = nameRaw;
+  }
+
+  await prisma.game.update({
+    where: { id: gameId },
+    data: { name, isCoop, minPlayers, maxPlayers },
+  });
+
+  revalidatePath("/bibliotheque");
+  return { ok: true };
+}
+
 export async function removeUserGame(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");

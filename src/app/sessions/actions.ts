@@ -10,6 +10,7 @@ import {
   closeSession,
   isVotingOpen,
   markSessionDone,
+  resendSessionAnnouncement,
 } from "@/lib/sessions";
 
 export async function createSession(formData: FormData) {
@@ -104,9 +105,24 @@ export async function closeSessionAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  await closeSession(sessionId);
+  const result = await closeSession(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
+
+  if (result && !result.discord.ok) {
+    redirect(`/sessions/${sessionId}?discord=echec`);
+  }
+}
+
+export async function resendDiscordAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId) return;
+
+  const result = await resendSessionAnnouncement(sessionId);
+  redirect(`/sessions/${sessionId}?discord=${result.ok ? "envoye" : "echec"}`);
 }
 
 export async function cancelSessionAction(formData: FormData) {

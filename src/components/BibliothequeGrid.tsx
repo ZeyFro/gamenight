@@ -7,6 +7,7 @@ import { removeUserGame } from "@/app/actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { EditGameDialog } from "@/components/EditGameDialog";
 
 export interface BibliothequeGame {
   id: string;
@@ -88,17 +89,20 @@ function GameCard({ game }: { game: BibliothequeGame }) {
             className="object-cover"
           />
         )}
-        <form action={removeUserGame} className="absolute top-1.5 right-1.5">
-          <input type="hidden" name="gameId" value={game.id} />
-          <button
-            type="submit"
-            aria-label={`Retirer ${game.name} de ma bibliothèque`}
-            title="Retirer de ma bibliothèque"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
-          >
-            <TrashIcon className="h-5 w-5" />
-          </button>
-        </form>
+        <div className="absolute top-1.5 right-1.5 flex gap-1.5">
+          <EditGameDialog game={game} />
+          <form action={removeUserGame}>
+            <input type="hidden" name="gameId" value={game.id} />
+            <button
+              type="submit"
+              aria-label={`Retirer ${game.name} de ma bibliothèque`}
+              title="Retirer de ma bibliothèque"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
+            >
+              <TrashIcon className="h-5 w-5" />
+            </button>
+          </form>
+        </div>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <p className="text-sm font-medium text-foreground">{game.name}</p>
