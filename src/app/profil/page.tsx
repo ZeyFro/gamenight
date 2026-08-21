@@ -107,12 +107,26 @@ export default async function ProfilPage({
         )}
       </div>
 
-      <Link
-        href="/bibliotheque"
-        className="self-start text-sm font-medium text-zinc-700 hover:underline dark:text-zinc-300"
-      >
-        Voir ma bibliothèque de jeux →
-      </Link>
+      <div className="flex flex-col gap-2">
+        <Link
+          href="/bibliotheque"
+          className="self-start text-sm font-medium text-zinc-700 hover:underline dark:text-zinc-300"
+        >
+          Voir ma bibliothèque de jeux →
+        </Link>
+        <Link
+          href="/disponibilites"
+          className="self-start text-sm font-medium text-zinc-700 hover:underline dark:text-zinc-300"
+        >
+          Régler mes disponibilités →
+        </Link>
+        <Link
+          href="/sessions"
+          className="self-start text-sm font-medium text-zinc-700 hover:underline dark:text-zinc-300"
+        >
+          Voir les soirées →
+        </Link>
+      </div>
     </div>
   );
 }
