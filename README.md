@@ -392,9 +392,10 @@ composant, même validations, pas de duplication.
   déclenche automatiquement **à la lecture** (chargement de `/sessions` ou
   `/sessions/[id]`) dès que la deadline de vote — ou, à défaut pour les
   sessions créées avant son ajout, l'heure de la session — est passée ; pas
-  de Vercel Cron ici (F7 uniquement), donc pas de clôture qui se déclenche
-  vraiment "toute seule" en arrière-plan si personne ne consulte la page,
-  mais c'est transparent dès qu'un membre du groupe rouvre l'app.
+  de cron ici (F7 utilise un cron externe, voir plus bas — pas Vercel
+  Cron), donc pas de clôture qui se déclenche vraiment "toute seule" en
+  arrière-plan si personne ne consulte la page, mais c'est transparent dès
+  qu'un membre du groupe rouvre l'app.
 - **Un seul jeu gagnant par soirée — choix assumé** : à la clôture, le jeu
   retenu (`Session.decidedGameId`) est la proposition la plus votée (égalité
   → la plus ancienne proposition). C'est cohérent avec le schéma indicatif
@@ -501,6 +502,136 @@ reposte le même embed — pratique si le webhook a échoué la première fois
 (ou si le message a été supprimé côté Discord). Un bandeau confirme
 l'envoi ou l'échec, même mécanisme que la clôture manuelle.
 
+## Rappels drôles avant session (F7)
+
+Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
+et **2h** avant l'heure d'une soirée déjà planifiée (`Session.status =
+SCHEDULED`, jeu décidé).
+
+### Déclenchement : cron externe toutes les 15 min (pas Vercel Cron)
+
+**Le plan Vercel Hobby n'autorise pas un cron toutes les 15 minutes** —
+la fréquence minimale imposée est d'une exécution par jour (voir la
+[doc officielle Vercel](https://vercel.com/docs/cron-jobs/usage-and-pricing)).
+Un `vercel.json` déclarant `*/15 * * * *` fait donc **échouer le build**
+au déploiement. F7 a besoin d'une vraie granularité de 15 min pour que les
+fenêtres 24h/2h se déclenchent à temps (voir plus bas pourquoi), donc pas
+de solution de repli côté Vercel Cron sans dégrader la fonctionnalité —
+la route est appelée par un **cron externe** à la place (ex.
+[cron-job.org](https://cron-job.org), gratuit, ou tout autre service de
+cron HTTP équivalent — GitHub Actions `schedule`, EasyCron, etc.).
+
+1. Créer un cron job pointant vers `https://ton-projet.vercel.app/api/cron/reminders`.
+2. Fréquence recommandée : **toutes les 15 minutes** (`*/15 * * * *`) —
+   c'est le pas de temps qui garantit qu'aucune fenêtre 24h/2h n'est
+   "sautée" : la route calcule à chaque appel le temps restant avant
+   chaque session et déclenche un rappel dès que le seuil est franchi et
+   pas déjà envoyé (anti-doublon via `Session.remindersSent`) ; un
+   intervalle plus large risquerait de rater la fenêtre 2h pour une
+   session créée tardivement, un intervalle plus petit n'apporte rien vu
+   la granularité des fenêtres elles-mêmes.
+3. Méthode `GET`, en-tête `Authorization: Bearer <CRON_SECRET>` si la
+   variable est configurée (fortement recommandé en prod — voir
+   ci-dessous). Exemple d'appel :
+
+   ```bash
+   curl -X GET "https://ton-projet.vercel.app/api/cron/reminders" \
+     -H "Authorization: Bearer $CRON_SECRET"
+   ```
+
+   La plupart des services de cron HTTP (dont cron-job.org) permettent de
+   configurer un en-tête personnalisé sur la requête programmée — c'est
+   là qu'ajouter `Authorization: Bearer <CRON_SECRET>`.
+
+À chaque appel, la route (`src/app/api/cron/reminders/route.ts`) parcourt
+les sessions `SCHEDULED` à jeu décidé et à venir, calcule le nombre
+d'heures avant le début, et envoie le rappel **24h** et/ou **2h** dès que
+le seuil est franchi *et* que la fenêtre n'a pas déjà été envoyée
+(`Session.remindersSent`, tableau JSON du type `["24h"]` — évite les
+doublons si le cron retombe plusieurs fois dans la même fenêtre, y
+compris si le service externe déclenche un appel en double). Une session
+créée très en retard (moins de 2h avant l'heure) peut recevoir les deux
+rappels **dans le même appel** — les deux fenêtres sont vérifiées
+indépendamment, pas de fenêtre "manquée" faute d'avoir été créée à temps.
+Pas de rappel à 15 min avant la session elle-même (décidé volontairement,
+cf. demande initiale — à ne pas confondre avec le pas de 15 min du cron).
+
+**Sécurité optionnelle** : si `CRON_SECRET` est configurée (variable
+d'env), la route exige l'en-tête `Authorization: Bearer <CRON_SECRET>` —
+à renseigner manuellement dans la config du cron externe (contrairement à
+Vercel Cron, un service tiers ne le fait pas tout seul). Sans
+`CRON_SECRET` configurée, la route reste appelable par n'importe qui
+connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
+`CRON_SECRET` est recommandée dès que l'URL est publique.
+
+### Contenu du rappel
+
+- **Message** : celui perso de la session (`Session.customReminderMessage`,
+  champ optionnel du formulaire de création dans `/sessions`) s'il est
+  renseigné ; sinon un **tirage aléatoire** parmi les `ReminderTemplate`
+  actifs.
+- **Variables supportées** : `{pote}` (mentions `<@discordId>` des
+  joueurs qui ont voté pour le jeu gagnant, hors utilisateurs en
+  silence), `{jeu}` (nom du jeu décidé), `{heure}` (format `HH:mm`).
+- **Embed volontairement plus petit que F6** : juste titre (« ⏰ Rappel —
+  dans 24h/2h ! »), le message tiré/perso en description, et un champ
+  « Heure ». Pas de miniature, pas de liste détaillée des joueurs — pensé
+  pour rester punchy, contrairement à l'embed de résultat (F6) qui est le
+  message "officiel" de la soirée.
+- **Ping réel = `content` brut, pas juste l'embed** (même détail
+  technique que F6) : les mentions sont mises à la fois dans le `content`
+  du webhook (seul canal qui déclenche une vraie notification push
+  Discord) et implicitement dans le message via `{pote}` si le template
+  les utilise.
+- **Toggle silence par utilisateur** (`User.silenceReminders`, bouton
+  « 🔕 Couper les rappels » sur `/profil`) : un utilisateur en silence
+  n'est **jamais mentionné** (ni dans `{pote}`, ni dans le `content` du
+  webhook) — mais le message est **quand même posté** dans le salon, il
+  n'est simplement pas notifié personnellement.
+
+### Interface d'admin des messages (`/admin/rappels`)
+
+Accessible à tout utilisateur connecté (pas de rôle admin dédié dans ce
+MVP, conformément à la demande). Ajouter/modifier le texte
+inline/supprimer/désactiver-réactiver chaque message. `active = false`
+est un fusible : le message reste en base (avec qui l'a créé) mais sort
+du tirage aléatoire sans être perdu.
+
+### Seed des 9 messages initiaux
+
+```bash
+npm run seed
+```
+
+Lance `prisma/seed.mjs` (script Node/ESM autonome, pas de dépendance
+`ts-node`/`tsx` ajoutée juste pour ça). Idempotent : ne fait rien si des
+`ReminderTemplate` existent déjà en base. Les messages sont attribués au
+compte `User` le plus ancien (`createdAt` le plus bas) — connecte-toi au
+moins une fois via Discord avant de lancer le seed.
+
+### Comment tester sans attendre 24h
+
+Crée une soirée depuis `/sessions` en choisissant **« Choisir une
+date/heure précise à la place »** pour viser une heure ~2h30 dans le
+futur, fais-la passer en `SCHEDULED` (clôture le vote avec un jeu
+jouable), puis déclenche le cron manuellement : `GET
+/api/cron/reminders` (en local, `curl http://localhost:3000/api/cron/reminders` —
+ajoute l'en-tête `Authorization: Bearer <CRON_SECRET>` si tu l'as
+configurée). La fenêtre 2h sera due immédiatement ; retente 15-20 min
+plus tard une fois la session à moins de 2h pour voir la vraie temporalité,
+ou ajuste directement `Session.date` en base pour un test instantané.
+
+### Dégradation propre si le cron externe n'est pas configuré
+
+Cette route n'est **jamais appelée toute seule** — c'est le cron externe
+(cron-job.org ou équivalent) qui la déclenche, pas l'app elle-même. Sans
+cron configuré (pas encore mis en place, service en panne, mauvaise URL) :
+personne n'appelle jamais `/api/cron/reminders`, donc **aucun rappel ne
+part**, mais rien d'autre dans l'app n'est affecté — la création de
+session, le vote, la clôture et l'annonce Discord (F6) fonctionnent
+normalement. On peut aussi déclencher la route manuellement à tout moment
+(voir ci-dessus) pour vérifier qu'elle répond, indépendamment du cron.
+
 ## 5. Déploiement Vercel
 
 1. Importer le repo sur [vercel.com](https://vercel.com), renseigner les
@@ -521,6 +652,16 @@ l'envoi ou l'échec, même mécanisme que la clôture manuelle.
    Si `DATABASE_URL` est injoignable ou mal configurée, le build échoue
    (volontairement, plutôt que de déployer une app qui pointerait vers une
    base sans les bonnes tables).
+5. **Rappels (F7)** : pas de Vercel Cron — le plan Hobby n'autorise pas
+   une fréquence de 15 min (minimum imposé : 1 exécution/jour, voir « Rappels
+   drôles avant session » ci-dessus). Configure plutôt un cron externe
+   (ex. [cron-job.org](https://cron-job.org)) pointant vers
+   `https://ton-projet.vercel.app/api/cron/reminders` toutes les 15 min,
+   avec l'en-tête `Authorization: Bearer <CRON_SECRET>` si tu as défini
+   `CRON_SECRET` dans les variables d'environnement du projet (recommandé,
+   l'URL étant publique). Une fois déployé, lance `npm run seed` une fois
+   (en local, pointé sur `DATABASE_URL` de prod, ou via `vercel env pull`)
+   pour peupler les 9 messages de rappel initiaux.
 
 ## Dépannage
 
@@ -560,6 +701,7 @@ l'envoi ou l'échec, même mécanisme que la clôture manuelle.
 | `npm run build` | Build de production |
 | `npm run start` | Démarre le build de production |
 | `npm run lint` | Lint ESLint |
+| `npm run seed` | Seed des 9 messages de rappel initiaux (F7, idempotent) |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -580,6 +722,8 @@ src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable", a
 src/lib/session-status.ts   # Libellés/couleurs des statuts de session
 src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non configuré)
 src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
+src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtres 24h/2h)
+prisma/seed.mjs             # Seed des 9 messages de rappel initiaux (npm run seed)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -593,7 +737,11 @@ src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale s
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
-src/app/profil/page.tsx     # Profil + lien Steam
+src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
+src/app/profil/actions.ts   # Server action toggle silence rappels
+src/app/admin/rappels/page.tsx    # CRUD des messages de rappel (F7)
+src/app/admin/rappels/actions.ts  # Server actions messages de rappel
+src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)

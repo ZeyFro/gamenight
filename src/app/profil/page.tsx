@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
+import { toggleSilenceReminders } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -102,6 +103,27 @@ export default async function ProfilPage({
                 </ButtonLink>
               </>
             )}
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="flex flex-col gap-4">
+            <h2 className="font-semibold text-foreground">Rappels Discord</h2>
+            <p className="text-sm text-muted">
+              {user.silenceReminders
+                ? "Tu n'es plus mentionné dans les rappels de soirée (le message reste posté dans le salon)."
+                : "Tu es mentionné dans les rappels de soirée avant chaque session."}
+            </p>
+            <form action={toggleSilenceReminders}>
+              <Button type="submit" variant="secondary" fullWidthOnMobile>
+                {user.silenceReminders
+                  ? "🔔 Réactiver les rappels"
+                  : "🔕 Couper les rappels"}
+              </Button>
+            </form>
+            <ButtonLink href="/admin/rappels" variant="ghost" size="sm">
+              Gérer les messages de rappel →
+            </ButtonLink>
           </Card>
         </StaggerItem>
       </Stagger>
