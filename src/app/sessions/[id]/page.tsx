@@ -39,14 +39,15 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord } = await searchParams;
+  const { discord, deadline } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
+  const deadlineAdjusted = deadline === "ajustee";
 
   await closeSessionIfDue(id);
 
@@ -102,6 +103,16 @@ export default async function SessionDetailPage({
           <VotingCountdown deadline={votingClosesAt(session).toISOString()} />
         )}
       </div>
+
+      {deadlineAdjusted && (
+        <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
+          L&apos;heure limite de vote que tu avais choisie était déjà
+          passée (ou trop proche de l&apos;heure de la session) — elle a
+          été automatiquement décalée à{" "}
+          <strong>{formatDateTimeFr(votingClosesAt(session))}</strong> pour
+          laisser un minimum de temps pour voter.
+        </p>
+      )}
 
       {discordMessage && (
         <p

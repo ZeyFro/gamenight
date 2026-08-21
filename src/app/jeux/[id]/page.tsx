@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
+import { GameDescription } from "@/components/GameDescription";
 import { refreshGameDetails } from "../actions";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -133,9 +134,7 @@ export default async function GameDetailPage({
       {details?.summary && (
         <Card>
           <h2 className="mb-2 font-semibold text-foreground">Description</h2>
-          <p className="text-sm whitespace-pre-line text-muted">
-            {details.summary}
-          </p>
+          <GameDescription fr={details.descriptionFr} original={details.summary} />
         </Card>
       )}
 
