@@ -56,15 +56,25 @@ const FALLBACKS: Record<MessageCategory, string> = {
   REMINDER_2H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
 };
 
-/** Remplace chaque `{clé}` de `vars` dans `template` (substitution simple, pas d'échappement). */
+/**
+ * Remplace chaque `{clé}` de `vars` dans `template` (substitution simple,
+ * pas d'échappement). Toute variable restante après ça — typiquement
+ * `{jeu}` utilisée par erreur dans un message `SESSION_MODIFIED`, qui n'a
+ * pas cette variable — est retirée silencieusement plutôt que laissée
+ * littéralement dans le message envoyé (bug corrigé : `/admin/messages` ne
+ * bloque pas la sauvegarde d'un message avec une variable hors catégorie,
+ * cf. validation côté admin ; ce filet de sécurité runtime garantit qu'un
+ * tel message reste quand même présentable une fois posté dans Discord).
+ */
 export function substituteVariables(
   template: string,
   vars: MessageVariables
 ): string {
-  return Object.entries(vars).reduce(
+  const substituted = Object.entries(vars).reduce(
     (text, [key, value]) => text.replaceAll(`{${key}}`, value),
     template
   );
+  return substituted.replace(/\{[a-zA-Z0-9_]+\}/g, "");
 }
 
 /**

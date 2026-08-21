@@ -91,6 +91,7 @@ export default async function PoteLibraryPage({
         <ReadOnlyGameGrid
           games={games}
           emptyMessage={`${pote.discordName} n'a pas encore de jeu dans sa bibliothèque.`}
+          showAddButton
         />
       </section>
     </div>

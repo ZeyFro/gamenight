@@ -910,7 +910,9 @@ Quatre ajustements ponctuels, groupés dans la même PR que l'édition de
 session ci-dessus.
 
 - **Bibliothèque : bouton « + » par carte, pas un bouton flottant.**
-  Ajouté à côté du stylo et de la corbeille sur chaque `GameCard`
+  *(Corrigé en PR 19, voir section dédiée plus bas : ce bouton n'a de sens
+  que sur la biblio d'un pote — pas sur la sienne, où le jeu est déjà
+  possédé.)* Ajouté à côté du stylo et de la corbeille sur chaque `GameCard`
   (`BibliothequeGrid.tsx`), il ouvre `/bibliotheque/ajouter?name=<nom du
   jeu>` — le formulaire d'ajout manuel préremplit son champ nom avec cette
   valeur (`AjouterJeuForm` accepte maintenant un `initialName`), utile
@@ -955,6 +957,43 @@ session ci-dessus.
   dans un `<a>` est invalide en HTML et aurait fait naviguer au clic sur
   le bouton). Résout proprement l'exigence "clic sur le jeu → fiche, mais
   Voter/Retirer ne doivent pas déclencher la navigation".
+
+## Fixes préliminaires (PR 19)
+
+Deux corrections livrées en amont du chantier XP/niveaux/rangs (voir plus
+bas) — sans lien direct avec lui, mais regroupées dans la même première
+PR de ce chantier plutôt que traitées à part.
+
+- **FIX 1 — bouton « + » retiré de sa propre bibliothèque.** Le bouton
+  ajouté en PR 18 sur `/bibliotheque` n'avait pas de sens : le jeu y est
+  déjà possédé. Retiré de `BibliothequeGrid.tsx`. `ReadOnlyGameGrid.tsx`
+  (composant partagé par `/potes/[id]` **et** `/bibliotheque/groupe`)
+  gagne un prop `showAddButton` opt-in, activé uniquement depuis
+  `/potes/[id]` — c'est le seul contexte où « ce pote a ce jeu, je veux
+  l'ajouter à la mienne » a un sens univoque (sur la biblio de groupe, un
+  jeu a souvent plusieurs possesseurs, dont potentiellement soi-même déjà).
+  Le clic ouvre toujours `/bibliotheque/ajouter?name=<nom>` prérempli,
+  comme avant. Au passage, la carte est restructurée (le lien vers
+  `/jeux/[id]` ne couvre plus que cover + infos, le bouton « + » devient un
+  élément frère positionné en absolu) pour éviter d'imbriquer un lien
+  interactif dans un autre — même raison que les cartes de proposition en
+  PR 18.
+- **FIX 2 — variables Discord inconnues.** Un message `SESSION_MODIFIED`
+  contenant `{jeu}`/`{pote}` (variables qui n'existent que pour les
+  rappels F7, cf. `CATEGORY_VARIABLES`) partait tel quel dans Discord avec
+  le texte `{jeu}` littéral, faute de variable à substituer.
+  - **Runtime** (`substituteVariables`, `src/lib/message-templates.ts`) :
+    après substitution des variables connues, toute `{variable}` restante
+    est retirée silencieusement (regex) — filet de sécurité qui s'applique
+    même à un message déjà mal configuré avant ce fix.
+  - **Admin** (`MessageTemplateForm.tsx`, nouveau composant client qui
+    remplace les `<form>` inline de `/admin/messages` — nécessaire pour
+    porter de l'état réactif là où il n'y en avait pas) : bandeau rouge
+    live sous le texte si une variable utilisée n'est fournie par aucune
+    des catégories cochées, **sans bloquer la sauvegarde** (l'utilisateur
+    peut choisir d'ignorer, comme demandé). Bonus : taper `{` propose une
+    autocomplétion des variables disponibles pour les catégories cochées
+    (liste filtrée en live, insertion au curseur).
 
 ## Rappels drôles avant session (F7)
 
@@ -1179,6 +1218,7 @@ src/components/DeleteSessionDialog.tsx  # Confirmation de suppression d'une sess
 src/components/EditSessionDialog.tsx    # Modal d'édition date/heure/deadline d'une session (créateur only)
 src/components/WithdrawProposalDialog.tsx # Confirmation de retrait de sa propre proposition
 src/components/ProposeGameForm.tsx      # Combobox recherche pour "Proposer un jeu" (remplace le <select>)
+src/components/MessageTemplateForm.tsx  # Form message Discord : validation variables inconnues + autocomplétion "{"
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
