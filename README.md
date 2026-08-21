@@ -8,7 +8,8 @@ Voir [`SPEC-gamenight.md`](./SPEC-gamenight.md) pour le cahier des charges
 complet.
 
 **État actuel : F1 (Auth Discord) + F2/F3 (lien Steam, biblio, ajout manuel,
-enrichissement IGDB).** Les autres features (dispos, vote, rappels,
+enrichissement IGDB) + F4/F5 (dispos récurrentes + exceptions, proposition
+et vote de soirée).** Les autres features (notification Discord, rappels,
 présence) arrivent dans les prochaines étapes.
 
 ## Stack
@@ -125,6 +126,76 @@ permet d'en ajouter/retirer.
   (`src/lib/igdb.ts`) entre les appels, régénéré uniquement à expiration —
   pas d'appel `id.twitch.tv` à chaque recherche.
 
+## Disponibilités & exceptions (F4)
+
+- `/disponibilites` : un éditeur par jour de la semaine (`WeeklyAvailability`,
+  `dayOfWeek` 0-6 selon la convention JS `Date.getUTCDay()` — 0 = dimanche).
+  Chaque jour accepte 0, 1 ou plusieurs créneaux (`startTime`/`endTime` au
+  format `HH:mm`), ajoutés/retirés indépendamment. Le bouton « Dispo en
+  soirée (20h–00h) en un clic » couvre le cas « je coche dispo mardi soir
+  sans horaire précis » demandé au §6 : il ajoute directement un créneau
+  20h–00h par défaut, sans étape de saisie manuelle.
+- Un créneau dont `endTime <= startTime` (ex. 21:00–00:00) est traité comme
+  traversant minuit (`src/lib/availability.ts`).
+- **Exceptions ponctuelles** (`AvailabilityOverride`, une par date et par
+  utilisateur) : indisponibilité ou disponibilité exceptionnelle sur une
+  date précise, avec horaire optionnel (vide = toute la journée). Une
+  exception prime toujours sur le planning hebdo ce jour-là.
+- **Aucune gestion de fuseau horaire réelle** : les dates/heures saisies
+  sont stockées et relues telles quelles (convention détaillée en tête de
+  `src/lib/wallclock.ts`), en supposant que tout le groupe est dans le même
+  fuseau — pragmatique pour une soirée entre potes, mais à revoir avec une
+  vraie lib de fuseaux si le groupe se disperse géographiquement (même sujet
+  pour les rappels F7).
+
+## Proposition & vote de soirée (F5)
+
+- `/sessions` : liste des soirées (à venir puis historique), + formulaire de
+  création (date + heure). `/sessions/[id]` : détail d'une soirée — proposer
+  un jeu, voter, et clôturer.
+- **Catalogue de proposition** : n'importe quel jeu que **quelqu'un dans le
+  groupe possède** (pas seulement la biblio du proposeur) est proposable —
+  c'est utile pour suggérer un jeu qu'un pote a et que le groupe pourrait
+  jouer ensemble. Un même jeu ne peut être proposé qu'une fois par soirée
+  (contrainte `@@unique([sessionId, gameId])`), pour ne pas fragmenter les
+  votes entre deux propositions identiques.
+- **Calcul « jouable »** (`src/lib/sessions.ts` → `getProposalAvailability`) :
+  pour chaque jeu proposé, parmi les utilisateurs qui le possèdent
+  (`UserGame.owned=true`), on ne garde que ceux dispos à la date/heure de la
+  session (croisement `WeeklyAvailability` + `AvailabilityOverride`) ; le
+  badge est **JOUABLE** (vert) si ce nombre est compris entre `minPlayers`
+  et `maxPlayers` du jeu, sinon **PAS ASSEZ DE JOUEURS** (gris) — avec le
+  décompte et la liste nominative affichés dans les deux cas pour que le
+  badge reste compréhensible même quand la raison est « trop de monde »
+  plutôt que « pas assez ».
+- **Vote** : un utilisateur peut voter pour autant de propositions qu'il
+  veut (`Vote` unique par `(proposalId, userId)`) ; revoter annule le vote
+  (toggle). Le badge JOUABLE est purement informatif — il n'empêche pas de
+  voter pour un jeu qui l'est pas, les votes des potes restent souverains.
+- **Clôture — choix assumé (créateur manuel + auto paresseuse, les deux)** :
+  n'importe quel utilisateur connecté peut cliquer « Clôturer le vote
+  maintenant » à tout moment (le schéma §5 ne définit pas de notion de
+  « créateur » de session, donc pas de restriction de propriétaire — cohérent
+  avec le reste de l'app, pensée pour un petit groupe de confiance). Sans
+  action manuelle, la clôture se déclenche automatiquement **à la lecture**
+  (chargement de `/sessions` ou `/sessions/[id]`) dès que l'heure de la
+  session est passée — pas de Vercel Cron ici (F7 uniquement), donc pas de
+  clôture qui se déclenche vraiment "toute seule" en arrière-plan si
+  personne ne consulte la page, mais c'est transparent dès qu'un membre du
+  groupe rouvre l'app.
+- **Un seul jeu gagnant par soirée — choix assumé** : à la clôture, le jeu
+  retenu (`Session.decidedGameId`) est la proposition la plus votée (égalité
+  → la plus ancienne proposition). C'est cohérent avec le schéma indicatif
+  du §5 (`decidedGameId` est un champ unique, pas une liste) et avec le
+  roadmap v2 du §7, qui traite explicitement la « file de jeux co-op »
+  (plusieurs jeux à enchaîner) comme un sujet séparé, pas prévu en v1. Sans
+  proposition à l'heure de la clôture, la session est automatiquement
+  annulée (`CANCELLED`) plutôt que planifiée sans jeu.
+- Cycle de vie complet : `VOTING → SCHEDULED` (clôture avec gagnant) ou
+  `VOTING → CANCELLED` (clôture sans proposition, ou annulation manuelle) ;
+  `SCHEDULED → DONE` (bouton « Marquer comme terminée », pratique après coup)
+  ou `SCHEDULED → CANCELLED` (plans annulés).
+
 ## 5. Déploiement Vercel
 
 1. Importer le repo sur [vercel.com](https://vercel.com), renseigner les
@@ -180,17 +251,26 @@ permet d'en ajouter/retirer.
 ## Structure du projet
 
 ```
-prisma/schema.prisma        # Schéma de données (User, Game, UserGame)
+prisma/schema.prisma        # Schéma de données complet (§5)
 src/auth.ts                 # Config Auth.js (provider Discord, callbacks)
 src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
 src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
 src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche jeux)
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
-src/app/actions.ts          # Server actions (ajout/retrait jeu, réimport Steam)
+src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
+src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
+src/lib/sessions.ts         # Clôture de session, calcul "jouable" par jeu
+src/lib/session-status.ts   # Libellés/couleurs des statuts de session
+src/app/actions.ts          # Server actions bibliothèque (ajout/retrait, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
+src/app/disponibilites/page.tsx         # Planning hebdo + exceptions
+src/app/disponibilites/actions.ts       # Server actions dispos
+src/app/sessions/page.tsx               # Liste des soirées + création
+src/app/sessions/[id]/page.tsx          # Détail : proposer, voter, clôturer
+src/app/sessions/actions.ts             # Server actions soirées
 src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
 src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
 src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe

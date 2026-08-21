@@ -2,7 +2,9 @@
 // Voir SPEC-gamenight.md §5 pour le modèle de données complet.
 // F1 (Auth Discord) : User.
 // F2/F3 (lien Steam, biblio, ajout manuel, enrichissement IGDB) : Game, UserGame.
-// Les autres modèles seront ajoutés au fil des features F4 à F8.
+// F4 (dispos récurrentes + exceptions) : WeeklyAvailability, AvailabilityOverride.
+// F5 (proposition + vote de soirée) : Session, Proposal, Vote.
+// Les autres modèles seront ajoutés au fil des features F6 à F8.
 
 generator client {
   provider = "prisma-client-js"
@@ -24,6 +26,11 @@ model User {
 
   addedGames Game[]     @relation("GameAddedBy")
   userGames  UserGame[]
+
+  weeklyAvailability    WeeklyAvailability[]
+  availabilityOverrides AvailabilityOverride[]
+  proposals             Proposal[]
+  votes                 Vote[]
 }
 
 enum GameSource {
@@ -48,6 +55,9 @@ model Game {
   addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
   userGames UserGame[]
 
+  proposals       Proposal[]
+  decidedSessions Session[]
+
   @@unique([steamAppId])
   @@unique([igdbId])
 }
@@ -61,4 +71,88 @@ model UserGame {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@id([userId, gameId])
+}
+
+// Dispo récurrente par défaut : un ou plusieurs créneaux par jour de la
+// semaine. `dayOfWeek` suit la convention JS `Date.getUTCDay()` (0 =
+// dimanche … 6 = samedi) pour rester directement comparable à la date
+// d'une Session. `startTime`/`endTime` au format "HH:mm" ; un créneau dont
+// `endTime` "traverse minuit" (ex. 21:00–00:00) est géré côté application.
+model WeeklyAvailability {
+  id        String @id @default(cuid())
+  userId    String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Exception ponctuelle sur une date précise : indisponibilité
+// exceptionnelle (`available = false`) ou disponibilité exceptionnelle
+// (`available = true`), qui prime sur `WeeklyAvailability` ce jour-là.
+// `startTime`/`endTime` optionnels : absents = toute la journée.
+model AvailabilityOverride {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  available Boolean
+  startTime String?
+  endTime   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+enum SessionStatus {
+  VOTING
+  SCHEDULED
+  DONE
+  CANCELLED
+}
+
+// Une soirée. `date` porte la date ET l'heure visée (choisies à la
+// création) ; `decidedTime` est renseigné à la clôture (copie de `date`
+// pour l'instant — champ distinct pour une éventuelle renégociation future
+// de l'heure). Un seul jeu gagnant par soirée (`decidedGameId`), cf. §7 —
+// la file de jeux multiples est un sujet v2 dédié.
+model Session {
+  id            String        @id @default(cuid())
+  date          DateTime
+  status        SessionStatus @default(VOTING)
+  decidedGameId String?
+  decidedTime   DateTime?
+  createdAt     DateTime      @default(now())
+
+  decidedGame Game?      @relation(fields: [decidedGameId], references: [id])
+  proposals   Proposal[]
+}
+
+model Proposal {
+  id           String   @id @default(cuid())
+  sessionId    String
+  gameId       String
+  proposedById String
+  createdAt    DateTime @default(now())
+
+  session    Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  game       Game    @relation(fields: [gameId], references: [id])
+  proposedBy User    @relation(fields: [proposedById], references: [id])
+  votes      Vote[]
+
+  @@unique([sessionId, gameId])
+}
+
+model Vote {
+  id         String @id @default(cuid())
+  proposalId String
+  userId     String
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, userId])
 }

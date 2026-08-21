@@ -51,7 +51,7 @@ export default async function Home({
               Connecté en tant que{" "}
               <span className="font-semibold">{session.user.name}</span>
             </p>
-            <div className="flex w-full flex-col gap-3 text-base font-medium sm:w-auto sm:flex-row sm:text-sm">
+            <div className="grid w-full grid-cols-2 gap-3 text-base font-medium sm:text-sm">
               <Link
                 href="/profil"
                 className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
@@ -63,6 +63,18 @@ export default async function Home({
                 className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
               >
                 Ma bibliothèque
+              </Link>
+              <Link
+                href="/disponibilites"
+                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                Mes dispos
+              </Link>
+              <Link
+                href="/sessions"
+                className="rounded-full border border-zinc-300 px-4 py-3 text-center text-zinc-800 transition-colors hover:bg-zinc-100 sm:py-2 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                Soirées
               </Link>
             </div>
             <form
