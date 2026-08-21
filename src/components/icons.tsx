@@ -55,3 +55,14 @@ export function UserIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function UsersIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20a6 6 0 0 1 12 0" />
+      <path d="M15.5 5.5a3 3 0 0 1 0 5.8" />
+      <path d="M15 14.2a5.6 5.6 0 0 1 6 5.8" />
+    </Icon>
+  );
+}

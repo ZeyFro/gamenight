@@ -237,6 +237,28 @@ permet d'en ajouter/retirer.
   directement depuis le composant client et renvoie un résultat plutôt
   que de rediriger).
 
+## Bibliothèque des potes
+
+Deux façons de voir les jeux du groupe, en plus de sa propre biblio :
+
+- **`/potes`** : une carte par membre du groupe (hors soi-même) — avatar
+  Discord, pseudo, nombre de jeux possédés, et badge « Steam lié » /
+  « Steam non lié ». Clic sur une carte → **`/potes/[id]`**, la biblio de ce
+  pote en **lecture seule** (pas de bouton retirer/éditer — c'est le même
+  composant de grille que la biblio perso mais sans les actions,
+  `ReadOnlyGameGrid.tsx`).
+- **`/bibliotheque/groupe`** : tous les jeux possédés par au moins un
+  membre du groupe, avec les avatars des possesseurs empilés en bas de
+  chaque cover. Trié par **nombre de possesseurs décroissant** par défaut
+  (option `sortByOwners` de `ReadOnlyGameGrid`), avec le même champ de
+  filtre par nom que la biblio perso. Un onglet `LibraryTabs.tsx`
+  (« Ma bibliothèque » / « Groupe ») bascule entre les deux, affiché en
+  haut de `/bibliotheque` et `/bibliotheque/groupe`.
+
+Pas de nouveau modèle Prisma : ces deux vues ne font que ré-agréger
+`User`/`Game`/`UserGame` existants (jointures en lecture seule, aucune
+donnée dupliquée).
+
 ## Disponibilités & exceptions (F4)
 
 - `/disponibilites` : un éditeur par jour de la semaine (`WeeklyAvailability`,
@@ -495,11 +517,17 @@ src/components/ActionForm.tsx           # Wrapper server action + toast (non red
 src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur animé)
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
 src/components/EditGameDialog.tsx       # Panneau modal d'édition d'un jeu (Radix Dialog)
+src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
+src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe"
+src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale si pas d'avatar Discord)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam
-src/app/bibliotheque/page.tsx           # Liste des jeux possédés
+src/app/potes/page.tsx                  # Liste des potes du groupe
+src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
+src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
+src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
 src/app/disponibilites/page.tsx         # Planning hebdo + exceptions
 src/app/disponibilites/actions.ts       # Server actions dispos
