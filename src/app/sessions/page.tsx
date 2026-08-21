@@ -177,6 +177,19 @@ export default async function SessionsPage({
             </div>
           </details>
 
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted" htmlFor="custom-reminder">
+              Message de rappel perso (optionnel)
+            </label>
+            <textarea
+              id="custom-reminder"
+              name="customReminderMessage"
+              rows={2}
+              placeholder="Remplace le tirage aléatoire — variables : {pote} {jeu} {heure}"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+            />
+          </div>
+
           <Button type="submit" variant="primary" fullWidthOnMobile>
             Créer la soirée
           </Button>

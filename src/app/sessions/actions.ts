@@ -38,8 +38,11 @@ export async function createSession(formData: FormData) {
     redirect("/sessions?error=deadline_apres_session");
   }
 
+  const customReminderMessage =
+    String(formData.get("customReminderMessage") ?? "").trim() || null;
+
   const session = await prisma.session.create({
-    data: { date, votingDeadline },
+    data: { date, votingDeadline, customReminderMessage },
   });
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce

@@ -16,13 +16,17 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  discordId     String   @unique
-  discordName   String
-  discordAvatar String?
-  steamId64     String?  @unique
-  steamPublic   Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  id               String   @id @default(cuid())
+  discordId        String   @unique
+  discordName      String
+  discordAvatar    String?
+  steamId64        String?  @unique
+  steamPublic      Boolean  @default(false)
+  // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
+  // utilisateur — le message est quand même posté dans le salon, il n'est
+  // simplement pas mentionné.
+  silenceReminders Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   addedGames Game[]     @relation("GameAddedBy")
   userGames  UserGame[]
@@ -31,6 +35,7 @@ model User {
   availabilityOverrides AvailabilityOverride[]
   proposals             Proposal[]
   votes                 Vote[]
+  reminderTemplates     ReminderTemplate[]
 }
 
 enum GameSource {
@@ -141,6 +146,17 @@ model Session {
   decidedTime    DateTime?
   createdAt      DateTime      @default(now())
 
+  // F7 : message de rappel perso, saisi à la création de la session. S'il
+  // est renseigné, il remplace le tirage aléatoire dans ReminderTemplate
+  // pour les deux rappels (24h et 2h) de cette session.
+  customReminderMessage String?
+  // F7 : fenêtres de rappel déjà envoyées pour cette session, ex. `["24h"]`
+  // — évite les doublons si le cron retombe plusieurs fois sur la même
+  // fenêtre. Tableau JSON plutôt que deux booléens dédiés : les fenêtres
+  // sont un détail d'implémentation (cf. WINDOW_HOURS dans
+  // src/lib/discord-reminder.ts), pas une invariante du modèle.
+  remindersSent  Json          @default("[]")
+
   decidedGame Game?      @relation(fields: [decidedGameId], references: [id])
   proposals   Proposal[]
 }
@@ -169,4 +185,20 @@ model Vote {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([proposalId, userId])
+}
+
+// F7 : messages de rappel drôles, tirés au hasard pour les rappels
+// automatiques avant session. Gérés depuis /admin/rappels — "admin" au
+// sens large, tout utilisateur connecté peut ajouter/modifier/désactiver
+// (pas de rôle admin dédié dans ce MVP, cf. spec). `active = false` est un
+// fusible pratique pour désactiver un message sans perdre l'historique
+// (qui l'a créé) en le supprimant.
+model ReminderTemplate {
+  id          String   @id @default(cuid())
+  text        String
+  active      Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id])
 }
