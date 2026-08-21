@@ -645,6 +645,137 @@ reposte le même embed — pratique si le webhook a échoué la première fois
 (ou si le message a été supprimé côté Discord). Un bandeau confirme
 l'envoi ou l'échec, même mécanisme que la clôture manuelle.
 
+## Messages Discord personnalisables (MessageTemplate)
+
+Refonte : au lieu d'un modèle dédié aux seuls rappels (F7), **un seul
+modèle de messages texte tirés au hasard, catégorisé** —
+`MessageTemplate` (renommé depuis `ReminderTemplate`, migration
+`20260821144022_rename_reminder_to_message_template`, qui **renomme** la
+table au lieu de la recréer : les 9 messages de rappel existants ne sont
+pas perdus, ils sont automatiquement re-tagués `REMINDER_24H` +
+`REMINDER_2H` par la migration — comportement F7 identique à avant).
+
+**Le résultat de vote (F6) reste hors de ce système** : c'est un embed
+structuré (jeu gagnant, joueurs, etc.), pas un message perso tiré au
+hasard — rien à catégoriser là-dedans.
+
+### Catégories et variables
+
+| Catégorie | Déclenchée quand | Variables |
+| --- | --- | --- |
+| `SESSION_CREATED` | Une soirée est créée | `{heure}`, `{date}`, `{createur}` |
+| `SESSION_MODIFIED` | Une soirée est modifiée *(chantier suivant, catégorie déjà en place)* | `{heure}`, `{date}`, `{createur}`, `{ancienne_heure}`, `{ancienne_date}` |
+| `REMINDER_24H` | Rappel 24h avant une soirée planifiée | `{pote}`, `{jeu}`, `{heure}` |
+| `REMINDER_2H` | Rappel 2h avant une soirée planifiée | `{pote}`, `{jeu}`, `{heure}` |
+
+Un même message peut appartenir à **plusieurs catégories** (`categories`,
+array Postgres de l'enum `MessageCategory`) — utile pour un message
+générique valable pour les deux fenêtres de rappel, par exemple. Le champ
+`variables` (array de strings) est **purement informationnel** : calculé
+automatiquement depuis les catégories cochées (`variablesForCategories`,
+`src/lib/message-templates.ts`), jamais saisi à la main — pas de risque
+qu'il parte en désync avec les vraies catégories du message.
+
+### Runtime : tirage + repli
+
+`pickMessageTemplate(category, vars)` (`src/lib/message-templates.ts`)
+est le point d'entrée unique pour les 4 catégories : tire un message
+actif au hasard parmi ceux dont `categories` contient la catégorie
+demandée, puis substitue les variables (`{clé}` → valeur). **Sans
+message actif pour cette catégorie** (avant le premier seed, ou si tous
+les messages d'une catégorie ont été désactivés/supprimés), un texte de
+repli hardcodé prend le relais — jamais d'envoi vide ni d'exception :
+
+```ts
+const FALLBACKS: Record<MessageCategory, string> = {
+  SESSION_CREATED: "📣 Nouvelle soirée créée pour {date} à {heure}",
+  SESSION_MODIFIED: "⚠️ Soirée décalée : nouveau créneau {date} à {heure}",
+  REMINDER_24H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
+  REMINDER_2H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
+};
+```
+
+Comme pour F6/F7, les mentions concernées sont toujours mises à la fois
+dans l'embed (lisible) et dans le `content` brut du webhook — seul canal
+qui déclenche une vraie notification push Discord.
+
+### Interface d'admin (`/admin/messages`, renommée depuis `/admin/rappels`)
+
+Accessible à tout utilisateur connecté (pas de rôle admin dédié dans ce
+MVP). Pour chaque message : texte éditable, **cases à cocher pour choisir
+les catégories** où il peut être tiré, actif/désactivé (fusible qui garde
+le message sans le supprimer), suppression. Chaque case à cocher affiche
+directement sous son libellé la liste des variables de sa catégorie (ex.
+« Création de soirée — Variables : {heure}, {date}, {createur} ») plutôt
+qu'un résumé séparé qui se recalculerait au survol — plus simple, pas de
+JS nécessaire, et l'info reste juste même sans interaction. Le bouton
+« Nouveau message » propose un template vide avec les mêmes cases.
+
+### Seed idempotent par catégorie
+
+```bash
+npm run seed
+```
+
+`prisma/seed.mjs` (Node/ESM autonome) peuple trois groupes indépendamment
+— chaque groupe n'est inséré que si **aucun** message existant ne porte
+déjà une de ses catégories, pour rester idempotent *et* pour que
+relancer le seed sur une base déjà migrée (9 rappels existants) ajoute
+quand même les nouveaux messages de création/modification au lieu d'être
+bloqué par un check global :
+
+- **`REMINDER_24H` + `REMINDER_2H`** : les 9 messages historiques F7
+  (inchangés).
+- **`SESSION_CREATED`** (4 messages, style hype/Discord énervé) :
+  1. « 📣 OUVREZ LES YEUX. {createur} vient de créer une soirée pour
+     {date} à {heure}. VOTEZ MAINTENANT, pas dans 3 jours. »
+  2. « 🚨 SOIRÉE INCOMING : {date} à {heure}. {createur} a posé le truc,
+     à vous de jouer — littéralement. »
+  3. « Yo tout le monde, {createur} vient de sortir une soirée le {date}
+     à {heure}. Qui vote pas, qui joue pas, qui se plaint pas après. »
+  4. « NOUVELLE SOIRÉE DÉTECTÉE 🎮 {date} à {heure}, merci {createur}.
+     Direction l'app, TOUT DE SUITE. »
+- **`SESSION_MODIFIED`** (3 messages, style « soirée décalée ») :
+  1. « ⚠️ Soirée décalée par {createur} : nouveau rendez-vous {date} à
+     {heure} (c'était {ancienne_date} à {ancienne_heure}). »
+  2. « ⚠️ Changement de programme : {createur} a bougé la soirée à
+     {date}, {heure}. Notez bien le nouveau créneau. »
+  3. « ⚠️ Ancien créneau ({ancienne_date} à {ancienne_heure}) annulé,
+     nouveau créneau : {date} à {heure}. Merci {createur}. »
+
+Les messages sont attribués au compte `User` le plus ancien (`createdAt`
+le plus bas) — connecte-toi au moins une fois via Discord avant de
+lancer le seed.
+
+## Notification à la création d'une soirée
+
+Manque le plus remonté à l'usage : jusqu'ici, créer une session ne
+poussait rien dans Discord (seule la clôture, F6, ou les rappels, F7, le
+faisaient). `announceSessionCreated` (`src/lib/discord-session-created.ts`)
+est appelée à la fin de `createSession` — jamais bloquante : `postToDiscord`
+ne lève jamais, un échec n'empêche pas la session d'être créée (le
+créateur voit juste un bandeau « L'action a bien été enregistrée, mais
+l'envoi Discord a échoué » sur la page de la session, même mécanisme que
+F6/le renvoi manuel).
+
+- **Message hype** en `content` brut : tiré via `pickMessageTemplate("SESSION_CREATED", …)`.
+- **Embed structuré** : titre « 📣 Nouvelle soirée », date/heure, deadline
+  de vote, et un **lien absolu** vers la page de la session (construit
+  depuis `AUTH_URL` — indispensable pour que le lien fonctionne
+  correctement une fois cliqué depuis Discord, contrairement à une URL
+  relative).
+- **Qui est pingué — choix assumé : mentions individuelles, pas
+  `@everyone`.** Tous les membres du groupe sauf le créateur (qui vient
+  de cliquer le bouton) sont mentionnés individuellement dans le
+  `content`, en respectant `User.silenceReminders` (cohérence avec F7 : un
+  utilisateur qui a coupé les rappels ne veut probablement pas non plus
+  être pingué à chaque création de soirée). Choisi plutôt que `@everyone`
+  pour deux raisons : cohérence avec F6/F7 qui ne l'utilisent jamais, et
+  fiabilité — un webhook mentionnant `@everyone` dépend d'une permission
+  Discord spécifique sur le salon (« Mentionner @everyone »/`@here` et
+  tous les rôles ») qui peut être désactivée sans que l'app le sache,
+  auquel cas la mention serait silencieusement ignorée par Discord.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -711,8 +842,9 @@ connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
 
 - **Message** : celui perso de la session (`Session.customReminderMessage`,
   champ optionnel du formulaire de création dans `/sessions`) s'il est
-  renseigné ; sinon un **tirage aléatoire** parmi les `ReminderTemplate`
-  actifs.
+  renseigné ; sinon un **tirage aléatoire** via `pickMessageTemplate`
+  parmi les `MessageTemplate` actifs de la catégorie `REMINDER_24H`/
+  `REMINDER_2H` (voir « Messages Discord personnalisables » ci-dessus).
 - **Variables supportées** : `{pote}` (mentions `<@discordId>` des
   joueurs qui ont voté pour le jeu gagnant, hors utilisateurs en
   silence), `{jeu}` (nom du jeu décidé), `{heure}` (format `HH:mm`).
@@ -732,25 +864,9 @@ connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
   webhook) — mais le message est **quand même posté** dans le salon, il
   n'est simplement pas notifié personnellement.
 
-### Interface d'admin des messages (`/admin/rappels`)
-
-Accessible à tout utilisateur connecté (pas de rôle admin dédié dans ce
-MVP, conformément à la demande). Ajouter/modifier le texte
-inline/supprimer/désactiver-réactiver chaque message. `active = false`
-est un fusible : le message reste en base (avec qui l'a créé) mais sort
-du tirage aléatoire sans être perdu.
-
-### Seed des 9 messages initiaux
-
-```bash
-npm run seed
-```
-
-Lance `prisma/seed.mjs` (script Node/ESM autonome, pas de dépendance
-`ts-node`/`tsx` ajoutée juste pour ça). Idempotent : ne fait rien si des
-`ReminderTemplate` existent déjà en base. Les messages sont attribués au
-compte `User` le plus ancien (`createdAt` le plus bas) — connecte-toi au
-moins une fois via Discord avant de lancer le seed.
+Interface d'admin et seed : voir « Messages Discord personnalisables »
+ci-dessus (`/admin/messages`, `npm run seed`) — communs aux 4 catégories,
+pas dupliqués ici.
 
 ### Comment tester sans attendre 24h
 
@@ -844,7 +960,7 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run build` | Build de production |
 | `npm run start` | Démarre le build de production |
 | `npm run lint` | Lint ESLint |
-| `npm run seed` | Seed des 9 messages de rappel initiaux (F7, idempotent) |
+| `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée, idempotent par catégorie) |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -866,8 +982,10 @@ src/lib/session-status.ts   # Libellés/couleurs des statuts de session
 src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non configuré)
 src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
 src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtres 24h/2h)
+src/lib/discord-session-created.ts # Notif Discord à la création d'une soirée
+src/lib/message-templates.ts # pickMessageTemplate + catégories/variables (source de vérité partagée)
 src/lib/deepl.ts            # translateToFrench (API DeepL Free, dégrade sans DEEPL_API_KEY)
-prisma/seed.mjs             # Seed des 9 messages de rappel initiaux (npm run seed)
+prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -885,8 +1003,8 @@ src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/éditi
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
 src/app/profil/actions.ts   # Server action toggle silence rappels
-src/app/admin/rappels/page.tsx    # CRUD des messages de rappel (F7)
-src/app/admin/rappels/actions.ts  # Server actions messages de rappel
+src/app/admin/messages/page.tsx    # CRUD des messages Discord (catégories, variables)
+src/app/admin/messages/actions.ts  # Server actions messages Discord
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)

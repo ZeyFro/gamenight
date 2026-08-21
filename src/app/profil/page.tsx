@@ -121,7 +121,7 @@ export default async function ProfilPage({
                   : "🔕 Couper les rappels"}
               </Button>
             </form>
-            <ButtonLink href="/admin/rappels" variant="ghost" size="sm">
+            <ButtonLink href="/admin/messages" variant="ghost" size="sm">
               Gérer les messages de rappel →
             </ButtonLink>
           </Card>

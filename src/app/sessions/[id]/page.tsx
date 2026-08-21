@@ -27,8 +27,11 @@ import {
 } from "../actions";
 
 const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
+  // Texte volontairement générique ("l'action") : ce même statut couvre la
+  // création, la clôture et le renvoi manuel de session — trois contextes
+  // différents qui redirigent tous ici avec `?discord=echec|envoye`.
   echec: {
-    text: "Résultat sauvegardé mais l'envoi Discord a échoué.",
+    text: "L'action a bien été enregistrée, mais l'envoi Discord a échoué.",
     tone: "warning",
   },
   envoye: { text: "Message envoyé dans Discord.", tone: "accent" },

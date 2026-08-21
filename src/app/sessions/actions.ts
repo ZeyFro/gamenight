@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { parseDateAndTime, wallClockNow } from "@/lib/wallclock";
+import { announceSessionCreated } from "@/lib/discord-session-created";
 import {
   cancelSession,
   closeSession,
@@ -101,12 +102,15 @@ export async function createSession(formData: FormData) {
     }
   }
 
+  const announceResult = await announceSessionCreated(session, user);
+
   revalidatePath("/sessions");
-  redirect(
-    deadlineAdjusted
-      ? `/sessions/${session.id}?deadline=ajustee`
-      : `/sessions/${session.id}`
-  );
+
+  const params = new URLSearchParams();
+  if (deadlineAdjusted) params.set("deadline", "ajustee");
+  if (!announceResult.ok) params.set("discord", "echec");
+  const query = params.toString();
+  redirect(`/sessions/${session.id}${query ? `?${query}` : ""}`);
 }
 
 export async function proposeGame(formData: FormData) {
