@@ -5,6 +5,7 @@ import {
   type DiscordEmbed,
   type PostToDiscordResult,
 } from "@/lib/discord";
+import { pickMessageTemplate, substituteVariables } from "@/lib/message-templates";
 import { toTimeInputValue } from "@/lib/wallclock";
 import type { Game, Session } from "@prisma/client";
 
@@ -20,47 +21,22 @@ const WINDOW_TITLES: Record<ReminderWindow, string> = {
   "2h": "⏰ Rappel — dans 2h !",
 };
 
-const FALLBACK_TEMPLATE =
-  "🎮 Rappel : {jeu} à {heure} ! {pote}";
-
-function substituteVariables(
-  template: string,
-  vars: { pote: string; jeu: string; heure: string }
-): string {
-  return template
-    .replaceAll("{pote}", vars.pote)
-    .replaceAll("{jeu}", vars.jeu)
-    .replaceAll("{heure}", vars.heure);
-}
-
-async function pickMessage(
-  session: Pick<Session, "customReminderMessage">,
-  vars: { pote: string; jeu: string; heure: string }
-): Promise<string> {
-  if (session.customReminderMessage) {
-    return substituteVariables(session.customReminderMessage, vars);
-  }
-
-  const templates = await prisma.reminderTemplate.findMany({
-    where: { active: true },
-  });
-  if (templates.length === 0) {
-    return substituteVariables(FALLBACK_TEMPLATE, vars);
-  }
-
-  const pick = templates[Math.floor(Math.random() * templates.length)];
-  return substituteVariables(pick.text, vars);
-}
+const WINDOW_CATEGORY = {
+  "24h": "REMINDER_24H",
+  "2h": "REMINDER_2H",
+} as const;
 
 /**
  * Envoie le rappel Discord d'une session pour une fenêtre donnée (24h ou
  * 2h avant). Message = celui perso de la session s'il est renseigné,
- * sinon un tirage aléatoire parmi les `ReminderTemplate` actifs (repli
- * générique si la liste est vide — ne devrait pas arriver une fois le
- * seed initial en place). Les joueurs en silence (`User.silenceReminders`)
- * ne sont jamais mentionnés — ni dans `{pote}`, ni dans le `content` brut
- * du message (seul canal qui déclenche une vraie notification push,
- * cf. F6) — mais le message est posté dans tous les cas.
+ * sinon un tirage aléatoire parmi les `MessageTemplate` actifs de la
+ * catégorie `REMINDER_24H`/`REMINDER_2H` (via `pickMessageTemplate`, avec
+ * repli générique si la liste est vide — comportement F7 inchangé, malgré
+ * le renommage `ReminderTemplate` → `MessageTemplate`). Les joueurs en
+ * silence (`User.silenceReminders`) ne sont jamais mentionnés — ni dans
+ * `{pote}`, ni dans le `content` brut du message (seul canal qui
+ * déclenche une vraie notification push, cf. F6) — mais le message est
+ * posté dans tous les cas.
  */
 export async function sendSessionReminder(
   session: Session & { decidedGame: Game | null },
@@ -88,7 +64,9 @@ export async function sendSessionReminder(
     heure: toTimeInputValue(session.date),
   };
 
-  const message = await pickMessage(session, vars);
+  const message = session.customReminderMessage
+    ? substituteVariables(session.customReminderMessage, vars)
+    : await pickMessageTemplate(WINDOW_CATEGORY[window], vars);
 
   const embed: DiscordEmbed = {
     title: WINDOW_TITLES[window],

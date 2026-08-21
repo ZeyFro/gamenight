@@ -35,7 +35,7 @@ model User {
   availabilityOverrides AvailabilityOverride[]
   proposals             Proposal[]
   votes                 Vote[]
-  reminderTemplates     ReminderTemplate[]
+  messageTemplates      MessageTemplate[]
 }
 
 enum GameSource {
@@ -147,7 +147,7 @@ model Session {
   createdAt      DateTime      @default(now())
 
   // F7 : message de rappel perso, saisi à la création de la session. S'il
-  // est renseigné, il remplace le tirage aléatoire dans ReminderTemplate
+  // est renseigné, il remplace le tirage aléatoire dans MessageTemplate
   // pour les deux rappels (24h et 2h) de cette session.
   customReminderMessage String?
   // F7 : fenêtres de rappel déjà envoyées pour cette session, ex. `["24h"]`
@@ -187,18 +187,35 @@ model Vote {
   @@unique([proposalId, userId])
 }
 
-// F7 : messages de rappel drôles, tirés au hasard pour les rappels
-// automatiques avant session. Gérés depuis /admin/rappels — "admin" au
+// Catégories de messages Discord textuels tirés au hasard dans
+// MessageTemplate. Le résultat de vote (F6) reste hors de ce système —
+// c'est un embed structuré, pas un message perso tiré au hasard.
+enum MessageCategory {
+  SESSION_CREATED
+  SESSION_MODIFIED
+  REMINDER_24H
+  REMINDER_2H
+}
+
+// Messages Discord perso (rappels F7, notifs de création/modification de
+// session), tirés au hasard parmi les templates actifs d'une catégorie
+// donnée au moment de l'envoi. Gérés depuis /admin/messages — "admin" au
 // sens large, tout utilisateur connecté peut ajouter/modifier/désactiver
 // (pas de rôle admin dédié dans ce MVP, cf. spec). `active = false` est un
 // fusible pratique pour désactiver un message sans perdre l'historique
-// (qui l'a créé) en le supprimant.
-model ReminderTemplate {
-  id          String   @id @default(cuid())
+// (qui l'a créé) en le supprimant. Un même message peut appartenir à
+// plusieurs catégories (ex. un message générique valable pour les deux
+// rappels). `variables` est purement informationnel — affiché dans
+// /admin/messages pour indiquer quelles variables sont utilisables selon
+// les catégories cochées, jamais validé côté serveur.
+model MessageTemplate {
+  id          String            @id @default(cuid())
   text        String
-  active      Boolean  @default(true)
+  active      Boolean           @default(true)
+  categories  MessageCategory[]
+  variables   String[]          @default([])
   createdById String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   createdBy User @relation(fields: [createdById], references: [id])
 }
