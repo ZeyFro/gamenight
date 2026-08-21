@@ -1,7 +1,26 @@
 import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
-import type { Game, User } from "@prisma/client";
+import type { Game, Session, User } from "@prisma/client";
+
+/**
+ * Le vote ferme à `votingDeadline` si elle est définie, sinon à l'heure de
+ * la session (comportement historique, pour les sessions créées avant
+ * l'ajout de la deadline).
+ */
+export function votingClosesAt(
+  session: Pick<Session, "date" | "votingDeadline">
+): Date {
+  return session.votingDeadline ?? session.date;
+}
+
+export function isVotingOpen(
+  session: Pick<Session, "status" | "date" | "votingDeadline">
+): boolean {
+  return (
+    session.status === "VOTING" && wallClockNow() < votingClosesAt(session)
+  );
+}
 
 /**
  * Clôture une session VOTING : le jeu gagnant est la proposition la plus
@@ -42,14 +61,18 @@ export async function closeSession(sessionId: string): Promise<void> {
   });
 }
 
-/** Clôture "auto" paresseuse : appelée à la lecture, pas de cron (F7). */
+/**
+ * Clôture "auto" paresseuse : appelée à la lecture, pas de cron (F7).
+ * Se déclenche dès que la deadline de vote (ou, à défaut, l'heure de la
+ * session) est franchie.
+ */
 export async function closeSessionIfDue(sessionId: string): Promise<void> {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { status: true, date: true },
+    select: { status: true, date: true, votingDeadline: true },
   });
   if (!session || session.status !== "VOTING") return;
-  if (session.date > wallClockNow()) return;
+  if (votingClosesAt(session) > wallClockNow()) return;
   await closeSession(sessionId);
 }
 
@@ -110,7 +133,10 @@ export async function getProposalAvailability(
       return isAvailableAt(sessionDate, owner.weeklyAvailability, override);
     });
 
-    const min = game.minPlayers ?? 1;
+    // 2 par défaut si non renseigné (cohérent avec l'ajout manuel et
+    // l'import Steam) — évite qu'un jeu importé sans minPlayers connu
+    // (ex. Steam avant enrichissement) s'affiche comme jouable à 1 joueur.
+    const min = game.minPlayers ?? 2;
     const max = game.maxPlayers;
     const jouable =
       availableOwners.length >= min &&

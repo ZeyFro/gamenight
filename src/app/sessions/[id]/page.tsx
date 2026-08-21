@@ -3,9 +3,15 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { closeSessionIfDue, getProposalAvailability } from "@/lib/sessions";
+import {
+  closeSessionIfDue,
+  getProposalAvailability,
+  isVotingOpen,
+  votingClosesAt,
+} from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr } from "@/lib/wallclock";
+import { VotingCountdown } from "@/components/VotingCountdown";
 import {
   cancelSessionAction,
   closeSessionAction,
@@ -43,17 +49,18 @@ export default async function SessionDetailPage({
     session.proposals.map((p) => p.game)
   );
 
+  const votingOpen = isVotingOpen(session);
+
   const proposedGameIds = session.proposals.map((p) => p.gameId);
-  const availableGames =
-    session.status === "VOTING"
-      ? await prisma.game.findMany({
-          where: {
-            userGames: { some: { owned: true } },
-            id: { notIn: proposedGameIds },
-          },
-          orderBy: { name: "asc" },
-        })
-      : [];
+  const availableGames = votingOpen
+    ? await prisma.game.findMany({
+        where: {
+          userGames: { some: { owned: true } },
+          id: { notIn: proposedGameIds },
+        },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   const status = SESSION_STATUS_LABELS[session.status];
 
@@ -73,6 +80,11 @@ export default async function SessionDetailPage({
             {status.label}
           </span>
         </div>
+        {session.status === "VOTING" && (
+          <VotingCountdown
+            deadline={votingClosesAt(session).toISOString()}
+          />
+        )}
       </div>
 
       {(session.status === "SCHEDULED" || session.status === "DONE") &&
@@ -235,7 +247,7 @@ export default async function SessionDetailPage({
                     <input type="hidden" name="sessionId" value={session.id} />
                     <button
                       type="submit"
-                      disabled={session.status !== "VOTING"}
+                      disabled={!votingOpen}
                       className={`rounded-full px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
                         voted
                           ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -256,7 +268,7 @@ export default async function SessionDetailPage({
         </div>
       </section>
 
-      {session.status === "VOTING" && (
+      {votingOpen && (
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">
             Proposer un jeu

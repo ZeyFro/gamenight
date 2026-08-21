@@ -104,6 +104,28 @@ permet d'en ajouter/retirer.
   `IPlayerService/GetOwnedGames` (nécessite `STEAM_API_KEY`) ; chaque jeu
   est upserté dans `Game` (`source = STEAM`) puis associé à l'utilisateur
   via `UserGame(owned = true)`.
+- **`minPlayers` par défaut = 2, pas 1** (bug corrigé) : Steam ne fournit
+  pas le nombre de joueurs, donc rien n'était renseigné à la création du
+  `Game` (`minPlayers`/`maxPlayers` restaient `null`). Le calcul « jouable »
+  de F5 traitait alors `minPlayers` absent comme `1` (`?? 1`), donc un jeu
+  4 joueurs comme *Content Warning* s'affichait JOUABLE avec une seule
+  personne dispo. Corrigé à deux niveaux : `minPlayers: 2` est désormais
+  explicitement posé à la création d'un `Game` importé de Steam (comme
+  pour l'ajout manuel) *et* le calcul « jouable »
+  (`getProposalAvailability` dans `src/lib/sessions.ts`) retombe sur `2`
+  plutôt que `1` quand `minPlayers` est `null` — ce deuxième point corrige
+  aussi rétroactivement les jeux **déjà importés** avant ce fix, sans
+  migration de données ni réimport nécessaire.
+  **Enrichissement IGDB automatique à l'import Steam — évalué, pas fait** :
+  interroger IGDB par jeu à chaque import ferait un appel externe séquentiel
+  par jeu (potentiellement 100+ pour une première import) ; sur une
+  fonction serverless Vercel, le risque réel de dépasser le timeout
+  d'exécution (et de casser l'import en cours de route) l'a emporté sur le
+  gain. `minPlayers = 2` reste un défaut sûr entre-temps ; l'enrichissement
+  IGDB reste possible à la main via `/bibliotheque/ajouter` (F3), et un vrai
+  enrichissement en masse mériterait un traitement en arrière-plan plutôt
+  qu'un blocage de l'import (sujet à creuser avec F7, qui introduira déjà
+  l'infra de tâches planifiées).
 - **Profil Steam privé** : `GetOwnedGames` renvoie une réponse vide dans ce
   cas (aucun crash côté app) — un message explicite s'affiche sur
   `/profil` avec un lien direct vers les réglages de confidentialité
@@ -172,17 +194,38 @@ permet d'en ajouter/retirer.
   veut (`Vote` unique par `(proposalId, userId)`) ; revoter annule le vote
   (toggle). Le badge JOUABLE est purement informatif — il n'empêche pas de
   voter pour un jeu qui l'est pas, les votes des potes restent souverains.
+- **Deadline de vote** (`Session.votingDeadline`, nullable) : forcer une
+  échéance claire plutôt que de laisser le vote traîner jusqu'à l'heure de
+  la session. **Format choisi — presets fixes (6h/12h/24h/48h avant la
+  session, défaut 6h) plutôt qu'un champ libre**, pour rester mobile-first :
+  un `<select>` se choisit en un tap, alors qu'un date/heure précis demande
+  plusieurs interactions sur un petit écran et risque plus l'erreur de
+  saisie. Une option avancée repliée (`<details>`, sans JS) permet quand
+  même de saisir une date/heure précise pour qui le veut. Contrainte
+  serveur : la deadline doit être strictement avant l'heure de la session,
+  sinon la création est rejetée avec un message clair
+  (`/sessions?error=deadline_apres_session`) — impossible à violer avec les
+  presets (toujours *avant* l'heure choisie par construction), donc ce cas
+  ne peut se produire qu'avec l'option date/heure précise.
+- Affichage en temps réel sur `/sessions/[id]` (« Vote fermé dans 3h » /
+  « Vote fermé depuis 1h », composant client `VotingCountdown`, rafraîchi
+  toutes les 30s — pas besoin de la seconde près).
+- Une fois la deadline dépassée : les actions `proposeGame`/`toggleVote`
+  la revérifient côté serveur avant d'écrire quoi que ce soit (pas
+  seulement un formulaire caché côté UI, pour éviter la fenêtre de course
+  où quelqu'un aurait la page ouverte au moment où la deadline tombe).
 - **Clôture — choix assumé (créateur manuel + auto paresseuse, les deux)** :
   n'importe quel utilisateur connecté peut cliquer « Clôturer le vote
-  maintenant » à tout moment (le schéma §5 ne définit pas de notion de
-  « créateur » de session, donc pas de restriction de propriétaire — cohérent
-  avec le reste de l'app, pensée pour un petit groupe de confiance). Sans
-  action manuelle, la clôture se déclenche automatiquement **à la lecture**
-  (chargement de `/sessions` ou `/sessions/[id]`) dès que l'heure de la
-  session est passée — pas de Vercel Cron ici (F7 uniquement), donc pas de
-  clôture qui se déclenche vraiment "toute seule" en arrière-plan si
-  personne ne consulte la page, mais c'est transparent dès qu'un membre du
-  groupe rouvre l'app.
+  maintenant » à tout moment tant que la session est en vote (le schéma §5
+  ne définit pas de notion de « créateur » de session, donc pas de
+  restriction de propriétaire — cohérent avec le reste de l'app, pensée
+  pour un petit groupe de confiance). Sans action manuelle, la clôture se
+  déclenche automatiquement **à la lecture** (chargement de `/sessions` ou
+  `/sessions/[id]`) dès que la deadline de vote — ou, à défaut pour les
+  sessions créées avant son ajout, l'heure de la session — est passée ; pas
+  de Vercel Cron ici (F7 uniquement), donc pas de clôture qui se déclenche
+  vraiment "toute seule" en arrière-plan si personne ne consulte la page,
+  mais c'est transparent dès qu'un membre du groupe rouvre l'app.
 - **Un seul jeu gagnant par soirée — choix assumé** : à la clôture, le jeu
   retenu (`Session.decidedGameId`) est la proposition la plus votée (égalité
   → la plus ancienne proposition). C'est cohérent avec le schéma indicatif
@@ -259,8 +302,9 @@ src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche jeux)
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
-src/lib/sessions.ts         # Clôture de session, calcul "jouable" par jeu
+src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable" par jeu
 src/lib/session-status.ts   # Libellés/couleurs des statuts de session
+src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
 src/app/profil/page.tsx     # Profil + lien Steam
