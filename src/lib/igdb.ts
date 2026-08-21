@@ -146,6 +146,121 @@ export async function searchIgdbGames(
   });
 }
 
+function logIgdbMatch(
+  steamAppId: number,
+  name: string,
+  outcome: "external_games" | "name_fallback" | "not_found" | "error",
+  detail?: string
+): void {
+  const prefix = `[igdb-match] Steam appid=${steamAppId} "${name}"`;
+  if (outcome === "not_found") {
+    console.warn(
+      `${prefix} → aucune correspondance IGDB (ni external_games, ni recherche par nom).`
+    );
+  } else if (outcome === "error") {
+    console.error(`${prefix} → erreur : ${detail}`);
+  } else {
+    console.log(`${prefix} → matché via ${outcome}${detail ? ` (${detail})` : ""}.`);
+  }
+}
+
+export interface IgdbMatchResult {
+  igdbId: number | null;
+  method: "external_games" | "name_fallback" | "not_found";
+}
+
+/**
+ * Résout l'igdbId d'un jeu importé de Steam qui n'en a pas encore.
+ * Jusqu'ici l'import Steam (`src/lib/steam.ts`) ne renseignait jamais
+ * `Game.igdbId` — c'était la cause réelle des fiches sans description sur
+ * les jeux Steam : la fiche ne "ratait" pas le match, elle ne le tentait
+ * jamais (`getGameDetails` court-circuitait dès `!igdbId`).
+ *
+ * Deux méthodes, dans l'ordre :
+ * 1. **`external_games`** (endpoint IGDB dédié) : recherche par
+ *    `uid = "<steamAppId>"` et `category = 1` (Steam, valeur documentée
+ *    de l'enum IGDB `external_games.category`) — fiable, un AppID Steam
+ *    ne correspond qu'à un seul jeu IGDB.
+ * 2. **Repli par nom** (`searchIgdbGames`, même recherche que l'ajout
+ *    manuel) si `external_games` ne trouve rien — moins fiable (éditions,
+ *    remakes, jeux au nom générique), donc seulement en dernier recours ;
+ *    on prend le premier résultat (déjà trié par pertinence par IGDB).
+ *
+ * Logge systématiquement le résultat (méthode utilisée, ambiguïté du
+ * repli par nom, erreur réseau/API, ou échec complet) pour pouvoir
+ * déboguer les jeux qui restent sans fiche après cette résolution.
+ */
+export async function resolveIgdbIdForSteamGame(
+  steamAppId: number,
+  name: string
+): Promise<IgdbMatchResult> {
+  try {
+    const [token, clientId] = [
+      await getIgdbToken(),
+      process.env.IGDB_CLIENT_ID!.trim(),
+    ];
+
+    const res = await fetch("https://api.igdb.com/v4/external_games", {
+      method: "POST",
+      headers: {
+        "Client-ID": clientId,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "text/plain",
+      },
+      body: `fields game; where uid = "${steamAppId}" & category = 1; limit 1;`,
+    });
+
+    if (res.ok) {
+      const rows = (await res.json()) as { game?: number }[];
+      const igdbId = rows[0]?.game ?? null;
+      if (igdbId) {
+        logIgdbMatch(steamAppId, name, "external_games");
+        return { igdbId, method: "external_games" };
+      }
+    } else {
+      const body = await res.text().catch(() => "");
+      logIgdbMatch(
+        steamAppId,
+        name,
+        "error",
+        `external_games a répondu ${res.status}: ${body}`
+      );
+    }
+  } catch (err) {
+    logIgdbMatch(
+      steamAppId,
+      name,
+      "error",
+      `external_games : ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  try {
+    const candidates = await searchIgdbGames(name);
+    if (candidates.length > 0) {
+      logIgdbMatch(
+        steamAppId,
+        name,
+        "name_fallback",
+        candidates.length > 1
+          ? `${candidates.length} résultats, ambigu, on prend le 1er`
+          : undefined
+      );
+      return { igdbId: candidates[0].igdbId, method: "name_fallback" };
+    }
+  } catch (err) {
+    logIgdbMatch(
+      steamAppId,
+      name,
+      "error",
+      `recherche par nom : ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  logIgdbMatch(steamAppId, name, "not_found");
+  return { igdbId: null, method: "not_found" };
+}
+
 interface IgdbInvolvedCompany {
   company: { name: string };
   developer: boolean;

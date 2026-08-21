@@ -270,7 +270,11 @@ indispo »), toujours en lecture seule — aucune action de modification,
 uniquement `WeeklyAvailability`/`AvailabilityOverride` déjà en base pour
 ce `userId`. Réutilise `DAY_LABELS_MON_FIRST`/`formatDateFr` de
 `wallclock.ts`, même identité visuelle (violet, `Stagger`/`StaggerItem`)
-que le reste de l'app.
+que le reste de l'app. **Ordre de la page (corrigé)** : header (avatar +
+pseudo) → Dispos → Bibliothèque — les dispos étaient initialement tout en
+bas, sous la biblio entière, ce qui les rendait quasi invisibles sur un
+pote qui possède beaucoup de jeux ; remontées juste après le header, même
+ordre en mobile qu'en desktop (pas de réorganisation par breakpoint).
 
 ## Fiche jeu détaillée
 
@@ -288,8 +292,9 @@ Cet enrichissement est **volontairement différé** :
   biblio d'un coup + un appel IGDB détaillé par jeu ferait dépasser le
   timeout d'une fonction Vercel, cf. discussion précédente sur F3).
 - Il se déclenche **à la demande**, au premier affichage de `/jeux/[id]`
-  (uniquement si le jeu a un `igdbId` connu — un ajout manuel resté sans
-  correspondance IGDB ne déclenche aucun appel).
+  (uniquement si le jeu a — ou peut obtenir, cf. ci-dessous — un `igdbId`
+  connu ; un ajout manuel resté sans correspondance IGDB ne déclenche
+  aucun appel, ce choix de ne pas lier à IGDB étant explicite).
 - Le résultat est mis en cache dans `Game.igdbDetails` (JSON) +
   `Game.igdbDetailsFetchedAt`. Les ouvertures suivantes de la fiche sont
   instantanées (aucun appel IGDB), jusqu'à ce que quelqu'un clique sur
@@ -311,6 +316,23 @@ Cet enrichissement est **volontairement différé** :
   depuis `/bibliotheque/ajouter` en utilisant la recherche IGDB (ex.
   *Hades*, *Hollow Knight*, *Portal 2*) — les jeux très récents ou de
   niche ont parfois des fiches IGDB incomplètes (pas de trailer/captures).
+- **Bug corrigé : jeux Steam sans description.** L'import Steam
+  (`src/lib/steam.ts`) crée les jeux avec `steamAppId` mais ne renseigne
+  jamais `igdbId` — la fiche d'un jeu Steam ne "ratait" donc pas le
+  match IGDB, elle ne le tentait jamais (`getGameDetails` s'arrêtait dès
+  `!igdbId`, avant même d'essayer). `getGameDetails` tente maintenant une
+  résolution à la demande pour tout jeu `source = STEAM` sans `igdbId` :
+  `resolveIgdbIdForSteamGame` (`src/lib/igdb.ts`) interroge d'abord
+  l'endpoint IGDB **`external_games`** (`uid = steamAppId`,
+  `category = 1` = Steam — un AppID Steam ne correspond qu'à un seul jeu
+  IGDB, c'est la méthode fiable), et à défaut retombe sur une recherche
+  par nom (`searchIgdbGames`, même recherche que l'ajout manuel, premier
+  résultat) — moins fiable (éditions/remakes), donc en dernier recours
+  seulement. L'`igdbId` trouvé est persisté sur le `Game` pour les
+  visites suivantes. Chaque tentative (succès par `external_games`,
+  repli par nom avec ambiguïté notée, erreur réseau/API, ou échec
+  complet) est loggée avec le préfixe `[igdb-match]`, pour identifier
+  facilement les jeux qui restent sans fiche.
 
 **Traduction FR de la description (DeepL, mise en cache).** IGDB ne
 fournit `summary` qu'en anglais. Plutôt que de traduire à l'affichage

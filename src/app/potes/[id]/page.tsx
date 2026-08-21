@@ -79,14 +79,19 @@ export default async function PoteLibraryPage({
         </div>
       </div>
 
-      <ReadOnlyGameGrid
-        games={games}
-        emptyMessage={`${pote.discordName} n'a pas encore de jeu dans sa bibliothèque.`}
-      />
-
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-foreground">Dispos</h2>
         <AvailabilityView weeklySlots={weeklySlots} overrides={overrides} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-foreground">
+          Bibliothèque
+        </h2>
+        <ReadOnlyGameGrid
+          games={games}
+          emptyMessage={`${pote.discordName} n'a pas encore de jeu dans sa bibliothèque.`}
+        />
       </section>
     </div>
   );
