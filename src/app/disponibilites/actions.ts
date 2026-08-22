@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { parseDateOnly } from "@/lib/wallclock";
+import { awardXp } from "@/lib/xp-actions";
+import { XP_AMOUNTS } from "@/lib/xp";
 
 export async function addWeeklySlot(formData: FormData) {
   const user = await getCurrentUser();
@@ -15,9 +17,23 @@ export async function addWeeklySlot(formData: FormData) {
   const endTime = String(formData.get("endTime") ?? "");
   if (Number.isNaN(dayOfWeek) || !startTime || !endTime) return;
 
+  // Compté avant l'insertion : "1ère fois" au sens de l'Axe 1 XP =
+  // premier créneau hebdo jamais renseigné par ce user.
+  const hadSlotsBefore =
+    (await prisma.weeklyAvailability.count({ where: { userId: user.id } })) > 0;
+
   await prisma.weeklyAvailability.create({
     data: { userId: user.id, dayOfWeek, startTime, endTime },
   });
+
+  if (!hadSlotsBefore) {
+    await awardXp(
+      user.id,
+      "AVAILABILITY_FIRST",
+      user.id,
+      XP_AMOUNTS.AVAILABILITY_FIRST
+    );
+  }
 
   revalidatePath("/disponibilites");
 }

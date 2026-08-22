@@ -8,6 +8,7 @@ export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
   "SESSION_MODIFIED",
   "REMINDER_24H",
   "REMINDER_2H",
+  "LEVEL_UP",
 ];
 
 export const CATEGORY_LABELS: Record<MessageCategory, string> = {
@@ -15,6 +16,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   SESSION_MODIFIED: "Modification de soirée",
   REMINDER_24H: "Rappel 24h avant",
   REMINDER_2H: "Rappel 2h avant",
+  LEVEL_UP: "Passage de niveau",
 };
 
 /**
@@ -37,6 +39,7 @@ export const CATEGORY_VARIABLES: Record<MessageCategory, string[]> = {
   ],
   REMINDER_24H: ["pote", "jeu", "heure"],
   REMINDER_2H: ["pote", "jeu", "heure"],
+  LEVEL_UP: ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"],
 };
 
 export function variablesForCategories(categories: MessageCategory[]): string[] {
@@ -54,6 +57,7 @@ const FALLBACKS: Record<MessageCategory, string> = {
   SESSION_MODIFIED: "⚠️ Soirée décalée : nouveau créneau {date} à {heure}",
   REMINDER_24H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
   REMINDER_2H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
+  LEVEL_UP: "🎉 {user} passe niveau {nouveau_niveau} — désormais {titre} !",
 };
 
 /**

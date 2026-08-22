@@ -995,6 +995,134 @@ PR de ce chantier plutôt que traitées à part.
     autocomplétion des variables disponibles pour les catégories cochées
     (liste filtrée en live, insertion au curseur).
 
+## Chantier XP / niveaux / rangs — fondations (PR 2/9)
+
+Premier étage du chantier XP/niveaux/rangs/superlatifs/tierlist (découpage
+en 9 PR successives, validé avec l'utilisateur avant de commencer). Cette
+PR pose uniquement les fondations : XP participation (Axe 1), niveaux,
+rangs, streak, backfill, notif `LEVEL_UP`. Pas de résultats de soirée
+(podium), pas de superlatifs, pas de tierlist, pas de refonte visuelle du
+profil — ce sont les PR 3/9 à 9/9 suivantes.
+
+### Modèle de données
+
+- `User.xpTotal` (cache dénormalisé, indexé pour `/classement` en PR 9/9),
+  `User.streakCount`/`streakLastActiveAt`.
+- **`XpEvent`** : ledger append-only plutôt qu'un simple compteur, pour deux
+  raisons — (1) idempotence via `@@unique([userId, reason, sourceId])`,
+  qui permet au chemin "live" (`awardXp`) et au script de backfill de
+  tourner tous les deux indéfiniment sans jamais doubler une même
+  récompense (même prudence que le bug de seed corrigé dans une PR
+  précédente) ; (2) `/classement` (PR 9/9) doit pouvoir filtrer "ce
+  mois"/"cette semaine", ce qu'un total unique ne permettrait pas
+  (`XpEvent` est indexé sur `createdAt` pour ça).
+- `MessageCategory` gagne `LEVEL_UP`, avec ses propres variables
+  (`{user}`, `{ancien_niveau}`, `{nouveau_niveau}`, `{titre}`, `{rang}`) et
+  4 messages seedés.
+
+### Barème XP (Axe 1 — validé)
+
+| Action | XP | Remarque |
+|---|---|---|
+| Créer une soirée | 30 | `createSession`, sourceId = session.id |
+| Voter | 5 | `toggleVote` (création du vote uniquement), sourceId = **proposalId** (pas l'id du vote — un aller-retour vote/dévote/revote sur la même proposition ne recrédite pas) |
+| Participer à une soirée | 20 | à la clôture (`closeSession`), tous les users ayant voté pour la proposition **gagnante** — même définition que "présents" pour l'écran de résultats de la PR 3/9, volontairement unifiée pour n'avoir qu'une seule notion de "présence" dans tout le chantier |
+| Régler ses dispos hebdo (1ère fois) | 15 | `addWeeklySlot`, détecté via un count avant insertion |
+| Lier son compte Steam (1ère fois) | 15 | callback Steam, détecté via l'ancien `steamId64` avant update |
+| Profil complet (1ère fois) | 25 | **pas encore actif** — le trigger est ajouté en PR 8/9, une fois que bannière et tierlist existent réellement |
+
+Constantes centralisées dans `XP_AMOUNTS` (`src/lib/xp.ts`).
+
+### Courbe de niveau, titres, rangs
+
+XP cumulé requis pour atteindre le niveau N : **`50 × (N-1)²`** (niveau 1 =
+0 XP). Repères concrets : niveau 2 → 50 XP · niveau 5 → 800 XP · niveau 10
+→ 4 050 XP · niveau 20 → 18 050 XP · niveau 50 → 120 050 XP · niveau 100 →
+490 050 XP.
+
+Titres (`titleForLevel`) : 1 Victime · 5 Noob · 10 PAPED · 15 Habitué · 20
+Try-hard · 30 Vétéran · 40 Acharné · 50 No-life · 70 Possédé · 85 Légende
+vivante · 100 Sans-vie.
+
+Rangs (`rankForLevel`, `RANKS` dans `src/lib/xp.ts`) : Bronze (1-10) ·
+Argent (11-25) · Or (26-50) · Platine (51-75) · Diamant (76-99) · Légende
+(100+). Couleurs prévues pour un badge, affinées visuellement en PR 8/9.
+
+### Streak
+
+Fenêtre glissante de 24h (pas de notion de "jour calendaire") : `touchStreak`,
+appelée depuis `getCurrentUser()` à chaque page protégée, incrémente le
+streak si le dernier passage remonte à moins de 24h, le remet à 1 sinon —
+avec un throttle de 12h minimum entre deux incréments pour qu'une série de
+clics dans la même journée ne fasse pas gonfler le compteur. Aucune
+requête d'écriture supplémentaire dans le cas commun (< 12h depuis le
+dernier passage), donc pas de coût perf notable malgré l'appel systématique.
+
+**Bonus streak sur l'XP gagnée** : +5 %/jour consécutif, plafonné à +50 %
+— atteint concrètement au jour 11 (le jour 1 lui-même n'apporte pas encore
+de bonus), légèrement différent du "jour 10" évoqué à l'oral mais c'est la
+conséquence directe et assumée de cette règle-là. Le multiplicateur ne
+s'applique **qu'à l'XP gagnée en direct** — jamais au backfill (voir plus
+bas), où il n'aurait pas de sens.
+
+### Notification Discord `LEVEL_UP`
+
+`announceLevelUp` (`src/lib/discord-level-up.ts`), déclenchée automatiquement
+par `awardXp` dès qu'un gain d'XP fait franchir un seuil de niveau.
+Contrairement aux notifs de session (plusieurs personnes concernées,
+mentions conditionnelles selon `silenceReminders`), une seule personne est
+concernée ici : `{user}` est donc toujours un mention `<@id>`, sans
+condition de silence — même logique que `{createur}` dans la notif de
+création de soirée, qui n'est jamais masqué non plus (ce n'est pas "un
+rappel dont on peut se couper", c'est l'identité de la personne dont on
+parle).
+
+### Backfill (`prisma/backfill-xp.mjs`)
+
+**Important — pas d'accès à la vraie base de prod depuis ce sandbox** :
+impossible de connaître à l'avance les chiffres exacts d'XP pour toi ou
+pour qui que ce soit d'autre. Le script est conçu pour s'auto-documenter à
+l'exécution plutôt que de te demander de me faire confiance sur des
+chiffres inventés :
+
+- **Wired dans `npm run build`**, juste après le seed des messages —
+  idempotent via la même contrainte unique que `awardXp`, donc sûr à
+  rejouer à **chaque** déploiement (pas juste une fois). Concrètement, ça
+  fait converger le chemin "live" et le backfill vers le même ledger : un
+  événement déjà crédité par l'un est un no-op pour l'autre.
+- **Ne déclenche jamais de notif Discord** — contrairement à `awardXp`
+  (chemin live), le script écrit directement en base sans passer par la
+  détection de passage de niveau. Un backfill qui spammerait le salon de
+  dizaines de "level up" rétroactifs au premier déploiement aurait été
+  absurde.
+- **Imprime un récapitulatif détaillé par user à chaque exécution** (XP
+  par type d'action, total, niveau/titre/rang) — visible dans les logs de
+  build Vercel (Dashboard → ton déploiement → Building). **C'est là que tu
+  dois vérifier que le backfill colle à ton historique réel**, comme
+  demandé, avant qu'on enchaîne sur la PR 3/9.
+- **Limite assumée et documentée** : seuls les votes *encore présents* en
+  base sont visibles au backfill. Un vote posé puis retiré avant ce
+  déploiement (`toggleVote` supprime la ligne `Vote` en base — aucune
+  trace ne subsiste) ne peut pas être crédité rétroactivement. Le chemin
+  live, lui, capte tout vote posé à partir de maintenant. Concrètement, si
+  tu as voté puis changé d'avis sur d'anciennes sessions, ce compte de
+  votes précis ne sera visible qu'à partir d'aujourd'hui.
+- Duplique volontairement les formules pures de `src/lib/xp.ts`
+  (`XP_AMOUNTS`, `levelForXp`, `titleForLevel`, `rankForLevel`) plutôt que
+  de les importer — un module TypeScript avec alias `@/...` n'est pas
+  exécutable tel quel par ce script Node/ESM autonome (même contrainte que
+  `prisma/seed.mjs`, qui ne dépend pas non plus de `ts-node`/`tsx`). À
+  garder en sync si le barème ou la courbe changent.
+
+Script manuel équivalent : `npm run backfill-xp`.
+
+### Aperçu XP minimal sur `/profil`
+
+En attendant la vraie refonte (PR 8/9), `/profil` affiche juste niveau +
+titre + rang + barre de progression XP + streak — le strict nécessaire
+pour permettre la vérification manuelle du backfill demandée avant de
+continuer le chantier.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1179,7 +1307,8 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run build` | Build de production |
 | `npm run start` | Démarre le build de production |
 | `npm run lint` | Lint ESLint |
-| `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée, idempotent par catégorie) |
+| `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
+| `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -1206,7 +1335,11 @@ src/lib/discord-session-modified.ts # Notif Discord à la modification d'une soi
 src/lib/session-schedule.ts # resolveSessionSchedule : validation date/deadline mutualisée création+édition
 src/lib/message-templates.ts # pickMessageTemplate + catégories/variables (source de vérité partagée)
 src/lib/deepl.ts            # translateToFrench (API DeepL Free, dégrade sans DEEPL_API_KEY)
+src/lib/xp.ts                # Formules pures XP : XP_AMOUNTS, courbe de niveau, titres, rangs, streak
+src/lib/xp-actions.ts        # awardXp (idempotent) + touchStreak (I/O Prisma + notif level up)
+src/lib/discord-level-up.ts  # Notif Discord de passage de niveau
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
+prisma/backfill-xp.mjs      # Backfill XP idempotent, wired dans npm run build (npm run backfill-xp en manuel)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)

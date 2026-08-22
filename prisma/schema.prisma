@@ -28,6 +28,17 @@ model User {
   silenceReminders Boolean  @default(false)
   createdAt        DateTime @default(now())
 
+  // Chantier XP/niveaux/rangs — `xpTotal` est un cache dénormalisé (somme
+  // de `XpEvent.amount`), maintenu par `awardXp` à chaque ajout d'XP.
+  // Indexé pour le scoreboard (/classement, PR 9/9) qui trie par XP sur
+  // potentiellement 50+ users. `streakCount`/`streakLastActiveAt` pistent
+  // les jours de connexion consécutifs (mis à jour depuis
+  // `getCurrentUser()`, cf. src/lib/xp.ts) : `streakCount` repart à 1 si
+  // plus de 24h se sont écoulées depuis `streakLastActiveAt`.
+  xpTotal            Int       @default(0)
+  streakCount        Int       @default(0)
+  streakLastActiveAt DateTime?
+
   addedGames Game[]     @relation("GameAddedBy")
   userGames  UserGame[]
 
@@ -37,6 +48,9 @@ model User {
   votes                 Vote[]
   messageTemplates      MessageTemplate[]
   createdSessions       Session[]
+  xpEvents              XpEvent[]
+
+  @@index([xpTotal])
 }
 
 enum GameSource {
@@ -204,6 +218,9 @@ enum MessageCategory {
   SESSION_MODIFIED
   REMINDER_24H
   REMINDER_2H
+  // Chantier XP/niveaux/rangs — notif Discord de passage de niveau, cf.
+  // src/lib/discord-level-up.ts.
+  LEVEL_UP
 }
 
 // Messages Discord perso (rappels F7, notifs de création/modification de
@@ -227,4 +244,45 @@ model MessageTemplate {
   createdAt   DateTime          @default(now())
 
   createdBy User @relation(fields: [createdById], references: [id])
+}
+
+// Type d'action ayant rapporté de l'XP à un user — cf. `awardXp` dans
+// src/lib/xp.ts. Volontairement limité aux actions de PR 2/9 (XP
+// participation, Axe 1) ; les futures PR du chantier (podium/coop en
+// PR 3/9, superlatifs en PR 5/9, profil complet en PR 8/9) ajouteront
+// leurs propres valeurs le moment venu, pas avant — pas de valeur d'enum
+// qui traîne sans code pour la déclencher.
+enum XpReason {
+  CREATE_SESSION
+  VOTE
+  PARTICIPATE
+  AVAILABILITY_FIRST
+  STEAM_LINK_FIRST
+}
+
+// Ledger XP append-only — préféré à un simple compteur sur `User` pour
+// deux raisons : (1) idempotence, `@@unique([userId, reason, sourceId])`
+// permet à `awardXp` et au script de backfill (prisma/backfill-xp.mjs) de
+// se re-exécuter indéfiniment sans jamais doubler une même récompense —
+// même mécanisme de prudence que le bug de seed corrigé en PR 2 du
+// chantier précédent ; (2) `/classement` (PR 9/9) doit pouvoir filtrer
+// "ce mois"/"cette semaine", ce qu'un total unique ne permettrait pas.
+// `sourceId` identifie l'événement qui a rapporté l'XP — sa forme dépend
+// de `reason` (id de Session pour CREATE_SESSION/PARTICIPATE, id de
+// Proposal pour VOTE — pas l'id du Vote lui-même, pour ne pas re-créditer
+// un aller-retour vote/dévote/revote sur la même proposition ; l'id du
+// user lui-même pour les XP "une seule fois dans la vie").
+model XpEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  reason    XpReason
+  sourceId  String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reason, sourceId])
+  @@index([userId])
+  @@index([createdAt])
 }

@@ -48,6 +48,13 @@ const SESSION_MODIFIED_MESSAGES = [
   "⚠️ Ancien créneau ({ancienne_date} à {ancienne_heure}) annulé, nouveau créneau : {date} à {heure}. Merci {createur}.",
 ];
 
+const LEVEL_UP_MESSAGES = [
+  "🎉 {user} monte au niveau {nouveau_niveau} — désormais {titre}.",
+  "⚡ {user} vient de passer {rang} ! Niveau {nouveau_niveau}, {titre}.",
+  "📈 {user} : niveau {ancien_niveau} → {nouveau_niveau}. {titre} approuve.",
+  "🏅 Ding ! {user} est maintenant niveau {nouveau_niveau} ({titre}).",
+];
+
 const prisma = new PrismaClient();
 
 async function seedCategoryGroup(categories, messages, variables) {
@@ -100,6 +107,11 @@ async function main() {
     ["SESSION_MODIFIED"],
     SESSION_MODIFIED_MESSAGES,
     ["heure", "date", "createur", "ancienne_heure", "ancienne_date"]
+  );
+  await seedCategoryGroup(
+    ["LEVEL_UP"],
+    LEVEL_UP_MESSAGES,
+    ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"]
   );
 }
 
