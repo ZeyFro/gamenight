@@ -64,6 +64,14 @@ model User {
   modifiedGameStatTypes    GameStatType[]
   modifiedSuperlatives     Superlative[]
 
+  // PR 5/9 — vote de superlatifs entre potes. Trois relations distinctes
+  // vers `SuperlativeVote` (votant ≠ voté pour) obligent des noms
+  // explicites, même raison que pour `MessageTemplate` plus haut.
+  modifiedSuperlativeCategories SuperlativeCategory[]
+  superlativeVotesCast          SuperlativeVote[]     @relation("SuperlativeVoter")
+  superlativeVotesReceived      SuperlativeVote[]     @relation("SuperlativeVotedFor")
+  superlativeAwardsWon          SuperlativeAward[]
+
   @@index([xpTotal])
 }
 
@@ -194,10 +202,28 @@ model Session {
   // src/lib/discord-reminder.ts), pas une invariante du modèle.
   remindersSent  Json          @default("[]")
 
-  createdBy   User            @relation(fields: [createdById], references: [id])
-  decidedGame Game?           @relation(fields: [decidedGameId], references: [id])
-  proposals   Proposal[]
-  results     SessionResult[]
+  // PR 5/9 — fenêtre de vote des superlatifs entre potes, ouverte par
+  // `markSessionDone` (cf. src/lib/sessions.ts) : `superlativeVotingDeadline`
+  // = maintenant + 24h à l'ouverture (nulle si la session n'a pas eu
+  // assez de participants — voir plus loin — auquel cas
+  // `superlativeVotingClosed` passe direct à `true`, aucun vote possible).
+  // Le vote se clôture (cf. src/lib/superlative-voting.ts) dès que tous
+  // les participants ont voté OU que la deadline est dépassée,
+  // "whichever comes first" — vérifié paresseusement à la lecture (même
+  // philosophie que `closeSessionIfDue` pour la clôture du vote de jeu),
+  // pas de cron dédié. `superlativeVotingClosed` distingue "pas encore
+  // clôturé" de "clôturé sans le moindre award" (0 vote au total) : sans
+  // ce booléen, l'absence de `SuperlativeAward` serait ambiguë entre ces
+  // deux cas.
+  superlativeVotingDeadline DateTime?
+  superlativeVotingClosed   Boolean   @default(false)
+
+  createdBy         User               @relation(fields: [createdById], references: [id])
+  decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
+  proposals         Proposal[]
+  results           SessionResult[]
+  superlativeVotes  SuperlativeVote[]
+  superlativeAwards SuperlativeAward[]
 }
 
 model Proposal {
@@ -237,6 +263,10 @@ enum MessageCategory {
   // Chantier XP/niveaux/rangs — notif Discord de passage de niveau, cf.
   // src/lib/discord-level-up.ts.
   LEVEL_UP
+  // PR 5/9 — annonce des superlatifs votés après une soirée, cf.
+  // src/lib/discord-session-awards.ts. Ne pas confondre avec le résultat
+  // de vote F6 (embed structuré indépendant, jamais dans ce système).
+  SESSION_AWARDS
 }
 
 // Messages Discord perso (rappels F7, notifs de création/modification de
@@ -275,8 +305,9 @@ model MessageTemplate {
 // Type d'action ayant rapporté de l'XP à un user — cf. `awardXp` dans
 // src/lib/xp-actions.ts. Étendu au fil du chantier, pas avant : PR 2/9
 // (XP participation, Axe 1) a posé les 5 premières valeurs ; PR 3/9 ajoute
-// SESSION_RESULT (podium/coop, Axe 2) ; les superlatifs (PR 5/9) et le
-// profil complet (PR 8/9) ajouteront les leurs le moment venu — pas de
+// SESSION_RESULT (podium/coop, Axe 2) ; PR 5/9 ajoute SUPERLATIVE_AWARD
+// (vote entre potes, Axe 3 v2 — voir `SuperlativeCategory` plus bas) ; le
+// profil complet (PR 8/9) ajoutera la sienne le moment venu — pas de
 // valeur d'enum qui traîne sans code pour la déclencher.
 enum XpReason {
   CREATE_SESSION
@@ -285,6 +316,7 @@ enum XpReason {
   AVAILABILITY_FIRST
   STEAM_LINK_FIRST
   SESSION_RESULT
+  SUPERLATIVE_AWARD
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -346,31 +378,38 @@ enum SuperlativeRule {
   // Le participant avec la plus grande/plus petite valeur de la stat sur
   // la soirée gagne le superlatif (stats INT/FLOAT). En cas d'égalité,
   // l'attribution exacte (personne, plusieurs ex-aequo...) est un détail
-  // d'implémentation de PR 5/9, pas figé ici.
+  // d'implémentation, pas figé ici.
   MAX
   MIN
   // Stat BOOL : gagné par (chacun de) ceux dont la valeur vaut `true`
   // cette soirée-là — ex. "🏆 A gagné la partie". Le nom de la règle
   // anticipe une évolution possible où la même stat BOOL serait cumulée
-  // sur plusieurs soirées ("le plus de fois true"), mais pour PR 5/9 (une
-  // saisie = une soirée), c'est équivalent à "est true ce soir-là".
+  // sur plusieurs soirées ("le plus de fois true"), mais pour une saisie
+  // = une soirée, c'est équivalent à "est true ce soir-là".
   TRUE_COUNT
 }
 
-// Axe 3 (chantier XP) — définition des stats saisissables après une
+// Axe 3 v1 (chantier XP) — définition des stats saisissables après une
 // soirée pour un jeu donné (ex. Lethal Company : nombre de morts, butin
 // récupéré...). Configuré depuis /admin/jeux-stats — "admin" au sens
 // large, comme /admin/messages (pas de rôle dédié, tout le monde peut
 // gérer). `higherIsBetter` est purement informatif/cosmétique (couleur
-// d'affichage en PR 5/9) : il ne détermine PAS qui gagne un superlatif,
-// c'est le `rule` (MAX/MIN) de chaque `Superlative` qui le fait — une
-// même stat peut porter plusieurs superlatifs avec des règles
-// différentes (ex. `survivalTime` : MIN pour "😱 First blood").
+// d'affichage) : il ne détermine PAS qui gagne un superlatif, c'est le
+// `rule` (MAX/MIN) de chaque `Superlative` qui le fait — une même stat
+// peut porter plusieurs superlatifs avec des règles différentes (ex.
+// `survivalTime` : MIN pour "😱 First blood").
 //
-// La saisie réelle des valeurs par soirée (GameSessionResult) et
-// l'historique des superlatifs gagnés (SuperlativeAward) arrivent en
-// PR 5/9 — pas de modèle pour ça ici, pas de code qui les déclenche
-// encore.
+// ABANDONNÉ EN PR 5/9 (laissé dormant, pas supprimé) : la saisie de
+// stats chiffrées par soirée s'est révélée trop lourde à l'usage pour un
+// groupe de potes flemmards. Remplacé par un système de VOTE entre potes,
+// sans chiffres à saisir — voir `SuperlativeCategory`/`SuperlativeVote`/
+// `SuperlativeAward` plus bas, complètement indépendants de ce modèle-ci.
+// `/admin/jeux-stats` reste dans le code et fonctionnel (accessible par
+// URL directe), juste retiré du lien de navigation sur /profil au profit
+// de `/admin/superlatifs`. Ni `GameSessionResult` ni l'ancien
+// `SuperlativeAward` "par jeu" envisagés à l'origine n'ont jamais été
+// créés — le nouveau `SuperlativeAward` plus bas est un modèle distinct,
+// sans lien avec `GameStatType`.
 model GameStatType {
   id             String   @id @default(cuid())
   gameId         String
@@ -394,10 +433,11 @@ model GameStatType {
   @@unique([gameId, key])
 }
 
-// Un superlatif attribué automatiquement (calcul en PR 5/9) à partir
-// d'une `GameStatType` — ex. "🐛 Bouffé par le grouille" (MAX sur la stat
-// "morts" de Lethal Company). `xpReward` éditable par superlatif depuis
-// /admin/jeux-stats (20 XP par défaut).
+// Un superlatif attribué automatiquement à partir d'une `GameStatType` —
+// ex. "🐛 Bouffé par le grouille" (MAX sur la stat "morts" de Lethal
+// Company). `xpReward` éditable par superlatif depuis /admin/jeux-stats
+// (20 XP par défaut). ABANDONNÉ EN PR 5/9, laissé dormant — voir le
+// commentaire sur `GameStatType` ci-dessus.
 model Superlative {
   id             String          @id @default(cuid())
   gameStatTypeId String
@@ -412,4 +452,73 @@ model Superlative {
 
   gameStatType GameStatType @relation(fields: [gameStatTypeId], references: [id], onDelete: Cascade)
   modifiedBy   User         @relation(fields: [modifiedById], references: [id])
+}
+
+// Axe 3 v2 (PR 5/9) — remplace le système par stats chiffrées ci-dessus
+// (`GameStatType`/`Superlative`, laissé dormant) par un vote entre potes,
+// génériques et indépendants du jeu joué : "qui mérite ce titre ce
+// soir-là", zéro chiffre à saisir. Configuré depuis /admin/superlatifs —
+// même philosophie que /admin/messages et /admin/jeux-stats (pas de rôle
+// dédié, tout le monde peut gérer), avec le même audit trail
+// `modifiedById`/`modifiedAt` que les autres modèles admin.
+model SuperlativeCategory {
+  id           String   @id @default(cuid())
+  icon         String
+  name         String
+  description  String?
+  xpReward     Int      @default(20)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  modifiedById String
+  modifiedAt   DateTime @updatedAt
+
+  modifiedBy User               @relation(fields: [modifiedById], references: [id])
+  votes      SuperlativeVote[]
+  awards     SuperlativeAward[]
+}
+
+// Un vote d'un participant pour un autre, sur une catégorie donnée d'une
+// soirée. `@@unique([sessionId, categoryId, voterUserId])` : un seul vote
+// par catégorie et par votant — pas de re-vote (appliqué côté serveur,
+// cf. `submitSuperlativeVotesAction`). Voter pour soi-même est empêché
+// côté UI (le votant n'apparaît jamais dans sa propre liste de choix) et
+// re-vérifié côté serveur.
+model SuperlativeVote {
+  id             String   @id @default(cuid())
+  sessionId      String
+  categoryId     String
+  voterUserId    String
+  votedForUserId String
+  createdAt      DateTime @default(now())
+
+  session   Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  category  SuperlativeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  voter     User                @relation("SuperlativeVoter", fields: [voterUserId], references: [id], onDelete: Cascade)
+  votedFor  User                @relation("SuperlativeVotedFor", fields: [votedForUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, categoryId, voterUserId])
+}
+
+// Résultat final d'une catégorie pour une soirée, calculé par
+// `finalizeSuperlativeVoting` (src/lib/superlative-voting.ts) quand le
+// vote se clôture. `voteCount` = nombre de votes reçus par le gagnant
+// (utile pour l'affichage — "élu à 3 voix sur 4"). Pas de ligne créée
+// pour une catégorie n'ayant reçu aucun vote : l'existence d'une ligne
+// signifie "il y a eu au moins un vote", pas juste "la session est
+// clôturée" (ce dernier état vit sur `Session.superlativeVotingClosed`).
+// `@@unique([sessionId, categoryId])` : un seul gagnant par catégorie et
+// par soirée.
+model SuperlativeAward {
+  id           String   @id @default(cuid())
+  sessionId    String
+  categoryId   String
+  winnerUserId String
+  voteCount    Int
+  createdAt    DateTime @default(now())
+
+  session  Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  category SuperlativeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  winner   User                @relation(fields: [winnerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, categoryId])
 }

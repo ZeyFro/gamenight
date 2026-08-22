@@ -9,6 +9,10 @@ import {
   isVotingOpen,
   votingClosesAt,
 } from "@/lib/sessions";
+import {
+  finalizeSuperlativeVotingIfDue,
+  getWinningProposalParticipants,
+} from "@/lib/superlative-voting";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -58,6 +62,7 @@ export default async function SessionDetailPage({
   const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
 
   await closeSessionIfDue(id);
+  await finalizeSuperlativeVotingIfDue(id);
 
   const session = await prisma.session.findUnique({
     where: { id },
@@ -71,6 +76,27 @@ export default async function SessionDetailPage({
     },
   });
   if (!session) notFound();
+
+  // Badge "🏆 Vote les superlatifs !" — même définition de participant que
+  // partout ailleurs dans le chantier (users ayant voté pour la
+  // proposition gagnante).
+  let needsSuperlativeVote = false;
+  if (
+    session.status === "DONE" &&
+    session.decidedGameId &&
+    !session.superlativeVotingClosed
+  ) {
+    const superlativeParticipants = await getWinningProposalParticipants(
+      session.id,
+      session.decidedGameId
+    );
+    if (superlativeParticipants.some((p) => p.id === user.id)) {
+      const alreadyVoted = await prisma.superlativeVote.count({
+        where: { sessionId: session.id, voterUserId: user.id },
+      });
+      needsSuperlativeVote = alreadyVoted === 0;
+    }
+  }
 
   const availability = await getProposalAvailability(
     session.date,
@@ -263,6 +289,20 @@ export default async function SessionDetailPage({
             {session.results.length > 0
               ? "Voir les résultats"
               : "🏆 Saisir les résultats"}
+          </ButtonLink>
+        </div>
+      )}
+
+      {session.status === "DONE" && session.decidedGame && (
+        <div className="flex flex-wrap gap-3">
+          <ButtonLink
+            href={`/sessions/${session.id}/vote-superlatifs`}
+            variant={needsSuperlativeVote ? "primary" : "secondary"}
+            size="sm"
+          >
+            {needsSuperlativeVote
+              ? "🏆 Vote les superlatifs !"
+              : "🏆 Superlatifs"}
           </ButtonLink>
         </div>
       )}

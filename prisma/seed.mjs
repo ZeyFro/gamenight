@@ -55,6 +55,12 @@ const LEVEL_UP_MESSAGES = [
   "🏅 Ding ! {user} est maintenant niveau {nouveau_niveau} ({titre}).",
 ];
 
+const SESSION_AWARDS_MESSAGES = [
+  "🏆 Les awards tombent :\n{gagnants}",
+  "⚡ Voici les vainqueurs :\n{gagnants}\nApplaudissez.",
+  "Palmarès de la soirée :\n{gagnants}\nBravo les gars.",
+];
+
 const prisma = new PrismaClient();
 
 async function seedCategoryGroup(categories, messages, variables) {
@@ -86,6 +92,9 @@ async function seedCategoryGroup(categories, messages, variables) {
       categories,
       variables,
       createdById: author.id,
+      // modifiedById est devenu obligatoire (audit trail, PR "avant 5/9") ;
+      // pour un message tout juste seedé, "dernière modif" = "création".
+      modifiedById: author.id,
     })),
   });
 
@@ -113,6 +122,7 @@ async function main() {
     LEVEL_UP_MESSAGES,
     ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"]
   );
+  await seedCategoryGroup(["SESSION_AWARDS"], SESSION_AWARDS_MESSAGES, ["gagnants"]);
 }
 
 main()

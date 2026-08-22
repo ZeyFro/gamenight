@@ -169,8 +169,8 @@ export default async function ProfilPage({
             <ButtonLink href="/admin/messages" variant="ghost" size="sm">
               Gérer les messages de rappel →
             </ButtonLink>
-            <ButtonLink href="/admin/jeux-stats" variant="ghost" size="sm">
-              Gérer les stats &amp; superlatifs des jeux →
+            <ButtonLink href="/admin/superlatifs" variant="ghost" size="sm">
+              Gérer les superlatifs →
             </ButtonLink>
           </Card>
         </StaggerItem>

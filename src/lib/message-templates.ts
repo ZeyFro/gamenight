@@ -9,6 +9,7 @@ export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
   "REMINDER_24H",
   "REMINDER_2H",
   "LEVEL_UP",
+  "SESSION_AWARDS",
 ];
 
 export const CATEGORY_LABELS: Record<MessageCategory, string> = {
@@ -17,6 +18,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   REMINDER_24H: "Rappel 24h avant",
   REMINDER_2H: "Rappel 2h avant",
   LEVEL_UP: "Passage de niveau",
+  SESSION_AWARDS: "Awards de superlatifs",
 };
 
 /**
@@ -40,6 +42,7 @@ export const CATEGORY_VARIABLES: Record<MessageCategory, string[]> = {
   REMINDER_24H: ["pote", "jeu", "heure"],
   REMINDER_2H: ["pote", "jeu", "heure"],
   LEVEL_UP: ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"],
+  SESSION_AWARDS: ["gagnants"],
 };
 
 export function variablesForCategories(categories: MessageCategory[]): string[] {
@@ -58,6 +61,7 @@ const FALLBACKS: Record<MessageCategory, string> = {
   REMINDER_24H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
   REMINDER_2H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
   LEVEL_UP: "🎉 {user} passe niveau {nouveau_niveau} — désormais {titre} !",
+  SESSION_AWARDS: "🏆 Les awards de la soirée :\n{gagnants}",
 };
 
 /**
@@ -84,9 +88,9 @@ export function substituteVariables(
 /**
  * Tire un message actif au hasard parmi les `MessageTemplate` dont
  * `categories` contient `category`, puis substitue les variables. Point
- * d'entrée unique pour les 4 catégories (SESSION_CREATED, SESSION_MODIFIED,
- * REMINDER_24H, REMINDER_2H) — le résultat de vote (F6) n'y passe pas,
- * c'est un embed structuré indépendant.
+ * d'entrée unique pour toutes les catégories de `ALL_MESSAGE_CATEGORIES`
+ * — le résultat de vote (F6) n'y passe pas, c'est un embed structuré
+ * indépendant.
  */
 export async function pickMessageTemplate(
   category: MessageCategory,
