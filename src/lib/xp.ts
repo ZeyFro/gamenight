@@ -10,6 +10,14 @@ export const XP_AMOUNTS = {
   PARTICIPATE: 20,
   AVAILABILITY_FIRST: 15,
   STEAM_LINK_FIRST: 15,
+  // Axe 2 (PR 3/9) — bonus de résultats de soirée, en plus de PARTICIPATE
+  // (déjà acquis à la clôture pour tout voteur du jeu gagnant). Un seul de
+  // ces montants par user et par session (cf. `submitSessionResultsAction`
+  // et `XpReason.SESSION_RESULT`).
+  PODIUM_1ST: 50,
+  PODIUM_2ND: 25,
+  PODIUM_3RD: 10,
+  COOP_BONUS: 15,
 } as const;
 
 /**
