@@ -16,7 +16,7 @@ import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
 import { EditSessionDialog } from "@/components/EditSessionDialog";
@@ -67,6 +67,7 @@ export default async function SessionDetailPage({
         include: { game: true, votes: true, proposedBy: true },
         orderBy: { createdAt: "asc" },
       },
+      results: { select: { id: true }, take: 1 },
     },
   });
   if (!session) notFound();
@@ -249,6 +250,20 @@ export default async function SessionDetailPage({
               Annuler
             </Button>
           </form>
+        </div>
+      )}
+
+      {session.status === "DONE" && isCreator && (
+        <div className="flex flex-wrap gap-3">
+          <ButtonLink
+            href={`/sessions/${session.id}/resultats`}
+            variant="primary"
+            size="sm"
+          >
+            {session.results.length > 0
+              ? "Voir les résultats"
+              : "🏆 Saisir les résultats"}
+          </ButtonLink>
         </div>
       )}
 

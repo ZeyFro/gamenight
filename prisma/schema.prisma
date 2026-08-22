@@ -49,6 +49,7 @@ model User {
   messageTemplates      MessageTemplate[]
   createdSessions       Session[]
   xpEvents              XpEvent[]
+  sessionResults        SessionResult[]
 
   @@index([xpTotal])
 }
@@ -179,9 +180,10 @@ model Session {
   // src/lib/discord-reminder.ts), pas une invariante du modèle.
   remindersSent  Json          @default("[]")
 
-  createdBy   User       @relation(fields: [createdById], references: [id])
-  decidedGame Game?      @relation(fields: [decidedGameId], references: [id])
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  decidedGame Game?           @relation(fields: [decidedGameId], references: [id])
   proposals   Proposal[]
+  results     SessionResult[]
 }
 
 model Proposal {
@@ -247,17 +249,40 @@ model MessageTemplate {
 }
 
 // Type d'action ayant rapporté de l'XP à un user — cf. `awardXp` dans
-// src/lib/xp.ts. Volontairement limité aux actions de PR 2/9 (XP
-// participation, Axe 1) ; les futures PR du chantier (podium/coop en
-// PR 3/9, superlatifs en PR 5/9, profil complet en PR 8/9) ajouteront
-// leurs propres valeurs le moment venu, pas avant — pas de valeur d'enum
-// qui traîne sans code pour la déclencher.
+// src/lib/xp-actions.ts. Étendu au fil du chantier, pas avant : PR 2/9
+// (XP participation, Axe 1) a posé les 5 premières valeurs ; PR 3/9 ajoute
+// SESSION_RESULT (podium/coop, Axe 2) ; les superlatifs (PR 5/9) et le
+// profil complet (PR 8/9) ajouteront les leurs le moment venu — pas de
+// valeur d'enum qui traîne sans code pour la déclencher.
 enum XpReason {
   CREATE_SESSION
   VOTE
   PARTICIPATE
   AVAILABILITY_FIRST
   STEAM_LINK_FIRST
+  SESSION_RESULT
+}
+
+// Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
+// pour les sessions compétitives, ou simple présence (placement = null)
+// pour les sessions coop (`Game.isCoop`), où tout le monde est équivalent.
+// Saisi une seule fois par le créateur depuis `/sessions/[id]/resultats`
+// une fois la session `DONE` — existence de lignes pour cette session =
+// "résultats déjà saisis" (pas de re-saisie possible, cf. le résumé de PR
+// pour la raison : éviter la double comptabilisation d'XP si un podium
+// est corrigé après coup). `@@unique([sessionId, userId])` : un seul
+// résultat par participant et par session.
+model SessionResult {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  placement Int?
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
 }
 
 // Ledger XP append-only — préféré à un simple compteur sur `User` pour

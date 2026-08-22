@@ -345,3 +345,94 @@ export async function markSessionDoneAction(formData: FormData) {
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
 }
+
+/**
+ * Saisie des résultats d'une soirée (Axe 2) — réservée au créateur, une
+ * seule fois par session : dès qu'au moins une ligne `SessionResult`
+ * existe pour cette session, un nouvel appel est un no-op. Choix assumé,
+ * pas de ré-édition possible : un podium corrigé après coup pourrait
+ * créditer une deuxième fois le bonus XP à un nouveau 1er sans jamais
+ * retirer celui déjà attribué à l'ancien (`XpEvent` est un ledger
+ * append-only, pas fait pour être annulé) — plutôt que de construire un
+ * mécanisme de correction pour un pépin mineur sur une fonctionnalité
+ * ludique, on verrouille la saisie après coup.
+ *
+ * Participants = users ayant voté pour la proposition **gagnante** — même
+ * définition que l'XP `PARTICIPATE` attribué à la clôture (`closeSession`
+ * dans src/lib/sessions.ts), volontairement unifiée pour n'avoir qu'une
+ * seule notion de "présence" dans tout le chantier.
+ *
+ * Session `isCoop` (le jeu retenu, pas la session) : pas de podium, bonus
+ * plat identique pour tous. Sinon, podium 1er/2e/3e facultatif — un
+ * placement dupliqué côté client (protégé par le formulaire) est de toute
+ * façon ignoré ici en ne retenant que la première occurrence rencontrée.
+ */
+export async function submitSessionResultsAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: { decidedGame: true },
+  });
+  if (!session || session.createdById !== user.id) return;
+  if (session.status !== "DONE" || !session.decidedGameId) return;
+
+  const alreadySubmitted =
+    (await prisma.sessionResult.count({ where: { sessionId } })) > 0;
+  if (alreadySubmitted) return;
+
+  const winningProposal = await prisma.proposal.findFirst({
+    where: { sessionId, gameId: session.decidedGameId },
+    select: { id: true },
+  });
+  if (!winningProposal) return;
+
+  const participantVotes = await prisma.vote.findMany({
+    where: { proposalId: winningProposal.id },
+    select: { userId: true },
+  });
+  if (participantVotes.length === 0) return;
+
+  const isCoop = session.decidedGame?.isCoop ?? false;
+  const placementAmounts: Record<number, number> = {
+    1: XP_AMOUNTS.PODIUM_1ST,
+    2: XP_AMOUNTS.PODIUM_2ND,
+    3: XP_AMOUNTS.PODIUM_3RD,
+  };
+  const usedPlacements = new Set<number>();
+
+  for (const { userId: participantId } of participantVotes) {
+    let placement: number | null = null;
+
+    if (!isCoop) {
+      const raw = String(formData.get(`placement-${participantId}`) ?? "").trim();
+      const parsed = raw ? Number(raw) : null;
+      const candidate = parsed && [1, 2, 3].includes(parsed) ? parsed : null;
+      placement = candidate && !usedPlacements.has(candidate) ? candidate : null;
+      if (placement) usedPlacements.add(placement);
+    }
+
+    await prisma.sessionResult.create({
+      data: { sessionId, userId: participantId, placement },
+    });
+
+    if (isCoop) {
+      await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
+    } else if (placement) {
+      await awardXp(
+        participantId,
+        "SESSION_RESULT",
+        sessionId,
+        placementAmounts[placement]
+      );
+    }
+  }
+
+  revalidatePath(`/sessions/${sessionId}/resultats`);
+  revalidatePath(`/sessions/${sessionId}`);
+  redirect(`/sessions/${sessionId}/resultats`);
+}

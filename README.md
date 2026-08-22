@@ -1123,6 +1123,49 @@ titre + rang + barre de progression XP + streak — le strict nécessaire
 pour permettre la vérification manuelle du backfill demandée avant de
 continuer le chantier.
 
+## Résultats de soirée & XP performance (PR 3/9)
+
+Deuxième étage du chantier XP (Axe 2). Une fois une session `DONE`, son
+créateur — et lui seul — peut saisir un résultat générique : podium
+1er/2e/3e facultatif, ou simple confirmation coop selon le jeu retenu.
+
+- **Participants** (`/sessions/[id]/resultats`) : users ayant voté pour la
+  proposition **gagnante** — même définition que l'XP `PARTICIPATE` déjà
+  attribué à la clôture (PR 2/9), volontairement unifiée pour n'avoir
+  qu'une seule notion de "présence" dans tout le chantier plutôt que deux
+  qui pourraient diverger.
+- **`Game.isCoop` détermine l'affichage** : jeu coop → pas de podium, un
+  bouton unique "Confirmer la participation" donne `COOP_BONUS` (15 XP) à
+  tout le monde à égalité. Jeu compétitif → un sélecteur 🥇/🥈/🥉 par
+  participant (`SessionResultsForm.tsx`, state React plutôt que des
+  `<input type="radio">` : choisir un placement déjà pris par quelqu'un
+  d'autre le lui retire automatiquement, plus simple qu'un groupe de
+  radios exclusif par placement qui n'empêcherait pas nativement "un seul
+  1er au total"). Podium facultatif — un participant peut rester sans
+  place.
+- **Barème** : 1er = 50 XP, 2e = 25 XP, 3e = 10 XP (`XP_AMOUNTS.PODIUM_*`),
+  en plus des 20 XP `PARTICIPATE` déjà acquis à la clôture — pas un
+  remplacement. Un seul événement `XpReason.SESSION_RESULT` par user et
+  par session (contrainte unique du ledger), donc pas de double
+  comptabilisation possible même en cas de nouvel appel.
+- **Choix assumé — pas de ré-édition des résultats.** Dès qu'au moins une
+  ligne `SessionResult` existe pour une session, `submitSessionResultsAction`
+  devient un no-op et la page bascule en lecture seule. Un podium corrigé
+  après coup pourrait créditer un deuxième 1er sans jamais retirer le
+  bonus déjà versé à l'ancien — `XpEvent` est un ledger append-only, pas
+  conçu pour être annulé. Plutôt que construire un mécanisme de correction
+  pour une fonctionnalité ludique, la saisie est verrouillée après le
+  premier envoi. Une saisie malformée/dupliquée côté client (placement
+  choisi deux fois) est de toute façon neutralisée côté serveur en ne
+  retenant que la première occurrence rencontrée.
+- **Page dédiée, pas une modal** (contrairement à `EditSessionDialog`/
+  `DeleteSessionDialog`) : ce formulaire va grandir en PR 5/9 avec les
+  champs de stats spécifiques au jeu (superlatifs) — une modal serait vite
+  à l'étroit sur mobile pour ça.
+- Aucune notification Discord pour l'instant — celle des superlatifs
+  ("🏆 Awards de la soirée", catégorie `SESSION_AWARDS`) arrive en PR 5/9,
+  une fois qu'il y a vraiment quelque chose à annoncer.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1376,7 +1419,9 @@ src/app/disponibilites/page.tsx         # Planning hebdo + exceptions
 src/app/disponibilites/actions.ts       # Server actions dispos
 src/app/sessions/page.tsx               # Liste des soirées + création
 src/app/sessions/[id]/page.tsx          # Détail : proposer, voter, clôturer
+src/app/sessions/[id]/resultats/page.tsx # Saisie/consultation du podium ou du bonus coop (Axe 2)
 src/app/sessions/actions.ts             # Server actions soirées
+src/components/SessionResultsForm.tsx   # Formulaire podium/coop de la page résultats
 src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
 src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
 src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe
