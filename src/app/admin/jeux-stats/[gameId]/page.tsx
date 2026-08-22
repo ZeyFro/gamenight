@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { AuditLine } from "@/components/AuditLine";
 import {
   addGameStatType,
   addSuperlative,
@@ -45,7 +46,13 @@ export default async function GameStatsAdminPage({
     where: { id: gameId },
     include: {
       statTypes: {
-        include: { superlatives: { orderBy: { createdAt: "asc" } } },
+        include: {
+          modifiedBy: true,
+          superlatives: {
+            include: { modifiedBy: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -193,6 +200,12 @@ export default async function GameStatsAdminPage({
                   </div>
                 </form>
 
+                <AuditLine
+                  discordName={stat.modifiedBy.discordName}
+                  discordAvatar={stat.modifiedBy.discordAvatar}
+                  date={stat.modifiedAt}
+                />
+
                 <div className="flex flex-col gap-2 border-t border-border pt-3">
                   <p className="text-xs font-medium text-muted">
                     Superlatifs
@@ -260,13 +273,21 @@ export default async function GameStatsAdminPage({
                           ✓
                         </Button>
                       </form>
-                      <form action={deleteSuperlative}>
-                        <input type="hidden" name="id" value={s.id} />
-                        <input type="hidden" name="gameId" value={game.id} />
-                        <Button type="submit" variant="destructive" size="sm">
-                          ✕
-                        </Button>
-                      </form>
+                      <div className="flex flex-col items-end gap-2">
+                        <form action={deleteSuperlative}>
+                          <input type="hidden" name="id" value={s.id} />
+                          <input type="hidden" name="gameId" value={game.id} />
+                          <Button type="submit" variant="destructive" size="sm">
+                            ✕
+                          </Button>
+                        </form>
+                        <AuditLine
+                          discordName={s.modifiedBy.discordName}
+                          discordAvatar={s.modifiedBy.discordAvatar}
+                          date={s.modifiedAt}
+                          compact
+                        />
+                      </div>
                     </div>
                   ))}
 

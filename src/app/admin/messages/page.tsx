@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { MessageTemplateForm } from "@/components/MessageTemplateForm";
+import { AuditLine } from "@/components/AuditLine";
 import {
   addMessageTemplate,
   deleteMessageTemplate,
@@ -18,7 +19,7 @@ export default async function MessagesAdminPage() {
   if (!user) redirect("/");
 
   const templates = await prisma.messageTemplate.findMany({
-    include: { createdBy: true },
+    include: { createdBy: true, modifiedBy: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -103,6 +104,12 @@ export default async function MessagesAdminPage() {
                     </Button>
                   </form>
                 </div>
+
+                <AuditLine
+                  discordName={t.modifiedBy.discordName}
+                  discordAvatar={t.modifiedBy.discordAvatar}
+                  date={t.modifiedAt}
+                />
               </Card>
             </StaggerItem>
           ))}

@@ -28,6 +28,7 @@ export async function addMessageTemplate(formData: FormData) {
       categories,
       variables: variablesForCategories(categories),
       createdById: user.id,
+      modifiedById: user.id,
     },
   });
 
@@ -46,7 +47,12 @@ export async function updateMessageTemplate(formData: FormData) {
 
   await prisma.messageTemplate.update({
     where: { id },
-    data: { text, categories, variables: variablesForCategories(categories) },
+    data: {
+      text,
+      categories,
+      variables: variablesForCategories(categories),
+      modifiedById: user.id,
+    },
   });
 
   revalidatePath("/admin/messages");
@@ -64,7 +70,7 @@ export async function toggleMessageTemplateActive(formData: FormData) {
 
   await prisma.messageTemplate.update({
     where: { id },
-    data: { active: !template.active },
+    data: { active: !template.active, modifiedById: user.id },
   });
   revalidatePath("/admin/messages");
 }
