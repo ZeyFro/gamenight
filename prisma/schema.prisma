@@ -46,10 +46,23 @@ model User {
   availabilityOverrides AvailabilityOverride[]
   proposals             Proposal[]
   votes                 Vote[]
-  messageTemplates      MessageTemplate[]
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+
+  // Audit trail (PR 5/9 du chantier XP, à la demande de l'utilisateur —
+  // craint qu'un pote modifie un superlatif de façon abusive pour se
+  // farmer de l'XP). Pas de blocage, juste une trace de qui a touché quoi
+  // en dernier, affichée discrètement sur /admin/messages et
+  // /admin/jeux-stats. `createdMessageTemplates` (qui l'a créé, inchangé
+  // depuis PR1) et `modifiedMessageTemplates` (qui l'a modifié EN
+  // DERNIER, nouveau) sont deux relations distinctes vers le même modèle
+  // — noms de relation explicites obligatoires côté Prisma dès qu'un
+  // modèle a plusieurs FK vers `User`.
+  createdMessageTemplates  MessageTemplate[] @relation("MessageTemplateCreatedBy")
+  modifiedMessageTemplates MessageTemplate[] @relation("MessageTemplateModifiedBy")
+  modifiedGameStatTypes    GameStatType[]
+  modifiedSuperlatives     Superlative[]
 
   @@index([xpTotal])
 }
@@ -246,7 +259,17 @@ model MessageTemplate {
   createdById String
   createdAt   DateTime          @default(now())
 
-  createdBy User @relation(fields: [createdById], references: [id])
+  // Audit trail — qui a modifié ce message EN DERNIER (create ou update),
+  // et quand. Backfillée à createdById/createdAt pour les lignes
+  // existantes lors de la migration qui a introduit ces deux champs (donc
+  // "dernière modif" = "création" tant que personne n'y a retouché
+  // depuis). `modifiedAt` géré automatiquement par Prisma (`@updatedAt`),
+  // jamais fixé à la main.
+  modifiedById String
+  modifiedAt   DateTime @updatedAt
+
+  createdBy  User @relation("MessageTemplateCreatedBy", fields: [createdById], references: [id])
+  modifiedBy User @relation("MessageTemplateModifiedBy", fields: [modifiedById], references: [id])
 }
 
 // Type d'action ayant rapporté de l'XP à un user — cf. `awardXp` dans
@@ -357,7 +380,15 @@ model GameStatType {
   higherIsBetter Boolean  @default(true)
   createdAt      DateTime @default(now())
 
+  // Audit trail (voir commentaire sur `User.modifiedGameStatTypes`) — un
+  // seul champ (pas de createdById distinct) : ce modèle n'avait encore
+  // aucune notion d'auteur avant cet ajout, donc "dernière modif" couvre
+  // aussi "création" nativement, pas besoin d'un deuxième champ.
+  modifiedById String
+  modifiedAt   DateTime @updatedAt
+
   game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  modifiedBy   User          @relation(fields: [modifiedById], references: [id])
   superlatives Superlative[]
 
   @@unique([gameId, key])
@@ -375,5 +406,10 @@ model Superlative {
   xpReward       Int             @default(20)
   createdAt      DateTime        @default(now())
 
+  // Audit trail — même logique que `GameStatType.modifiedById` ci-dessus.
+  modifiedById String
+  modifiedAt   DateTime @updatedAt
+
   gameStatType GameStatType @relation(fields: [gameStatTypeId], references: [id], onDelete: Cascade)
+  modifiedBy   User         @relation(fields: [modifiedById], references: [id])
 }

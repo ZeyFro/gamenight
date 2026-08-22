@@ -27,7 +27,7 @@ export async function addGameStatType(formData: FormData) {
 
   try {
     await prisma.gameStatType.create({
-      data: { gameId, key, label, type, higherIsBetter },
+      data: { gameId, key, label, type, higherIsBetter, modifiedById: user.id },
     });
   } catch {
     // Contrainte unique (gameId, key) : clé déjà utilisée pour ce jeu, on ignore.
@@ -49,7 +49,7 @@ export async function updateGameStatType(formData: FormData) {
 
   await prisma.gameStatType.update({
     where: { id },
-    data: { label, type, higherIsBetter },
+    data: { label, type, higherIsBetter, modifiedById: user.id },
   });
 
   revalidatePath(`/admin/jeux-stats/${gameId}`);
@@ -80,7 +80,13 @@ export async function addSuperlative(formData: FormData) {
   if (!gameStatTypeId || !name || !SUPERLATIVE_RULES.includes(rule)) return;
 
   await prisma.superlative.create({
-    data: { gameStatTypeId, name, rule, xpReward: parseXpReward(formData) },
+    data: {
+      gameStatTypeId,
+      name,
+      rule,
+      xpReward: parseXpReward(formData),
+      modifiedById: user.id,
+    },
   });
 
   revalidatePath(`/admin/jeux-stats/${gameId}`);
@@ -98,7 +104,7 @@ export async function updateSuperlative(formData: FormData) {
 
   await prisma.superlative.update({
     where: { id },
-    data: { name, rule, xpReward: parseXpReward(formData) },
+    data: { name, rule, xpReward: parseXpReward(formData), modifiedById: user.id },
   });
 
   revalidatePath(`/admin/jeux-stats/${gameId}`);

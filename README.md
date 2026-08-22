@@ -1228,6 +1228,40 @@ déploiement**, pas deviné à l'avance :
 
 Script manuel équivalent : `npm run seed-game-stats`.
 
+## Audit trail sur /admin/messages et /admin/jeux-stats
+
+Ajusté avant PR 5/9, à la demande de l'utilisateur : sans rôle admin
+dédié, n'importe qui peut modifier un superlatif — crainte concrète
+qu'un pote règle discrètement "MIN kills = MVP" pour se farmer de l'XP.
+**Pas de blocage pour l'instant** (tout le monde peut toujours modifier),
+juste une trace de qui a touché quoi en dernier, affichée discrètement.
+
+- `MessageTemplate`, `GameStatType` et `Superlative` gagnent chacun
+  `modifiedById` (FK `User`) + `modifiedAt` (`@updatedAt`, géré
+  automatiquement par Prisma à chaque `update`/`create`, jamais fixé à la
+  main). Pour `GameStatType`/`Superlative` (modèles neufs, aucune notion
+  d'auteur avant cet ajout), un seul champ suffit — "dernière modif"
+  couvre aussi "création" nativement. Pour `MessageTemplate`, qui avait
+  déjà `createdById`/`createdAt` (qui l'a créé, inchangé), ces deux
+  nouveaux champs s'ajoutent à côté plutôt que de les remplacer — d'où
+  deux relations `User` distinctes et nommées explicitement
+  (`MessageTemplateCreatedBy`/`MessageTemplateModifiedBy`), Prisma exige
+  un nom dès qu'un modèle a plusieurs FK vers la même table.
+- **Backfill dans la migration** (pas de script séparé, directement en
+  SQL) : `MessageTemplate` reprend son propre `createdById`/`createdAt`
+  (cohérent : "dernière modif" = "création" tant que personne n'y a
+  retouché depuis) ; `GameStatType`/`Superlative` (déjà seedées par PR
+  4/9) reprennent le compte le plus ancien du groupe, même repli que
+  l'auteur par défaut dans `prisma/seed.mjs`.
+- **Affichage** : `AuditLine.tsx`, composant partagé — "Modifié par
+  {avatar} {pseudo} le {date}" en pleine taille sur chaque message et
+  chaque stat, version compacte (juste avatar + date, infobulle avec le
+  texte complet) sur chaque superlatif individuellement pour ne pas
+  surcharger des lignes déjà denses.
+- Toutes les actions de création/modification (et la bascule
+  actif/inactif d'un message, qui modifie bien la ligne) mettent à jour
+  `modifiedById` avec le user courant.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1459,6 +1493,7 @@ src/components/EditSessionDialog.tsx    # Modal d'édition date/heure/deadline d
 src/components/WithdrawProposalDialog.tsx # Confirmation de retrait de sa propre proposition
 src/components/ProposeGameForm.tsx      # Combobox recherche pour "Proposer un jeu" (remplace le <select>)
 src/components/MessageTemplateForm.tsx  # Form message Discord : validation variables inconnues + autocomplétion "{"
+src/components/AuditLine.tsx            # "Modifié par {avatar} {pseudo} le {date}" (messages, stats, superlatifs)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
