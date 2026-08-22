@@ -1166,6 +1166,68 @@ créateur — et lui seul — peut saisir un résultat générique : podium
   ("🏆 Awards de la soirée", catégorie `SESSION_AWARDS`) arrive en PR 5/9,
   une fois qu'il y a vraiment quelque chose à annoncer.
 
+## Superlatifs par jeu — configuration (PR 4/9)
+
+Troisième étage du chantier XP (Axe 3, partie 1 : uniquement la
+configuration ici — la saisie des valeurs par soirée, le calcul
+automatique et l'attribution XP/notif Discord arrivent en PR 5/9. Pas de
+modèle `GameSessionResult`/`SuperlativeAward` pour l'instant : même
+discipline que le reste du chantier, pas de table qui traîne sans code
+pour l'utiliser).
+
+### Modèle
+
+- **`GameStatType`** : une stat saisissable après une soirée pour un jeu
+  donné (ex. "morts" pour Lethal Company), typée `INT`/`FLOAT`/`BOOL`.
+  `higherIsBetter` est purement cosmétique (couleur d'affichage en PR
+  5/9) — ce n'est **pas** ce qui détermine qui gagne un superlatif, c'est
+  `rule` sur chaque `Superlative` qui s'en charge. Une même stat peut
+  porter plusieurs superlatifs avec des règles différentes.
+- **`Superlative`** : `MAX`/`MIN` (stats numériques, le plus haut/bas
+  gagne) ou `TRUE_COUNT` (stats `BOOL`, gagné par qui a `true` cette
+  soirée-là). `xpReward` éditable par superlatif, 20 XP par défaut.
+
+### `/admin/jeux-stats`
+
+Même esprit que `/admin/messages` : pas de rôle admin dédié, tout le monde
+peut configurer. Liste des jeux de la biblio commune →
+`/admin/jeux-stats/[gameId]` pour ajouter/éditer/supprimer ses stats et,
+pour chaque stat, ses superlatifs (formulaires imbriqués mais jamais des
+`<form>` HTML imbriqués — chaque ligne éditable et son bouton de
+suppression sont deux formulaires frères, même contrainte déjà rencontrée
+sur `/admin/messages` et les cartes de proposition en PR 18).
+
+### Seed — 3-4 jeux populaires
+
+**Je n'ai pas d'accès à la vraie base de prod depuis ce sandbox** (même
+limite que le backfill XP de PR 2/9) : impossible de littéralement
+"regarder la bibliothèque commune" avant de choisir. `prisma/seed-game-stats.mjs`
+est donc conçu pour être **piloté par les vraies données au moment du
+déploiement**, pas deviné à l'avance :
+
+- Contenu sur-mesure préparé pour 4 jeux (dans cet ordre de priorité) :
+  **Lethal Company** (🐛 Bouffé par le grouille · 💰 Le rat · 😱 First
+  blood), **Content Warning** (🎬 Meilleur cameraman · 😱 Le crieur · 🌟
+  Star du web, ce dernier en `TRUE_COUNT` pour exercer cette règle),
+  **Counter-Strike 2** (🏆 MVP · 💀 Baby-sitter · 🐔 Feeder), **Apex
+  Legends** (🎯 Killer · 💥 Dégâts) — utilisé **uniquement si un jeu
+  correspondant existe vraiment** dans la biblio commune (au moins un
+  `UserGame.owned`), matché par nom de façon tolérante (insensible à la
+  casse, "CS2"/"Counter-Strike 2" acceptés tous les deux).
+- S'il manque des jeux sur-mesure (moins de 4 trouvés), les places
+  restantes sont comblées par les jeux **réellement** les plus possédés
+  du groupe, avec un petit set générique (Score + Morts) — mieux que rien
+  pour un jeu que je ne connais pas.
+- **Idempotent par jeu** : un jeu déjà configuré (au moins une
+  `GameStatType`) n'est jamais réécrasé.
+- Wired dans `npm run build`, juste après le backfill XP. **Imprime un
+  récapitulatif à chaque run** (jeux sélectionnés, popularité, origine du
+  contenu sur-mesure/générique) — visible dans les logs de build Vercel,
+  même endroit que le récapitulatif du backfill XP, pour vérifier que la
+  sélection colle à la vraie bibliothèque commune.
+
+Script manuel équivalent : `npm run seed-game-stats`.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1352,6 +1414,7 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run lint` | Lint ESLint |
 | `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
+| `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -1383,6 +1446,7 @@ src/lib/xp-actions.ts        # awardXp (idempotent) + touchStreak (I/O Prisma + 
 src/lib/discord-level-up.ts  # Notif Discord de passage de niveau
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
 prisma/backfill-xp.mjs      # Backfill XP idempotent, wired dans npm run build (npm run backfill-xp en manuel)
+prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempotent, piloté par les vraies données
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -1407,6 +1471,9 @@ src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
 src/app/profil/actions.ts   # Server action toggle silence rappels
 src/app/admin/messages/page.tsx    # CRUD des messages Discord (catégories, variables)
 src/app/admin/messages/actions.ts  # Server actions messages Discord
+src/app/admin/jeux-stats/page.tsx           # Liste des jeux de la biblio commune
+src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu
+src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)

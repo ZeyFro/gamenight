@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy && node prisma/seed.mjs && node prisma/backfill-xp.mjs && next build",
+    "build": "prisma migrate deploy && node prisma/seed.mjs && node prisma/backfill-xp.mjs && node prisma/seed-game-stats.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "node prisma/seed.mjs",
     "backfill-xp": "node prisma/backfill-xp.mjs",
+    "seed-game-stats": "node prisma/seed-game-stats.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

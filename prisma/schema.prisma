@@ -88,6 +88,7 @@ model Game {
 
   proposals       Proposal[]
   decidedSessions Session[]
+  statTypes       GameStatType[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -310,4 +311,69 @@ model XpEvent {
   @@unique([userId, reason, sourceId])
   @@index([userId])
   @@index([createdAt])
+}
+
+enum StatType {
+  INT
+  FLOAT
+  BOOL
+}
+
+enum SuperlativeRule {
+  // Le participant avec la plus grande/plus petite valeur de la stat sur
+  // la soirée gagne le superlatif (stats INT/FLOAT). En cas d'égalité,
+  // l'attribution exacte (personne, plusieurs ex-aequo...) est un détail
+  // d'implémentation de PR 5/9, pas figé ici.
+  MAX
+  MIN
+  // Stat BOOL : gagné par (chacun de) ceux dont la valeur vaut `true`
+  // cette soirée-là — ex. "🏆 A gagné la partie". Le nom de la règle
+  // anticipe une évolution possible où la même stat BOOL serait cumulée
+  // sur plusieurs soirées ("le plus de fois true"), mais pour PR 5/9 (une
+  // saisie = une soirée), c'est équivalent à "est true ce soir-là".
+  TRUE_COUNT
+}
+
+// Axe 3 (chantier XP) — définition des stats saisissables après une
+// soirée pour un jeu donné (ex. Lethal Company : nombre de morts, butin
+// récupéré...). Configuré depuis /admin/jeux-stats — "admin" au sens
+// large, comme /admin/messages (pas de rôle dédié, tout le monde peut
+// gérer). `higherIsBetter` est purement informatif/cosmétique (couleur
+// d'affichage en PR 5/9) : il ne détermine PAS qui gagne un superlatif,
+// c'est le `rule` (MAX/MIN) de chaque `Superlative` qui le fait — une
+// même stat peut porter plusieurs superlatifs avec des règles
+// différentes (ex. `survivalTime` : MIN pour "😱 First blood").
+//
+// La saisie réelle des valeurs par soirée (GameSessionResult) et
+// l'historique des superlatifs gagnés (SuperlativeAward) arrivent en
+// PR 5/9 — pas de modèle pour ça ici, pas de code qui les déclenche
+// encore.
+model GameStatType {
+  id             String   @id @default(cuid())
+  gameId         String
+  key            String
+  label          String
+  type           StatType
+  higherIsBetter Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  superlatives Superlative[]
+
+  @@unique([gameId, key])
+}
+
+// Un superlatif attribué automatiquement (calcul en PR 5/9) à partir
+// d'une `GameStatType` — ex. "🐛 Bouffé par le grouille" (MAX sur la stat
+// "morts" de Lethal Company). `xpReward` éditable par superlatif depuis
+// /admin/jeux-stats (20 XP par défaut).
+model Superlative {
+  id             String          @id @default(cuid())
+  gameStatTypeId String
+  name           String
+  rule           SuperlativeRule
+  xpReward       Int             @default(20)
+  createdAt      DateTime        @default(now())
+
+  gameStatType GameStatType @relation(fields: [gameStatTypeId], references: [id], onDelete: Cascade)
 }
