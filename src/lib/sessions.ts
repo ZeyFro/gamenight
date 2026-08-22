@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { announceSessionResult } from "@/lib/discord-announce";
+import { awardXp } from "@/lib/xp-actions";
+import { XP_AMOUNTS } from "@/lib/xp";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, Session, User } from "@prisma/client";
 
@@ -98,6 +100,16 @@ export async function closeSession(
       decidedTime: session.date,
     },
   });
+
+  // XP participation (Axe 1) — même définition de "présent" que celle
+  // utilisée par l'écran de saisie des résultats (PR 3/9) : les users qui
+  // ont voté pour la proposition gagnante. sourceId = session.id, un seul
+  // crédit par session même si `closeSession` est rappelé (ne devrait pas
+  // arriver, la session n'est plus VOTING après ce point, mais la
+  // contrainte unique d'`awardXp` protège de toute façon).
+  for (const vote of winner.votes) {
+    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+  }
 
   return {
     discord: await announceSessionResult(session, winner, tie),

@@ -7,6 +7,8 @@ import { getCurrentUser } from "@/lib/current-user";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
+import { awardXp } from "@/lib/xp-actions";
+import { XP_AMOUNTS } from "@/lib/xp";
 import {
   cancelSession,
   closeSession,
@@ -41,6 +43,8 @@ export async function createSession(formData: FormData) {
   const session = await prisma.session.create({
     data: { date, votingDeadline, customReminderMessage, createdById: user.id },
   });
+
+  await awardXp(user.id, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de
@@ -185,6 +189,12 @@ export async function toggleVote(formData: FormData) {
     await prisma.vote.delete({ where: { id: existing.id } });
   } else {
     await prisma.vote.create({ data: { proposalId, userId: user.id } });
+    // sourceId = proposalId (pas l'id du Vote) : un aller-retour
+    // vote/dévote/revote sur la MÊME proposition ne doit pas re-créditer
+    // l'XP à chaque fois (la contrainte unique sur XpEvent l'empêche déjà
+    // via awardXp) ; voter sur une AUTRE proposition, en revanche, reste
+    // une nouvelle action légitime.
+    await awardXp(user.id, "VOTE", proposalId, XP_AMOUNTS.VOTE);
   }
 
   revalidatePath(`/sessions/${sessionId}`);

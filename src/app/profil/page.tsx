@@ -7,6 +7,7 @@ import { toggleSilenceReminders } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
 
 export default async function ProfilPage({
   searchParams,
@@ -17,6 +18,12 @@ export default async function ProfilPage({
   if (!user) redirect("/");
 
   const { steam, count } = await searchParams;
+
+  const level = levelForXp(user.xpTotal);
+  const rank = rankForLevel(level);
+  const title = titleForLevel(level);
+  const xpIntoLevel = user.xpTotal - xpForLevel(level);
+  const xpForNextLevel = xpForLevel(level + 1) - xpForLevel(level);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -42,6 +49,44 @@ export default async function ProfilPage({
               </p>
               <p className="text-sm text-muted">Connecté via Discord</p>
             </div>
+          </Card>
+        </StaggerItem>
+
+        {/*
+          Aperçu XP minimal — juste de quoi vérifier en prod que le
+          backfill donne des chiffres cohérents avec l'historique réel
+          (demande explicite avant d'enchaîner sur la PR suivante du
+          chantier). La vraie refonte visuelle (bannière, anneau de rang
+          sur l'avatar, cartes stats, onglets) arrive en PR 8/9.
+        */}
+        <StaggerItem>
+          <Card className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-foreground">
+                Niveau {level} — {title}
+              </h2>
+              <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
+                {rank.name}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{
+                    width: `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted">
+                {user.xpTotal} XP au total — {xpIntoLevel} / {xpForNextLevel}{" "}
+                vers le niveau {level + 1}
+              </p>
+            </div>
+            <p className="text-sm text-muted">
+              🔥 Streak : {user.streakCount} jour
+              {user.streakCount > 1 ? "s" : ""} d&apos;affilée
+            </p>
           </Card>
         </StaggerItem>
 
