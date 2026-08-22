@@ -4,6 +4,7 @@ import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { announceSessionResult } from "@/lib/discord-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
+import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, Session, User } from "@prisma/client";
 
@@ -142,10 +143,19 @@ export async function cancelSession(sessionId: string): Promise<void> {
 }
 
 export async function markSessionDone(sessionId: string): Promise<void> {
-  await prisma.session.updateMany({
+  const result = await prisma.session.updateMany({
     where: { id: sessionId, status: "SCHEDULED" },
     data: { status: "DONE" },
   });
+  if (result.count === 0) return;
+
+  // PR 5/9 — ouvre la fenêtre de vote de superlatifs entre potes dès que
+  // la session passe DONE (voir src/lib/superlative-voting.ts).
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { decidedGameId: true },
+  });
+  await openSuperlativeVotingWindow(sessionId, session?.decidedGameId ?? null);
 }
 
 /** Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée. */

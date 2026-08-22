@@ -4,10 +4,15 @@ import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
+import {
+  finalizeSuperlativeVotingIfDue,
+  getPendingSuperlativeVoteSessionIds,
+} from "@/lib/superlative-voting";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
 import { createSession } from "./actions";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 
@@ -23,26 +28,39 @@ const CREATE_ERROR_MESSAGES: Record<string, string> = {
     "Cette session est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
 };
 
-function SessionRow({ session }: { session: SessionRowData }) {
+function SessionRow({
+  session,
+  needsSuperlativeVote,
+}: {
+  session: SessionRowData;
+  needsSuperlativeVote: boolean;
+}) {
   const status = SESSION_STATUS_LABELS[session.status];
   return (
     <Link href={`/sessions/${session.id}`}>
-      <div className="card-glow flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 transition-all duration-200">
-        <div className="min-w-0">
-          <p className="truncate font-medium text-foreground capitalize">
-            {formatDateTimeFr(session.date)}
-          </p>
-          <p className="truncate text-sm text-muted">
-            {session.decidedGame
-              ? session.decidedGame.name
-              : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
-          </p>
+      <div className="card-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 transition-all duration-200">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground capitalize">
+              {formatDateTimeFr(session.date)}
+            </p>
+            <p className="truncate text-sm text-muted">
+              {session.decidedGame
+                ? session.decidedGame.name
+                : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
+          >
+            {status.label}
+          </span>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
-        >
-          {status.label}
-        </span>
+        {needsSuperlativeVote && (
+          <Badge tone="accent" glow animate className="w-fit">
+            🏆 Vote les superlatifs !
+          </Badge>
+        )}
       </div>
     </Link>
   );
@@ -68,6 +86,14 @@ export default async function SessionsPage({
   });
   await Promise.all(dueSessions.map((s) => closeSessionIfDue(s.id)));
 
+  const dueSuperlativeVotings = await prisma.session.findMany({
+    where: { status: "DONE", superlativeVotingClosed: false },
+    select: { id: true },
+  });
+  await Promise.all(
+    dueSuperlativeVotings.map((s) => finalizeSuperlativeVotingIfDue(s.id))
+  );
+
   const sessions = await prisma.session.findMany({
     include: { decidedGame: true, _count: { select: { proposals: true } } },
     orderBy: { date: "desc" },
@@ -78,6 +104,11 @@ export default async function SessionsPage({
   );
   const past = sessions.filter(
     (s) => s.status === "DONE" || s.status === "CANCELLED"
+  );
+
+  const pendingSuperlativeVotes = await getPendingSuperlativeVoteSessionIds(
+    user.id,
+    past.filter((s) => s.status === "DONE").map((s) => s.id)
   );
 
   return (
@@ -208,7 +239,7 @@ export default async function SessionsPage({
         <Stagger className="flex flex-col gap-3">
           {upcoming.map((session) => (
             <StaggerItem key={session.id}>
-              <SessionRow session={session} />
+              <SessionRow session={session} needsSuperlativeVote={false} />
             </StaggerItem>
           ))}
         </Stagger>
@@ -222,7 +253,10 @@ export default async function SessionsPage({
           <Stagger className="flex flex-col gap-3">
             {past.map((session) => (
               <StaggerItem key={session.id}>
-                <SessionRow session={session} />
+                <SessionRow
+                  session={session}
+                  needsSuperlativeVote={pendingSuperlativeVotes.has(session.id)}
+                />
               </StaggerItem>
             ))}
           </Stagger>

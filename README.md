@@ -1169,11 +1169,17 @@ créateur — et lui seul — peut saisir un résultat générique : podium
 ## Superlatifs par jeu — configuration (PR 4/9)
 
 Troisième étage du chantier XP (Axe 3, partie 1 : uniquement la
-configuration ici — la saisie des valeurs par soirée, le calcul
-automatique et l'attribution XP/notif Discord arrivent en PR 5/9. Pas de
-modèle `GameSessionResult`/`SuperlativeAward` pour l'instant : même
-discipline que le reste du chantier, pas de table qui traîne sans code
-pour l'utiliser).
+configuration ici).
+
+**Changement de plan en PR 5/9** : la saisie manuelle de stats chiffrées
+(kills, morts…) après chaque soirée s'est révélée trop lourde à l'usage
+pour un groupe de potes flemmards. Abandonnée au profit d'un système de
+**vote de superlatifs entre potes** (voir la section dédiée plus bas) —
+`GameStatType`/`Superlative` et `/admin/jeux-stats` restent dans le code
+et fonctionnels (accessibles par URL directe), juste retirés du lien de
+navigation sur `/profil` au profit de `/admin/superlatifs`. Choix assumé
+de ne pas supprimer le code/schéma : garder la porte ouverte à une
+réintroduction plus tard sans tout refaire.
 
 ### Modèle
 
@@ -1261,6 +1267,102 @@ juste une trace de qui a touché quoi en dernier, affichée discrètement.
 - Toutes les actions de création/modification (et la bascule
   actif/inactif d'un message, qui modifie bien la ligne) mettent à jour
   `modifiedById` avec le user courant.
+
+## Vote de superlatifs entre potes (PR 5/9)
+
+Remplace la saisie manuelle de stats chiffrées initialement prévue (voir
+plus haut) : 30 secondes de tap par participant, zéro chiffre à saisir.
+
+### Flow
+
+1. Une soirée passe `DONE` (via "Marquer comme terminée") →
+   `markSessionDone` ouvre automatiquement une fenêtre de vote de 24h
+   (`openSuperlativeVotingWindow`, `src/lib/superlative-voting.ts`). Moins
+   de 2 participants (personne d'autre à désigner, se voter soi-même étant
+   impossible) : la fenêtre se ferme directement, sans awards.
+2. Un badge accent **"🏆 Vote les superlatifs !"** apparaît sur la carte de
+   la session dans `/sessions` et sur `/sessions/[id]`, pour chaque
+   participant qui n'a pas encore voté (participants = users ayant voté
+   pour la proposition **gagnante**, même définition unifiée que l'XP
+   `PARTICIPATE` et `/sessions/[id]/resultats` dans tout le chantier).
+3. Clic → `/sessions/[id]/vote-superlatifs` : une rangée par superlatif
+   actif, avatar de chaque autre participant en bouton (soi-même exclu de
+   la liste, impossible de voter pour soi). "Valider mes votes" est
+   désactivé tant qu'il manque un choix, et envoie tout d'un coup —
+   formulaire tout-ou-rien, pas de vote partiel enregistré côté serveur.
+   Une fois voté : verrouillé, pas de re-vote (même rationale que
+   `/sessions/[id]/resultats` — `XpEvent` est un ledger append-only, pas
+   fait pour être corrigé).
+4. Clôture automatique (déclenchée en lecture, sur `/sessions`,
+   `/sessions/[id]` et `/sessions/[id]/vote-superlatifs`, même schéma
+   paresseux que `closeSessionIfDue` pour F7) dès que **tous les
+   participants ont voté OU que 24h se sont écoulées**, whichever comes
+   first : calcul du gagnant par catégorie (le plus de votes ; égalité →
+   tirage aléatoire parmi les ex-aequo), attribution de l'XP bonus, et
+   annonce Discord (catégorie `SESSION_AWARDS`, message aléatoire +
+   embed listant chaque superlatif/gagnant/nombre de voix).
+5. **Bouton créateur "Forcer la clôture des votes maintenant"** sur
+   `/sessions/[id]/vote-superlatifs`, visible tant que le vote n'est pas
+   clos — pour ne pas attendre 24h quand tout le monde a déjà voté ou est
+   déjà reparti. Ignore la deadline et le "tout le monde a voté".
+6. **0 vote sur la session au bout de 24h** (ou fenêtre jamais ouverte,
+   moins de 2 participants) : session marquée close silencieusement,
+   aucun award créé, **aucun embed Discord envoyé**, aucune XP distribuée
+   — pas de notif "on n'a rien à annoncer".
+
+### Les 6 superlatifs seedés
+
+Configurables (icône, nom, description, XP, actif) sur `/admin/superlatifs`
+— même esprit que `/admin/messages` : pas de rôle admin dédié, tout le
+monde peut gérer la liste, traçabilité seule via `AuditLine` (crainte
+déjà documentée plus haut : un pote pourrait truquer un superlatif pour se
+farmer de l'XP — pas bloqué, juste tracé).
+
+| Superlatif | XP |
+| --- | --- |
+| 🏆 MVP de la soirée | +30 |
+| 💀 Le plus mort / Le nul | +15 |
+| 😂 Le plus drôle | +15 |
+| 🔥 Le sweaty | +20 |
+| 🐢 Le plus lent / Le boomer | +10 |
+| 👻 Le fantôme (le plus absent / afk) | +10 |
+
+Seedés par `prisma/seed-superlatives.mjs` (idempotent par nom, wired dans
+`npm run build` juste après `seed-game-stats.mjs` ; base neuve sans
+utilisateur encore connecté → seed reporté au prochain build, même
+philosophie que `prisma/seed.mjs`). Script manuel équivalent :
+`npm run seed-superlatives`.
+
+### Schéma
+
+- **`SuperlativeCategory`** : la définition d'un superlatif (icône, nom,
+  description, `xpReward`, `active`, audit `modifiedById`/`modifiedAt`).
+  Générique, pas de config par jeu — contrairement à
+  `GameStatType`/`Superlative` (PR 4/9, désormais dormants).
+- **`SuperlativeVote`** : un vote d'un participant pour un autre, par
+  catégorie et par soirée (`@@unique([sessionId, categoryId,
+  voterUserId])` — un seul vote par catégorie et par votant).
+- **`SuperlativeAward`** : le résultat final par catégorie et par soirée
+  (`@@unique([sessionId, categoryId])`), avec `voteCount` (nombre de voix
+  du gagnant). Pas de ligne créée pour une catégorie sans aucun vote.
+- **`Session`** gagne `superlativeVotingDeadline` (deadline des 24h,
+  `null` si la fenêtre n'a jamais été ouverte) et
+  `superlativeVotingClosed` (booléen distinct plutôt que déduit de
+  l'existence d'`SuperlativeAward` — "clos avec 0 award" est un état
+  valide, différent de "pas encore clos").
+
+### Discord — catégorie `SESSION_AWARDS`
+
+Nouvelle catégorie `MessageTemplate`, 3 messages seedés par défaut :
+"🏆 Les awards tombent :\n{gagnants}", "⚡ Voici les vainqueurs :\n{gagnants}
+Applaudissez.", "Palmarès de la soirée :\n{gagnants} Bravo les gars." —
+variable `{gagnants}` = liste formatée
+`🏆 MVP : @Kévin\n💀 Le plus mort : @Slime\n...`. Embed structuré en
+complément (titre "🏆 Awards de la soirée — [nom du jeu]", un champ par
+superlatif). **Pas d'avatar par superlatif dans l'embed** (simplification
+assumée) : le modèle de champ d'un embed Discord n'affiche que du texte
+(name/value), une image par champ n'existe pas — le nom du gagnant est
+affiché en texte à la place.
 
 ## Rappels drôles avant session (F7)
 
@@ -1448,7 +1550,8 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run lint` | Lint ESLint |
 | `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
-| `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build |
+| `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build (chantier dormant depuis PR 5/9, laissé fonctionnel) |
+| `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -1480,7 +1583,10 @@ src/lib/xp-actions.ts        # awardXp (idempotent) + touchStreak (I/O Prisma + 
 src/lib/discord-level-up.ts  # Notif Discord de passage de niveau
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
 prisma/backfill-xp.mjs      # Backfill XP idempotent, wired dans npm run build (npm run backfill-xp en manuel)
-prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempotent, piloté par les vraies données
+prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempotent, piloté par les vraies données (dormant depuis PR 5/9)
+prisma/seed-superlatives.mjs # Seed des 6 superlatifs génériques par défaut, idempotent par nom
+src/lib/superlative-voting.ts       # Participants, ouverture/clôture de la fenêtre de vote, calcul des gagnants
+src/lib/discord-session-awards.ts   # Notif Discord des awards votés (catégorie SESSION_AWARDS)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -1494,6 +1600,8 @@ src/components/WithdrawProposalDialog.tsx # Confirmation de retrait de sa propre
 src/components/ProposeGameForm.tsx      # Combobox recherche pour "Proposer un jeu" (remplace le <select>)
 src/components/MessageTemplateForm.tsx  # Form message Discord : validation variables inconnues + autocomplétion "{"
 src/components/AuditLine.tsx            # "Modifié par {avatar} {pseudo} le {date}" (messages, stats, superlatifs)
+src/components/SuperlativeVoteForm.tsx  # Formulaire de vote de superlatifs (avatar-tap par catégorie)
+src/components/SuperlativeCategoryForm.tsx # Form d'ajout/édition d'un superlatif (/admin/superlatifs)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
@@ -1506,9 +1614,11 @@ src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
 src/app/profil/actions.ts   # Server action toggle silence rappels
 src/app/admin/messages/page.tsx    # CRUD des messages Discord (catégories, variables)
 src/app/admin/messages/actions.ts  # Server actions messages Discord
-src/app/admin/jeux-stats/page.tsx           # Liste des jeux de la biblio commune
-src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu
-src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs
+src/app/admin/jeux-stats/page.tsx           # Liste des jeux de la biblio commune (dormant depuis PR 5/9, accessible par URL directe)
+src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu (idem)
+src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs (idem)
+src/app/admin/superlatifs/page.tsx          # CRUD des superlatifs génériques (vote entre potes)
+src/app/admin/superlatifs/actions.ts        # Server actions superlatifs
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
@@ -1522,6 +1632,7 @@ src/app/disponibilites/actions.ts       # Server actions dispos
 src/app/sessions/page.tsx               # Liste des soirées + création
 src/app/sessions/[id]/page.tsx          # Détail : proposer, voter, clôturer
 src/app/sessions/[id]/resultats/page.tsx # Saisie/consultation du podium ou du bonus coop (Axe 2)
+src/app/sessions/[id]/vote-superlatifs/page.tsx # Vote de superlatifs entre potes (PR 5/9)
 src/app/sessions/actions.ts             # Server actions soirées
 src/components/SessionResultsForm.tsx   # Formulaire podium/coop de la page résultats
 src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
