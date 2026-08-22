@@ -158,7 +158,7 @@ function matchesCurated(game, curated) {
   return curated.matchNames.some((m) => n.includes(m) || m.includes(n));
 }
 
-async function seedGameStats(game, statsTemplate) {
+async function seedGameStats(game, statsTemplate, authorId) {
   const existing = await prisma.gameStatType.count({ where: { gameId: game.id } });
   if (existing > 0) {
     console.log(`  déjà configuré (${existing} stat(s)) — rien à faire.`);
@@ -173,7 +173,10 @@ async function seedGameStats(game, statsTemplate) {
         label: stat.label,
         type: stat.type,
         higherIsBetter: stat.higherIsBetter,
-        superlatives: { create: stat.superlatives },
+        modifiedById: authorId,
+        superlatives: {
+          create: stat.superlatives.map((s) => ({ ...s, modifiedById: authorId })),
+        },
       },
     });
   }
@@ -188,6 +191,19 @@ async function seedGameStats(game, statsTemplate) {
 }
 
 async function main() {
+  // `modifiedById` (audit trail, PR "avant 5/9") est devenu obligatoire sur
+  // GameStatType/Superlative — nécessaire pour créer quoi que ce soit ici.
+  // En pratique toujours présent dès qu'un jeu est "owned" (ça implique un
+  // User), mais on garde le même garde-fou "pas d'utilisateur -> seed
+  // reporté" que prisma/seed.mjs plutôt que de le supposer.
+  const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!author) {
+    console.log(
+      "[seed-game-stats] Aucun utilisateur en base pour l'instant — seed reporté au prochain build."
+    );
+    return;
+  }
+
   const games = await prisma.game.findMany({
     select: {
       id: true,
@@ -232,7 +248,7 @@ async function main() {
     console.log(
       `- ${game.name} (${game.ownerCount} possesseur(s) — contenu ${source})`
     );
-    await seedGameStats(game, stats);
+    await seedGameStats(game, stats, author.id);
   }
   console.log("=== Fin ===\n");
 }
