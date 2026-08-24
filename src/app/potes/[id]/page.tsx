@@ -7,6 +7,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
 import { AvailabilityView } from "@/components/AvailabilityView";
+import { ReadOnlyTierlist, type TierlistRowGame } from "@/components/ReadOnlyTierlist";
+import type { Tier } from "@prisma/client";
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -57,6 +59,17 @@ export default async function PoteLibraryPage({
     maxPlayers: game.maxPlayers,
   }));
 
+  const tierlistEntries = await prisma.tierlistEntry.findMany({
+    where: { userId: id },
+    include: { game: true },
+  });
+  const tierlistByTier: Partial<Record<Tier, TierlistRowGame[]>> = {};
+  for (const entry of tierlistEntries) {
+    const list = tierlistByTier[entry.tier] ?? [];
+    list.push({ id: entry.game.id, name: entry.game.name, coverUrl: entry.game.coverUrl });
+    tierlistByTier[entry.tier] = list;
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
@@ -92,6 +105,14 @@ export default async function PoteLibraryPage({
           games={games}
           emptyMessage={`${pote.discordName} n'a pas encore de jeu dans sa bibliothèque.`}
           showAddButton
+        />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-foreground">Tierlist</h2>
+        <ReadOnlyTierlist
+          gamesByTier={tierlistByTier}
+          emptyMessage={`${pote.discordName} n'a pas encore classé de jeu.`}
         />
       </section>
     </div>

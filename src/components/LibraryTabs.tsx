@@ -3,9 +3,10 @@ import Link from "next/link";
 const TABS = [
   { href: "/bibliotheque", label: "Ma bibliothèque", key: "perso" },
   { href: "/bibliotheque/groupe", label: "Groupe", key: "groupe" },
+  { href: "/tierlist", label: "Tierlist", key: "tierlist" },
 ] as const;
 
-export function LibraryTabs({ active }: { active: "perso" | "groupe" }) {
+export function LibraryTabs({ active }: { active: "perso" | "groupe" | "tierlist" }) {
   return (
     <div className="flex gap-4 border-b border-border">
       {TABS.map((tab) => (
