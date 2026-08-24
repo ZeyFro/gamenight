@@ -1364,6 +1364,72 @@ assumée) : le modèle de champ d'un embed Discord n'affiche que du texte
 (name/value), une image par champ n'existe pas — le nom du gagnant est
 affiché en texte à la place.
 
+## Tierlist perso (PR 6/9)
+
+Chaque user classe la bibliothèque commune dans une tierlist S/A/B/C/D par
+glisser-déposer, sur `/tierlist` (3e onglet à côté de "Ma bibliothèque" /
+"Groupe", via `LibraryTabs`).
+
+### Décisions prises avec l'utilisateur
+
+- **Périmètre = toute la biblio commune**, pas seulement les jeux que le
+  user possède lui-même — même définition que `/bibliotheque/groupe`
+  (tous les jeux avec au moins un `UserGame.owned` quelque part dans le
+  groupe). Permet de classer un jeu essayé chez un pote sans le posséder.
+- **Visible par tous les potes**, pas privé : `/potes/[id]` gagne une
+  section "Tierlist" en lecture seule, même esprit que la bibliothèque et
+  les dispos déjà exposées là.
+- **Glisser-déposer**, pas un tap-to-assign — choisi explicitement pour le
+  rendu "vraie tierlist" (cartes qu'on fait physiquement glisser entre les
+  rangées), plutôt qu'un bouton de rang par carte.
+
+### Implémentation du drag & drop
+
+Nouvelle dépendance **`@dnd-kit/core`** (seul le package `core`, pas
+`@dnd-kit/sortable` : l'ordre *dans* une rangée n'a pas de sens pour une
+tierlist, seule la rangée compte, pas besoin de tri interne). Choisi
+plutôt qu'une implémentation maison en HTML5 Drag and Drop API : cette
+dernière ne fonctionne quasiment pas au toucher sur mobile (elle repose
+sur les événements souris), inacceptable pour une app mobile-first.
+`@dnd-kit` utilise les Pointer Events (souris **et** tactile) via son
+`PointerSensor`.
+
+- `PointerSensor` avec un seuil d'activation (`distance: 6`) : sans lui,
+  le moindre tap sur une carte déclencherait un drag et casserait le
+  scroll tactile de la page. `touch-none` (CSS `touch-action: none`) sur
+  chaque carte est requis en complément, sinon le navigateur capte le
+  geste comme un scroll natif avant que dnd-kit ne le voie.
+- 5 rangées droppables (S à D) + un pool "Non classé" en bas (jeux sans
+  ligne `TierlistEntry`) — glisser une carte vers "Non classé" supprime sa
+  ligne plutôt que d'écrire une 6e valeur d'enum qui ne serait qu'un
+  "null" déguisé.
+- Mise à jour optimiste côté client + `setGameTierAction` en
+  arrière-plan (même philosophie que `VoteButton`), mais **sans toast à
+  chaque dépose** : sur une bibliothèque de plusieurs dizaines de jeux, un
+  toast par carte déplacée serait du bruit — le déplacement visuel de la
+  carte est déjà le retour immédiat.
+- `DragOverlay` (fourni par dnd-kit) pour une carte flottante bien visible
+  pendant le drag, cohérent avec le niveau de polish (Framer Motion,
+  `card-glow`) déjà présent ailleurs.
+
+### Modèle
+
+- **`Tier`** (enum `S`/`A`/`B`/`C`/`D`).
+- **`TierlistEntry`** (`userId`, `gameId`, `tier`, `@@unique([userId,
+  gameId])`) : un seul classement par jeu et par joueur, reclasser un jeu
+  déjà classé fait un `upsert` plutôt que d'empiler une nouvelle ligne.
+  Pas d'entrée = "non classé".
+- Une seule teinte (l'accent violet de l'app) déclinée en intensité
+  décroissante de S à D (`TIER_INTENSITY_CLASSES`, `src/lib/tierlist.ts`)
+  plutôt que 5 couleurs arbitraires — le rouge/destructive reste réservé
+  aux actions destructives ailleurs dans l'app.
+- Migration purement additive (nouvel enum, nouvelle table vide).
+
+**Pas d'XP pour l'instant** : le bonus "Profil complet" (§ chantier XP,
+tableau du barème) reste désactivé jusqu'à la PR 8/9, qui l'activera une
+fois que bannière **et** tierlist existent réellement — cette PR pose
+juste la tierlist, sans toucher au barème XP.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1587,6 +1653,7 @@ prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempo
 prisma/seed-superlatives.mjs # Seed des 6 superlatifs génériques par défaut, idempotent par nom
 src/lib/superlative-voting.ts       # Participants, ouverture/clôture de la fenêtre de vote, calcul des gagnants
 src/lib/discord-session-awards.ts   # Notif Discord des awards votés (catégorie SESSION_AWARDS)
+src/lib/tierlist.ts                 # TIER_ORDER + intensité de couleur partagées (édition + lecture seule)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -1602,10 +1669,12 @@ src/components/MessageTemplateForm.tsx  # Form message Discord : validation vari
 src/components/AuditLine.tsx            # "Modifié par {avatar} {pseudo} le {date}" (messages, stats, superlatifs)
 src/components/SuperlativeVoteForm.tsx  # Formulaire de vote de superlatifs (avatar-tap par catégorie)
 src/components/SuperlativeCategoryForm.tsx # Form d'ajout/édition d'un superlatif (/admin/superlatifs)
+src/components/TierlistBoard.tsx        # Tierlist éditable (@dnd-kit, glisser-déposer S/A/B/C/D)
+src/components/ReadOnlyTierlist.tsx     # Tierlist lecture seule (biblio pote)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
-src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe"
+src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe" / "Tierlist"
 src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale si pas d'avatar Discord)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
@@ -1621,10 +1690,12 @@ src/app/admin/superlatifs/page.tsx          # CRUD des superlatifs génériques 
 src/app/admin/superlatifs/actions.ts        # Server actions superlatifs
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
-src/app/potes/[id]/page.tsx             # Biblio d'un pote (lecture seule)
+src/app/potes/[id]/page.tsx             # Biblio + tierlist d'un pote (lecture seule)
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
 src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
+src/app/tierlist/page.tsx               # Tierlist perso éditable (glisser-déposer)
+src/app/tierlist/actions.ts             # Server action setGameTierAction
 src/app/jeux/[id]/page.tsx              # Fiche jeu détaillée (IGDB à la demande, cache)
 src/app/jeux/actions.ts                 # Server action "Rafraîchir les infos"
 src/app/disponibilites/page.tsx         # Planning hebdo + exceptions

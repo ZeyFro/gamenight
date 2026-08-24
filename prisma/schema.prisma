@@ -72,6 +72,10 @@ model User {
   superlativeVotesReceived      SuperlativeVote[]     @relation("SuperlativeVotedFor")
   superlativeAwardsWon          SuperlativeAward[]
 
+  // PR 6/9 — tierlist perso (classement S/A/B/C/D de toute la biblio
+  // commune, voir `TierlistEntry`).
+  tierlistEntries TierlistEntry[]
+
   @@index([xpTotal])
 }
 
@@ -110,6 +114,7 @@ model Game {
   proposals       Proposal[]
   decidedSessions Session[]
   statTypes       GameStatType[]
+  tierlistEntries TierlistEntry[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -521,4 +526,36 @@ model SuperlativeAward {
   winner   User                @relation(fields: [winnerUserId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, categoryId])
+}
+
+enum Tier {
+  S
+  A
+  B
+  C
+  D
+}
+
+// Tierlist perso (PR 6/9) — chaque user classe librement TOUTE la biblio
+// commune (owned ou non par lui, cf. la même définition que
+// `/bibliotheque/groupe` : tous les jeux avec au moins un `UserGame.owned`)
+// dans une rangée S/A/B/C/D, par glisser-déposer sur `/tierlist`. Pas de
+// ligne = "non classé" (pool à part dans l'UI, pas une 6e valeur d'enum —
+// éviter une valeur qui ne serait qu'un "null" déguisé). Visible en
+// lecture seule par les potes sur `/potes/[id]`, même esprit que la biblio
+// et les dispos déjà exposées là. `@@unique([userId, gameId])` : un seul
+// classement par jeu et par joueur ; reclasser un jeu déjà classé met à
+// jour la ligne existante (`upsert`) plutôt que d'en empiler une nouvelle.
+model TierlistEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  gameId    String
+  tier      Tier
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
 }
