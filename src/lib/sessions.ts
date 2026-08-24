@@ -5,6 +5,7 @@ import { announceSessionResult } from "@/lib/discord-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
+import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, Session, User } from "@prisma/client";
 
@@ -110,6 +111,7 @@ export async function closeSession(
   // contrainte unique d'`awardXp` protège de toute façon).
   for (const vote of winner.votes) {
     await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+    await checkSessionsParticipatedBadges(vote.userId);
   }
 
   return {

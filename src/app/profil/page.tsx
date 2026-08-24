@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { prisma } from "@/lib/prisma";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
 import { toggleSilenceReminders } from "./actions";
@@ -8,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
+import { BadgeGrid, type BadgeGridItem } from "@/components/BadgeGrid";
 
 export default async function ProfilPage({
   searchParams,
@@ -24,6 +26,26 @@ export default async function ProfilPage({
   const title = titleForLevel(level);
   const xpIntoLevel = user.xpTotal - xpForLevel(level);
   const xpForNextLevel = xpForLevel(level + 1) - xpForLevel(level);
+
+  const [allBadges, unlockedBadges] = await Promise.all([
+    prisma.badge.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.userBadge.findMany({
+      where: { userId: user.id },
+      include: { badge: true },
+      orderBy: { unlockedAt: "desc" },
+    }),
+  ]);
+  const unlockedAtByBadgeId = new Map(unlockedBadges.map((u) => [u.badgeId, u.unlockedAt]));
+  const badgeItems: BadgeGridItem[] = allBadges.map((badge) => ({
+    id: badge.id,
+    icon: badge.icon,
+    name: badge.name,
+    description: badge.description,
+    category: badge.category,
+    rarity: badge.rarity,
+    unlockedAt: unlockedAtByBadgeId.get(badge.id) ?? null,
+  }));
+  const recentBadges = unlockedBadges.slice(0, 3).map((u) => u.badge);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -65,9 +87,21 @@ export default async function ProfilPage({
               <h2 className="font-semibold text-foreground">
                 Niveau {level} — {title}
               </h2>
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
-                {rank.name}
-              </span>
+              <div className="flex items-center gap-2">
+                {recentBadges.map((badge) => (
+                  <span
+                    key={badge.id}
+                    title={badge.name}
+                    aria-label={badge.name}
+                    className="text-lg"
+                  >
+                    {badge.icon}
+                  </span>
+                ))}
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
+                  {rank.name}
+                </span>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
@@ -87,6 +121,22 @@ export default async function ProfilPage({
               🔥 Streak : {user.streakCount} jour
               {user.streakCount > 1 ? "s" : ""} d&apos;affilée
             </p>
+          </Card>
+        </StaggerItem>
+
+        {/*
+          Section plutôt qu'un vrai onglet dédié : /profil reste une page
+          plate (empilement de cartes) jusqu'à sa refonte visuelle prévue
+          en PR 8/9 (bannière, anneau de rang, onglets — voir le
+          commentaire plus haut sur le barème XP). Ajouter un système
+          d'onglets maintenant pour une seule section aurait anticipé
+          cette refonte pour un gain nul ; les 3 badges les plus récents
+          sont déjà visibles dans l'en-tête ci-dessus pour un accès rapide.
+        */}
+        <StaggerItem>
+          <Card className="flex flex-col gap-4">
+            <h2 className="font-semibold text-foreground">Badges</h2>
+            <BadgeGrid badges={badgeItems} />
           </Card>
         </StaggerItem>
 

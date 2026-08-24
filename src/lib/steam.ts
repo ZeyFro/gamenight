@@ -1,5 +1,6 @@
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { checkLibraryBadges } from "@/lib/badges";
 
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
 const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
@@ -144,6 +145,8 @@ export async function importSteamLibrary(
       create: { userId, gameId: dbGame.id, owned: true },
     });
   }
+
+  await checkLibraryBadges(userId);
 
   return { status: "imported", count: result.games.length };
 }

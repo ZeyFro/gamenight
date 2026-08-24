@@ -1430,6 +1430,188 @@ tableau du barème) reste désactivé jusqu'à la PR 8/9, qui l'activera une
 fois que bannière **et** tierlist existent réellement — cette PR pose
 juste la tierlist, sans toucher au barème XP.
 
+## Fixes UX préliminaires (avant PR 7/9)
+
+Deux frictions remontées après test en prod de la tierlist (PR 6/9),
+corrigées dans la même PR que les badges plutôt qu'à part.
+
+- **`/potes/[id]` en onglets** (Dispos / Bibliothèque / Tierlist /
+  Badges) plutôt que tout empilé sur une seule page — la tierlist d'un
+  pote était en bas d'un scroll interminable. Restructuré en
+  `layout.tsx` (en-tête + `PoteTabs`, partagés) + 4 sous-routes réelles
+  (`/potes/[id]`, `/potes/[id]/bibliotheque`, `/potes/[id]/tierlist`,
+  `/potes/[id]/badges`) — même approche que `LibraryTabs` (navigation par
+  vrais liens, pas un état client qui masque/affiche), `PoteTabs`
+  détermine juste l'onglet actif via `usePathname()` (comme `BottomNav`)
+  plutôt qu'une prop `active` explicite, un seul composant sert les 4
+  sous-routes.
+- **Filtre par nom sur `/tierlist`** — la zone "Non classé" peut contenir
+  50+ jeux, impossible d'en retrouver un précis. Même pattern que le
+  filtre de `/bibliotheque` (`BibliothequeGrid`) : un `<input
+  type="search">` en haut, filtrage en temps réel côté client. Le filtre
+  ne masque que l'affichage des cartes — l'état de classement
+  (`tierByGameId`, source de vérité pour le drag & drop) n'est jamais
+  touché, donc filtrer puis effacer la recherche ne fait perdre aucun
+  classement.
+
+## Badges automatiques (PR 7/9)
+
+Système d'achievements 100% passif : l'app détecte et attribue, aucune
+action volontaire de l'utilisateur. Débloqués soit en direct (juste après
+l'action concernée : créer une soirée, voter, gagner un superlatif,
+ajouter un jeu), soit au prochain chargement de page protégée pour les
+critères "temporels" (streak, ancienneté du compte) — même schéma que le
+streak de connexion déjà en place.
+
+### Les 15 badges seedés
+
+XP dérivé de la rareté plutôt que fixé badge par badge (la demande
+initiale ne précisait pas de montant explicite, contrairement aux
+superlatifs) : COMMON = 20 XP, RARE = 40 XP, EPIC = 75 XP, LEGENDARY = 150
+XP (`BADGE_XP_BY_RARITY`, `src/lib/badge-rarity.ts`).
+
+| Badge | Catégorie | Rareté | Critère exact | XP |
+|---|---|---|---|---|
+| 🎉 First Blood | Participation | Commun | 1 soirée créée | 20 |
+| 🎮 Habitué | Participation | Commun | 10 soirées participées | 20 |
+| 🏆 GOAT | Participation | Rare | 50 soirées participées | 40 |
+| 👑 LÉGENDE | Participation | Légendaire | 100 soirées participées | 150 |
+| ⚡ Marathon | Engagement | Rare | streak 7 jours | 40 |
+| 🔥 Insomniaque | Engagement | Épique | streak 30 jours | 75 |
+| 💎 Ancien | Engagement | Rare | 182 jours (~6 mois) sur l'app | 40 |
+| 🌟 Vétéran | Engagement | Épique | 365 jours (1 an) sur l'app | 75 |
+| 📚 Bibliophile | Bibliothèque | Commun | 30+ jeux dans sa biblio | 20 |
+| 🎯 Collectionneur | Bibliothèque | Rare | 100+ jeux dans sa biblio | 40 |
+| 🗳️ Citoyen | Vote | Commun | 20 votes émis | 20 |
+| 📣 Meneur | Vote | Commun | 5 soirées créées | 20 |
+| 🎤 Community leader | Vote | Rare | 20 soirées créées | 40 |
+| 🥇 Compétiteur | Superlatifs | Rare | 5 superlatifs gagnés | 40 |
+| 🌟 Star | Superlatifs | Épique | 20 superlatifs gagnés | 75 |
+
+"Soirées participées" = même définition unifiée que tout le chantier XP
+(users ayant voté pour la proposition gagnante) : compté via les
+`XpEvent` `PARTICIPATE` déjà en base (pas de recalcul indépendant).
+"Votes émis" = `XpEvent` `VOTE` (cumul historique, jamais décrémenté si
+un vote est retiré depuis — un badge ne doit pas se reverrouiller).
+"Soirées créées" sert **deux** badges de catégories différentes (Meneur
+5 / Community leader 20 côté "Vote & démocratie", mais aussi la base de
+First Blood/GOAT/LÉGENDE via `SESSIONS_PARTICIPATED` côté Participation)
+— reflète fidèlement la répartition demandée, pas une erreur de doublon.
+
+Seedés par `prisma/seed-badges.mjs` (idempotent par `Badge.name`, unique
+en base — wired dans `npm run build`, juste après
+`seed-superlatives.mjs`). Script manuel équivalent : `npm run
+seed-badges`.
+
+### Détection et attribution
+
+- **`src/lib/badges.ts`** : `BadgeCriteria` (union discriminée `{ type,
+  count }`, 7 types) + une fonction de check par déclencheur, chacune ne
+  calculant QUE la statistique concernée (une requête `count()` ciblée,
+  pas un recalcul complet à chaque fois) :
+  - `checkSessionsCreatedBadges` — après `createSession`.
+  - `checkVotesCastBadges` — après un nouveau vote (`toggleVote`, pas un
+    dévote).
+  - `checkSessionsParticipatedBadges` — après chaque crédit XP
+    `PARTICIPATE` à la clôture d'une session (`closeSession`), un check
+    par voteur de la proposition gagnante.
+  - `checkSuperlativesWonBadges` — après chaque award de superlatif
+    (`finalizeSuperlativeVoting`).
+  - `checkLibraryBadges` — après `addManualGame` et `importSteamLibrary`
+    (import initial **et** réimport, un seul point d'entrée partagé).
+  - `checkTemporalBadges` — streak et ancienneté, appelée depuis
+    `getCurrentUser()`, **throttlée sur le même signal que
+    `touchStreak`** : ne relance le check que si `touchStreak` a
+    réellement écrit cette fois-ci (vraie nouvelle visite, pas un
+    rechargement dans les 12h) — sinon chaque page protégée ferait une
+    requête badges en plus.
+- **`unlockBadge`** (privée) : crée le `UserBadge` (idempotent via
+  `@@unique([userId, badgeId])`, retombe silencieusement sur la
+  violation de contrainte en cas de course), accorde `xpReward` via
+  `awardXp` (raison `BADGE_UNLOCKED`, `sourceId` = `badge.id`) si défini,
+  et annonce dans Discord (`announceBadgeUnlocked`).
+
+### Notif Discord — catégorie `BADGE_UNLOCKED`
+
+Même schéma que `announceLevelUp` (une seule personne concernée, `{user}`
+toujours une mention, pas de condition de silence). 3 messages seedés par
+défaut :
+
+- "🏆 {user} vient de débloquer {badge_icon} {badge_name} — {rarity} !"
+- "🎉 Nouveau badge pour {user} : {badge_icon} {badge_name}"
+- "⚡ {user} unlock {badge_icon} {badge_name}, {rarity} édition !"
+
+Variables : `{user}`, `{badge_name}`, `{badge_icon}`, `{rarity}`. Embed
+structuré en complément (titre `{icon} {nom}`, description, champ
+Rareté).
+
+### Backfill — décision sur les notifs Discord
+
+`prisma/backfill-badges.mjs` (idempotent via `@@unique([userId,
+badgeId])`, wired dans `npm run build` juste après `seed-badges.mjs`)
+recalcule pour chaque user existant les 7 statistiques (soirées créées,
+participées, votes, superlatifs gagnés, taille de biblio, streak actuel,
+ancienneté du compte) et débloque rétroactivement tout badge déjà mérité.
+
+**Décision (demandée explicitement par l'utilisateur) : ce backfill ne
+déclenche JAMAIS de notif Discord**, contrairement au chemin live. Un
+premier déploiement où plusieurs users méritent déjà GOAT/Bibliophile/
+Citoyen etc. spammerait le salon de 20-30 messages "vient de débloquer"
+pour des exploits vieux de plusieurs mois — même logique déjà appliquée
+au backfill XP (PR 2/9), qui ne déclenche jamais de "level up"
+rétroactif. **L'XP, en revanche, est accordée rétroactivement**
+(silencieusement) : un badge mérité doit compter dans le total, même
+sans annonce.
+
+**Limite assumée et documentée** (comme pour le backfill XP) : Marathon
+(streak 7j) et Insomniaque (streak 30j) ne peuvent être détectés
+rétroactivement QUE si le streak **actuel** d'un user dépasse déjà le
+seuil au moment du backfill — `User.streakCount` est une valeur
+courante, pas un historique des pics jamais atteints. Un user qui a déjà
+tenu 30 jours puis cassé son streak (>24h sans connexion) ne peut pas
+être détecté ici ; il débloquera le badge naturellement en live la
+prochaine fois qu'il retteint le seuil. Pas de contournement possible
+sans historiser le streak jour par jour, hors scope.
+
+Récapitulatif détaillé imprimé par user à chaque run (stats + badges
+nouvellement débloqués), visible dans les logs de build Vercel — même
+format que le backfill XP. Script manuel équivalent : `npm run
+backfill-badges`.
+
+### Si un critère est modifié après coup
+
+Les `UserBadge` déjà créés restent — **jamais de retrait rétroactif**.
+Un badge gagné reste gagné, même si le seuil de son critère est relevé
+plus tard (ex. "GOAT" repassé à 60 soirées) : cohérent avec le principe
+déjà appliqué au streak (le badge "Marathon" ne se reverrouille jamais
+si le streak retombe ensuite). Documenté directement dans le commentaire
+du modèle `UserBadge` (schema.prisma).
+
+### Affichage
+
+- **`src/components/BadgeGrid.tsx`** : grille partagée entre `/profil`
+  (les siens) et `/potes/[id]/badges` (ceux d'un pote, lecture seule dans
+  les deux cas). Badges non débloqués grisés (icône en niveaux de gris,
+  pas de bordure/glow de rareté — annoncer une rareté pas encore méritée
+  serait trompeur).
+- **Style par rareté** : COMMON = bordure neutre standard, RARE =
+  `.badge-glow` (déjà existant, réutilisé), EPIC = `.badge-glow-epic`
+  (nouveau, glow plus large + halo), LEGENDARY = halo **pulsant en
+  continu** via Framer Motion (`useReducedMotion`-aware — pas
+  d'animation JS continue si l'utilisateur a demandé moins de
+  mouvement). Volontairement discret (une seule couche d'opacité qui
+  respire, pas un scintillement) pour rester dans l'esprit "attention à
+  ne pas surcharger".
+- **`/profil`** : nouvelle section "Badges" (une `Card` de plus dans
+  l'empilement existant, **pas un vrai système d'onglets** — voir le
+  commentaire dans le code : `/profil` reste une page plate jusqu'à sa
+  refonte visuelle prévue en PR 8/9, en ajouter un maintenant pour une
+  seule section aurait anticipé cette refonte pour un gain nul). Les 3
+  badges les plus récents sont affichés en petit à côté du rang, dans
+  l'en-tête "Niveau X — Titre".
+- **`/potes/[id]/badges`** : même `BadgeGrid`, lecture seule, couvert par
+  le FIX 1 ci-dessus.
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1618,6 +1800,8 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
 | `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build (chantier dormant depuis PR 5/9, laissé fonctionnel) |
 | `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
+| `npm run seed-badges` | Seed manuel des 15 badges par défaut — idempotent par nom, aussi lancé automatiquement à chaque build |
+| `npm run backfill-badges` | Backfill badges manuel (attribution rétroactive) — idempotent, jamais de notif Discord (voir § Badges automatiques), aussi lancé automatiquement à chaque build |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -1654,6 +1838,11 @@ prisma/seed-superlatives.mjs # Seed des 6 superlatifs génériques par défaut, 
 src/lib/superlative-voting.ts       # Participants, ouverture/clôture de la fenêtre de vote, calcul des gagnants
 src/lib/discord-session-awards.ts   # Notif Discord des awards votés (catégorie SESSION_AWARDS)
 src/lib/tierlist.ts                 # TIER_ORDER + intensité de couleur partagées (édition + lecture seule)
+src/lib/badges.ts                   # BadgeCriteria + check*Badges (déclencheurs live) + unlockBadge
+src/lib/badge-rarity.ts             # BADGE_XP_BY_RARITY, RARITY_LABELS, CATEGORY_LABELS (neutre, casse le cycle badges.ts ↔ discord-badge-unlocked.ts)
+src/lib/discord-badge-unlocked.ts   # Notif Discord de badge débloqué (catégorie BADGE_UNLOCKED)
+prisma/seed-badges.mjs              # Seed des 15 badges par défaut, idempotent par nom
+prisma/backfill-badges.mjs          # Backfill badges idempotent, jamais de notif Discord
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -1669,8 +1858,10 @@ src/components/MessageTemplateForm.tsx  # Form message Discord : validation vari
 src/components/AuditLine.tsx            # "Modifié par {avatar} {pseudo} le {date}" (messages, stats, superlatifs)
 src/components/SuperlativeVoteForm.tsx  # Formulaire de vote de superlatifs (avatar-tap par catégorie)
 src/components/SuperlativeCategoryForm.tsx # Form d'ajout/édition d'un superlatif (/admin/superlatifs)
-src/components/TierlistBoard.tsx        # Tierlist éditable (@dnd-kit, glisser-déposer S/A/B/C/D)
+src/components/TierlistBoard.tsx        # Tierlist éditable (@dnd-kit, glisser-déposer S/A/B/C/D, filtre par nom)
 src/components/ReadOnlyTierlist.tsx     # Tierlist lecture seule (biblio pote)
+src/components/BadgeGrid.tsx            # Grille de badges (déblocables/débloqués), rareté visuelle
+src/components/PoteTabs.tsx             # Onglets Dispos/Bibliothèque/Tierlist/Badges de /potes/[id]
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
@@ -1690,7 +1881,11 @@ src/app/admin/superlatifs/page.tsx          # CRUD des superlatifs génériques 
 src/app/admin/superlatifs/actions.ts        # Server actions superlatifs
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
-src/app/potes/[id]/page.tsx             # Biblio + tierlist d'un pote (lecture seule)
+src/app/potes/[id]/layout.tsx           # En-tête (avatar/nom/Steam) + PoteTabs, partagés par les 4 sous-routes
+src/app/potes/[id]/page.tsx             # Onglet Dispos (route par défaut)
+src/app/potes/[id]/bibliotheque/page.tsx # Onglet Bibliothèque (lecture seule)
+src/app/potes/[id]/tierlist/page.tsx    # Onglet Tierlist (lecture seule)
+src/app/potes/[id]/badges/page.tsx      # Onglet Badges (lecture seule)
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
 src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB

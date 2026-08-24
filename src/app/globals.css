@@ -84,6 +84,15 @@ body {
   box-shadow: 0 0 14px -3px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
+/* Rareté EPIC (badges, PR 7/9) : glow plus large + halo, un cran au-dessus
+   de .badge-glow (RARE) sans aller jusqu'à l'animation continue réservée
+   à LEGENDARY. */
+.badge-glow-epic {
+  box-shadow:
+    0 0 22px -2px color-mix(in srgb, var(--accent) 85%, transparent),
+    0 0 44px -10px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
