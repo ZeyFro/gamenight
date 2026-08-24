@@ -21,6 +21,7 @@ import {
   forceFinalizeSuperlativeVoting,
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
+import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
 
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
@@ -50,6 +51,7 @@ export async function createSession(formData: FormData) {
   });
 
   await awardXp(user.id, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
+  await checkSessionsCreatedBadges(user.id);
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de
@@ -200,6 +202,7 @@ export async function toggleVote(formData: FormData) {
     // via awardXp) ; voter sur une AUTRE proposition, en revanche, reste
     // une nouvelle action légitime.
     await awardXp(user.id, "VOTE", proposalId, XP_AMOUNTS.VOTE);
+    await checkVotesCastBadges(user.id);
   }
 
   revalidatePath(`/sessions/${sessionId}`);

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { announceLevelUp } from "@/lib/discord-level-up";
 import { levelForXp, streakMultiplier } from "@/lib/xp";
 
-function isUniqueConstraintViolation(error: unknown): boolean {
+export function isUniqueConstraintViolation(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
   );

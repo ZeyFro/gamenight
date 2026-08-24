@@ -76,6 +76,9 @@ model User {
   // commune, voir `TierlistEntry`).
   tierlistEntries TierlistEntry[]
 
+  // PR 7/9 — badges automatiques débloqués (voir `Badge`/`UserBadge`).
+  userBadges UserBadge[]
+
   @@index([xpTotal])
 }
 
@@ -272,6 +275,9 @@ enum MessageCategory {
   // src/lib/discord-session-awards.ts. Ne pas confondre avec le résultat
   // de vote F6 (embed structuré indépendant, jamais dans ce système).
   SESSION_AWARDS
+  // PR 7/9 — annonce du déblocage d'un badge, cf.
+  // src/lib/discord-badge-unlocked.ts.
+  BADGE_UNLOCKED
 }
 
 // Messages Discord perso (rappels F7, notifs de création/modification de
@@ -311,9 +317,11 @@ model MessageTemplate {
 // src/lib/xp-actions.ts. Étendu au fil du chantier, pas avant : PR 2/9
 // (XP participation, Axe 1) a posé les 5 premières valeurs ; PR 3/9 ajoute
 // SESSION_RESULT (podium/coop, Axe 2) ; PR 5/9 ajoute SUPERLATIVE_AWARD
-// (vote entre potes, Axe 3 v2 — voir `SuperlativeCategory` plus bas) ; le
-// profil complet (PR 8/9) ajoutera la sienne le moment venu — pas de
-// valeur d'enum qui traîne sans code pour la déclencher.
+// (vote entre potes, Axe 3 v2 — voir `SuperlativeCategory` plus bas) ; PR
+// 7/9 ajoute BADGE_UNLOCKED (XP optionnel à l'unlock d'un badge, voir
+// `Badge` plus bas) ; le profil complet (PR 8/9) ajoutera la sienne le
+// moment venu — pas de valeur d'enum qui traîne sans code pour la
+// déclencher.
 enum XpReason {
   CREATE_SESSION
   VOTE
@@ -322,6 +330,7 @@ enum XpReason {
   STEAM_LINK_FIRST
   SESSION_RESULT
   SUPERLATIVE_AWARD
+  BADGE_UNLOCKED
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -558,4 +567,65 @@ model TierlistEntry {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([userId, gameId])
+}
+
+enum BadgeCategory {
+  PARTICIPATION
+  ENGAGEMENT
+  BIBLIOTHEQUE
+  VOTE
+  SUPERLATIFS
+}
+
+enum BadgeRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+// Badges automatiques (PR 7/9) — 100% passif, l'app détecte et attribue
+// (jamais une action volontaire de l'utilisateur comme voter un
+// superlatif). `criteria` en JSON plutôt que des colonnes dédiées : les 7
+// types de critère (voir `BadgeCriteria` dans src/lib/badges.ts) ont tous
+// la même forme `{ type, count }`, un schéma typé rigide n'apporterait
+// rien ici — et ça laisse la porte ouverte à `/admin/badges` plus tard
+// sans nouvelle migration. `xpReward` optionnel (certains badges pourront
+// être purement honorifiques). `name` unique : sert de clé d'idempotence
+// pour le seed (`prisma/seed-badges.mjs`), comme `MessageTemplate` n'en a
+// pas besoin (il n'a pas de nom) mais `SuperlativeCategory` s'en sort
+// avec un simple check d'existence en base à la place — ici un vrai
+// contrainte unique est plus sûr vu que le seed tourne à chaque build.
+model Badge {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  icon        String
+  description String
+  category    BadgeCategory
+  rarity      BadgeRarity
+  criteria    Json
+  xpReward    Int?
+  createdAt   DateTime      @default(now())
+
+  userBadges UserBadge[]
+}
+
+// Attribution d'un badge à un user. `@@unique([userId, badgeId])` : un
+// badge ne se débloque qu'une fois par user (`unlockBadge`,
+// src/lib/badges.ts, l'utilise comme filet de sécurité idempotent en plus
+// du check applicatif "déjà débloqué ?"). Si les critères d'un `Badge`
+// sont modifiés après coup (ex. seuil relevé), les `UserBadge` déjà
+// créés restent : jamais de retrait rétroactif, un badge gagné reste
+// gagné — cohérent avec le principe déjà appliqué au streak (badge
+// "Marathon" débloqué une fois, jamais retiré si le streak retombe).
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
 }

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
 import { announceSessionAwards } from "@/lib/discord-session-awards";
+import { checkSuperlativesWonBadges } from "@/lib/badges";
 import type { User } from "@prisma/client";
 
 const VOTING_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -150,6 +151,7 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
       `${sessionId}:${award.categoryId}`,
       category.xpReward
     );
+    await checkSuperlativesWonBadges(award.winnerUserId);
   }
 
   await prisma.session.update({

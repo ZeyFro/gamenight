@@ -156,15 +156,22 @@ export function TierlistBoard({
 }) {
   const [tierByGameId, setTierByGameId] = useState(initialTiers);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const [, startTransition] = useTransition();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
+  // Le filtre ne masque que l'affichage des cartes — `tierByGameId` (état
+  // source de vérité pour le drag & drop) n'est jamais touché, donc
+  // filtrer puis effacer la recherche ne fait perdre aucun classement.
+  const q = filter.trim().toLowerCase();
+  const visibleGames = q ? games.filter((g) => g.name.toLowerCase().includes(q)) : games;
+
   const gamesByTier = new Map<Tier, TierlistGame[]>(TIER_ORDER.map((t) => [t, []]));
   const unranked: TierlistGame[] = [];
-  for (const game of games) {
+  for (const game of visibleGames) {
     const tier = tierByGameId[game.id];
     if (tier) gamesByTier.get(tier)?.push(game);
     else unranked.push(game);
@@ -208,6 +215,15 @@ export function TierlistBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="flex flex-col gap-6">
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filtrer par nom…"
+          aria-label="Filtrer la tierlist par nom"
+          className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+        />
+
         <div className="flex flex-col gap-2">
           {TIER_ORDER.map((tier) => (
             <TierRow key={tier} tier={tier} games={gamesByTier.get(tier) ?? []} />

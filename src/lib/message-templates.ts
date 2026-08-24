@@ -10,6 +10,7 @@ export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
   "REMINDER_2H",
   "LEVEL_UP",
   "SESSION_AWARDS",
+  "BADGE_UNLOCKED",
 ];
 
 export const CATEGORY_LABELS: Record<MessageCategory, string> = {
@@ -19,6 +20,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   REMINDER_2H: "Rappel 2h avant",
   LEVEL_UP: "Passage de niveau",
   SESSION_AWARDS: "Awards de superlatifs",
+  BADGE_UNLOCKED: "Badge débloqué",
 };
 
 /**
@@ -43,6 +45,7 @@ export const CATEGORY_VARIABLES: Record<MessageCategory, string[]> = {
   REMINDER_2H: ["pote", "jeu", "heure"],
   LEVEL_UP: ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"],
   SESSION_AWARDS: ["gagnants"],
+  BADGE_UNLOCKED: ["user", "badge_name", "badge_icon", "rarity"],
 };
 
 export function variablesForCategories(categories: MessageCategory[]): string[] {
@@ -62,6 +65,7 @@ const FALLBACKS: Record<MessageCategory, string> = {
   REMINDER_2H: "🎮 Rappel : {jeu} à {heure} ! {pote}",
   LEVEL_UP: "🎉 {user} passe niveau {nouveau_niveau} — désormais {titre} !",
   SESSION_AWARDS: "🏆 Les awards de la soirée :\n{gagnants}",
+  BADGE_UNLOCKED: "🏆 {user} débloque {badge_icon} {badge_name} ({rarity})",
 };
 
 /**

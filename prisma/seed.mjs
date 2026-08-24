@@ -61,6 +61,12 @@ const SESSION_AWARDS_MESSAGES = [
   "Palmarès de la soirée :\n{gagnants}\nBravo les gars.",
 ];
 
+const BADGE_UNLOCKED_MESSAGES = [
+  "🏆 {user} vient de débloquer {badge_icon} {badge_name} — {rarity} !",
+  "🎉 Nouveau badge pour {user} : {badge_icon} {badge_name}",
+  "⚡ {user} unlock {badge_icon} {badge_name}, {rarity} édition !",
+];
+
 const prisma = new PrismaClient();
 
 async function seedCategoryGroup(categories, messages, variables) {
@@ -123,6 +129,11 @@ async function main() {
     ["user", "ancien_niveau", "nouveau_niveau", "titre", "rang"]
   );
   await seedCategoryGroup(["SESSION_AWARDS"], SESSION_AWARDS_MESSAGES, ["gagnants"]);
+  await seedCategoryGroup(
+    ["BADGE_UNLOCKED"],
+    BADGE_UNLOCKED_MESSAGES,
+    ["user", "badge_name", "badge_icon", "rarity"]
+  );
 }
 
 main()
