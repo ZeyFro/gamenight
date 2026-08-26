@@ -1009,16 +1009,17 @@ profil — ce sont les PR 3/9 à 9/9 suivantes.
 
 ### Modèle de données
 
-- `User.xpTotal` (cache dénormalisé, indexé pour `/classement` en PR 9/9),
-  `User.streakCount`/`streakLastActiveAt`.
+- `User.xpTotal` (cache dénormalisé, indexé pour le tri de `/classement`,
+  PR 9/9), `User.streakCount`/`streakLastActiveAt`.
 - **`XpEvent`** : ledger append-only plutôt qu'un simple compteur, pour deux
   raisons — (1) idempotence via `@@unique([userId, reason, sourceId])`,
   qui permet au chemin "live" (`awardXp`) et au script de backfill de
   tourner tous les deux indéfiniment sans jamais doubler une même
   récompense (même prudence que le bug de seed corrigé dans une PR
-  précédente) ; (2) `/classement` (PR 9/9) doit pouvoir filtrer "ce
-  mois"/"cette semaine", ce qu'un total unique ne permettrait pas
-  (`XpEvent` est indexé sur `createdAt` pour ça).
+  précédente) ; (2) `/classement` (PR 9/9) filtre "ce mois"/"cette
+  semaine" en sommant les `XpEvent` de la période plutôt que le total
+  unique, ce qu'un simple compteur n'aurait pas permis (`XpEvent` est
+  indexé sur `createdAt` pour ça).
 - `MessageCategory` gagne `LEVEL_UP`, avec ses propres variables
   (`{user}`, `{ancien_niveau}`, `{nouveau_niveau}`, `{titre}`, `{rang}`) et
   4 messages seedés.
@@ -1706,13 +1707,11 @@ ratios que 1500×500, donc aucune modification de `next.config.ts` n'a
   pour "légendaire" dans l'app plutôt que d'introduire un nouvel effet.
 - Pseudo + badge de rang textuel + titre de niveau.
 - "Membre depuis {mois année} · Rang global #N sur X" — `getGlobalRank`
-  (`src/lib/profile-stats.ts`) est une simple requête de comptage (users
-  avec plus d'XP + 1), **pas** la page `/classement` complète : cette
-  dernière reste réservée à la PR 9/9 comme prévu au départ du chantier
-  (voir le commentaire sur `XpEvent` dans schema.prisma) — afficher sa
-  propre position ne justifiait pas de construire tout le classement
-  maintenant. Le tableau demandé ("colonne dédiée sur /classement")
-  arrivera avec cette page en PR 9/9.
+  (`src/lib/profile-stats.ts`) reste une simple requête de comptage
+  (users avec plus d'XP + 1), **pas** `getScoreboard` : afficher sa
+  propre position ne justifie pas de calculer le classement complet du
+  groupe pour une seule ligne. Le texte est un lien cliquable vers
+  `/classement` (PR 9/9, voir plus bas) depuis cette PR.
 - Barre XP inline.
 - **5 cartes stats** : soirées jouées, jeux en biblio, soirées créées,
   superlatifs gagnés, streak (flamme animée si > 0, `StreakFlame.tsx`,
@@ -2005,6 +2004,7 @@ src/lib/discord-badge-unlocked.ts   # Notif Discord de badge débloqué (catégo
 prisma/seed-badges.mjs              # Seed des 15 badges par défaut, idempotent par nom
 prisma/backfill-badges.mjs          # Backfill badges idempotent, jamais de notif Discord
 src/lib/profile-stats.ts            # getProfileStats (5 cartes) + getGlobalRank (#N sur X)
+src/lib/scoreboard.ts               # getScoreboard (PR 9/9) — classement Global/Mois/Semaine
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -2089,13 +2089,14 @@ src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
 src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
 src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe
 src/app/api/igdb/search/route.ts        # Recherche IGDB (utilisée par le form)
+src/app/classement/page.tsx             # Podium + tableau complet, filtres Global/Mois/Semaine (PR 9/9)
 ```
 
-## 5 corrections UX post-prod PR 8/9 (PR 9/9, avant le classement)
+## 5 corrections UX post-prod PR 8/9 (avant le classement)
 
 Petite PR de fixes après le test en prod de la refonte profil rich (PR
-8/9), avant d'attaquer le scoreboard final (PR 9/9). Aucune migration
-requise — que du code applicatif.
+8/9), avant d'attaquer le scoreboard final (PR 9/9, section suivante).
+Aucune migration requise — que du code applicatif.
 
 **FIX1 — Onglet Tierlist de `/profil` restait sur `/tierlist`.** Cliquer
 dessus sortait du profil (page top-level sous `LibraryTabs`) au lieu de
@@ -2202,3 +2203,56 @@ confiance aveugle dans le client). Pas de compression automatique
 un fichier de 5 Mo reste raisonnable pour une bannière). Preview
 immédiate avant validation via `URL.createObjectURL` sur les deux
 onglets.
+
+## Classement (PR 9/9 — dernière étape du chantier XP)
+
+`/classement` : podium des 3 premiers + tableau complet, filtrable
+Global / Ce mois / Cette semaine. Aucune migration — `User.xpTotal` et
+`XpEvent.createdAt` étaient déjà indexés pour cette page depuis les PR
+précédentes du chantier (voir les commentaires historiques sur
+`schema.prisma`).
+
+**Données (`src/lib/scoreboard.ts`, `getScoreboard(period)`)** :
+- **Global** : trie directement sur `User.xpTotal` (cache dénormalisé
+  déjà maintenu par `awardXp`, pas besoin de resommer `XpEvent`).
+- **Ce mois / Cette semaine** : `prisma.xpEvent.groupBy` sommant
+  `amount` pour les événements dont `createdAt` tombe dans la fenêtre
+  (lundi 00:00 pour la semaine, 1er du mois pour le mois — même
+  convention horloge-murale UTC que le reste de l'app, voir
+  `wallclock.ts`). Tous les users apparaissent sur les 3 filtres, y
+  compris à 0 XP sur la période — un classement qui ferait disparaître
+  les inactifs serait moins lisible qu'un classement complet où chacun
+  retrouve sa place.
+- **Niveau / rang / titre restent toujours calculés sur l'XP total à
+  vie** (`levelForXp(user.xpTotal)`), quel que soit le filtre actif —
+  décision assumée : un "niveau hebdomadaire" n'a pas de sens pour un
+  jalon cumulatif, seuls la position et l'XP affiché changent selon la
+  période. **"Soirées jouées" en revanche est filtré par la même
+  période** que l'XP affiché (compte de `XpEvent` PARTICIPATE dans la
+  fenêtre) plutôt que laissé en cumul à vie sur les 3 filtres : un
+  classement "Cette semaine" est plus cohérent si son propre compteur de
+  soirées reflète l'activité de cette semaine-là.
+
+**Page (`src/app/classement/page.tsx`)** :
+- Filtre `?periode=global|month|week`, en 3 liens (pas de state client :
+  rendu serveur simple, rechargement des données à chaque changement de
+  toute façon, même raisonnement que `AdminTabs`/`?tab=`).
+- **Podium** : positions 2/1/3 dans cet ordre visuel (1er au centre, plus
+  grand avatar, socle le plus haut), `RankAvatar` réutilisé tel quel
+  (anneau coloré + tooltip de rang inclus gratuitement).
+- **Tableau complet** en dessous : liste `Card` par `Stagger`/`StaggerItem`
+  (même pattern que `/potes`), position + avatar + pseudo + niveau/titre/
+  rang + XP de la période + soirées jouées. Le top 3 y réapparaît
+  (pas retiré après le podium) : se retrouver dans le classement reste un
+  simple scan de haut en bas, sans logique "en dehors du top 3" à
+  comprendre. Ligne de l'utilisateur connecté marquée d'un badge "Toi".
+
+**Navigation** : `/classement` ajouté en 6e item de `NAV_LINKS`
+(`src/components/nav-links.tsx`), assez central (consulté régulièrement,
+comme un classement de jeu) pour mériter la nav principale plutôt qu'un
+lien secondaire — contrairement à `/tierlist`, plus ponctuel, réservé à
+`LibraryTabs`. `BottomNav` passe de `grid-cols-5` à `grid-cols-6` en
+conséquence (nouvelle icône `TrophyIcon`, même style outline que les
+autres icônes de `icons.tsx`). Le texte "Rang global #N sur X" sur
+`/profil` devient un lien cliquable vers `/classement`, pour ceux qui
+veulent voir le classement complet en un tap depuis leur propre profil.

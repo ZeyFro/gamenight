@@ -66,3 +66,14 @@ export function UsersIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function TrophyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+      <path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4" />
+      <path d="M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" />
+      <path d="M12 14v3M9 20h6M10 20v-2.5a2 2 0 0 1 4 0V20" />
+    </Icon>
+  );
+}
