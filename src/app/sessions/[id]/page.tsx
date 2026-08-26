@@ -301,8 +301,8 @@ export default async function SessionDetailPage({
             size="sm"
           >
             {needsSuperlativeVote
-              ? "🏆 Vote les superlatifs !"
-              : "🏆 Superlatifs"}
+              ? "🏆 Vote les récompenses !"
+              : "🏆 Récompenses"}
           </ButtonLink>
         </div>
       )}

@@ -14,7 +14,7 @@ const XP_REASON_LABELS: Record<XpReason, string> = {
   AVAILABILITY_FIRST: "a réglé ses disponibilités",
   STEAM_LINK_FIRST: "a lié son compte Steam",
   SESSION_RESULT: "a reçu un bonus de résultats",
-  SUPERLATIVE_AWARD: "a gagné un superlatif",
+  SUPERLATIVE_AWARD: "a gagné une récompense",
   BADGE_UNLOCKED: "a débloqué un badge",
 };
 
@@ -86,14 +86,14 @@ export default async function ProfilApercuPage() {
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-muted">Superlatifs récents</h2>
+          <h2 className="text-sm font-semibold text-muted">Récompenses récentes</h2>
           <Link href="/profil/superlatifs" className="text-xs text-accent hover:underline">
             Voir tout →
           </Link>
         </div>
         {recentAwards.length === 0 ? (
           <Card>
-            <p className="text-sm text-muted">Aucun superlatif gagné pour l&apos;instant.</p>
+            <p className="text-sm text-muted">Aucune récompense gagnée pour l&apos;instant.</p>
           </Card>
         ) : (
           <div className="flex flex-col gap-2">

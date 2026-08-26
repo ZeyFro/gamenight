@@ -14,22 +14,48 @@ import { BannerForm } from "@/components/BannerForm";
  * regroupés ici plutôt que dans une modal séparée pour le bouton
  * "Modifier" de l'en-tête, qui pointe directement vers cette route.
  */
+const UPLOAD_FEEDBACK: Record<string, { text: string; className: string }> = {
+  ok: { text: "Bannière mise à jour.", className: "bg-accent/10 text-accent" },
+  erreur: { text: "Aucun fichier reçu, réessaie.", className: "bg-destructive/10 text-destructive" },
+  "trop-lourd": {
+    text: "Fichier trop lourd (5 Mo max).",
+    className: "bg-destructive/10 text-destructive",
+  },
+  format: {
+    text: "Format non supporté (jpg, png, webp ou gif uniquement).",
+    className: "bg-destructive/10 text-destructive",
+  },
+  desactive: {
+    text: "Upload désactivé : BLOB_READ_WRITE_TOKEN n'est pas configuré côté serveur. Contacte l'admin, ou utilise l'onglet URL.",
+    className: "bg-warning/10 text-warning",
+  },
+};
+
 export default async function ProfilParametresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ steam?: string; count?: string }>;
+  searchParams: Promise<{ steam?: string; count?: string; upload?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count } = await searchParams;
+  const { steam, count, upload } = await searchParams;
+  const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
 
   return (
     <Stagger className="flex flex-col gap-6">
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Bannière de profil</h2>
-          <BannerForm initialUrl={user.bannerUrl} />
+          {uploadFeedback && (
+            <p className={`rounded-lg p-3 text-sm ${uploadFeedback.className}`}>
+              {uploadFeedback.text}
+            </p>
+          )}
+          <BannerForm
+            initialUrl={user.bannerUrl}
+            uploadEnabled={!!process.env.BLOB_READ_WRITE_TOKEN}
+          />
         </Card>
       </StaggerItem>
 
@@ -111,7 +137,7 @@ export default async function ProfilParametresPage({
             Gérer les messages de rappel →
           </ButtonLink>
           <ButtonLink href="/admin?tab=superlatifs" variant="ghost" size="sm">
-            Gérer les superlatifs →
+            Gérer les récompenses →
           </ButtonLink>
           <ButtonLink href="/admin?tab=badges" variant="ghost" size="sm">
             Gérer les badges →

@@ -58,7 +58,7 @@ function SessionRow({
         </div>
         {needsSuperlativeVote && (
           <Badge tone="accent" glow animate className="w-fit">
-            🏆 Vote les superlatifs !
+            🏆 Vote les récompenses !
           </Badge>
         )}
       </div>

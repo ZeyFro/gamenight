@@ -78,7 +78,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
               : undefined
           }
         />
-        <div className="absolute right-4 top-4 flex gap-2">
+        <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
           <CopyProfileLinkButton userId={user.id} />
           <ButtonLink href="/profil/parametres" variant="secondary" size="sm">
             ⚙️ Modifier
@@ -124,7 +124,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
           <StatCard label="Soirées jouées" value={stats.sessionsParticipated} />
           <StatCard label="Jeux en biblio" value={stats.libraryCount} />
           <StatCard label="Soirées créées" value={stats.sessionsCreated} />
-          <StatCard label="Superlatifs gagnés" value={stats.superlativesWon} />
+          <StatCard label="Récompenses gagnées" value={stats.superlativesWon} />
           <StreakStatCard value={stats.streakCount} />
         </div>
 

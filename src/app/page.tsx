@@ -20,19 +20,34 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   Verification: "Le lien de connexion n'est plus valide. Réessaie.",
 };
 
+// Fix UX (PR 9/9) : ne matche que la forme exacte `/potes/<id>` — jamais
+// une URL absolue ni un autre chemin — pour que `redirectTo` ne puisse
+// jamais devenir un open redirect, même avant la vérification en base.
+const POTE_REDIRECT_PATTERN = /^\/potes\/([a-zA-Z0-9]+)$/;
+
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; redirect?: string }>;
 }) {
   const session = await auth();
-  const { error } = await searchParams;
+  const { error, redirect: redirectParam } = await searchParams;
   const errorMessage = error
     ? (AUTH_ERROR_MESSAGES[error] ??
       "La connexion a échoué. Réessaie dans un instant.")
     : null;
 
   if (!session?.user) {
+    let redirectTarget: { path: string; pseudo: string } | null = null;
+    const match = redirectParam ? POTE_REDIRECT_PATTERN.exec(redirectParam) : null;
+    if (match) {
+      const targetUser = await prisma.user.findUnique({
+        where: { id: match[1] },
+        select: { discordName: true },
+      });
+      if (targetUser) redirectTarget = { path: redirectParam!, pseudo: targetUser.discordName };
+    }
+
     return (
       <div className="bg-hero-gradient flex flex-1 flex-col items-center justify-center px-4 sm:px-6">
         <Card className="flex w-full max-w-md flex-col items-center gap-6 text-center">
@@ -48,10 +63,20 @@ export default async function Home({
             Connecte-toi avec ton compte Discord pour organiser la
             prochaine soirée jeux.
           </p>
+
+          {redirectTarget && (
+            <p className="w-full rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              Tu vas voir le profil de {redirectTarget.pseudo} après connexion.
+            </p>
+          )}
+
           <form
             action={async () => {
               "use server";
-              await signIn("discord");
+              await signIn(
+                "discord",
+                redirectTarget ? { redirectTo: redirectTarget.path } : undefined
+              );
             }}
             className="w-full"
           >

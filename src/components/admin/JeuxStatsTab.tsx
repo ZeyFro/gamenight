@@ -23,9 +23,9 @@ export async function JeuxStatsTab() {
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted">
         Configure les stats saisissables après une soirée (nombre de
-        morts, score…) et les superlatifs qu&apos;elles peuvent débloquer
+        morts, score…) et les récompenses qu&apos;elles peuvent débloquer
         pour chaque jeu de la bibliothèque commune. Chantier dormant
-        depuis PR 5/9 (remplacé par le vote de superlatifs ci-dessus),
+        depuis PR 5/9 (remplacé par le vote de récompenses ci-dessus),
         laissé fonctionnel.
       </p>
 

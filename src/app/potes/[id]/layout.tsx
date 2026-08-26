@@ -26,10 +26,14 @@ export default async function PoteLayout({
   children: ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/");
-
   const { id } = await params;
+
+  const user = await getCurrentUser();
+  // Fix UX (PR 9/9) : ce lien mène forcément d'abord à la connexion (app
+  // privée) — `?redirect=/potes/[id]` permet à `/` d'annoncer "Tu vas voir
+  // le profil de X" et de renvoyer vers cette page une fois connecté,
+  // plutôt que de lâcher l'invité sur l'accueil générique sans contexte.
+  if (!user) redirect(`/?redirect=/potes/${id}`);
   // Sa propre carte n'apparaît pas dans /potes, mais on couvre quand même
   // le cas (lien direct, avatar cliqué depuis la biblio de groupe) plutôt
   // que d'afficher une biblio "en lecture seule" de soi-même.

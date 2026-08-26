@@ -21,6 +21,9 @@ présence) arrivent dans les prochaines étapes.
   serverless, via l'adapter `@prisma/adapter-neon`)
 - [Framer Motion](https://motion.dev) pour les animations, [sonner](https://sonner.emilkowal.ski)
   pour les toasts — voir « Identité visuelle » ci-dessous.
+- [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) (optionnel) —
+  upload de bannière de profil, voir « Upload de bannière (Vercel Blob) »
+  plus bas.
 
 ## Identité visuelle
 
@@ -1667,20 +1670,29 @@ arborescence de routes.
 `layout.tsx` partagé (bannière + avatar à anneau + stats + onglets) + 6
 sous-routes.
 
-**Bannière : URL uniquement, pas d'upload.** Décision prise (l'utilisateur
-laissait explicitement le choix, "évite si ça complique trop, l'URL
-suffit pour v1") : `User.bannerUrl` est une simple URL absolue, saisie
-dans un champ texte avec preview live (`BannerForm.tsx`). Pas de service
-d'upload tiers ni de stockage de fichier — un vrai upload aurait ajouté
-une dépendance externe (S3, Cloudinary…) et sa complexité de config
-(clés API, `.env.example`, gestion des erreurs réseau) pour un gain
-marginal sur une app de groupe d'amis où chacun peut héberger son image
-n'importe où (Discord CDN, Imgur…) et coller l'URL. Vide → bannière par
-défaut (`.profile-banner-default`, dégradé CSS violet). Affichée en
-`background-image` CSS (pas `next/image`) : `next/image` exige une
-liste blanche de domaines dans `next.config.ts`, incompatible avec une
-URL totalement libre — le CSS gère aussi nativement le "cover center"
-demandé pour tolérer d'autres ratios que 1500×500.
+**Bannière : URL ou upload direct (Vercel Blob).** `User.bannerUrl` reste
+une simple URL absolue en base — ce qui change (fix UX PR 9/9, suite au
+test prod de la PR 8/9 : "chiant si on a une image perso") c'est comment
+elle y arrive. `BannerForm.tsx` propose un toggle **URL / Uploader une
+image** :
+- **URL** : champ texte + preview live, comportement inchangé depuis la
+  PR 8/9 (`setBannerUrlAction`).
+- **Uploader une image** : sélection d'un fichier (jpg/png/webp/gif, 5 Mo
+  max, validé côté client *et* côté serveur), preview live via
+  `URL.createObjectURL`, upload vers Vercel Blob (`uploadBannerAction`,
+  `src/app/profil/actions.ts`) qui renvoie une URL publique stockée telle
+  quelle dans `bannerUrl` — pas de nouveau champ, pas de migration.
+  Détails complets (pourquoi Vercel Blob, comment obtenir le token,
+  limites) dans « Upload de bannière (Vercel Blob) » plus bas.
+
+Vide → bannière par défaut (`.profile-banner-default`, dégradé CSS
+violet). Affichée en `background-image` CSS (pas `next/image`), pour
+l'URL saisie à la main **comme** pour l'URL Vercel Blob renvoyée par
+l'upload : `next/image` exige une liste blanche de domaines dans
+`next.config.ts`, incompatible avec une URL externe arbitraire — le CSS
+gère aussi nativement le "cover center" demandé pour tolérer d'autres
+ratios que 1500×500, donc aucune modification de `next.config.ts` n'a
+été nécessaire pour l'upload.
 
 **En-tête (`src/app/profil/layout.tsx`)** :
 - Bannière (h-40 mobile → h-64 desktop).
@@ -1719,11 +1731,11 @@ actif déterminé par `usePathname()`) :
 
 | Onglet | Route | Contenu |
 |---|---|---|
-| Aperçu | `/profil` | Prochaine soirée du groupe, dernière activité XP, 3 derniers superlatifs gagnés |
+| Aperçu | `/profil` | Prochaine soirée du groupe, dernière activité XP, 3 dernières récompenses gagnées |
 | Historique soirées | `/profil/historique` | Sessions participées (`XpEvent` PARTICIPATE), jeu + date + placement si résultats saisis |
-| Superlatifs gagnés | `/profil/superlatifs` | `SuperlativesWonGrid` (nouveau composant partagé avec `/potes/[id]`) |
+| Récompenses gagnées | `/profil/superlatifs` | `SuperlativesWonGrid` (nouveau composant partagé avec `/potes/[id]`) |
 | Badges | `/profil/badges` | `BadgeGrid` réutilisé tel quel (PR 7/9) |
-| Tierlist | `/tierlist` | **Pas de sous-route dédiée** — lien direct vers la page existante (PR 6/9) plutôt que dupliquer la fonctionnalité sous deux URLs différentes à maintenir en parallèle |
+| Tierlist | `/profil/tierlist` | `TierlistBoard` affiché inline dans le profil (fix UX PR 9/9 — pointait vers `/tierlist` en PR 8/9, ce qui faisait sortir du profil au clic ; `/tierlist` reste utilisable en parallèle depuis `LibraryTabs`, même composant et même action serveur des deux côtés) |
 | Rappels perso | `/profil/parametres` | En réalité tous les réglages de compte : bannière, Steam (lien/réimport, déplacé depuis l'ancienne page plate), silence des rappels, liens vers les 3 onglets `/admin` |
 
 Les redirections Steam (`/api/steam/callback`, `reimportSteamLibrary`)
@@ -2015,8 +2027,8 @@ src/components/PoteTabs.tsx             # Onglets Dispos/Bibliothèque/Tierlist/
 src/components/ProfilTabs.tsx           # Onglets Aperçu/Historique/Superlatifs/Badges/Tierlist/Réglages de /profil
 src/components/RankAvatar.tsx           # Avatar à anneau coloré par rang + pastille de niveau (partagé profil/pote)
 src/components/StreakFlame.tsx          # Flamme animée (carte stat streak)
-src/components/BannerForm.tsx           # Formulaire bannière de profil (URL + preview live)
-src/components/CopyProfileLinkButton.tsx # Copie /potes/{userId} dans le presse-papier
+src/components/BannerForm.tsx           # Formulaire bannière de profil (toggle URL / upload Vercel Blob, preview live)
+src/components/CopyProfileLinkButton.tsx # Copie /potes/{userId} + "Message Discord" pré-formaté dans le presse-papier
 src/components/SuperlativesWonGrid.tsx  # Grille des superlatifs gagnés (partagée profil/pote)
 src/components/admin/AdminTabs.tsx      # Onglets du hub /admin, pilotés par ?tab=
 src/components/admin/MessagesTab.tsx    # Onglet Messages (contenu déplacé depuis l'ancien /admin/messages)
@@ -2039,7 +2051,8 @@ src/app/profil/historique/page.tsx  # Onglet Historique soirées
 src/app/profil/superlatifs/page.tsx # Onglet Superlatifs gagnés
 src/app/profil/badges/page.tsx      # Onglet Badges
 src/app/profil/parametres/page.tsx  # Onglet Rappels perso (bannière, Steam, silence, liens admin)
-src/app/profil/actions.ts   # Server actions toggle silence rappels + setBannerUrlAction
+src/app/profil/actions.ts   # Server actions toggle silence rappels + setBannerUrlAction + uploadBannerAction (Vercel Blob)
+src/app/profil/tierlist/page.tsx    # Onglet Tierlist inline (fix UX PR 9/9, réutilise TierlistBoard)
 src/app/admin/page.tsx                      # Hub /admin (Messages/Superlatifs/Badges/Jeux-stats), piloté par ?tab=
 src/app/admin/messages/page.tsx             # Redirige (308) vers /admin?tab=messages
 src/app/admin/messages/actions.ts           # Server actions messages Discord (inchangé, importé par le hub)
@@ -2077,3 +2090,115 @@ src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
 src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe
 src/app/api/igdb/search/route.ts        # Recherche IGDB (utilisée par le form)
 ```
+
+## 5 corrections UX post-prod PR 8/9 (PR 9/9, avant le classement)
+
+Petite PR de fixes après le test en prod de la refonte profil rich (PR
+8/9), avant d'attaquer le scoreboard final (PR 9/9). Aucune migration
+requise — que du code applicatif.
+
+**FIX1 — Onglet Tierlist de `/profil` restait sur `/tierlist`.** Cliquer
+dessus sortait du profil (page top-level sous `LibraryTabs`) au lieu de
+rester dans `/profil?tab=tierlist`. Nouvelle route
+`src/app/profil/tierlist/page.tsx`, qui réutilise tel quel
+`TierlistBoard` (même composant, même `setGameTierAction`) — pas de
+logique dupliquée, juste un deuxième `revalidatePath("/profil/tierlist")`
+ajouté dans `src/app/tierlist/actions.ts`. `/tierlist` reste fonctionnelle
+en parallèle (accessible depuis `LibraryTabs`), non-régression.
+
+**FIX2 — "Superlatif" → "Récompense" partout côté utilisateur.** Le mot
+était jugé trop technique. Renommés : onglets (`ProfilTabs`, `PoteTabs`,
+`AdminTabs`), titres de page, boutons, messages vides, la catégorie
+Discord `SESSION_AWARDS` ("Awards de superlatifs" → "Awards de
+récompenses" dans `CATEGORY_LABELS`), les libellés de badges liés
+(`CATEGORY_LABELS.SUPERLATIFS`, `CRITERIA_TYPE_LABELS.SUPERLATIVES_WON`
+dans `src/lib/badge-rarity.ts`). **Volontairement inchangé** (demande
+explicite : "change UNIQUEMENT les labels utilisateur") : les modèles
+Prisma (`Superlative`, `SuperlativeCategory`, `SuperlativeVote`,
+`SuperlativeAward`), les routes (`/admin/superlatifs`,
+`/sessions/[id]/vote-superlatifs`, `/potes/[id]/superlatifs`,
+`/profil/superlatifs`), les clés `?tab=superlatifs`, et les commentaires
+de code décrivant l'historique des PR — pur sucre visuel, aucune
+migration. Le contenu réel des messages Discord seedés
+(`SESSION_AWARDS_MESSAGES` dans `prisma/seed.mjs`, l'embed de
+`discord-session-awards.ts`) n'employait déjà pas le mot "superlatif"
+("awards"/"vainqueurs"/"palmarès") — rien à changer là.
+
+**FIX3 — Tooltip sur l'anneau coloré de `RankAvatar`.** L'anneau (couleur
+= rang) n'expliquait pas ce qu'il représentait. `RankAvatar.tsx` (déjà
+`"use client"`) affiche maintenant "Rang : {nom} — accédé au niveau
+{minLevel}" au hover (desktop, `group-hover`) ou au tap (mobile, un
+`useState` local togglé au clic puisqu'il n'y a pas de vrai `:hover`
+tactile). Pas de nouvelle dépendance (pas de Radix Tooltip) pour un seul
+usage — le `title` HTML natif était insuffisant (peu fiable au tap-hold
+selon les navigateurs mobiles, pas stylable).
+
+**FIX4 — Upload de bannière (Vercel Blob).** Voir la section dédiée
+juste en dessous.
+
+**FIX5 — Contexte de connexion + partage rapide.** `/potes/[id]/layout.tsx`
+redirige désormais un visiteur non connecté vers `/?redirect=/potes/{id}`
+(au lieu de `/` nu). `src/app/page.tsx` valide ce paramètre avec un
+regex strict (`^\/potes\/([a-zA-Z0-9]+)$`, jamais une URL absolue — pas
+d'open redirect possible) puis vérifie que l'id correspond à un vrai
+`User` avant d'afficher "Tu vas voir le profil de {pseudo} après
+connexion." et de passer `redirectTo` à `signIn("discord", ...)` pour
+atterrir directement sur le bon profil après l'OAuth Discord — plutôt que
+sur l'accueil générique. Un id invalide ou introuvable retombe
+silencieusement sur le comportement précédent (pas de message, pas de
+`redirectTo`). Bonus demandé : `CopyProfileLinkButton.tsx` a un second
+bouton **"📋 Message Discord"** qui copie "Yo, regardez mon profil
+GameNight : {lien}" dans le presse-papier, prêt à coller — même lien
+`/potes/{userId}` que "Copier le lien", juste pré-formaté. Le conteneur
+des boutons du header profil (`src/app/profil/layout.tsx`) passe en
+`flex-wrap` pour ne pas déborder de la bannière sur mobile avec 3
+boutons désormais présents.
+
+### Upload de bannière (Vercel Blob)
+
+FIX4 ajoute un deuxième moyen de définir sa bannière de profil : uploader
+un fichier directement, en plus du champ URL existant (PR 8/9).
+
+**Pourquoi Vercel Blob.** Simple stockage objet géré par Vercel,
+directement intégré au déploiement (pas de compte tiers séparé à créer
+comme S3/Cloudinary), lit son token depuis l'environnement automatiquement
+(`put()` n'a besoin d'aucune configuration manuelle de client). Le plan
+Hobby inclut **5 Go de stockage gratuit** — source :
+[vercel.com/docs/storage/vercel-blob/usage-and-pricing](https://vercel.com/docs/storage/vercel-blob/usage-and-pricing)
+— largement suffisant pour des bannières de profil (quelques centaines de
+Ko à quelques Mo chacune, un utilisateur par membre du groupe).
+
+**Obtenir `BLOB_READ_WRITE_TOKEN` (pas à pas) :**
+1. Sur le [dashboard Vercel](https://vercel.com/dashboard), ouvrir le
+   projet GameNight.
+2. Onglet **Storage** → **Create Database** → choisir **Blob**.
+3. Nommer le store (ex. `gamenight-blob`) → **Create**.
+4. Une fois créé, onglet **Quickstart** ou **.env.local** du store :
+   copier la valeur de `BLOB_READ_WRITE_TOKEN`.
+5. Coller cette valeur dans les variables d'environnement du projet
+   Vercel (**Settings → Environment Variables**, pour Production/Preview/
+   Development selon besoin) et/ou dans `.env.local` en dev — voir
+   `.env.example`.
+6. Si le store est bien lié au projet via "Connect Project" au moment de
+   sa création, Vercel injecte la variable automatiquement dans les
+   déploiements — l'étape 5 n'est alors nécessaire qu'en local.
+
+**Dégradation propre sans le token.** `uploadBannerAction`
+(`src/app/profil/actions.ts`) vérifie `process.env.BLOB_READ_WRITE_TOKEN`
+en tout premier et redirige vers `?upload=desactive` si absent, plutôt que
+de laisser `put()` lever une exception non gérée. Côté UI,
+`ProfilParametresPage` calcule `uploadEnabled` côté serveur (même
+vérification) et le passe à `BannerForm` : l'onglet "Uploader une image"
+affiche alors directement "Fonctionnalité désactivée, contacte l'admin."
+au lieu du champ fichier — jamais de crash, jamais d'erreur opaque.
+L'onglet **URL** reste utilisable dans tous les cas, avec ou sans Blob
+configuré.
+
+**Limites et validation.** 5 Mo max, formats jpg/png/webp/gif — vérifiés
+côté client (`BannerForm.tsx`, feedback immédiat + désactivation du
+bouton submit) *et* côté serveur (`uploadBannerAction`, jamais de
+confiance aveugle dans le client). Pas de compression automatique
+(bonus explicitement optionnel dans la demande, non implémenté en v1 —
+un fichier de 5 Mo reste raisonnable pour une bannière). Preview
+immédiate avant validation via `URL.createObjectURL` sur les deux
+onglets.

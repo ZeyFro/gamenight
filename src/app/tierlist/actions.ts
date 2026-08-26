@@ -25,6 +25,7 @@ export async function setGameTierAction(formData: FormData) {
   if (!tierRaw) {
     await prisma.tierlistEntry.deleteMany({ where: { userId: user.id, gameId } });
     revalidatePath("/tierlist");
+    revalidatePath("/profil/tierlist");
     return;
   }
   if (!TIERS.includes(tierRaw as Tier)) return;
@@ -37,4 +38,5 @@ export async function setGameTierAction(formData: FormData) {
   });
 
   revalidatePath("/tierlist");
+  revalidatePath("/profil/tierlist");
 }
