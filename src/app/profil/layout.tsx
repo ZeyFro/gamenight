@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
@@ -103,8 +104,10 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
         </div>
 
         <p className="text-xs text-muted">
-          Membre depuis {formatMemberSince(user.createdAt)} · Rang global #
-          {globalRank.position} sur {globalRank.total}
+          Membre depuis {formatMemberSince(user.createdAt)} ·{" "}
+          <Link href="/classement" className="text-accent hover:underline">
+            Rang global #{globalRank.position} sur {globalRank.total}
+          </Link>
         </p>
 
         <div className="flex flex-col gap-1.5">

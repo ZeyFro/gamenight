@@ -33,10 +33,11 @@ export async function getProfileStats(
 }
 
 /**
- * Rang global par XP (`#N sur X`), affiché dans l'en-tête du profil.
- * Simple requête de comptage — pas le classement complet (`/classement`,
- * toujours prévu pour la PR 9/9, cf. README) : afficher juste sa propre
- * position ne nécessite pas de construire la page de classement entière.
+ * Rang global par XP (`#N sur X`), affiché dans l'en-tête du profil
+ * (lien cliquable vers `/classement`, PR 9/9). Reste une simple requête
+ * de comptage plutôt que de réutiliser `getScoreboard("global")` — cette
+ * page n'a besoin que de sa propre position, pas du classement complet
+ * de tout le groupe.
  */
 export async function getGlobalRank(
   userId: string,
