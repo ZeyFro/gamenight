@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const steamId64 = await verifySteamOpenId(request.nextUrl.searchParams);
   if (!steamId64) {
     return NextResponse.redirect(
-      new URL("/profil?steam=erreur", request.url)
+      new URL("/profil/parametres?steam=erreur", request.url)
     );
   }
 
@@ -42,5 +42,5 @@ export async function GET(request: NextRequest) {
       ? `importe&count=${result.count}`
       : "prive";
 
-  return NextResponse.redirect(new URL(`/profil?steam=${status}`, request.url));
+  return NextResponse.redirect(new URL(`/profil/parametres?steam=${status}`, request.url));
 }

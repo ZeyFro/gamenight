@@ -63,7 +63,7 @@ export default async function GameStatsAdminPage({
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
         <Link
-          href="/admin/jeux-stats"
+          href="/admin?tab=jeux-stats"
           className="text-sm text-muted hover:text-foreground hover:underline"
         >
           ← Stats &amp; superlatifs

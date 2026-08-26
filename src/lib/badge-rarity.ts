@@ -37,3 +37,21 @@ export const CATEGORY_LABELS: Record<BadgeCategory, string> = {
   VOTE: "Vote & démocratie",
   SUPERLATIFS: "Superlatifs",
 };
+
+/**
+ * Libellés FR des 7 types de critère (`BadgeCriteria["type"]`,
+ * src/lib/badges.ts) — utilisés par le formulaire structuré de
+ * `/admin/badges` (select type + nombre, plutôt qu'un textarea JSON
+ * libre).
+ */
+export const CRITERIA_TYPE_LABELS: Record<string, string> = {
+  SESSIONS_CREATED: "Soirées créées",
+  SESSIONS_PARTICIPATED: "Soirées participées",
+  VOTES_CAST: "Votes émis",
+  SUPERLATIVES_WON: "Superlatifs gagnés",
+  LIBRARY_SIZE: "Taille de la bibliothèque",
+  STREAK_DAYS: "Streak (jours)",
+  ACCOUNT_AGE_DAYS: "Ancienneté du compte (jours)",
+};
+
+export const CRITERIA_TYPES = Object.keys(CRITERIA_TYPE_LABELS);

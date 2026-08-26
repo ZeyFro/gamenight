@@ -1,230 +1,118 @@
-import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { steamPrivacySettingsUrl } from "@/lib/steam";
-import { reimportSteamLibrary } from "@/app/actions";
-import { toggleSilenceReminders } from "./actions";
+import { formatDateTimeFr } from "@/lib/wallclock";
+import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
-import { Button, ButtonLink } from "@/components/ui/Button";
-import { Stagger, StaggerItem } from "@/components/motion";
-import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
-import { BadgeGrid, type BadgeGridItem } from "@/components/BadgeGrid";
 
-export default async function ProfilPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ steam?: string; count?: string }>;
-}) {
+const XP_REASON_LABELS: Record<XpReason, string> = {
+  CREATE_SESSION: "a créé une soirée",
+  VOTE: "a voté pour un jeu",
+  PARTICIPATE: "a participé à une soirée",
+  AVAILABILITY_FIRST: "a réglé ses disponibilités",
+  STEAM_LINK_FIRST: "a lié son compte Steam",
+  SESSION_RESULT: "a reçu un bonus de résultats",
+  SUPERLATIVE_AWARD: "a gagné un superlatif",
+  BADGE_UNLOCKED: "a débloqué un badge",
+};
+
+/** Onglet "Aperçu" (route par défaut de /profil) — voir `layout.tsx` pour l'en-tête. */
+export default async function ProfilApercuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count } = await searchParams;
-
-  const level = levelForXp(user.xpTotal);
-  const rank = rankForLevel(level);
-  const title = titleForLevel(level);
-  const xpIntoLevel = user.xpTotal - xpForLevel(level);
-  const xpForNextLevel = xpForLevel(level + 1) - xpForLevel(level);
-
-  const [allBadges, unlockedBadges] = await Promise.all([
-    prisma.badge.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.userBadge.findMany({
+  const [nextSession, lastActivity, recentAwards] = await Promise.all([
+    prisma.session.findFirst({
+      where: { status: { in: ["VOTING", "SCHEDULED"] } },
+      include: { decidedGame: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.xpEvent.findFirst({
       where: { userId: user.id },
-      include: { badge: true },
-      orderBy: { unlockedAt: "desc" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.superlativeAward.findMany({
+      where: { winnerUserId: user.id },
+      include: { category: true, session: { include: { decidedGame: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
     }),
   ]);
-  const unlockedAtByBadgeId = new Map(unlockedBadges.map((u) => [u.badgeId, u.unlockedAt]));
-  const badgeItems: BadgeGridItem[] = allBadges.map((badge) => ({
-    id: badge.id,
-    icon: badge.icon,
-    name: badge.name,
-    description: badge.description,
-    category: badge.category,
-    rarity: badge.rarity,
-    unlockedAt: unlockedAtByBadgeId.get(badge.id) ?? null,
-  }));
-  const recentBadges = unlockedBadges.slice(0, 3).map((u) => u.badge);
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-        Mon profil
-      </h1>
-
-      <Stagger className="flex flex-col gap-6">
-        <StaggerItem>
-          <Card className="flex items-center gap-4">
-            {user.discordAvatar && (
-              <Image
-                src={user.discordAvatar}
-                alt={`Avatar de ${user.discordName}`}
-                width={56}
-                height={56}
-                className="rounded-full"
-              />
-            )}
-            <div>
-              <p className="font-semibold text-foreground">
-                {user.discordName}
-              </p>
-              <p className="text-sm text-muted">Connecté via Discord</p>
-            </div>
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-muted">Prochaine soirée</h2>
+        {nextSession ? (
+          <Link href={`/sessions/${nextSession.id}`}>
+            <Card className="card-glow flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium text-foreground capitalize">
+                  {formatDateTimeFr(nextSession.date)}
+                </p>
+                <p className="text-sm text-muted">
+                  {nextSession.decidedGame?.name ?? "Jeu pas encore décidé"}
+                </p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${SESSION_STATUS_LABELS[nextSession.status].className}`}
+              >
+                {SESSION_STATUS_LABELS[nextSession.status].label}
+              </span>
+            </Card>
+          </Link>
+        ) : (
+          <Card>
+            <p className="text-sm text-muted">Aucune soirée prévue pour l&apos;instant.</p>
           </Card>
-        </StaggerItem>
+        )}
+      </section>
 
-        {/*
-          Aperçu XP minimal — juste de quoi vérifier en prod que le
-          backfill donne des chiffres cohérents avec l'historique réel
-          (demande explicite avant d'enchaîner sur la PR suivante du
-          chantier). La vraie refonte visuelle (bannière, anneau de rang
-          sur l'avatar, cartes stats, onglets) arrive en PR 8/9.
-        */}
-        <StaggerItem>
-          <Card className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold text-foreground">
-                Niveau {level} — {title}
-              </h2>
-              <div className="flex items-center gap-2">
-                {recentBadges.map((badge) => (
-                  <span
-                    key={badge.id}
-                    title={badge.name}
-                    aria-label={badge.name}
-                    className="text-lg"
-                  >
-                    {badge.icon}
-                  </span>
-                ))}
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
-                  {rank.name}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-muted">Dernière activité</h2>
+        <Card>
+          {lastActivity ? (
+            <p className="text-sm text-foreground">
+              {XP_REASON_LABELS[lastActivity.reason]} · {formatDateTimeFr(lastActivity.createdAt)}{" "}
+              <span className="text-muted">(+{lastActivity.amount} XP)</span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted">Aucune activité pour l&apos;instant.</p>
+          )}
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted">Superlatifs récents</h2>
+          <Link href="/profil/superlatifs" className="text-xs text-accent hover:underline">
+            Voir tout →
+          </Link>
+        </div>
+        {recentAwards.length === 0 ? (
+          <Card>
+            <p className="text-sm text-muted">Aucun superlatif gagné pour l&apos;instant.</p>
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recentAwards.map((award) => (
+              <Card key={award.id} className="flex items-center gap-3">
+                <span className="text-xl" aria-hidden>
+                  {award.category.icon}
                 </span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-                <div
-                  className="h-full rounded-full bg-accent"
-                  style={{
-                    width: `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`,
-                  }}
-                />
-              </div>
-              <p className="text-xs text-muted">
-                {user.xpTotal} XP au total — {xpIntoLevel} / {xpForNextLevel}{" "}
-                vers le niveau {level + 1}
-              </p>
-            </div>
-            <p className="text-sm text-muted">
-              🔥 Streak : {user.streakCount} jour
-              {user.streakCount > 1 ? "s" : ""} d&apos;affilée
-            </p>
-          </Card>
-        </StaggerItem>
-
-        {/*
-          Section plutôt qu'un vrai onglet dédié : /profil reste une page
-          plate (empilement de cartes) jusqu'à sa refonte visuelle prévue
-          en PR 8/9 (bannière, anneau de rang, onglets — voir le
-          commentaire plus haut sur le barème XP). Ajouter un système
-          d'onglets maintenant pour une seule section aurait anticipé
-          cette refonte pour un gain nul ; les 3 badges les plus récents
-          sont déjà visibles dans l'en-tête ci-dessus pour un accès rapide.
-        */}
-        <StaggerItem>
-          <Card className="flex flex-col gap-4">
-            <h2 className="font-semibold text-foreground">Badges</h2>
-            <BadgeGrid badges={badgeItems} />
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem>
-          <Card className="flex flex-col gap-4">
-            <h2 className="font-semibold text-foreground">Compte Steam</h2>
-
-            {steam === "erreur" && (
-              <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                La vérification Steam a échoué. Réessaie.
-              </p>
-            )}
-            {steam === "importe" && (
-              <p className="rounded-lg bg-accent/10 p-3 text-sm text-accent">
-                Bibliothèque Steam importée
-                {count ? ` (${count} jeu${count === "1" ? "" : "x"})` : ""}.
-              </p>
-            )}
-            {steam === "prive" && user.steamId64 && (
-              <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
-                Ton profil Steam est privé, la bibliothèque ne peut pas être
-                importée.{" "}
-                <a
-                  href={steamPrivacySettingsUrl(user.steamId64)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2"
-                >
-                  Régler la confidentialité de mon profil Steam
-                </a>
-                , puis réimporte depuis cette page.
-              </p>
-            )}
-
-            {user.steamId64 ? (
-              <>
-                <p className="text-sm text-muted">
-                  Compte Steam lié ({user.steamId64}) — bibliothèque{" "}
-                  {user.steamPublic ? "publique" : "privée ou inconnue"}.
-                </p>
-                <form action={reimportSteamLibrary}>
-                  <Button type="submit" fullWidthOnMobile>
-                    Réimporter ma bibliothèque Steam
-                  </Button>
-                </form>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted">
-                  Lie ton compte Steam pour importer automatiquement les jeux
-                  que tu possèdes.
-                </p>
-                <ButtonLink
-                  href="/api/steam/link"
-                  fullWidthOnMobile
-                  className="bg-[#1b2838] text-white hover:bg-[#2a3f5a]"
-                >
-                  Lier mon compte Steam
-                </ButtonLink>
-              </>
-            )}
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem>
-          <Card className="flex flex-col gap-4">
-            <h2 className="font-semibold text-foreground">Rappels Discord</h2>
-            <p className="text-sm text-muted">
-              {user.silenceReminders
-                ? "Tu n'es plus mentionné dans les rappels de soirée (le message reste posté dans le salon)."
-                : "Tu es mentionné dans les rappels de soirée avant chaque session."}
-            </p>
-            <form action={toggleSilenceReminders}>
-              <Button type="submit" variant="secondary" fullWidthOnMobile>
-                {user.silenceReminders
-                  ? "🔔 Réactiver les rappels"
-                  : "🔕 Couper les rappels"}
-              </Button>
-            </form>
-            <ButtonLink href="/admin/messages" variant="ghost" size="sm">
-              Gérer les messages de rappel →
-            </ButtonLink>
-            <ButtonLink href="/admin/superlatifs" variant="ghost" size="sm">
-              Gérer les superlatifs →
-            </ButtonLink>
-          </Card>
-        </StaggerItem>
-      </Stagger>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{award.category.name}</p>
+                  <p className="text-xs text-muted">
+                    {award.session.decidedGame?.name ?? "?"}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

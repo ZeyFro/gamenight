@@ -63,7 +63,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<void> {
   const [alreadyUnlocked, badges] = await Promise.all([
     prisma.userBadge.findMany({ where: { userId }, select: { badgeId: true } }),
-    prisma.badge.findMany(),
+    prisma.badge.findMany({ where: { active: true } }),
   ]);
   const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
 

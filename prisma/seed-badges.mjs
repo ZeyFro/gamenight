@@ -148,6 +148,19 @@ const BADGES = [
 const prisma = new PrismaClient();
 
 async function main() {
+  // `modifiedById` (audit trail, PR 8/9 — /admin/badges) est devenu
+  // obligatoire sur Badge. Même garde-fou que les autres seeds : pas
+  // d'utilisateur encore en base -> reporté au prochain build, plutôt
+  // que de planter (cf. le hotfix appliqué à seed-game-stats.mjs après
+  // le même oubli lors de l'ajout de l'audit trail sur GameStatType).
+  const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!author) {
+    console.log(
+      "[seed-badges] Aucun utilisateur en base pour l'instant — seed reporté au prochain build."
+    );
+    return;
+  }
+
   console.log("\n=== Seed badges ===");
   let created = 0;
   for (const badge of BADGES) {
@@ -158,7 +171,7 @@ async function main() {
     }
 
     const xpReward = BADGE_XP_BY_RARITY[badge.rarity];
-    await prisma.badge.create({ data: { ...badge, xpReward } });
+    await prisma.badge.create({ data: { ...badge, xpReward, modifiedById: author.id } });
     created += 1;
     console.log(
       `- ${badge.icon} ${badge.name} (${badge.rarity}) : créé (+${xpReward} XP, critère ${badge.criteria.type} >= ${badge.criteria.count}).`
