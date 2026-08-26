@@ -173,6 +173,9 @@ export default async function SessionsPage({
               defaultValue="6"
               className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
             >
+              <option value="0.5">30 min avant la session</option>
+              <option value="1">1h avant la session</option>
+              <option value="2">2h avant la session</option>
               <option value="6">6h avant la session</option>
               <option value="12">12h avant la session</option>
               <option value="24">24h avant la session</option>

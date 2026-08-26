@@ -58,6 +58,13 @@ export async function announceSessionCreated(
     description: vars.date,
     color: ACCENT_COLOR,
     fields: [
+      // Fix UX (remonté en prod) : le créateur n'était visible que noyé
+      // dans le texte "hype" tiré au hasard, pas toujours présent selon le
+      // message pioché. Champ dédié, toujours affiché — `<@discordId>`
+      // dans un champ d'embed s'affiche comme une mention cliquable sans
+      // déclencher de notification push (contrairement au même ping en
+      // `content`), donc pas de double-ping du créateur.
+      { name: "Créée par", value: vars.createur, inline: true },
       {
         name: "Deadline de vote",
         value: formatDateTimeFr(session.votingDeadline ?? session.date),
