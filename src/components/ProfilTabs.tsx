@@ -6,14 +6,14 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/profil", label: "Aperçu" },
   { href: "/profil/historique", label: "Historique soirées" },
-  { href: "/profil/superlatifs", label: "Superlatifs gagnés" },
+  { href: "/profil/superlatifs", label: "Récompenses gagnées" },
   { href: "/profil/badges", label: "Badges" },
-  // Pas de sous-route dédiée : /tierlist existe déjà (PR 6/9, onglet de
-  // LibraryTabs) et fonctionne très bien — dupliquer la tierlist sous
-  // /profil/tierlist aurait fait deux implémentations à maintenir en
-  // parallèle pour la même fonctionnalité. Cet onglet navigue simplement
-  // vers la page existante.
-  { href: "/tierlist", label: "Tierlist" },
+  // Fix UX (après test prod PR 8/9) : pointait vers /tierlist (page
+  // top-level), ce qui faisait sortir du profil au clic. Sous-route
+  // dédiée maintenant, qui réutilise TierlistBoard tel quel (pas de
+  // logique dupliquée) — /tierlist reste utilisable en parallèle depuis
+  // LibraryTabs.
+  { href: "/profil/tierlist", label: "Tierlist" },
   { href: "/profil/parametres", label: "Rappels perso" },
 ] as const;
 

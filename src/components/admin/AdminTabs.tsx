@@ -6,7 +6,7 @@ export const ADMIN_TAB_KEYS: AdminTabKey[] = ["messages", "superlatifs", "badges
 
 const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "messages", label: "Messages Discord" },
-  { key: "superlatifs", label: "Superlatifs" },
+  { key: "superlatifs", label: "Récompenses" },
   { key: "badges", label: "Badges" },
   { key: "jeux-stats", label: "Jeux-stats" },
 ];

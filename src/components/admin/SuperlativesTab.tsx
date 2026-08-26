@@ -42,7 +42,7 @@ export async function SuperlativesTab() {
 
       {categories.length === 0 ? (
         <Card>
-          <p className="text-sm text-muted">Aucun superlatif pour l&apos;instant.</p>
+          <p className="text-sm text-muted">Aucune récompense pour l&apos;instant.</p>
         </Card>
       ) : (
         <Stagger className="flex flex-col gap-3">

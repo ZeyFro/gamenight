@@ -66,7 +66,7 @@ export default async function GameStatsAdminPage({
           href="/admin?tab=jeux-stats"
           className="text-sm text-muted hover:text-foreground hover:underline"
         >
-          ← Stats &amp; superlatifs
+          ← Stats &amp; récompenses
         </Link>
         <h1 className="mt-2 text-xl font-semibold text-foreground sm:text-2xl">
           {game.name}
@@ -208,11 +208,11 @@ export default async function GameStatsAdminPage({
 
                 <div className="flex flex-col gap-2 border-t border-border pt-3">
                   <p className="text-xs font-medium text-muted">
-                    Superlatifs
+                    Récompenses
                   </p>
                   {stat.superlatives.length === 0 && (
                     <p className="text-sm text-muted">
-                      Aucun superlatif pour cette stat.
+                      Aucune récompense pour cette stat.
                     </p>
                   )}
 
@@ -332,7 +332,7 @@ export default async function GameStatsAdminPage({
                     size="sm"
                     fullWidthOnMobile
                   >
-                    Supprimer cette stat (et ses superlatifs)
+                    Supprimer cette stat (et ses récompenses)
                   </Button>
                 </form>
               </Card>

@@ -30,7 +30,7 @@ export default async function PoteSuperlatifsPage({
         sessionDate: a.session.date,
         voteCount: a.voteCount,
       }))}
-      emptyMessage="Aucun superlatif gagné pour l'instant."
+      emptyMessage="Aucune récompense gagnée pour l'instant."
     />
   );
 }

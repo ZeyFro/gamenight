@@ -134,7 +134,7 @@ export default async function SuperlativeVotePage({
         categories.length === 0 ? (
           <Card>
             <p className="text-sm text-muted">
-              Aucun superlatif configuré pour l&apos;instant.
+              Aucune récompense configurée pour l&apos;instant.
             </p>
           </Card>
         ) : (
@@ -164,7 +164,7 @@ export default async function SuperlativeVotePage({
           ← Retour à la soirée
         </Link>
         <h1 className="mt-2 text-xl font-semibold text-foreground sm:text-2xl">
-          🏆 Superlatifs — {session.decidedGame.name}
+          🏆 Récompenses — {session.decidedGame.name}
         </h1>
         <p className="mt-1 text-sm text-muted">
           {formatDateTimeFr(session.date)}

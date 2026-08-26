@@ -19,7 +19,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   REMINDER_24H: "Rappel 24h avant",
   REMINDER_2H: "Rappel 2h avant",
   LEVEL_UP: "Passage de niveau",
-  SESSION_AWARDS: "Awards de superlatifs",
+  SESSION_AWARDS: "Awards de récompenses",
   BADGE_UNLOCKED: "Badge débloqué",
 };
 
