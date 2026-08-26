@@ -18,6 +18,7 @@ import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wall
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
+import { VoterAvatars } from "@/components/VoterAvatars";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -69,7 +70,7 @@ export default async function SessionDetailPage({
     include: {
       decidedGame: true,
       proposals: {
-        include: { game: true, votes: true, proposedBy: true },
+        include: { game: true, votes: { include: { user: true } }, proposedBy: true },
         orderBy: { createdAt: "asc" },
       },
       results: { select: { id: true }, take: 1 },
@@ -402,6 +403,14 @@ export default async function SessionDetailPage({
                       />
                     )}
                   </div>
+
+                  <VoterAvatars
+                    voters={proposal.votes.map((v) => ({
+                      id: v.user.id,
+                      discordName: v.user.discordName,
+                      discordAvatar: v.user.discordAvatar,
+                    }))}
+                  />
                 </Card>
               </StaggerItem>
             );

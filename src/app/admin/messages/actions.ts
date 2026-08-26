@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { MessageCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { ALL_MESSAGE_CATEGORIES, variablesForCategories } from "@/lib/message-templates";
+import {
+  ALL_MESSAGE_CATEGORIES,
+  findInvalidCategoryVariables,
+  variablesForCategories,
+} from "@/lib/message-templates";
 
 function parseCategories(formData: FormData): MessageCategory[] {
   return ALL_MESSAGE_CATEGORIES.filter(
@@ -21,6 +25,12 @@ export async function addMessageTemplate(formData: FormData) {
   if (!text) return;
 
   const categories = parseCategories(formData);
+  // Filet de sécurité serveur (Fix 4C) : le formulaire bloque déjà
+  // l'envoi côté client (`MessageTemplateForm`), ce garde-fou ne devrait
+  // donc jamais se déclencher en usage normal — il évite juste qu'un
+  // contournement du formulaire (requête directe, vieux JS en cache…)
+  // puisse quand même écrire un message "à trous" en base.
+  if (findInvalidCategoryVariables(text, categories).length > 0) return;
 
   await prisma.messageTemplate.create({
     data: {
@@ -44,6 +54,7 @@ export async function updateMessageTemplate(formData: FormData) {
   if (!id || !text) return;
 
   const categories = parseCategories(formData);
+  if (findInvalidCategoryVariables(text, categories).length > 0) return;
 
   await prisma.messageTemplate.update({
     where: { id },

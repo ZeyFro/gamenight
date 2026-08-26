@@ -1957,6 +1957,7 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run start` | Démarre le build de production |
 | `npm run lint` | Lint ESLint |
 | `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
+| `npm run fix-invalid-templates` | Désactive (silencieusement) les `MessageTemplate` en base avec une variable invalide pour l'une de leurs catégories — idempotent, aussi lancé automatiquement à chaque build (Fix 4, PR 30, bug "texte à trous") |
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
 | `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build (chantier dormant depuis PR 5/9, laissé fonctionnel) |
 | `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
@@ -1986,12 +1987,13 @@ src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtre
 src/lib/discord-session-created.ts # Notif Discord à la création d'une soirée
 src/lib/discord-session-modified.ts # Notif Discord à la modification d'une soirée
 src/lib/session-schedule.ts # resolveSessionSchedule : validation date/deadline mutualisée création+édition
-src/lib/message-templates.ts # pickMessageTemplate + catégories/variables (source de vérité partagée)
+src/lib/message-templates.ts # pickMessageTemplate + catégories/variables + findInvalidCategoryVariables (Fix 4, PR 30)
 src/lib/deepl.ts            # translateToFrench (API DeepL Free, dégrade sans DEEPL_API_KEY)
 src/lib/xp.ts                # Formules pures XP : XP_AMOUNTS, courbe de niveau, titres, rangs, streak
 src/lib/xp-actions.ts        # awardXp (idempotent) + touchStreak (I/O Prisma + notif level up)
 src/lib/discord-level-up.ts  # Notif Discord de passage de niveau
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
+prisma/fix-invalid-templates.mjs # Désactive les MessageTemplate invalides en base, idempotent (Fix 4, PR 30)
 prisma/backfill-xp.mjs      # Backfill XP idempotent, wired dans npm run build (npm run backfill-xp en manuel)
 prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempotent, piloté par les vraies données (dormant depuis PR 5/9)
 prisma/seed-superlatives.mjs # Seed des 6 superlatifs génériques par défaut, idempotent par nom
@@ -2010,6 +2012,7 @@ src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
 src/components/ActionForm.tsx           # Wrapper server action + toast (non redirigeant)
 src/components/VoteButton.tsx           # Bouton de vote (bounce + compteur animé)
+src/components/VoterAvatars.tsx         # Pile d'avatars des voteurs d'une proposition + popup liste complète (Fix 1, PR 30)
 src/components/VotingCountdown.tsx      # Compte à rebours deadline de vote (client)
 src/components/EditGameDialog.tsx       # Panneau modal d'édition d'un jeu (Radix Dialog)
 src/components/DeleteSessionDialog.tsx  # Confirmation de suppression d'une session (créateur only)
@@ -2256,3 +2259,223 @@ conséquence (nouvelle icône `TrophyIcon`, même style outline que les
 autres icônes de `icons.tsx`). Le texte "Rang global #N sur X" sur
 `/profil` devient un lien cliquable vers `/classement`, pour ceux qui
 veulent voir le classement complet en un tap depuis leur propre profil.
+
+## PR 1/4 — Fixes ciblés UX + bugs notifs Discord (PR 30)
+
+Suite au test en prod des 9 PR du chantier XP, 8 demandes remontées et
+découpées en 4 PR successives (validé avec l'utilisateur) : PR 1/4
+(celle-ci, fixes ciblés + bug notifs), PR 2/4 (timing des rappels
+choisi par le créateur + filtres biblio style Steam), PR 3/4 (comptes
+familiaux Steam), PR 4/4 (refonte planning/dispos en vue calendrier
+collectif). Aucune migration Prisma dans cette PR — que du code
+applicatif.
+
+### Fix 1 — Voir qui a voté quoi
+
+**Avant** : sous chaque proposition, seul le compteur ("3 votes")
+était visible — impossible de savoir qui sans demander dans Discord.
+
+```
+Voter          3 votes
+```
+
+**Après** : une pile d'avatars empilés (façon Discord reactions,
+28px) apparaît sous le bouton de vote dès qu'il y a au moins un
+voteur.
+
+```
+Voter          3 votes
+[👤][👤][👤]
+```
+
+Nouveau composant `src/components/VoterAvatars.tsx`, branché sur
+`/sessions/[id]/page.tsx` (la requête Prisma des propositions inclut
+maintenant `votes: { include: { user: true } }`, pas juste `votes:
+true`). **Visible par tout le monde**, pas juste le créateur — décision
+assumée, cohérente avec le reste de l'app où rien n'est caché entre
+membres du groupe (dispos, biblio du groupe, tierlist, votes de
+récompenses…), pas de raison de traiter ce vote-ci différemment.
+
+Deux interactions distinctes plutôt qu'une seule : chaque avatar porte
+un `title` natif (déjà géré par le composant `Avatar` partagé) qui
+donne un vrai tooltip par pseudo au survol desktop, sans rien
+construire de plus. Le tap (mobile **et** desktop) sur la pile ouvre
+une popup (Radix Dialog, même pattern que `DeleteSessionDialog`)
+listant tout le monde — un tooltip par avatar individuel n'a pas de
+sens au tactile (pas de `:hover`, et les avatars empilés à 28px sont
+trop petits pour un tap précis par personne), donc la pile entière est
+le déclencheur d'une seule liste complète. Au-delà de 5 voteurs, un
+badge "+N" résume le reste (toujours cliquable, la popup liste tout le
+monde).
+
+**Tester en prod** : voter sur une proposition avec 2-3 comptes
+différents, ouvrir `/sessions/[id]`, vérifier que les avatars
+apparaissent sous le bouton de vote, survoler un avatar sur desktop
+(tooltip pseudo), taper la pile sur mobile (popup liste complète).
+
+### Fix 2 — Créateur visible dans la notif Discord
+
+`{createur}` résolvait déjà correctement vers `<@discordId>` (rien à
+câbler côté substitution) — le problème était que ce ping n'apparaissait
+que noyé dans le texte "hype" tiré au hasard dans `MessageTemplate`, pas
+toujours présent selon le message pioché, et jamais mis en avant.
+
+**Avant** (embed) :
+```
+📣 Nouvelle soirée
+vendredi 8 août à 20:00
+─────────────────────────
+Deadline de vote   Lien
+20:00 le 7 août    /sessions/xxx
+```
+
+**Après** — nouveau champ dédié, toujours affiché :
+```
+📣 Nouvelle soirée
+vendredi 8 août à 20:00
+─────────────────────────
+Créée par    Deadline de vote    Lien
+@Pseudo      20:00 le 7 août     /sessions/xxx
+```
+
+`src/lib/discord-session-created.ts` : ajout du champ `{ name: "Créée
+par", value: vars.createur, inline: true }`. `<@discordId>` dans un
+champ d'embed s'affiche comme une mention cliquable dans Discord **sans
+déclencher de notification push** (contrairement au même ping en
+`content` brut) — donc pas de double-ping du créateur, cohérent avec le
+choix déjà en place ("le créateur n'est pas mentionné, il vient de
+cliquer le bouton").
+
+**Tester en prod** : créer une soirée, vérifier dans Discord que
+l'embed affiche bien un champ "Créée par" avec le pseudo cliquable du
+créateur.
+
+### Fix 3 — Deadlines plus courtes
+
+**Avant** : `6h / 12h / 24h / 48h avant la session` seulement — pas
+adapté à une soirée spontanée décidée le jour même.
+
+**Après** : `30 min / 1h / 2h / 6h / 12h / 24h / 48h avant la session`,
+dans cet ordre. `src/app/sessions/page.tsx`, 3 nouvelles `<option>`
+(`value="0.5"` pour 30 min). Aucun changement côté logique :
+`resolveSessionSchedule` (`src/lib/session-schedule.ts`) traite déjà
+`deadlineOffset` comme un nombre d'heures flottant
+(`offsetHours * 60 * 60 * 1000`), `0.5` fonctionne tel quel.
+
+**Tester en prod** : créer une soirée, ouvrir le select "Deadline de
+vote", vérifier les 3 nouvelles options en tête de liste et que "30 min
+avant" calcule bien une deadline 30 minutes avant l'heure de la
+session.
+
+### Fix 4 — Bug "texte à trous" dans les notifs Discord
+
+Bug remonté avec un cas réel en prod : un `MessageTemplate` contenant
+`{jeu}` était coché à la fois `REMINDER_24H`/`REMINDER_2H` (où `{jeu}`
+existe) **et** `SESSION_CREATED` (où `{jeu}` n'existe pas). Envoyé à la
+création d'une session, `{jeu}` n'avait aucune valeur et laissait un
+trou visible dans le texte posté.
+
+**Avant** (exemple, texte envoyé à la création) :
+```
+Alerte :  à 20h. Absent = tu paies ta biere ORGEN 🍕
+```
+
+**Après** :
+```
+Alerte : le jeu à 20h. Absent = tu paies ta biere ORGEN 🍕
+```
+
+Trois causes distinctes corrigées :
+
+**A) Le message inapproprié doit être filtré.** Audit des seeds
+(`prisma/seed.mjs`) : les groupes `SESSION_CREATED`/`SESSION_MODIFIED`
+seedés par défaut n'ont jamais contenu `{jeu}` — le bug venait d'un
+template créé/édité à la main sur `/admin?tab=messages`, pas du seed.
+Le vrai correctif est en B/C ci-dessous, plus la vérification
+"templates déjà en base" du point suivant.
+
+**B) Substitution runtime plus robuste
+(`src/lib/message-templates.ts`).** `substituteVariables` ne retire
+plus silencieusement une variable non fournie — elle est remplacée par
+un texte générique lisible (`GENERIC_VARIABLE_FALLBACKS` : "le jeu"
+pour `{jeu}`, "l'heure" pour `{heure}`, "quelqu'un" pour
+`{createur}`/`{user}`, etc., une entrée par variable connue de
+`CATEGORY_VARIABLES`) **et** loggue un `console.warn` côté serveur à
+chaque occurrence, pour rester repérable dans les logs Vercel même si
+un message invalide passe malgré tout. Ce filet de sécurité runtime
+reste une dernière défense — la vraie correction est en amont (C).
+
+**C) Validation admin stricte + auto-désactivation au build.**
+`findInvalidCategoryVariables(text, categories)` (nouvelle fonction
+partagée, `message-templates.ts`) vérifie **chaque catégorie cochée
+individuellement** — pas l'union comme avant
+(`variablesForCategories`), qui est exactement le bug ci-dessus :
+`{jeu}` existe bien dans l'union de `REMINDER_24H` + `SESSION_CREATED`,
+donc l'ancienne validation "union" laissait passer une combinaison où
+`SESSION_CREATED` seul ne supporte pourtant pas `{jeu}`.
+  - **Formulaire** (`MessageTemplateForm.tsx`) : bandeau d'erreur exact
+    demandé — *"Ce message ne peut pas être coché {catégorie} car il
+    contient {variable} qui n'existe pas pour cette catégorie."* — et
+    **blocage réel** de la sauvegarde (`<fieldset disabled>` autour du
+    bouton d'enregistrement, plus un garde `onSubmit` en filet de
+    sécurité). L'autocomplétion `{` ne suggère plus que l'intersection
+    des variables des catégories cochées (pas l'union), pour éviter de
+    suggérer soi-même une combinaison invalide.
+  - **Server actions** (`admin/messages/actions.ts`) : même vérification
+    rejouée côté serveur avant tout `create`/`update` — filet de
+    sécurité si le formulaire était contourné, silencieux (pas de crash,
+    juste un no-op).
+  - **Templates déjà en base** : nouveau script
+    `prisma/fix-invalid-templates.mjs`, wired dans `npm run build` juste
+    après `seed.mjs` (même philosophie que `backfill-xp.mjs` : Node/ESM
+    autonome, duplique `CATEGORY_VARIABLES` plutôt que d'importer un
+    module TS aliasé). Parcourt tous les `MessageTemplate` actifs,
+    désactive silencieusement (`active: false`, retiré du tirage
+    aléatoire) ceux dont une variable est invalide pour l'une de leurs
+    catégories, et logue chaque désactivation (`console.warn`) — visible
+    dans les logs de build Vercel pour qu'un admin sache quoi corriger
+    ou supprimer sur `/admin?tab=messages`. Idempotent, sûr à rejouer à
+    chaque déploiement.
+
+**Tester en prod** :
+- Sur `/admin?tab=messages`, créer un message avec `{jeu}` et cocher à
+  la fois "Rappel 24h avant" et "Création de soirée" → le bandeau
+  d'erreur doit apparaître et le bouton "Ajouter" doit être désactivé
+  tant que la catégorie invalide reste cochée ou que `{jeu}` reste dans
+  le texte.
+- Vérifier dans les logs Vercel du déploiement (`fix-invalid-templates`)
+  qu'aucun message existant n'est signalé comme invalide (ou, si c'était
+  le cas avant cette PR, qu'il apparaît bien désactivé sur
+  `/admin?tab=messages` après déploiement).
+
+### Fix 5 — Timing des notifs Discord
+
+**Décision (confirmée avec l'utilisateur) : deux notifs distinctes,
+sans rien construire de nouveau.**
+- **À la création** : `announceSessionCreated`
+  (`src/lib/discord-session-created.ts`) — "📣 Nouvelle soirée",
+  annonce le vote ouvert, ne mentionne aucun jeu (aucune variable
+  `{jeu}` dans les catégories `SESSION_CREATED`/`SESSION_MODIFIED`, cf.
+  Fix 4A). Inchangée dans cette PR à part le champ "Créée par" (Fix 2).
+- **À la clôture du vote** (transition `VOTING` → `SCHEDULED`,
+  `closeSession` dans `src/lib/sessions.ts`) : `announceSessionResult`
+  (`src/lib/discord-announce.ts`, F6) — "🎮 Soirée validée :
+  {jeu}", déjà existante depuis les toutes premières PR de l'app.
+  Aucun changement de code nécessaire : cette notif tombait déjà au bon
+  moment.
+
+Choix retenu plutôt que l'édition du message Discord de création
+(techniquement possible via l'API webhook Discord) : réutiliser une
+notif qui existe déjà depuis longtemps évite d'introduire un nouveau
+couplage (stocker un `messageId`/`webhookToken` par session en base,
+donc une migration) pour un gain marginal — deux messages distincts
+dans le salon ("vote ouvert" puis "jeu décidé") racontent la même
+histoire qu'un seul message édité, sans complexité supplémentaire ni
+migration. Contrainte "pas de spam" respectée : un seul post par
+événement réellement significatif (ouverture du vote, décision du jeu),
+pas plus qu'avant cette PR.
+
+**Tester en prod** : créer une soirée (notif "Nouvelle soirée" sans
+jeu mentionné), voter, clôturer le vote (manuellement ou attendre la
+deadline) → notif "Soirée validée : {jeu}" doit apparaître séparément
+dans le même salon.

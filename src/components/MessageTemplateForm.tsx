@@ -5,26 +5,23 @@ import {
   ALL_MESSAGE_CATEGORIES,
   CATEGORY_LABELS,
   CATEGORY_VARIABLES,
+  findInvalidCategoryVariables,
   variablesForCategories,
 } from "@/lib/message-templates";
 import type { MessageCategory } from "@prisma/client";
 
-function extractUsedVariables(text: string): string[] {
-  const matches = text.match(/\{([a-zA-Z0-9_]+)\}/g) ?? [];
-  return Array.from(new Set(matches.map((m) => m.slice(1, -1))));
-}
-
 /**
  * Formulaire d'ajout/édition d'un `MessageTemplate` — extrait en composant
  * client (le `page.tsx` d'origine était un Server Component avec de
- * simples `<form action=...>`) pour porter deux choses (FIX 2, bug
- * remonté : un message avec une variable hors catégorie, ex. `{jeu}` dans
- * un `SESSION_MODIFIED`, était envoyé tel quel dans Discord) :
- * - un bandeau d'avertissement live si le texte utilise une variable que
- *   les catégories cochées ne fournissent pas — sauvegarde autorisée quand
- *   même (l'utilisateur peut vouloir ignorer, cf. demande), le vrai filet
- *   de sécurité est le remplacement silencieux par du vide au runtime
- *   (`substituteVariables`) ;
+ * simples `<form action=...>`) pour porter deux choses :
+ * - un blocage strict à la sauvegarde (Fix 4C, PR 30) si le texte utilise
+ *   une variable que l'une des catégories cochées ne fournit pas —
+ *   `findInvalidCategoryVariables` vérifie catégorie par catégorie, pas à
+ *   l'union comme avant (bug corrigé : un message texte à trous en prod,
+ *   `{jeu}` dans un message aussi coché `SESSION_CREATED`, passait
+ *   l'ancienne validation "union"). Le `<fieldset disabled>` autour du
+ *   footer désactive réellement le bouton d'enregistrement — pas qu'un
+ *   avertissement ignorable ;
  * - une autocomplétion : taper `{` propose les variables disponibles pour
  *   les catégories actuellement cochées.
  */
@@ -50,18 +47,29 @@ export function MessageTemplateForm({
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const allowedVars = useMemo(() => variablesForCategories(categories), [categories]);
-  const usedVars = useMemo(() => extractUsedVariables(text), [text]);
-  const unknownVars = useMemo(
-    () => usedVars.filter((v) => !allowedVars.includes(v)),
-    [usedVars, allowedVars]
+  // Autocomplétion : intersection des variables des catégories cochées
+  // (pas l'union) — ne proposer que ce qui marche pour TOUTES les
+  // catégories cochées à la fois évite de suggérer soi-même une variable
+  // qui déclencherait `invalidPairs` juste en dessous. Sans catégorie
+  // cochée, on propose tout (rien à restreindre encore).
+  const suggestableVars = useMemo(() => {
+    if (categories.length === 0) return variablesForCategories(ALL_MESSAGE_CATEGORIES);
+    return categories.reduce<string[]>(
+      (acc, c) => acc.filter((v) => CATEGORY_VARIABLES[c].includes(v)),
+      CATEGORY_VARIABLES[categories[0]]
+    );
+  }, [categories]);
+
+  const invalidPairs = useMemo(
+    () => findInvalidCategoryVariables(text, categories),
+    [text, categories]
   );
 
   const suggestions = useMemo(() => {
     if (!suggestion) return [];
     const q = suggestion.query.toLowerCase();
-    return allowedVars.filter((v) => v.toLowerCase().startsWith(q));
-  }, [suggestion, allowedVars]);
+    return suggestableVars.filter((v) => v.toLowerCase().startsWith(q));
+  }, [suggestion, suggestableVars]);
 
   function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = e.target.value;
@@ -96,7 +104,18 @@ export function MessageTemplateForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form
+      action={action}
+      onSubmit={(e) => {
+        // Filet de sécurité en plus du `<fieldset disabled>` sur le footer
+        // (qui désactive déjà visuellement le bouton) : si jamais le
+        // bouton était quand même cliqué (ex. `invalidPairs` vient de
+        // repasser à 0 entre deux rendus), on bloque explicitement l'envoi
+        // de l'action serveur plutôt que de compter uniquement sur le CSS.
+        if (invalidPairs.length > 0) e.preventDefault();
+      }}
+      className="flex flex-col gap-3"
+    >
       {idValue && <input type="hidden" name="id" value={idValue} />}
 
       <div className="relative flex flex-col gap-1">
@@ -131,14 +150,20 @@ export function MessageTemplateForm({
         )}
       </div>
 
-      {unknownVars.length > 0 && (
-        <p className="rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-          Variable{unknownVars.length > 1 ? "s" : ""} inconnue
-          {unknownVars.length > 1 ? "s" : ""} pour les catégories cochées :{" "}
-          {unknownVars.map((v) => `{${v}}`).join(", ")}. Remplacée
-          {unknownVars.length > 1 ? "s" : ""} par du vide à l&apos;envoi —
-          tu peux quand même enregistrer.
-        </p>
+      {invalidPairs.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+          {invalidPairs.map(({ category, variable }) => (
+            <p key={`${category}-${variable}`}>
+              Ce message ne peut pas être coché{" "}
+              <strong>{CATEGORY_LABELS[category]}</strong> car il contient{" "}
+              {`{${variable}}`} qui n&apos;existe pas pour cette catégorie.
+            </p>
+          ))}
+          <p>
+            Décoche la catégorie concernée, ou retire la variable, pour
+            pouvoir enregistrer.
+          </p>
+        </div>
       )}
 
       <fieldset className="flex flex-col gap-2">
@@ -173,7 +198,9 @@ export function MessageTemplateForm({
         })}
       </fieldset>
 
-      {footer}
+      <fieldset disabled={invalidPairs.length > 0} className="contents">
+        {footer}
+      </fieldset>
     </form>
   );
 }

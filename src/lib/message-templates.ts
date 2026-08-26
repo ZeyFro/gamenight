@@ -52,6 +52,43 @@ export function variablesForCategories(categories: MessageCategory[]): string[] 
   return Array.from(new Set(categories.flatMap((c) => CATEGORY_VARIABLES[c])));
 }
 
+export interface InvalidCategoryVariable {
+  category: MessageCategory;
+  variable: string;
+}
+
+/**
+ * Pour CHAQUE catégorie cochée individuellement (pas l'union de
+ * `variablesForCategories`), vérifie que toutes les variables utilisées
+ * dans `text` lui sont autorisées. Bug corrigé (remonté en prod) : un
+ * message coché à la fois `REMINDER_24H` et `SESSION_CREATED` avec
+ * `{jeu}` passait la validation "union" (puisque `{jeu}` existe bien pour
+ * REMINDER_24H) alors que `SESSION_CREATED` seul ne le supporte pas —
+ * envoyé tel quel à la création d'une session, `{jeu}` n'avait jamais de
+ * valeur et laissait un trou dans le texte. Utilisé à la fois par le
+ * formulaire (`MessageTemplateForm`, blocage à la saisie), les server
+ * actions (`admin/messages/actions.ts`, filet de sécurité) et le script
+ * `fix-invalid-templates.mjs` (désactivation des templates déjà en base).
+ */
+export function findInvalidCategoryVariables(
+  text: string,
+  categories: MessageCategory[]
+): InvalidCategoryVariable[] {
+  const usedVars = Array.from(
+    new Set(Array.from(text.matchAll(/\{([a-zA-Z0-9_]+)\}/g)).map((m) => m[1]))
+  );
+
+  const invalid: InvalidCategoryVariable[] = [];
+  for (const category of categories) {
+    for (const variable of usedVars) {
+      if (!CATEGORY_VARIABLES[category].includes(variable)) {
+        invalid.push({ category, variable });
+      }
+    }
+  }
+  return invalid;
+}
+
 /**
  * Repli hardcodé utilisé quand aucun `MessageTemplate` actif n'existe pour
  * une catégorie donnée — ne devrait arriver qu'avant le premier seed, ou
@@ -69,14 +106,44 @@ const FALLBACKS: Record<MessageCategory, string> = {
 };
 
 /**
+ * Filet de sécurité pour `substituteVariables` : texte générique lisible
+ * substitué à une variable qui apparaît dans un template mais n'a pas été
+ * fournie pour cet envoi précis. Couvre toutes les variables connues de
+ * `CATEGORY_VARIABLES`, toutes catégories confondues (une même clé comme
+ * {createur} n'a besoin que d'une seule entrée ici).
+ */
+const GENERIC_VARIABLE_FALLBACKS: Record<string, string> = {
+  heure: "l'heure",
+  date: "la date",
+  createur: "quelqu'un",
+  ancienne_heure: "l'ancienne heure",
+  ancienne_date: "l'ancienne date",
+  pote: "un pote",
+  jeu: "le jeu",
+  user: "quelqu'un",
+  ancien_niveau: "l'ancien niveau",
+  nouveau_niveau: "le nouveau niveau",
+  titre: "un titre",
+  rang: "un rang",
+  gagnants: "les gagnants",
+  badge_name: "un badge",
+  badge_icon: "🏆",
+  rarity: "une rareté",
+};
+
+/**
  * Remplace chaque `{clé}` de `vars` dans `template` (substitution simple,
- * pas d'échappement). Toute variable restante après ça — typiquement
- * `{jeu}` utilisée par erreur dans un message `SESSION_MODIFIED`, qui n'a
- * pas cette variable — est retirée silencieusement plutôt que laissée
- * littéralement dans le message envoyé (bug corrigé : `/admin/messages` ne
- * bloque pas la sauvegarde d'un message avec une variable hors catégorie,
- * cf. validation côté admin ; ce filet de sécurité runtime garantit qu'un
- * tel message reste quand même présentable une fois posté dans Discord).
+ * pas d'échappement). Bug corrigé (texte "à trous" remonté en prod, ex.
+ * "c'est  à 20h" avec {jeu} substitué par du vide) : toute variable
+ * restante après la substitution normale — typiquement `{jeu}` utilisée
+ * par erreur dans un message coché `SESSION_CREATED`, qui n'a pas cette
+ * variable — n'est plus retirée en silence. Elle est remplacée par un
+ * texte générique lisible (`GENERIC_VARIABLE_FALLBACKS`) et loggée en
+ * warning côté serveur, pour rester repérable même si un message invalide
+ * passe malgré tout (le vrai filet de sécurité est maintenant en amont :
+ * `/admin/messages` bloque la sauvegarde d'un tel message à la source,
+ * voir `findInvalidCategoryVariables` — ceci reste une dernière défense,
+ * pas la validation elle-même).
  */
 export function substituteVariables(
   template: string,
@@ -86,7 +153,13 @@ export function substituteVariables(
     (text, [key, value]) => text.replaceAll(`{${key}}`, value),
     template
   );
-  return substituted.replace(/\{[a-zA-Z0-9_]+\}/g, "");
+
+  return substituted.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => {
+    console.warn(
+      `[message-templates] Variable {${key}} non fournie pour ce message ("${template}") — remplacée par un texte générique. Ce message est probablement coché pour une catégorie où {${key}} n'existe pas (voir /admin?tab=messages).`
+    );
+    return GENERIC_VARIABLE_FALLBACKS[key] ?? key.replaceAll("_", " ");
+  });
 }
 
 /**
