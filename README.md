@@ -1612,6 +1612,155 @@ du modèle `UserBadge` (schema.prisma).
 - **`/potes/[id]/badges`** : même `BadgeGrid`, lecture seule, couvert par
   le FIX 1 ci-dessus.
 
+  Note (PR 8/9) : le paragraphe ci-dessus ("les 3 badges les plus récents
+  affichés à côté du rang dans l'en-tête") décrivait `/profil` **avant**
+  la refonte profil rich — cet en-tête a été entièrement remplacé, voir
+  la section suivante.
+
+## Hub admin & refonte profil rich (PR 8/9)
+
+Retour d'usage après test en prod des PR 6/9 et 7/9 : `/admin/messages`
+devenait long à scroller (30+ messages, 7 catégories actives). Corrigé
+en même temps que la refonte profil déjà prévue pour cette PR.
+
+### Hub `/admin`
+
+Les 4 pages individuelles (`/admin/messages`, `/admin/superlatifs`,
+`/admin/jeux-stats`, et le tout nouveau `/admin/badges`, qui n'avait
+encore aucune interface avant cette PR) fusionnent en un seul hub
+`/admin`, à onglets pilotés par `?tab=` plutôt que par de vraies
+sous-routes (`AdminTabs`, `src/components/admin/`) — permet aux
+anciennes URLs de rediriger proprement sans reconstruire une
+arborescence de routes.
+
+- **Ordre des onglets** (au choix, décision) : Messages Discord →
+  Superlatifs → Badges → Jeux-stats — les deux premiers sont les
+  systèmes actifs les plus utilisés au quotidien, Jeux-stats est en
+  dernier car dormant depuis la PR 5/9.
+- **Bonus demandé** : sous-filtres par catégorie dans l'onglet Messages
+  (`MessagesList.tsx`, pastilles cliquables, une catégorie sans aucun
+  message n'apparaît pas) — même souci de scroll infini réglé à
+  l'intérieur même de cet onglet.
+- **`/admin/badges`** (nouveau CRUD) : formulaire structuré (select type
+  de critère + seuil numérique) plutôt qu'un textarea JSON libre pour
+  `criteria` — un badge a désormais aussi `active`/`modifiedById`/
+  `modifiedAt` (audit trail, aligné sur `SuperlativeCategory`), migration
+  avec backfill (les 15 badges déjà seedés par la PR 7/9 reprennent le
+  compte le plus ancien du groupe, même schéma que la migration d'audit
+  trail de la PR 5/9). Un badge désactivé n'est plus jamais débloqué
+  (`unlockMatchingBadges` filtre dessus) mais reste visible dans
+  `BadgeGrid` (encyclopédique) et les `UserBadge` déjà attribués restent.
+- **Redirections** (`permanentRedirect`, 308) :
+
+  | Ancienne URL | Nouvelle URL |
+  |---|---|
+  | `/admin/messages` | `/admin?tab=messages` |
+  | `/admin/superlatifs` | `/admin?tab=superlatifs` |
+  | `/admin/jeux-stats` | `/admin?tab=jeux-stats` |
+
+  `/admin/jeux-stats/[gameId]` (CRUD détaillé d'un jeu) reste une route
+  indépendante, pas absorbée dans le hub — seule la page d'index l'était.
+
+### Refonte profil rich (inspiration mangas-origines.fr)
+
+`/profil` passe d'une page plate (empilement de cartes) à un
+`layout.tsx` partagé (bannière + avatar à anneau + stats + onglets) + 6
+sous-routes.
+
+**Bannière : URL uniquement, pas d'upload.** Décision prise (l'utilisateur
+laissait explicitement le choix, "évite si ça complique trop, l'URL
+suffit pour v1") : `User.bannerUrl` est une simple URL absolue, saisie
+dans un champ texte avec preview live (`BannerForm.tsx`). Pas de service
+d'upload tiers ni de stockage de fichier — un vrai upload aurait ajouté
+une dépendance externe (S3, Cloudinary…) et sa complexité de config
+(clés API, `.env.example`, gestion des erreurs réseau) pour un gain
+marginal sur une app de groupe d'amis où chacun peut héberger son image
+n'importe où (Discord CDN, Imgur…) et coller l'URL. Vide → bannière par
+défaut (`.profile-banner-default`, dégradé CSS violet). Affichée en
+`background-image` CSS (pas `next/image`) : `next/image` exige une
+liste blanche de domaines dans `next.config.ts`, incompatible avec une
+URL totalement libre — le CSS gère aussi nativement le "cover center"
+demandé pour tolérer d'autres ratios que 1500×500.
+
+**En-tête (`src/app/profil/layout.tsx`)** :
+- Bannière (h-40 mobile → h-64 desktop).
+- `RankAvatar` (`src/components/RankAvatar.tsx`, partagé avec
+  `/potes/[id]`) : avatar avec anneau coloré selon le rang
+  (`Rank.ringClass`, nouveau champ sur `xp.ts`) + pastille de niveau
+  collée en bas à droite. Rang Légende : halo pulsant continu (même
+  technique que `LegendaryPulse` de `BadgeGrid` — anime l'opacité d'une
+  couche `box-shadow` statique, `useReducedMotion`-aware) plutôt qu'un
+  dégradé arc-en-ciel littéral — réutilise le langage visuel déjà établi
+  pour "légendaire" dans l'app plutôt que d'introduire un nouvel effet.
+- Pseudo + badge de rang textuel + titre de niveau.
+- "Membre depuis {mois année} · Rang global #N sur X" — `getGlobalRank`
+  (`src/lib/profile-stats.ts`) est une simple requête de comptage (users
+  avec plus d'XP + 1), **pas** la page `/classement` complète : cette
+  dernière reste réservée à la PR 9/9 comme prévu au départ du chantier
+  (voir le commentaire sur `XpEvent` dans schema.prisma) — afficher sa
+  propre position ne justifiait pas de construire tout le classement
+  maintenant. Le tableau demandé ("colonne dédiée sur /classement")
+  arrivera avec cette page en PR 9/9.
+- Barre XP inline.
+- **5 cartes stats** : soirées jouées, jeux en biblio, soirées créées,
+  superlatifs gagnés, streak (flamme animée si > 0, `StreakFlame.tsx`,
+  `useReducedMotion`-aware).
+- **"Copier le lien de mon profil"** copie `/potes/{userId}`, **pas**
+  `/profil` littéral — `/profil` affiche toujours les données du user
+  connecté quelle que soit l'URL (aucune notion de "profil de qui"
+  dedans), donc partager ce lien montrerait à chaque destinataire SON
+  PROPRE profil. `/potes/{userId}` est la route qui affiche réellement
+  les infos de ce user pour n'importe quel autre membre du groupe.
+- **"Modifier"** renvoie directement vers l'onglet Réglages (pas de
+  modal séparée).
+
+**Onglets `/profil`** (`ProfilTabs.tsx`, même pattern que `PoteTabs` —
+actif déterminé par `usePathname()`) :
+
+| Onglet | Route | Contenu |
+|---|---|---|
+| Aperçu | `/profil` | Prochaine soirée du groupe, dernière activité XP, 3 derniers superlatifs gagnés |
+| Historique soirées | `/profil/historique` | Sessions participées (`XpEvent` PARTICIPATE), jeu + date + placement si résultats saisis |
+| Superlatifs gagnés | `/profil/superlatifs` | `SuperlativesWonGrid` (nouveau composant partagé avec `/potes/[id]`) |
+| Badges | `/profil/badges` | `BadgeGrid` réutilisé tel quel (PR 7/9) |
+| Tierlist | `/tierlist` | **Pas de sous-route dédiée** — lien direct vers la page existante (PR 6/9) plutôt que dupliquer la fonctionnalité sous deux URLs différentes à maintenir en parallèle |
+| Rappels perso | `/profil/parametres` | En réalité tous les réglages de compte : bannière, Steam (lien/réimport, déplacé depuis l'ancienne page plate), silence des rappels, liens vers les 3 onglets `/admin` |
+
+Les redirections Steam (`/api/steam/callback`, `reimportSteamLibrary`)
+pointent désormais vers `/profil/parametres?steam=...` au lieu de
+`/profil?steam=...` — sinon le statut d'import atterrirait sur l'onglet
+Aperçu, qui ne le gère pas.
+
+**`/potes/[id]`** gagne un 5e onglet **Superlatifs** (`/potes/[id]/superlatifs`,
+même `SuperlativesWonGrid`) et son en-tête utilise désormais `RankAvatar`
++ un badge de rang textuel à côté du badge Steam — pas de bannière ici
+(pas demandé pour la fiche d'un pote, réservé au profil personnel).
+
+### Preview (pas de capture d'écran possible dans ce sandbox)
+
+```
+┌─────────────────────────────────────────┐
+│▓▓▓▓▓▓▓▓ dégradé violet / image ▓▓▓▓▓▓▓▓▓▓│  ← bannière
+│▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│                    [🔗 Copier] [⚙️ Modifier]
+│      ╭────╮                              │
+└──────│ 😀 │──────────────────────────────┘
+       │ 12 │  ← anneau coloré par rang + pastille niveau
+       ╰────╯
+  Kévin
+  🥇 Or · Try-hard
+  Membre depuis janvier 2026 · Rang global #3 sur 8
+  ████████████░░░░░░░░  62 % vers le niveau 13
+
+  ┌────┐┌────┐┌────┐┌────┐┌────┐
+  │ 24 ││ 87 ││  5 ││  3 ││ 7🔥│
+  │Soir││Jeux││Créé││Sup.││Str.│
+  └────┘└────┘└────┘└────┘└────┘
+
+  Aperçu │ Historique │ Superlatifs │ Badges │ Tierlist │ Rappels perso
+  ───────
+  (contenu de l'onglet actif)
+```
+
 ## Rappels drôles avant session (F7)
 
 Rappels automatiques envoyés dans Discord (même webhook que F6), à **24h**
@@ -1843,6 +1992,7 @@ src/lib/badge-rarity.ts             # BADGE_XP_BY_RARITY, RARITY_LABELS, CATEGOR
 src/lib/discord-badge-unlocked.ts   # Notif Discord de badge débloqué (catégorie BADGE_UNLOCKED)
 prisma/seed-badges.mjs              # Seed des 15 badges par défaut, idempotent par nom
 prisma/backfill-badges.mjs          # Backfill badges idempotent, jamais de notif Discord
+src/lib/profile-stats.ts            # getProfileStats (5 cartes) + getGlobalRank (#N sur X)
 src/components/ui/          # Button, ButtonLink, Card, Badge, Skeleton
 src/components/motion.tsx   # Stagger, StaggerItem, PopIn (framer-motion)
 src/components/PageTransition.tsx       # Fondu entre routes (AnimatePresence)
@@ -1861,7 +2011,20 @@ src/components/SuperlativeCategoryForm.tsx # Form d'ajout/édition d'un superlat
 src/components/TierlistBoard.tsx        # Tierlist éditable (@dnd-kit, glisser-déposer S/A/B/C/D, filtre par nom)
 src/components/ReadOnlyTierlist.tsx     # Tierlist lecture seule (biblio pote)
 src/components/BadgeGrid.tsx            # Grille de badges (déblocables/débloqués), rareté visuelle
-src/components/PoteTabs.tsx             # Onglets Dispos/Bibliothèque/Tierlist/Badges de /potes/[id]
+src/components/PoteTabs.tsx             # Onglets Dispos/Bibliothèque/Tierlist/Badges/Superlatifs de /potes/[id]
+src/components/ProfilTabs.tsx           # Onglets Aperçu/Historique/Superlatifs/Badges/Tierlist/Réglages de /profil
+src/components/RankAvatar.tsx           # Avatar à anneau coloré par rang + pastille de niveau (partagé profil/pote)
+src/components/StreakFlame.tsx          # Flamme animée (carte stat streak)
+src/components/BannerForm.tsx           # Formulaire bannière de profil (URL + preview live)
+src/components/CopyProfileLinkButton.tsx # Copie /potes/{userId} dans le presse-papier
+src/components/SuperlativesWonGrid.tsx  # Grille des superlatifs gagnés (partagée profil/pote)
+src/components/admin/AdminTabs.tsx      # Onglets du hub /admin, pilotés par ?tab=
+src/components/admin/MessagesTab.tsx    # Onglet Messages (contenu déplacé depuis l'ancien /admin/messages)
+src/components/admin/MessagesList.tsx   # Liste + sous-filtres par catégorie (client)
+src/components/admin/SuperlativesTab.tsx # Onglet Superlatifs (contenu déplacé)
+src/components/admin/JeuxStatsTab.tsx   # Onglet Jeux-stats (contenu déplacé)
+src/components/admin/BadgesTab.tsx      # Onglet Badges (nouveau CRUD)
+src/components/admin/BadgeForm.tsx      # Form structuré (select critère + seuil, pas de JSON libre)
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
@@ -1870,22 +2033,30 @@ src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale s
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
 src/app/page.tsx            # Page d'accueil (login / profil)
-src/app/profil/page.tsx     # Profil + lien Steam + toggle silence rappels
-src/app/profil/actions.ts   # Server action toggle silence rappels
-src/app/admin/messages/page.tsx    # CRUD des messages Discord (catégories, variables)
-src/app/admin/messages/actions.ts  # Server actions messages Discord
-src/app/admin/jeux-stats/page.tsx           # Liste des jeux de la biblio commune (dormant depuis PR 5/9, accessible par URL directe)
-src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu (idem)
-src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs (idem)
-src/app/admin/superlatifs/page.tsx          # CRUD des superlatifs génériques (vote entre potes)
-src/app/admin/superlatifs/actions.ts        # Server actions superlatifs
+src/app/profil/layout.tsx   # En-tête profil rich (bannière, RankAvatar, stats, ProfilTabs) — PR 8/9
+src/app/profil/page.tsx     # Onglet Aperçu (route par défaut)
+src/app/profil/historique/page.tsx  # Onglet Historique soirées
+src/app/profil/superlatifs/page.tsx # Onglet Superlatifs gagnés
+src/app/profil/badges/page.tsx      # Onglet Badges
+src/app/profil/parametres/page.tsx  # Onglet Rappels perso (bannière, Steam, silence, liens admin)
+src/app/profil/actions.ts   # Server actions toggle silence rappels + setBannerUrlAction
+src/app/admin/page.tsx                      # Hub /admin (Messages/Superlatifs/Badges/Jeux-stats), piloté par ?tab=
+src/app/admin/messages/page.tsx             # Redirige (308) vers /admin?tab=messages
+src/app/admin/messages/actions.ts           # Server actions messages Discord (inchangé, importé par le hub)
+src/app/admin/superlatifs/page.tsx          # Redirige (308) vers /admin?tab=superlatifs
+src/app/admin/superlatifs/actions.ts        # Server actions superlatifs (inchangé, importé par le hub)
+src/app/admin/badges/actions.ts             # Server actions badges (nouveau CRUD)
+src/app/admin/jeux-stats/page.tsx           # Redirige (308) vers /admin?tab=jeux-stats
+src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu — reste une route indépendante
+src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs (dormant depuis PR 5/9)
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
 src/app/potes/page.tsx                  # Liste des potes du groupe
-src/app/potes/[id]/layout.tsx           # En-tête (avatar/nom/Steam) + PoteTabs, partagés par les 4 sous-routes
+src/app/potes/[id]/layout.tsx           # En-tête (RankAvatar/nom/rang/Steam) + PoteTabs, partagés par les 5 sous-routes
 src/app/potes/[id]/page.tsx             # Onglet Dispos (route par défaut)
 src/app/potes/[id]/bibliotheque/page.tsx # Onglet Bibliothèque (lecture seule)
 src/app/potes/[id]/tierlist/page.tsx    # Onglet Tierlist (lecture seule)
 src/app/potes/[id]/badges/page.tsx      # Onglet Badges (lecture seule)
+src/app/potes/[id]/superlatifs/page.tsx # Onglet Superlatifs gagnés (lecture seule) — PR 8/9
 src/app/bibliotheque/page.tsx           # Liste des jeux possédés (perso)
 src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB

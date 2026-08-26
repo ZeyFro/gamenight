@@ -8,6 +8,7 @@ const TAB_LABELS = [
   { suffix: "/bibliotheque", label: "Bibliothèque" },
   { suffix: "/tierlist", label: "Tierlist" },
   { suffix: "/badges", label: "Badges" },
+  { suffix: "/superlatifs", label: "Superlatifs" },
 ] as const;
 
 /**

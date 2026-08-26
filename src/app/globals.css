@@ -93,6 +93,17 @@ body {
     0 0 44px -10px color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
+/* Bannière de profil par défaut (PR 8/9) — quand User.bannerUrl est vide.
+   Dégradé plus marqué que .bg-hero-gradient (discret, pensé pour un fond
+   de page) : ici la bannière EST le contenu visuel, pas un habillage
+   derrière du texte. */
+.profile-banner-default {
+  background:
+    radial-gradient(120% 140% at 15% 0%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 60%),
+    radial-gradient(100% 130% at 100% 100%, color-mix(in srgb, var(--accent-active) 45%, transparent), transparent 65%),
+    var(--surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

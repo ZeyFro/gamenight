@@ -138,13 +138,13 @@ export async function removeUserGame(formData: FormData) {
 
 export async function reimportSteamLibrary() {
   const user = await getCurrentUser();
-  if (!user?.steamId64) redirect("/profil");
+  if (!user?.steamId64) redirect("/profil/parametres");
 
   const result = await importSteamLibrary(user.id, user.steamId64);
   revalidatePath("/bibliotheque");
   redirect(
     result.status === "imported"
-      ? `/profil?steam=importe&count=${result.count}`
-      : "/profil?steam=prive"
+      ? `/profil/parametres?steam=importe&count=${result.count}`
+      : "/profil/parametres?steam=prive"
   );
 }

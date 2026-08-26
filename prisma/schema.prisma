@@ -20,6 +20,12 @@ model User {
   discordId        String   @unique
   discordName      String
   discordAvatar    String?
+  // PR 8/9 — bannière de profil personnalisable. URL absolue uniquement
+  // (pas de stockage de fichier ni service d'upload tiers — décision
+  // documentée dans le README : la complexité d'un vrai upload n'était
+  // pas justifiée pour v1). `null` = bannière par défaut (dégradé violet
+  // CSS, `.profile-banner-default`).
+  bannerUrl        String?
   steamId64        String?  @unique
   steamPublic      Boolean  @default(false)
   // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
@@ -78,6 +84,8 @@ model User {
 
   // PR 7/9 — badges automatiques débloqués (voir `Badge`/`UserBadge`).
   userBadges UserBadge[]
+  // PR 8/9 — audit trail sur /admin/badges (qui a créé/modifié un badge).
+  modifiedBadges Badge[]
 
   @@index([xpTotal])
 }
@@ -607,6 +615,19 @@ model Badge {
   xpReward    Int?
   createdAt   DateTime      @default(now())
 
+  // `active` (PR 8/9, /admin/badges) : même rôle que sur
+  // `SuperlativeCategory` — un badge désactivé n'est plus jamais
+  // débloqué (`unlockMatchingBadges` filtre dessus), mais n'est PAS
+  // masqué de l'affichage `BadgeGrid` (encyclopédique : montrer un badge
+  // "à venir mais pas encore actif" reste informatif) ni des `UserBadge`
+  // déjà attribués (jamais de retrait rétroactif, cf. commentaire sur
+  // `UserBadge` plus bas). Audit trail `modifiedById`/`modifiedAt` — même
+  // logique que `SuperlativeCategory`/`GameStatType`.
+  active       Boolean  @default(true)
+  modifiedById String
+  modifiedAt   DateTime @updatedAt
+
+  modifiedBy User        @relation(fields: [modifiedById], references: [id])
   userBadges UserBadge[]
 }
 

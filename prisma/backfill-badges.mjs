@@ -111,7 +111,7 @@ async function computeStats(user) {
 }
 
 async function main() {
-  const badges = await prisma.badge.findMany();
+  const badges = await prisma.badge.findMany({ where: { active: true } });
   if (badges.length === 0) {
     console.log(
       "[backfill-badges] Aucun badge en base pour l'instant (seed-badges.mjs pas encore passé ?) — reporté au prochain build."

@@ -78,16 +78,51 @@ export interface Rank {
   name: string;
   minLevel: number;
   colorClass: string;
+  /** Couleur de l'anneau autour de l'avatar (PR 8/9, `RankAvatar`). */
+  ringClass: string;
+  /** Légende seule : halo pulsant continu sur l'anneau (`RankAvatar`). */
+  glowing?: boolean;
 }
 
 /** Couleurs pensées pour un badge (texte + fond) — affinées visuellement en PR 8/9. */
 export const RANKS: Rank[] = [
-  { name: "Bronze", minLevel: 1, colorClass: "text-amber-700 bg-amber-700/10" },
-  { name: "Argent", minLevel: 11, colorClass: "text-slate-300 bg-slate-300/10" },
-  { name: "Or", minLevel: 26, colorClass: "text-yellow-400 bg-yellow-400/10" },
-  { name: "Platine", minLevel: 51, colorClass: "text-cyan-300 bg-cyan-300/10" },
-  { name: "Diamant", minLevel: 76, colorClass: "text-white bg-white/10" },
-  { name: "Légende", minLevel: 100, colorClass: "text-accent bg-accent/10" },
+  {
+    name: "Bronze",
+    minLevel: 1,
+    colorClass: "text-amber-700 bg-amber-700/10",
+    ringClass: "ring-amber-700",
+  },
+  {
+    name: "Argent",
+    minLevel: 11,
+    colorClass: "text-slate-300 bg-slate-300/10",
+    ringClass: "ring-slate-300",
+  },
+  {
+    name: "Or",
+    minLevel: 26,
+    colorClass: "text-yellow-400 bg-yellow-400/10",
+    ringClass: "ring-yellow-400",
+  },
+  {
+    name: "Platine",
+    minLevel: 51,
+    colorClass: "text-cyan-300 bg-cyan-300/10",
+    ringClass: "ring-cyan-300",
+  },
+  {
+    name: "Diamant",
+    minLevel: 76,
+    colorClass: "text-white bg-white/10",
+    ringClass: "ring-white",
+  },
+  {
+    name: "Légende",
+    minLevel: 100,
+    colorClass: "text-accent bg-accent/10",
+    ringClass: "ring-accent",
+    glowing: true,
+  },
 ];
 
 export function rankForLevel(level: number): Rank {
