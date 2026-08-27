@@ -209,14 +209,24 @@ model Session {
 
   // F7 : message de rappel perso, saisi à la création de la session. S'il
   // est renseigné, il remplace le tirage aléatoire dans MessageTemplate
-  // pour les deux rappels (24h et 2h) de cette session.
+  // pour tous les rappels de cette session (cf. `reminderTimings`).
   customReminderMessage String?
-  // F7 : fenêtres de rappel déjà envoyées pour cette session, ex. `["24h"]`
-  // — évite les doublons si le cron retombe plusieurs fois sur la même
-  // fenêtre. Tableau JSON plutôt que deux booléens dédiés : les fenêtres
-  // sont un détail d'implémentation (cf. WINDOW_HOURS dans
-  // src/lib/discord-reminder.ts), pas une invariante du modèle.
+  // F7 : fenêtres de rappel déjà envoyées pour cette session, ex.
+  // `["1440", "120"]` (minutes avant la session, en string) — évite les
+  // doublons si le cron retombe plusieurs fois sur la même fenêtre.
+  // Tableau JSON plutôt que des booléens dédiés : les fenêtres sont un
+  // détail d'implémentation (cf. `reminderTimings` ci-dessous), pas une
+  // invariante du modèle.
   remindersSent  Json          @default("[]")
+  // PR 31 (2/4, Bloc A) : minutes avant la session auxquelles un rappel
+  // Discord doit partir — choisi par le créateur à la création (cases à
+  // cocher parmi 8 préréglages + rappels custom, 5 max). Remplace les
+  // fenêtres 24h/2h fixées en dur. Défaut `[1440, 120]` (24h + 2h) =
+  // comportement F7 d'origine préservé pour toute nouvelle session sans
+  // réglage explicite, et pour les sessions créées AVANT cette PR (valeur
+  // par défaut Postgres appliquée à la colonne existante par la
+  // migration, pas de backfill séparé nécessaire).
+  reminderTimings Int[]        @default([1440, 120])
 
   // PR 5/9 — fenêtre de vote des superlatifs entre potes, ouverte par
   // `markSessionDone` (cf. src/lib/sessions.ts) : `superlativeVotingDeadline`

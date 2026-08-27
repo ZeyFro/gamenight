@@ -1,25 +1,42 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
+import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/lib/game-filters";
 import { ButtonLink } from "@/components/ui/Button";
 import { LibraryTabs } from "@/components/LibraryTabs";
+import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
 
-export default async function GroupLibraryPage() {
+export default async function GroupLibraryPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const games = await prisma.game.findMany({
-    where: { userGames: { some: { owned: true } } },
-    include: {
-      userGames: {
-        where: { owned: true },
-        include: { user: true },
+  const [allGames, ownerCounts, totalUsers] = await Promise.all([
+    prisma.game.findMany({
+      where: { userGames: { some: { owned: true } } },
+      include: {
+        userGames: {
+          where: { owned: true },
+          include: { user: true },
+        },
       },
-    },
-  });
+    }),
+    getGameOwnerCounts(),
+    getTotalUserCount(),
+  ]);
 
-  const mapped = games.map((game) => ({
+  const filterableGames = allGames.map(toFilterableGame);
+  const filters = parseGameFilters(await searchParams);
+  const filteredGames = allGames.filter((game, index) =>
+    matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)
+  );
+
+  const mapped = filteredGames.map((game) => ({
     id: game.id,
     name: game.name,
     coverUrl: game.coverUrl,
@@ -50,6 +67,17 @@ export default async function GroupLibraryPage() {
       </div>
 
       <LibraryTabs active="groupe" />
+
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {mapped.length} jeu{mapped.length === 1 ? "" : "x"}
+          {filteredGames.length !== allGames.length && ` sur ${allGames.length}`}
+        </p>
+        <GameFilterDrawer
+          availableGenres={collectAvailableGenres(filterableGames)}
+          maxOwners={totalUsers}
+        />
+      </div>
 
       <ReadOnlyGameGrid
         games={mapped}

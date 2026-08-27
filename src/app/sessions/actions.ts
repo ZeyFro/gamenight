@@ -22,6 +22,7 @@ import {
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
 import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
+import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
@@ -45,9 +46,16 @@ export async function createSession(formData: FormData) {
 
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
+  const reminderTimings = parseReminderTimingsFromFormData(formData);
 
   const session = await prisma.session.create({
-    data: { date, votingDeadline, customReminderMessage, createdById: user.id },
+    data: {
+      date,
+      votingDeadline,
+      customReminderMessage,
+      reminderTimings,
+      createdById: user.id,
+    },
   });
 
   await awardXp(user.id, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);

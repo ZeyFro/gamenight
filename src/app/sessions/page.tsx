@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 
 type SessionRowData = Session & {
   decidedGame: Game | null;
@@ -212,6 +213,8 @@ export default async function SessionsPage({
               </div>
             </div>
           </details>
+
+          <ReminderTimingsField />
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted" htmlFor="custom-reminder">

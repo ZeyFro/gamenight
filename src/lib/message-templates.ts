@@ -16,8 +16,16 @@ export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
 export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   SESSION_CREATED: "Création de soirée",
   SESSION_MODIFIED: "Modification de soirée",
-  REMINDER_24H: "Rappel 24h avant",
-  REMINDER_2H: "Rappel 2h avant",
+  // PR 31 (2/4, Bloc A) : le timing des rappels devient configurable par
+  // le créateur (`Session.reminderTimings`), donc ces deux catégories ne
+  // correspondent plus littéralement à "24h avant"/"2h avant" — elles
+  // restent les deux seuls tons de message disponibles ("loin"/hype vs
+  // "proche"/urgent), choisi pour un timing donné via `isCloseReminder`
+  // (seuil 3h, cf. src/lib/reminder-timings.ts). Libellés gardés
+  // proches de l'original pour rester immédiatement compréhensibles sur
+  // /admin?tab=messages, sans laisser croire à une correspondance exacte.
+  REMINDER_24H: "Rappel (loin — ≥3h avant)",
+  REMINDER_2H: "Rappel (proche — <3h avant)",
   LEVEL_UP: "Passage de niveau",
   SESSION_AWARDS: "Awards de récompenses",
   BADGE_UNLOCKED: "Badge débloqué",
