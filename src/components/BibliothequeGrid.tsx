@@ -18,6 +18,8 @@ export interface BibliothequeGame {
   isCoop: boolean;
   minPlayers: number | null;
   maxPlayers: number | null;
+  /** Comment CE user possède ce jeu (PERSONAL/FAMILY/MANUAL) — badge "Familial" si FAMILY. */
+  ownershipSource?: string;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -96,6 +98,9 @@ function GameCard({ game }: { game: BibliothequeGame }) {
           <p className="text-sm font-medium text-foreground">{game.name}</p>
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
             <Badge>{SOURCE_LABELS[game.source] ?? game.source}</Badge>
+            {game.ownershipSource === "FAMILY" && (
+              <Badge tone="accent">👨‍👩‍👧 Familial</Badge>
+            )}
             {(game.minPlayers || game.maxPlayers) && (
               <span>
                 {game.minPlayers ?? "?"}–{game.maxPlayers ?? "?"} joueurs

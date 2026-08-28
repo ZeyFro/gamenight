@@ -64,10 +64,13 @@ export async function addManualGame(formData: FormData) {
         data: { ...gameData, source: GameSource.MANUAL, addedById: user.id },
       });
 
+  // `source: MANUAL` posé uniquement sur `create` — si ce jeu était déjà
+  // possédé (PERSONAL ou FAMILY), un ajout manuel redondant ne doit pas
+  // reclasser la relation existante.
   await prisma.userGame.upsert({
     where: { userId_gameId: { userId: user.id, gameId: game.id } },
     update: { owned: true },
-    create: { userId: user.id, gameId: game.id, owned: true },
+    create: { userId: user.id, gameId: game.id, owned: true, source: "MANUAL" },
   });
   await checkLibraryBadges(user.id);
 

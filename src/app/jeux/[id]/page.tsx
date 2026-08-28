@@ -149,6 +149,40 @@ async function GameIgdbSection({ game }: { game: Game }) {
   );
 }
 
+interface Owner {
+  userId: string;
+  source: string;
+  user: { discordName: string; discordAvatar: string | null };
+}
+
+/** N'affiche rien si la liste est vide (ex. personne ne possède ce jeu via la famille) — pas de titre "0 possesseur". */
+function OwnersList({
+  title,
+  owners,
+  currentUserId,
+}: {
+  title: string;
+  owners: Owner[];
+  currentUserId: string;
+}) {
+  if (owners.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-muted">{title}</h3>
+      {owners.map((o) => (
+        <div key={o.userId} className="flex items-center gap-3">
+          <Avatar src={o.user.discordAvatar} alt={o.user.discordName} size={32} />
+          <span className="text-sm text-foreground">
+            {o.user.discordName}
+            {o.userId === currentUserId && " (toi)"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GameIgdbSectionSkeleton() {
   return (
     <Card className="flex flex-col gap-2">
@@ -255,20 +289,17 @@ export default async function GameDetailPage({
             </p>
           </Card>
         ) : (
-          <div className="flex flex-col gap-2">
-            {owners.map((o) => (
-              <div key={o.userId} className="flex items-center gap-3">
-                <Avatar
-                  src={o.user.discordAvatar}
-                  alt={o.user.discordName}
-                  size={32}
-                />
-                <span className="text-sm text-foreground">
-                  {o.user.discordName}
-                  {o.userId === user.id && " (toi)"}
-                </span>
-              </div>
-            ))}
+          <div className="flex flex-col gap-4">
+            <OwnersList
+              title="Possession perso"
+              owners={owners.filter((o) => o.source !== "FAMILY")}
+              currentUserId={user.id}
+            />
+            <OwnersList
+              title="Via famille Steam"
+              owners={owners.filter((o) => o.source === "FAMILY")}
+              currentUserId={user.id}
+            />
           </div>
         )}
       </section>

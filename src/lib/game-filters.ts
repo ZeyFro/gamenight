@@ -1,4 +1,4 @@
-import type { GameSource } from "@prisma/client";
+import type { GameSource, UserGameSource } from "@prisma/client";
 import type { IgdbGameDetails } from "@/lib/igdb";
 
 /**
@@ -38,6 +38,27 @@ export const GAME_SOURCE_LABELS: Record<GameSource, string> = {
   STEAM: "Steam",
   MANUAL: "Manuel",
   IGDB: "IGDB",
+};
+
+/**
+ * Filtre "Provenance dans ta bibliothèque" (PR "Import biblio Steam
+ * Family") — distinct du filtre `sources` ci-dessus (`Game.source` :
+ * d'où vient la FICHE du jeu). Ici, `UserGame.source` : comment TOI tu
+ * possèdes ce jeu (import Steam perso, import biblio famille copier-
+ * coller, ou ajout manuel). N'a de sens que sur `/bibliotheque` (biblio
+ * perso d'un seul utilisateur) — jamais rendu sur `/bibliotheque/groupe`
+ * ni `/tierlist`, qui agrègent plusieurs possesseurs par jeu sans "la"
+ * provenance unique. `FilterableGame.ownershipSource` reste `undefined`
+ * sur ces pages ; ce filtre n'y matche alors jamais rien s'il était
+ * activé via une URL forgée à la main — cas limite jamais atteint via
+ * l'UI, assumé plutôt que traité à part.
+ */
+export const OWNERSHIP_SOURCES: UserGameSource[] = ["PERSONAL", "FAMILY", "MANUAL"];
+
+export const OWNERSHIP_SOURCE_LABELS: Record<UserGameSource, string> = {
+  PERSONAL: "Steam personnel",
+  FAMILY: "Steam famille",
+  MANUAL: "Ajouté manuellement",
 };
 
 export const PLAYERS_RANGE = { min: 1, max: 100 };
@@ -104,6 +125,8 @@ export interface FilterableGame {
   maxPlayers: number | null;
   /** Cast `as unknown as IgdbGameDetails` par l'appelant — cf. `src/lib/game-details.ts` pour le même pattern déjà établi sur `Game.igdbDetails` (`Json?` en base). */
   igdbDetails: Pick<IgdbGameDetails, "genres" | "releaseDate"> | null;
+  /** `UserGame.source` du possesseur courant — uniquement renseigné sur `/bibliotheque` (biblio perso), voir `OWNERSHIP_SOURCES` ci-dessus. */
+  ownershipSource?: UserGameSource;
 }
 
 export interface GameFilters {
@@ -117,6 +140,8 @@ export interface GameFilters {
   genres: string[];
   yearMin: number;
   yearMax: number;
+  /** Provenance dans la biblio perso (`/bibliotheque` uniquement) — voir `OWNERSHIP_SOURCES`. */
+  ownership: UserGameSource[];
 }
 
 export const DEFAULT_GAME_FILTERS: GameFilters = {
@@ -128,6 +153,7 @@ export const DEFAULT_GAME_FILTERS: GameFilters = {
   genres: [],
   yearMin: RELEASE_YEAR_RANGE.min,
   yearMax: RELEASE_YEAR_RANGE.max,
+  ownership: [],
 };
 
 function firstValue(value: string | string[] | undefined): string | undefined {
@@ -159,6 +185,9 @@ export function parseGameFilters(
   const sources = parseListParam(searchParams.sources).filter((s): s is GameSource =>
     (GAME_SOURCES as readonly string[]).includes(s)
   );
+  const ownership = parseListParam(searchParams.ownership).filter(
+    (o): o is UserGameSource => (OWNERSHIP_SOURCES as readonly string[]).includes(o)
+  );
 
   return {
     modes,
@@ -169,6 +198,7 @@ export function parseGameFilters(
     genres: parseListParam(searchParams.genres),
     yearMin: clampNumber(searchParams.yearMin, RELEASE_YEAR_RANGE.min, RELEASE_YEAR_RANGE),
     yearMax: clampNumber(searchParams.yearMax, RELEASE_YEAR_RANGE.max, RELEASE_YEAR_RANGE),
+    ownership,
   };
 }
 
@@ -183,6 +213,7 @@ export function serializeGameFilters(filters: GameFilters): string {
   if (filters.genres.length > 0) params.set("genres", filters.genres.join(","));
   if (filters.yearMin !== RELEASE_YEAR_RANGE.min) params.set("yearMin", String(filters.yearMin));
   if (filters.yearMax !== RELEASE_YEAR_RANGE.max) params.set("yearMax", String(filters.yearMax));
+  if (filters.ownership.length > 0) params.set("ownership", filters.ownership.join(","));
   return params.toString();
 }
 
@@ -194,6 +225,7 @@ export function countActiveFilters(filters: GameFilters): number {
   if (filters.ownedMin > 1) count++;
   if (filters.genres.length > 0) count++;
   if (filters.yearMin !== RELEASE_YEAR_RANGE.min || filters.yearMax !== RELEASE_YEAR_RANGE.max) count++;
+  if (filters.ownership.length > 0) count++;
   return count;
 }
 
@@ -258,6 +290,10 @@ export function matchesGameFilters(
     if (!releaseDate) return false;
     const year = new Date(releaseDate).getUTCFullYear();
     if (year < filters.yearMin || year > filters.yearMax) return false;
+  }
+
+  if (filters.ownership.length > 0) {
+    if (!game.ownershipSource || !filters.ownership.includes(game.ownershipSource)) return false;
   }
 
   return true;

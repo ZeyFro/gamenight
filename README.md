@@ -2114,6 +2114,8 @@ src/lib/steam-store.ts      # Client Steam Store API (categories → isCoop, Ste
 src/lib/shuffle.ts          # Mélange Fisher-Yates, utilisé par les 2 libs de backfill coop pour couvrir toute la liste sur plusieurs appels (PR "Optimisation build")
 src/lib/backfill-igdb-coop.ts   # Boucle de backfill IGDB réutilisable (réutilise fetchIgdbGameDetails), appelée par /api/backfill/igdb-coop — plus wired dans npm run build
 src/lib/backfill-steam-coop.ts  # Boucle de backfill Steam Store réutilisable (réutilise fetchSteamStoreDetails), appelée par /api/backfill/steam-store — plus wired dans npm run build
+src/lib/family-import.ts    # Parsing du texte collé + matching IGDB fuzzy (stringSimilarity, seuil 85%) — PR "Import biblio Steam Family"
+src/app/profil/family-import-actions.ts # matchFamilyImportBatch — upsert Game/UserGame(source=FAMILY), dédoublonnage
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
@@ -2187,10 +2189,11 @@ src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio p
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
 src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe" / "Tierlist" / "À vérifier" (badge compteur, PR 32.6, Bloc B)
-src/components/GameFilterDrawer.tsx     # Panneau des 6 filtres biblio, sync URL (PR 31, Bloc B) — sliders année remplacés par des <select> (PR 32, Bug 1)
+src/components/GameFilterDrawer.tsx     # Panneau des filtres biblio, sync URL (PR 31, Bloc B) — sliders année remplacés par des <select> (PR 32, Bug 1), filtre "Provenance" (personal only, PR "Import biblio Steam Family")
 src/components/CoopEnrichmentTrigger.tsx # Déclenche l'enrichissement IGDB à la demande quand le filtre Coop est actif (PR 32, Bug 2B)
 src/components/ToVerifierList.tsx       # Liste "À vérifier" : toggle rapide Coop/Multijoueur/Solo + Ignorer, sortie animée (PR 32.6, Bloc B)
 src/components/MarkAllCoopButton.tsx    # Bonus /bibliotheque : confirme en coop tous les jeux affichés quand seul le filtre Coop est actif (PR 32.6, Bloc B)
+src/components/FamilyImportForm.tsx     # Textarea copier-coller + progress bar + sections Importés/Non trouvés/Doublons — PR "Import biblio Steam Family"
 src/app/bibliotheque/actions.ts         # enrichGamesForCoopFilter (Bug 2B) + setToVerifierGamePlayInfo/ignoreToVerifierGame/batchMarkGamesCoop (PR 32.6, Bloc B)
 src/app/bibliotheque/a-verifier/page.tsx # Onglet "À vérifier" : jeux isCoop=false && playInfoManual=false (PR 32.6, Bloc B)
 src/components/ReminderTimingsField.tsx # Champ "Rappels" (préréglages + custom) du formulaire de création (PR 31, Bloc A)
@@ -2230,7 +2233,7 @@ src/app/bibliotheque/groupe/page.tsx    # Tous les jeux possédés par le groupe
 src/app/bibliotheque/ajouter/page.tsx   # Ajout manuel + recherche IGDB
 src/app/tierlist/page.tsx               # Tierlist perso éditable (glisser-déposer)
 src/app/tierlist/actions.ts             # Server action setGameTierAction
-src/app/jeux/[id]/page.tsx              # Fiche jeu détaillée (IGDB à la demande, cache)
+src/app/jeux/[id]/page.tsx              # Fiche jeu détaillée (IGDB à la demande, cache) — "Qui possède ce jeu" scindé perso/famille (PR "Import biblio Steam Family")
 src/app/jeux/actions.ts                 # Server action "Rafraîchir les infos"
 src/app/disponibilites/page.tsx         # Planning hebdo + exceptions
 src/app/disponibilites/actions.ts       # Server actions dispos
@@ -3054,6 +3057,179 @@ jeu confirmé. 🎉".
    vérifier" après un nouveau déploiement.
 3. Taper "Ignorer" sur un jeu déjà correctement "pas coop" → disparaît
    de la liste, ne revient jamais (même sans changement visible ailleurs).
+
+## PR 3/4 — Import biblio Steam Family par copier-coller
+
+### Pourquoi copier-coller, pas une vraie API Steam Family
+
+Demande initiale : synchronisation automatique via `IFamilyGroupsService/
+GetFamilyGroupForUser` et `GetSharedLibraryApps` (`STEAM_API_KEY` +
+`steamid`). Avant d'écrire la moindre ligne de schéma, vérification de la
+faisabilité réelle de ces deux endpoints — et blocage confirmé par
+plusieurs sources concordantes (implémentation de référence
+[FamilyBot](https://github.com/Chachigo/FamilyBot), documentation Steam
+Web API) : **les deux exigent un `access_token` de session Steam
+personnelle** (récupéré depuis un navigateur connecté à
+`store.steampowered.com`), pas une clé Web API serveur comme
+`STEAM_API_KEY`. Concrètement :
+- Aucun moyen pour GameNight (backend serveur, une seule
+  `STEAM_API_KEY` partagée) d'obtenir cet `access_token` pour chaque
+  utilisateur — ce n'est pas ce que produit le lien de compte OpenID 2.0
+  déjà en place (F2), qui prouve juste "ce SteamID appartient à ce
+  Discord user", pas une session authentifiée.
+- Même en demandant à chaque utilisateur de coller son `access_token`
+  manuellement, ce token expire périodiquement (durée non documentée
+  officiellement) — renouvellement manuel récurrent, mauvaise UX pour
+  un usage "configuré une fois".
+- Distinct problème, non technique : le client Steam n'expose la liste
+  "Famille" (jeux partagés par les autres membres) que dans son
+  **interface** (Bibliothèque → filtre/regroupement par membre), pas sur
+  une page web copiable au Ctrl+A/Ctrl+C comme
+  `steamcommunity.com/id/toi/games` pour la biblio perso. Même avec un
+  accès API qui marcherait, il n'y a pas de page web équivalente à
+  proposer en "1 clic" pour la partie famille.
+
+D'où l'alternative retenue : l'utilisateur colle lui-même une liste de
+noms de jeux (peu importe leur provenance réelle — famille, notes,
+mémoire), et l'app fait le reste (recherche IGDB + import automatique).
+Détail technique complet dans `src/lib/family-import.ts`.
+
+### Format accepté par le textarea
+
+Un nom par ligne, et/ou plusieurs noms séparés par des virgules sur une
+même ligne — les deux formats peuvent être mélangés :
+
+```
+Portal 2
+Stardew Valley
+Hades, Hollow Knight, Terraria
+Baldur's Gate 3
+```
+
+Les lignes qui ressemblent à une URL (`http…`, `www.…`) ou à du texte
+purement numérique/ponctuation (dates, durées type "42.3 hrs on record"
+sans lettres) sont automatiquement ignorées. **Limite assumée** : ce
+n'est pas un parseur HTML/DOM d'une page Steam complète collée telle
+quelle (avec durée de jeu et date de dernière session entremêlées sur la
+même ligne qu'un nom) — seul le "bruit" pur (une ligne qui ne contient
+que des nombres/ponctuation/URL) est filtré, pas un vrai nettoyage
+ligne par ligne. Documenté plutôt qu'un parseur impossible à écrire de
+façon fiable pour du texte brut collé sans structure garantie.
+
+### Matching IGDB : seuil de confiance à 85%
+
+Pour chaque nom candidat, `searchIgdbGames` (déjà utilisé par
+l'autocomplete de l'ajout manuel, aucune nouvelle intégration IGDB) —
+puis score de similarité entre le nom collé et le meilleur résultat
+(`stringSimilarity`, distance de Levenshtein normalisée, après
+normalisation casse/accents/ponctuation). **≥ 85% → import automatique**
+("Skyrim" vs "The Elder Scrolls V: Skyrim" avec juste une casse/
+ponctuation différente matche à 100%) ; **< 85% ou aucun résultat → "à
+confirmer"**, jamais un mauvais match silencieux. 85% choisi pour
+tolérer les variations mineures usuelles (ponctuation, tiret vs espace,
+apostrophe courbe) tout en filtrant les faux positifs sur un nom trop
+générique — testé explicitement : "DOOM" vs "DOOM Eternal" (33%) et
+"GTA V" vs "Grand Theft Auto V" (28%) tombent correctement sous le
+seuil, pas de faux match automatique sur une abréviation ambiguë (l'un
+comme l'autre finissent dans "à confirmer", où l'utilisateur peut
+corriger le nom et relancer la recherche, ou ajouter manuellement).
+
+### Cas particuliers gérés
+
+- **Doublon** : jeu déjà possédé par l'utilisateur, peu importe la
+  provenance d'origine (`PERSONAL`, `MANUAL` ou `FAMILY`) → aucune
+  écriture, listé dans "❌ Doublons ignorés" (collapsible, replié par
+  défaut).
+- **Faible confiance / aucun résultat IGDB** → "⚠️ Non trouvés", avec par
+  jeu : un champ texte modifiable (préempli avec le nom collé), un
+  bouton "Chercher à nouveau" (relance le matching sur le nom édité),
+  un lien "Ajouter manuellement" (`/bibliotheque/ajouter?name=…`, réutilise
+  le formulaire existant) et "Skipper" (retire juste de la liste,
+  aucune écriture).
+- **Jeu déjà en base mais avec `playInfoManual = true`** (confirmé par
+  un humain via l'ajout manuel ou l'onglet "À vérifier") : un match
+  automatique de cette PR ne touche **jamais** `isCoop`/`maxPlayers`
+  d'un `Game` déjà existant — uniquement `name`/`coverUrl` (cosmétique).
+  Ces deux champs ne sont posés qu'à la création d'un nouveau `Game`, où
+  il n'y a encore rien à protéger. Même règle que tous les backfills
+  coop précédents (PR 32, PR 32.6).
+- **Rate limiting / volume** : traitement par lots de 15 côté client
+  (`FAMILY_IMPORT_BATCH_SIZE`), pas un seul appel serveur géant — même
+  leçon que les backfills coop (PR "Optimisation build") : 300
+  recherches IGDB d'un coup dépasseraient largement une fenêtre de
+  requête serveur unique. Chaque lot fait avancer une vraie progress
+  bar côté client.
+
+### Schéma : `UserGame.source`
+
+Nouveau champ `UserGame.source` (enum `UserGameSource` : `PERSONAL`,
+`FAMILY`, `MANUAL`), migration additive
+(`20260828140000_add_usergame_source`) — défaut `PERSONAL`, qui backfill
+automatiquement tous les `UserGame` déjà en base en un seul `ADD COLUMN`
+(ils ont tous été créés par l'import Steam perso ou l'ajout manuel avant
+cette PR, jamais par un mécanisme famille qui n'existait pas). Le modèle
+`Game` reste inchangé et unique par jeu (Skyrim = une seule ligne peu
+importe qui le possède) — c'est `UserGame.source` qui porte "comment TOI
+tu possèdes ce jeu", par relation user↔jeu :
+- `importSteamLibrary` (`src/lib/steam.ts`) pose toujours `PERSONAL`, y
+  compris sur un `UserGame` déjà existant (`update`) — l'import Steam
+  perso est la source la plus fiable de possession réelle, elle prime
+  si le jeu était déjà classé `FAMILY`.
+- `addManualGame` (`src/app/actions.ts`) pose `MANUAL` uniquement à la
+  création — un ajout manuel redondant sur un jeu déjà possédé (perso ou
+  famille) ne reclasse pas la relation existante.
+- `matchFamilyImportBatch` (`src/app/profil/family-import-actions.ts`)
+  pose `FAMILY` uniquement à la création (jamais sur un doublon, voir
+  ci-dessus).
+
+### Interface
+
+- **`/profil/parametres`** : nouvelle section "Bibliothèque Steam
+  Family" (`FamilyImportForm.tsx`) — explication courte, lien vers la
+  gestion Famille Steam, instructions (client Steam, pas de copier-coller
+  direct possible), textarea, bouton "Analyser et importer", progress
+  bar réelle pendant le traitement par lots, puis 3 sections (Non
+  trouvés toujours visible en premier — c'est l'action requise — Importés
+  et Doublons repliables).
+- **Badge "Familial"** (`BibliothequeGrid.tsx`) : "👨‍👩‍👧 Familial" sur les
+  cartes de `/bibliotheque` dont `UserGame.source = FAMILY`.
+- **Filtre "Provenance dans ta bibliothèque"** (`GameFilterDrawer.tsx`,
+  prop `personal`) : Steam personnel / Steam famille / Ajouté
+  manuellement — affiché **uniquement sur `/bibliotheque`** (biblio
+  perso d'un seul utilisateur). Volontairement absent de
+  `/bibliotheque/groupe` et `/tierlist`, qui agrègent plusieurs
+  possesseurs par jeu sans "la" provenance unique — un filtre qui n'a
+  de sens que dans un contexte à un seul utilisateur. Consolidé à 3
+  valeurs (celles réelles de `UserGameSource`) plutôt que les 4
+  évoquées dans la demande initiale ("Manuel" et "IGDB" correspondent
+  tous les deux à `MANUAL` en base — un 4ᵉ chip aurait dû inventer une
+  distinction qui n'existe pas dans le schéma).
+- **`/jeux/[id]`**, section "Qui d'autre possède ce jeu" : scindée en
+  "Possession perso" (`PERSONAL`/`MANUAL`) et "Via famille Steam"
+  (`FAMILY`), chaque sous-liste masquée si vide.
+
+### Tester avec une liste d'exemple
+
+Coller ce texte dans le champ de `/profil/parametres` (mélange
+volontaire de formats/orthographes pour couvrir les cas) :
+
+```
+Portal 2
+stardew valley
+Hades, Hollow Knight, Terraria
+Baldurs Gate 3
+Counter-Strike 2
+GTA V
+```
+
+Résultat attendu : "Portal 2", "Stardew Valley", "Hades", "Hollow
+Knight", "Terraria", "Baldur's Gate 3" et "Counter-Strike 2" matchent
+IGDB à haute confiance et s'importent automatiquement (source `FAMILY`,
+badge "👨‍👩‍👧 Familial" visible sur `/bibliotheque`) ; "GTA V" (abréviation,
+confiance sous le seuil face à "Grand Theft Auto V") atterrit dans "⚠️
+Non trouvés" — corriger en "Grand Theft Auto V" puis "Chercher à
+nouveau" pour le faire matcher. Recoller la même liste une seconde fois
+→ tout ressort en "❌ Doublons ignorés", aucune double écriture.
 4. Sur `/bibliotheque`, filtrer uniquement sur "Coop" → bouton "Marquer
    les N jeux affichés comme coop" visible ; avec un autre filtre en plus
    (ex. genre), le bouton disparaît.
