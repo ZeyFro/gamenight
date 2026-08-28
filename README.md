@@ -1814,17 +1814,17 @@ cron HTTP équivalent — GitHub Actions `schedule`, EasyCron, etc.).
    là qu'ajouter `Authorization: Bearer <CRON_SECRET>`.
 
 À chaque appel, la route (`src/app/api/cron/reminders/route.ts`) parcourt
-les sessions `SCHEDULED` à jeu décidé et à venir, calcule le nombre
-d'heures avant le début, et envoie le rappel **24h** et/ou **2h** dès que
-le seuil est franchi *et* que la fenêtre n'a pas déjà été envoyée
-(`Session.remindersSent`, tableau JSON du type `["24h"]` — évite les
-doublons si le cron retombe plusieurs fois dans la même fenêtre, y
-compris si le service externe déclenche un appel en double). Une session
-créée très en retard (moins de 2h avant l'heure) peut recevoir les deux
-rappels **dans le même appel** — les deux fenêtres sont vérifiées
-indépendamment, pas de fenêtre "manquée" faute d'avoir été créée à temps.
-Pas de rappel à 15 min avant la session elle-même (décidé volontairement,
-cf. demande initiale — à ne pas confondre avec le pas de 15 min du cron).
+les sessions `SCHEDULED` à jeu décidé et à venir, et envoie un rappel pour
+chaque timing de `Session.reminderTimings` dès que le seuil est franchi
+*et* que ce timing n'a pas déjà été envoyé (`Session.remindersSent`,
+tableau JSON de minutes en string, ex. `["1440", "120"]` — évite les
+doublons si le cron retombe plusieurs fois sur le même timing, y compris
+si le service externe déclenche un appel en double). Une session créée
+très en retard peut recevoir plusieurs rappels **dans le même appel** —
+chaque timing est vérifié indépendamment. **Depuis PR 31 (2/4, Bloc A),
+`reminderTimings` est configurable par le créateur à la création** (24h +
+2h par défaut, comme avant cette PR) — voir la section dédiée plus bas
+pour le détail complet (préréglages, rappels custom, max 5).
 
 **Sécurité optionnelle** : si `CRON_SECRET` est configurée (variable
 d'env), la route exige l'en-tête `Authorization: Bearer <CRON_SECRET>` —
@@ -1839,16 +1839,17 @@ connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
 - **Message** : celui perso de la session (`Session.customReminderMessage`,
   champ optionnel du formulaire de création dans `/sessions`) s'il est
   renseigné ; sinon un **tirage aléatoire** via `pickMessageTemplate`
-  parmi les `MessageTemplate` actifs de la catégorie `REMINDER_24H`/
-  `REMINDER_2H` (voir « Messages Discord personnalisables » ci-dessus).
+  parmi les `MessageTemplate` actifs de la catégorie `REMINDER_24H`
+  ("loin") ou `REMINDER_2H` ("proche"), choisie selon le timing exact
+  du rappel (voir PR 31, Bloc A, plus bas).
 - **Variables supportées** : `{pote}` (mentions `<@discordId>` des
   joueurs qui ont voté pour le jeu gagnant, hors utilisateurs en
   silence), `{jeu}` (nom du jeu décidé), `{heure}` (format `HH:mm`).
 - **Embed volontairement plus petit que F6** : juste titre (« ⏰ Rappel —
-  dans 24h/2h ! »), le message tiré/perso en description, et un champ
-  « Heure ». Pas de miniature, pas de liste détaillée des joueurs — pensé
-  pour rester punchy, contrairement à l'embed de résultat (F6) qui est le
-  message "officiel" de la soirée.
+  dans {timing} ! », ex. "24h"/"45 min"/"1h30"), le message tiré/perso en
+  description, et un champ « Heure ». Pas de miniature, pas de liste
+  détaillée des joueurs — pensé pour rester punchy, contrairement à
+  l'embed de résultat (F6) qui est le message "officiel" de la soirée.
 - **Ping réel = `content` brut, pas juste l'embed** (même détail
   technique que F6) : les mentions sont mises à la fois dans le `content`
   du webhook (seul canal qui déclenche une vraie notification push
@@ -1983,7 +1984,10 @@ src/lib/sessions.ts         # Clôture de session, deadline, calcul "jouable", a
 src/lib/session-status.ts   # Libellés/couleurs des statuts de session
 src/lib/discord.ts          # postToDiscord (webhook, dégrade proprement si non configuré)
 src/lib/discord-announce.ts # Construit l'embed de résultat de session (F6)
-src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, fenêtres 24h/2h)
+src/lib/discord-reminder.ts # Construit + envoie l'embed de rappel (F7, timings configurables — PR 31)
+src/lib/reminder-timings.ts # Préréglages, parsing FormData, libellés FR (PR 31, Bloc A)
+src/lib/game-filters.ts     # Parsing/matching des 6 filtres biblio + traduction genres (PR 31, Bloc B)
+src/lib/game-library.ts     # getGameOwnerCounts, getTotalUserCount, toFilterableGame (PR 31, Bloc B)
 src/lib/discord-session-created.ts # Notif Discord à la création d'une soirée
 src/lib/discord-session-modified.ts # Notif Discord à la modification d'une soirée
 src/lib/session-schedule.ts # resolveSessionSchedule : validation date/deadline mutualisée création+édition
@@ -2044,6 +2048,8 @@ src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio p
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
 src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe" / "Tierlist"
+src/components/GameFilterDrawer.tsx     # Panneau des 6 filtres biblio, sync URL (PR 31, Bloc B)
+src/components/ReminderTimingsField.tsx # Champ "Rappels" (préréglages + custom) du formulaire de création (PR 31, Bloc A)
 src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale si pas d'avatar Discord)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
 src/app/actions.ts          # Server actions bibliothèque (ajout/retrait/édition, réimport Steam)
@@ -2479,3 +2485,181 @@ pas plus qu'avant cette PR.
 jeu mentionné), voter, clôturer le vote (manuellement ou attendre la
 deadline) → notif "Soirée validée : {jeu}" doit apparaître séparément
 dans le même salon.
+
+## PR 2/4 — Timing des rappels + filtres bibliothèque (PR 31)
+
+### Bloc A — Timing des rappels configurable par le créateur
+
+F7 envoyait systématiquement 2 rappels fixes (24h + 2h avant). Le
+créateur choisit maintenant lesquels, à la création de la soirée.
+
+**Schéma** : `Session.reminderTimings` (`Int[]`, minutes avant la
+session, ex. `[1440, 120]` = 24h + 2h). **Défaut `[1440, 120]`** —
+comportement F7 d'origine préservé pour toute nouvelle session sans
+réglage explicite, et pour les sessions créées **avant** cette PR : la
+colonne Postgres a une valeur par défaut appliquée directement par la
+migration (`ALTER TABLE ... ADD COLUMN ... DEFAULT ARRAY[1440,120]`),
+aucun script de backfill séparé n'était nécessaire.
+
+**Formulaire de création** (`ReminderTimingsField.tsx`, sur `/sessions`) :
+- 8 préréglages en cases à cocher : 24h / 12h / 6h / 2h / 1h / 45 min /
+  30 min / 15 min avant. **24h et 2h cochés par défaut** (= comportement
+  F7 d'origine).
+- Bouton "+ Ajouter un rappel custom" → ligne nombre + unité
+  (minutes/heures/jours), convertie en minutes à la sauvegarde.
+- **Max 5 rappels par soirée** (préréglages + custom confondus) — anti-
+  spam, appliqué côté UI (options désactivées au-delà) et revérifié
+  côté serveur (`parseReminderTimingsFromFormData` tronque
+  silencieusement au-delà de 5).
+- **Décocher tous les rappels donne un tableau vide, jamais un repli
+  sur le défaut** — c'est le point testé explicitement (voir plus bas) :
+  le défaut 24h/2h n'est qu'un état initial de cases cochées, pas un
+  filet de sécurité serveur qui réintroduirait des rappels non voulus.
+
+**Cron** (`src/app/api/cron/reminders/route.ts`, `src/lib/discord-reminder.ts`) :
+itère maintenant sur `session.reminderTimings` au lieu de deux fenêtres
+fixes ; `Session.remindersSent` stocke les minutes déjà envoyées en
+string (`["1440", "120"]`) plutôt que `["24h", "2h"]` — même mécanisme
+anti-doublon, juste des tokens différents.
+
+**Catégorie de message Discord** : le schéma `MessageTemplate` n'a que 2
+catégories de rappel (`REMINDER_24H` "loin"/hype, `REMINDER_2H`
+"proche"/urgent) — pas une par préréglage. Un timing configuré (préréglage
+intermédiaire ou custom) est rattaché à l'une des deux via un seuil de 3h
+(`isCloseReminder`, `src/lib/reminder-timings.ts`) : en dessous de 3h →
+ton "proche", au-dessus → ton "loin". Décision assumée, documentée dans
+le code — ajouter une catégorie de message par préréglage aurait
+démultiplié le travail de saisie admin sur `/admin?tab=messages` pour un
+gain marginal. Les libellés de catégorie sur `/admin?tab=messages` ont
+été légèrement ajustés ("Rappel (loin — ≥3h avant)" / "Rappel (proche —
+<3h avant)") pour ne plus laisser croire à une correspondance exacte à
+24h/2h.
+
+**Hors scope de cette PR** : les rappels ne sont configurables qu'à la
+**création** de la soirée — pas d'ajout/retrait après coup depuis
+`EditSessionDialog`. La demande portait explicitement sur la création ;
+éditer les rappels d'une session déjà planifiée pourra être ajouté plus
+tard si le besoin remonte.
+
+**Test type demandé** : crée une soirée sur `/sessions`, décoche les 8
+préréglages (aucun rappel coché), ne rajoute aucun custom, sauvegarde →
+`Session.reminderTimings = []` en base. Fais passer la session en
+`SCHEDULED` avec un jeu décidé, puis déclenche `GET
+/api/cron/reminders` manuellement (voir § F7 "Comment tester sans
+attendre 24h") : la réponse JSON doit lister cette session dans
+`checked` mais **aucune entrée pour elle dans `sent`**, et aucun message
+n'apparaît dans Discord pour cette soirée — le tableau vide est respecté
+littéralement, pas de repli silencieux sur 24h/2h.
+
+### Bloc B — Filtres bibliothèque style Steam
+
+Panneau de 6 filtres (`GameFilterDrawer.tsx`), partagé entre
+`/bibliotheque`, `/bibliotheque/groupe` et `/tierlist` :
+
+1. **Modes de jeu** (multi) — Solo / Multijoueur / Coop / Local, calculés
+   depuis les champs déjà en base (`isCoop`, `minPlayers`/`maxPlayers`),
+   **pas** depuis IGDB `game_modes` : ce champ n'était pas encore
+   fetché par `fetchIgdbGameDetails`, l'ajouter pour ce seul filtre
+   aurait élargi le scope déjà large de cette PR. "Local" est une
+   **heuristique assumée** (multijoueur avec `maxPlayers` ≤ 8, "format
+   salon/canapé"), pas une vraie détection de mode — documenté comme
+   tel dans `src/lib/game-filters.ts`.
+2. **Nombre de joueurs** — 2 sliders (`<input type="range">` natifs, pas
+   un composant dual-handle custom : plus simple, accessible clavier,
+   tactile natif) min/max 1 à 100, sur `minPlayers`/`maxPlayers`. Un jeu
+   sans ces infos est exclu dès que le filtre est resserré (pas de faux
+   positif "peut-être compatible").
+3. **Source** (multi) — Steam / Manuel / IGDB, directement sur
+   `Game.source`.
+4. **Possédé par N potes minimum** — slider sur un comptage
+   `UserGame.owned` groupé par jeu, tout le groupe confondu (pas juste
+   soi-même), via `getGameOwnerCounts()`. Pertinent même sur "Ma
+   bibliothèque" : "montre mes jeux aussi possédés par au moins 2
+   autres potes".
+5. **Genre** (multi) — liste **dynamique**, dérivée des genres IGDB
+   réellement présents dans la biblio consultée (`collectAvailableGenres`),
+   pas une liste FR fixe déconnectée des données réelles. Traduits FR
+   pour les genres IGDB les plus courants (table `GENRE_LABELS_FR`),
+   repli sur le nom IGDB brut sinon. **Écart assumé par rapport à la
+   liste FR donnée dans la demande** ("Action, Casual, MMO"…) : ces
+   catégories ne sont pas des `genres` IGDB au sens strict (Action
+   n'existe pas comme genre IGDB, MMO est un `game_mode`) — un filtre
+   qui ne matcherait jamais rien serait pire qu'un filtre fidèle aux
+   données réelles.
+6. **Date de sortie** — 2 sliders année 1990-2026, sur
+   `igdbDetails.releaseDate` (déjà caché, aucun nouveau champ IGDB
+   nécessaire).
+
+**UX** : bouton "Filtres" + compteur de filtres actifs, "Réinitialiser",
+persistance en query string (`?modes=coop&genres=RPG`, partageable),
+application instantanée (`router.replace` à chaque changement, pas de
+bouton "Appliquer"). Panneau Radix Dialog responsive (bottom-sheet
+mobile ↔ panneau ancré à droite en desktop via les breakpoints `sm:`)
+plutôt que deux mécaniques distinctes drawer desktop + geste de swipe
+mobile "from scratch" — réutilise le pattern déjà établi ailleurs dans
+l'app (`VoterAvatars`, `EditGameDialog`…), beaucoup plus robuste qu'un
+vrai geste de swipe à construire pour un gain marginal. Ouverture au tap
+du bouton "Filtres" sur les deux formats plutôt qu'un swipe natif.
+
+Le filtrage est fait en mémoire côté serveur (Prisma `findMany` simple +
+`.filter()` JS via `matchesGameFilters`), pas dans la requête Prisma
+elle-même : évite la syntaxe fragile des filtres JSON Prisma
+(`path`/`array_contains`, sensible à la version) pour les filtres
+dépendant d'`igdbDetails` — une biblio de groupe d'amis reste petite
+(quelques centaines de jeux au pire), le coût du filtrage JS est
+négligeable. Le champ de recherche par nom déjà présent dans
+`BibliothequeGrid`/`ReadOnlyGameGrid`/`TierlistBoard` (state client,
+pas dans l'URL) continue de filtrer par-dessus la liste déjà restreinte
+par ces 6 filtres — les deux mécanismes se superposent sans conflit,
+non-régression sur PR #7 (biblio) et PR 26 (tierlist).
+
+**Stratégie pour les jeux sans cache IGDB (choix documenté, "Option B")** :
+un jeu dont la fiche n'a jamais été ouverte n'a pas encore `igdbDetails`
+en cache (rempli à la demande au premier clic sur `/jeux/[id]`, jamais
+en masse — décision déjà prise avant cette PR, voir § "Fiche jeu
+détaillée"). Plutôt que d'enrichir en arrière-plan au chargement de la
+page biblio ("Option A"), ces jeux **apparaissent normalement** dans la
+grille mais **ne remontent jamais** dans les filtres Genre/Date de
+sortie tant qu'ils ne sont pas enrichis — une note explicative apparaît
+directement sous ces deux filtres dans le panneau plutôt qu'un badge
+par carte (plus simple, contextuel uniquement quand ces filtres sont
+utilisés).
+
+Choix retenu sur Option A pour trois raisons :
+- **Cohérence avec une décision déjà prise dans le projet** : la fiche
+  jeu enrichit "à la demande, jamais en masse" explicitement pour
+  éviter un timeout Vercel sur un import Steam massif — un enrichissement
+  en arrière-plan au chargement de `/bibliotheque` réintroduirait
+  exactement le risque déjà écarté.
+- **Fiabilité serverless** : Vercel termine la fonction une fois la
+  réponse envoyée ; un vrai "fire-and-forget" en arrière-plan
+  demanderait `after()` (Next 15+) ou un mécanisme équivalent, plus
+  fragile et plus difficile à tester dans ce sandbox (pas de prod
+  réelle pour vérifier qu'un enrichissement différé se termine
+  effectivement) que la dégradation simple d'Option B.
+- **Suffisant à l'usage** : ouvrir une fiche jeu une fois (déjà le geste
+  naturel pour consulter un jeu) suffit à le rendre filtrable
+  durablement ensuite — pas besoin d'un mécanisme d'arrière-plan pour
+  un gain ponctuel.
+
+### Fichiers clés (Bloc A + B)
+
+- `src/lib/reminder-timings.ts` — préréglages, seuil "loin"/"proche",
+  parsing FormData, libellés FR.
+- `src/lib/discord-reminder.ts` / `src/app/api/cron/reminders/route.ts` —
+  itèrent sur `reminderTimings` au lieu des deux fenêtres fixes.
+- `src/components/ReminderTimingsField.tsx` — champ du formulaire de
+  création (`/sessions`).
+- `src/lib/game-filters.ts` — types, parsing/sérialisation URL, matching,
+  traduction genres.
+- `src/lib/game-library.ts` — `getGameOwnerCounts`, `getTotalUserCount`,
+  `toFilterableGame` (cast `Game.igdbDetails` JSON, même pattern que
+  `src/lib/game-details.ts`).
+- `src/components/GameFilterDrawer.tsx` — le panneau lui-même.
+- `/bibliotheque`, `/bibliotheque/groupe`, `/tierlist` — filtrage
+  appliqué en amont des grilles/`TierlistBoard`, compteur "N jeux sur M"
+  affiché à côté du bouton Filtres.
+
+Migration : `prisma/migrations/20260826180000_add_session_reminder_timings`
+(purement additive, défaut Postgres appliqué directement — aucun script
+de backfill nécessaire).

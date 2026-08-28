@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  sendSessionReminder,
-  REMINDER_WINDOW_HOURS,
-  type ReminderWindow,
-} from "@/lib/discord-reminder";
+import { sendSessionReminder } from "@/lib/discord-reminder";
 
 function parseRemindersSent(value: unknown): string[] {
   return Array.isArray(value)
@@ -16,14 +12,15 @@ function parseRemindersSent(value: unknown): string[] {
  * Route destinée à être appelée toutes les 15 min par un cron externe
  * (ex. cron-job.org — voir README, section F7). Pas de Vercel Cron ici :
  * le plan Hobby impose un minimum d'une exécution par jour, incompatible
- * avec le pas de 15 min dont F7 a besoin pour les fenêtres 24h/2h. Un
- * seul appel gère les deux fenêtres plutôt que d'avoir deux crons
- * séparés. Si `CRON_SECRET` est configurée, on exige l'en-tête
- * `Authorization: Bearer <CRON_SECRET>` (à renseigner manuellement dans
- * la config du cron externe), pour éviter qu'un tiers déclenche des
- * rappels en tapant l'URL. Sans cron externe configuré, personne
- * n'appelle jamais cette route : aucun rappel ne part, mais rien ne
- * plante ailleurs dans l'app — dégradation silencieuse, comme pour
+ * avec le pas de 15 min dont F7 a besoin. Un seul appel gère tous les
+ * timings de rappel de chaque session (`Session.reminderTimings`,
+ * configurable par le créateur depuis PR 31/2·4 — remplace les deux
+ * fenêtres fixes 24h/2h). Si `CRON_SECRET` est configurée, on exige
+ * l'en-tête `Authorization: Bearer <CRON_SECRET>` (à renseigner
+ * manuellement dans la config du cron externe), pour éviter qu'un tiers
+ * déclenche des rappels en tapant l'URL. Sans cron externe configuré,
+ * personne n'appelle jamais cette route : aucun rappel ne part, mais rien
+ * ne plante ailleurs dans l'app — dégradation silencieuse, comme pour
  * DISCORD_WEBHOOK_URL non configurée (F6).
  */
 export async function GET(request: Request) {
@@ -44,28 +41,28 @@ export async function GET(request: Request) {
   const sent: string[] = [];
 
   for (const session of sessions) {
-    const hoursUntil = (session.date.getTime() - now.getTime()) / 3_600_000;
+    const minutesUntil = (session.date.getTime() - now.getTime()) / 60_000;
     const remindersSent = parseRemindersSent(session.remindersSent);
-    const windowsDue = (
-      Object.keys(REMINDER_WINDOW_HOURS) as ReminderWindow[]
-    ).filter(
-      (window) =>
-        hoursUntil <= REMINDER_WINDOW_HOURS[window] &&
-        !remindersSent.includes(window)
+    // `reminderTimings` vide (créateur a décoché tous les rappels à la
+    // création) → `timingsDue` reste toujours vide, aucun rappel n'est
+    // jamais envoyé pour cette session. Comportement attendu, pas un cas
+    // limite à gérer à part.
+    const timingsDue = session.reminderTimings.filter(
+      (minutes) => minutesUntil <= minutes && !remindersSent.includes(String(minutes))
     );
 
-    for (const window of windowsDue) {
-      const result = await sendSessionReminder(session, window);
+    for (const minutes of timingsDue) {
+      const result = await sendSessionReminder(session, minutes);
       if (!result.ok) {
         console.error(
-          `[cron/reminders] Échec rappel ${window} pour la session ${session.id}: ${result.error}`
+          `[cron/reminders] Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`
         );
       }
-      remindersSent.push(window);
-      sent.push(`${session.id}:${window}`);
+      remindersSent.push(String(minutes));
+      sent.push(`${session.id}:${minutes}min`);
     }
 
-    if (windowsDue.length > 0) {
+    if (timingsDue.length > 0) {
       await prisma.session.update({
         where: { id: session.id },
         data: { remindersSent },
