@@ -25,6 +25,21 @@ export interface SteamStoreDetails {
 }
 
 /**
+ * Erreur HTTP Steam Store avec le status attaché — permet à l'appelant
+ * (`src/lib/backfill-steam-coop.ts`) de distinguer un 429 (rate limit,
+ * doit arrêter la boucle proprement) d'une autre erreur (log, jeu suivant).
+ */
+export class SteamStoreHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "SteamStoreHttpError";
+  }
+}
+
+/**
  * Ids de catégories Steam connus pour indiquer du coop (stables,
  * indépendants de la langue — contrairement à `description`, localisée
  * par `?l=french` et donc pas fiable seule pour matcher dans toutes les
@@ -57,7 +72,10 @@ export async function fetchSteamStoreDetails(
     `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&l=french`
   );
   if (!res.ok) {
-    throw new Error(`Steam Store (appid ${steamAppId}) a répondu ${res.status}`);
+    throw new SteamStoreHttpError(
+      res.status,
+      `Steam Store (appid ${steamAppId}) a répondu ${res.status}`
+    );
   }
 
   const body = (await res.json()) as Record<
