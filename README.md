@@ -1960,6 +1960,8 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
 | `npm run fix-invalid-templates` | Désactive (silencieusement) les `MessageTemplate` en base avec une variable invalide pour l'une de leurs catégories — idempotent, aussi lancé automatiquement à chaque build (Fix 4, PR 30, bug "texte à trous") |
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
+| `npm run backfill-coop` | Resynchronise `isCoop`/`maxPlayers` depuis IGDB pour les jeux avec cache existant, jamais confirmés manuellement — idempotent, aussi lancé automatiquement à chaque build (PR 32, Bug 2) |
+| `npm run backfill-steam-coop` | Resynchronise `isCoop` depuis Steam Store API pour les jeux `source=STEAM` jamais confirmés manuellement — idempotent, tourne après `backfill-coop`, aussi lancé automatiquement à chaque build (PR 32.6, Bloc A) |
 | `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build (chantier dormant depuis PR 5/9, laissé fonctionnel) |
 | `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
 | `npm run seed-badges` | Seed manuel des 15 badges par défaut — idempotent par nom, aussi lancé automatiquement à chaque build |
@@ -1975,8 +1977,9 @@ prisma/schema.prisma        # Schéma de données complet (§5)
 src/auth.ts                 # Config Auth.js (provider Discord, callbacks)
 src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
 src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
-src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche + fiche détaillée)
-src/lib/game-details.ts     # Cache-ou-fetch de la fiche IGDB (Game.igdbDetails)
+src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche + fiche détaillée + multiplayer_modes)
+src/lib/game-details.ts     # Cache-ou-fetch de la fiche IGDB (Game.igdbDetails) + sync isCoop/maxPlayers (PR 32)
+src/lib/steam-store.ts      # Client Steam Store API (categories → isCoop), duplique sa logique dans prisma/backfill-steam-coop.mjs (PR 32.6, Bloc A)
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
@@ -1999,6 +2002,8 @@ src/lib/discord-level-up.ts  # Notif Discord de passage de niveau
 prisma/seed.mjs             # Seed des messages Discord par défaut (npm run seed)
 prisma/fix-invalid-templates.mjs # Désactive les MessageTemplate invalides en base, idempotent (Fix 4, PR 30)
 prisma/backfill-xp.mjs      # Backfill XP idempotent, wired dans npm run build (npm run backfill-xp en manuel)
+prisma/backfill-coop.mjs    # Resynchronise isCoop/maxPlayers depuis IGDB, wired dans npm run build (PR 32, Bug 2A)
+prisma/backfill-steam-coop.mjs # Resynchronise isCoop depuis Steam Store API, tourne après backfill-coop.mjs (PR 32.6, Bloc A)
 prisma/seed-game-stats.mjs  # Seed stats/superlatifs des jeux populaires, idempotent, piloté par les vraies données (dormant depuis PR 5/9)
 prisma/seed-superlatives.mjs # Seed des 6 superlatifs génériques par défaut, idempotent par nom
 src/lib/superlative-voting.ts       # Participants, ouverture/clôture de la fenêtre de vote, calcul des gagnants
@@ -2047,8 +2052,13 @@ src/components/admin/BadgeForm.tsx      # Form structuré (select critère + seu
 src/components/ReadOnlyGameGrid.tsx     # Grille de jeux lecture seule (biblio pote / groupe)
 src/components/AvailabilityView.tsx     # Dispos hebdo + exceptions lecture seule (biblio pote)
 src/components/GameDescription.tsx      # Description FR/VO avec toggle (fiche jeu)
-src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe" / "Tierlist"
-src/components/GameFilterDrawer.tsx     # Panneau des 6 filtres biblio, sync URL (PR 31, Bloc B)
+src/components/LibraryTabs.tsx          # Onglets "Ma bibliothèque" / "Groupe" / "Tierlist" / "À vérifier" (badge compteur, PR 32.6, Bloc B)
+src/components/GameFilterDrawer.tsx     # Panneau des 6 filtres biblio, sync URL (PR 31, Bloc B) — sliders année remplacés par des <select> (PR 32, Bug 1)
+src/components/CoopEnrichmentTrigger.tsx # Déclenche l'enrichissement IGDB à la demande quand le filtre Coop est actif (PR 32, Bug 2B)
+src/components/ToVerifierList.tsx       # Liste "À vérifier" : toggle rapide Coop/Multijoueur/Solo + Ignorer, sortie animée (PR 32.6, Bloc B)
+src/components/MarkAllCoopButton.tsx    # Bonus /bibliotheque : confirme en coop tous les jeux affichés quand seul le filtre Coop est actif (PR 32.6, Bloc B)
+src/app/bibliotheque/actions.ts         # enrichGamesForCoopFilter (Bug 2B) + setToVerifierGamePlayInfo/ignoreToVerifierGame/batchMarkGamesCoop (PR 32.6, Bloc B)
+src/app/bibliotheque/a-verifier/page.tsx # Onglet "À vérifier" : jeux isCoop=false && playInfoManual=false (PR 32.6, Bloc B)
 src/components/ReminderTimingsField.tsx # Champ "Rappels" (préréglages + custom) du formulaire de création (PR 31, Bloc A)
 src/components/ui/Avatar.tsx            # Avatar circulaire (fallback initiale si pas d'avatar Discord)
 src/components/Header.tsx / BottomNav.tsx / Logo.tsx  # Identité + nav
@@ -2663,3 +2673,251 @@ Choix retenu sur Option A pour trois raisons :
 Migration : `prisma/migrations/20260826180000_add_session_reminder_timings`
 (purement additive, défaut Postgres appliqué directement — aucun script
 de backfill nécessaire).
+
+## PR 2.5/4 — 2 corrections post-test-prod de la PR 2/4 (PR 32)
+
+Deux bugs remontés après le test en prod de PR 31, avant d'enchaîner sur
+PR 3/4. Non-régression : les autres filtres (modes hors coop, joueurs,
+source, possédé par N potes, genre) ne sont pas touchés.
+
+### Bug 1 — Sliders "Date de sortie" difficiles à manipuler
+
+**Cause** : 2 `<input type="range">` empilés sur la même piste — un
+défaut classique de ce pattern, pas un bug de step ni de touch handling
+(le composant était un slider natif HTML, pas un composant custom ni
+Radix) : les deux poignées se chevauchent visuellement, un tap au milieu
+de la piste peut saisir la mauvaise poignée, particulièrement pénible
+au tactile.
+
+**Fix** : remplacés par 2 `<select>` natifs (année min / année max),
+le fallback suggéré dans la demande — sélection exacte à chaque fois,
+fiable au clavier comme au tactile, sans les problèmes de saisie
+d'un slider à deux poignées. Les sliders "Nombre de joueurs" (2 sliders
+également) n'ont **pas** été touchés : pas remontés comme buggés, la
+demande précisait explicitement la non-régression sur les filtres qui
+marchent bien.
+
+**Tester en prod** : ouvrir le panneau Filtres sur `/bibliotheque`,
+choisir une année min et une année max sur "Date de sortie" — les deux
+`<select>` doivent répondre normalement au tap comme au clic, sans
+grip mort ni valeur qui saute.
+
+### Bug 2 — Le filtre Coop ne remonte presque aucun jeu
+
+**Diagnostic confirmé** : l'import Steam pose `Game.isCoop = false` par
+défaut (Steam ne fournit pas cette info dans son API) — la quasi-
+totalité des jeux importés depuis Steam paraissent "pas coop" même
+quand ils le sont réellement, seuls les quelques jeux ajoutés/édités
+manuellement avec la case "Coop" cochée remontaient.
+
+**D) Logique du filtre elle-même vérifiée — pas de bug là.**
+`gameModesFor`/`matchesGameFilters` (`src/lib/game-filters.ts`) : un
+jeu avec `isCoop = true` reçoit toujours `"coop"` dans ses modes, et
+`filters.modes.some((m) => modes.includes(m))` matche dès que
+`"coop"` est coché et présent — vérifié ligne à ligne, confirmé correct
+par relecture (le "test unitaire mental" demandé). Le bug était
+entièrement côté donnée (`isCoop` faux par défaut), pas côté filtre.
+
+**A) Backfill IGDB automatique.** Nouveau script
+`prisma/backfill-coop.mjs`, wired dans `npm run build`. `fetchIgdbGameDetails`
+(`src/lib/igdb.ts`) récupère maintenant aussi `multiplayer_modes`
+(`onlinecoop`/`offlinecoop`/`lancoop`/`campaigncoop` pour `isCoop` ;
+`offlinemax`/`onlinemax`/`*coopmax` pour `maxPlayers`) — champ IGDB déjà
+utilisé ailleurs dans le projet pour la recherche (`searchIgdbGames`),
+juste jamais branché sur la fiche détaillée jusqu'ici. Portée du
+backfill : jeux avec un cache IGDB **déjà en base** (`igdbDetails !=
+null`) et jamais confirmés manuellement (`playInfoManual = false`, voir
+plus bas) — les jeux sans cache sont couverts par B, pas par ce script
+(éviterait un appel IGDB par jeu de toute la biblio à *chaque* build).
+
+**Nouveau champ `Game.playInfoManual`** (migration
+`20260828120000_add_game_play_info_manual`, défaut `false`, purement
+additive) : `true` dès que `isCoop`/`minPlayers`/`maxPlayers` ont été
+saisis ou confirmés par un humain (formulaire d'ajout/édition manuel,
+ou le bouton "Marquer comme coop" — voir C). Sans ce champ, le backfill
+(rejoué à chaque déploiement) écraserait indéfiniment une correction
+manuelle au déploiement suivant — c'est le champ qui rend le bouton
+manuel de C réellement utile dans la durée, pas juste une correction
+ponctuelle.
+
+**B) Enrichissement à la demande pour les jeux sans cache.** Sur
+`/bibliotheque`, quand le filtre Coop est actif **et** que la biblio
+personnelle contient des jeux sans `igdbDetails` (jamais visités sur
+leur fiche), un bandeau léger ("Enrichissement de N jeu(x) pour le
+filtre Coop…") se déclenche automatiquement
+(`CoopEnrichmentTrigger.tsx` → `enrichGamesForCoopFilter`, `src/app/bibliotheque/actions.ts`),
+par lots de 15 jeux max (progressif, pas d'explosion de requêtes IGDB
+d'un coup). Réutilise `getGameDetails` telle quelle (même chemin que la
+fiche jeu) — c'est la même fonction qui synchronise maintenant
+`isCoop`/`maxPlayers` en cache, voir `computePlayInfoFromIgdb`
+(`src/lib/game-details.ts`). `router.refresh()` une fois terminé pour
+recalculer la liste filtrée. Scope : `/bibliotheque` uniquement (biblio
+personnelle, comme demandé), pas `/bibliotheque/groupe` ni `/tierlist`.
+
+**C) Override manuel.** Bouton discret "Marquer comme coop"/"Retirer
+coop" sous chaque carte de `/bibliotheque` (`toggleGameCoop`,
+`src/app/actions.ts`) — bascule `isCoop` et pose
+`playInfoManual = true`, donc protégé du backfill automatique dès ce
+moment. Placé **hors** du `<Link>` de la carte (un `<button>` dans un
+`<a>` est invalide en HTML et aurait déclenché la navigation en plus du
+toggle) — même souci potentiel que pour `EditGameDialog`/le bouton de
+suppression, déjà hors du lien pour la même raison.
+
+**Tester en prod** :
+1. Filtre Coop sur `/bibliotheque` avant cette PR → très peu de jeux.
+2. Après déploiement (le backfill tourne au build) → sensiblement plus
+   de jeux coop remontent, sans action de l'utilisateur.
+3. Sur un jeu Steam jamais visité sur sa fiche : activer le filtre Coop
+   → bandeau d'enrichissement bref, puis le jeu apparaît ou non selon
+   sa vraie donnée IGDB.
+4. Sur un jeu mal catégorisé : cliquer "Marquer comme coop"/"Retirer
+   coop" → effet immédiat sur le filtre, et persiste après un nouveau
+   déploiement (le backfill ne l'écrase plus).
+
+## PR 2.6/4 — Catégorisation coop fiable via Steam Store API + UX manuelle (PR 32, suite)
+
+Nouveau retour de prod sur PR 32 (2.5/4) : le backfill IGDB seul aide,
+mais IGDB n'a pas les données de tous les jeux — le filtre Coop reste
+incomplet. Deux blocs, toujours sur `Game.isCoop`/`minPlayers`/
+`maxPlayers`/`playInfoManual` (pas de nouveau champ).
+
+### Bloc A — Steam Store API (deuxième source de vérité)
+
+**Nouveau client** `src/lib/steam-store.ts` — `fetchSteamStoreDetails(steamAppId)`
+appelle l'endpoint public (sans clé) `https://store.steampowered.com/api/appdetails?appids={id}&l=french`
+et parse `data.categories`. `isCoop` est dérivé par double vérification :
+un id de catégorie connu (`Set([9, 24, 27, 38, 39, 48])` — Co-op,
+Shared/Split Screen, Multi-Joueur local, Multi-player, etc.) **ou** un
+mot-clé sur `description` (`coop`, `co-op`, `coopératif`, `écran
+partagé`, `partagé`) — la description est localisée par `?l=french`
+donc pas fiable seule pour matcher toutes les variantes linguistiques,
+d'où le repli sur les ids stables.
+
+**Nouveau backfill** `prisma/backfill-steam-coop.mjs`, wired dans
+`npm run build` juste après `backfill-coop.mjs` (IGDB). Portée :
+`source = STEAM` **et** `playInfoManual = false` (même garde que le
+backfill IGDB — jamais un jeu confirmé par un humain). Délai de 1,5s
+entre deux appels (l'API Steam Store documente ~200 req/5 min pour
+l'usage non authentifié ; 1,5s reste large en dessous, ~40 req/min max).
+Si l'API répond 429 (rate limit) ou une erreur réseau sur un jeu, le
+script logue et passe au suivant (ou s'arrête proprement sur 429, en
+gardant ce qui a déjà été mis à jour) plutôt que de planter le build.
+
+**Priorité de source (Steam Store > IGDB > défaut)** : assumée par
+**séquencement** des deux scripts dans `npm run build`, pas par une
+logique de comparaison croisée. `backfill-coop.mjs` (IGDB) tourne en
+premier ; `backfill-steam-coop.mjs` tourne ensuite et n'écrase `isCoop`
+que quand Steam Store a une réponse exploitable pour ce jeu — sinon il
+ne touche pas au jeu, qui garde la valeur IGDB (ou le défaut Steam-import
+`false`) posée avant lui.
+
+**Limite assumée** : contrairement à IGDB (`multiplayer_modes.*max`,
+de vrais chiffres), les `categories` Steam Store sont des tags booléens
+sans nombre de joueurs — ce script **ne touche donc pas** `minPlayers`/
+`maxPlayers`, seulement `isCoop`. Documenté comme un choix plutôt qu'un
+oubli : inventer un chiffre plausible aurait été moins honnête qu'un
+champ qu'on ne touche pas.
+
+**Log par jeu** (format demandé) :
+```
+[steam-store] Skyrim → categories: [Multi-player, Co-op] → isCoop=true
+```
+Et un résumé en fin de script : nombre mis à jour / déjà corrects / sans
+donnée exploitable / échecs, sur le total de jeux éligibles, plus une vue
+d'ensemble globale (`isCoop=true` en base, `playInfoManual=false` vs
+`true`).
+
+**Combien de jeux enrichis via Steam Store vs IGDB vs manuel ?** Aucun
+champ ne trace *quelle* source a posé la valeur actuelle d'un jeu (la
+contrainte de cette PR excluait explicitement une migration) — donc pas
+d'historique par origine consultable après coup. Ce qui est mesurable et
+loggé à chaque build : le nombre de mises à jour faites par **ce**
+script (Steam Store, ligne `[steam-store] Terminé en …`), le nombre fait
+par `backfill-coop.mjs` (IGDB, même format de log), et l'agrégat final
+`playInfoManual=false` (confirmé automatiquement, Steam Store et/ou
+IGDB cumulés) vs `playInfoManual=true` (confirmé manuellement — ajout/
+édition manuelle, bouton "Marquer comme coop", ou l'onglet "À vérifier"
+ci-dessous). **Le temps réel de ce premier backfill et le nombre exact de
+jeux concernés dépendent de la taille de la vraie bibliothèque Steam du
+groupe en prod** — ce sandbox n'a pas d'accès DB/réseau pour les
+mesurer : à relever dans les logs du premier déploiement Vercel après
+merge (`[steam-store] Terminé en Xs — …`).
+
+Migration Prisma : aucune, comme demandé — les champs existants
+(`isCoop`, `playInfoManual`) suffisent.
+
+### Bloc B — Onglet "À vérifier" (correction manuelle rapide)
+
+**Nouvel onglet** `/bibliotheque/a-verifier` (`src/app/bibliotheque/a-verifier/page.tsx`),
+4ᵉ onglet de `LibraryTabs.tsx` (`src/components/LibraryTabs.tsx`) après
+Ma bibliothèque/Groupe/Tierlist. Liste les jeux possédés avec
+`isCoop = false` **et** `playInfoManual = false` — ni Steam Store ni
+IGDB n'ont pu confirmer un mode de jeu, ni personne ne l'a fait à la
+main. Le nombre de jeux concernés apparaît en badge sur l'onglet
+(`toVerifyCount`, calculé sur `/bibliotheque`) et en toutes lettres en
+haut de la liste ("N jeux à vérifier").
+
+Chaque carte (`ToVerifierList.tsx`, `src/components/ToVerifierList.tsx`,
+composant client) affiche cover + nom + badge de source (Steam/IGDB/
+Manuel), et 4 actions tap-to-toggle :
+- **☐ Coop** → confirme `isCoop = true` (ne touche pas aux bornes de
+  joueurs déjà en base, potentiellement déjà correctes).
+- **☐ Multijoueur** → confirme `isCoop = false` mais relève les bornes
+  à 2–4 si elles laissaient croire à du solo (`maxPlayers` absent ou
+  ≤ 1) — sinon les garde telles quelles.
+- **☐ Solo uniquement** → force `minPlayers = 1`, `maxPlayers = 1`,
+  `isCoop = false`.
+- **Ignorer** → ne change ni `isCoop` ni les bornes, marque juste
+  `playInfoManual = true` : confirme que les valeurs actuelles sont
+  correctes telles quelles, sans rien modifier.
+
+Les 4 actions posent `playInfoManual = true` (server actions
+`setToVerifierGamePlayInfo`/`ignoreToVerifierGame`,
+`src/app/bibliotheque/actions.ts`) — protège le choix humain du
+prochain backfill Steam Store/IGDB, exactement comme le bouton "Marquer
+comme coop" de PR 32/2.5. Une fois traité, le jeu quitte la liste avec
+une animation de sortie (`AnimatePresence`/`motion.div`, glissement +
+fondu, `framer-motion` — cohérent avec `Stagger`/`PopIn` déjà utilisés
+ailleurs dans l'app) ; l'état local de la liste est mis à jour côté
+client sans recharger la page, `revalidatePath` côté serveur garde le
+reste de l'app (badge, filtre Coop) synchronisé à la prochaine
+navigation. Mobile-first : boutons pleine largeur tap-friendly, pas de
+swipe (le tap est plus fiable et accessible qu'un geste de swipe sur ce
+genre d'action, et reste cohérent avec le reste de l'app qui n'utilise
+aucun swipe ailleurs).
+
+**Bonus — "Marquer les N jeux affichés comme coop"** (`MarkAllCoopButton.tsx`,
+`src/components/MarkAllCoopButton.tsx`) : apparaît sur `/bibliotheque`
+uniquement quand le filtre "Coop" est le **seul** filtre de mode actif
+(`filters.modes = ["coop"]`) — la liste affichée est alors déjà
+entièrement composée de jeux coop (backfill ou manuel), le bouton
+confirme (`playInfoManual = true`) tous les jeux visibles en un tap
+(`batchMarkGamesCoop`, restreint côté serveur aux jeux réellement
+possédés par l'utilisateur, jamais les ids reçus du client sans
+vérification).
+
+**Description de l'onglet "À vérifier"** (pas de capture d'écran
+possible dans ce sandbox, comme pour les précédentes PR de ce chantier) :
+une page dans le même style que `/bibliotheque` (fond sombre, cartes
+`Card` avec bordure `border-border`), en-tête "N jeux à vérifier" en
+violet d'accent, puis une liste verticale de cartes compactes (cover
+11×16, nom + badge source à droite) — sous chaque nom, une rangée de 4
+boutons pilules : 3 en violet clair translucide (Coop/Multijoueur/Solo
+uniquement) et un "Ignorer" discret en bordure neutre. Un tap sur
+n'importe lequel fait glisser la carte hors de l'écran vers la droite en
+s'estompant, et la carte suivante remonte à sa place. Liste vide → message
+positif "Rien à vérifier pour l'instant — tous tes jeux ont un mode de
+jeu confirmé. 🎉".
+
+**Tester en prod** :
+1. `/bibliotheque` → l'onglet "À vérifier" affiche un badge avec le
+   nombre de jeux non confirmés.
+2. Sur `/bibliotheque/a-verifier`, taper "Coop" sur un jeu → il
+   disparaît avec l'animation, et réapparaît comme coop sur
+   `/bibliotheque` (filtre Coop) — sans jamais revenir dans "À
+   vérifier" après un nouveau déploiement.
+3. Taper "Ignorer" sur un jeu déjà correctement "pas coop" → disparaît
+   de la liste, ne revient jamais (même sans changement visible ailleurs).
+4. Sur `/bibliotheque`, filtrer uniquement sur "Coop" → bouton "Marquer
+   les N jeux affichés comme coop" visible ; avec un autre filtre en plus
+   (ex. genre), le bouton disparaît.

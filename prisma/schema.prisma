@@ -109,6 +109,18 @@ model Game {
   addedById  String
   createdAt  DateTime   @default(now())
 
+  // PR 32 (2.5/4) : true dès que isCoop/minPlayers/maxPlayers ont été
+  // saisis ou confirmés par un humain (formulaire d'ajout/édition
+  // manuel, ou le bouton "Marquer comme coop" sur /bibliotheque) — jamais
+  // par l'import Steam (qui pose `isCoop=false`/`maxPlayers=null` par
+  // défaut, Steam ne fournissant pas cette info) ni par le backfill IGDB
+  // automatique. Distingue "valeur par défaut jamais vérifiée" de
+  // "confirmée par un humain" : sans ce booléen, le backfill (rejoué à
+  // chaque build) écraserait indéfiniment une correction manuelle
+  // (ex. quelqu'un décoche "coop" sur un jeu qu'IGDB classe à tort en
+  // coop) au déploiement suivant.
+  playInfoManual Boolean @default(false)
+
   // Cache de la fiche IGDB détaillée (F : fiche jeu), rempli à la demande
   // au premier clic sur la fiche — jamais à l'import Steam (évite un
   // timeout Vercel si on enrichissait toute une biblio importée d'un coup).

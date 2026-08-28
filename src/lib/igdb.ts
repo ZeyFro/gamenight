@@ -267,6 +267,17 @@ interface IgdbInvolvedCompany {
   publisher: boolean;
 }
 
+interface IgdbMultiplayerMode {
+  onlinecoop?: boolean;
+  offlinecoop?: boolean;
+  lancoop?: boolean;
+  campaigncoop?: boolean;
+  offlinemax?: number;
+  onlinemax?: number;
+  offlinecoopmax?: number;
+  onlinecoopmax?: number;
+}
+
 interface IgdbGameDetailsResponse {
   id: number;
   name: string;
@@ -279,6 +290,7 @@ interface IgdbGameDetailsResponse {
   genres?: { name: string }[];
   first_release_date?: number; // timestamp Unix (secondes)
   involved_companies?: IgdbInvolvedCompany[];
+  multiplayer_modes?: IgdbMultiplayerMode[];
 }
 
 export interface IgdbGameDetails {
@@ -304,6 +316,19 @@ export interface IgdbGameDetails {
   releaseDate: string | null;
   developers: string[];
   publishers: string[];
+  /**
+   * PR 32 (2.5/4, Bug 2A) : dérivés de `multiplayer_modes` (`onlinecoop`/
+   * `offlinecoop`/`lancoop`/`campaigncoop` sur au moins une entrée — un
+   * jeu peut avoir plusieurs entrées `multiplayer_modes`, une par
+   * plateforme). Root cause du bug remonté : l'import Steam pose
+   * `isCoop=false` par défaut (Steam ne fournit pas cette info) — ces
+   * champs permettent de corriger ça après coup via IGDB, voir
+   * `src/lib/game-library.ts` (`syncPlayInfoFromIgdb`) et le script de
+   * backfill `prisma/backfill-coop.mjs`.
+   */
+  isCoop: boolean;
+  /** Max toutes plateformes/modes confondus (`offlinemax`/`onlinemax`/*coopmax), `null` si IGDB n'a aucune info exploitable. */
+  maxPlayersFromModes: number | null;
 }
 
 /**
@@ -328,7 +353,7 @@ export async function fetchIgdbGameDetails(
       Authorization: `Bearer ${token}`,
       "Content-Type": "text/plain",
     },
-    body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher; limit 1;`,
+    body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,multiplayer_modes.onlinecoop,multiplayer_modes.offlinecoop,multiplayer_modes.lancoop,multiplayer_modes.campaigncoop,multiplayer_modes.offlinemax,multiplayer_modes.onlinemax,multiplayer_modes.offlinecoopmax,multiplayer_modes.onlinecoopmax; limit 1;`,
   });
 
   if (!res.ok) {
@@ -340,6 +365,16 @@ export async function fetchIgdbGameDetails(
   if (!game) return null;
 
   const companies = game.involved_companies ?? [];
+  const multiplayerModes = game.multiplayer_modes ?? [];
+  const isCoop = multiplayerModes.some(
+    (m) => m.onlinecoop || m.offlinecoop || m.lancoop || m.campaigncoop
+  );
+  const maxCandidates = multiplayerModes.flatMap((m) =>
+    [m.offlinemax, m.onlinemax, m.offlinecoopmax, m.onlinecoopmax].filter(
+      (n): n is number => typeof n === "number" && n > 0
+    )
+  );
+  const maxPlayersFromModes = maxCandidates.length > 0 ? Math.max(...maxCandidates) : null;
 
   return {
     igdbId: game.id,
@@ -362,5 +397,7 @@ export async function fetchIgdbGameDetails(
       : null,
     developers: companies.filter((c) => c.developer).map((c) => c.company.name),
     publishers: companies.filter((c) => c.publisher).map((c) => c.company.name),
+    isCoop,
+    maxPlayersFromModes,
   };
 }

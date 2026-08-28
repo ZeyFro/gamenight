@@ -38,7 +38,16 @@ export async function addManualGame(formData: FormData) {
     redirect("/bibliotheque/ajouter?error=joueurs_invalide");
   }
 
-  const gameData = { name, coverUrl, isCoop, minPlayers, maxPlayers };
+  const gameData = {
+    name,
+    coverUrl,
+    isCoop,
+    minPlayers,
+    maxPlayers,
+    // Saisie manuelle explicite (checkbox + champs nombre du formulaire) —
+    // le backfill IGDB automatique (PR 32) ne doit plus jamais y toucher.
+    playInfoManual: true,
+  };
 
   const game = igdbId
     ? await prisma.game.upsert({
@@ -118,11 +127,45 @@ export async function updateGame(formData: FormData): Promise<UpdateGameResult> 
 
   await prisma.game.update({
     where: { id: gameId },
-    data: { name, isCoop, minPlayers, maxPlayers },
+    // Même raison que addManualGame : édition manuelle confirmée par un
+    // humain, `playInfoManual: true` protège ces valeurs du backfill IGDB.
+    data: { name, isCoop, minPlayers, maxPlayers, playInfoManual: true },
   });
 
   revalidatePath("/bibliotheque");
   return { ok: true };
+}
+
+/**
+ * Bouton discret "Marquer/Retirer coop" sur `/bibliotheque` (PR 32,
+ * 2.5/4 — Bug 2C) : override manuel rapide, pour corriger un jeu mal
+ * catégorisé sans ouvrir le panneau d'édition complet. Marque
+ * `playInfoManual: true` comme `updateGame` — protège ce choix du
+ * backfill IGDB automatique (Bug 2A) au prochain déploiement.
+ */
+export async function toggleGameCoop(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const gameId = String(formData.get("gameId") ?? "");
+  if (!gameId) return;
+
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game) return;
+
+  const owns = await prisma.userGame.findUnique({
+    where: { userId_gameId: { userId: user.id, gameId } },
+  });
+  if (!owns) return;
+
+  await prisma.game.update({
+    where: { id: gameId },
+    data: { isCoop: !game.isCoop, playInfoManual: true },
+  });
+
+  revalidatePath("/bibliotheque");
+  revalidatePath("/bibliotheque/groupe");
+  revalidatePath("/tierlist");
 }
 
 export async function removeUserGame(formData: FormData) {

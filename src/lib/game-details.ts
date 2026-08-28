@@ -7,6 +7,26 @@ import {
 import { translateToFrench } from "@/lib/deepl";
 import type { Game } from "@prisma/client";
 
+/**
+ * Dérive la mise à jour `isCoop`/`maxPlayers` à appliquer à `Game` depuis
+ * une fiche IGDB fraîchement récupérée (PR 32, 2.5/4 — Bug 2). Même
+ * logique dupliquée dans `prisma/backfill-coop.mjs` (script Node/ESM
+ * autonome, pas d'accès aux alias `@/...`) — à garder en synchro si la
+ * formule change. `minPlayers` n'est volontairement pas touché ici :
+ * IGDB n'expose pas de vraie notion de "minimum" au-delà de ce que
+ * l'app déduit déjà (2 par défaut, cf. `getProposalAvailability`), donc
+ * rien à gagner à l'écraser depuis cette source.
+ */
+export function computePlayInfoFromIgdb(
+  details: Pick<IgdbGameDetails, "isCoop" | "maxPlayersFromModes">,
+  current: { isCoop: boolean; maxPlayers: number | null }
+): { isCoop: boolean; maxPlayers: number | null } {
+  return {
+    isCoop: details.isCoop || current.isCoop,
+    maxPlayers: current.maxPlayers ?? details.maxPlayersFromModes,
+  };
+}
+
 export interface GameDetailsResult {
   details: IgdbGameDetails | null;
   fetchedAt: Date | null;
@@ -32,6 +52,9 @@ export async function getGameDetails(
     | "source"
     | "steamAppId"
     | "name"
+    | "isCoop"
+    | "maxPlayers"
+    | "playInfoManual"
   >,
   { forceRefresh = false }: { forceRefresh?: boolean } = {}
 ): Promise<GameDetailsResult> {
@@ -123,11 +146,19 @@ export async function getGameDetails(
     );
 
     const fetchedAt = new Date();
+    // Bug 2 (PR 32, 2.5/4) : synchronise isCoop/maxPlayers depuis IGDB à
+    // chaque (re)fetch de la fiche — sauf si un humain a déjà confirmé
+    // ces valeurs (`playInfoManual`), auquel cas on ne touche à rien.
+    const playInfoUpdate = game.playInfoManual
+      ? {}
+      : computePlayInfoFromIgdb(details, game);
+
     await prisma.game.update({
       where: { id: game.id },
       data: {
         igdbDetails: details as unknown as object,
         igdbDetailsFetchedAt: fetchedAt,
+        ...playInfoUpdate,
       },
     });
 

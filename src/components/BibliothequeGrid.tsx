@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { SVGProps } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { removeUserGame } from "@/app/actions";
+import { removeUserGame, toggleGameCoop } from "@/app/actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -92,7 +92,7 @@ function GameCard({ game }: { game: BibliothequeGame }) {
             />
           )}
         </div>
-        <div className="flex flex-1 flex-col gap-1.5 p-3">
+        <div className="flex flex-1 flex-col gap-1.5 p-3 pb-1">
           <p className="text-sm font-medium text-foreground">{game.name}</p>
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
             <Badge>{SOURCE_LABELS[game.source] ?? game.source}</Badge>
@@ -105,6 +105,18 @@ function GameCard({ game }: { game: BibliothequeGame }) {
           </div>
         </div>
       </Link>
+      {/* Hors du <Link> exprès (Bug 2C, PR 32) : un <button> dans un <a>
+          est invalide en HTML et déclencherait la navigation en plus du
+          toggle au clic. */}
+      <form action={toggleGameCoop} className="px-3 pb-2">
+        <input type="hidden" name="gameId" value={game.id} />
+        <button
+          type="submit"
+          className="text-[11px] text-muted underline decoration-dotted hover:text-foreground"
+        >
+          {game.isCoop ? "Retirer coop" : "Marquer comme coop"}
+        </button>
+      </form>
       <div className="absolute top-1.5 right-1.5 flex gap-1.5">
         <EditGameDialog game={game} />
         <form action={removeUserGame}>
