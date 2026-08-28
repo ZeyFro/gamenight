@@ -21,6 +21,21 @@ import {
 } from "@/lib/game-filters";
 import type { GameSource } from "@prisma/client";
 
+/**
+ * Bug UX corrigé (remonté en prod, PR 32 2.5/4) : 2 `<input type="range">`
+ * empilés sur la même piste étaient difficiles à manipuler au tactile
+ * (les deux poignées se chevauchent, pas de séparation visuelle, un tap
+ * au milieu peut saisir la mauvaise poignée) — remplacés par 2
+ * `<select>` natifs (fallback suggéré à la demande), fiables au tactile
+ * comme au clavier, sélection exacte à chaque fois. Contrairement aux
+ * sliders "Nombre de joueurs" (pas remontés comme buggés, non touchés ici
+ * — non-régression).
+ */
+const RELEASE_YEARS = Array.from(
+  { length: RELEASE_YEAR_RANGE.max - RELEASE_YEAR_RANGE.min + 1 },
+  (_, i) => RELEASE_YEAR_RANGE.min + i
+);
+
 function ToggleChip({
   active,
   onClick,
@@ -263,13 +278,10 @@ export function GameFilterDrawer({
 
               <fieldset className="flex flex-col gap-2">
                 <legend className="text-xs font-medium text-muted">
-                  Date de sortie — {filters.yearMin} à {filters.yearMax}
+                  Date de sortie
                 </legend>
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="range"
-                    min={RELEASE_YEAR_RANGE.min}
-                    max={RELEASE_YEAR_RANGE.max}
+                <div className="flex items-center gap-2">
+                  <select
                     value={filters.yearMin}
                     aria-label="Année de sortie minimum"
                     onChange={(e) => {
@@ -280,12 +292,16 @@ export function GameFilterDrawer({
                         yearMax: Math.max(min, filters.yearMax),
                       });
                     }}
-                    className="w-full accent-accent"
-                  />
-                  <input
-                    type="range"
-                    min={RELEASE_YEAR_RANGE.min}
-                    max={RELEASE_YEAR_RANGE.max}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+                  >
+                    {RELEASE_YEARS.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="shrink-0 text-sm text-muted">à</span>
+                  <select
                     value={filters.yearMax}
                     aria-label="Année de sortie maximum"
                     onChange={(e) => {
@@ -296,8 +312,14 @@ export function GameFilterDrawer({
                         yearMin: Math.min(max, filters.yearMin),
                       });
                     }}
-                    className="w-full accent-accent"
-                  />
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+                  >
+                    {RELEASE_YEARS.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <p className="text-xs text-faint">
                   Même limite que pour le Genre : nécessite la fiche IGDB du jeu déjà en cache.

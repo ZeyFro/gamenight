@@ -6,6 +6,7 @@ import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/
 import { BibliothequeGrid } from "@/components/BibliothequeGrid";
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
+import { CoopEnrichmentTrigger } from "@/components/CoopEnrichmentTrigger";
 import { ButtonLink } from "@/components/ui/Button";
 
 export default async function BibliothequePage({
@@ -32,6 +33,10 @@ export default async function BibliothequePage({
   const filteredGames = allGames.filter((game, index) =>
     matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)
   );
+
+  const gamesNeedingEnrichment = allGames
+    .filter((game) => !game.igdbDetails)
+    .map((game) => game.id);
 
   const games = filteredGames.map((game) => ({
     id: game.id,
@@ -66,6 +71,11 @@ export default async function BibliothequePage({
           maxOwners={totalUsers}
         />
       </div>
+
+      <CoopEnrichmentTrigger
+        active={filters.modes.includes("coop")}
+        gameIds={gamesNeedingEnrichment}
+      />
 
       <BibliothequeGrid games={games} />
     </div>
