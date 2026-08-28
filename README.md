@@ -1888,6 +1888,127 @@ session, le vote, la clôture et l'annonce Discord (F6) fonctionnent
 normalement. On peut aussi déclencher la route manuellement à tout moment
 (voir ci-dessus) pour vérifier qu'elle répond, indépendamment du cron.
 
+## Backfills coop en tâche de fond (Optimisation build)
+
+**Incident remonté après le merge de PR 32 (2.5/4 + 2.6/4)** : le build de
+prod a mis **14 minutes** au lieu des ~5 min estimées. Cause identifiée :
+le backfill Steam Store API (PR 32.6, Bloc A), lancé à chaque build via
+`npm run build`, s'est révélé beaucoup plus lent que prévu depuis l'IP de
+build Vercel (Steam Store lente et/ou qui rate-limite cette IP — pas de
+moyen de le confirmer précisément depuis ce sandbox, sans accès réseau).
+
+Un backfill réseau ne devrait jamais faire partie du chemin critique d'un
+déploiement : un build qui dépend de la disponibilité/latence d'une API
+tierce est fragile par construction (et coûte du temps de build à chaque
+déploiement, pour tous les futurs PR).
+
+### Ce qui reste dans `npm run build`, ce qui en sort
+
+Chaîne du script `build` (`package.json`) avant cette PR :
+
+```
+prisma migrate deploy → seed messages → fix templates invalides →
+backfill XP → backfill IGDB coop → backfill Steam Store → seed game-stats →
+seed superlatifs → seed badges → backfill badges → next build
+```
+
+- **Gardés dans le build** (migrations obligatoires, ou seeds/backfills
+  rapides car purement en base, sans appel réseau externe bloquant) :
+  `prisma migrate deploy`, seed messages, fix templates invalides,
+  backfill XP, seed game-stats, seed superlatifs, seed badges, backfill
+  badges, `next build`.
+- **Sortis du build** : backfill IGDB coop et backfill Steam Store — les
+  deux seuls à dépendre d'une API externe *par jeu* de la bibliothèque
+  (potentiellement des dizaines d'appels réseau, chacun sujet à la
+  latence/rate limit du service tiers). Remplacés par 2 endpoints HTTP
+  déclenchés par cron externe (voir ci-dessous). Le build repasse ainsi à
+  un temps dominé par `next build` lui-même (~1-2 min, sans plus dépendre
+  d'IGDB/Steam Store).
+
+### `POST /api/backfill/igdb-coop` et `POST /api/backfill/steam-store`
+
+Même mécanisme de protection que `/api/cron/reminders` (F7, voir plus
+haut) : si `CRON_SECRET` est configurée, la route exige l'en-tête
+`Authorization: Bearer <CRON_SECRET>` (401 sinon) ; sans `CRON_SECRET`
+configurée, la route reste appelable par n'importe qui connaissant l'URL
+(acceptable pour un usage perso/petit groupe, recommandé de la configurer
+dès que l'URL est publique).
+
+**Réponse immédiate, traitement en tâche de fond** : la route répond
+`202 Accepted` (`{ "status": "accepted", "message": "..." }`) dès que
+l'authentification est validée, sans attendre la fin du backfill — via
+[`after()`](https://nextjs.org/docs/app/api-reference/functions/after)
+(Next.js) : le code de backfill continue de s'exécuter après l'envoi de
+la réponse, donc l'appelant (cron externe ou `curl` manuel) n'attend
+jamais 14 minutes. `export const maxDuration = 60` sur les deux routes —
+le plafond du plan Vercel Hobby (même contrainte que le cron F7, voir
+plus haut) ; les deux backfills s'arrêtent volontairement avant cette
+échéance (`TIME_BUDGET_MS`, marge de sécurité) plutôt que de risquer une
+coupure brutale par la plateforme en plein appel réseau/écriture.
+
+**Idempotents** : même portée qu'avant (jeux avec `playInfoManual =
+false` — jamais un jeu confirmé par un humain), qu'avant cette PR — voir
+PR 32 (2.5/4) et PR 32.6 pour le détail des critères exacts par backfill.
+Rejouer un backfill sur un jeu déjà à jour est un no-op (juste une
+vérification, pas d'écriture).
+
+**Logs précis** (`src/lib/backfill-igdb-coop.ts` /
+`src/lib/backfill-steam-coop.ts`), consultables dans les logs de fonction
+Vercel :
+
+```
+[igdb-coop] Processing 12/48: Overcooked! 2...
+[steam-store] Processing 8/48: Terraria...
+```
+
+**Limite honnête assumée — couverture par bibliothèque, pas par appel**
+Sans marqueur de progression persisté en base (aucune nouvelle migration
+pour ça, comme le reste du chantier coop), un seul appel ne garantit pas
+de traiter TOUTE la bibliothèque si elle est plus grande que ce qui tient
+dans la fenêtre de 60s (à ~1,5s/jeu pour Steam Store, ça plafonne autour
+d'une trentaine de jeux par appel). Pour éviter de retraiter indéfiniment
+les mêmes premiers jeux à chaque appel sans jamais atteindre les
+suivants, l'ordre de traitement est **mélangé aléatoirement** à chaque
+invocation (`src/lib/shuffle.ts`) : un jeu qui n'a pas été atteint cette
+fois a de bonnes chances de l'être au prochain appel (cron quotidien, ou
+relance manuelle). Pour une bibliothèque de groupe de la taille visée par
+cette app (quelques dizaines de jeux), la convergence est rapide ;
+documenté ici comme limite assumée plutôt que silencieusement caché.
+
+### Configurer le cron externe (cron-job.org ou équivalent)
+
+Même service que celui déjà utilisé pour les rappels F7 (voir plus haut) —
+ajouter 2 nouveaux cron jobs :
+
+1. URL : `https://ton-projet.vercel.app/api/backfill/igdb-coop`
+2. URL : `https://ton-projet.vercel.app/api/backfill/steam-store`
+3. Méthode `POST` pour les deux, en-tête `Authorization: Bearer <CRON_SECRET>`
+   si configurée.
+4. Fréquence recommandée : **une fois par jour** — largement suffisant, ces
+   backfills corrigent des jeux ajoutés/importés depuis le dernier passage,
+   pas une fonctionnalité temps-réel.
+
+### Déclenchement manuel (une fois, après le déploiement de cette PR)
+
+Pour catégoriser les jeux déjà en base sans attendre le premier passage du
+cron quotidien :
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://gamenight-zeyfro.vercel.app/api/backfill/igdb-coop
+
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://gamenight-zeyfro.vercel.app/api/backfill/steam-store
+```
+
+Chaque appel répond `202` en quelques millisecondes ; le vrai travail
+continue côté serveur — suivre la progression dans les logs de la
+fonction Vercel correspondante (Vercel Dashboard → Deployments → Functions,
+ou `vercel logs`). Si la bibliothèque est assez grande pour dépasser la
+fenêtre de 60s d'un seul appel (voir limite ci-dessus), relance
+simplement la même commande `curl` une seconde fois — idempotent, sans
+risque à répéter.
+
 ## 5. Déploiement Vercel
 
 1. Importer le repo sur [vercel.com](https://vercel.com), renseigner les
@@ -1918,6 +2039,16 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
    l'URL étant publique). Une fois déployé, lance `npm run seed` une fois
    (en local, pointé sur `DATABASE_URL` de prod, ou via `vercel env pull`)
    pour peupler les 9 messages de rappel initiaux.
+6. **Backfills coop (IGDB + Steam Store)** : ne tournent plus pendant le
+   build (voir « Backfills coop en tâche de fond » ci-dessous) — configure
+   un cron externe (même service que les rappels ci-dessus, ou un second
+   cron job sur le même compte cron-job.org) pointant vers
+   `https://ton-projet.vercel.app/api/backfill/igdb-coop` et
+   `https://ton-projet.vercel.app/api/backfill/steam-store`, en `POST`,
+   une fois par jour, avec l'en-tête `Authorization: Bearer <CRON_SECRET>`.
+   Après le tout premier déploiement de cette PR, déclenche les deux une
+   fois manuellement (`curl`, détail plus bas) pour catégoriser les jeux
+   déjà en base.
 
 ## Dépannage
 
@@ -1960,8 +2091,8 @@ normalement. On peut aussi déclencher la route manuellement à tout moment
 | `npm run seed` | Seed des messages Discord par défaut (rappels + création/modification de soirée + level up, idempotent par catégorie) |
 | `npm run fix-invalid-templates` | Désactive (silencieusement) les `MessageTemplate` en base avec une variable invalide pour l'une de leurs catégories — idempotent, aussi lancé automatiquement à chaque build (Fix 4, PR 30, bug "texte à trous") |
 | `npm run backfill-xp` | Backfill XP manuel (sessions créées, votes, participations, dispos/Steam) — idempotent, aussi lancé automatiquement à chaque build |
-| `npm run backfill-coop` | Resynchronise `isCoop`/`maxPlayers` depuis IGDB pour les jeux avec cache existant, jamais confirmés manuellement — idempotent, aussi lancé automatiquement à chaque build (PR 32, Bug 2) |
-| `npm run backfill-steam-coop` | Resynchronise `isCoop` depuis Steam Store API pour les jeux `source=STEAM` jamais confirmés manuellement — idempotent, tourne après `backfill-coop`, aussi lancé automatiquement à chaque build (PR 32.6, Bloc A) |
+| `npm run backfill-coop` | Resynchronise `isCoop`/`maxPlayers` depuis IGDB pour les jeux avec cache existant, jamais confirmés manuellement — idempotent, lancement **local uniquement** depuis PR "Optimisation build" (plus wired dans `npm run build`, voir § dédiée — en prod, cron externe vers `/api/backfill/igdb-coop`) |
+| `npm run backfill-steam-coop` | Resynchronise `isCoop` depuis Steam Store API pour les jeux `source=STEAM` jamais confirmés manuellement — idempotent, lancement **local uniquement** depuis PR "Optimisation build" (en prod, cron externe vers `/api/backfill/steam-store`) |
 | `npm run seed-game-stats` | Seed manuel des stats/superlatifs pour les jeux populaires de la biblio commune — idempotent, aussi lancé automatiquement à chaque build (chantier dormant depuis PR 5/9, laissé fonctionnel) |
 | `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
 | `npm run seed-badges` | Seed manuel des 15 badges par défaut — idempotent par nom, aussi lancé automatiquement à chaque build |
@@ -1979,7 +2110,10 @@ src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
 src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
 src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche + fiche détaillée + multiplayer_modes)
 src/lib/game-details.ts     # Cache-ou-fetch de la fiche IGDB (Game.igdbDetails) + sync isCoop/maxPlayers (PR 32)
-src/lib/steam-store.ts      # Client Steam Store API (categories → isCoop), duplique sa logique dans prisma/backfill-steam-coop.mjs (PR 32.6, Bloc A)
+src/lib/steam-store.ts      # Client Steam Store API (categories → isCoop, SteamStoreHttpError), duplique sa logique dans prisma/backfill-steam-coop.mjs (PR 32.6, Bloc A)
+src/lib/shuffle.ts          # Mélange Fisher-Yates, utilisé par les 2 libs de backfill coop pour couvrir toute la liste sur plusieurs appels (PR "Optimisation build")
+src/lib/backfill-igdb-coop.ts   # Boucle de backfill IGDB réutilisable (réutilise fetchIgdbGameDetails), appelée par /api/backfill/igdb-coop — plus wired dans npm run build
+src/lib/backfill-steam-coop.ts  # Boucle de backfill Steam Store réutilisable (réutilise fetchSteamStoreDetails), appelée par /api/backfill/steam-store — plus wired dans npm run build
 src/lib/current-user.ts     # Session Auth.js → ligne User en base
 src/lib/wallclock.ts        # Parsing/format date+heure (convention horloge-murale)
 src/lib/availability.ts     # Calcul dispo (créneaux hebdo + exceptions)
@@ -2082,6 +2216,8 @@ src/app/admin/jeux-stats/page.tsx           # Redirige (308) vers /admin?tab=jeu
 src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu — reste une route indépendante
 src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs (dormant depuis PR 5/9)
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
+src/app/api/backfill/igdb-coop/route.ts    # POST, 202 + after(), backfill IGDB en tâche de fond (PR "Optimisation build")
+src/app/api/backfill/steam-store/route.ts  # POST, 202 + after(), backfill Steam Store en tâche de fond (PR "Optimisation build")
 src/app/potes/page.tsx                  # Liste des potes du groupe
 src/app/potes/[id]/layout.tsx           # En-tête (RankAvatar/nom/rang/Steam) + PoteTabs, partagés par les 5 sous-routes
 src/app/potes/[id]/page.tsx             # Onglet Dispos (route par défaut)
