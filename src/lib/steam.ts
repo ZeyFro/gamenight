@@ -139,10 +139,15 @@ export async function importSteamLibrary(
       },
     });
 
+    // `source: PERSONAL` posé aussi sur `update` (pas seulement `create`) :
+    // l'import Steam perso est la source la plus fiable de possession
+    // réelle — si ce jeu était déjà marqué FAMILY (import biblio famille,
+    // voir `family-import-actions.ts`), le fait de le posséder aussi en
+    // perso est l'info la plus précise à refléter.
     await prisma.userGame.upsert({
       where: { userId_gameId: { userId, gameId: dbGame.id } },
-      update: { owned: true },
-      create: { userId, gameId: dbGame.id, owned: true },
+      update: { owned: true, source: "PERSONAL" },
+      create: { userId, gameId: dbGame.id, owned: true, source: "PERSONAL" },
     });
   }
 

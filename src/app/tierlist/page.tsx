@@ -39,7 +39,7 @@ export default async function TierlistPage({
 
   const initialTiers = Object.fromEntries(entries.map((e) => [e.gameId, e.tier]));
 
-  const filterableGames = allGames.map(toFilterableGame);
+  const filterableGames = allGames.map((game) => toFilterableGame(game));
   const filters = parseGameFilters(await searchParams);
   const games = allGames.filter((game, index) =>
     matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)

@@ -30,7 +30,7 @@ export default async function GroupLibraryPage({
     getTotalUserCount(),
   ]);
 
-  const filterableGames = allGames.map(toFilterableGame);
+  const filterableGames = allGames.map((game) => toFilterableGame(game));
   const filters = parseGameFilters(await searchParams);
   const filteredGames = allGames.filter((game, index) =>
     matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)

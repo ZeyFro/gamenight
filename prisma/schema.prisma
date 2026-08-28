@@ -143,10 +143,28 @@ model Game {
   @@unique([igdbId])
 }
 
+// PR "Import biblio Steam Family" : distingue COMMENT l'utilisateur
+// possède ce jeu — PERSONAL (import Steam perso, `importSteamLibrary`),
+// FAMILY (import copier-coller biblio famille, `matchFamilyImportBatch`),
+// MANUAL (ajout manuel via /bibliotheque/ajouter). Un même `Game` (ex.
+// Skyrim) reste une seule ligne en base peu importe qui le possède —
+// c'est `UserGame.source` qui porte cette info par relation user↔jeu, pas
+// `Game`. Défaut PERSONAL : les `UserGame` déjà en base avant cette PR
+// ont tous été créés par l'import Steam perso ou l'ajout manuel, jamais
+// par un mécanisme famille (qui n'existait pas) — la valeur par défaut
+// de la migration additive couvre donc correctement leur backfill sans
+// script séparé.
+enum UserGameSource {
+  PERSONAL
+  FAMILY
+  MANUAL
+}
+
 model UserGame {
   userId String
   gameId String
-  owned  Boolean @default(true)
+  owned  Boolean        @default(true)
+  source UserGameSource @default(PERSONAL)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)

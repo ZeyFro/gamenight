@@ -29,7 +29,13 @@ export default async function BibliothequePage({
   ]);
 
   const allGames = userGames.map(({ game }) => game);
-  const filterableGames = allGames.map(toFilterableGame);
+  // PR "Import biblio Steam Family" — comment CE user possède chaque jeu
+  // (Steam perso / famille copier-coller / manuel), pour le badge
+  // "Familial" et le filtre "Provenance" ci-dessous.
+  const ownershipByGameId = new Map(userGames.map((ug) => [ug.gameId, ug.source]));
+  const filterableGames = allGames.map((game) =>
+    toFilterableGame(game, ownershipByGameId.get(game.id))
+  );
   const filters = parseGameFilters(await searchParams);
   const filteredGames = allGames.filter((game, index) =>
     matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)
@@ -64,6 +70,7 @@ export default async function BibliothequePage({
     isCoop: game.isCoop,
     minPlayers: game.minPlayers,
     maxPlayers: game.maxPlayers,
+    ownershipSource: ownershipByGameId.get(game.id),
   }));
 
   return (
@@ -87,6 +94,7 @@ export default async function BibliothequePage({
         <GameFilterDrawer
           availableGenres={collectAvailableGenres(filterableGames)}
           maxOwners={totalUsers}
+          personal
         />
       </div>
 

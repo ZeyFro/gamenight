@@ -11,6 +11,8 @@ import {
   GAME_MODE_LABELS,
   GAME_SOURCES,
   GAME_SOURCE_LABELS,
+  OWNERSHIP_SOURCES,
+  OWNERSHIP_SOURCE_LABELS,
   PLAYERS_RANGE,
   RELEASE_YEAR_RANGE,
   countActiveFilters,
@@ -19,7 +21,7 @@ import {
   type GameFilters,
   type GameMode,
 } from "@/lib/game-filters";
-import type { GameSource } from "@prisma/client";
+import type { GameSource, UserGameSource } from "@prisma/client";
 
 /**
  * Bug UX corrigé (remonté en prod, PR 32 2.5/4) : 2 `<input type="range">`
@@ -82,9 +84,12 @@ function ToggleChip({
 export function GameFilterDrawer({
   availableGenres,
   maxOwners,
+  personal = false,
 }: {
   availableGenres: string[];
   maxOwners: number;
+  /** N'affiche le filtre "Provenance" que sur `/bibliotheque` (biblio perso) — voir `OWNERSHIP_SOURCES` dans `src/lib/game-filters.ts`. */
+  personal?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -117,6 +122,15 @@ export function GameFilterDrawer({
       sources: filters.sources.includes(source)
         ? filters.sources.filter((s) => s !== source)
         : [...filters.sources, source],
+    });
+  }
+
+  function toggleOwnership(source: UserGameSource) {
+    update({
+      ...filters,
+      ownership: filters.ownership.includes(source)
+        ? filters.ownership.filter((s) => s !== source)
+        : [...filters.ownership, source],
     });
   }
 
@@ -237,6 +251,25 @@ export function GameFilterDrawer({
                   ))}
                 </div>
               </fieldset>
+
+              {personal && (
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="text-xs font-medium text-muted">
+                    Provenance dans ta bibliothèque
+                  </legend>
+                  <div className="flex flex-wrap gap-2">
+                    {OWNERSHIP_SOURCES.map((source) => (
+                      <ToggleChip
+                        key={source}
+                        active={filters.ownership.includes(source)}
+                        onClick={() => toggleOwnership(source)}
+                      >
+                        {OWNERSHIP_SOURCE_LABELS[source]}
+                      </ToggleChip>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
 
               <fieldset className="flex flex-col gap-2">
                 <legend className="text-xs font-medium text-muted">

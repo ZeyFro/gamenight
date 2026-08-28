@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { BannerForm } from "@/components/BannerForm";
+import { FamilyImportForm } from "@/components/FamilyImportForm";
 
 /**
  * Onglet "Rappels perso" — en réalité tous les réglages de compte
@@ -117,6 +118,13 @@ export default async function ProfilParametresPage({
               </ButtonLink>
             </>
           )}
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Bibliothèque Steam Family</h2>
+          <FamilyImportForm />
         </Card>
       </StaggerItem>
 
