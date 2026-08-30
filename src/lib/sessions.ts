@@ -33,6 +33,42 @@ export interface CloseSessionResult {
 }
 
 /**
+ * Réclame atomiquement le droit de clôturer une session : un seul
+ * `updateMany` conditionné sur `status: "VOTING"`, dont Postgres garantit
+ * l'exécution atomique. Si deux appels concurrents à `closeSession` (deux
+ * pages chargées en même temps, ou le cron `/api/cron/close-sessions` qui
+ * chevauche un déclenchement paresseux `closeSessionIfDue`) tentent de
+ * clôturer la même session, un seul verra `count === 1` — l'autre trouve
+ * déjà `status !== "VOTING"` (l'update du premier a déjà committé) et
+ * doit abandonner sans poster une deuxième annonce Discord.
+ *
+ * Root cause du bug remonté en prod (embed "Joueurs"/"Qui vient"
+ * incohérent) : `closeSessionIfDue` est appelée sans garde-fou de
+ * concurrence depuis `/`, `/sessions` et `/sessions/[id]`, à chaque
+ * chargement de page, par n'importe qui. Dès qu'une session devient due
+ * pendant que plusieurs personnes ont l'app ouverte (typiquement l'heure
+ * pile d'une soirée), plusieurs exécutions de `closeSession` peuvent
+ * partir en parallèle avant qu'aucune n'ait eu le temps d'écrire le
+ * nouveau statut — chacune poste alors sa propre annonce Discord, deux
+ * messages quasi identiques adjacents dans le salon (pas un seul embed
+ * intérieurement incohérent : `winner.votes.length` et les mentions de
+ * "Qui vient" viennent tous les deux de la même liste `winner.votes`,
+ * donc ne peuvent jamais diverger AU SEIN d'un même message — vérifié en
+ * relisant `announceSessionResult`). Ce garde-fou élimine la possibilité
+ * même d'une double annonce, quelle que soit la source du déclenchement.
+ */
+async function claimSessionClose(
+  sessionId: string,
+  data: { status: "CANCELLED" } | { status: "SCHEDULED"; decidedGameId: string; decidedTime: Date }
+): Promise<boolean> {
+  const result = await prisma.session.updateMany({
+    where: { id: sessionId, status: "VOTING" },
+    data,
+  });
+  return result.count === 1;
+}
+
+/**
  * Clôture une session VOTING et poste le résultat dans Discord (F6).
  *
  * Le jeu gagnant est la proposition **jouable** (cf. `getProposalAvailability`)
@@ -48,6 +84,12 @@ export interface CloseSessionResult {
  * Un seul jeu gagnant par soirée — cohérent avec le champ unique
  * `decidedGameId` du schéma et avec le roadmap v2 (§7), qui traite la
  * file de jeux multiples comme un sujet à part entière.
+ *
+ * Idempotent/concurrence-safe : voir `claimSessionClose`. Un appel qui
+ * perd la course renvoie `null`, exactement comme si la session n'était
+ * déjà plus `VOTING` au tout début de la fonction — même contrat pour
+ * l'appelant (`closeSessionIfDue`, le nouveau cron, ou la clôture
+ * manuelle créateur) dans les deux cas.
  */
 export async function closeSession(
   sessionId: string
@@ -64,10 +106,7 @@ export async function closeSession(
   if (!session || session.status !== "VOTING") return null;
 
   if (session.proposals.length === 0) {
-    await prisma.session.update({
-      where: { id: sessionId },
-      data: { status: "CANCELLED" },
-    });
+    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
     return { discord: await announceSessionResult(session, null, false) };
   }
 
@@ -80,10 +119,7 @@ export async function closeSession(
   );
 
   if (jouableProposals.length === 0) {
-    await prisma.session.update({
-      where: { id: sessionId },
-      data: { status: "CANCELLED" },
-    });
+    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
     return { discord: await announceSessionResult(session, null, false) };
   }
 
@@ -94,14 +130,12 @@ export async function closeSession(
     jouableProposals.filter((p) => p.votes.length === winner.votes.length)
       .length > 1;
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: {
-      status: "SCHEDULED",
-      decidedGameId: winner.gameId,
-      decidedTime: session.date,
-    },
+  const claimed = await claimSessionClose(sessionId, {
+    status: "SCHEDULED",
+    decidedGameId: winner.gameId,
+    decidedTime: session.date,
   });
+  if (!claimed) return null;
 
   // XP participation (Axe 1) — même définition de "présent" que celle
   // utilisée par l'écran de saisie des résultats (PR 3/9) : les users qui
