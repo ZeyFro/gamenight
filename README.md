@@ -2049,6 +2049,14 @@ risque à répéter.
    Après le tout premier déploiement de cette PR, déclenche les deux une
    fois manuellement (`curl`, détail plus bas) pour catégoriser les jeux
    déjà en base.
+7. **Clôture automatique des sessions** (fix PR 3.5/4) : configure un
+   3ᵉ cron job (même compte cron-job.org) pointant vers
+   `https://ton-projet.vercel.app/api/cron/close-sessions`, en `GET`,
+   toutes les 15 min, avec l'en-tête `Authorization: Bearer <CRON_SECRET>`
+   si configurée — voir « PR 3.5/4 » plus bas pour le détail. Sans ce
+   cron, la clôture reste fonctionnelle mais redevient "paresseuse"
+   (déclenchée seulement au chargement d'une page), exactement le bug
+   remonté en prod.
 
 ## Dépannage
 
@@ -2219,6 +2227,7 @@ src/app/admin/jeux-stats/page.tsx           # Redirige (308) vers /admin?tab=jeu
 src/app/admin/jeux-stats/[gameId]/page.tsx  # CRUD stats + superlatifs pour un jeu — reste une route indépendante
 src/app/admin/jeux-stats/actions.ts         # Server actions stats/superlatifs (dormant depuis PR 5/9)
 src/app/api/cron/reminders/route.ts # Envoie les rappels dus, appelée par un cron externe (F7)
+src/app/api/cron/close-sessions/route.ts # Clôture les sessions dues immédiatement, cron externe (fix PR 3.5/4)
 src/app/api/backfill/igdb-coop/route.ts    # POST, 202 + after(), backfill IGDB en tâche de fond (PR "Optimisation build")
 src/app/api/backfill/steam-store/route.ts  # POST, 202 + after(), backfill Steam Store en tâche de fond (PR "Optimisation build")
 src/app/potes/page.tsx                  # Liste des potes du groupe
@@ -3233,3 +3242,116 @@ nouveau" pour le faire matcher. Recoller la même liste une seconde fois
 4. Sur `/bibliotheque`, filtrer uniquement sur "Coop" → bouton "Marquer
    les N jeux affichés comme coop" visible ; avec un autre filtre en plus
    (ex. genre), le bouton disparaît.
+
+## PR 3.5/4 — 2 fixes remontés en prod sur une vraie soirée (avant PR 4/4)
+
+2 bugs remontés après une vraie soirée en prod (Deadlock, dimanche 30 août
+2026, 20h) : incohérence dans l'embed Discord de clôture, et notif de
+clôture arrivée 1h26 en retard.
+
+### Bug 1 — Embed "Joueurs" (3) vs "Qui vient" (4 mentions) incohérents
+
+**Diagnostic du code** (`src/lib/discord-announce.ts`,
+`announceSessionResult`) : les deux champs sont dérivés de la **même**
+variable `winner.votes` dans la même exécution synchrone — `Joueurs` =
+`winner.votes.length`, `Qui vient` = `winner.votes.map(v => "<@…>").join(" ")`.
+Mathématiquement, ces deux valeurs ne peuvent **pas** diverger au sein
+d'un seul embed : `Vote` a une contrainte unique `(proposalId, userId)`
+en base (pas de doublon possible), et `toggleVote` refuse tout vote après
+la fermeture du vote (`isVotingOpen`), donc les votes sont figés bien
+avant qu'un embed ne soit généré. La formule de comptage elle-même n'a
+pas de bug.
+
+**Root cause réelle trouvée ailleurs** : la clôture "paresseuse"
+(`closeSessionIfDue`) est appelée **sans aucun garde-fou de concurrence**
+à chaque chargement de `/`, `/sessions` et `/sessions/[id]` — par
+n'importe quel visiteur. Dès qu'une session devient due pendant que
+plusieurs personnes ont l'app ouverte (typiquement pile à l'heure d'une
+soirée, quand tout le monde vérifie), `closeSession` pouvait démarrer en
+parallèle plusieurs fois avant qu'aucune exécution n'ait eu le temps
+d'écrire le nouveau statut (`session.status !== "VOTING"` n'était qu'une
+simple lecture, pas une réservation atomique) — chaque exécution postait
+alors sa **propre** annonce Discord. Deux messages "🎮 Soirée validée :
+Deadlock" quasi identiques, adjacents dans le salon, expliquent
+naturellement une impression d'incohérence en les parcourant vite sur
+mobile — chaque message pris isolément reste interne cohérent, mais deux
+messages voisins avec des totaux différents (si un vote a été inséré
+entre les deux lectures concurrentes) donnent exactement l'effet décrit.
+
+**Fix** : `closeSession` (`src/lib/sessions.ts`) réclame maintenant la
+clôture par un `updateMany` **atomique**, conditionné sur `status:
+"VOTING"` (nouvelle fonction `claimSessionClose`) — Postgres garantit
+qu'une seule exécution concurrente peut trouver la ligne encore à l'état
+`VOTING` et la faire passer à `SCHEDULED`/`CANCELLED`. Toute exécution
+perdante s'arrête immédiatement, **avant** de poster quoi que ce soit sur
+Discord. Appliqué aux 3 branches de clôture (aucune proposition, aucune
+jouable, gagnant trouvé) — plus une seule annonce Discord possible par
+session, quel que soit le nombre de déclencheurs concurrents (page
+chargée par plusieurs personnes, ou le nouveau cron du Bug 2 qui
+chevauche `closeSessionIfDue`).
+
+**Tester** : pas reproductible en sandbox (nécessite une vraie
+concurrence sur une base partagée) — validé par relecture du chemin
+critique. En prod, vérifier qu'une session dont l'heure arrive pendant
+que plusieurs onglets/téléphones ont l'app ouverte en même temps ne
+génère plus qu'**un seul** message "🎮 Soirée validée" dans le salon.
+
+### Bug 2 — Notif de clôture en retard (jusqu'à ce que quelqu'un ouvre l'app)
+
+**Confirmé** : avant cette PR, la clôture d'une session (`closeSessionIfDue`)
+ne se déclenchait qu'à la lecture — au chargement de `/`, `/sessions` ou
+`/sessions/[id]` par n'importe qui. Sans personne pour ouvrir l'app après
+l'heure de la session, la notif "Soirée validée" attendait indéfiniment
+le prochain visiteur (1h26 dans le cas remonté).
+
+**Fix** : nouvelle route `GET /api/cron/close-sessions`
+(`src/app/api/cron/close-sessions/route.ts`), même mécanisme que
+`/api/cron/reminders` (F7) et protégée par le même `CRON_SECRET`
+optionnel (en-tête `Authorization: Bearer <CRON_SECRET>`). Trouve les
+sessions `VOTING` dont le vote est fermé (`votingDeadline`, ou à défaut
+`date`, déjà dans le passé) et les clôture immédiatement via
+`closeSession` — sans attendre qu'un humain charge une page. Idempotent
+et concurrence-safe par construction : réutilise le garde-fou atomique du
+Bug 1, donc aucun risque de double-clôture même si le cron et
+`closeSessionIfDue` (laissé en place comme filet de sécurité, gratuit
+maintenant qu'il est race-safe) se chevauchent.
+
+**Config cron-job.org** (ou équivalent), à ajouter en plus des rappels F7
+et des 2 backfills coop déjà en place sur le même compte :
+
+```bash
+curl -X GET "https://ton-projet.vercel.app/api/cron/close-sessions" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+- URL : `https://ton-projet.vercel.app/api/cron/close-sessions`
+- Méthode : `GET`
+- Fréquence recommandée : **toutes les 15 minutes** (même pas que les
+  rappels F7 — cohérent, un seul compte cron-job.org peut gérer les deux
+  jobs en parallèle) : `*/15 * * * *`.
+- En-tête : `Authorization: Bearer <CRON_SECRET>` si la variable est
+  configurée (recommandé, même rationale que F7 — sans elle la route
+  reste appelable par n'importe qui connaissant l'URL, dégradation
+  silencieuse acceptable pour un petit groupe).
+
+**Tester** : créer une session avec une date/deadline proche (~2 min dans
+le futur), attendre que l'heure passe **sans ouvrir l'app**, puis
+déclencher manuellement `curl -X GET http://localhost:3000/api/cron/close-sessions`
+(local) — la session doit passer `SCHEDULED`/`CANCELLED` et l'annonce
+Discord partir, sans qu'aucune page `/sessions/*` n'ait été chargée entre
+temps.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (32 routes, dont
+  la nouvelle `/api/cron/close-sessions`)
+- Smoke test `next dev` : `GET /api/cron/close-sessions` répond (500
+  attendu en sandbox — pas de `DATABASE_URL`, la requête Prisma est
+  syntaxiquement valide et atteint la tentative de connexion) ; `/`,
+  `/sessions`, `/bibliotheque` toujours 200
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : clôture manuelle créateur (`closeSessionAction`),
+  annonce Discord (F6), rappels (F7), backfills coop — tous inchangés,
+  aucun n'est affecté par le garde-fou atomique (même contrat pour
+  l'appelant : `null` si déjà clôturée)
