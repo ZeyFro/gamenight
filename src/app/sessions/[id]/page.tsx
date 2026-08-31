@@ -409,6 +409,7 @@ export default async function SessionDetailPage({
                       id: v.user.id,
                       discordName: v.user.discordName,
                       discordAvatar: v.user.discordAvatar,
+                      color: v.user.color,
                     }))}
                   />
                 </Card>

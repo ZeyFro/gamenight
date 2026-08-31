@@ -9,6 +9,7 @@ interface Voter {
   id: string;
   discordName: string;
   discordAvatar: string | null;
+  color: string;
 }
 
 const MAX_VISIBLE = 5;
@@ -50,7 +51,7 @@ export function VoterAvatars({ voters }: { voters: Voter[] }) {
               src={voter.discordAvatar}
               alt={voter.discordName}
               size={AVATAR_SIZE}
-              className="ring-2 ring-surface"
+              ringColor={voter.color}
             />
           ))}
           {overflow > 0 && (
@@ -78,7 +79,12 @@ export function VoterAvatars({ voters }: { voters: Voter[] }) {
             <ul className="mt-4 flex flex-col gap-3">
               {voters.map((voter) => (
                 <li key={voter.id} className="flex items-center gap-3">
-                  <Avatar src={voter.discordAvatar} alt={voter.discordName} size={36} />
+                  <Avatar
+                    src={voter.discordAvatar}
+                    alt={voter.discordName}
+                    size={36}
+                    ringColor={voter.color}
+                  />
                   <span className="text-sm text-foreground">{voter.discordName}</span>
                 </li>
               ))}

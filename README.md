@@ -2105,6 +2105,7 @@ risque à répéter.
 | `npm run seed-superlatives` | Seed manuel des 6 superlatifs génériques par défaut (vote entre potes) — idempotent par nom, aussi lancé automatiquement à chaque build |
 | `npm run seed-badges` | Seed manuel des 15 badges par défaut — idempotent par nom, aussi lancé automatiquement à chaque build |
 | `npm run backfill-badges` | Backfill badges manuel (attribution rétroactive) — idempotent, jamais de notif Discord (voir § Badges automatiques), aussi lancé automatiquement à chaque build |
+| `npm run backfill-user-colors` | Backfill manuel de `User.color` pour les comptes jamais personnalisés (`colorCustomized=false`), assignation déterministe par ordre de création sur la palette 10 couleurs — idempotent, aussi lancé automatiquement à chaque build (PR 4/4, sous-PR 1) |
 | `npx prisma studio` | Explorateur visuel de la base de données |
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
@@ -2257,6 +2258,16 @@ src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)
 src/app/api/steam/callback/route.ts     # Vérifie le retour Steam, importe
 src/app/api/igdb/search/route.ts        # Recherche IGDB (utilisée par le form)
 src/app/classement/page.tsx             # Podium + tableau complet, filtres Global/Mois/Semaine (PR 9/9)
+src/lib/user-color.ts                   # USER_COLOR_PALETTE (10 couleurs), validation hex, conversions RGB, dégradé bannière fallback recoloré (PR 4/4, sous-PR 1)
+prisma/backfill-user-colors.mjs         # Backfill User.color idempotent, assignation déterministe par ordre de création, wired dans npm run build (PR 4/4, sous-PR 1)
+src/components/ColorPickerField.tsx     # Palette rapide (10 couleurs) + color picker avancé (hex + sliders RGB + preview live) (PR 4/4, sous-PR 1)
+src/components/ColorDot.tsx             # Petite pastille de couleur perso, réutilisée partout où le ring RankAvatar ne convient pas (PR 4/4, sous-PR 1)
+src/lib/calendar.ts                     # getCalendarData : grille horaire de dispo (réutilise isAvailableAt), sessions et meilleur créneau sur une plage de dates (PR 4/4, sous-PR 1)
+src/components/calendar/WeekGrid.tsx    # Vue Semaine : 7 jours empilés, strip horaire d'intensité de dispo, sessions du jour (PR 4/4, sous-PR 1)
+src/components/calendar/MonthGrid.tsx   # Vue Mois : grille 7 colonnes classique, cases cliquables vers leur semaine (PR 4/4, sous-PR 1)
+src/components/calendar/SessionBlock.tsx # Bloc session tappable (calendrier) → panneau résumé lecture seule (Radix Dialog) (PR 4/4, sous-PR 1)
+src/components/calendar/PoteFilterDrawer.tsx # Panneau "potes affichés" en vue Collective (PR 4/4, sous-PR 1)
+src/app/calendrier/page.tsx             # Vue calendrier collective (Semaine/Mois, Collectif/Individuel, meilleur créneau) — PR 4/4, sous-PR 1
 ```
 
 ## 5 corrections UX post-prod PR 8/9 (avant le classement)
@@ -3355,3 +3366,156 @@ temps.
   annonce Discord (F6), rappels (F7), backfills coop — tous inchangés,
   aucun n'est affecté par le garde-fou atomique (même contrat pour
   l'appelant : `null` si déjà clôturée)
+
+## PR 4/4, sous-PR 1/3 — Couleur perso + calendrier collectif (lecture seule)
+
+Dernière PR de la v1 (« refonte planning/dispos en vue calendrier
+collectif »), la plus grosse du projet à date. Découpage validé avant
+codage :
+
+1. **Sous-PR 1** (celle-ci) : `User.color` + `/calendrier` en lecture
+   seule (vues Semaine/Mois, Collectif/Individuel, intensité de dispo,
+   meilleur créneau, sessions cliquables vers un résumé).
+2. **Sous-PR 2** (à venir) : édition en glisser-déposer de ses propres
+   dispos (hebdo + exceptions) directement sur le calendrier.
+3. **Sous-PR 3** (à venir) : sessions pleinement interactives (Voter/
+   Modifier inline, création de session depuis le calendrier), décision
+   finale sur la nav (`Dispos` → `Calendrier` dans `BottomNav` ou non).
+
+Zéro nouvelle dépendance npm sur l'ensemble de la fonctionnalité (les
+trois sous-PR) : grille calendrier construite à la main (Tailwind CSS
+Grid + Framer Motion, même approche que `TierlistBoard`/
+`GameFilterDrawer`, plutôt qu'une lib calendrier pré-stylée qui aurait
+fallu combattre pour le mobile) ; le glisser-déposer de la sous-PR 2
+réutilisera `@dnd-kit/core`, déjà en dépendance et déjà éprouvé tactile
+par `TierlistBoard`.
+
+### Couleur perso (`User.color`)
+
+Nouveau champ `User.color` (hex, défaut `#8b5cf6` = l'accent violet
+existant de l'app) + `User.colorCustomized` (booléen, même pattern que
+`Game.playInfoManual`, PR 32) pour distinguer "valeur par défaut jamais
+touchée" de "choisie explicitement par l'utilisateur" — protège les
+couleurs personnalisées d'être écrasées par un futur backfill.
+
+**Palette** (10 couleurs vives, choisies pour rester distinguables d'un
+coup d'œil) :
+
+| Couleur | Hex |
+| --- | --- |
+| Violet (accent app, défaut) | `#8b5cf6` |
+| Rouge | `#ef4444` |
+| Orange | `#f97316` |
+| Jaune | `#eab308` |
+| Vert | `#22c55e` |
+| Cyan | `#06b6d4` |
+| Bleu | `#3b82f6` |
+| Rose | `#ec4899` |
+| Blanc | `#f8fafc` |
+| Anthracite | `#64748b` |
+
+**Color picker** (`/profil/parametres`, `ColorPickerField.tsx`), deux
+méthodes qui coexistent (style Linear/Vercel) :
+- **Palette rapide** : 10 pastilles cliquables, application immédiate.
+- **Personnalisé avancé** : input texte hex (validation format
+  `#RRGGBB`), 3 sliders RGB (0-255, valeur numérique éditable à côté),
+  preview live, bouton "Appliquer" explicite — les deux vues (hex et
+  sliders) restent synchronisées en temps réel dans les deux sens.
+
+**Backfill** (`prisma/backfill-user-colors.mjs`, wired dans `npm run
+build`, idempotent) : pour chaque compte avec `colorCustomized=false`,
+assignation déterministe `palette[index % 10]` où `index` est le rang
+par ordre de création du compte (`createdAt asc`). Le plus ancien compte
+du groupe reçoit donc automatiquement Violet (palette[0]) sans logique
+spéciale — couvre le cas "ma couleur = violet" demandé. Distribution
+garantie unique jusqu'à 10 comptes (taille actuelle du groupe) ; au-delà
+de 10, la palette boucle (limitation assumée, un groupe de potes ne
+dépasse pas 10 aujourd'hui).
+
+**Propagation** — la couleur perso apparaît partout, toujours via
+`style` inline (une couleur hex dynamique par utilisateur ne peut pas
+être une classe Tailwind arbitraire compilée au JIT depuis un template
+literal runtime) :
+- `Avatar` : nouvelle prop `ringColor` (remplace l'anneau neutre par un
+  `box-shadow` coloré) — utilisée par `VoterAvatars` (avatars des
+  voteurs sur `/sessions/[id]`).
+- Bannière `/profil` : dégradé fallback recoloré (`bannerFallbackStyle`)
+  quand pas de `bannerUrl`.
+- `ColorDot` (nouveau composant) : petite pastille, utilisée à côté du
+  nom sur `/profil`, `/potes/[id]` et dans `/classement` (podium +
+  tableau).
+- Calendrier : légende Collectif, filtre potes, meilleur créneau.
+
+**Arbitrage important** : `RankAvatar` (anneau coloré par rang —
+bronze/argent/or/légendaire, PR 27/28) garde sa signification actuelle,
+inchangée. La couleur perso n'y touche pas — elle apparaît en accent
+séparé (`ColorDot`) partout où c'est pertinent, jamais en remplaçant
+l'anneau de rang.
+
+### `/calendrier` (lecture seule)
+
+**Données** (`src/lib/calendar.ts`, `getCalendarData`) : pour chaque
+(jour, heure) affiché sur la plage demandée, réutilise `isAvailableAt`
+(`src/lib/availability.ts`, déjà utilisée par F5 pour le calcul
+"jouable") pour chaque utilisateur — le calendrier ne peut donc jamais
+diverger de ce que F5 utiliserait pour calculer une proposition à cette
+heure précise, sans logique de calcul de plages séparée à maintenir.
+Calcule aussi le "meilleur créneau" (max de dispos simultanées sur la
+plage affichée, premier trouvé chronologiquement en cas d'égalité) et
+regroupe les sessions par jour.
+
+**Vue Semaine** (défaut) : 7 jours empilés verticalement plutôt qu'une
+grille 7 colonnes × 24 lignes façon Outlook — choix mobile-first assumé
+(pas dans la demande initiale, décision de design prise en cours de
+route) : une vraie grille horaire forcerait soit un scroll horizontal
+sur 7 colonnes étroites, soit des cellules illisibles sur téléphone. Un
+strip horizontal d'intensité par jour (8h-2h le lendemain, plage
+resserrée sur les heures utiles pour une app de soirées) garde "toute la
+semaine d'un coup d'œil" avec un simple scroll vertical.
+
+**Vue Mois** : grille 7 colonnes classique (façon Google/Apple Calendar)
+— une case n'a besoin que d'un chiffre + un fond d'intensité, donc reste
+lisible en colonnes étroites sur mobile (contrairement à la vue Semaine
+qui a besoin de détail horaire). Clic sur un jour → renvoie vers sa
+semaine en vue Semaine.
+
+**Collectif vs Individuel** : mode Collectif (défaut) colore les
+segments/cases par intensité (`N/M` dispos, `color-mix()` sur l'accent
+violet — pas de palette heatmap séparée) et affiche un panneau
+"Potes affichés" (`PoteFilterDrawer`, filtre cases à cocher, même
+pattern que `GameFilterDrawer`). Mode Individuel affiche la dispo d'un
+seul pote (pastilles cliquables, "Toi" en premier) en tout-ou-rien par
+créneau.
+
+**Sessions** : bloc tappable par session (`SessionBlock`, statut par
+couleur — vote en cours / planifiée / terminée / annulée) ouvrant un
+panneau résumé (jeu, horaire, deadline de vote, propositions/votes,
+lien "Voir la fiche complète" vers `/sessions/[id]`) — volontairement
+lecture seule ici, `Voter`/`Modifier` inline arrivent en sous-PR 3.
+
+**Navigation** : tout dans l'URL (`?vue=`, `?date=`, `?mode=`, `?pote=`,
+`?potes=`), même philosophie que `/classement?periode=` — rendu serveur
+simple, pas de composant client pour la navigation elle-même.
+
+**Découvrabilité** : `/disponibilites` (qui reste la page de config
+détaillée — dispos hebdo + exceptions ponctuelles, inchangée) affiche
+maintenant une carte pointant vers `/calendrier` ; `/calendrier` pointe
+en retour vers `/disponibilites` pour la config détaillée.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (33 routes, dont
+  la nouvelle `/calendrier`)
+- Smoke test `next dev` : `/calendrier` répond 307 (redirection non
+  connecté, cohérent avec les autres routes protégées) sans erreur
+  d'application ; `/disponibilites`, `/profil/parametres`, `/classement`,
+  `/sessions` toujours accessibles (le 200 au lieu de 307 constaté sur
+  `/disponibilites`/`/sessions` est le comportement déjà connu du
+  sandbox, sans lien avec cette PR)
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `RankAvatar` (anneau de rang) inchangé, `VoterAvatars`
+  garde son comportement (juste l'anneau neutre remplacé par la couleur
+  perso du voteur), `/classement` et `/potes/[id]` inchangés à part
+  l'ajout de la pastille couleur, `/disponibilites` toujours pleinement
+  fonctionnel pour éditer dispos hebdo/exceptions

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { BannerForm } from "@/components/BannerForm";
+import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
 
 /**
@@ -57,6 +58,17 @@ export default async function ProfilParametresPage({
             initialUrl={user.bannerUrl}
             uploadEnabled={!!process.env.BLOB_READ_WRITE_TOKEN}
           />
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Ma couleur</h2>
+          <p className="text-sm text-muted">
+            Ta couleur perso, visible sur le calendrier, ta bannière (sans
+            image), ta fiche pote, tes votes et le classement.
+          </p>
+          <ColorPickerField currentColor={user.color} />
         </Card>
       </StaggerItem>
 
