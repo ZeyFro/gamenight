@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { prisma } from "@/lib/prisma";
 import { getCalendarData, type CalendarDay } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getMonthGridRange, type CalendarMode } from "@/lib/calendar-dates";
 import { parseDateOnly, sameUtcDate, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
@@ -63,6 +64,27 @@ export default async function CalendrierPage({
   const selectedDay: CalendarDay =
     data.days.find((d) => sameUtcDate(d.date, selectedDate)) ??
     ({ date: selectedDate, hours: [], sessions: [], maxAvailableCount: 0 } satisfies CalendarDay);
+
+  // Édition tactile des dispos (sous-PR 2) : on ne peut éditer que SA
+  // PROPRE dispo, jamais celle d'un pote même en vue Individuel sur son
+  // profil — `upsertOverride`/`removeOverrideForDate` opèrent toujours sur
+  // `getCurrentUser()`, donc éditer sans ce garde-fou modifierait en
+  // silence ta propre dispo tout en affichant celle d'un autre. Requêtes
+  // supplémentaires gated : aucun coût sur les autres vues (collectif, ou
+  // individuel sur un pote).
+  const canEdit = mode === "individuel" && selectedUserId === user.id;
+  const [ownWeeklySlots, ownOverrideForDay] = canEdit
+    ? await Promise.all([
+        prisma.weeklyAvailability.findMany({
+          where: { userId: user.id },
+          select: { dayOfWeek: true, startTime: true, endTime: true },
+        }),
+        prisma.availabilityOverride.findUnique({
+          where: { userId_date: { userId: user.id, date: selectedDate } },
+          select: { available: true, startTime: true, endTime: true },
+        }),
+      ])
+    : [undefined, undefined];
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
@@ -131,6 +153,9 @@ export default async function CalendrierPage({
         today={today}
         pote={sp.pote}
         potes={sp.potes}
+        canEdit={canEdit}
+        ownWeeklySlots={ownWeeklySlots}
+        ownOverrideForDay={ownOverrideForDay}
       />
 
       <p className="text-center text-xs text-faint">
