@@ -2,6 +2,7 @@ import type { Session, SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate } from "@/lib/wallclock";
+import { addDays } from "@/lib/calendar-dates";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -20,39 +21,6 @@ import { sameUtcDate } from "@/lib/wallclock";
  * N users pour une semaine) reste négligeable pour une biblio de groupe
  * d'amis (pas un souci de perf à cette échelle).
  */
-
-export const WEEK_LENGTH_DAYS = 7;
-
-/** Lundi 00:00 (UTC-horloge-murale) de la semaine contenant `date`. */
-export function getWeekStart(date: Date): Date {
-  const dayOfWeek = date.getUTCDay(); // 0 = dimanche
-  const daysSinceMonday = (dayOfWeek + 6) % 7;
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - daysSinceMonday)
-  );
-}
-
-export function addDays(date: Date, days: number): Date {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days)
-  );
-}
-
-/**
- * Grille de mois "pleine" (semaines complètes, lundi-dimanche) : premier
- * jour = lundi de la semaine du 1er du mois, dernier jour = dimanche de la
- * semaine du dernier jour du mois — évite une grille irrégulière (1ʳᵉ/
- * dernière semaine coupée) plus dure à mettre en page qu'un calendrier
- * mensuel classique.
- */
-export function getMonthGridRange(date: Date): { start: Date; end: Date } {
-  const firstOfMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-  const lastOfMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
-  return {
-    start: getWeekStart(firstOfMonth),
-    end: getWeekStart(lastOfMonth),
-  };
-}
 
 export interface CalendarUser {
   id: string;
