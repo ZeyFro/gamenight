@@ -63,6 +63,11 @@ export function DayTimeline({
   const highlightRef = useRef<HTMLDivElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const totalUsers = users.length;
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  const selectedUserColor =
+    mode === "individuel" && selectedUserId
+      ? (usersById.get(selectedUserId)?.color ?? "var(--accent)")
+      : undefined;
 
   const isToday = sameUtcDate(date, today);
   const prevDate = addDays(date, -1);
@@ -147,14 +152,28 @@ export function DayTimeline({
             mode === "individuel"
               ? !!selectedUserId && availableIds.includes(selectedUserId)
               : availableIds.length > 0;
-          const intensity =
-            mode === "collectif" && totalUsers > 0
-              ? availableIds.length / totalUsers
-              : isAvailable
-                ? 1
-                : 0;
           const sessionsAtHour = sessionsByHour.get(hour) ?? [];
           const isBestHour = bestHour === hour;
+
+          // Couleur du bloc (PR propagation User.color) : en individuel,
+          // toujours la couleur du pote affiché. En collectif, un seul
+          // pote dispo sur ce créneau → sa couleur perso directement
+          // (identifie qui est libre d'un coup d'œil) ; 2+ potes → violet
+          // accent neutre avec la même rampe d'intensité qu'avant —
+          // mélanger plusieurs couleurs perso arbitraires dans une barre
+          // de 28px serait illisible sur mobile, l'intensité reste le
+          // signal le plus clair pour "combien de monde".
+          let blockColor: string | undefined;
+          let opacityPercent = 100;
+          if (mode === "individuel") {
+            if (isAvailable) blockColor = selectedUserColor;
+          } else if (availableIds.length === 1) {
+            blockColor = usersById.get(availableIds[0])?.color ?? "var(--accent)";
+          } else if (availableIds.length > 1) {
+            blockColor = "var(--accent)";
+            opacityPercent =
+              totalUsers > 0 ? Math.round((availableIds.length / totalUsers) * 100) : 100;
+          }
 
           return (
             <div
@@ -170,10 +189,9 @@ export function DayTimeline({
                   title={`${availableIds.length}/${totalUsers} dispo${availableIds.length > 1 ? "s" : ""}`}
                   className={`h-7 rounded-md ${isBestHour ? "ring-2 ring-accent" : ""}`}
                   style={{
-                    backgroundColor:
-                      intensity > 0
-                        ? `color-mix(in srgb, var(--accent) ${Math.round(intensity * 100)}%, transparent)`
-                        : "var(--surface-hover)",
+                    backgroundColor: blockColor
+                      ? `color-mix(in srgb, ${blockColor} ${opacityPercent}%, transparent)`
+                      : "var(--surface-hover)",
                   }}
                 />
                 {sessionsAtHour.map((session) => (
