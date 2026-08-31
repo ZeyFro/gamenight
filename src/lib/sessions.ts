@@ -29,7 +29,8 @@ export function isVotingOpen(
 }
 
 export interface CloseSessionResult {
-  discord: PostToDiscordResult;
+  /** `null` : session clôturée sans tenter d'annonce Discord (0 votant, cf. `closeSession`). */
+  discord: PostToDiscordResult | null;
 }
 
 /**
@@ -90,6 +91,15 @@ async function claimSessionClose(
  * déjà plus `VOTING` au tout début de la fonction — même contrat pour
  * l'appelant (`closeSessionIfDue`, le nouveau cron, ou la clôture
  * manuelle créateur) dans les deux cas.
+ *
+ * Cas "0 votant" (bug remonté en prod, cycle de vie des soirées) : si
+ * aucune proposition jouable n'a reçu le moindre vote, on annule plutôt
+ * que de valider et annoncer une soirée que personne n'a explicitement
+ * choisie — même traitement que "aucune proposition jouable", mais SANS
+ * annonce Discord (décision produit : pas de bruit dans le salon pour une
+ * clôture qui ne reflète l'intérêt de personne). `discord: null` dans le
+ * résultat distingue ce cas du "aucune proposition jouable", qui reste
+ * annoncé ("❌ Soirée annulée").
  */
 export async function closeSession(
   sessionId: string
@@ -126,6 +136,12 @@ export async function closeSession(
   const winner = jouableProposals.reduce((best, proposal) =>
     proposal.votes.length > best.votes.length ? proposal : best
   );
+
+  if (winner.votes.length === 0) {
+    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
+    return { discord: null };
+  }
+
   const tie =
     jouableProposals.filter((p) => p.votes.length === winner.votes.length)
       .length > 1;
@@ -192,6 +208,48 @@ export async function markSessionDone(sessionId: string): Promise<void> {
     select: { decidedGameId: true },
   });
   await openSuperlativeVotingWindow(sessionId, session?.decidedGameId ?? null);
+}
+
+/**
+ * Délai de grâce avant qu'une soirée `SCHEDULED` passe automatiquement
+ * `DONE` — laisse le temps à la soirée d'avoir réellement lieu avant de
+ * la considérer terminée (une soirée qui commence à 20h n'est pas "finie"
+ * à 20h01). Valeur produit, facile à ajuster.
+ */
+const SCHEDULED_TO_DONE_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Bug prod (cycle de vie des soirées, fin août 2026) : `SCHEDULED → DONE`
+ * n'avait jusqu'ici aucun déclenchement automatique, seulement le bouton
+ * "Marquer comme terminée" (créateur, manuel). Une soirée décidée restait
+ * donc indéfiniment "Prévue" — visible pour toujours dans "À venir" et
+ * capable de rafler "Prochaine soirée" sur `/` (qui prend la plus
+ * ancienne session `VOTING`/`SCHEDULED`) tant que personne ne cliquait le
+ * bouton.
+ *
+ * Cette fonction trouve TOUTES les sessions `SCHEDULED` dont l'heure de
+ * début dépasse `SCHEDULED_TO_DONE_GRACE_MS`, sans aucune borne sur leur
+ * ancienneté — un premier passage après déploiement rattrape donc tout le
+ * backlog déjà accumulé, pas seulement les sessions récentes. Réutilise
+ * `markSessionDone` (idempotent, ouvre la fenêtre de vote de superlatifs)
+ * pour chacune — pas de logique dupliquée. Appelée par le cron
+ * `/api/cron/close-sessions`, TOUJOURS après la clôture des sessions
+ * `VOTING` (une soirée à 0 votant passe `CANCELLED` dans ce même run,
+ * donc ne peut plus jamais apparaître dans la requête `SCHEDULED`
+ * ci-dessous — l'ordre des deux passes garantit cet invariant).
+ */
+export async function closeOverdueScheduledSessions(): Promise<string[]> {
+  const cutoff = new Date(wallClockNow().getTime() - SCHEDULED_TO_DONE_GRACE_MS);
+  const overdue = await prisma.session.findMany({
+    where: { status: "SCHEDULED", date: { lte: cutoff } },
+    select: { id: true },
+  });
+
+  for (const session of overdue) {
+    await markSessionDone(session.id);
+  }
+
+  return overdue.map((s) => s.id);
 }
 
 /** Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée. */

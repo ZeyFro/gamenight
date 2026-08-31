@@ -3624,3 +3624,121 @@ cohérente sans modification.
 - Non-régression : `User.color`/backfill/color picker/propagation
   (mergés en sous-PR 1) non touchés ; `PoteFilterDrawer`/`SessionBlock`
   réutilisés tels quels ; aucune donnée/migration ; aucun glisser-déposer
+
+## Fix cycle de vie des soirées — fuseau horaire, clôture 0 votant, auto-DONE
+
+Bug remonté en prod (lundi 31 août 2026) : la home affichait "Prochaine
+soirée : dimanche 30 août 20:00" alors que c'était la veille, `/sessions`
+listait deux soirées du 30 août en "À venir"/"Prévue" au lieu de
+Historique, et la clôture automatique avait validé + annoncé sur Discord
+une soirée à **0 votant** ("Personne n'a voté (clôture automatique)").
+Investigation d'abord (lecture de code seule, pas d'accès DB en sandbox),
+plan de correction validé, puis implémentation — 3 causes racines
+indépendantes, toutes corrigées dans cette seule PR ciblée (aucune
+migration, aucune nouvelle dépendance).
+
+### Cause 1 (dominante) — aucune transition automatique `SCHEDULED → DONE`
+
+"Prévue" est le libellé de `SCHEDULED`, pas de `VOTING` — les soirées
+n'étaient donc pas bloquées en vote, elles avaient déjà été clôturées et
+décidées. Le vrai trou : `markSessionDone` (`src/lib/sessions.ts`)
+n'avait **aucun** déclenchement automatique, uniquement le bouton
+"Marquer comme terminée" (créateur, manuel). Une soirée décidée restait
+donc "Prévue" indéfiniment — visible pour toujours dans "À venir"
+(`src/app/sessions/page.tsx`, filtré par statut, jamais par date) et
+capable de rafler "Prochaine soirée" sur `/` (`findFirst` triée par date
+croissante sur `VOTING`/`SCHEDULED`, donc la plus ancienne "gagne"
+éternellement si elle ne passe jamais `DONE`).
+
+**Fix** : nouvelle fonction `closeOverdueScheduledSessions`
+(`src/lib/sessions.ts`) — trouve toutes les sessions `SCHEDULED` dont
+l'heure de début dépasse `SCHEDULED_TO_DONE_GRACE_MS` (6h, valeur
+produit facile à ajuster), sans aucune borne de "récence" (rattrape tout
+le backlog déjà accumulé dès le premier passage, pas seulement les
+sessions récentes), et appelle `markSessionDone` pour chacune (réutilisé
+tel quel — pas de logique dupliquée, ouvre aussi la fenêtre de vote de
+superlatifs comme le bouton manuel). Appelée par le cron **existant**
+`/api/cron/close-sessions` (aucun nouveau cron externe à configurer),
+**après** la clôture des votes `VOTING` de ce même run — garantit qu'une
+soirée à 0 votant (cause 3) ne peut jamais atteindre `DONE` puisqu'elle
+vient de passer `CANCELLED` avant que la requête `SCHEDULED` ne
+s'exécute.
+
+Vérifié que l'auto-`DONE` ne perturbe pas le vote de superlatifs
+(`src/lib/superlative-voting.ts`) : la fenêtre est de **24h** (pas une
+poignée de secondes), et `finalizeSuperlativeVoting` (qui poste
+l'annonce Discord des récompenses) ne se déclenche que paresseusement au
+chargement d'une page — jamais synchronement depuis le cron. Un
+auto-`DONE` à 3h du matin n'envoie donc aucune notification nocturne, il
+ouvre juste silencieusement une fenêtre que le groupe verra à son
+prochain passage sur l'app.
+
+### Cause 2 — décalage horaire systémique (Europe/Paris vs UTC réel)
+
+Les dates saisies sont stockées comme horloge murale sans conversion
+(`Date.UTC` littéral sur les chiffres tapés) — cohérent pour le
+stockage/affichage, mais `wallClockNow()` renvoyait `new Date()` (heure
+UTC **réelle** du serveur). Paris étant UTC+2 l'été (CEST), une soirée à
+23h30 heure de Paris n'était considérée due qu'à 23h30 UTC réel, soit
+01h30 le lendemain à Paris — explique le timing de la notif Discord
+reçue vers 01h00.
+
+**Fix** (`src/lib/wallclock.ts`) : `wallClockNow()` recalculée comme
+horloge murale de `Europe/Paris` — lit l'heure réelle actuelle telle
+qu'affichée à Paris via `Intl.DateTimeFormat` (DST géré automatiquement
+par la donnée IANA, aucune librairie de fuseaux ajoutée), puis la
+reconstruit avec les mêmes conventions `Date.UTC` que le stockage. Un
+seul point de correction, propagé sans modification à `isVotingOpen`,
+`closeSessionIfDue`, `resolveSessionSchedule`, `todayDateOnly`. Les
+`new Date()` bruts restants ont été remplacés par `wallClockNow()` dans
+le cron (`src/app/api/cron/close-sessions/route.ts`) et les 2
+pré-filtres de page (`src/app/page.tsx`, `src/app/sessions/page.tsx`) —
+sinon ils redevenaient une source de désaccord avec les comparaisons
+internes désormais corrigées (plus strictes qu'avant, donc pouvant
+exclure à tort des sessions en réalité dues).
+
+Cas limite minuit : géré par construction — `Intl.DateTimeFormat` avec
+`timeZone` calcule toujours la date/heure locale correcte, y compris
+quand le passage à minuit heure de Paris ne correspond pas au passage à
+minuit UTC réel (vérifié manuellement : 2026-08-30T22:15:00Z UTC réel →
+2026-08-31T00:15 heure de Paris, correctement reconstruit).
+
+### Cause 3 — clôture automatique validée avec 0 votant
+
+Dans `closeSession`, la sélection du gagnant (`jouableProposals.reduce`)
+n'avait aucun plancher sur le nombre de votes — si toutes les
+propositions "jouables" avaient 0 vote, l'une d'elles "gagnait" quand
+même et la soirée était validée + annoncée sur Discord
+("🎮 Soirée validée", avec le texte déjà prévu "Personne n'a voté
+(clôture automatique)" dans `discord-announce.ts`).
+
+**Fix** (décision produit validée) : si le "gagnant" parmi les
+propositions jouables a 0 vote, la session passe `CANCELLED`
+**silencieusement** — aucune annonce Discord (contrairement au cas
+"aucune proposition jouable", qui reste annoncé "❌ Soirée annulée").
+`CloseSessionResult.discord` devient `PostToDiscordResult | null` pour
+distinguer ce cas ; les 2 appelants (`api/cron/close-sessions/route.ts`,
+`app/sessions/actions.ts`) sont mis à jour pour ne pas planter sur ce
+`null`.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (33 routes,
+  inchangées — aucune route ajoutée/retirée)
+- Script Node autonome reproduisant l'algorithme `wallClockNow()` : CEST
+  (été, UTC+2) et CET (hiver, UTC+1) tous deux corrects, cas limite
+  minuit correct, et reproduction exacte du bug rapporté ("session à
+  23h30 heure de Paris considérée due exactement à l'heure réelle de
+  Paris 23h30", au lieu de 2h plus tard avant le fix)
+- Smoke test `next dev` : `/`, `/sessions`, `/disponibilites` toujours
+  200 ; `/calendrier` 307 (non connecté, cohérent) ; `GET
+  /api/cron/close-sessions` répond 500 en sandbox (attendu — pas de
+  `DATABASE_URL`, l'erreur confirme que la requête Prisma est atteinte
+  sans erreur de code, cf. logs : "No database host or connection
+  string was set")
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `claimSessionClose` (garde-fou de concurrence,
+  PR 3.5/4) inchangé ; clôture manuelle créateur, annonce Discord (F6),
+  rappels (F7), calendrier (`/calendrier`, refonte précédente) — aucun
+  n'est affecté ; aucune migration, aucune nouvelle dépendance

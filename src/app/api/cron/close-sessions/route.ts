@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { closeSession } from "@/lib/sessions";
+import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
+import { wallClockNow } from "@/lib/wallclock";
 
 /**
  * Route destinée à être appelée toutes les 15 min par un cron externe
@@ -22,6 +23,19 @@ import { closeSession } from "@/lib/sessions";
  * filet de sécurité) a déjà traité une session entre le `findMany`
  * ci-dessous et l'appel à `closeSession`, ce dernier renvoie simplement
  * `null` sans reposter sur Discord.
+ *
+ * Fix bug prod (cycle de vie des soirées, fin août 2026) : cette route
+ * fait maintenant DEUX passes. D'abord `VOTING → SCHEDULED/CANCELLED`
+ * (ci-dessus, avec le nouveau cas "0 votant → CANCELLED en silence", cf.
+ * `closeSession`) ; ensuite `SCHEDULED → DONE`
+ * (`closeOverdueScheduledSessions`), qui n'avait jusqu'ici AUCUN
+ * déclenchement automatique (seulement le bouton manuel "Marquer comme
+ * terminée") — une soirée décidée restait donc "Prévue" indéfiniment,
+ * visible pour toujours dans "À venir" et capable de rafler "Prochaine
+ * soirée" sur `/`. `wallClockNow()` (et non `new Date()` brut) partout
+ * ici : les dates stockées représentent l'heure de Paris, pas un vrai
+ * instant UTC (cf. `src/lib/wallclock.ts`) — comparer avec l'heure UTC
+ * réelle du serveur décalait toutes ces clôtures de 1-2h (CET/CEST).
  */
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -32,7 +46,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const now = new Date();
+  const now = wallClockNow();
   const dueSessions = await prisma.session.findMany({
     where: {
       status: "VOTING",
@@ -57,7 +71,11 @@ export async function GET(request: Request) {
     }
 
     closed.push(session.id);
-    if (!result.discord.ok) {
+    if (!result.discord) {
+      console.log(
+        `[cron/close-sessions] Session ${session.id} annulée en silence (0 votant) — pas d'annonce Discord.`
+      );
+    } else if (!result.discord.ok) {
       console.error(
         `[cron/close-sessions] Session ${session.id} clôturée, mais échec de l'annonce Discord: ${result.discord.error}`
       );
@@ -66,5 +84,17 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ checked: dueSessions.length, closed, skipped });
+  // Toujours APRÈS la clôture des votes ci-dessus : une soirée à 0 votant
+  // vient de passer CANCELLED, donc ne peut plus apparaître dans la
+  // requête SCHEDULED de closeOverdueScheduledSessions (cf. son
+  // commentaire) — l'ordre des deux passes garantit qu'une soirée à 0
+  // votant ne peut jamais atteindre DONE.
+  const done = await closeOverdueScheduledSessions();
+  if (done.length > 0) {
+    console.log(
+      `[cron/close-sessions] ${done.length} soirée(s) SCHEDULED passée(s) DONE (délai de grâce dépassé) : ${done.join(", ")}`
+    );
+  }
+
+  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done });
 }

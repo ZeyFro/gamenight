@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
-import { formatDateTimeFr } from "@/lib/wallclock";
+import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Logo } from "@/components/Logo";
@@ -100,7 +100,7 @@ export default async function Home({
   }
 
   const dueSession = await prisma.session.findFirst({
-    where: { status: "VOTING", date: { lte: new Date() } },
+    where: { status: "VOTING", date: { lte: wallClockNow() } },
     select: { id: true },
     orderBy: { date: "asc" },
   });

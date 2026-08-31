@@ -65,17 +65,48 @@ export function sameUtcDate(a: Date, b: Date): boolean {
   );
 }
 
+const GROUP_TIME_ZONE = "Europe/Paris";
+
+const NOW_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: GROUP_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 /**
- * "Maintenant" pour comparer à une Session.date. Limitation connue : c'est
- * l'heure UTC réelle du serveur (Vercel), alors que les dates saisies sont
- * stockées SANS conversion de fuseau (cf. commentaire en tête de fichier) —
- * la clôture auto d'une session sera donc décalée du fuseau réel du groupe
- * par rapport à UTC (1-2h en France). Acceptable pour ce MVP ; à revoir
- * avec une vraie gestion de fuseau si besoin (même sujet pour les rappels
- * F7).
+ * "Maintenant" pour comparer aux dates de session/dispo stockées. Fix
+ * (bug prod remonté fin août 2026, cycle de vie des soirées) : les dates
+ * saisies sont stockées comme horloge murale SANS conversion (cf.
+ * commentaire en tête de fichier) — elles représentent l'heure de
+ * `GROUP_TIME_ZONE`, pas un vrai instant UTC. Avant ce fix, `wallClockNow`
+ * renvoyait `new Date()` (l'heure UTC réelle du serveur Vercel), ce qui
+ * décalait TOUTES les comparaisons "maintenant vs date de soirée" de 1-2h
+ * (CET/CEST) — une soirée à 23h30 heure de Paris n'était considérée due
+ * qu'à 23h30 UTC réel, soit 01h30 le lendemain à Paris.
+ *
+ * Ici, "maintenant" est recalculé comme horloge murale : on lit l'heure
+ * réelle actuelle telle qu'affichée à Paris (`Intl.DateTimeFormat`, DST
+ * géré automatiquement par la donnée IANA), puis on la reconstruit avec
+ * les mêmes conventions `Date.UTC` que le stockage — cohérent avec
+ * `parseDateAndTime`/`parseDateOnly` de bout en bout. Un seul point de
+ * correction : `isVotingOpen`, `closeSessionIfDue`,
+ * `resolveSessionSchedule`, `todayDateOnly` en héritent tous sans être
+ * modifiés. Les `new Date()` bruts restants (cron, pré-filtres de page)
+ * doivent explicitement être remplacés par `wallClockNow()` — sinon ils
+ * redeviennent une source de désaccord avec les comparaisons internes
+ * désormais corrigées.
  */
 export function wallClockNow(): Date {
-  return new Date();
+  const parts = NOW_PARTS_FORMATTER.formatToParts(new Date());
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return new Date(
+    Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"))
+  );
 }
 
 /** Aujourd'hui à minuit (même convention horloge-murale/UTC). */
