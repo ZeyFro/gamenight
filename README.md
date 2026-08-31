@@ -3742,3 +3742,41 @@ distinguer ce cas ; les 2 appelants (`api/cron/close-sessions/route.ts`,
   PR 3.5/4) inchangé ; clôture manuelle créateur, annonce Discord (F6),
   rappels (F7), calendrier (`/calendrier`, refonte précédente) — aucun
   n'est affecté ; aucune migration, aucune nouvelle dépendance
+
+## Propagation `User.color` dans `/calendrier`
+
+PR ciblée : les blocs de dispo de `DayTimeline` utilisaient jusqu'ici un
+violet fixe, sans lien avec la couleur perso choisie par chacun
+(`User.color`, PR 4/4 sous-PR 1). `getCalendarData` renvoyait déjà
+`color` sur chaque `CalendarUser` — aucun changement nécessaire côté
+requête, `DayTimeline` recevait déjà la liste `users` complète.
+
+**Individuel** : le bloc d'un créneau dispo prend directement la couleur
+de l'utilisateur affiché (`selectedUserColor`, dérivée de `users` par
+`selectedUserId`).
+
+**Collectif** : un seul pote dispo sur le créneau → sa couleur perso
+directement (identifie qui est libre d'un coup d'œil, sans ouvrir le
+panneau potes) ; 2+ potes dispo → violet accent neutre avec la rampe
+d'intensité déjà en place (opacité proportionnelle à
+`dispos/total`). Choix assumé : mélanger plusieurs couleurs perso
+arbitraires dans une barre de 28px serait illisible sur mobile — au-delà
+d'un seul pote, l'intensité reste le signal le plus clair pour "combien
+de monde est dispo".
+
+**Inchangé** (comme demandé) : la pastille "bon créneau" du mini-mois et
+le surlignage "meilleur créneau collectif" de la timeline restent en
+violet accent — ce sont des indicateurs collectifs, pas liés à un pote
+en particulier.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (33 routes,
+  inchangées)
+- Smoke test `next dev` : `/calendrier` et `/calendrier?mode=individuel`
+  répondent 307 (non connecté, cohérent) sans erreur d'application
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `MiniMonthCalendar` (pastille), surlignage meilleur
+  créneau, `SessionBlock`, `ColorDot` (légende) inchangés ; aucune
+  donnée/migration ; aucun glisser-déposer (sous-PR suivante)
