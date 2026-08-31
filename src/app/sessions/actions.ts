@@ -275,7 +275,9 @@ export async function closeSessionAction(formData: FormData) {
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
 
-  if (result && !result.discord.ok) {
+  // `result.discord === null` : clôture silencieuse (0 votant, cf.
+  // `closeSession`) — pas un échec d'envoi, rien à signaler.
+  if (result?.discord && !result.discord.ok) {
     redirect(`/sessions/${sessionId}?discord=echec`);
   }
 }

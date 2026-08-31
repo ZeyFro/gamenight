@@ -9,7 +9,12 @@ import {
   getPendingSuperlativeVoteSessionIds,
 } from "@/lib/superlative-voting";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
-import { formatDateTimeFr, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
+import {
+  formatDateTimeFr,
+  todayDateOnly,
+  toDateInputValue,
+  wallClockNow,
+} from "@/lib/wallclock";
 import { createSession } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -82,7 +87,7 @@ export default async function SessionsPage({
     : null;
 
   const dueSessions = await prisma.session.findMany({
-    where: { status: "VOTING", date: { lte: new Date() } },
+    where: { status: "VOTING", date: { lte: wallClockNow() } },
     select: { id: true },
   });
   await Promise.all(dueSessions.map((s) => closeSessionIfDue(s.id)));
