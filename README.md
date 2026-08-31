@@ -3780,3 +3780,105 @@ en particulier.
 - Non-régression : `MiniMonthCalendar` (pastille), surlignage meilleur
   créneau, `SessionBlock`, `ColorDot` (légende) inchangés ; aucune
   donnée/migration ; aucun glisser-déposer (sous-PR suivante)
+
+## Édition tactile des dispos depuis `/calendrier` (sous-PR 2/3)
+
+PR ciblée : jusqu'ici `/calendrier` était en lecture seule (sous-PR 1/3
+puis redesign "Outlook mobile", sous-PR 1.5). Cette PR ajoute la
+possibilité de modifier ses propres dispos directement en tapant sur un
+créneau de la timeline, sans repasser par `/disponibilites`.
+
+**Contrainte de schéma centrale** : `AvailabilityOverride` a une
+contrainte `@@unique([userId, date])` — une seule ligne d'exception par
+jour et par user, avec une seule plage `startTime`/`endTime` (ou journée
+entière). C'est la même limitation que le formulaire d'exception de
+`/disponibilites` ; ce n'est pas une régression introduite ici. Taper sur
+une heure qui n'est pas déjà exactement celle de l'exception du jour
+**remplace** donc l'exception existante (elle "se déplace" sur la
+nouvelle heure, l'ancienne heure redevient celle du planning hebdo) —
+option validée explicitement plutôt qu'un rejet avec message d'erreur,
+jugée plus fluide sur mobile. Un toast `"Exception remplacée"` confirme
+ce cas ; sinon `"Dispo ajoutée"` / `"Indispo ajoutée"`, ou `"Exception
+supprimée — retour au planning habituel"` en re-tapant le créneau déjà en
+exception (toggle).
+
+**Portée de l'édition** : le mode édition n'apparaît **que** en vue
+Individuel, et uniquement quand on regarde **sa propre** fiche
+(`canEdit = mode === "individuel" && selectedUserId === user.id`,
+calculé côté serveur dans `calendrier/page.tsx`). Aucune édition en vue
+Collectif, ni en Individuel sur le profil d'un pote — les server actions
+(`upsertOverride`, `removeOverrideForDate`) opèrent toujours sur
+`getCurrentUser()` en interne et ignorent tout `userId` venu du client ;
+sans ce garde-fou côté UI, éditer en regardant la fiche d'un pote
+aurait modifié en silence sa propre dispo tout en affichant celle d'un
+autre.
+
+**Aucune logique dupliquée** : les modifications passent par les
+**mêmes** server actions que `/disponibilites`
+(`src/app/disponibilites/actions.ts`). `upsertOverride`/`removeOverride`
+gagnent un `revalidatePath("/calendrier")` en plus de
+`/disponibilites` (pour ne pas afficher de données périmées en
+naviguant entre les deux pages). Nouvelle fonction
+`removeOverrideForDate(formData)` — variante de `removeOverride`
+adressée par date plutôt que par id opaque, puisque le calendrier
+connaît la date éditée mais pas l'id de la ligne en base ; même
+contrainte unique, même garde-fou d'appartenance.
+
+**Toujours une exception ponctuelle, jamais le planning hebdo** :
+taper un créneau crée/modifie uniquement `AvailabilityOverride` pour ce
+jour précis — `WeeklyAvailability` (planning hebdo récurrent) n'est
+jamais touché depuis le calendrier, conformément à la demande ("reste
+sur `/disponibilites`"). Un badge `📌 Exception ce jour` s'affiche sur
+la journée ouverte dès qu'une exception existe, pour que la distinction
+hebdo/ponctuel reste visible sans ambiguïté.
+
+**Rendu** : en mode édition, chaque heure devient un `<button>` (bordure
+pointillée accent, `active:scale-95` au tap) au lieu d'un `<div>`
+statique ; la disponibilité affichée est recalculée en direct côté
+client via `isAvailableAt(instant, ownWeeklySlots, localOverride)` — la
+même fonction pure que le serveur, réutilisée telle quelle plutôt que de
+patcher l'état local de façon incrémentale, pour garantir que l'heure
+"libérée" par un déplacement d'exception affiche toujours la bonne
+valeur (celle dérivée du planning hebdo) sans requête supplémentaire.
+État optimiste (`localOverride`, mis à jour immédiatement au tap, server
+action en arrière-plan via `startTransition`) — même pattern que
+`TierlistBoard`/`ActionForm`, pas de `router.refresh()`.
+
+Le geste de swipe jour précédent/suivant (sous-PR 1.5) reste inchangé et
+ne rentre pas en conflit avec le tap : son seuil de détection (50px)
+exclut naturellement les taps courts.
+
+**Hors périmètre** (comme demandé) : pas de glisser-déposer pour étendre
+une plage horaire (le tap seul suffit sur mobile) ; pas de création de
+session depuis le calendrier ; pas d'édition du planning hebdomadaire
+récurrent depuis le calendrier (reste sur `/disponibilites`) — ces
+points sont prévus pour la sous-PR 3/3.
+
+### Fichiers touchés
+
+- `src/app/disponibilites/actions.ts` — `revalidatePath("/calendrier")`
+  ajouté sur `upsertOverride`/`removeOverride` ; nouvelle fonction
+  `removeOverrideForDate`
+- `src/app/calendrier/page.tsx` — calcul de `canEdit`, requêtes
+  `ownWeeklySlots`/`ownOverrideForDay` (gated, aucun coût hors vue
+  éditable), props passées à `DayTimeline`
+- `src/components/calendar/DayTimeline.tsx` — mode édition (`editMode`),
+  état optimiste (`localOverride`), `handleTapHour`, rendu
+  bouton/div conditionnel, badge exception
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (mêmes routes
+  qu'avant, inchangées)
+- Smoke test `next dev` : `/calendrier` et `/calendrier?mode=individuel`
+  répondent 307 (non connecté, cohérent avec le sandbox sans
+  `AUTH_SECRET`/DB live) sans erreur d'application ; le tap-to-persist
+  réel n'a pas pu être exercé en sandbox (pas de session/DB), seule
+  l'atteignabilité de la route et l'absence de crash sont vérifiées ici,
+  comme pour les PR précédentes de ce chantier
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : lecture seule inchangée en Collectif et en Individuel
+  sur un pote ; `MiniMonthCalendar`, surlignage meilleur créneau
+  collectif, couleurs perso (sous-PR précédente), swipe jour
+  précédent/suivant tous inchangés ; aucune migration

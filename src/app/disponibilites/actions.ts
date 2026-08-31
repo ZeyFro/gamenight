@@ -70,6 +70,7 @@ export async function upsertOverride(formData: FormData) {
   });
 
   revalidatePath("/disponibilites");
+  revalidatePath("/calendrier");
 }
 
 export async function removeOverride(formData: FormData) {
@@ -83,4 +84,26 @@ export async function removeOverride(formData: FormData) {
     where: { id, userId: user.id },
   });
   revalidatePath("/disponibilites");
+  revalidatePath("/calendrier");
+}
+
+/**
+ * Variante de `removeOverride` adressée par date plutôt que par id — le
+ * calendrier (`/calendrier`, édition tactile) connaît la date éditée, pas
+ * l'id opaque de la ligne en base. Même contrainte unique `(userId, date)`
+ * que `upsertOverride`, même garde-fou d'appartenance.
+ */
+export async function removeOverrideForDate(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const dateStr = String(formData.get("date") ?? "");
+  if (!dateStr) return;
+  const date = parseDateOnly(dateStr);
+
+  await prisma.availabilityOverride.deleteMany({
+    where: { userId: user.id, date },
+  });
+  revalidatePath("/disponibilites");
+  revalidatePath("/calendrier");
 }
