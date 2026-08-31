@@ -2263,11 +2263,12 @@ prisma/backfill-user-colors.mjs         # Backfill User.color idempotent, assign
 src/components/ColorPickerField.tsx     # Palette rapide (10 couleurs) + color picker avancé (hex + sliders RGB + preview live) (PR 4/4, sous-PR 1)
 src/components/ColorDot.tsx             # Petite pastille de couleur perso, réutilisée partout où le ring RankAvatar ne convient pas (PR 4/4, sous-PR 1)
 src/lib/calendar.ts                     # getCalendarData : grille horaire de dispo (réutilise isAvailableAt), sessions et meilleur créneau sur une plage de dates (PR 4/4, sous-PR 1)
-src/components/calendar/WeekGrid.tsx    # Vue Semaine : 7 jours empilés, strip horaire d'intensité de dispo, sessions du jour (PR 4/4, sous-PR 1)
-src/components/calendar/MonthGrid.tsx   # Vue Mois : grille 7 colonnes classique, cases cliquables vers leur semaine (PR 4/4, sous-PR 1)
+src/lib/calendar-dates.ts               # Helpers de date + navigation purs (addDays, getMonthGridRange, buildCalendarHref) — séparés de calendar.ts pour rester importables depuis les composants client (PR refonte /calendrier)
+src/components/calendar/MiniMonthCalendar.tsx # Mini-mois compact repliable (pattern Outlook mobile), pastille collectif ≥50% (PR refonte /calendrier) — remplace l'ancien MonthGrid.tsx
+src/components/calendar/DayTimeline.tsx # Timeline verticale 24h de la journée sélectionnée, auto-scroll ~18h, swipe jour (PR refonte /calendrier) — remplace l'ancien WeekGrid.tsx
 src/components/calendar/SessionBlock.tsx # Bloc session tappable (calendrier) → panneau résumé lecture seule (Radix Dialog) (PR 4/4, sous-PR 1)
 src/components/calendar/PoteFilterDrawer.tsx # Panneau "potes affichés" en vue Collective (PR 4/4, sous-PR 1)
-src/app/calendrier/page.tsx             # Vue calendrier collective (Semaine/Mois, Collectif/Individuel, meilleur créneau) — PR 4/4, sous-PR 1
+src/app/calendrier/page.tsx             # Vue calendrier (mini-mois + timeline jour, Collectif/Individuel) — PR 4/4, sous-PR 1 (refondu en PR "refonte /calendrier")
 ```
 
 ## 5 corrections UX post-prod PR 8/9 (avant le classement)
@@ -3519,3 +3520,107 @@ en retour vers `/disponibilites` pour la config détaillée.
   perso du voteur), `/classement` et `/potes/[id]` inchangés à part
   l'ajout de la pastille couleur, `/disponibilites` toujours pleinement
   fonctionnel pour éditer dispos hebdo/exceptions
+
+## PR refonte `/calendrier` — pattern "Outlook mobile" (avant sous-PR 2/3)
+
+Retour terrain sur `/calendrier` (sous-PR 1) : le rendu Semaine (7 jours
+empilés)/Mois (grille) manquait de clarté sur mobile. Refonte de
+l'affichage — toujours en lecture seule, aucune donnée/schéma touché,
+aucun glisser-déposer (sous-PR 2 suivante) — pour reproduire le pattern
+de la vue calendrier mobile d'Outlook : mini-mois compact en haut +
+timeline verticale de la journée sélectionnée en dessous. S'insère avant
+les sous-PR 2 (glisser-déposer) et 3 (sessions interactives + création),
+inchangées, juste réordonnées après celle-ci — elle reprend aussi la
+décision de nav initialement prévue pour la sous-PR 3.
+
+Une seule PR (pas de nouveau découpage à tiroirs) : cette refonte touche
+uniquement l'affichage d'une page, aucune donnée/schéma, aucune autre
+route — un remplacement net de `WeekGrid`/`MonthGrid` par deux nouveaux
+composants, pas une famille de features séparables.
+
+### `MiniMonthCalendar` (nouveau, remplace `MonthGrid.tsx`)
+
+Grille mois compacte, repliable — ouverte par défaut, se replie
+automatiquement au tap sur une date (laisse la place à la timeline,
+rouvrable via un chevron `▲`/`▼`, état local non persisté dans l'URL).
+Aujourd'hui mis en évidence, jour sélectionné en surbrillance accent. En
+mode Collectif, pastille violette sur les jours avec un "bon" créneau
+commun — seuil : `maxAvailableCount / totalUsers ≥ 50%` (majorité du
+groupe dispo à un moment de la journée). Pas de pastille en mode
+Individuel (non spécifié, laissé simple). Flèches `‹`/`›` du mini-mois =
+navigation par mois (déplace la date sélectionnée vers le 1er du mois
+voisin — même source de vérité `?date=` que la sélection de jour, pas
+d'état "mois parcouru" séparé) ; contrairement au tap sur une date
+précise, elles laissent le calendrier ouvert.
+
+### `DayTimeline` (nouveau, remplace `WeekGrid.tsx`)
+
+Colonne unique, 24h complètes (pas de fenêtre réduite — demande
+explicite), heures en lignes. Auto-scroll vers 18h à **chaque** changement
+de jour (pas seulement au premier chargement de la page) : le composant
+est remonté à chaque navigation jour (`key={date}` posé par la page),
+donc un `useEffect` sans dépendances suffit à relancer le scroll "au
+chargement" de chaque nouvelle journée. Dispos affichées comme cellules
+colorées par intensité (collectif, `color-mix` sur l'accent) ou dispo
+on/off (individuel) ; sessions insérées à leur horaire (réutilise
+`SessionBlock` tel quel, aucun changement). En Collectif, le créneau le
+plus fort de la journée est surligné (anneau + `✨`) — dérivé directement
+de `day.hours`, sans toucher à `src/lib/calendar.ts`.
+
+Changement de jour par flèches `‹`/`›` (remplace le prev/next
+semaine/mois) + swipe tactile : `touchstart`/`touchend` natifs (pas
+`@dnd-kit/core` — sa mécanique item→zone de dépôt ne colle pas à un
+balayage horizontal sur une colonne qui doit rester scrollable
+verticalement), zéro nouvelle dépendance. Le scroll vertical natif n'est
+jamais intercepté (`preventDefault` jamais appelé) ; seul un geste
+nettement plus horizontal que vertical (delta X > 50px et > 1.5× le delta
+Y) déclenche la navigation jour.
+
+### Refactor `src/lib/calendar.ts` → `src/lib/calendar-dates.ts`
+
+`addDays`, `getMonthGridRange` (et l'ex-`getWeekStart`, devenue interne,
+`getWeekStart` public et `WEEK_LENGTH_DAYS` supprimés — plus de vue
+Semaine) déplacés dans un nouveau module pur `src/lib/calendar-dates.ts`
+(zéro import Prisma) — nécessaire pour être importable depuis
+`MiniMonthCalendar`/`DayTimeline` (composants client) : `calendar.ts`
+importe `@/lib/prisma`, donc un composant client qui l'importerait ferait
+planter le bundle (code Node-only envoyé au navigateur). Ce module
+héberge aussi le nouveau `buildCalendarHref`, partagé par la page serveur
+et les deux composants client pour calculer exactement les mêmes liens
+sans dupliquer la logique de query-string.
+
+### `/calendrier/page.tsx` réécrit
+
+Une seule requête `getCalendarData` sur toute la grille du mois affiché
+(consommée à la fois par `MiniMonthCalendar` et par `DayTimeline`, qui ne
+fait qu'un `find` dedans pour le jour sélectionné) — pas de requête
+séparée par jour. URL simplifiée : `?vue=` disparaît (plus de bascule
+Semaine/Mois), restent `?date=`, `?mode=`, `?pote=`, `?potes=`. Le
+bandeau texte "meilleur créneau" est retiré (redondant avec la pastille
+mini-mois + le surlignage dans la timeline).
+
+### Navigation app : "Dispos" → "Calendrier"
+
+`NAV_LINKS` (`src/components/nav-links.tsx`, partagé par `BottomNav` et
+`HeaderNavLinks`) : l'entrée "Dispos" pointe maintenant vers
+`/calendrier` au lieu de `/disponibilites`, même `CalendarIcon`. Pas de
+7e icône, pas de réorganisation de grille. `/disponibilites` reste
+pleinement fonctionnelle et accessible via les liens croisés déjà posés
+en sous-PR 1 (carte `/disponibilites` → `/calendrier`, lien de pied de
+page `/calendrier` → `/disponibilites`) — sa copie a été relue, toujours
+cohérente sans modification.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (33 routes,
+  inchangées — refonte d'affichage pure, aucune route ajoutée/retirée)
+- Smoke test `next dev` : `/calendrier` (avec `?date=`/`?mode=`) répond
+  307 (non connecté, cohérent) sans erreur d'application dans les logs ;
+  `/disponibilites`, `/sessions`, `/classement`, `/potes`, `/profil`
+  toujours accessibles (200/307 selon la routebase, cohérent avec le
+  comportement déjà connu du sandbox)
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `User.color`/backfill/color picker/propagation
+  (mergés en sous-PR 1) non touchés ; `PoteFilterDrawer`/`SessionBlock`
+  réutilisés tels quels ; aucune donnée/migration ; aucun glisser-déposer
