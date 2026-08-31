@@ -34,6 +34,18 @@ model User {
   silenceReminders Boolean  @default(false)
   createdAt        DateTime @default(now())
 
+  // PR 4/4 (sous-PR 1) — couleur perso, retrouvée partout dans l'app
+  // (calendrier, bannière fallback, /potes/[id], avatars voteurs,
+  // classement). Défaut violet (= l'accent existant) pour tout nouveau
+  // compte tant qu'il n'a rien choisi. `colorCustomized` distingue "valeur
+  // par défaut jamais touchée" de "choisie par l'utilisateur" — même
+  // pattern que `Game.playInfoManual` (PR 32) : sans ce garde-fou, le
+  // backfill qui diversifie les couleurs des comptes par défaut (rejoué à
+  // chaque déploiement pour couvrir les nouveaux comptes) écraserait
+  // indéfiniment un choix humain au déploiement suivant.
+  color           String  @default("#8b5cf6")
+  colorCustomized Boolean @default(false)
+
   // Chantier XP/niveaux/rangs — `xpTotal` est un cache dénormalisé (somme
   // de `XpEvent.amount`), maintenu par `awardXp` à chaque ajout d'XP.
   // Indexé pour le scoreboard (/classement, PR 9/9) qui trie par XP sur

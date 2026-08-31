@@ -8,6 +8,7 @@ import {
   type ScoreboardPeriod,
 } from "@/lib/scoreboard";
 import { RankAvatar } from "@/components/RankAvatar";
+import { ColorDot } from "@/components/ColorDot";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -46,8 +47,9 @@ function PodiumSpot({ entry, place }: { entry: ScoreboardEntry; place: 1 | 2 | 3
         rank={entry.rank}
         size={avatarSize}
       />
-      <p className="w-full truncate text-center text-sm font-medium text-foreground">
-        {entry.discordName}
+      <p className="flex w-full items-center justify-center gap-1.5 truncate text-center text-sm font-medium text-foreground">
+        <span className="truncate">{entry.discordName}</span>
+        <ColorDot color={entry.color} />
       </p>
       <p className="text-xs text-muted">{entry.periodXp} XP</p>
       <div className={`w-full rounded-t-xl bg-surface-hover ${pedestalHeight}`} />
@@ -79,6 +81,7 @@ function ScoreboardRow({
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 truncate font-medium text-foreground">
           <span className="truncate">{entry.discordName}</span>
+          <ColorDot color={entry.color} />
           {isMe && (
             <Badge tone="accent" className="shrink-0">
               Toi

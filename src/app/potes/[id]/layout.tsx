@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/Badge";
 import { PoteTabs } from "@/components/PoteTabs";
 import { RankAvatar } from "@/components/RankAvatar";
+import { ColorDot } from "@/components/ColorDot";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 
 /**
@@ -57,8 +58,9 @@ export default async function PoteLayout({
         <div className="mt-2 flex items-center gap-3">
           <RankAvatar src={pote.discordAvatar} alt={pote.discordName} level={level} rank={rank} size={48} />
           <div>
-            <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground sm:text-2xl">
               {pote.discordName}
+              <ColorDot color={pote.color} title={`Couleur de ${pote.discordName}`} />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${rank.colorClass}`}>

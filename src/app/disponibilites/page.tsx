@@ -14,7 +14,7 @@ import {
   upsertOverride,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { ActionForm } from "@/components/ActionForm";
 import { Stagger, StaggerItem, PopIn } from "@/components/motion";
 
@@ -44,6 +44,21 @@ export default async function DisponibilitesPage() {
           dispo pour chaque proposition de soirée.
         </p>
       </div>
+
+      <Card className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            📅 Vue calendrier collective
+          </p>
+          <p className="mt-0.5 text-sm text-muted">
+            Visualise les dispos de tout le groupe, les sessions et les
+            votes en cours sur une même vue.
+          </p>
+        </div>
+        <ButtonLink href="/calendrier" variant="secondary" size="sm" fullWidthOnMobile className="shrink-0">
+          Voir le calendrier
+        </ButtonLink>
+      </Card>
 
       <Stagger className="flex flex-col gap-3">
         {DAY_LABELS_MON_FIRST.map(({ dayOfWeek, label }) => {

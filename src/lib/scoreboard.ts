@@ -8,6 +8,7 @@ export interface ScoreboardEntry {
   userId: string;
   discordName: string;
   discordAvatar: string | null;
+  color: string;
   level: number;
   rank: Rank;
   title: string;
@@ -57,7 +58,7 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
   const start = periodStart(period);
 
   const users = await prisma.user.findMany({
-    select: { id: true, discordName: true, discordAvatar: true, xpTotal: true },
+    select: { id: true, discordName: true, discordAvatar: true, color: true, xpTotal: true },
   });
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
@@ -86,6 +87,7 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
       userId: user.id,
       discordName: user.discordName,
       discordAvatar: user.discordAvatar,
+      color: user.color,
       level,
       rank: rankForLevel(level),
       title: titleForLevel(level),

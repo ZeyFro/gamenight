@@ -5,6 +5,29 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
+import { isValidHexColor } from "@/lib/user-color";
+
+/**
+ * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
+ * `colorCustomized: true` protège définitivement ce choix du backfill
+ * `prisma/backfill-user-colors.mjs`, qui ne touche que les comptes encore
+ * à la valeur par défaut.
+ */
+export async function updateUserColor(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+
+  const color = String(formData.get("color") ?? "").trim();
+  if (!isValidHexColor(color)) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { color, colorCustomized: true },
+  });
+
+  revalidatePath("/profil");
+  revalidatePath("/profil/parametres");
+}
 
 /** Bouton "🔕 Couper les rappels" du profil (F7) : ne touche qu'aux pings, pas à l'envoi du message. */
 export async function toggleSilenceReminders() {

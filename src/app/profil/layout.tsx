@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
+import { bannerFallbackStyle } from "@/lib/user-color";
 import { RankAvatar } from "@/components/RankAvatar";
+import { ColorDot } from "@/components/ColorDot";
 import { ProfilTabs } from "@/components/ProfilTabs";
 import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
 import { StreakFlame } from "@/components/StreakFlame";
@@ -68,7 +70,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8 sm:pb-12">
       <div className="relative">
         <div
-          className={`h-40 w-full sm:h-56 md:h-64 ${!user.bannerUrl ? "profile-banner-default" : ""}`}
+          className="h-40 w-full sm:h-56 md:h-64"
           style={
             user.bannerUrl
               ? {
@@ -76,7 +78,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }
-              : undefined
+              : bannerFallbackStyle(user.color)
           }
         />
         <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
@@ -91,8 +93,9 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
         <div className="-mt-16 flex items-end gap-4 sm:-mt-20">
           <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} size={96} />
           <div className="flex flex-1 flex-col gap-1 pb-1">
-            <h1 className="text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
               {user.discordName}
+              <ColorDot color={user.color} title="Ta couleur perso" />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
