@@ -9,6 +9,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { BannerForm } from "@/components/BannerForm";
 import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
+import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 
 /**
  * Onglet "Rappels perso" — en réalité tous les réglages de compte
@@ -80,6 +81,12 @@ export default async function ProfilParametresPage({
             <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
               La vérification Steam a échoué. Réessaie.
             </p>
+          )}
+          {steam === "indisponible" && (
+            <ApiErrorBanner
+              message="Données Steam temporairement indisponibles."
+              onRetry={user.steamId64 ? reimportSteamLibrary : undefined}
+            />
           )}
           {steam === "importe" && (
             <p className="rounded-lg bg-accent/10 p-3 text-sm text-accent">

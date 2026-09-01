@@ -4408,3 +4408,99 @@ nécessaire.
   introuvables) pointent désormais vers cette 404 brandée au lieu de la
   page par défaut de Next, sans changement de leur propre logique ;
   `layout.tsx`, `PageTransition`, `Header`/`BottomNav` inchangés
+
+## Audit des APIs externes (Sprint 1, suite fiabilisation)
+
+Revue de tous les `fetch()` vers Steam Web API, Steam Store, IGDB/Twitch et
+Discord (6 fichiers : `src/lib/{steam,steam-store,igdb,discord,discord-profile,deepl}.ts`)
+et de tous leurs appelants, pour vérifier qu'aucune panne externe ne peut
+faire planter une page.
+
+**Déjà sûr avant cette PR** (vérifié, non modifié) :
+- `postToDiscord` (`discord.ts`) et `translateToFrench` (`deepl.ts`) —
+  try/catch interne, ne lèvent jamais.
+- `refreshDiscordProfile` (`discord-profile.ts`) — try/catch interne.
+- `fetchIgdbGameDetails`/`searchIgdbGames`/`fetchSteamStoreDetails` lèvent
+  **volontairement** (convention documentée dans ces fichiers) — mais tous
+  leurs appelants (`getGameDetails`, `/api/igdb/search`, `family-import.ts`,
+  `backfill-steam-coop.ts`, `enrichGamesForCoopFilter`) catchent déjà
+  correctement, avec repli sur le cache DB existant ou un état d'erreur
+  explicite. `getGameDetails` en particulier : en cas d'échec IGDB, ressert
+  le cache déjà en base (même périmé) s'il existe, sinon `error:
+  "fetch_failed"` — exactement le comportement demandé pour IGDB down.
+
+**Deux trous trouvés et corrigés** — les seuls appels Steam Web API
+(`verifySteamOpenId`, `importSteamLibrary` → `getOwnedGames`) qui n'étaient
+catchés nulle part :
+- `src/app/api/steam/callback/route.ts` — une panne Steam pendant le
+  callback OAuth faisait planter toute la route (500 brut) au lieu d'un
+  retour propre à `/profil/parametres`.
+- `src/app/actions.ts` (`reimportSteamLibrary`) — même trou sur le bouton
+  "Réimporter ma bibliothèque Steam".
+
+Les deux sont maintenant enveloppés dans un `try/catch` qui redirige vers
+`/profil/parametres?steam=indisponible` (nouvelle valeur, distincte de
+`steam=erreur` qui reste réservée à un échec de vérification OpenID) —
+`.bibliotheque` continue d'afficher les jeux déjà en base sans interruption
+puisque cette page ne fait aucun appel Steam live.
+
+**`<ApiErrorBanner />`** (`src/components/ApiErrorBanner.tsx`, nouveau) —
+composant réutilisable demandé : bandeau ⚠️ + message + bouton "Réessayer"
+optionnel, fond `bg-warning/10` / bordure `border-warning/40` (cohérent
+avec le token `--warning` déjà utilisé ailleurs). Purement présentatif —
+pas d'état interne : il "disparaît automatiquement" simplement parce que
+l'appelant arrête de le rendre une fois son erreur résolue. `onRetry`
+accepte indifféremment une fonction cliente locale ou une server action
+passée en prop (même pattern que `ActionForm.tsx` déjà existant). Cablé à
+3 endroits réels :
+- `AjouterJeuForm.tsx` — remplace le message d'erreur texte de la
+  recherche IGDB, retry = relance la recherche.
+- `/jeux/[id]` — remplace le message "IGDB injoignable" de
+  `GameIgdbSection`, sans retry (le bouton "Rafraîchir les infos" déjà
+  présent sur la page fait déjà ce rôle).
+- `/profil/parametres` — nouvel état `steam=indisponible`, retry =
+  `reimportSteamLibrary` (seulement si un compte Steam est déjà lié,
+  sinon pas de bouton pertinent).
+
+**Discord (toast) — délibérément inchangé.** La demande évoque un toast
+"Notif Discord non envoyée" pour une action directe, mais toutes les
+actions qui postent dans Discord (création/modification/clôture/renvoi de
+session) redirigent déjà après coup et affichent un bandeau inline via
+`?discord=echec` sur `/sessions/[id]` — `ActionForm.tsx` documente
+explicitement pourquoi un toast n'est pas utilisé sur une action qui
+redirige (pas le temps de s'afficher avant le changement de page). Ce
+mécanisme existant couvre déjà 100% des actions Discord "directes" de
+l'app ; l'action n'est jamais bloquée par un échec d'envoi (déjà vrai
+avant cette PR). Remplacer ce pattern documenté par un toast aurait été
+une régression de cohérence sans gain fonctionnel.
+
+### Fichiers touchés
+
+- `src/components/ApiErrorBanner.tsx` (nouveau)
+- `src/app/api/steam/callback/route.ts` — try/catch autour de
+  `verifySteamOpenId`/`importSteamLibrary`
+- `src/app/actions.ts` — try/catch dans `reimportSteamLibrary`
+- `src/app/profil/parametres/page.tsx` — nouvel état `steam=indisponible`
+  via `<ApiErrorBanner>`
+- `src/components/AjouterJeuForm.tsx` — `<ApiErrorBanner>` pour l'échec de
+  recherche IGDB
+- `src/app/jeux/[id]/page.tsx` — `<ApiErrorBanner>` pour l'échec IGDB de
+  la fiche jeu
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : `/` et `/bibliotheque/ajouter` répondent `200`
+  sans erreur d'application dans les logs. Une vraie panne Steam/IGDB n'a
+  pas pu être simulée en sandbox (pas d'accès réseau externe) — les
+  chemins d'erreur ont été vérifiés par lecture de code (`try/catch`
+  autour de chaque appel réseau non catché trouvé par l'audit) et
+  cohérence TypeScript via `next build`
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : tous les chemins de succès (import Steam, recherche
+  IGDB, fiche jeu) inchangés — seuls les chemins d'échec, auparavant non
+  catchés à ces deux endroits, sont désormais gérés ; `steam=erreur`/
+  `steam=importe`/`steam=prive` conservent exactement leur comportement
+  existant
