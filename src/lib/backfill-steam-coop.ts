@@ -31,6 +31,7 @@
 import { prisma } from "@/lib/prisma";
 import { fetchSteamStoreDetails, SteamStoreHttpError } from "@/lib/steam-store";
 import { shuffle } from "@/lib/shuffle";
+import { logger } from "@/lib/logger";
 
 const REQUEST_DELAY_MS = 1500;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,7 +67,7 @@ export async function runSteamCoopBackfill(): Promise<SteamCoopBackfillSummary> 
   );
 
   if (games.length === 0) {
-    console.log("[steam-store] Aucun jeu Steam éligible.");
+    logger.info("steam-store", "Aucun jeu Steam éligible.");
     return {
       eligible: 0,
       processed: 0,
@@ -92,14 +93,15 @@ export async function runSteamCoopBackfill(): Promise<SteamCoopBackfillSummary> 
 
     if (Date.now() - startedAt > TIME_BUDGET_MS) {
       stoppedEarly = true;
-      console.warn(
-        `[steam-store] Arrêt anticipé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
+      logger.warn(
+        "steam-store",
+        `Arrêt anticipé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
       );
       break;
     }
 
     processed += 1;
-    console.log(`[steam-store] Processing ${processed}/${games.length}: ${game.name}...`);
+    logger.info("steam-store", `Processing ${processed}/${games.length}: ${game.name}...`);
 
     try {
       // `steamAppId` non-null garanti par le `where` ci-dessus.
@@ -107,11 +109,12 @@ export async function runSteamCoopBackfill(): Promise<SteamCoopBackfillSummary> 
 
       if (!details) {
         noData += 1;
-        console.log(`[steam-store] ${game.name} → pas de fiche Steam Store exploitable.`);
+        logger.info("steam-store", `${game.name} → pas de fiche Steam Store exploitable.`);
       } else {
         const categoryNames = details.categories.map((c) => c.description).join(", ");
-        console.log(
-          `[steam-store] ${game.name} → categories: [${categoryNames}] → isCoop=${details.isCoop}`
+        logger.info(
+          "steam-store",
+          `${game.name} → categories: [${categoryNames}] → isCoop=${details.isCoop}`
         );
 
         if (details.isCoop !== game.isCoop) {
@@ -127,24 +130,23 @@ export async function runSteamCoopBackfill(): Promise<SteamCoopBackfillSummary> 
     } catch (error) {
       if (error instanceof SteamStoreHttpError && error.status === 429) {
         rateLimited = true;
-        console.warn(
-          `[steam-store] Rate limit Steam Store atteint après ${processed}/${games.length} jeu(x) traité(s) — arrêt, le reste sera couvert par un prochain appel.`
+        logger.warn(
+          "steam-store",
+          `Rate limit Steam Store atteint après ${processed}/${games.length} jeu(x) traité(s) — arrêt, le reste sera couvert par un prochain appel.`
         );
         break;
       }
       failed += 1;
-      console.error(
-        `[steam-store] Échec pour ${game.name} (appid=${game.steamAppId})`,
-        error
-      );
+      logger.error("steam-store", error, { gameId: game.id, gameName: game.name, steamAppId: game.steamAppId });
     }
 
     await sleep(REQUEST_DELAY_MS);
   }
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log(
-    `[steam-store] Terminé en ${elapsedSeconds}s — ${updated} mis à jour, ${unchanged} déjà corrects, ${noData} sans donnée exploitable, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (arrêt anticipé, fenêtre de temps)" : ""}${rateLimited ? " (arrêt anticipé, rate limit)" : ""}.`
+  logger.info(
+    "steam-store",
+    `Terminé en ${elapsedSeconds}s — ${updated} mis à jour, ${unchanged} déjà corrects, ${noData} sans donnée exploitable, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (arrêt anticipé, fenêtre de temps)" : ""}${rateLimited ? " (arrêt anticipé, rate limit)" : ""}.`
   );
 
   return {

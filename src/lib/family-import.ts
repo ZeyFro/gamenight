@@ -20,6 +20,7 @@
  */
 
 import { searchIgdbGames, type IgdbGameCandidate } from "@/lib/igdb";
+import { logger } from "@/lib/logger";
 
 /**
  * En dessous de ce score de similarité (0–1), un résultat IGDB n'est pas
@@ -134,11 +135,11 @@ export async function matchGameName(input: string): Promise<FamilyMatchResult> {
   try {
     candidates = await searchIgdbGames(input);
   } catch (error) {
-    console.error(`[family-import] Recherche IGDB échouée pour "${input}"`, error);
+    logger.error("family-import", error, { input });
   }
 
   if (candidates.length === 0) {
-    console.log(`[family-import] Recherche "${input}"... aucun résultat IGDB.`);
+    logger.info("family-import", `Recherche "${input}"... aucun résultat IGDB.`);
     return { input, status: "needsConfirmation", candidate: null, confidence: 0 };
   }
 
@@ -150,8 +151,9 @@ export async function matchGameName(input: string): Promise<FamilyMatchResult> {
   const status: FamilyMatchStatus =
     best.confidence >= MATCH_CONFIDENCE_THRESHOLD ? "matched" : "needsConfirmation";
 
-  console.log(
-    `[family-import] Recherche "${input}"... trouvé "${best.candidate.name}" (confiance ${Math.round(best.confidence * 100)}%) → ${status === "matched" ? "importé" : "à confirmer"}`
+  logger.info(
+    "family-import",
+    `Recherche "${input}"... trouvé "${best.candidate.name}" (confiance ${Math.round(best.confidence * 100)}%) → ${status === "matched" ? "importé" : "à confirmer"}`
   );
 
   return { input, status, candidate: best.candidate, confidence: best.confidence };

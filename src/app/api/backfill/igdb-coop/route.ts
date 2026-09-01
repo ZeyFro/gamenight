@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { runIgdbCoopBackfill } from "@/lib/backfill-igdb-coop";
+import { logger } from "@/lib/logger";
 
 /**
  * Plafond du plan Vercel Hobby (voir README, § "Rappels drôles avant
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
 
   after(() => {
     runIgdbCoopBackfill().catch((error) => {
-      console.error("[igdb-coop] Échec du backfill", error);
+      logger.error("igdb-coop", error);
     });
   });
 

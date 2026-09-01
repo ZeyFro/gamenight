@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import type { MessageCategory } from "@prisma/client";
 
 export type MessageVariables = Record<string, string>;
@@ -163,8 +164,10 @@ export function substituteVariables(
   );
 
   return substituted.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => {
-    console.warn(
-      `[message-templates] Variable {${key}} non fournie pour ce message ("${template}") — remplacée par un texte générique. Ce message est probablement coché pour une catégorie où {${key}} n'existe pas (voir /admin?tab=messages).`
+    logger.warn(
+      "message-templates",
+      `Variable {${key}} non fournie pour ce message — remplacée par un texte générique. Ce message est probablement coché pour une catégorie où {${key}} n'existe pas (voir /admin?tab=messages).`,
+      { key, template }
     );
     return GENERIC_VARIABLE_FALLBACKS[key] ?? key.replaceAll("_", " ");
   });

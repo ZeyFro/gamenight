@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { runSteamCoopBackfill } from "@/lib/backfill-steam-coop";
+import { logger } from "@/lib/logger";
 
 /**
  * Plafond du plan Vercel Hobby — voir la même note dans
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
   after(() => {
     runSteamCoopBackfill().catch((error) => {
-      console.error("[steam-store] Échec du backfill", error);
+      logger.error("steam-store", error);
     });
   });
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * Réplique exactement le mapping avatar/nom du provider Discord next-auth
@@ -57,6 +58,6 @@ export async function refreshDiscordProfile(discordId: string, accessToken: stri
       },
     });
   } catch (error) {
-    console.error("[auth] Échec du rafraîchissement du profil Discord", error);
+    logger.error("discord-profile", error, { discordId });
   }
 }

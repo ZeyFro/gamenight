@@ -8,6 +8,13 @@ import { getCurrentUser } from "@/lib/current-user";
 import { importSteamLibrary, type ImportSteamLibraryResult } from "@/lib/steam";
 import { checkLibraryBadges } from "@/lib/badges";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import {
+  addManualGameSchema,
+  idSchema,
+  playerCountsSchema,
+  VALIDATION_ERROR_KEY,
+} from "@/lib/validations";
+import { logger } from "@/lib/logger";
 
 export async function addManualGame(formData: FormData) {
   const user = await getCurrentUser();
@@ -16,31 +23,33 @@ export async function addManualGame(formData: FormData) {
     redirect(`/bibliotheque/ajouter?error=${RATE_LIMIT_ERROR_KEY}`);
   }
 
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
-
-  const igdbIdRaw = formData.get("igdbId");
-  const igdbId = igdbIdRaw ? Number(igdbIdRaw) : null;
+  const nameInput = addManualGameSchema.safeParse({
+    name: String(formData.get("name") ?? "").trim(),
+    igdbId: formData.get("igdbId") ? String(formData.get("igdbId")) : "",
+  });
+  if (!nameInput.success) {
+    redirect(`/bibliotheque/ajouter?error=${VALIDATION_ERROR_KEY}`);
+  }
+  const { name } = nameInput.data;
+  const igdbId = nameInput.data.igdbId ? Number(nameInput.data.igdbId) : null;
   const coverUrl = formData.get("coverUrl")
     ? String(formData.get("coverUrl"))
     : null;
   const isCoop = formData.get("isCoop") === "on";
+
   const minPlayersRaw = formData.get("minPlayers");
   const maxPlayersRaw = formData.get("maxPlayers");
-  const minPlayers = minPlayersRaw ? Number(minPlayersRaw) : 2;
-  const maxPlayers = maxPlayersRaw ? Number(maxPlayersRaw) : null;
-
   // Bug corrigé : une saisie manuelle sans borne (ex. minPlayers=999) faussait
   // le calcul "jouable" de F5. minPlayers doit rester un nombre de joueurs
   // plausible, et maxPlayers (si renseigné) ne peut pas être sous minPlayers.
-  const invalidMin =
-    !Number.isFinite(minPlayers) || minPlayers < 1 || minPlayers > 100;
-  const invalidMax =
-    maxPlayers !== null &&
-    (!Number.isFinite(maxPlayers) || maxPlayers < minPlayers);
-  if (invalidMin || invalidMax) {
+  const playersInput = playerCountsSchema.safeParse({
+    minPlayers: minPlayersRaw ? Number(minPlayersRaw) : 2,
+    maxPlayers: maxPlayersRaw ? Number(maxPlayersRaw) : null,
+  });
+  if (!playersInput.success) {
     redirect("/bibliotheque/ajouter?error=joueurs_invalide");
   }
+  const { minPlayers, maxPlayers } = playersInput.data;
 
   const gameData = {
     name,
@@ -102,8 +111,9 @@ export async function updateGame(formData: FormData): Promise<UpdateGameResult> 
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const gameId = String(formData.get("gameId") ?? "");
-  if (!gameId) return { ok: false, error: "missing_game" };
+  const gameIdInput = idSchema.safeParse(formData.get("gameId"));
+  if (!gameIdInput.success) return { ok: false, error: "missing_game" };
+  const gameId = gameIdInput.data;
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return { ok: false, error: "not_found" };
@@ -116,17 +126,14 @@ export async function updateGame(formData: FormData): Promise<UpdateGameResult> 
   const isCoop = formData.get("isCoop") === "on";
   const minPlayersRaw = formData.get("minPlayers");
   const maxPlayersRaw = formData.get("maxPlayers");
-  const minPlayers = minPlayersRaw ? Number(minPlayersRaw) : 2;
-  const maxPlayers = maxPlayersRaw ? Number(maxPlayersRaw) : null;
-
-  const invalidMin =
-    !Number.isFinite(minPlayers) || minPlayers < 1 || minPlayers > 100;
-  const invalidMax =
-    maxPlayers !== null &&
-    (!Number.isFinite(maxPlayers) || maxPlayers < minPlayers);
-  if (invalidMin || invalidMax) {
+  const playersInput = playerCountsSchema.safeParse({
+    minPlayers: minPlayersRaw ? Number(minPlayersRaw) : 2,
+    maxPlayers: maxPlayersRaw ? Number(maxPlayersRaw) : null,
+  });
+  if (!playersInput.success) {
     return { ok: false, error: "joueurs_invalide" };
   }
+  const { minPlayers, maxPlayers } = playersInput.data;
 
   let name = game.name;
   if (game.source === "MANUAL") {
@@ -158,8 +165,9 @@ export async function toggleGameCoop(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "toggleGameCoop")) return;
 
-  const gameId = String(formData.get("gameId") ?? "");
-  if (!gameId) return;
+  const gameIdInput = idSchema.safeParse(formData.get("gameId"));
+  if (!gameIdInput.success) return;
+  const gameId = gameIdInput.data;
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return;
@@ -184,8 +192,9 @@ export async function removeUserGame(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "removeUserGame")) return;
 
-  const gameId = String(formData.get("gameId") ?? "");
-  if (!gameId) return;
+  const gameIdInput = idSchema.safeParse(formData.get("gameId"));
+  if (!gameIdInput.success) return;
+  const gameId = gameIdInput.data;
 
   await prisma.userGame.deleteMany({ where: { userId: user.id, gameId } });
   revalidatePath("/bibliotheque");
@@ -211,7 +220,7 @@ export async function reimportSteamLibrary() {
   try {
     result = await importSteamLibrary(user.id, user.steamId64);
   } catch (error) {
-    console.error("[steam] Réimport échoué (Steam down ?)", error);
+    logger.error("steam", error, { userId: user.id });
     redirect("/profil/parametres?steam=indisponible");
   }
 

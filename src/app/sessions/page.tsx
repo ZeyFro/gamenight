@@ -23,6 +23,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 
 type SessionRowData = Session & {
   decidedGame: Game | null;
@@ -35,6 +36,7 @@ const CREATE_ERROR_MESSAGES: Record<string, string> = {
   session_trop_proche:
     "Cette session est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
   rate_limited: RATE_LIMIT_MESSAGE,
+  [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
 
 function SessionRow({

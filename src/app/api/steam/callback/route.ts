@@ -8,6 +8,7 @@ import {
 } from "@/lib/steam";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const session = await auth();
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     steamId64 = await verifySteamOpenId(request.nextUrl.searchParams);
   } catch (error) {
-    console.error("[steam] Vérification OpenID injoignable (Steam down ?)", error);
+    logger.error("steam", error, { step: "verify-openid" });
     return NextResponse.redirect(
       new URL("/profil/parametres?steam=indisponible", request.url)
     );
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
   try {
     result = await importSteamLibrary(user.id, steamId64);
   } catch (error) {
-    console.error("[steam] Import de bibliothèque échoué (Steam down ?)", error);
+    logger.error("steam", error, { step: "import-library", userId: user.id });
     return NextResponse.redirect(
       new URL("/profil/parametres?steam=indisponible", request.url)
     );

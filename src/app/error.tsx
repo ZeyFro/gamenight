@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button, ButtonLink } from "@/components/ui/Button";
+import { logger } from "@/lib/logger";
 
 /**
  * Error boundary racine (Sprint 1 v2, fiabilisation) — Next impose un
@@ -19,9 +20,12 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Capturé par les logs Vercel en prod — pas de service d'erreur dédié
-    // dans cette app pour l'instant.
-    console.error(error);
+    // Error boundary racine, Client Component — ce `console.error` structuré
+    // s'exécute dans le navigateur (visible en devtools), pas dans les logs
+    // serveur Vercel : la plupart des crashs applicatifs de cette app
+    // passent par une server action ou une route, déjà loggués côté serveur
+    // via `logger.error` avant de remonter jusqu'ici le cas échéant.
+    logger.error("error-boundary", error, { digest: error.digest });
   }, [error]);
 
   return (

@@ -2,7 +2,7 @@ import type { Session, SessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate } from "@/lib/wallclock";
-import { addDays } from "@/lib/calendar-dates";
+import { addDays, findBestSlot, type BestSlot, type HourSlot } from "@/lib/calendar-dates";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -47,24 +47,12 @@ export interface CalendarSession {
   players: CalendarUser[];
 }
 
-export interface HourSlot {
-  hour: number;
-  availableUserIds: string[];
-}
-
 export interface CalendarDay {
   date: Date;
   hours: HourSlot[];
   sessions: CalendarSession[];
   /** Max de `availableUserIds.length` sur les heures du jour — résumé rapide pour la vue Mois. */
   maxAvailableCount: number;
-}
-
-export interface BestSlot {
-  date: Date;
-  hour: number;
-  count: number;
-  userIds: string[];
 }
 
 export interface CalendarData {
@@ -169,7 +157,6 @@ export async function getCalendarData(
   }
 
   const days: CalendarDay[] = [];
-  let bestSlot: BestSlot | null = null;
 
   for (
     let dayDate = new Date(rangeStart);
@@ -195,15 +182,6 @@ export async function getCalendarData(
 
       hours.push({ hour, availableUserIds });
       maxAvailableCount = Math.max(maxAvailableCount, availableUserIds.length);
-
-      if (!bestSlot || availableUserIds.length > bestSlot.count) {
-        bestSlot = {
-          date: new Date(dayDate),
-          hour,
-          count: availableUserIds.length,
-          userIds: availableUserIds,
-        };
-      }
     }
 
     days.push({
@@ -217,6 +195,6 @@ export async function getCalendarData(
   return {
     users,
     days,
-    bestSlot: bestSlot && bestSlot.count > 0 ? bestSlot : null,
+    bestSlot: findBestSlot(days),
   };
 }
