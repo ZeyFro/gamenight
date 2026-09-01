@@ -1,6 +1,18 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
+import { refreshDiscordProfile } from "@/lib/discord-profile";
+
+/**
+ * Fenêtre de rafraîchissement avatar/pseudo depuis l'API Discord (bug
+ * remonté : l'ancien avatar restait affiché indéfiniment tant que le JWT
+ * de session restait valide, le callback `signIn` ci-dessous ne
+ * s'exécutant qu'à une VRAIE reconnexion OAuth). Même ordre de grandeur
+ * que le throttle de `touchStreak` (12h) — assez fréquent pour que le
+ * changement d'avatar/pseudo Discord se propage vite, assez rare pour ne
+ * jamais peser sur la latence des pages protégées.
+ */
+const DISCORD_PROFILE_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -43,10 +55,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       return true;
     },
-    async jwt({ token, profile }) {
+    async jwt({ token, profile, account }) {
       if (profile?.id) {
         token.discordId = profile.id as string;
       }
+
+      // Connexion OAuth fraîche : `signIn` vient d'upserter des données à
+      // jour, on peut repousser le prochain rafraîchissement. On garde le
+      // jeton d'accès (scope `identify` déjà demandé par le provider) pour
+      // pouvoir rappeler `/users/@me` plus tard sans repasser par tout le
+      // flux OAuth.
+      if (account?.access_token) {
+        token.discordAccessToken = account.access_token;
+        token.discordSyncedAt = Date.now();
+      }
+
+      // Sessions JWT persistantes (jusqu'à 30 jours par défaut) : sans ce
+      // rafraîchissement périodique, un avatar/pseudo changé côté Discord
+      // ne serait répercuté qu'à la prochaine reconnexion OAuth complète.
+      // Best-effort et silencieux (voir `refreshDiscordProfile`) : un
+      // jeton expiré (Discord : ~7 jours) ne casse jamais la session, le
+      // rafraîchissement reprendra à la prochaine vraie reconnexion.
+      const discordId = token.discordId as string | undefined;
+      const discordAccessToken = token.discordAccessToken as string | undefined;
+      const discordSyncedAt = token.discordSyncedAt as number | undefined;
+      const isStale = !discordSyncedAt || Date.now() - discordSyncedAt > DISCORD_PROFILE_SYNC_INTERVAL_MS;
+      if (isStale && discordId && discordAccessToken) {
+        await refreshDiscordProfile(discordId, discordAccessToken);
+        token.discordSyncedAt = Date.now();
+      }
+
       return token;
     },
     async session({ session, token }) {

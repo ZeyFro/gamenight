@@ -5,10 +5,15 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
-import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
+import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
+import { getRecentActivity, getGroupStats, getWeekAvailability } from "@/lib/home";
+import { getScoreboard } from "@/lib/scoreboard";
+import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Logo } from "@/components/Logo";
+import { RankAvatar } from "@/components/RankAvatar";
+import { PodiumSpot } from "@/components/PodiumSpot";
 import { Stagger, StaggerItem } from "@/components/motion";
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -106,57 +111,121 @@ export default async function Home({
   });
   if (dueSession) await closeSessionIfDue(dueSession.id);
 
-  const [nextSession, libraryCount, previewGames] = await Promise.all([
+  const [nextSession, activity, groupStats, weekAvailability, scoreboard] = await Promise.all([
     prisma.session.findFirst({
       where: { status: { in: ["VOTING", "SCHEDULED"] } },
       orderBy: { date: "asc" },
-      include: { decidedGame: true, _count: { select: { proposals: true } } },
+      include: {
+        decidedGame: { select: { name: true, coverUrl: true } },
+        proposals: {
+          select: {
+            gameId: true,
+            game: { select: { coverUrl: true } },
+            votes: { select: { userId: true } },
+          },
+        },
+      },
     }),
-    prisma.userGame.count({ where: { userId: user.id, owned: true } }),
-    prisma.userGame.findMany({
-      where: { userId: user.id, owned: true },
-      take: 6,
-      include: { game: true },
-      orderBy: { game: { name: "asc" } },
-    }),
+    getRecentActivity(5),
+    getGroupStats(),
+    getWeekAvailability(),
+    getScoreboard("global"),
   ]);
+
+  // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
+  // celle de la proposition la plus votée (VOTING) — même logique que
+  // `bestSlot`/`topGroup` ailleurs (max sur un tableau déjà en mémoire, pas
+  // besoin d'une requête triée dédiée pour si peu de propositions).
+  const topProposal = nextSession?.proposals.reduce<
+    (typeof nextSession.proposals)[number] | null
+  >((best, p) => (!best || p.votes.length > best.votes.length ? p : best), null);
+  const nextSessionCoverUrl = nextSession?.decidedGame?.coverUrl ?? topProposal?.game.coverUrl ?? null;
+
+  // "Joueurs inscrits" : voteurs de la proposition gagnante une fois le
+  // jeu décidé (mêmes personnes que le "Qui vient" Discord), sinon
+  // l'ensemble des voteurs toutes propositions confondues (VOTING) — un
+  // vote pour n'importe quel jeu proposé compte comme un "je suis
+  // partant", cohérent avec le sens de "inscrit" avant que le jeu ne soit
+  // tranché.
+  const registeredPlayerIds = new Set<string>();
+  if (nextSession) {
+    const relevantProposals = nextSession.decidedGameId
+      ? nextSession.proposals.filter((p) => p.gameId === nextSession.decidedGameId)
+      : nextSession.proposals;
+    for (const p of relevantProposals) {
+      for (const v of p.votes) registeredPlayerIds.add(v.userId);
+    }
+  }
+
+  const now = nowMs();
+  const level = levelForXp(user.xpTotal);
+  const rank = rankForLevel(level);
+  const title = titleForLevel(level);
+  const podium = scoreboard.slice(0, 3);
+  const [first, second, third] = podium;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center gap-4">
-        {session.user.image && (
-          <Image
-            src={session.user.image}
-            alt={`Avatar de ${session.user.name}`}
-            width={56}
-            height={56}
-            className="rounded-full"
-          />
-        )}
-        <div>
+        <RankAvatar
+          src={session.user.image ?? null}
+          alt={`Avatar de ${session.user.name}`}
+          level={level}
+          rank={rank}
+          size={64}
+        />
+        <div className="min-w-0">
           <p className="text-sm text-muted">Salut,</p>
-          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+          <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
             {session.user.name}
           </h1>
+          <p className="mt-0.5 text-xs text-muted">
+            Niveau {level} · {title} · {rank.name}
+          </p>
         </div>
       </div>
 
-      <Stagger className="flex flex-col gap-4">
+      <Stagger className="flex flex-col gap-4" staggerDelay={0.1}>
+        {/* Prochaine soirée */}
         <StaggerItem>
           {nextSession ? (
             <Link href={`/sessions/${nextSession.id}`}>
-              <Card glow>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+              {/* Pas de `Card` ici : `Card` impose son propre padding via
+                  une classe fixe, pas fiable à écraser avec une classe
+                  `p-0` passée en `className` (l'ordre de règles généré par
+                  Tailwind ne garantit pas la victoire de la classe la plus
+                  récente dans le JSX) — mêmes classes visuelles que `Card
+                  glow` reproduites à la main pour pouvoir placer l'image de
+                  fond en position absolue derrière un padding interne. */}
+              <div className="relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200 hover:card-glow">
+                {nextSessionCoverUrl && (
+                  <>
+                    <Image
+                      src={nextSessionCoverUrl}
+                      alt=""
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/80 to-surface/40" />
+                  </>
+                )}
+                <div className="relative flex items-start justify-between gap-3 p-6 sm:p-8">
+                  <div className="min-w-0">
                     <p className="text-sm text-muted">Prochaine soirée</p>
                     <p className="mt-1 text-lg font-semibold text-foreground capitalize">
                       {formatDateTimeFr(nextSession.date)}
                     </p>
-                    <p className="mt-1 text-sm text-muted">
+                    <p className="mt-1 truncate text-sm text-muted">
                       {nextSession.decidedGame
                         ? nextSession.decidedGame.name
-                        : `${nextSession._count.proposals} proposition${nextSession._count.proposals === 1 ? "" : "s"}`}
+                        : `${nextSession.proposals.length} proposition${nextSession.proposals.length === 1 ? "" : "s"}`}
                     </p>
+                    {registeredPlayerIds.size > 0 && (
+                      <p className="mt-1 text-xs text-muted">
+                        {registeredPlayerIds.size} joueur{registeredPlayerIds.size === 1 ? "" : "s"} inscrit
+                        {registeredPlayerIds.size === 1 ? "" : "s"}
+                      </p>
+                    )}
                   </div>
                   <span
                     className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${SESSION_STATUS_LABELS[nextSession.status].className}`}
@@ -164,7 +233,7 @@ export default async function Home({
                     {SESSION_STATUS_LABELS[nextSession.status].label}
                   </span>
                 </div>
-              </Card>
+              </div>
             </Link>
           ) : (
             <Card>
@@ -178,39 +247,133 @@ export default async function Home({
           )}
         </StaggerItem>
 
+        {/* Activité récente */}
         <StaggerItem>
-          <Link href="/bibliotheque">
-            <Card glow>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm text-muted">Ta bibliothèque</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {libraryCount} jeu{libraryCount === 1 ? "" : "x"}
+          <Card>
+            <p className="text-sm text-muted">Activité récente</p>
+            {activity.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">Rien à signaler pour l&apos;instant.</p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-3">
+                {activity.map((item) => (
+                  <li key={item.id} className="flex items-center gap-3">
+                    <span className="text-lg shrink-0" aria-hidden>
+                      {item.icon}
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm text-foreground">{item.text}</p>
+                    <span className="shrink-0 text-xs text-muted">
+                      il y a {formatDurationFr(now - item.timestamp.getTime())}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </StaggerItem>
+
+        {/* Stats du groupe */}
+        <StaggerItem>
+          <Card>
+            <p className="text-sm text-muted">Stats du groupe</p>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-lg font-semibold text-foreground">
+                  {groupStats.totalSessionsPlayed}
+                </p>
+                <p className="text-xs text-muted">
+                  soirée{groupStats.totalSessionsPlayed === 1 ? "" : "s"} jouée
+                  {groupStats.totalSessionsPlayed === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-foreground">{groupStats.activePlayers}</p>
+                <p className="text-xs text-muted">
+                  joueur{groupStats.activePlayers === 1 ? "" : "s"} actif
+                  {groupStats.activePlayers === 1 ? "" : "s"}
+                </p>
+              </div>
+              {groupStats.mostPlayedGame && (
+                <div className="col-span-2 flex items-center gap-3">
+                  {groupStats.mostPlayedGame.coverUrl && (
+                    <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md bg-surface-hover">
+                      <Image
+                        src={groupStats.mostPlayedGame.coverUrl}
+                        alt=""
+                        width={40}
+                        height={56}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {groupStats.mostPlayedGame.name}
+                    </p>
+                    <p className="text-xs text-muted">
+                      Jeu le plus joué · {groupStats.mostPlayedGame.count} fois
+                    </p>
+                  </div>
+                </div>
+              )}
+              {groupStats.bestActiveStreak && (
+                <div className="col-span-2">
+                  <p className="text-sm font-medium text-foreground">
+                    🔥 {groupStats.bestActiveStreak.discordName}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Meilleur streak actif · {groupStats.bestActiveStreak.streakCount} jour
+                    {groupStats.bestActiveStreak.streakCount === 1 ? "" : "s"}
                   </p>
                 </div>
-                {previewGames.length > 0 && (
-                  <div className="flex -space-x-3">
-                    {previewGames.map(({ game }) => (
-                      <div
-                        key={game.id}
-                        className="h-12 w-9 shrink-0 overflow-hidden rounded-md border-2 border-surface bg-surface-hover"
-                      >
-                        {game.coverUrl && (
-                          <Image
-                            src={game.coverUrl}
-                            alt=""
-                            width={36}
-                            height={48}
-                            className="h-full w-full object-cover"
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+              )}
+            </div>
+          </Card>
+        </StaggerItem>
+
+        {/* Dispos de la semaine */}
+        <StaggerItem>
+          <Card>
+            <p className="text-sm text-muted">Dispos de la semaine</p>
+            <div className="mt-3 grid grid-cols-7 gap-1.5 sm:gap-2">
+              {weekAvailability.map((day) => (
+                <Link
+                  key={day.date.toISOString()}
+                  href={day.href}
+                  className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center transition-colors ${
+                    day.isBest
+                      ? "border-accent bg-accent/15 text-accent"
+                      : "border-border text-foreground hover:bg-surface-hover"
+                  }`}
+                >
+                  <span className="text-[10px] uppercase text-muted">{day.label.slice(0, 3)}</span>
+                  <span className="text-sm font-semibold">
+                    {day.availableCount}/{day.totalUsers}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+
+        {/* Classement rapide */}
+        <StaggerItem>
+          <Card>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted">Classement rapide</p>
+              <Link href="/classement" className="text-xs font-medium text-accent hover:underline">
+                Voir tout
+              </Link>
+            </div>
+            {podium.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">Personne dans le groupe pour l&apos;instant.</p>
+            ) : (
+              <div className="mt-4 flex items-end justify-center gap-2 sm:gap-4">
+                {second && <PodiumSpot entry={second} place={2} />}
+                {first && <PodiumSpot entry={first} place={1} />}
+                {third && <PodiumSpot entry={third} place={3} />}
               </div>
-            </Card>
-          </Link>
+            )}
+          </Card>
         </StaggerItem>
 
         <StaggerItem className="grid grid-cols-2 gap-4">

@@ -68,6 +68,12 @@ export async function awardXp(
   const beforeLevel = levelForXp(before.xpTotal);
   const afterLevel = levelForXp(updated.xpTotal);
   if (afterLevel > beforeLevel) {
+    // Refonte home ("Activité récente") : même détection que la notif
+    // Discord ci-dessous, persistée cette fois pour pouvoir l'afficher.
+    // Jamais écrit par le backfill (prisma/backfill-xp.mjs), qui ne passe
+    // pas par `awardXp` — voir le commentaire sur `LevelUpEvent` dans le
+    // schéma.
+    await prisma.levelUpEvent.create({ data: { userId, level: afterLevel } });
     await announceLevelUp({ discordId: updated.discordId }, beforeLevel, afterLevel);
   }
 }

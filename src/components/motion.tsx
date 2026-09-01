@@ -3,24 +3,34 @@
 import { motion, type Variants } from "framer-motion";
 import type { ReactNode } from "react";
 
-const containerVariants: Variants = {
-  hidden: {},
-  show: {
-    transition: { staggerChildren: 0.04 },
-  },
-};
+function containerVariants(staggerChildren: number): Variants {
+  return {
+    hidden: {},
+    show: {
+      transition: { staggerChildren },
+    },
+  };
+}
 
-/** Conteneur de liste : anime ses StaggerItem enfants avec un délai croissant. */
+/**
+ * Conteneur de liste : anime ses StaggerItem enfants avec un délai
+ * croissant. `staggerDelay` par défaut (0.04) pensé pour des listes
+ * (plusieurs dizaines d'items, délai cumulé qui doit rester court) —
+ * refonte home : sections peu nombreuses (6), délai plus perceptible
+ * (~100ms) demandé explicitement entre chaque card.
+ */
 export function Stagger({
   children,
   className = "",
+  staggerDelay = 0.04,
 }: {
   children: ReactNode;
   className?: string;
+  staggerDelay?: number;
 }) {
   return (
     <motion.div
-      variants={containerVariants}
+      variants={containerVariants(staggerDelay)}
       initial="hidden"
       animate="show"
       className={className}

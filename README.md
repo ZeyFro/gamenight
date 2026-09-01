@@ -4078,3 +4078,194 @@ en Individuel ou en Collectif.
   collective, point perso, `MiniMonthCalendar`, swipe jour
   précédent/suivant, panneau session tous inchangés ; aucune migration,
   aucune nouvelle server action
+
+## Fix : avatar Discord jamais rafraîchi après la première connexion
+
+Bug remonté : si un utilisateur changeait sa photo de profil Discord,
+l'app continuait d'afficher l'ancienne indéfiniment.
+
+**Investigation** : le callback `signIn` (`src/auth.ts`) upsertait déjà
+`discordName`/`discordAvatar` avec les valeurs fraîches de l'OAuth à
+chaque connexion — ce code était déjà correct, rien à y changer. Le vrai
+problème : avec `session: { strategy: "jwt" }`, ce callback ne se
+redéclenche qu'à une **vraie reconnexion OAuth** (l'utilisateur retape
+ses identifiants Discord) — pas à chaque visite. Le JWT de session reste
+valide jusqu'à 30 jours par défaut chez Auth.js, pendant lesquels
+l'utilisateur reste "connecté" sans jamais retraverser `signIn`. Un
+changement d'avatar Discord pendant cette fenêtre ne se propageait donc
+qu'à la prochaine reconnexion complète — potentiellement des semaines
+plus tard. Toutes les pages affichent déjà l'avatar depuis la table
+`User` en base (jamais depuis le JWT), donc pas de souci de cache
+`next/image` : l'URL Discord elle-même change quand l'avatar change (le
+hash de l'avatar est dans l'URL), un simple refresh en base suffit.
+
+**Fix** : `src/lib/discord-profile.ts` (nouveau) — `refreshDiscordProfile`
+rappelle `GET https://discord.com/api/users/@me` (scope `identify`, déjà
+demandé par le provider Discord) et met à jour `discordName`/
+`discordAvatar` en base. Réplique exactement le mapping avatar du
+provider next-auth (`profile()` dans `@auth/core/providers/discord.ts` —
+gère le cas avatar animé `a_*` → `.gif`, et l'avatar par défaut si
+`avatar === null`) pour rester cohérent avec ce que `signIn` pose à la
+connexion. Best-effort et silencieux : un jeton d'accès expiré (Discord :
+~7 jours) ou une erreur réseau logue et laisse les données telles
+quelles, sans jamais casser la session.
+
+`src/auth.ts` : le callback `jwt` (qui s'exécute à **chaque** lecture de
+session, contrairement à `signIn`) garde le jeton d'accès Discord posé à
+la connexion (`account.access_token`) et rappelle
+`refreshDiscordProfile` si plus de 12h se sont écoulées depuis le
+dernier rafraîchissement (`discordSyncedAt`, même ordre de grandeur que
+le throttle de `touchStreak`) — assez fréquent pour propager un
+changement d'avatar rapidement, assez rare pour ne jamais peser sur la
+latence des pages protégées. `src/types/next-auth.d.ts` étendu avec
+`discordAccessToken`/`discordSyncedAt` sur le type `JWT`.
+
+**Limite connue, assumée** : le jeton d'accès Discord expire après ~7
+jours (durée de vie standard OAuth2 de Discord) sans flux de
+refresh-token — hors périmètre pour ce fix ciblé (ajouterait la gestion
+d'un `refresh_token` stocké et sa rotation, complexité et surface de
+risque disproportionnées pour ce bug). Au-delà de 7 jours d'inactivité
+de connexion, le rafraîchissement périodique s'arrête silencieusement
+jusqu'à la prochaine vraie reconnexion — grande amélioration par rapport
+à l'état actuel (aucun rafraîchissement possible avant la prochaine
+reconnexion, point) sans complexifier l'auth.
+
+### Fichiers touchés
+
+- `src/lib/discord-profile.ts` (nouveau) — `refreshDiscordProfile` +
+  mapping avatar répliqué du provider Discord
+- `src/auth.ts` — callback `jwt` : conservation du jeton d'accès,
+  rafraîchissement throttlé (12h)
+- `src/types/next-auth.d.ts` — `discordAccessToken`/`discordSyncedAt`
+  sur `JWT`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (routes
+  inchangées)
+- Smoke test `next dev` : `/` répond 200, `/profil` redirige 307 (non
+  connecté, cohérent avec le sandbox) sans erreur d'application. Le
+  rafraîchissement réel (appel Discord `/users/@me`, upsert en base)
+  n'a pas pu être exercé en sandbox (pas de session Discord/DB live) —
+  seule l'absence d'erreur de compilation/exécution est vérifiée, comme
+  pour les PR précédentes
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : callback `signIn` inchangé (upsert à la connexion
+  toujours identique), callback `session` inchangé, connexion/déconnexion
+  Discord inchangées ; aucune migration (aucun nouveau champ `User`, le
+  throttle vit uniquement dans le JWT)
+
+## Refonte de la home (`/`)
+
+La home ne montrait jusqu'ici que "Prochaine soirée" + "Ta bibliothèque" +
+2 boutons — trop vide pour une app pensée pour être consultée souvent.
+Refonte complète en 6 sections (dans cet ordre), chacune dans sa propre
+card, avec une entrée en fondu + translation Framer Motion (stagger
+~100ms entre cards) :
+
+1. **Header perso** — `RankAvatar` (anneau coloré par rang + pastille de
+   niveau, déjà utilisé sur `/profil` et `/potes/[id]`) à la place du
+   simple avatar rond, + ligne "Niveau X · Titre · Rang" en dessous du
+   pseudo.
+2. **Prochaine soirée** — cover IGDB en fond de card (jeu décidé si
+   `SCHEDULED`, sinon la proposition la plus votée en `VOTING`, avec
+   dégradé pour garder le texte lisible), + nombre de "joueurs inscrits"
+   (voteurs de la proposition gagnante une fois le jeu tranché, sinon tous
+   les voteurs toutes propositions confondues pendant le vote — même sens
+   que le "Qui vient" Discord déjà utilisé côté annonces/calendrier).
+   Reste un lien vers `/sessions/[id]` (pas `/soirees/[id]`, qui n'existe
+   pas dans le routing de l'app).
+3. **Activité récente** — fusion des 4 types d'événements déjà horodatés
+   en base (soirées terminées, badges débloqués, récompenses gagnées,
+   passages de niveau), 5 plus récents tous types confondus, sans
+   pagination. Les passages de niveau n'étaient auparavant **pas persistés**
+   (seulement une notif Discord ponctuelle) : nouveau modèle
+   `LevelUpEvent` (append-only, écrit uniquement par le chemin XP live
+   `awardXp()`, jamais par le script de backfill `backfill-xp.mjs` qui ne
+   passe pas par cette fonction — vérifié avant d'écrire le modèle pour
+   éviter tout risque de flood d'événements historiques au prochain
+   build).
+4. **Stats du groupe** — total de soirées jouées, jeu le plus joué (avec
+   cover), meilleur streak actif (fenêtre 24h, alignée sur le seuil de
+   cassure de `touchStreak`), nombre de joueurs actifs (fenêtre plus
+   large de 7 jours — un pote silencieux depuis 2 jours n'a pas
+   "disparu" du groupe, il n'a juste plus de streak en cours).
+5. **Dispos de la semaine** — 7 colonnes Lun→Dim (semaine calendaire
+   contenant aujourd'hui, pas un rolling 7 jours), dispo "du soir" (20h,
+   même heure repère que la timeline calendrier) par jour, meilleur jour
+   surligné en violet, tap → `/calendrier?date=...`.
+6. **Classement rapide** — podium top 3 compact, composant `PodiumSpot`
+   extrait de `/classement` (comportement inchangé sur `/classement`,
+   maintenant partagé) + lien "Voir tout" vers `/classement`.
+
+La card "Ta bibliothèque" est retirée de la home (pas dans la liste des 6
+sections demandées) — `/bibliotheque` reste accessible depuis la nav
+principale, rien n'est perdu en découvrabilité. Les boutons "Mes dispos"
+et "Soirées" restent en bas de page ; "Se déconnecter" inchangé.
+
+### Nouveau : `LevelUpEvent`
+
+```prisma
+model LevelUpEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  level     Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+```
+
+Écrit dans `awardXp()` (`src/lib/xp-actions.ts`) juste à côté de la notif
+Discord existante (même détection `afterLevel > beforeLevel`) — aucun
+autre appelant. Pas de backfill rétroactif : les passages de niveau
+antérieurs à cette PR n'apparaîtront pas dans le feed (acceptable, un feed
+d'activité "récente" n'a pas vocation à reconstruire l'historique complet).
+
+### Fichiers touchés
+
+- `prisma/schema.prisma` + migration `20260901140000_add_level_up_event`
+  — modèle `LevelUpEvent` + relation sur `User`
+- `src/lib/xp-actions.ts` — `awardXp()` persiste désormais un
+  `LevelUpEvent` en plus de la notif Discord
+- `src/lib/home.ts` (nouveau) — `getRecentActivity`, `getGroupStats`,
+  `getWeekAvailability`, dédiées à `/`
+- `src/lib/calendar-dates.ts` — `getWeekStart` exporté (déjà interne,
+  réutilisé par `getWeekAvailability`)
+- `src/components/PodiumSpot.tsx` (nouveau) — extrait de
+  `/classement/page.tsx` à l'identique
+- `src/app/classement/page.tsx` — utilise `PodiumSpot` partagé,
+  définition locale supprimée
+- `src/components/motion.tsx` — `Stagger` accepte un `staggerDelay`
+  optionnel (défaut 0.04 inchangé pour tous les appelants existants),
+  utilisé à 0.1 sur la home pour un stagger ~100ms entre les 6 cards
+- `src/lib/wallclock.ts` — `nowMs()` (nouveau) : isolation de
+  `Date.now()` dans une fonction nommée, requis par le lint
+  `react-hooks/purity` qui interdit l'appel direct dans le corps d'un
+  composant
+- `src/app/page.tsx` — réécriture complète des 6 sections
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les
+  routes existantes inchangées
+- Smoke test `next dev` : `/` répond 200 (page de connexion, non
+  authentifié en sandbox), `/classement` redirige 307 (cohérent, non
+  connecté) — aucune erreur d'application dans les logs. Les 6 nouvelles
+  sections de la home authentifiée (cover IGDB, activité récente, stats
+  du groupe, dispos de la semaine, podium) n'ont pas pu être exercées
+  visuellement en sandbox (pas de session Discord ni de `DATABASE_URL`
+  live) — seules l'absence d'erreur de compilation/exécution et la
+  cohérence des types via `next build` sont vérifiées, comme pour les PR
+  précédentes de ce type
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `/classement` rendu identique (podium + tableau
+  inchangés, seule l'implémentation de `PodiumSpot` a bougé de fichier) ;
+  `Stagger`/`StaggerItem` par défaut inchangés pour les 17 autres pages
+  qui les utilisent (`staggerDelay` optionnel, défaut conservé) ;
+  `awardXp()` garde exactement son comportement XP/notif Discord existant,
+  ajoute uniquement une écriture `LevelUpEvent` en plus
