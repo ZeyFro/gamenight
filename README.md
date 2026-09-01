@@ -3963,4 +3963,71 @@ de sessions.
   perso (sous-PR précédente), `MiniMonthCalendar`, surlignage meilleur
   créneau collectif, swipe jour précédent/suivant tous inchangés ; liste
   et fiche détail `/sessions` inchangées à part le préremplissage
+
+## Retour terrain sur l'édition tactile — plage horaire + édition en Collectif
+
+Deux améliorations UX remontées après test réel de la sous-PR 3/3
+(édition tactile fusionnée à celle-ci plutôt qu'une PR séparée — les deux
+retouchent le même fichier `DayTimeline.tsx` sur le même mécanisme
+d'édition, une PR à part aurait juste ajouté un conflit de fusion pour
+rien).
+
+**Sélection de plage horaire** : un seul tap sélectionnait 1h — trop lent
+pour une plage de plusieurs heures (ex. 18h→00h = 6 taps). Nouveau
+comportement : 1er tap = ancre "en attente" (opacité réduite sur la
+cellule, bouton d'édition affichant "⏳ Tape la fin de la plage…") ; 2e
+tap dans les 3s = fin de plage → toute la plage `[min, max]` est basculée
+et sauvegardée en **un seul** `upsertOverride` (`startTime`=début,
+`endTime`=fin) — respecte la contrainte `@@unique([userId, date])`
+(une seule exception par jour) exactement comme le toggle 1h d'origine,
+aucun changement de schéma. Sans 2e tap dans la fenêtre, un `setTimeout`
+retombe sur le comportement 1h d'origine (l'ancre seule). Le sens du
+bascule (dispo → indispo ou l'inverse) suit l'état actuel de l'heure
+ancre, appliqué à toute la plage — pas de logique de "majorité" à
+inventer sur une plage aux états mixtes. Le timeout est nettoyé au
+démontage du composant et à chaque bascule du mode édition (évite qu'une
+ancre oubliée ne déclenche une action après coup).
+
+**Édition des dispos en vue Collectif** : le bouton "Modifier mes dispos"
+n'apparaissait qu'en Individuel sur sa propre fiche. `canEdit` (calculé
+côté page) est maintenant vrai aussi en Collectif — l'édition ne touche
+toujours que les dispos de l'utilisateur connecté (mêmes server actions,
+même garde-fou côté serveur qui ignore tout `userId` client). La densité
+collective (couleur/opacité par heure) ne dépend que de
+`availableUserIds` renvoyé par le serveur, jamais de `canEdit`/`editMode`
+— donc **inchangée** en mode édition, tout le monde reste visible pendant
+qu'on modifie sa propre dispo. Un petit point de la couleur perso
+(`ownColor`, nouvelle prop passée depuis `user.color`) marque en plus les
+heures où sa propre dispo est active, seul signal sinon invisible tant
+qu'on n'a pas tapé (le `title` hover existant montre déjà le compte
+collectif "x/y dispos", mais `title` ne fonctionne pas au tactile). Les
+blocs des potes restent en lecture seule par construction : la cellule
+collective a toujours été un agrégat, jamais un point d'entrée par-pote —
+rien à verrouiller de plus.
+
+### Fichiers touchés
+
+- `src/app/calendrier/page.tsx` — `canEdit` étendu au Collectif, nouvelle
+  prop `ownColor`
+- `src/components/calendar/DayTimeline.tsx` — sélection de plage
+  (`pendingStart`/`pendingStartRef`/`pendingTimeoutRef`,
+  `applyOverrideRange`), indicateur point perso en Collectif+édition
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (routes
+  inchangées)
+- Smoke test `next dev` : `/calendrier` en Collectif et en Individuel
+  répondent 307 (non connecté, cohérent avec le sandbox) sans erreur
+  d'application. La sélection de plage et l'édition Collectif n'ont pas
+  pu être exercées interactivement en sandbox (pas de session/DB) —
+  seule l'atteignabilité des routes et l'absence de crash sont
+  vérifiées, comme pour les PR précédentes de ce chantier
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : toggle 1h d'origine (dégénère naturellement d'une
+  plage `[hour, hour]`), édition Individuel sur sa propre fiche, lecture
+  seule sur un pote, densité collective, `MiniMonthCalendar`, création
+  rapide de soirée, swipe jour précédent/suivant tous inchangés ; aucune
+  migration, aucune nouvelle server action
   optionnel du formulaire ; aucune migration

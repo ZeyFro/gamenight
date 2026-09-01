@@ -18,6 +18,7 @@ import type { CalendarDay, CalendarSession, CalendarUser } from "@/lib/calendar"
 const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
 const AUTO_SCROLL_HOUR = 18;
 const SWIPE_MIN_DISTANCE_PX = 50;
+const RANGE_SELECT_WINDOW_MS = 3000;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -49,17 +50,37 @@ function bestHourOfDay(day: CalendarDay): number | null {
  * se contente de mesurer le geste à la fin et de ne naviguer que s'il est
  * nettement plus horizontal que vertical.
  *
- * Édition tactile des dispos (sous-PR 2) : `canEdit` (calculé côté page —
- * uniquement en vue Individuel sur SA PROPRE dispo) active un toggle
- * "Modifier mes dispos". Un tap sur une heure crée/retire une
+ * Édition tactile des dispos (sous-PR 2, étendue post-retour terrain) :
+ * `canEdit` (calculé côté page — vrai en Collectif, ou en Individuel sur
+ * SA PROPRE dispo, jamais sur celle d'un pote) active un toggle "Modifier
+ * mes dispos". Un tap sur une heure crée/retire une
  * `AvailabilityOverride` via les MÊMES server actions que
  * `/disponibilites` (`upsertOverride`/`removeOverrideForDate`) — jamais
  * `WeeklyAvailability`, qui reste éditable uniquement sur `/disponibilites`
  * pour la récurrence. `AvailabilityOverride` n'a qu'une ligne par jour
- * (`@@unique([userId, date])`) : taper une heure différente de
+ * (`@@unique([userId, date])`) : taper une plage différente de
  * l'exception du jour la REMPLACE (toast dédié) plutôt que d'en créer une
  * deuxième — même limite que le formulaire de `/disponibilites`, rien de
  * nouveau introduit ici.
+ *
+ * Sélection de plage (retour terrain, 1 seul tap était trop lent pour
+ * plusieurs heures) : 1er tap sur une heure = ancre "en attente"
+ * (opacité réduite) ; 2e tap dans les 3s = fin de plage → toute la plage
+ * [min, max] est basculée et sauvegardée en UN seul `upsertOverride`
+ * (respecte la contrainte une-exception-par-jour ci-dessus). Sans 2e tap
+ * dans la fenêtre, le timeout retombe sur le comportement 1h d'origine.
+ * Le sens du bascule (dispo → indispo ou l'inverse) suit l'état actuel de
+ * l'heure ancre, appliqué à toute la plage.
+ *
+ * Édition en vue Collectif (retour terrain) : `canEdit` est maintenant
+ * vrai en Collectif aussi — on continue à voir la densité de tout le
+ * groupe (le calcul de `blockColor`/`opacityPercent` ne dépend que de
+ * `availableUserIds`, jamais de `canEdit`/`editMode`, donc inchangé), et
+ * un petit point de la couleur perso (`ownColor`) marque en plus les
+ * heures où SA PROPRE dispo est actuellement active — seul signal sinon
+ * invisible tant qu'on n'a pas tapé (les blocs des potes restent en
+ * lecture seule par construction : la cellule collective n'a jamais été
+ * un point d'entrée par-pote).
  *
  * Rendu optimiste : `localOverride` démarre depuis la valeur serveur et
  * se met à jour immédiatement au tap, avant la fin de la sauvegarde en
@@ -91,6 +112,7 @@ export function DayTimeline({
   canEdit,
   ownWeeklySlots,
   ownOverrideForDay,
+  ownColor,
 }: {
   day: CalendarDay;
   users: CalendarUser[];
@@ -100,10 +122,12 @@ export function DayTimeline({
   today: Date;
   pote?: string;
   potes?: string;
-  /** Vue Individuel sur SA PROPRE dispo — jamais vrai pour la dispo d'un pote. */
+  /** SA PROPRE dispo — jamais vrai pour la dispo d'un pote. */
   canEdit?: boolean;
   ownWeeklySlots?: WeeklySlot[];
   ownOverrideForDay?: OverrideForDate | null;
+  /** Couleur perso de l'utilisateur connecté — marque ses propres heures dispo en édition Collectif. */
+  ownColor?: string;
 }) {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -121,7 +145,19 @@ export function DayTimeline({
     ownOverrideForDay ?? null
   );
   const [createPromptHour, setCreatePromptHour] = useState<number | null>(null);
+  const [pendingStart, setPendingStart] = useState<number | null>(null);
+  const pendingStartRef = useRef<number | null>(null);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, startTransition] = useTransition();
+
+  function clearPendingRange() {
+    if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+    pendingTimeoutRef.current = null;
+    pendingStartRef.current = null;
+    setPendingStart(null);
+  }
+
+  useEffect(() => clearPendingRange, []);
 
   const isToday = sameUtcDate(date, today);
   const prevDate = addDays(date, -1);
@@ -162,10 +198,11 @@ export function DayTimeline({
     router.push(deltaX < 0 ? nextHref : prevHref);
   }
 
-  function handleTapHour(hour: number) {
-    if (!canEdit || !editMode) return;
-    const hourStart = `${pad2(hour)}:00`;
-    const hourEnd = `${pad2((hour + 1) % 24)}:00`;
+  function applyOverrideRange(startHour: number, endHourInclusive: number) {
+    const lo = Math.min(startHour, endHourInclusive);
+    const hi = Math.max(startHour, endHourInclusive);
+    const hourStart = `${pad2(lo)}:00`;
+    const hourEnd = `${pad2((hi + 1) % 24)}:00`;
     const isExactlyThisOverride =
       localOverride && localOverride.startTime === hourStart && localOverride.endTime === hourEnd;
 
@@ -181,8 +218,11 @@ export function DayTimeline({
     }
 
     const hadOverrideElsewhere = localOverride !== null;
+    // Le sens du bascule suit l'état actuel de l'heure ancre (`lo`),
+    // appliqué à toute la plage — cohérent avec le comportement 1h
+    // d'origine, pas de logique de "majorité" à inventer.
     const instant = new Date(date);
-    instant.setUTCHours(hour, 0, 0, 0);
+    instant.setUTCHours(lo, 0, 0, 0);
     const currentlyAvailable = isAvailableAt(instant, ownWeeklySlots ?? [], localOverride ?? undefined);
     const nextAvailable = !currentlyAvailable;
 
@@ -194,14 +234,40 @@ export function DayTimeline({
       fd.set("startTime", hourStart);
       fd.set("endTime", hourEnd);
       await upsertOverride(fd);
+      const rangeLabel = lo === hi ? "" : ` (${pad2(lo)}h–${pad2((hi + 1) % 24)}h)`;
       toast.success(
         hadOverrideElsewhere
-          ? "Exception remplacée"
+          ? `Exception remplacée${rangeLabel}`
           : nextAvailable
-            ? "Dispo ajoutée"
-            : "Indispo ajoutée"
+            ? `Dispo ajoutée${rangeLabel}`
+            : `Indispo ajoutée${rangeLabel}`
       );
     });
+  }
+
+  /**
+   * 1er tap = pose l'ancre "en attente" (3s pour taper la fin de plage) ;
+   * 2e tap dans la fenêtre = fin de plage, bascule [ancre, hour] en un
+   * seul appel. Sans 2e tap, le timeout retombe sur le comportement 1h
+   * d'origine (ancre seule).
+   */
+  function handleTapHour(hour: number) {
+    if (!canEdit || !editMode) return;
+
+    const anchor = pendingStartRef.current;
+    if (anchor === null) {
+      pendingStartRef.current = hour;
+      setPendingStart(hour);
+      pendingTimeoutRef.current = setTimeout(() => {
+        const pending = pendingStartRef.current;
+        clearPendingRange();
+        if (pending !== null) applyOverrideRange(pending, pending);
+      }, RANGE_SELECT_WINDOW_MS);
+      return;
+    }
+
+    clearPendingRange();
+    applyOverrideRange(anchor, hour);
   }
 
   function handleTapEmptyHour(hour: number) {
@@ -245,14 +311,21 @@ export function DayTimeline({
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => setEditMode((v) => !v)}
+            onClick={() => {
+              clearPendingRange();
+              setEditMode((v) => !v);
+            }}
             className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
               editMode
                 ? "border-accent bg-accent/10 text-accent"
                 : "border-border text-muted hover:text-foreground"
             }`}
           >
-            {editMode ? "✅ Édition activée — tape un créneau" : "✏️ Modifier mes dispos"}
+            {editMode
+              ? pendingStart !== null
+                ? "⏳ Tape la fin de la plage…"
+                : "✅ Édition activée — tape un créneau (ou 2 pour une plage)"
+              : "✏️ Modifier mes dispos"}
           </button>
           {localOverride && <span className="text-xs text-muted">📌 Exception ce jour</span>}
         </div>
@@ -314,11 +387,19 @@ export function DayTimeline({
                 : "Pas dispo"
               : `${availableIds.length}/${totalUsers} dispo${availableIds.length > 1 ? "s" : ""}`;
           const editable = canEdit && editMode;
+          const isPendingAnchor = editable && pendingStart === hour;
+          // En Collectif + édition, la cellule garde la couleur/densité
+          // collective (inchangée, cf. `blockColor` ci-dessus) — un petit
+          // point de la couleur perso marque en plus SA PROPRE dispo,
+          // seul signal sinon invisible tant qu'on n'a pas tapé.
+          const showOwnDot = editable && mode === "collectif" && isAvailable && !!ownColor;
           const canPromptCreate =
             mode === "individuel" && !editMode && sessionsAtHour.length === 0;
           const cellClassName = `h-7 rounded-md transition-transform ${
             isBestHour ? "ring-2 ring-accent" : ""
-          } ${editable || canPromptCreate ? "active:scale-95" : ""}`;
+          } ${editable || canPromptCreate ? "active:scale-95" : ""} ${
+            isPendingAnchor ? "opacity-60" : ""
+          }`;
           const cellStyle = {
             backgroundColor: blockColor
               ? `color-mix(in srgb, ${blockColor} ${opacityPercent}%, transparent)`
@@ -339,11 +420,24 @@ export function DayTimeline({
                   <button
                     type="button"
                     onClick={() => handleTapHour(hour)}
-                    aria-label={`${pad2(hour)}h — ${isAvailable ? "dispo, taper pour retirer" : "pas dispo, taper pour ajouter"}`}
+                    aria-label={
+                      isPendingAnchor
+                        ? `${pad2(hour)}h — début de plage sélectionné, tape la fin`
+                        : `${pad2(hour)}h — ${isAvailable ? "dispo, taper pour retirer" : "pas dispo, taper pour ajouter"}`
+                    }
                     title={title}
-                    className={`${cellClassName} w-full border border-dashed border-accent/40`}
+                    className={`${cellClassName} relative w-full border ${
+                      isPendingAnchor ? "border-dashed border-accent" : "border-dashed border-accent/40"
+                    }`}
                     style={cellStyle}
-                  />
+                  >
+                    {showOwnDot && (
+                      <span
+                        className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: ownColor }}
+                      />
+                    )}
+                  </button>
                 ) : canPromptCreate ? (
                   <button
                     type="button"

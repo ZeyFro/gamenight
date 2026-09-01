@@ -65,14 +65,15 @@ export default async function CalendrierPage({
     data.days.find((d) => sameUtcDate(d.date, selectedDate)) ??
     ({ date: selectedDate, hours: [], sessions: [], maxAvailableCount: 0 } satisfies CalendarDay);
 
-  // Édition tactile des dispos (sous-PR 2) : on ne peut éditer que SA
-  // PROPRE dispo, jamais celle d'un pote même en vue Individuel sur son
-  // profil — `upsertOverride`/`removeOverrideForDate` opèrent toujours sur
+  // Édition tactile des dispos (sous-PR 2, étendue post-retour terrain) :
+  // on ne peut éditer que SA PROPRE dispo, jamais celle d'un pote —
+  // `upsertOverride`/`removeOverrideForDate` opèrent toujours sur
   // `getCurrentUser()`, donc éditer sans ce garde-fou modifierait en
-  // silence ta propre dispo tout en affichant celle d'un autre. Requêtes
-  // supplémentaires gated : aucun coût sur les autres vues (collectif, ou
-  // individuel sur un pote).
-  const canEdit = mode === "individuel" && selectedUserId === user.id;
+  // silence ta propre dispo tout en affichant celle d'un autre. Autorisé
+  // en Collectif (voir tout le monde tout en modifiant la sienne) et en
+  // Individuel sur SA PROPRE fiche — jamais en Individuel sur un pote.
+  // Requêtes supplémentaires gated : aucun coût en Individuel sur un pote.
+  const canEdit = mode === "collectif" || selectedUserId === user.id;
   const [ownWeeklySlots, ownOverrideForDay] = canEdit
     ? await Promise.all([
         prisma.weeklyAvailability.findMany({
@@ -156,6 +157,7 @@ export default async function CalendrierPage({
         canEdit={canEdit}
         ownWeeklySlots={ownWeeklySlots}
         ownOverrideForDay={ownOverrideForDay}
+        ownColor={user.color}
       />
 
       <p className="text-center text-xs text-faint">
