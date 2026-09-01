@@ -3882,3 +3882,85 @@ points sont prévus pour la sous-PR 3/3.
   sur un pote ; `MiniMonthCalendar`, surlignage meilleur créneau
   collectif, couleurs perso (sous-PR précédente), swipe jour
   précédent/suivant tous inchangés ; aucune migration
+
+## Sessions interactives sur le calendrier (sous-PR 3/3)
+
+Dernière étape du chantier calendrier : les soirées deviennent
+interactives depuis `/calendrier`, sans dupliquer aucune logique
+existante — panneau détaillé au tap sur une session, création rapide au
+tap sur un créneau libre.
+
+**Correction de route repérée avant codage** : la demande initiale visait
+`/soirees/creer`, qui n'existe pas — le formulaire de création est
+**inline** en haut de `/sessions` (le mot-clé code reste "sessions", même
+si l'UI affiche "Soirées"). Réutilisé tel quel plutôt que de créer une
+route dédiée.
+
+**1. `src/lib/calendar.ts`** — `CalendarSession` gagne `players:
+CalendarUser[]`, les voteurs de la proposition gagnante
+(`decidedGameId`) — mêmes "joueurs inscrits" que le "Qui vient" de
+l'embed Discord (`src/lib/sessions.ts`). Vide tant qu'aucun jeu n'est
+décidé (`VOTING`). Le `select` Prisma sur `votes` gagne juste le
+sous-objet `user` (id/discordName/discordAvatar/color) là où seul `id`
+était chargé — même requête, pas de coût supplémentaire notable.
+
+**2. `src/components/calendar/SessionBlock.tsx`** (réécriture du
+panneau, existant depuis la sous-PR 1) — passe de bottom-sheet à un
+**panneau latéral** (`fixed inset-y-0 right-0`, slide-in depuis la
+droite via Framer Motion `x: "100%" → 0`). `Dialog.Root` devient
+contrôlé (`open`/`onOpenChange`) pour permettre la fermeture
+programmatique au swipe (`touchstart`/`touchend`, même seuil ~50px que
+le swipe jour de `DayTimeline`, direction : vers la droite) — le tap en
+dehors ferme déjà nativement via `Dialog.Overlay` (comportement Radix
+par défaut, rien à coder). Icône 🎮 ajoutée sur le bloc trigger dans la
+timeline pour le distinguer d'un bloc dispo. `VoterAvatars` (composant
+déjà existant, réutilisé tel quel) affiche `session.players` quand la
+session a un gagnant. Couleur du badge "Vote en cours" dans le panneau
+passée à `bg-warning`/`text-warning` (ambre) — distinct de "Prévue"
+(violet accent, inchangé) et "Terminée" (grisé, inchangé) ; changement
+scopé à `STATUS_BLOCK_CLASSES` (calendrier uniquement), le badge partagé
+`SESSION_STATUS_LABELS` utilisé ailleurs dans l'app (liste des sessions,
+fiche détail) n'est pas touché.
+
+**3. `src/components/calendar/DayTimeline.tsx`** — nouvelle interaction :
+en vue Individuel, hors mode édition dispo (sous-PR 2), un tap sur une
+heure **sans session** ouvre un bottom-sheet "Créer une soirée ici ?"
+(un seul `Dialog` partagé, pas une instance par heure) menant vers
+`/sessions?date=&time=` préremplis. Disponible sur n'importe quel profil
+affiché en Individuel — pas seulement le sien : repérer un créneau libre
+chez un pote puis y caler une soirée est un usage voulu, confirmé
+explicitement plutôt que restreint à `canEdit`.
+
+**4. `src/app/sessions/page.tsx`** — lecture de `searchParams.date`/`time`
+(en plus de `gameId` déjà géré pour la préselection de jeu), passés en
+`defaultValue` sur les inputs `date`/`time` du formulaire déjà en place.
+Aucune nouvelle validation : `createSession` gère déjà les cas
+deadline-après-session et session-trop-proche.
+
+**Aucune migration, aucune nouvelle server action.** Hors périmètre
+(comme demandé) : pas de modification/suppression de session depuis le
+calendrier, pas de nouveau formulaire de création, pas de glisser-déposer
+de sessions.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (mêmes routes
+  qu'avant, inchangées)
+- Smoke test `next dev` : `/calendrier`, `/calendrier?mode=individuel` et
+  `/sessions?date=2026-09-05&time=20:00` redirigent vers `/` (non
+  connecté, cohérent avec le sandbox sans `AUTH_SECRET`/DB live) sans
+  erreur d'application — `/sessions` avec les query params le fait via un
+  `<meta http-equiv="refresh">` intégré au flux RSC plutôt qu'un vrai 307
+  HTTP, artefact du streaming Turbopack dev quand `redirect()` est
+  déclenché après le début de l'envoi de la réponse, pas une régression.
+  Le panneau latéral, le swipe-to-close et la création rapide n'ont pas
+  pu être exercés interactivement en sandbox (pas de session/DB) — seule
+  l'atteignabilité des routes et l'absence de crash sont vérifiées ici,
+  comme pour les PR précédentes de ce chantier
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : édition tactile des dispos (sous-PR 2), couleurs
+  perso (sous-PR précédente), `MiniMonthCalendar`, surlignage meilleur
+  créneau collectif, swipe jour précédent/suivant tous inchangés ; liste
+  et fiche détail `/sessions` inchangées à part le préremplissage
+  optionnel du formulaire ; aucune migration

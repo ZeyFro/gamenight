@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type TouchEvent } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { SessionBlock } from "@/components/calendar/SessionBlock";
 import { ColorDot } from "@/components/ColorDot";
+import { ButtonLink } from "@/components/ui/Button";
 import { removeOverrideForDate, upsertOverride } from "@/app/disponibilites/actions";
 import { addDays, buildCalendarHref, type CalendarMode } from "@/lib/calendar-dates";
 import { isAvailableAt, type OverrideForDate, type WeeklySlot } from "@/lib/availability";
@@ -66,6 +69,15 @@ function bestHourOfDay(day: CalendarDay): number | null {
  * données du jour envoyées par le serveur — garantit un rendu toujours
  * exact après un tap, y compris pour l'heure "libérée" quand l'exception
  * se déplace, sans avoir besoin d'un re-fetch.
+ *
+ * Création rapide de soirée (sous-PR 3/3) : en vue Individuel, hors mode
+ * édition dispo, un tap sur une heure SANS session propose "Créer une
+ * soirée ici ?" (bottom-sheet, un seul `Dialog` partagé plutôt qu'une
+ * instance par heure). Disponible sur n'importe quel profil affiché — pas
+ * que le sien — repérer un créneau libre chez un pote puis y caler une
+ * soirée est un usage voulu. Redirige vers `/sessions` (le formulaire de
+ * création y est déjà inline) avec `?date=&time=` préremplis — aucun
+ * nouveau formulaire, aucune nouvelle server action.
  */
 export function DayTimeline({
   day,
@@ -108,6 +120,7 @@ export function DayTimeline({
   const [localOverride, setLocalOverride] = useState<OverrideForDate | null>(
     ownOverrideForDay ?? null
   );
+  const [createPromptHour, setCreatePromptHour] = useState<number | null>(null);
   const [, startTransition] = useTransition();
 
   const isToday = sameUtcDate(date, today);
@@ -190,6 +203,16 @@ export function DayTimeline({
       );
     });
   }
+
+  function handleTapEmptyHour(hour: number) {
+    if (mode !== "individuel" || editMode) return;
+    setCreatePromptHour(hour);
+  }
+
+  const createSessionHref =
+    createPromptHour !== null
+      ? `/sessions?date=${toDateInputValue(date)}&time=${pad2(createPromptHour)}:00`
+      : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -291,9 +314,11 @@ export function DayTimeline({
                 : "Pas dispo"
               : `${availableIds.length}/${totalUsers} dispo${availableIds.length > 1 ? "s" : ""}`;
           const editable = canEdit && editMode;
+          const canPromptCreate =
+            mode === "individuel" && !editMode && sessionsAtHour.length === 0;
           const cellClassName = `h-7 rounded-md transition-transform ${
             isBestHour ? "ring-2 ring-accent" : ""
-          } ${editable ? "active:scale-95" : ""}`;
+          } ${editable || canPromptCreate ? "active:scale-95" : ""}`;
           const cellStyle = {
             backgroundColor: blockColor
               ? `color-mix(in srgb, ${blockColor} ${opacityPercent}%, transparent)`
@@ -319,6 +344,15 @@ export function DayTimeline({
                     className={`${cellClassName} w-full border border-dashed border-accent/40`}
                     style={cellStyle}
                   />
+                ) : canPromptCreate ? (
+                  <button
+                    type="button"
+                    onClick={() => handleTapEmptyHour(hour)}
+                    aria-label={`${pad2(hour)}h — créer une soirée à cette heure`}
+                    title={title}
+                    className={`${cellClassName} w-full`}
+                    style={cellStyle}
+                  />
                 ) : (
                   <div title={title} className={cellClassName} style={cellStyle} />
                 )}
@@ -331,6 +365,49 @@ export function DayTimeline({
           );
         })}
       </div>
+
+      <Dialog.Root
+        open={createPromptHour !== null}
+        onOpenChange={(next) => !next && setCreatePromptHour(null)}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/70" />
+          <Dialog.Content asChild aria-describedby={undefined}>
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 420, damping: 32 }}
+              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border bg-surface p-4 sm:inset-x-auto sm:top-1/2 sm:left-1/2 sm:bottom-auto sm:w-full sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-6"
+            >
+              <Dialog.Title className="text-lg font-semibold text-foreground">
+                Créer une soirée ici ?
+              </Dialog.Title>
+              {createPromptHour !== null && (
+                <p className="mt-2 text-sm text-muted">
+                  {formatDateFr(date)} à {pad2(createPromptHour)}h00
+                </p>
+              )}
+              <div className="mt-5 flex gap-3">
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-lg border border-border px-4 py-3 text-sm font-medium text-muted transition-colors hover:text-foreground"
+                  >
+                    Annuler
+                  </button>
+                </Dialog.Close>
+                {createSessionHref && (
+                  <Dialog.Close asChild>
+                    <ButtonLink href={createSessionHref} variant="primary" className="flex-1">
+                      Créer
+                    </ButtonLink>
+                  </Dialog.Close>
+                )}
+              </div>
+            </motion.div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {mode === "collectif" && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted">

@@ -75,12 +75,12 @@ function SessionRow({
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; gameId?: string }>;
+  searchParams: Promise<{ error?: string; gameId?: string; date?: string; time?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { error, gameId } = await searchParams;
+  const { error, gameId, date: prefillDate, time: prefillTime } = await searchParams;
   const errorMessage = error ? CREATE_ERROR_MESSAGES[error] : null;
   const preselectedGame = gameId
     ? await prisma.game.findUnique({ where: { id: gameId } })
@@ -152,6 +152,7 @@ export default async function SessionsPage({
                 name="date"
                 required
                 min={toDateInputValue(todayDateOnly())}
+                defaultValue={prefillDate}
                 className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
               />
             </div>
@@ -164,6 +165,7 @@ export default async function SessionsPage({
                 type="time"
                 name="time"
                 required
+                defaultValue={prefillTime}
                 className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
               />
             </div>

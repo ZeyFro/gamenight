@@ -43,6 +43,8 @@ export interface CalendarSession {
   decidedGameName: string | null;
   decidedGameCoverUrl: string | null;
   proposals: CalendarProposalSummary[];
+  /** Voteurs de la proposition gagnante (`decidedGameId`) — mêmes "joueurs inscrits" que le "Qui vient" Discord (`src/lib/sessions.ts`). Vide tant qu'aucun jeu n'est décidé (VOTING). */
+  players: CalendarUser[];
 }
 
 export interface HourSlot {
@@ -76,10 +78,14 @@ const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
 
 function toCalendarSession(
   session: Session & {
-    proposals: { votes: unknown[]; game: { name: string } }[];
+    proposals: { gameId: string; votes: { user: CalendarUser }[]; game: { name: string } }[];
     decidedGame: { name: string; coverUrl: string | null } | null;
   }
 ): CalendarSession {
+  const winningProposal = session.decidedGameId
+    ? session.proposals.find((p) => p.gameId === session.decidedGameId)
+    : undefined;
+
   return {
     id: session.id,
     date: session.date,
@@ -92,6 +98,7 @@ function toCalendarSession(
       gameName: p.game.name,
       voteCount: p.votes.length,
     })),
+    players: winningProposal?.votes.map((v) => v.user) ?? [],
   };
 }
 
@@ -120,7 +127,15 @@ export async function getCalendarData(
       where: { date: { gte: rangeStart, lt: rangeEndExclusive } },
       include: {
         proposals: {
-          select: { votes: { select: { id: true } }, game: { select: { name: true } } },
+          select: {
+            gameId: true,
+            votes: {
+              select: {
+                user: { select: { id: true, discordName: true, discordAvatar: true, color: true } },
+              },
+            },
+            game: { select: { name: true } },
+          },
         },
         decidedGame: { select: { name: true, coverUrl: true } },
       },
