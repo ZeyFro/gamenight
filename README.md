@@ -4346,3 +4346,65 @@ et n'était pas demandée.
   (tout le groupe, sauf `silenceReminders`) sur les 3 points modifiés ;
   `announceSessionModified` non touché ; `winner.votes.length` (compteur
   "Joueurs") non filtré, reste un fait indépendant du ping
+
+## Pages d'erreur custom (Sprint 1 v2, fiabilisation)
+
+L'app utilisait jusqu'ici les pages 404/500 par défaut de Next — hors
+identité GameNight, et sans logging exploitable côté 500. Trois fichiers
+racine (conventions App Router, aucun routing à câbler) :
+
+- **`src/app/not-found.tsx`** — 404 brandée ("Cette page a rage quit 🎮",
+  emoji manette animé — léger shake en boucle). Déclenchée aussi bien par
+  une route inexistante que par les `notFound()` déjà en place (fiche
+  jeu/pote/session introuvable), sans rien changer à ces appels
+  existants. Bouton "Retour à l'accueil".
+- **`src/app/error.tsx`** — error boundary racine ("Le serveur a crash
+  💀 On respawn bientôt"). Client Component imposé par Next (`error`/
+  `reset` passés en props par le framework) ; `console.error(error)`
+  dans un `useEffect` pour que Vercel Logs capture l'erreur en prod.
+  Deux boutons : "Réessayer" (`reset()`, retente le rendu du segment
+  sans recharger toute la page) et "Retour à l'accueil". Ne capture pas
+  les erreurs du layout racine lui-même (Header, `auth()`) — nécessiterait
+  un `global-error.tsx` séparé, hors périmètre demandé.
+- **`src/app/loading.tsx`** — Suspense global, spinner + logo GameNight.
+  Volontairement un Server Component sans Framer Motion : seulement des
+  animations CSS Tailwind natives (`animate-spin`/`animate-pulse`), qui
+  s'affichent dès le premier octet streamé par le serveur, avant même
+  l'hydratation JS — un écran de chargement ne doit pas lui-même
+  attendre un bundle client pour apparaître. `role="status"` +
+  texte `sr-only` pour les lecteurs d'écran.
+
+Les trois réutilisent `.bg-hero-gradient` (déjà utilisé sur l'écran de
+connexion) et les composants `Button`/`ButtonLink` existants — aucun
+nouveau composant partagé, pas de nouvelle classe CSS. `MotionConfig
+reducedMotion="user"` (déjà posé dans `layout.tsx`) désactive
+automatiquement les animations Framer Motion de `not-found.tsx`/
+`error.tsx` pour `prefers-reduced-motion` — pas de gestion manuelle
+nécessaire.
+
+### Fichiers touchés
+
+- `src/app/not-found.tsx` (nouveau)
+- `src/app/error.tsx` (nouveau)
+- `src/app/loading.tsx` (nouveau)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur ; `/_not-found`
+  apparaît dans la liste des routes générées, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : une route inexistante répond bien `404` et
+  affiche le contenu brandé ("Cette page a rage quit", "Retour à
+  l'accueil") ; `/` répond `200` sans régression — aucune erreur
+  d'application dans les logs. `error.tsx` (déclenché uniquement par une
+  vraie exception de rendu) et `loading.tsx` (fenêtre de streaming très
+  courte en local) n'ont pas pu être exercés visuellement en sandbox —
+  vérifiés par lecture de code et cohérence TypeScript via `next build`
+  uniquement, comme pour les PR précédentes touchant des cas
+  difficiles à déclencher manuellement
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : les 6 `notFound()` existants (jeu/pote/session
+  introuvables) pointent désormais vers cette 404 brandée au lieu de la
+  page par défaut de Next, sans changement de leur propre logique ;
+  `layout.tsx`, `PageTransition`, `Header`/`BottomNav` inchangés
