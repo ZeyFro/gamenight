@@ -18,7 +18,6 @@ import type { CalendarDay, CalendarSession, CalendarUser } from "@/lib/calendar"
 const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
 const AUTO_SCROLL_HOUR = 18;
 const SWIPE_MIN_DISTANCE_PX = 50;
-const RANGE_SELECT_WINDOW_MS = 3000;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -64,13 +63,16 @@ function bestHourOfDay(day: CalendarDay): number | null {
  * nouveau introduit ici.
  *
  * Sélection de plage (retour terrain, 1 seul tap était trop lent pour
- * plusieurs heures) : 1er tap sur une heure = ancre "en attente"
- * (opacité réduite) ; 2e tap dans les 3s = fin de plage → toute la plage
+ * plusieurs heures) : 1er tap sur une heure = ancre "en attente" (opacité
+ * réduite), qui reste active INDÉFINIMENT — pas de timeout, l'utilisateur
+ * peut prendre son temps. 2e tap = fin de plage → toute la plage
  * [min, max] est basculée et sauvegardée en UN seul `upsertOverride`
- * (respecte la contrainte une-exception-par-jour ci-dessus). Sans 2e tap
- * dans la fenêtre, le timeout retombe sur le comportement 1h d'origine.
- * Le sens du bascule (dispo → indispo ou l'inverse) suit l'état actuel de
- * l'heure ancre, appliqué à toute la plage.
+ * (respecte la contrainte une-exception-par-jour ci-dessus). Un bouton
+ * "Annuler" à côté du message d'attente permet d'abandonner sans taper de
+ * 2e heure. Pas de drag/glisser : conflit avec le scroll vertical natif
+ * de la timeline sur mobile (déjà écarté pour le swipe jour, même
+ * raisonnement). Le sens du bascule (dispo → indispo ou l'inverse) suit
+ * l'état actuel de l'heure ancre, appliqué à toute la plage.
  *
  * Édition en vue Collectif (retour terrain) : `canEdit` est maintenant
  * vrai en Collectif aussi — on continue à voir la densité de tout le
@@ -91,10 +93,13 @@ function bestHourOfDay(day: CalendarDay): number | null {
  * exact après un tap, y compris pour l'heure "libérée" quand l'exception
  * se déplace, sans avoir besoin d'un re-fetch.
  *
- * Création rapide de soirée (sous-PR 3/3) : en vue Individuel, hors mode
- * édition dispo, un tap sur une heure SANS session propose "Créer une
- * soirée ici ?" (bottom-sheet, un seul `Dialog` partagé plutôt qu'une
- * instance par heure). Disponible sur n'importe quel profil affiché — pas
+ * Création rapide de soirée (sous-PR 3/3, étendue au Collectif) : hors
+ * mode édition dispo, un tap sur une heure SANS session propose "Créer
+ * une soirée ici ?" (bottom-sheet, un seul `Dialog` partagé plutôt qu'une
+ * instance par heure) — en Individuel comme en Collectif. Le mode édition
+ * reste dédié aux dispos ; la création de soirée est l'action par défaut
+ * d'un tap sur une heure libre quand ce mode est désactivé, dans les deux
+ * vues. En Individuel, disponible sur n'importe quel profil affiché — pas
  * que le sien — repérer un créneau libre chez un pote puis y caler une
  * soirée est un usage voulu. Redirige vers `/sessions` (le formulaire de
  * création y est déjà inline) avec `?date=&time=` préremplis — aucun
@@ -147,17 +152,12 @@ export function DayTimeline({
   const [createPromptHour, setCreatePromptHour] = useState<number | null>(null);
   const [pendingStart, setPendingStart] = useState<number | null>(null);
   const pendingStartRef = useRef<number | null>(null);
-  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, startTransition] = useTransition();
 
   function clearPendingRange() {
-    if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
-    pendingTimeoutRef.current = null;
     pendingStartRef.current = null;
     setPendingStart(null);
   }
-
-  useEffect(() => clearPendingRange, []);
 
   const isToday = sameUtcDate(date, today);
   const prevDate = addDays(date, -1);
@@ -246,10 +246,9 @@ export function DayTimeline({
   }
 
   /**
-   * 1er tap = pose l'ancre "en attente" (3s pour taper la fin de plage) ;
-   * 2e tap dans la fenêtre = fin de plage, bascule [ancre, hour] en un
-   * seul appel. Sans 2e tap, le timeout retombe sur le comportement 1h
-   * d'origine (ancre seule).
+   * 1er tap = pose l'ancre "en attente" (reste active jusqu'au 2e tap ou
+   * à "Annuler", pas de délai). 2e tap = fin de plage, bascule
+   * [ancre, hour] en un seul appel.
    */
   function handleTapHour(hour: number) {
     if (!canEdit || !editMode) return;
@@ -258,11 +257,6 @@ export function DayTimeline({
     if (anchor === null) {
       pendingStartRef.current = hour;
       setPendingStart(hour);
-      pendingTimeoutRef.current = setTimeout(() => {
-        const pending = pendingStartRef.current;
-        clearPendingRange();
-        if (pending !== null) applyOverrideRange(pending, pending);
-      }, RANGE_SELECT_WINDOW_MS);
       return;
     }
 
@@ -271,7 +265,7 @@ export function DayTimeline({
   }
 
   function handleTapEmptyHour(hour: number) {
-    if (mode !== "individuel" || editMode) return;
+    if (editMode) return;
     setCreatePromptHour(hour);
   }
 
@@ -309,24 +303,35 @@ export function DayTimeline({
 
       {canEdit && (
         <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              clearPendingRange();
-              setEditMode((v) => !v);
-            }}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              editMode
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-border text-muted hover:text-foreground"
-            }`}
-          >
-            {editMode
-              ? pendingStart !== null
-                ? "⏳ Tape la fin de la plage…"
-                : "✅ Édition activée — tape un créneau (ou 2 pour une plage)"
-              : "✏️ Modifier mes dispos"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                clearPendingRange();
+                setEditMode((v) => !v);
+              }}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                editMode
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-muted hover:text-foreground"
+              }`}
+            >
+              {editMode
+                ? pendingStart !== null
+                  ? "⏳ Tape la fin de la plage…"
+                  : "✅ Édition activée — tape un créneau (ou 2 pour une plage)"
+                : "✏️ Modifier mes dispos"}
+            </button>
+            {pendingStart !== null && (
+              <button
+                type="button"
+                onClick={clearPendingRange}
+                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground"
+              >
+                Annuler
+              </button>
+            )}
+          </div>
           {localOverride && <span className="text-xs text-muted">📌 Exception ce jour</span>}
         </div>
       )}
@@ -393,8 +398,7 @@ export function DayTimeline({
           // point de la couleur perso marque en plus SA PROPRE dispo,
           // seul signal sinon invisible tant qu'on n'a pas tapé.
           const showOwnDot = editable && mode === "collectif" && isAvailable && !!ownColor;
-          const canPromptCreate =
-            mode === "individuel" && !editMode && sessionsAtHour.length === 0;
+          const canPromptCreate = !editMode && sessionsAtHour.length === 0;
           const cellClassName = `h-7 rounded-md transition-transform ${
             isBestHour ? "ring-2 ring-accent" : ""
           } ${editable || canPromptCreate ? "active:scale-95" : ""} ${
