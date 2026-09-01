@@ -117,6 +117,20 @@ export function todayDateOnly(): Date {
   );
 }
 
+/**
+ * `Date.now()` isolé dans une fonction nommée — le lint `react-hooks/purity`
+ * (React Compiler) interdit l'appel direct à `Date.now`/`new Date` dans le
+ * corps d'un composant (résultat instable d'un rendu à l'autre), mais
+ * n'analyse pas l'intérieur des fonctions appelées (même logique que
+ * `wallClockNow` ci-dessus, déjà toléré partout où il est appelé depuis une
+ * page). Utilisé pour du texte relatif ("il y a Xh") calculé une seule fois
+ * au rendu serveur, pas pour une horloge qui doit rester à jour côté client
+ * (cf. `VotingCountdown`, qui gère lui-même son propre re-render).
+ */
+export function nowMs(): number {
+  return Date.now();
+}
+
 /** Durée absolue en français, unité la plus lisible ("3 h", "45 min", "2 j"). */
 export function formatDurationFr(ms: number): string {
   const totalMinutes = Math.max(0, Math.round(ms / 60_000));

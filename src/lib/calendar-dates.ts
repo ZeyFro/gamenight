@@ -14,7 +14,7 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /** Lundi 00:00 (UTC-horloge-murale) de la semaine contenant `date`. */
-function getWeekStart(date: Date): Date {
+export function getWeekStart(date: Date): Date {
   const dayOfWeek = date.getUTCDay(); // 0 = dimanche
   const daysSinceMonday = (dayOfWeek + 6) % 7;
   return new Date(

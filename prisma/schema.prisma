@@ -99,6 +99,9 @@ model User {
   // PR 8/9 — audit trail sur /admin/badges (qui a créé/modifié un badge).
   modifiedBadges Badge[]
 
+  // Refonte home — historique des passages de niveau (voir `LevelUpEvent`).
+  levelUpEvents LevelUpEvent[]
+
   @@index([xpTotal])
 }
 
@@ -439,6 +442,28 @@ model XpEvent {
 
   @@unique([userId, reason, sourceId])
   @@index([userId])
+  @@index([createdAt])
+}
+
+// Refonte home ("Activité récente") — un passage de niveau était jusque-là
+// un événement purement transitoire, détecté à la volée dans `awardXp`
+// (xp-actions.ts) juste pour déclencher la notif Discord
+// (`announceLevelUp`), sans jamais être persisté. Cette table capture le
+// même événement, au même endroit exact, pour pouvoir l'afficher dans le
+// feed d'activité — jamais écrite par le script de backfill
+// (`prisma/backfill-xp.mjs`, qui écrit l'XP directement sans passer par
+// `awardXp` ni détecter de passage de niveau, précisément pour éviter de
+// spammer Discord de level-ups rétroactifs à chaque déploiement — même
+// raisonnement ici : pas de `LevelUpEvent` rétroactif non plus, seuls les
+// VRAIS passages de niveau à partir de maintenant sont enregistrés).
+model LevelUpEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  level     Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([createdAt])
 }
 

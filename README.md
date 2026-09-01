@@ -4155,3 +4155,117 @@ reconnexion, point) sans complexifier l'auth.
   toujours identique), callback `session` inchangé, connexion/déconnexion
   Discord inchangées ; aucune migration (aucun nouveau champ `User`, le
   throttle vit uniquement dans le JWT)
+
+## Refonte de la home (`/`)
+
+La home ne montrait jusqu'ici que "Prochaine soirée" + "Ta bibliothèque" +
+2 boutons — trop vide pour une app pensée pour être consultée souvent.
+Refonte complète en 6 sections (dans cet ordre), chacune dans sa propre
+card, avec une entrée en fondu + translation Framer Motion (stagger
+~100ms entre cards) :
+
+1. **Header perso** — `RankAvatar` (anneau coloré par rang + pastille de
+   niveau, déjà utilisé sur `/profil` et `/potes/[id]`) à la place du
+   simple avatar rond, + ligne "Niveau X · Titre · Rang" en dessous du
+   pseudo.
+2. **Prochaine soirée** — cover IGDB en fond de card (jeu décidé si
+   `SCHEDULED`, sinon la proposition la plus votée en `VOTING`, avec
+   dégradé pour garder le texte lisible), + nombre de "joueurs inscrits"
+   (voteurs de la proposition gagnante une fois le jeu tranché, sinon tous
+   les voteurs toutes propositions confondues pendant le vote — même sens
+   que le "Qui vient" Discord déjà utilisé côté annonces/calendrier).
+   Reste un lien vers `/sessions/[id]` (pas `/soirees/[id]`, qui n'existe
+   pas dans le routing de l'app).
+3. **Activité récente** — fusion des 4 types d'événements déjà horodatés
+   en base (soirées terminées, badges débloqués, récompenses gagnées,
+   passages de niveau), 5 plus récents tous types confondus, sans
+   pagination. Les passages de niveau n'étaient auparavant **pas persistés**
+   (seulement une notif Discord ponctuelle) : nouveau modèle
+   `LevelUpEvent` (append-only, écrit uniquement par le chemin XP live
+   `awardXp()`, jamais par le script de backfill `backfill-xp.mjs` qui ne
+   passe pas par cette fonction — vérifié avant d'écrire le modèle pour
+   éviter tout risque de flood d'événements historiques au prochain
+   build).
+4. **Stats du groupe** — total de soirées jouées, jeu le plus joué (avec
+   cover), meilleur streak actif (fenêtre 24h, alignée sur le seuil de
+   cassure de `touchStreak`), nombre de joueurs actifs (fenêtre plus
+   large de 7 jours — un pote silencieux depuis 2 jours n'a pas
+   "disparu" du groupe, il n'a juste plus de streak en cours).
+5. **Dispos de la semaine** — 7 colonnes Lun→Dim (semaine calendaire
+   contenant aujourd'hui, pas un rolling 7 jours), dispo "du soir" (20h,
+   même heure repère que la timeline calendrier) par jour, meilleur jour
+   surligné en violet, tap → `/calendrier?date=...`.
+6. **Classement rapide** — podium top 3 compact, composant `PodiumSpot`
+   extrait de `/classement` (comportement inchangé sur `/classement`,
+   maintenant partagé) + lien "Voir tout" vers `/classement`.
+
+La card "Ta bibliothèque" est retirée de la home (pas dans la liste des 6
+sections demandées) — `/bibliotheque` reste accessible depuis la nav
+principale, rien n'est perdu en découvrabilité. Les boutons "Mes dispos"
+et "Soirées" restent en bas de page ; "Se déconnecter" inchangé.
+
+### Nouveau : `LevelUpEvent`
+
+```prisma
+model LevelUpEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  level     Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+```
+
+Écrit dans `awardXp()` (`src/lib/xp-actions.ts`) juste à côté de la notif
+Discord existante (même détection `afterLevel > beforeLevel`) — aucun
+autre appelant. Pas de backfill rétroactif : les passages de niveau
+antérieurs à cette PR n'apparaîtront pas dans le feed (acceptable, un feed
+d'activité "récente" n'a pas vocation à reconstruire l'historique complet).
+
+### Fichiers touchés
+
+- `prisma/schema.prisma` + migration `20260901140000_add_level_up_event`
+  — modèle `LevelUpEvent` + relation sur `User`
+- `src/lib/xp-actions.ts` — `awardXp()` persiste désormais un
+  `LevelUpEvent` en plus de la notif Discord
+- `src/lib/home.ts` (nouveau) — `getRecentActivity`, `getGroupStats`,
+  `getWeekAvailability`, dédiées à `/`
+- `src/lib/calendar-dates.ts` — `getWeekStart` exporté (déjà interne,
+  réutilisé par `getWeekAvailability`)
+- `src/components/PodiumSpot.tsx` (nouveau) — extrait de
+  `/classement/page.tsx` à l'identique
+- `src/app/classement/page.tsx` — utilise `PodiumSpot` partagé,
+  définition locale supprimée
+- `src/components/motion.tsx` — `Stagger` accepte un `staggerDelay`
+  optionnel (défaut 0.04 inchangé pour tous les appelants existants),
+  utilisé à 0.1 sur la home pour un stagger ~100ms entre les 6 cards
+- `src/lib/wallclock.ts` — `nowMs()` (nouveau) : isolation de
+  `Date.now()` dans une fonction nommée, requis par le lint
+  `react-hooks/purity` qui interdit l'appel direct dans le corps d'un
+  composant
+- `src/app/page.tsx` — réécriture complète des 6 sections
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les
+  routes existantes inchangées
+- Smoke test `next dev` : `/` répond 200 (page de connexion, non
+  authentifié en sandbox), `/classement` redirige 307 (cohérent, non
+  connecté) — aucune erreur d'application dans les logs. Les 6 nouvelles
+  sections de la home authentifiée (cover IGDB, activité récente, stats
+  du groupe, dispos de la semaine, podium) n'ont pas pu être exercées
+  visuellement en sandbox (pas de session Discord ni de `DATABASE_URL`
+  live) — seules l'absence d'erreur de compilation/exécution et la
+  cohérence des types via `next build` sont vérifiées, comme pour les PR
+  précédentes de ce type
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : `/classement` rendu identique (podium + tableau
+  inchangés, seule l'implémentation de `PodiumSpot` a bougé de fichier) ;
+  `Stagger`/`StaggerItem` par défaut inchangés pour les 17 autres pages
+  qui les utilisent (`staggerDelay` optionnel, défaut conservé) ;
+  `awardXp()` garde exactement son comportement XP/notif Discord existant,
+  ajoute uniquement une écriture `LevelUpEvent` en plus
