@@ -36,6 +36,44 @@ export function getMonthGridRange(date: Date): { start: Date; end: Date } {
   };
 }
 
+export interface HourSlot {
+  hour: number;
+  availableUserIds: string[];
+}
+
+export interface BestSlot {
+  date: Date;
+  hour: number;
+  count: number;
+  userIds: string[];
+}
+
+/**
+ * Extrait du "meilleur créneau commun" (le plus grand nombre de dispos
+ * simultanées) hors de `getCalendarData` (`src/lib/calendar.ts`, qui
+ * importe `@/lib/prisma`) — même raison que le reste de ce fichier : rendre
+ * la logique testable sans DB (chantier "Tests automatisés", Sprint 1).
+ * Prend les heures déjà calculées (`availableUserIds` déjà résolu via
+ * `isAvailableAt`) plutôt que de recalculer quoi que ce soit — pure
+ * fonction de parcours/max, aucune règle de disponibilité ici.
+ *
+ * `null` si aucun jour n'a de créneau avec au moins 1 dispo (comportement
+ * inchangé : un `count` de 0 n'est jamais un "meilleur créneau" affichable).
+ */
+export function findBestSlot(days: { date: Date; hours: HourSlot[] }[]): BestSlot | null {
+  let best: BestSlot | null = null;
+
+  for (const day of days) {
+    for (const { hour, availableUserIds } of day.hours) {
+      if (!best || availableUserIds.length > best.count) {
+        best = { date: day.date, hour, count: availableUserIds.length, userIds: availableUserIds };
+      }
+    }
+  }
+
+  return best && best.count > 0 ? best : null;
+}
+
 export type CalendarMode = "collectif" | "individuel";
 
 /**

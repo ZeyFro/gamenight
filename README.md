@@ -4618,3 +4618,190 @@ mapper une clé d'erreur au message de toast à afficher.
   limite (10/min, ou 60/min pour la tierlist) ; seul le comportement
   au-delà de la limite change, et uniquement pour refuser proprement au
   lieu de laisser passer un spam illimité
+
+## Validation zod + logging structuré + tests automatisés (Sprint 1, fiabilisation — suite)
+
+Trois chantiers de fiabilisation indépendants, regroupés dans une seule PR
+comme demandé.
+
+### 1. Validation entrées serveur (zod)
+
+**`src/lib/validations.ts`** (nouveau) — schémas zod partagés pour toutes
+les server actions ciblées, chacune appelant `schema.safeParse()` en tout
+premier. Répartition volontaire zod/logique métier (documentée en tête du
+fichier) : zod valide la **forme** (identifiant non vide, date
+`YYYY-MM-DD`, heure `HH:mm`, couleur `#RRGGBB`, URL `http(s)://`...) ; les
+règles métier qui dépendent de l'état actuel (deadline avant/après la
+session, session pas trop proche...) restent dans `resolveSessionSchedule`
+— déjà correctes et déjà couvertes par les tests du chantier 3, dupliquer
+cette logique dans un schéma séparé aurait été une nouvelle source de
+désaccord plutôt qu'une protection.
+
+Deux écarts assumés par rapport à l'énoncé :
+- `upsertOverride`/`addWeeklySlot` ne valident **pas** `startTime <
+  endTime` en dur — `isAvailableAt` (`src/lib/availability.ts`) supporte
+  explicitement un créneau qui traverse minuit (ex. 21:00–00:00) en
+  interprétant `endTime <= startTime` comme "jusqu'à minuit puis de
+  minuit à endTime". Imposer l'ordre casserait cette fonctionnalité
+  existante (zéro régression) — zod valide donc uniquement le format
+  `HH:mm`, l'ordre reste géré par `isAvailableAt`.
+- `createSession` ne valide **pas** "au moins 1 proposition de jeu" : le
+  formulaire réel n'a jamais eu ce champ requis (`gameId` n'est présent,
+  optionnel, que si on arrive depuis "Proposer une soirée avec ce jeu"
+  sur une fiche jeu) — les propositions s'ajoutent après coup via
+  `proposeGame`, c'est le flux nominal de l'app depuis PR #1. Imposer
+  cette contrainte aurait cassé la création de soirée standard.
+
+Actions ciblées, avec le même partage à deux niveaux qu'en PR "Rate
+limiting" :
+- **Traitement complet** (erreur affichée : redirect `?error=...` ou
+  `{ok:false,error}` selon comment l'action est déjà invoquée) :
+  `createSession` (+ filtre `notifiedUserIds` contre les vrais ids en
+  base plutôt que de rejeter toute la création pour un id périmé),
+  `editSessionAction`, `toggleVote`, `addWeeklySlot`, `upsertOverride`,
+  `removeOverrideForDate`, `addManualGame`, `updateGame`.
+- **Garde silencieuse** (même convention que les autres retours anticipés
+  déjà présents dans ces actions) : `proposeGame`,
+  `withdrawProposalAction`, `submitSuperlativeVotesAction` (validation
+  zod de la forme avant les règles métier déjà strictes — self-vote,
+  appartenance aux participants), `removeWeeklySlot`, `removeOverride`,
+  `toggleGameCoop`, `removeUserGame`, `updateUserColor`,
+  `setBannerUrlAction`.
+
+Deux bugs corrigés en passant, révélés par l'ajout de la validation :
+`addWeeklySlot`/`upsertOverride`/`removeOverrideForDate` renvoyaient
+`{ ok: true }` sur une entrée invalide (date/heure vide ou malformée) —
+`ActionForm` affichait alors le toast de succès "Dispo sauvegardée" alors
+que rien n'était enregistré. Corrigé : `{ ok: false, error:
+"donnees_invalides" }`.
+
+`castVote`/`castSuperlativeVote` : l'auteur du vote n'est jamais lu depuis
+`formData`, toujours `getCurrentUser()` — déjà vrai avant ce chantier,
+rien à valider de plus sur ce point précis.
+
+### 2. Logging structuré des erreurs
+
+**`src/lib/logger.ts`** (nouveau) — `logger.error(context, error, meta?)`
+/ `logger.warn(context, message, meta?)` / `logger.info(context, message,
+meta?)`, chacun émettant une ligne JSON `{ timestamp, level, context,
+message, meta?, stack? }` via `console.error`/`warn`/`log` (Vercel Logs
+capture déjà `console.*` automatiquement — aucun service externe ajouté,
+pas de Sentry, pas de LogSnag). `logger.error` accepte indifféremment une
+`Error` catchée (message + stack extraits automatiquement) ou un message
+texte direct.
+
+Tous les `console.error`/`console.warn`/`console.log` bruts du codebase
+(53 occurrences, 19 fichiers) remplacés par des appels au logger, avec un
+`context` cohérent par domaine (`steam`, `igdb`, `igdb-match`, `discord`,
+`deepl`, `family-import`, `auth`, `message-templates`,
+`cron:close-sessions`, `cron:reminders`, `bibliotheque`, `error-boundary`,
+`igdb-coop`, `steam-store`) : les 4 crons/routes de backfill, les 6 clients
+d'API externes (Steam, Steam Store, IGDB, Discord, DeepL, profil Discord),
+les server actions qui catchaient déjà des erreurs, et l'error boundary
+racine (`error.tsx`). Dans `auth.ts`, l'import est aliasé `appLogger` pour
+ne pas entrer en collision visuelle avec la clé `logger: {...}` de la
+config Auth.js elle-même (pas de collision réelle en JS — les clés d'objet
+ne masquent pas les identifiants de module — mais gardé pour la lisibilité).
+
+`error.tsx` reste un Client Component (imposé par Next pour un error
+boundary) : son `logger.error` s'exécute donc dans le navigateur
+(visible en devtools), pas dans les logs serveur Vercel — documenté
+explicitement dans le commentaire, pour ne pas laisser croire que Vercel
+Logs capture ce cas précis. La quasi-totalité des crashs applicatifs de
+l'app passe par une server action ou une route API, déjà loguée côté
+serveur avant de remonter jusqu'ici le cas échéant.
+
+### 3. Tests automatisés (vitest)
+
+`npm install -D vitest` + **`vitest.config.mts`** minimal (alias `@/*` →
+`src/*`, aucun environnement DOM — uniquement des fonctions pures, pas de
+composant React testé). `"test": "vitest run"` ajouté aux scripts.
+**70 tests, 0 skip, `npx vitest run` vert.**
+
+Un seul petit refactor pour rendre une logique testable sans dénaturer le
+code : le calcul du "meilleur créneau commun" (`bestSlot`), auparavant
+mêlé à la boucle de récupération DB de `getCalendarData`
+(`src/lib/calendar.ts`), en a été extrait vers une fonction pure
+`findBestSlot` dans `src/lib/calendar-dates.ts` (fichier déjà sans import
+Prisma, déjà pensé pour être partagé serveur/client) — même
+comportement exact, juste un appel en fin de fonction au lieu d'un
+tracking `bestSlot`/`maxAvailableCount` mêlé dans la boucle.
+
+Fonctions couvertes (uniquement des fonctions pures — aucune DB, aucun
+mock complexe, conformément à la demande) :
+- **`wallclock.ts`** : `wallClockNow()` renvoie bien l'heure de Paris et
+  pas l'heure UTC (hiver CET +1, été CEST +2), gère correctement les deux
+  transitions DST 2026 (passage heure d'été fin mars, heure d'hiver fin
+  octobre, vérifiées via `vi.useFakeTimers()`/`setSystemTime`) ;
+  `formatDurationFr()` sur les trois paliers (min/h/j) + clamp négatif.
+- **`calendar-dates.ts`** : `addDays`, `getWeekStart`, `getMonthGridRange`,
+  `buildCalendarHref` (les 4 combinaisons de mode/paramètres), et le
+  nouveau `findBestSlot` (créneau max tous jours confondus, `null` si
+  personne dispo, `null` sur liste vide, premier créneau gardé en cas
+  d'égalité).
+- **`session-schedule.ts`** : `resolveSessionSchedule` — cas normal sans
+  ajustement, deadline calculée depuis `deadlineOffset`, deadline passée
+  repoussée à +30min, deadline ≥ session recalée à session-1min, refus
+  session trop proche/déjà passée. (Les cas "0 votant → CANCELLED" et
+  "égalité → ancienneté" cités dans la demande vivent dans `closeSession`,
+  `src/lib/sessions.ts` — écritures Prisma, hors périmètre "pas de DB".)
+- **`xp.ts`** : `xpForLevel`/`levelForXp` (repères documentés + inversion
+  exacte aux paliers + pas de saut prématuré), `titleForLevel`/
+  `rankForLevel` (paliers + plafond au-delà du dernier), `streakMultiplier`
+  (pas de bonus à 0/1, +5 %/jour, plafond +50 % au jour 11).
+- **`xp-actions.ts`** : seule `isUniqueConstraintViolation` y est pure
+  (`awardXp`/`touchStreak` écrivent en base) — le calcul XP
+  base+streak et les seuils de niveau qu'elle utilise sont déjà couverts
+  via `xp.ts` ci-dessus, `xp-actions.ts` ne fait que les appliquer avant
+  d'écrire.
+- **`rate-limit.ts`** : sous la limite → autorisé, au-dessus → refusé,
+  reset après la fenêtre glissante (`vi.setSystemTime`), compteurs
+  indépendants par action et par user.
+- **`validations.ts`** : chaque primitive (id/date/heure/couleur/URL) et
+  chaque schéma métier — entrée valide accepte, entrée invalide rejette
+  (dont le créneau traversant minuit, volontairement accepté).
+
+### Fichiers touchés
+
+- `src/lib/validations.ts`, `src/lib/logger.ts`, `vitest.config.mts`
+  (nouveaux)
+- `src/app/sessions/actions.ts`, `src/app/sessions/page.tsx`,
+  `src/lib/session-schedule.ts` (chantier 1)
+- `src/app/disponibilites/actions.ts`, `src/app/disponibilites/page.tsx`
+  (chantier 1)
+- `src/app/actions.ts`, `src/app/bibliotheque/ajouter/page.tsx` (chantier 1)
+- `src/app/profil/actions.ts` (chantier 1)
+- `src/lib/calendar.ts`, `src/lib/calendar-dates.ts` (extraction
+  `findBestSlot`, chantier 3)
+- 19 fichiers pour le remplacement `console.*` → `logger.*` (chantier 2) :
+  `src/auth.ts`, `src/lib/{discord-profile,backfill-igdb-coop,
+  family-import,igdb,discord,backfill-steam-coop,game-details,
+  message-templates,deepl}.ts`, `src/app/error.tsx`,
+  `src/app/bibliotheque/actions.ts`, `src/app/actions.ts`,
+  `src/app/api/igdb/search/route.ts`,
+  `src/app/api/steam/callback/route.ts`,
+  `src/app/api/backfill/{igdb-coop,steam-store}/route.ts`,
+  `src/app/api/cron/{close-sessions,reminders}/route.ts`
+- 7 fichiers `*.test.ts` (chantier 3) : `wallclock`, `calendar-dates`,
+  `session-schedule`, `xp`, `xp-actions`, `rate-limit`, `validations`
+- `package.json` (`zod`/`vitest` en dépendances, script `test`)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- `npx vitest run` : **70 tests, 0 skip, tout vert**
+- Smoke test `next dev` : `/`, `/sessions`, `/disponibilites`,
+  `/bibliotheque`, `/bibliotheque/ajouter`, `/profil/parametres`,
+  `/calendrier`, `/tierlist` répondent sans erreur d'application — logs
+  serveur inspectés pour confirmer que le nouveau `logger` structuré
+  fonctionne bien en conditions réelles (ex. l'erreur `MissingSecret`
+  d'Auth.js, attendue en sandbox sans `AUTH_SECRET`, apparaît bien comme
+  une ligne JSON `{"level":"error","context":"auth",...}`)
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : toutes les actions gardent leur comportement exact
+  pour une entrée valide (seul le chemin d'entrée invalide change, du
+  silence ou d'un mauvais message vers une erreur propre) ; `bestSlot` du
+  calendrier calcule exactement la même valeur qu'avant l'extraction
+  (couvert par `findBestSlot`)

@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 interface CachedToken {
   accessToken: string;
   expiresAt: number;
@@ -152,15 +154,17 @@ function logIgdbMatch(
   outcome: "external_games" | "name_fallback" | "not_found" | "error",
   detail?: string
 ): void {
-  const prefix = `[igdb-match] Steam appid=${steamAppId} "${name}"`;
+  const meta = { steamAppId, name, outcome, detail };
   if (outcome === "not_found") {
-    console.warn(
-      `${prefix} → aucune correspondance IGDB (ni external_games, ni recherche par nom).`
+    logger.warn(
+      "igdb-match",
+      "Aucune correspondance IGDB (ni external_games, ni recherche par nom).",
+      meta
     );
   } else if (outcome === "error") {
-    console.error(`${prefix} → erreur : ${detail}`);
+    logger.error("igdb-match", detail ?? "erreur inconnue", meta);
   } else {
-    console.log(`${prefix} → matché via ${outcome}${detail ? ` (${detail})` : ""}.`);
+    logger.info("igdb-match", `Matché via ${outcome}${detail ? ` (${detail})` : ""}.`, meta);
   }
 }
 

@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { isValidHexColor } from "@/lib/user-color";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { bannerUrlSchema, userColorSchema } from "@/lib/validations";
 
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
@@ -19,8 +19,11 @@ export async function updateUserColor(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "updateUserColor")) return;
 
-  const color = String(formData.get("color") ?? "").trim();
-  if (!isValidHexColor(color)) return;
+  const input = userColorSchema.safeParse({
+    color: String(formData.get("color") ?? "").trim(),
+  });
+  if (!input.success) return;
+  const { color } = input.data;
 
   await prisma.user.update({
     where: { id: user.id },
@@ -58,15 +61,17 @@ export async function setBannerUrlAction(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "setBannerUrlAction")) return;
 
-  const raw = String(formData.get("bannerUrl") ?? "").trim();
+  const input = bannerUrlSchema.safeParse({
+    bannerUrl: String(formData.get("bannerUrl") ?? "").trim(),
+  });
+  if (!input.success) return;
+  const { bannerUrl: raw } = input.data;
 
   if (!raw) {
     await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: null } });
     revalidatePath("/profil");
     return;
   }
-
-  if (!/^https?:\/\//i.test(raw)) return;
 
   await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: raw } });
   revalidatePath("/profil");

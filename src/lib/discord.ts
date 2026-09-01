@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 export interface DiscordEmbedField {
   name: string;
   value: string;
@@ -30,9 +32,7 @@ export async function postToDiscord(
 ): Promise<PostToDiscordResult> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.warn(
-      "[discord] DISCORD_WEBHOOK_URL non configurée — message non envoyé."
-    );
+    logger.warn("discord", "DISCORD_WEBHOOK_URL non configurée — message non envoyé.");
     return { ok: false, error: "not_configured" };
   }
 
@@ -48,13 +48,13 @@ export async function postToDiscord(
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error(`[discord] Webhook a répondu ${res.status}: ${body}`);
+      logger.error("discord", `Webhook a répondu ${res.status}`, { status: res.status, body });
       return { ok: false, error: "http_error" };
     }
 
     return { ok: true };
   } catch (error) {
-    console.error("[discord] Échec de l'envoi du webhook", error);
+    logger.error("discord", error);
     return { ok: false, error: "network_error" };
   }
 }

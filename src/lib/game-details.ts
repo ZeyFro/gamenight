@@ -5,6 +5,7 @@ import {
   type IgdbGameDetails,
 } from "@/lib/igdb";
 import { translateToFrench } from "@/lib/deepl";
+import { logger } from "@/lib/logger";
 import type { Game } from "@prisma/client";
 
 /**
@@ -75,10 +76,7 @@ export async function getGameDetails(
         // jeux Steam résolus vers le même jeu IGDB) : on continue quand
         // même à afficher les infos pour cette visite, on ne persiste
         // juste pas le lien.
-        console.error(
-          `[igdb-match] Échec de persistance de igdbId=${igdbId} pour ${game.id}`,
-          err
-        );
+        logger.error("igdb-match", err, { gameId: game.id, igdbId });
       }
     }
   }
@@ -113,9 +111,7 @@ export async function getGameDetails(
   }
 
   if (cacheNeedsTranslationRetry) {
-    console.log(
-      `[igdb] Cache de ${game.id} antérieur au champ descriptionFr — retraduction rattrapée.`
-    );
+    logger.info("igdb", `Cache de ${game.id} antérieur au champ descriptionFr — retraduction rattrapée.`);
   }
 
   try {
@@ -139,8 +135,9 @@ export async function getGameDetails(
       : null;
     const details: IgdbGameDetails = { ...fetched, descriptionFr };
 
-    console.log(
-      `[igdb] Fiche ${game.id} mise en cache — descriptionFr ${
+    logger.info(
+      "igdb",
+      `Fiche ${game.id} mise en cache — descriptionFr ${
         descriptionFr ? "présente" : "absente (VO conservée)"
       }.`
     );
@@ -164,7 +161,7 @@ export async function getGameDetails(
 
     return { details, fetchedAt, error: null };
   } catch (err) {
-    console.error("[igdb] Fiche jeu : échec de récupération", err);
+    logger.error("igdb", err, { gameId: game.id });
     if (game.igdbDetails) {
       return {
         details: game.igdbDetails as unknown as IgdbGameDetails,

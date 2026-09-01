@@ -3,11 +3,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { AjouterJeuForm } from "@/components/AjouterJeuForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 
 const ERROR_MESSAGES: Record<string, string> = {
   joueurs_invalide:
     "Le nombre de joueurs minimum doit être entre 1 et 100, et le maximum (si renseigné) doit être supérieur ou égal au minimum.",
   rate_limited: RATE_LIMIT_MESSAGE,
+  [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
 
 export default async function AjouterJeuPage({

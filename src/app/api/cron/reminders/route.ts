@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
+import { logger } from "@/lib/logger";
 
 function parseRemindersSent(value: unknown): string[] {
   return Array.isArray(value)
@@ -54,8 +55,10 @@ export async function GET(request: Request) {
     for (const minutes of timingsDue) {
       const result = await sendSessionReminder(session, minutes);
       if (!result.ok) {
-        console.error(
-          `[cron/reminders] Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`
+        logger.error(
+          "cron:reminders",
+          `Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`,
+          { sessionId: session.id, minutes }
         );
       }
       remindersSent.push(String(minutes));

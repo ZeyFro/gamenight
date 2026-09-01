@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
 import { wallClockNow } from "@/lib/wallclock";
+import { logger } from "@/lib/logger";
 
 /**
  * Route destinée à être appelée toutes les 15 min par un cron externe
@@ -64,23 +65,27 @@ export async function GET(request: Request) {
       // Déjà réclamée entretemps par closeSessionIfDue (course gagnée par
       // l'autre déclencheur) — pas une erreur, juste rien à faire de plus.
       skipped.push(session.id);
-      console.log(
-        `[cron/close-sessions] Session ${session.id} déjà clôturée par ailleurs — ignorée.`
+      logger.info(
+        "cron:close-sessions",
+        `Session ${session.id} déjà clôturée par ailleurs — ignorée.`
       );
       continue;
     }
 
     closed.push(session.id);
     if (!result.discord) {
-      console.log(
-        `[cron/close-sessions] Session ${session.id} annulée en silence (0 votant) — pas d'annonce Discord.`
+      logger.info(
+        "cron:close-sessions",
+        `Session ${session.id} annulée en silence (0 votant) — pas d'annonce Discord.`
       );
     } else if (!result.discord.ok) {
-      console.error(
-        `[cron/close-sessions] Session ${session.id} clôturée, mais échec de l'annonce Discord: ${result.discord.error}`
+      logger.error(
+        "cron:close-sessions",
+        `Session ${session.id} clôturée, mais échec de l'annonce Discord: ${result.discord.error}`,
+        { sessionId: session.id }
       );
     } else {
-      console.log(`[cron/close-sessions] Session ${session.id} clôturée et annoncée sur Discord.`);
+      logger.info("cron:close-sessions", `Session ${session.id} clôturée et annoncée sur Discord.`);
     }
   }
 
@@ -91,8 +96,9 @@ export async function GET(request: Request) {
   // votant ne peut jamais atteindre DONE.
   const done = await closeOverdueScheduledSessions();
   if (done.length > 0) {
-    console.log(
-      `[cron/close-sessions] ${done.length} soirée(s) SCHEDULED passée(s) DONE (délai de grâce dépassé) : ${done.join(", ")}`
+    logger.info(
+      "cron:close-sessions",
+      `${done.length} soirée(s) SCHEDULED passée(s) DONE (délai de grâce dépassé) : ${done.join(", ")}`
     );
   }
 

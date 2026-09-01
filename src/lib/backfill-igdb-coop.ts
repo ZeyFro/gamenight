@@ -30,6 +30,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchIgdbGameDetails } from "@/lib/igdb";
 import { shuffle } from "@/lib/shuffle";
+import { logger } from "@/lib/logger";
 
 const REQUEST_DELAY_MS = 250;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,9 +59,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     process.env.IGDB_CLIENT_ID?.trim() && process.env.IGDB_CLIENT_SECRET?.trim()
   );
   if (!hasCredentials) {
-    console.warn(
-      "[igdb-coop] IGDB_CLIENT_ID/IGDB_CLIENT_SECRET non configurées — backfill sauté."
-    );
+    logger.warn("igdb-coop", "IGDB_CLIENT_ID/IGDB_CLIENT_SECRET non configurées — backfill sauté.");
     return {
       eligible: 0,
       processed: 0,
@@ -84,9 +83,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   );
 
   if (games.length === 0) {
-    console.log(
-      "[igdb-coop] Aucun jeu éligible (cache IGDB + pas de correction manuelle)."
-    );
+    logger.info("igdb-coop", "Aucun jeu éligible (cache IGDB + pas de correction manuelle).");
     return {
       eligible: 0,
       processed: 0,
@@ -107,14 +104,15 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   for (const game of games) {
     if (Date.now() - startedAt > TIME_BUDGET_MS) {
       stoppedEarly = true;
-      console.warn(
-        `[igdb-coop] Arrêt anticipé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
+      logger.warn(
+        "igdb-coop",
+        `Arrêt anticipé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
       );
       break;
     }
 
     processed += 1;
-    console.log(`[igdb-coop] Processing ${processed}/${games.length}: ${game.name}...`);
+    logger.info("igdb-coop", `Processing ${processed}/${games.length}: ${game.name}...`);
 
     try {
       // `igdbId` non-null garanti par le `where` ci-dessus.
@@ -130,18 +128,16 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       }
     } catch (error) {
       failed += 1;
-      console.error(
-        `[igdb-coop] Échec pour ${game.name} (igdbId=${game.igdbId})`,
-        error
-      );
+      logger.error("igdb-coop", error, { gameId: game.id, gameName: game.name, igdbId: game.igdbId });
     }
 
     await sleep(REQUEST_DELAY_MS);
   }
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log(
-    `[igdb-coop] Terminé en ${elapsedSeconds}s — ${updated}/${processed} mis à jour, ${unchanged} déjà corrects, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (arrêt anticipé)" : ""}.`
+  logger.info(
+    "igdb-coop",
+    `Terminé en ${elapsedSeconds}s — ${updated}/${processed} mis à jour, ${unchanged} déjà corrects, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (arrêt anticipé)" : ""}.`
   );
 
   return {

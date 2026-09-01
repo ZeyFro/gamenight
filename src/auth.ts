@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 import { refreshDiscordProfile } from "@/lib/discord-profile";
+import { logger as appLogger } from "@/lib/logger";
 
 /**
  * Fenêtre de rafraîchissement avatar/pseudo depuis l'API Discord (bug
@@ -49,7 +50,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // the server configuration" sans donner d'indice à l'utilisateur.
         // On logue l'erreur réelle (visible dans les logs Vercel) et on
         // renvoie `false` pour obtenir un message "AccessDenied" clair.
-        console.error("[auth] Échec de l'upsert User au login Discord", error);
+        appLogger.error("auth", error, { discordId: profile.id });
         return false;
       }
 
@@ -104,12 +105,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // l'utilisateur (CallbackRouteError, InvalidCheck, etc. l'enveloppent).
       // On log ici le type + la stack de l'erreur d'origine (`cause.err`)
       // pour pouvoir la retrouver dans les logs Vercel.
-      console.error(`[auth][error] ${error.name}: ${error.message}`);
+      appLogger.error("auth", error);
       const cause = (error as { cause?: { err?: unknown } }).cause;
       if (cause?.err instanceof Error) {
-        console.error("[auth][cause]", cause.err.stack ?? cause.err.message);
-      } else if (error.stack) {
-        console.error("[auth][stack]", error.stack);
+        appLogger.error("auth:cause", cause.err);
       }
     },
   },

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { getGameDetails } from "@/lib/game-details";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 /**
  * Enrichissement IGDB à la demande (PR 32, 2.5/4 — Bug 2B) : déclenché
@@ -29,10 +30,7 @@ export async function enrichGamesForCoopFilter(gameIds: string[]): Promise<void>
     try {
       await getGameDetails(game);
     } catch (error) {
-      console.error(
-        `[bibliotheque] Échec d'enrichissement IGDB à la demande pour ${game.id}`,
-        error
-      );
+      logger.error("bibliotheque", error, { gameId: game.id });
     }
   }
 }

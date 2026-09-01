@@ -25,6 +25,14 @@ import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import {
+  createSessionSchema,
+  editSessionSchema,
+  sessionGameRefSchema,
+  sessionProposalRefSchema,
+  superlativeVoteEntrySchema,
+  VALIDATION_ERROR_KEY,
+} from "@/lib/validations";
 
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
@@ -33,9 +41,15 @@ export async function createSession(formData: FormData) {
     redirect(`/sessions?error=${RATE_LIMIT_ERROR_KEY}`);
   }
 
-  const dateStr = String(formData.get("date") ?? "");
-  const timeStr = String(formData.get("time") ?? "");
-  if (!dateStr || !timeStr) return;
+  const input = createSessionSchema.safeParse({
+    date: String(formData.get("date") ?? ""),
+    time: String(formData.get("time") ?? ""),
+    notifyUserIds: parseNotifyRecipientsFromFormData(formData),
+  });
+  if (!input.success) {
+    redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  }
+  const { date: dateStr, time: timeStr, notifyUserIds } = input.data;
 
   const schedule = resolveSessionSchedule({
     dateStr,
@@ -52,7 +66,19 @@ export async function createSession(formData: FormData) {
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
   const reminderTimings = parseReminderTimingsFromFormData(formData);
-  const notifiedUserIds = parseNotifyRecipientsFromFormData(formData);
+  // Ne garde que des ids qui correspondent réellement à un user existant —
+  // la liste vient de checkboxes générées depuis une vraie liste de potes,
+  // mais une requête manipulée pourrait envoyer un id périmé/inventé ; on
+  // filtre silencieusement plutôt que de faire échouer toute la création
+  // pour un seul destinataire invalide.
+  const notifiedUserIds = notifyUserIds.length
+    ? (
+        await prisma.user.findMany({
+          where: { id: { in: notifyUserIds } },
+          select: { id: true },
+        })
+      ).map((u) => u.id)
+    : [];
 
   const session = await prisma.session.create({
     data: {
@@ -113,18 +139,36 @@ export async function editSessionAction(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "editSession")) return;
 
-  const sessionId = String(formData.get("sessionId") ?? "");
-  if (!sessionId) return;
+  const rawSessionId = String(formData.get("sessionId") ?? "");
+  const input = editSessionSchema.safeParse({
+    sessionId: rawSessionId,
+    date: String(formData.get("date") ?? ""),
+    time: String(formData.get("time") ?? ""),
+    deadlineDate: String(formData.get("deadlineDate") ?? "").trim(),
+    deadlineTime: String(formData.get("deadlineTime") ?? "").trim(),
+  });
+  if (!input.success) {
+    // `sessionId` fait partie du schéma (donc potentiellement absent ici),
+    // mais on ne peut rediriger vers `/sessions/[id]` sans lui — repli sur
+    // la valeur brute du formulaire pour ne pas perdre l'utilisateur en
+    // silence sur un cas qui ne devrait de toute façon jamais arriver via
+    // le modal d'édition (champs `required`).
+    if (rawSessionId) {
+      redirect(`/sessions/${rawSessionId}?error=${VALIDATION_ERROR_KEY}`);
+    }
+    return;
+  }
+  const {
+    sessionId,
+    date: dateStr,
+    time: timeStr,
+    deadlineDate: deadlineDateStr,
+    deadlineTime: deadlineTimeStr,
+  } = input.data;
 
   const existing = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!existing || existing.createdById !== user.id) return;
   if (existing.status === "DONE" || existing.status === "CANCELLED") return;
-
-  const dateStr = String(formData.get("date") ?? "");
-  const timeStr = String(formData.get("time") ?? "");
-  const deadlineDateStr = String(formData.get("deadlineDate") ?? "").trim();
-  const deadlineTimeStr = String(formData.get("deadlineTime") ?? "").trim();
-  if (!dateStr || !timeStr || !deadlineDateStr || !deadlineTimeStr) return;
 
   const schedule = resolveSessionSchedule({
     dateStr,
@@ -170,9 +214,12 @@ export async function proposeGame(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "proposeGame")) return;
 
-  const sessionId = String(formData.get("sessionId") ?? "");
-  const gameId = String(formData.get("gameId") ?? "");
-  if (!sessionId || !gameId) return;
+  const input = sessionGameRefSchema.safeParse({
+    sessionId: String(formData.get("sessionId") ?? ""),
+    gameId: String(formData.get("gameId") ?? ""),
+  });
+  if (!input.success) return;
+  const { sessionId, gameId } = input.data;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
@@ -210,9 +257,12 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const proposalId = String(formData.get("proposalId") ?? "");
-  const sessionId = String(formData.get("sessionId") ?? "");
-  if (!proposalId || !sessionId) return { ok: true };
+  const input = sessionProposalRefSchema.safeParse({
+    proposalId: String(formData.get("proposalId") ?? ""),
+    sessionId: String(formData.get("sessionId") ?? ""),
+  });
+  if (!input.success) return { ok: true };
+  const { proposalId, sessionId } = input.data;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
@@ -256,9 +306,12 @@ export async function withdrawProposalAction(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "withdrawProposal")) return;
 
-  const proposalId = String(formData.get("proposalId") ?? "");
-  const sessionId = String(formData.get("sessionId") ?? "");
-  if (!proposalId || !sessionId) return;
+  const input = sessionProposalRefSchema.safeParse({
+    proposalId: String(formData.get("proposalId") ?? ""),
+    sessionId: String(formData.get("sessionId") ?? ""),
+  });
+  if (!input.success) return;
+  const { proposalId, sessionId } = input.data;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
@@ -544,11 +597,14 @@ export async function submitSuperlativeVotesAction(formData: FormData) {
     votedForUserId: string;
   }[] = [];
   for (const category of categories) {
-    const votedForUserId = String(formData.get(`vote-${category.id}`) ?? "");
+    const entry = superlativeVoteEntrySchema.safeParse({
+      categoryId: category.id,
+      votedForUserId: String(formData.get(`vote-${category.id}`) ?? ""),
+    });
     if (
-      !votedForUserId ||
-      votedForUserId === user.id ||
-      !participantIds.has(votedForUserId)
+      !entry.success ||
+      entry.data.votedForUserId === user.id ||
+      !participantIds.has(entry.data.votedForUserId)
     ) {
       // Formulaire incomplet/invalide (ou tentative de voter pour
       // soi-même) : on rejette tout, pas de vote partiel.
@@ -558,7 +614,7 @@ export async function submitSuperlativeVotesAction(formData: FormData) {
       sessionId,
       categoryId: category.id,
       voterUserId: user.id,
-      votedForUserId,
+      votedForUserId: entry.data.votedForUserId,
     });
   }
 

@@ -8,6 +8,13 @@ import { parseDateOnly } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import {
+  idSchema,
+  overrideDateRefSchema,
+  overrideSchema,
+  VALIDATION_ERROR_KEY,
+  weeklySlotSchema,
+} from "@/lib/validations";
 
 /**
  * Toutes les actions ci-dessous sont invoquées via `<ActionForm>` — le
@@ -28,10 +35,17 @@ export async function addWeeklySlot(formData: FormData): Promise<DispoActionResu
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const dayOfWeek = Number(formData.get("dayOfWeek"));
-  const startTime = String(formData.get("startTime") ?? "");
-  const endTime = String(formData.get("endTime") ?? "");
-  if (Number.isNaN(dayOfWeek) || !startTime || !endTime) return { ok: true };
+  const input = weeklySlotSchema.safeParse({
+    dayOfWeek: Number(formData.get("dayOfWeek")),
+    startTime: String(formData.get("startTime") ?? ""),
+    endTime: String(formData.get("endTime") ?? ""),
+  });
+  // Bug corrigé (chantier "Validation entrées serveur") : cette branche
+  // renvoyait `{ ok: true }` sur une entrée invalide — `ActionForm`
+  // affichait alors le toast de succès "Dispo sauvegardée" alors que rien
+  // n'avait été enregistré. Retourne désormais une vraie erreur.
+  if (!input.success) return { ok: false, error: VALIDATION_ERROR_KEY };
+  const { dayOfWeek, startTime, endTime } = input.data;
 
   // Compté avant l'insertion : "1ère fois" au sens de l'Axe 1 XP =
   // premier créneau hebdo jamais renseigné par ce user.
@@ -63,8 +77,9 @@ export async function removeWeeklySlot(formData: FormData): Promise<void> {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "removeWeeklySlot")) return;
 
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  const input = idSchema.safeParse(formData.get("id"));
+  if (!input.success) return;
+  const id = input.data;
 
   await prisma.weeklyAvailability.deleteMany({
     where: { id, userId: user.id },
@@ -79,13 +94,19 @@ export async function upsertOverride(formData: FormData): Promise<DispoActionRes
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const dateStr = String(formData.get("date") ?? "");
-  if (!dateStr) return { ok: true };
-  const date = parseDateOnly(dateStr);
-
-  const available = formData.get("available") === "true";
-  const startTime = String(formData.get("startTime") ?? "").trim() || null;
-  const endTime = String(formData.get("endTime") ?? "").trim() || null;
+  const input = overrideSchema.safeParse({
+    date: String(formData.get("date") ?? ""),
+    available: formData.get("available") === "true",
+    startTime: String(formData.get("startTime") ?? "").trim(),
+    endTime: String(formData.get("endTime") ?? "").trim(),
+  });
+  // Même bug corrigé qu'`addWeeklySlot` ci-dessus : une date vide renvoyait
+  // `{ ok: true }` sans rien enregistrer.
+  if (!input.success) return { ok: false, error: VALIDATION_ERROR_KEY };
+  const { available } = input.data;
+  const date = parseDateOnly(input.data.date);
+  const startTime = input.data.startTime || null;
+  const endTime = input.data.endTime || null;
 
   await prisma.availabilityOverride.upsert({
     where: { userId_date: { userId: user.id, date } },
@@ -105,8 +126,9 @@ export async function removeOverride(formData: FormData): Promise<void> {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "removeOverride")) return;
 
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  const input = idSchema.safeParse(formData.get("id"));
+  if (!input.success) return;
+  const id = input.data;
 
   await prisma.availabilityOverride.deleteMany({
     where: { id, userId: user.id },
@@ -130,9 +152,12 @@ export async function removeOverrideForDate(
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const dateStr = String(formData.get("date") ?? "");
-  if (!dateStr) return { ok: true };
-  const date = parseDateOnly(dateStr);
+  const input = overrideDateRefSchema.safeParse({
+    date: String(formData.get("date") ?? ""),
+  });
+  // Même bug corrigé que ci-dessus : une date vide renvoyait `{ ok: true }`.
+  if (!input.success) return { ok: false, error: VALIDATION_ERROR_KEY };
+  const date = parseDateOnly(input.data.date);
 
   await prisma.availabilityOverride.deleteMany({
     where: { userId: user.id, date },
