@@ -4030,4 +4030,51 @@ rien à verrouiller de plus.
   seule sur un pote, densité collective, `MiniMonthCalendar`, création
   rapide de soirée, swipe jour précédent/suivant tous inchangés ; aucune
   migration, aucune nouvelle server action
-  optionnel du formulaire ; aucune migration
+
+## Retour terrain sur PR #42 — plage sans délai + création en Collectif
+
+Deux ajustements remontés après test de #42 (déjà mergée — nouvelle PR,
+pas un ajout de commits dessus).
+
+**Sélection de plage sans timeout** : le délai de 3s pour taper la fin de
+plage a été retiré — l'ancre "en attente" (`pendingStart`) reste active
+indéfiniment, jusqu'au 2e tap (fin de plage) ou à un bouton **"Annuler"**
+désormais affiché à côté du message "⏳ Tape la fin de la plage…" quand
+une ancre est posée. Le `setTimeout`/`pendingTimeoutRef` de #42 est
+supprimé — plus simple, plus prévisible (pas d'expiration surprise en
+pleine réflexion). Toujours pas de drag/glisser : conflit avec le scroll
+vertical natif de la timeline sur mobile, même raisonnement que pour le
+swipe jour déjà en place.
+
+**Création de soirée déverrouillée en Collectif** : "Créer une soirée
+ici ?" ne dépendait que de `mode === "individuel"` — condition retirée,
+la seule contrainte reste `!editMode && sessionsAtHour.length === 0`
+(aucune session à cette heure, mode édition dispo désactivé). Le mode
+édition reste dédié aux dispos dans les deux vues ; hors de ce mode, un
+tap sur une heure libre propose systématiquement la création, qu'on soit
+en Individuel ou en Collectif.
+
+### Fichiers touchés
+
+- `src/components/calendar/DayTimeline.tsx` — suppression du timeout de
+  plage (`RANGE_SELECT_WINDOW_MS`/`pendingTimeoutRef`), bouton "Annuler"
+  à côté du message d'attente, `canPromptCreate`/`handleTapEmptyHour`
+  ouverts au Collectif
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (routes
+  inchangées)
+- Smoke test `next dev` : `/calendrier` en Collectif et en Individuel
+  répondent 307 (non connecté, cohérent avec le sandbox) sans erreur
+  d'application. Le comportement sans timeout, le bouton "Annuler" et la
+  création rapide en Collectif n'ont pas pu être exercés interactivement
+  en sandbox (pas de session/DB) — seule l'atteignabilité des routes et
+  l'absence de crash sont vérifiées
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : sélection de plage (2e tap), toggle 1h (dégénère
+  d'une plage `[hour, hour]`), édition Individuel/Collectif, densité
+  collective, point perso, `MiniMonthCalendar`, swipe jour
+  précédent/suivant, panneau session tous inchangés ; aucune migration,
+  aucune nouvelle server action
