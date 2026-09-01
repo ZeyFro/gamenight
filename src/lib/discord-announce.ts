@@ -8,6 +8,7 @@ import {
   type PostToDiscordResult,
 } from "@/lib/discord";
 import { formatDateTimeFr } from "@/lib/wallclock";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 
 export type ProposalWithVotesAndGame = Proposal & {
   game: Game;
@@ -21,9 +22,14 @@ export type ProposalWithVotesAndGame = Proposal & {
  * fois dans le champ "Qui vient" de l'embed (lisible) et dans le
  * `content` brut du message (Discord ne déclenche une vraie notification
  * push que pour des mentions en dehors d'un embed).
+ *
+ * Ping sélectif : `session.notifiedUserIds` (choisi à la création)
+ * restreint en plus les votants du jeu gagnant à la sélection du
+ * créateur — cohérent avec la création et les rappels, `null` = pas de
+ * restriction (comportement historique).
  */
 export async function announceSessionResult(
-  session: Pick<Session, "date">,
+  session: Pick<Session, "date" | "notifiedUserIds">,
   winner: ProposalWithVotesAndGame | null,
   tie: boolean
 ): Promise<PostToDiscordResult> {
@@ -36,7 +42,11 @@ export async function announceSessionResult(
     return postToDiscord(embed);
   }
 
-  const mentions = winner.votes.map((v) => `<@${v.user.discordId}>`);
+  const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
+  const notifiedVotes = winner.votes.filter(
+    (v) => !notifiedUserIds || notifiedUserIds.includes(v.user.id)
+  );
+  const mentions = notifiedVotes.map((v) => `<@${v.user.discordId}>`);
   const fields: DiscordEmbedField[] = [
     { name: "Joueurs", value: String(winner.votes.length), inline: true },
     {
@@ -44,7 +54,9 @@ export async function announceSessionResult(
       value:
         mentions.length > 0
           ? mentions.join(" ")
-          : "Personne n'a voté (clôture automatique)",
+          : winner.votes.length > 0
+            ? "Personne à mentionner (potes décochés à la création)"
+            : "Personne n'a voté (clôture automatique)",
       inline: false,
     },
   ];
