@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { updateGame } from "@/app/actions";
 import { Button } from "@/components/ui/Button";
+import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 interface EditableGame {
   id: string;
@@ -23,6 +24,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_owned: "Tu ne possèdes pas ce jeu.",
   not_found: "Jeu introuvable.",
   unauthenticated: "Connecte-toi pour modifier un jeu.",
+  rate_limited: RATE_LIMIT_MESSAGE,
 };
 
 const SOURCE_LABELS: Record<string, string> = { STEAM: "Steam", IGDB: "IGDB" };

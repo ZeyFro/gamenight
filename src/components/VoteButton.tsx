@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { toggleVote } from "@/app/sessions/actions";
+import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 export function VoteButton({
   proposalId,
@@ -32,7 +33,20 @@ export function VoteButton({
     formData.set("sessionId", sessionId);
 
     startTransition(async () => {
-      await toggleVote(formData);
+      const result = await toggleVote(formData);
+      if (!result.ok) {
+        // Défait la mise à jour optimiste : la requête n'a pas été
+        // enregistrée (rate limit), le bouton ne doit pas mentir sur
+        // l'état réel du vote.
+        setVoted(!nextVoted);
+        setCount((c) => c + (nextVoted ? -1 : 1));
+        toast.error(
+          result.error === RATE_LIMIT_ERROR_KEY
+            ? RATE_LIMIT_MESSAGE
+            : "Une erreur est survenue."
+        );
+        return;
+      }
       toast.success(nextVoted ? "Vote enregistré" : "Vote retiré");
     });
   }

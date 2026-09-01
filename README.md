@@ -4504,3 +4504,117 @@ une régression de cohérence sans gain fonctionnel.
   catchés à ces deux endroits, sont désormais gérés ; `steam=erreur`/
   `steam=importe`/`steam=prive` conservent exactement leur comportement
   existant
+
+## Rate limiting sur les server actions (Sprint 1, suite fiabilisation)
+
+Rien n'empêchait jusqu'ici un client de spammer un bouton (vote, création
+de soirée, dispo…) et d'envoyer des dizaines de requêtes DB en quelques
+secondes. Objectif : un rate limit léger sur toutes les actions qui
+écrivent en base suite à un clic utilisateur — sans dépendance externe
+(pas de Redis, pas de service payant).
+
+**`src/lib/rate-limit.ts` (nouveau)** — `checkRateLimit(userId, action,
+{limit, windowMs}?)`, `Map` en mémoire du process. Clé = `action:userId`
+(fenêtre glissante — chaque bucket garde les timestamps récents, élagués à
+chaque appel, pour éviter le double-burst à la frontière de deux fenêtres
+qu'un simple compteur à fenêtre fixe autoriserait). Défaut : 10
+requêtes/minute par action et par user.
+
+Deux écarts assumés par rapport à l'énoncé, documentés dans le fichier :
+- **Clé `userId` seul, pas `IP + userId`** : toutes les actions ciblées
+  passent déjà par `getCurrentUser()` avant d'atteindre le contrôle —
+  l'utilisateur Discord authentifié est une clé plus stable et plus
+  significative que l'IP pour une app à ~6 users, et il n'y a pas
+  d'action pré-auth à protéger ici.
+- **Reset au cold start Vercel serverless** : chaque instance a son
+  propre compteur, remis à zéro à chaque cold start — acceptable à cette
+  échelle (explicitement toléré par la demande), pas un oubli.
+
+**Aucun throw.** `checkRateLimit` renvoie `false`, jamais d'exception : un
+throw dans une server action invoquée depuis un `<form action=…>` sans
+wrapper client remonterait jusqu'à `error.tsx` (bien trop sévère pour "tu
+vas un peu vite"), et Next.js peut assainir le message d'une erreur levée
+côté serveur en prod, rendant `instanceof`/`.message` peu fiables côté
+client. À la place, réutilisation du pattern déjà établi dans l'app
+(`updateGame` → `{ ok, error? }`) partout où c'est pertinent.
+
+**Deux traitements, selon comment l'action est invoquée** (vérifié
+composant par composant avant de choisir, pour ne jamais changer la
+signature d'une action encore utilisée par un `<form action={fn}>` brut —
+React attend `void | Promise<void>` dans ce cas, pas un type de retour) :
+- **Traitement complet** (résultat `{ ok, error? }` + toast différencié
+  "Doucement ! Trop de requêtes, réessaie dans quelques secondes.") sur
+  les actions explicitement citées par la demande et déjà invoquées via
+  `ActionForm`/`useTransition` : `createSession`, `toggleVote`
+  (`VoteButton`, avec annulation du vote optimiste en cas de rate limit),
+  `addWeeklySlot`/`upsertOverride`/`removeOverrideForDate`
+  (`disponibilites`, `DayTimeline`), `updateGame` (`EditGameDialog`).
+- **Garde silencieuse** (`if (!checkRateLimit(...)) return;`, même
+  convention que les autres retours anticipés déjà présents dans ces
+  actions pour un id manquant/invalide) sur tout le reste des actions
+  d'écriture déclenchées par une action utilisateur directe :
+  `editSessionAction`, `proposeGame`, `withdrawProposalAction`,
+  `closeSessionAction`, `resendDiscordAction`, `cancelSessionAction`,
+  `deleteSessionAction`, `markSessionDoneAction`,
+  `submitSessionResultsAction`, `submitSuperlativeVotesAction`,
+  `forceCloseSuperlativeVotingAction`, `removeWeeklySlot`,
+  `removeOverride`, `addManualGame`, `toggleGameCoop`, `removeUserGame`,
+  `reimportSteamLibrary`, `enrichGamesForCoopFilter`,
+  `setToVerifierGamePlayInfo`, `ignoreToVerifierGame`,
+  `batchMarkGamesCoop`, `refreshGameDetails`, `updateUserColor`,
+  `toggleSilenceReminders`, `setBannerUrlAction`, `uploadBannerAction`.
+  Pas de nouvel affichage différencié pour ces actions-là : couverture
+  complète contre le spam DB sans élargir la surface UI au-delà de ce que
+  demande le rate limiting lui-même (PR ciblée).
+
+**Deux exceptions délibérées** :
+- `setGameTierAction` (`/tierlist`, drag-and-drop) — limite relevée à
+  60/min : un classement complet de bibliothèque déclenche légitimement
+  bien plus de 10 dépôts par minute, ce n'est pas un vecteur de spam
+  comparable à un bouton de vote.
+- `matchFamilyImportBatch` (import familial) — **exemptée entièrement** :
+  déjà auto-bornée par lots (`FAMILY_IMPORT_BATCH_SIZE`), séquentielle et
+  cadencée côté client — un import légitime de plusieurs dizaines de jeux
+  dépasserait la limite par défaut sans être du spam.
+
+Non concerné (conformément à la demande) : les crons (déjà protégés par
+`CRON_SECRET`), les lectures/pages/chargements, les actions admin.
+
+**`ActionForm.tsx`** — étendu pour accepter un résultat `{ ok, error? }`
+en plus du `void` d'origine (rétrocompatible avec tous les appelants
+existants) et une prop `errorMessages?: Record<string, string>` pour
+mapper une clé d'erreur au message de toast à afficher.
+
+### Fichiers touchés
+
+- `src/lib/rate-limit.ts` (nouveau)
+- `src/components/ActionForm.tsx` — support du résultat `{ ok, error? }`
+  et de `errorMessages`
+- `src/app/sessions/actions.ts`, `src/app/sessions/page.tsx`,
+  `src/components/VoteButton.tsx`
+- `src/app/disponibilites/actions.ts`, `src/app/disponibilites/page.tsx`,
+  `src/components/calendar/DayTimeline.tsx`
+- `src/app/actions.ts`, `src/app/bibliotheque/ajouter/page.tsx`,
+  `src/components/EditGameDialog.tsx`,
+  `src/app/profil/parametres/page.tsx`
+- `src/app/bibliotheque/actions.ts`, `src/app/jeux/actions.ts`,
+  `src/app/profil/actions.ts`, `src/app/tierlist/actions.ts`,
+  `src/app/profil/family-import-actions.ts` (commentaire d'exemption
+  seulement, aucun appel ajouté)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : `/`, `/sessions`, `/disponibilites`,
+  `/bibliotheque`, `/tierlist`, `/profil/parametres`,
+  `/bibliotheque/ajouter` répondent sans erreur d'application (redirection
+  serveur normale vers `/` en l'absence de session, sandbox sans
+  `AUTH_SECRET`/DB) — aucune régression de compilation introduite par les
+  gardes de rate limit
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : chaque action garde son comportement exact sous la
+  limite (10/min, ou 60/min pour la tierlist) ; seul le comportement
+  au-delà de la limite change, et uniquement pour refuser proprement au
+  lieu de laisser passer un spam illimité

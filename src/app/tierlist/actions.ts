@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Tier } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const TIERS: Tier[] = ["S", "A", "B", "C", "D"];
 
@@ -13,10 +14,16 @@ const TIERS: Tier[] = ["S", "A", "B", "C", "D"];
  * dépose. `tier` absent/vide = retour en "Non classé" → suppression de la
  * ligne plutôt qu'une 6e valeur d'enum (voir le commentaire sur
  * `TierlistEntry` dans schema.prisma).
+ *
+ * Limite relevée à 60/min (au lieu des 10/min par défaut, PR "Rate
+ * limiting") : un classement complet de bibliothèque par glisser-déposer
+ * déclenche légitimement bien plus de 10 dépôts en une minute — ce n'est
+ * pas un vecteur de spam comparable à un bouton de vote.
  */
 export async function setGameTierAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "setGameTierAction", { limit: 60 })) return;
 
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return;

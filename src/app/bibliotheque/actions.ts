@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { getGameDetails } from "@/lib/game-details";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * Enrichissement IGDB à la demande (PR 32, 2.5/4 — Bug 2B) : déclenché
@@ -20,6 +21,7 @@ import { getGameDetails } from "@/lib/game-details";
 export async function enrichGamesForCoopFilter(gameIds: string[]): Promise<void> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "enrichGamesForCoopFilter")) return;
 
   const games = await prisma.game.findMany({ where: { id: { in: gameIds } } });
 
@@ -59,6 +61,7 @@ export async function setToVerifierGamePlayInfo(
 ): Promise<{ ok: boolean }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false };
+  if (!checkRateLimit(user.id, "setToVerifierGamePlayInfo")) return { ok: false };
 
   const owns = await prisma.userGame.findUnique({
     where: { userId_gameId: { userId: user.id, gameId } },
@@ -98,6 +101,7 @@ export async function setToVerifierGamePlayInfo(
 export async function ignoreToVerifierGame(gameId: string): Promise<{ ok: boolean }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false };
+  if (!checkRateLimit(user.id, "ignoreToVerifierGame")) return { ok: false };
 
   const owns = await prisma.userGame.findUnique({
     where: { userId_gameId: { userId: user.id, gameId } },
@@ -127,6 +131,7 @@ export async function ignoreToVerifierGame(gameId: string): Promise<{ ok: boolea
 export async function batchMarkGamesCoop(gameIds: string[]): Promise<{ count: number }> {
   const user = await getCurrentUser();
   if (!user) return { count: 0 };
+  if (!checkRateLimit(user.id, "batchMarkGamesCoop")) return { count: 0 };
   if (gameIds.length === 0) return { count: 0 };
 
   const owned = await prisma.userGame.findMany({

@@ -24,10 +24,14 @@ import {
 import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
+import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "createSession")) {
+    redirect(`/sessions?error=${RATE_LIMIT_ERROR_KEY}`);
+  }
 
   const dateStr = String(formData.get("date") ?? "");
   const timeStr = String(formData.get("time") ?? "");
@@ -107,6 +111,7 @@ export async function createSession(formData: FormData) {
 export async function editSessionAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "editSession")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -163,6 +168,7 @@ export async function editSessionAction(formData: FormData) {
 export async function proposeGame(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "proposeGame")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   const gameId = String(formData.get("gameId") ?? "");
@@ -185,19 +191,34 @@ export async function proposeGame(formData: FormData) {
   revalidatePath(`/sessions/${sessionId}`);
 }
 
-export async function toggleVote(formData: FormData) {
+export interface ToggleVoteResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Renvoie un résultat (au lieu d'un simple `void`) depuis PR "Rate
+ * limiting" : `VoteButton.tsx` fait une mise à jour optimiste avant
+ * d'appeler cette action, elle doit pouvoir la défaire si la requête est
+ * refusée (rate limit) plutôt que de laisser le bouton mentir sur l'état
+ * réel du vote.
+ */
+export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "toggleVote")) {
+    return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  }
 
   const proposalId = String(formData.get("proposalId") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");
-  if (!proposalId || !sessionId) return;
+  if (!proposalId || !sessionId) return { ok: true };
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { status: true, date: true, votingDeadline: true },
   });
-  if (!session || !isVotingOpen(session)) return;
+  if (!session || !isVotingOpen(session)) return { ok: true };
 
   const existing = await prisma.vote.findUnique({
     where: { proposalId_userId: { proposalId, userId: user.id } },
@@ -217,6 +238,7 @@ export async function toggleVote(formData: FormData) {
   }
 
   revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
 }
 
 /**
@@ -232,6 +254,7 @@ export async function toggleVote(formData: FormData) {
 export async function withdrawProposalAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "withdrawProposal")) return;
 
   const proposalId = String(formData.get("proposalId") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");
@@ -261,6 +284,7 @@ export async function withdrawProposalAction(formData: FormData) {
 export async function closeSessionAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "closeSession")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -288,6 +312,7 @@ export async function closeSessionAction(formData: FormData) {
 export async function resendDiscordAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "resendDiscord")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -299,6 +324,7 @@ export async function resendDiscordAction(formData: FormData) {
 export async function cancelSessionAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "cancelSession")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -329,6 +355,7 @@ export async function cancelSessionAction(formData: FormData) {
 export async function deleteSessionAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "deleteSession")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -347,6 +374,7 @@ export async function deleteSessionAction(formData: FormData) {
 export async function markSessionDoneAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "markSessionDone")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -391,6 +419,7 @@ export async function markSessionDoneAction(formData: FormData) {
 export async function submitSessionResultsAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "submitSessionResults")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -472,6 +501,7 @@ export async function submitSessionResultsAction(formData: FormData) {
 export async function submitSuperlativeVotesAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "submitSuperlativeVotes")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
@@ -550,6 +580,7 @@ export async function submitSuperlativeVotesAction(formData: FormData) {
 export async function forceCloseSuperlativeVotingAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "forceCloseSuperlativeVoting")) return;
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;

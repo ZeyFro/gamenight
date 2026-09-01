@@ -5,11 +5,13 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { getGameDetails } from "@/lib/game-details";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /** Bouton "Rafraîchir les infos" de la fiche jeu : ignore le cache IGDB existant. */
 export async function refreshGameDetails(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "refreshGameDetails")) return;
 
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return;

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { isValidHexColor } from "@/lib/user-color";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
@@ -16,6 +17,7 @@ import { isValidHexColor } from "@/lib/user-color";
 export async function updateUserColor(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "updateUserColor")) return;
 
   const color = String(formData.get("color") ?? "").trim();
   if (!isValidHexColor(color)) return;
@@ -33,6 +35,7 @@ export async function updateUserColor(formData: FormData) {
 export async function toggleSilenceReminders() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "toggleSilenceReminders")) return;
 
   await prisma.user.update({
     where: { id: user.id },
@@ -53,6 +56,7 @@ export async function toggleSilenceReminders() {
 export async function setBannerUrlAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "setBannerUrlAction")) return;
 
   const raw = String(formData.get("bannerUrl") ?? "").trim();
 
@@ -90,6 +94,7 @@ const ALLOWED_BANNER_MIME_TO_EXT: Record<string, string> = {
 export async function uploadBannerAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "uploadBannerAction")) return;
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     redirect("/profil/parametres?upload=desactive");
