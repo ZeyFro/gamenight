@@ -43,6 +43,12 @@ export interface FamilyImportItemResult {
  * `UserGame` avec `source = FAMILY`. Un jeu déjà possédé (`PERSONAL`,
  * `MANUAL` ou `FAMILY` — peu importe la source d'origine) → `duplicate`,
  * aucune écriture non plus.
+ *
+ * Volontairement EXEMPTÉE du rate limiting (PR "Rate limiting") : déjà
+ * auto-bornée (`FAMILY_IMPORT_BATCH_SIZE` par lot), séquentielle et
+ * cadencée par l'utilisateur côté client — un import familial légitime de
+ * plusieurs dizaines de jeux dépasserait la limite par défaut sans être du
+ * spam.
  */
 export async function matchFamilyImportBatch(
   names: string[]

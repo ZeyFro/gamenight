@@ -4346,3 +4346,275 @@ et n'était pas demandée.
   (tout le groupe, sauf `silenceReminders`) sur les 3 points modifiés ;
   `announceSessionModified` non touché ; `winner.votes.length` (compteur
   "Joueurs") non filtré, reste un fait indépendant du ping
+
+## Pages d'erreur custom (Sprint 1 v2, fiabilisation)
+
+L'app utilisait jusqu'ici les pages 404/500 par défaut de Next — hors
+identité GameNight, et sans logging exploitable côté 500. Trois fichiers
+racine (conventions App Router, aucun routing à câbler) :
+
+- **`src/app/not-found.tsx`** — 404 brandée ("Cette page a rage quit 🎮",
+  emoji manette animé — léger shake en boucle). Déclenchée aussi bien par
+  une route inexistante que par les `notFound()` déjà en place (fiche
+  jeu/pote/session introuvable), sans rien changer à ces appels
+  existants. Bouton "Retour à l'accueil".
+- **`src/app/error.tsx`** — error boundary racine ("Le serveur a crash
+  💀 On respawn bientôt"). Client Component imposé par Next (`error`/
+  `reset` passés en props par le framework) ; `console.error(error)`
+  dans un `useEffect` pour que Vercel Logs capture l'erreur en prod.
+  Deux boutons : "Réessayer" (`reset()`, retente le rendu du segment
+  sans recharger toute la page) et "Retour à l'accueil". Ne capture pas
+  les erreurs du layout racine lui-même (Header, `auth()`) — nécessiterait
+  un `global-error.tsx` séparé, hors périmètre demandé.
+- **`src/app/loading.tsx`** — Suspense global, spinner + logo GameNight.
+  Volontairement un Server Component sans Framer Motion : seulement des
+  animations CSS Tailwind natives (`animate-spin`/`animate-pulse`), qui
+  s'affichent dès le premier octet streamé par le serveur, avant même
+  l'hydratation JS — un écran de chargement ne doit pas lui-même
+  attendre un bundle client pour apparaître. `role="status"` +
+  texte `sr-only` pour les lecteurs d'écran.
+
+Les trois réutilisent `.bg-hero-gradient` (déjà utilisé sur l'écran de
+connexion) et les composants `Button`/`ButtonLink` existants — aucun
+nouveau composant partagé, pas de nouvelle classe CSS. `MotionConfig
+reducedMotion="user"` (déjà posé dans `layout.tsx`) désactive
+automatiquement les animations Framer Motion de `not-found.tsx`/
+`error.tsx` pour `prefers-reduced-motion` — pas de gestion manuelle
+nécessaire.
+
+### Fichiers touchés
+
+- `src/app/not-found.tsx` (nouveau)
+- `src/app/error.tsx` (nouveau)
+- `src/app/loading.tsx` (nouveau)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur ; `/_not-found`
+  apparaît dans la liste des routes générées, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : une route inexistante répond bien `404` et
+  affiche le contenu brandé ("Cette page a rage quit", "Retour à
+  l'accueil") ; `/` répond `200` sans régression — aucune erreur
+  d'application dans les logs. `error.tsx` (déclenché uniquement par une
+  vraie exception de rendu) et `loading.tsx` (fenêtre de streaming très
+  courte en local) n'ont pas pu être exercés visuellement en sandbox —
+  vérifiés par lecture de code et cohérence TypeScript via `next build`
+  uniquement, comme pour les PR précédentes touchant des cas
+  difficiles à déclencher manuellement
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : les 6 `notFound()` existants (jeu/pote/session
+  introuvables) pointent désormais vers cette 404 brandée au lieu de la
+  page par défaut de Next, sans changement de leur propre logique ;
+  `layout.tsx`, `PageTransition`, `Header`/`BottomNav` inchangés
+
+## Audit des APIs externes (Sprint 1, suite fiabilisation)
+
+Revue de tous les `fetch()` vers Steam Web API, Steam Store, IGDB/Twitch et
+Discord (6 fichiers : `src/lib/{steam,steam-store,igdb,discord,discord-profile,deepl}.ts`)
+et de tous leurs appelants, pour vérifier qu'aucune panne externe ne peut
+faire planter une page.
+
+**Déjà sûr avant cette PR** (vérifié, non modifié) :
+- `postToDiscord` (`discord.ts`) et `translateToFrench` (`deepl.ts`) —
+  try/catch interne, ne lèvent jamais.
+- `refreshDiscordProfile` (`discord-profile.ts`) — try/catch interne.
+- `fetchIgdbGameDetails`/`searchIgdbGames`/`fetchSteamStoreDetails` lèvent
+  **volontairement** (convention documentée dans ces fichiers) — mais tous
+  leurs appelants (`getGameDetails`, `/api/igdb/search`, `family-import.ts`,
+  `backfill-steam-coop.ts`, `enrichGamesForCoopFilter`) catchent déjà
+  correctement, avec repli sur le cache DB existant ou un état d'erreur
+  explicite. `getGameDetails` en particulier : en cas d'échec IGDB, ressert
+  le cache déjà en base (même périmé) s'il existe, sinon `error:
+  "fetch_failed"` — exactement le comportement demandé pour IGDB down.
+
+**Deux trous trouvés et corrigés** — les seuls appels Steam Web API
+(`verifySteamOpenId`, `importSteamLibrary` → `getOwnedGames`) qui n'étaient
+catchés nulle part :
+- `src/app/api/steam/callback/route.ts` — une panne Steam pendant le
+  callback OAuth faisait planter toute la route (500 brut) au lieu d'un
+  retour propre à `/profil/parametres`.
+- `src/app/actions.ts` (`reimportSteamLibrary`) — même trou sur le bouton
+  "Réimporter ma bibliothèque Steam".
+
+Les deux sont maintenant enveloppés dans un `try/catch` qui redirige vers
+`/profil/parametres?steam=indisponible` (nouvelle valeur, distincte de
+`steam=erreur` qui reste réservée à un échec de vérification OpenID) —
+`.bibliotheque` continue d'afficher les jeux déjà en base sans interruption
+puisque cette page ne fait aucun appel Steam live.
+
+**`<ApiErrorBanner />`** (`src/components/ApiErrorBanner.tsx`, nouveau) —
+composant réutilisable demandé : bandeau ⚠️ + message + bouton "Réessayer"
+optionnel, fond `bg-warning/10` / bordure `border-warning/40` (cohérent
+avec le token `--warning` déjà utilisé ailleurs). Purement présentatif —
+pas d'état interne : il "disparaît automatiquement" simplement parce que
+l'appelant arrête de le rendre une fois son erreur résolue. `onRetry`
+accepte indifféremment une fonction cliente locale ou une server action
+passée en prop (même pattern que `ActionForm.tsx` déjà existant). Cablé à
+3 endroits réels :
+- `AjouterJeuForm.tsx` — remplace le message d'erreur texte de la
+  recherche IGDB, retry = relance la recherche.
+- `/jeux/[id]` — remplace le message "IGDB injoignable" de
+  `GameIgdbSection`, sans retry (le bouton "Rafraîchir les infos" déjà
+  présent sur la page fait déjà ce rôle).
+- `/profil/parametres` — nouvel état `steam=indisponible`, retry =
+  `reimportSteamLibrary` (seulement si un compte Steam est déjà lié,
+  sinon pas de bouton pertinent).
+
+**Discord (toast) — délibérément inchangé.** La demande évoque un toast
+"Notif Discord non envoyée" pour une action directe, mais toutes les
+actions qui postent dans Discord (création/modification/clôture/renvoi de
+session) redirigent déjà après coup et affichent un bandeau inline via
+`?discord=echec` sur `/sessions/[id]` — `ActionForm.tsx` documente
+explicitement pourquoi un toast n'est pas utilisé sur une action qui
+redirige (pas le temps de s'afficher avant le changement de page). Ce
+mécanisme existant couvre déjà 100% des actions Discord "directes" de
+l'app ; l'action n'est jamais bloquée par un échec d'envoi (déjà vrai
+avant cette PR). Remplacer ce pattern documenté par un toast aurait été
+une régression de cohérence sans gain fonctionnel.
+
+### Fichiers touchés
+
+- `src/components/ApiErrorBanner.tsx` (nouveau)
+- `src/app/api/steam/callback/route.ts` — try/catch autour de
+  `verifySteamOpenId`/`importSteamLibrary`
+- `src/app/actions.ts` — try/catch dans `reimportSteamLibrary`
+- `src/app/profil/parametres/page.tsx` — nouvel état `steam=indisponible`
+  via `<ApiErrorBanner>`
+- `src/components/AjouterJeuForm.tsx` — `<ApiErrorBanner>` pour l'échec de
+  recherche IGDB
+- `src/app/jeux/[id]/page.tsx` — `<ApiErrorBanner>` pour l'échec IGDB de
+  la fiche jeu
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : `/` et `/bibliotheque/ajouter` répondent `200`
+  sans erreur d'application dans les logs. Une vraie panne Steam/IGDB n'a
+  pas pu être simulée en sandbox (pas d'accès réseau externe) — les
+  chemins d'erreur ont été vérifiés par lecture de code (`try/catch`
+  autour de chaque appel réseau non catché trouvé par l'audit) et
+  cohérence TypeScript via `next build`
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : tous les chemins de succès (import Steam, recherche
+  IGDB, fiche jeu) inchangés — seuls les chemins d'échec, auparavant non
+  catchés à ces deux endroits, sont désormais gérés ; `steam=erreur`/
+  `steam=importe`/`steam=prive` conservent exactement leur comportement
+  existant
+
+## Rate limiting sur les server actions (Sprint 1, suite fiabilisation)
+
+Rien n'empêchait jusqu'ici un client de spammer un bouton (vote, création
+de soirée, dispo…) et d'envoyer des dizaines de requêtes DB en quelques
+secondes. Objectif : un rate limit léger sur toutes les actions qui
+écrivent en base suite à un clic utilisateur — sans dépendance externe
+(pas de Redis, pas de service payant).
+
+**`src/lib/rate-limit.ts` (nouveau)** — `checkRateLimit(userId, action,
+{limit, windowMs}?)`, `Map` en mémoire du process. Clé = `action:userId`
+(fenêtre glissante — chaque bucket garde les timestamps récents, élagués à
+chaque appel, pour éviter le double-burst à la frontière de deux fenêtres
+qu'un simple compteur à fenêtre fixe autoriserait). Défaut : 10
+requêtes/minute par action et par user.
+
+Deux écarts assumés par rapport à l'énoncé, documentés dans le fichier :
+- **Clé `userId` seul, pas `IP + userId`** : toutes les actions ciblées
+  passent déjà par `getCurrentUser()` avant d'atteindre le contrôle —
+  l'utilisateur Discord authentifié est une clé plus stable et plus
+  significative que l'IP pour une app à ~6 users, et il n'y a pas
+  d'action pré-auth à protéger ici.
+- **Reset au cold start Vercel serverless** : chaque instance a son
+  propre compteur, remis à zéro à chaque cold start — acceptable à cette
+  échelle (explicitement toléré par la demande), pas un oubli.
+
+**Aucun throw.** `checkRateLimit` renvoie `false`, jamais d'exception : un
+throw dans une server action invoquée depuis un `<form action=…>` sans
+wrapper client remonterait jusqu'à `error.tsx` (bien trop sévère pour "tu
+vas un peu vite"), et Next.js peut assainir le message d'une erreur levée
+côté serveur en prod, rendant `instanceof`/`.message` peu fiables côté
+client. À la place, réutilisation du pattern déjà établi dans l'app
+(`updateGame` → `{ ok, error? }`) partout où c'est pertinent.
+
+**Deux traitements, selon comment l'action est invoquée** (vérifié
+composant par composant avant de choisir, pour ne jamais changer la
+signature d'une action encore utilisée par un `<form action={fn}>` brut —
+React attend `void | Promise<void>` dans ce cas, pas un type de retour) :
+- **Traitement complet** (résultat `{ ok, error? }` + toast différencié
+  "Doucement ! Trop de requêtes, réessaie dans quelques secondes.") sur
+  les actions explicitement citées par la demande et déjà invoquées via
+  `ActionForm`/`useTransition` : `createSession`, `toggleVote`
+  (`VoteButton`, avec annulation du vote optimiste en cas de rate limit),
+  `addWeeklySlot`/`upsertOverride`/`removeOverrideForDate`
+  (`disponibilites`, `DayTimeline`), `updateGame` (`EditGameDialog`).
+- **Garde silencieuse** (`if (!checkRateLimit(...)) return;`, même
+  convention que les autres retours anticipés déjà présents dans ces
+  actions pour un id manquant/invalide) sur tout le reste des actions
+  d'écriture déclenchées par une action utilisateur directe :
+  `editSessionAction`, `proposeGame`, `withdrawProposalAction`,
+  `closeSessionAction`, `resendDiscordAction`, `cancelSessionAction`,
+  `deleteSessionAction`, `markSessionDoneAction`,
+  `submitSessionResultsAction`, `submitSuperlativeVotesAction`,
+  `forceCloseSuperlativeVotingAction`, `removeWeeklySlot`,
+  `removeOverride`, `addManualGame`, `toggleGameCoop`, `removeUserGame`,
+  `reimportSteamLibrary`, `enrichGamesForCoopFilter`,
+  `setToVerifierGamePlayInfo`, `ignoreToVerifierGame`,
+  `batchMarkGamesCoop`, `refreshGameDetails`, `updateUserColor`,
+  `toggleSilenceReminders`, `setBannerUrlAction`, `uploadBannerAction`.
+  Pas de nouvel affichage différencié pour ces actions-là : couverture
+  complète contre le spam DB sans élargir la surface UI au-delà de ce que
+  demande le rate limiting lui-même (PR ciblée).
+
+**Deux exceptions délibérées** :
+- `setGameTierAction` (`/tierlist`, drag-and-drop) — limite relevée à
+  60/min : un classement complet de bibliothèque déclenche légitimement
+  bien plus de 10 dépôts par minute, ce n'est pas un vecteur de spam
+  comparable à un bouton de vote.
+- `matchFamilyImportBatch` (import familial) — **exemptée entièrement** :
+  déjà auto-bornée par lots (`FAMILY_IMPORT_BATCH_SIZE`), séquentielle et
+  cadencée côté client — un import légitime de plusieurs dizaines de jeux
+  dépasserait la limite par défaut sans être du spam.
+
+Non concerné (conformément à la demande) : les crons (déjà protégés par
+`CRON_SECRET`), les lectures/pages/chargements, les actions admin.
+
+**`ActionForm.tsx`** — étendu pour accepter un résultat `{ ok, error? }`
+en plus du `void` d'origine (rétrocompatible avec tous les appelants
+existants) et une prop `errorMessages?: Record<string, string>` pour
+mapper une clé d'erreur au message de toast à afficher.
+
+### Fichiers touchés
+
+- `src/lib/rate-limit.ts` (nouveau)
+- `src/components/ActionForm.tsx` — support du résultat `{ ok, error? }`
+  et de `errorMessages`
+- `src/app/sessions/actions.ts`, `src/app/sessions/page.tsx`,
+  `src/components/VoteButton.tsx`
+- `src/app/disponibilites/actions.ts`, `src/app/disponibilites/page.tsx`,
+  `src/components/calendar/DayTimeline.tsx`
+- `src/app/actions.ts`, `src/app/bibliotheque/ajouter/page.tsx`,
+  `src/components/EditGameDialog.tsx`,
+  `src/app/profil/parametres/page.tsx`
+- `src/app/bibliotheque/actions.ts`, `src/app/jeux/actions.ts`,
+  `src/app/profil/actions.ts`, `src/app/tierlist/actions.ts`,
+  `src/app/profil/family-import-actions.ts` (commentaire d'exemption
+  seulement, aucun appel ajouté)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- Smoke test `next dev` : `/`, `/sessions`, `/disponibilites`,
+  `/bibliotheque`, `/tierlist`, `/profil/parametres`,
+  `/bibliotheque/ajouter` répondent sans erreur d'application (redirection
+  serveur normale vers `/` en l'absence de session, sandbox sans
+  `AUTH_SECRET`/DB) — aucune régression de compilation introduite par les
+  gardes de rate limit
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : chaque action garde son comportement exact sous la
+  limite (10/min, ou 60/min pour la tierlist) ; seul le comportement
+  au-delà de la limite change, et uniquement pour refuser proprement au
+  lieu de laisser passer un spam illimité

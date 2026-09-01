@@ -5,12 +5,16 @@ import { redirect } from "next/navigation";
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { importSteamLibrary } from "@/lib/steam";
+import { importSteamLibrary, type ImportSteamLibraryResult } from "@/lib/steam";
 import { checkLibraryBadges } from "@/lib/badges";
+import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 
 export async function addManualGame(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "addManualGame")) {
+    redirect(`/bibliotheque/ajouter?error=${RATE_LIMIT_ERROR_KEY}`);
+  }
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
@@ -94,6 +98,9 @@ export interface UpdateGameResult {
 export async function updateGame(formData: FormData): Promise<UpdateGameResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "unauthenticated" };
+  if (!checkRateLimit(user.id, "updateGame")) {
+    return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  }
 
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return { ok: false, error: "missing_game" };
@@ -149,6 +156,7 @@ export async function updateGame(formData: FormData): Promise<UpdateGameResult> 
 export async function toggleGameCoop(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "toggleGameCoop")) return;
 
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return;
@@ -174,6 +182,7 @@ export async function toggleGameCoop(formData: FormData) {
 export async function removeUserGame(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "removeUserGame")) return;
 
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return;
@@ -182,11 +191,30 @@ export async function removeUserGame(formData: FormData) {
   revalidatePath("/bibliotheque");
 }
 
+/**
+ * Réimport manuel (bouton "Réimporter ma bibliothèque Steam" et retry du
+ * `<ApiErrorBanner>` sur /profil/parametres). `importSteamLibrary` appelle
+ * l'API Steam en direct, sans catch interne — une panne Steam ferait
+ * planter cette server action (donc la page) au lieu d'un simple retour
+ * avec message. Le `try` ne couvre que l'appel réseau, jamais les
+ * `redirect()` (qui fonctionnent en interne par exception `NEXT_REDIRECT`
+ * — les englober dans le même `try/catch` les avalerait par erreur).
+ */
 export async function reimportSteamLibrary() {
   const user = await getCurrentUser();
   if (!user?.steamId64) redirect("/profil/parametres");
+  if (!checkRateLimit(user.id, "reimportSteamLibrary")) {
+    redirect(`/profil/parametres?steam=${RATE_LIMIT_ERROR_KEY}`);
+  }
 
-  const result = await importSteamLibrary(user.id, user.steamId64);
+  let result: ImportSteamLibraryResult;
+  try {
+    result = await importSteamLibrary(user.id, user.steamId64);
+  } catch (error) {
+    console.error("[steam] Réimport échoué (Steam down ?)", error);
+    redirect("/profil/parametres?steam=indisponible");
+  }
+
   revalidatePath("/bibliotheque");
   redirect(
     result.status === "imported"

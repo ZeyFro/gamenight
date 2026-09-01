@@ -10,6 +10,7 @@ import { SessionBlock } from "@/components/calendar/SessionBlock";
 import { ColorDot } from "@/components/ColorDot";
 import { ButtonLink } from "@/components/ui/Button";
 import { removeOverrideForDate, upsertOverride } from "@/app/disponibilites/actions";
+import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { addDays, buildCalendarHref, type CalendarMode } from "@/lib/calendar-dates";
 import { isAvailableAt, type OverrideForDate, type WeeklySlot } from "@/lib/availability";
 import { formatDateFr, sameUtcDate, toDateInputValue } from "@/lib/wallclock";
@@ -207,11 +208,21 @@ export function DayTimeline({
       localOverride && localOverride.startTime === hourStart && localOverride.endTime === hourEnd;
 
     if (isExactlyThisOverride) {
+      const previousOverride = localOverride;
       setLocalOverride(null);
       startTransition(async () => {
         const fd = new FormData();
         fd.set("date", toDateInputValue(date));
-        await removeOverrideForDate(fd);
+        const result = await removeOverrideForDate(fd);
+        if (!result.ok) {
+          setLocalOverride(previousOverride);
+          toast.error(
+            result.error === RATE_LIMIT_ERROR_KEY
+              ? RATE_LIMIT_MESSAGE
+              : "Une erreur est survenue."
+          );
+          return;
+        }
         toast.success("Exception supprimée — retour au planning habituel");
       });
       return;
@@ -226,6 +237,7 @@ export function DayTimeline({
     const currentlyAvailable = isAvailableAt(instant, ownWeeklySlots ?? [], localOverride ?? undefined);
     const nextAvailable = !currentlyAvailable;
 
+    const previousOverride = localOverride;
     setLocalOverride({ available: nextAvailable, startTime: hourStart, endTime: hourEnd });
     startTransition(async () => {
       const fd = new FormData();
@@ -233,7 +245,16 @@ export function DayTimeline({
       fd.set("available", String(nextAvailable));
       fd.set("startTime", hourStart);
       fd.set("endTime", hourEnd);
-      await upsertOverride(fd);
+      const result = await upsertOverride(fd);
+      if (!result.ok) {
+        setLocalOverride(previousOverride);
+        toast.error(
+          result.error === RATE_LIMIT_ERROR_KEY
+            ? RATE_LIMIT_MESSAGE
+            : "Une erreur est survenue."
+        );
+        return;
+      }
       const rangeLabel = lo === hi ? "" : ` (${pad2(lo)}h–${pad2((hi + 1) % 24)}h)`;
       toast.success(
         hadOverrideElsewhere

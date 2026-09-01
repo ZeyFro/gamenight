@@ -17,6 +17,9 @@ import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { ActionForm } from "@/components/ActionForm";
 import { Stagger, StaggerItem, PopIn } from "@/components/motion";
+import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+
+const RATE_LIMIT_ERROR_MESSAGES = { [RATE_LIMIT_ERROR_KEY]: RATE_LIMIT_MESSAGE };
 
 export default async function DisponibilitesPage() {
   const user = await getCurrentUser();
@@ -99,6 +102,7 @@ export default async function DisponibilitesPage() {
                 <ActionForm
                   action={addWeeklySlot}
                   successMessage="Dispo sauvegardée"
+                  errorMessages={RATE_LIMIT_ERROR_MESSAGES}
                   className="flex flex-col gap-2 sm:flex-row sm:items-end"
                 >
                   <input type="hidden" name="dayOfWeek" value={dayOfWeek} />
@@ -128,6 +132,7 @@ export default async function DisponibilitesPage() {
                 <ActionForm
                   action={addWeeklySlot}
                   successMessage="Dispo sauvegardée"
+                  errorMessages={RATE_LIMIT_ERROR_MESSAGES}
                 >
                   <input type="hidden" name="dayOfWeek" value={dayOfWeek} />
                   <input type="hidden" name="startTime" value="20:00" />
@@ -161,6 +166,7 @@ export default async function DisponibilitesPage() {
           <ActionForm
             action={upsertOverride}
             successMessage="Exception enregistrée"
+            errorMessages={RATE_LIMIT_ERROR_MESSAGES}
             className="flex flex-col gap-3"
           >
             <div className="flex flex-col gap-1">

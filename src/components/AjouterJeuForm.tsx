@@ -6,6 +6,7 @@ import type { IgdbGameCandidate } from "@/lib/igdb";
 import { addManualGame } from "@/app/actions";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 
 export function AjouterJeuForm({ initialName }: { initialName?: string }) {
   const [name, setName] = useState(initialName ?? "");
@@ -87,7 +88,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
             </button>
           </div>
           {searchError && (
-            <p className="text-sm text-destructive">{searchError}</p>
+            <ApiErrorBanner message={searchError} onRetry={rechercherSurIgdb} />
           )}
         </div>
 

@@ -12,6 +12,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
 import { GameDescription } from "@/components/GameDescription";
+import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
 import type { Game } from "@prisma/client";
 
@@ -60,13 +61,13 @@ async function GameIgdbSection({ game }: { game: Game }) {
         </div>
       )}
 
-      {!details && (
+      {!details && error === "fetch_failed" && (
+        <ApiErrorBanner message="IGDB est injoignable pour l'instant. Réessaie plus tard avec « Rafraîchir les infos »." />
+      )}
+
+      {!details && error !== "fetch_failed" && (
         <Card>
-          <p className="text-sm text-muted">
-            {error === "fetch_failed"
-              ? "IGDB est injoignable pour l'instant. Réessaie plus tard avec « Rafraîchir les infos »."
-              : "Pas d'infos supplémentaires trouvées."}
-          </p>
+          <p className="text-sm text-muted">Pas d&apos;infos supplémentaires trouvées.</p>
         </Card>
       )}
 
