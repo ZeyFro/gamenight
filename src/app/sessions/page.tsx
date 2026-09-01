@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
+import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 
 type SessionRowData = Session & {
   decidedGame: Game | null;
@@ -85,6 +86,12 @@ export default async function SessionsPage({
   const preselectedGame = gameId
     ? await prisma.game.findUnique({ where: { id: gameId } })
     : null;
+
+  const potes = await prisma.user.findMany({
+    where: { id: { not: user.id } },
+    select: { id: true, discordName: true, discordAvatar: true, color: true },
+    orderBy: { discordName: "asc" },
+  });
 
   const dueSessions = await prisma.session.findMany({
     where: { status: "VOTING", date: { lte: wallClockNow() } },
@@ -222,6 +229,8 @@ export default async function SessionsPage({
           </details>
 
           <ReminderTimingsField />
+
+          <NotifyRecipientsField potes={potes} />
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted" htmlFor="custom-reminder">

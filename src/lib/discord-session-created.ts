@@ -7,6 +7,7 @@ import {
 } from "@/lib/discord";
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { formatDateTimeFr, toTimeInputValue } from "@/lib/wallclock";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import type { Session, User } from "@prisma/client";
 
 function absoluteSessionUrl(sessionId: string): string {
@@ -35,9 +36,13 @@ function absoluteSessionUrl(sessionId: string): string {
  * proprement sans `DISCORD_WEBHOOK_URL` (cf. F6/F7) : `postToDiscord` ne
  * lève jamais, la création de la session n'est jamais bloquée par un
  * souci d'envoi Discord.
+ *
+ * Ping sélectif : `session.notifiedUserIds` restreint en plus ce ping de
+ * groupe à la sélection faite par le créateur au formulaire
+ * (`null` = pas de restriction, comportement ci-dessus inchangé).
  */
 export async function announceSessionCreated(
-  session: Pick<Session, "id" | "date" | "votingDeadline">,
+  session: Pick<Session, "id" | "date" | "votingDeadline" | "notifiedUserIds">,
   creator: Pick<User, "id" | "discordId">
 ): Promise<PostToDiscordResult> {
   const vars = {
@@ -48,8 +53,12 @@ export async function announceSessionCreated(
 
   const message = await pickMessageTemplate("SESSION_CREATED", vars);
 
+  const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const others = await prisma.user.findMany({
-    where: { id: { not: creator.id }, silenceReminders: false },
+    where: {
+      id: { not: creator.id, ...(notifiedUserIds ? { in: notifiedUserIds } : {}) },
+      silenceReminders: false,
+    },
   });
   const mentions = others.map((u) => `<@${u.discordId}>`);
 

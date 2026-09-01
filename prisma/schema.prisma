@@ -289,6 +289,22 @@ model Session {
   superlativeVotingDeadline DateTime?
   superlativeVotingClosed   Boolean   @default(false)
 
+  // Ping sélectif à la création : liste des ids de potes à mentionner
+  // (création, clôture/validation, rappels) — `null` = pas de restriction,
+  // tout le groupe mentionné comme avant cette fonctionnalité (comportement
+  // préservé pour toute session créée avant cette migration, colonne
+  // nullable sans backfill). Un tableau JSON (même vide) est une sélection
+  // explicite du créateur, respectée littéralement : tout décocher au
+  // formulaire mentionne bien personne, aucun repli silencieux sur "tout
+  // le monde" — même philosophie que `reminderTimings` ci-dessus. `Json?`
+  // plutôt que `String[]?` : Prisma interdit les listes scalaires
+  // optionnelles (seul `Json` supporte `null` vs "tableau, même vide"),
+  // même famille de type que `remindersSent` ci-dessus. Simple colonne
+  // scalaire plutôt qu'une table de relation : pas d'intégrité
+  // référentielle nécessaire (juste un filtre de mentions Discord, jamais
+  // relu/joint ailleurs).
+  notifiedUserIds Json?
+
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]

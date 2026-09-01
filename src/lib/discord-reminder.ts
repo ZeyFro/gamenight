@@ -8,6 +8,7 @@ import {
 import { pickMessageTemplate, substituteVariables } from "@/lib/message-templates";
 import { toTimeInputValue } from "@/lib/wallclock";
 import { formatReminderTimingShort, isCloseReminder } from "@/lib/reminder-timings";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import type { Game, Session } from "@prisma/client";
 
 /**
@@ -25,6 +26,11 @@ import type { Game, Session } from "@prisma/client";
  * ni dans le `content` brut du message (seul canal qui déclenche une
  * vraie notification push, cf. F6) — mais le message est posté dans tous
  * les cas.
+ *
+ * Ping sélectif : `session.notifiedUserIds` (choisi à la création)
+ * restreint en plus les votants ci-dessus à la sélection du créateur —
+ * `null` = pas de restriction (comportement historique, tous les votants
+ * mentionnés).
  */
 export async function sendSessionReminder(
   session: Session & { decidedGame: Game | null },
@@ -41,9 +47,11 @@ export async function sendSessionReminder(
     include: { votes: { include: { user: true } } },
   });
 
+  const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const players = (proposal?.votes ?? [])
     .map((v) => v.user)
-    .filter((u) => !u.silenceReminders);
+    .filter((u) => !u.silenceReminders)
+    .filter((u) => !notifiedUserIds || notifiedUserIds.includes(u.id));
   const mentions = players.map((u) => `<@${u.discordId}>`);
 
   const vars = {

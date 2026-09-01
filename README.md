@@ -4269,3 +4269,80 @@ d'activité "récente" n'a pas vocation à reconstruire l'historique complet).
   qui les utilisent (`staggerDelay` optionnel, défaut conservé) ;
   `awardXp()` garde exactement son comportement XP/notif Discord existant,
   ajoute uniquement une écriture `LevelUpEvent` en plus
+
+## Ping sélectif à la création d'une soirée
+
+Jusqu'ici, créer une soirée mentionnait automatiquement tout le groupe
+(sauf les users en silence). Le créateur peut désormais choisir, dans un
+nouveau champ "Qui prévenir ?" du formulaire de création, qui reçoit la
+mention Discord — pratique pour une soirée réservée à un sous-groupe.
+
+**Stockage** : `Session.notifiedUserIds` (`Json?`, additif). `null` = pas
+de restriction, comportement historique préservé pour **toute session
+créée avant cette PR** (aucun backfill nécessaire, la colonne reste
+`null` pour l'existant). Un tableau — même vide — est la sélection
+explicite faite au formulaire, respectée littéralement : tout décocher
+mentionne bien personne, sans repli silencieux sur "tout le monde" (même
+philosophie que `reminderTimings`, PR 31). `Json?` plutôt que `String[]?`
+: Prisma interdit les listes scalaires optionnelles, seul `Json` supporte
+la distinction "non renseigné" vs "tableau vide" nécessaire ici — pas de
+table de relation, un simple filtre de mentions n'a pas besoin
+d'intégrité référentielle.
+
+**UI** (`src/components/NotifyRecipientsField.tsx`) : liste compacte des
+potes (avatar + pseudo + `ColorDot`), tous cochés par défaut, boutons
+"Tout sélectionner"/"Tout désélectionner", entrée en fondu via
+`Stagger`/`StaggerItem` existants. Même pattern que
+`ReminderTimingsField` (état React local, checkboxes `notifyUserId` lues
+depuis le `FormData` à la soumission, `src/lib/notify-recipients.ts` pour
+le parsing).
+
+**Filtre appliqué aux 3 notifications concernées** — un pote décoché à la
+création n'est mentionné nulle part pour cette soirée :
+- **Création** (`announceSessionCreated`) — restreint le ping de tout le
+  groupe à la sélection.
+- **Clôture/validation** (`announceSessionResult`) — restreint les
+  mentions des votants du jeu gagnant à la sélection (le compteur
+  "Joueurs" reste inchangé, c'est un fait — qui vient réellement — pas
+  lié à qui est notifié ; le champ "Qui vient" distingue maintenant "0
+  votant" de "des votants, mais aucun à mentionner").
+- **Rappels** (`sendSessionReminder`) — s'ajoute par-dessus le filtre
+  existant (seuls les votants du jeu gagnant sont déjà mentionnés) :
+  intersection avec la sélection.
+
+**Hors périmètre, volontairement** : la notif "soirée modifiée"
+(`announceSessionModified`, changement de créneau) n'est pas concernée —
+elle ne mentionne déjà que les votants, sans lien avec cette sélection,
+et n'était pas demandée.
+
+### Fichiers touchés
+
+- `prisma/schema.prisma` + migration `20260901150000_add_session_notified_user_ids`
+  — `Session.notifiedUserIds`
+- `src/lib/notify-recipients.ts` (nouveau) — parsing formulaire +
+  résolution du champ `Json` stocké
+- `src/components/NotifyRecipientsField.tsx` (nouveau)
+- `src/app/sessions/page.tsx` — fetch des potes + intégration du champ
+- `src/app/sessions/actions.ts` — `createSession` stocke la sélection
+- `src/lib/discord-session-created.ts`, `src/lib/discord-announce.ts`,
+  `src/lib/discord-reminder.ts` — filtre appliqué aux mentions
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les
+  routes existantes inchangées
+- Smoke test `next dev` : `/` et `/sessions` répondent sans erreur
+  d'application (non authentifié en sandbox, redirection vers `/`) —
+  aucune erreur liée aux nouveaux fichiers dans les logs. Le
+  comportement réel des mentions Discord (webhook, filtre appliqué) n'a
+  pas pu être exercé en sandbox (pas de session/DB live ni de
+  `DISCORD_WEBHOOK_URL`) — seules l'absence d'erreur de
+  compilation/exécution et la cohérence des types sont vérifiées, comme
+  pour les PR précédentes touchant Discord
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Non-régression : toute session créée avant cette PR garde
+  `notifiedUserIds: null` → comportement de ping identique à avant
+  (tout le groupe, sauf `silenceReminders`) sur les 3 points modifiés ;
+  `announceSessionModified` non touché ; `winner.votes.length` (compteur
+  "Joueurs") non filtré, reste un fait indépendant du ping
