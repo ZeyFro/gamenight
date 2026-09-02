@@ -4940,3 +4940,107 @@ pote dispo (cellule teintée de sa couleur perso) est inchangé.
   (participants soirées, stats potes) ; aucun champ de schéma touché ;
   mobile (`< lg`) visuellement identique à avant sur les 5 pages
   retouchées
+
+## Sprint 2 — UX/Polish, PR-B (onboarding premier login + guide + confettis)
+
+Suite de PR-A (layout desktop, onglets soirées, refonte potes, skeletons,
+calendrier) — les 3 chantiers restants du Sprint 2, isolés dans une
+deuxième PR car ils sont les seuls à toucher le schéma (migration
+additive) ou ajouter une dépendance (`canvas-confetti`).
+
+### 1. Onboarding premier login (U1)
+
+`User.onboardingCompleted Boolean @default(false)` (migration additive,
+`prisma/migrations/20260902100000_add_user_onboarding_completed`) — passe
+à `true` dès que l'écran a été vu ou skippé, ne se réaffiche plus jamais
+ensuite. `src/lib/onboarding.ts` (`shouldShowOnboarding`) décide de
+l'affichage : tant que `onboardingCompleted` est faux (comptes déjà
+existants avant cette PR inclus), on ne montre le tutoriel QUE si le
+compte n'a strictement rien fait encore — aucune soirée jouée (`XpEvent`
+PARTICIPATE, même définition que `getProfileStats`) et aucune dispo
+réglée (ni créneau récurrent, ni exception ponctuelle). Un compte plus
+ancien qui a déjà de l'activité ne se le voit jamais imposer après coup.
+
+`OnboardingFlow` (`src/components/onboarding/OnboardingFlow.tsx`, client)
+— 4 écrans plein écran montés sur la home quand `shouldShowOnboarding`
+est vrai : Bienvenue (avatar + pseudo), Règle tes dispos (CTA vers
+`/calendrier`), Propose une soirée (CTA vers `/sessions`), C'est parti
+(récap XP total + nombre de badges, bouton "Commencer"). Navigation par
+swipe horizontal (mêmes seuils que le swipe jour de `DayTimeline`) ou
+boutons Précédent/Suivant, "Passer" toujours visible. `completeOnboardingAction`
+(`src/app/onboarding-actions.ts`) marque le flag — appelée directement
+(pas de `<form>`, un simple clic) et fermée côté client immédiatement
+sans attendre la réponse serveur (garde silencieuse, même convention que
+les autres actions "toggle" du profil).
+
+### 2. Page "Comment ça marche" (U2)
+
+`/guide` — route statique, 6 sections (Calendrier, Soirées, XP/Rangs/Badges,
+Récompenses, Notifications, Profil), icône + 2-3 phrases chacune, stagger
+Framer Motion. Accessible via un "?" flottant (`GuideFab`, monté dans le
+layout racine, visible sur toutes les pages connectées — `bottom-20` sur
+mobile pour rester au-dessus de `BottomNav`, `bottom-6` sur desktop).
+
+### 3. Confettis de célébration (U9)
+
+`canvas-confetti` (+ `@types/canvas-confetti`) installé.
+`CelebrationConfetti` (`src/components/CelebrationConfetti.tsx`, client,
+monté dans le layout racine) lit `?celebrate=levelup|badge|win` sur
+n'importe quelle page via `useSearchParams`, tire les confettis une seule
+fois puis nettoie le paramètre avec `history.replaceState` (jamais
+`router.replace`, qui redéclenche un re-render inutile pour un simple
+nettoyage d'URL).
+
+Déclenchement câblé aux points sûrs où le redirect suivant est vu par
+CE MÊME user (jamais dans une boucle qui traite plusieurs participants à
+la fois, où on ne sait pas qui va voir la page) :
+- `awardXp` (`src/lib/xp-actions.ts`) retourne désormais `{ leveledUp }` ;
+  `unlockMatchingBadges`/`unlockBadge`/`checkSessionsCreatedBadges`
+  (`src/lib/badges.ts`) retournent `boolean` (badge débloqué ou non). Les
+  autres appelants de ces fonctions ignorent simplement la valeur de
+  retour — aucun changement de comportement pour eux.
+- `createSession` (`src/app/sessions/actions.ts`) : redirige déjà vers
+  `/sessions/${session.id}` pour son propre créateur → ajoute
+  `?celebrate=badge` (prioritaire) ou `?celebrate=levelup` si l'XP de
+  création a fait passer un palier ou débloqué un badge.
+- `submitSessionResultsAction` : redirige vers `/sessions/${id}/resultats`,
+  vu par le créateur qui vient de saisir le podium. Si LE CRÉATEUR
+  lui-même (pas un autre participant) est placé 1er → `?celebrate=win` ;
+  sinon `?celebrate=levelup` si son propre bonus XP l'a fait progresser
+  de niveau.
+
+Portée assumée : le mécanisme (composant + query param) fonctionne pour
+n'importe quel futur point de déclenchement, mais seuls ces 2 câblages
+sont posés dans cette PR — `toggleVote`, les rappels dispos et le
+level-up déclenché par la clôture d'une soirée (`closeSession`, qui
+attribue de l'XP à plusieurs participants d'un coup côté cron, sans
+redirection utilisateur individuelle possible) ne déclenchent pas de
+confettis, la mécanique de redirection ne s'y prête pas sans refonte plus
+large hors scope de cette PR.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` + migration `add_user_onboarding_completed`
+- `src/lib/onboarding.ts`, `src/app/onboarding-actions.ts`,
+  `src/components/onboarding/OnboardingFlow.tsx` (nouveaux)
+- `src/app/guide/page.tsx`, `src/components/GuideFab.tsx` (nouveaux)
+- `src/components/CelebrationConfetti.tsx` (nouveau)
+- `src/lib/xp-actions.ts`, `src/lib/badges.ts` (retours booléens)
+- `src/app/sessions/actions.ts` (câblage `?celebrate=`)
+- `src/app/page.tsx`, `src/app/layout.tsx` (montage des 3 composants)
+- `package.json` (`canvas-confetti` + `@types/canvas-confetti`)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, `/guide` apparaît
+  dans les routes générées
+- `npx vitest run` : 70 tests, 0 skip, tout vert (aucun test existant
+  cassé par le changement de signature `awardXp`/badges)
+- Smoke test `next dev` : `/`, `/guide`, `/sessions`,
+  `/sessions/[id]/resultats` répondent 200 sans erreur d'application
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : tous les appelants existants de `awardXp`/`check*Badges`
+  ignorent simplement la nouvelle valeur de retour, comportement inchangé ;
+  migration additive (`DEFAULT false`, `NOT NULL`) sans effet sur les
+  comptes existants au-delà du nouveau champ

@@ -57,6 +57,18 @@ model User {
   streakCount        Int       @default(0)
   streakLastActiveAt DateTime?
 
+  // Sprint 2 PR-B — onboarding premier login (4 écrans swipe). `false`
+  // par défaut pour tout compte existant : migration additive, ne
+  // redéclenche PAS l'onboarding pour les comptes déjà actifs — le
+  // déclenchement réel se base sur "aucune soirée jouée ET aucune dispo
+  // réglée" (voir `src/lib/onboarding.ts`), ce champ sert uniquement à ne
+  // plus jamais raffiche l'écran une fois qu'il a été vu/skippé, y
+  // compris si l'utilisateur joue une soirée puis en recrée un compte
+  // vide (edge case volontairement couvert par ce booléen explicite
+  // plutôt que par une simple détection d'activité, qui se remettrait à
+  // "premier login" après un reset de données).
+  onboardingCompleted Boolean @default(false)
+
   addedGames Game[]     @relation("GameAddedBy")
   userGames  UserGame[]
 

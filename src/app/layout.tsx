@@ -5,6 +5,8 @@ import { Toaster } from "sonner";
 import { auth } from "@/auth";
 import { Header } from "@/components/Header";
 import { BottomNav } from "@/components/BottomNav";
+import { GuideFab } from "@/components/GuideFab";
+import { CelebrationConfetti } from "@/components/CelebrationConfetti";
 import { PageTransition } from "@/components/PageTransition";
 import "./globals.css";
 
@@ -38,6 +40,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <PageTransition>{children}</PageTransition>
           </main>
           {session?.user && <BottomNav />}
+          {session?.user && <GuideFab />}
+          {session?.user && <CelebrationConfetti />}
           <Toaster theme="dark" position="bottom-center" richColors />
         </MotionConfig>
       </body>

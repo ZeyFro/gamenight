@@ -30,6 +30,13 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
  * lecture juste avant, avec une fenêtre de course très étroite et sans
  * conséquence sur les données (au pire, une notif de level up manquée
  * dans un cas extrêmement rare de deux actions simultanées du même user).
+ *
+ * Valeur de retour `{ leveledUp }` (Sprint 2 PR-B, U9) — ajoutée pour que
+ * les quelques appelants qui redirigent vers une page vue par LE MÊME
+ * user (ex. `createSession`) puissent déclencher les confettis de level
+ * up (`?celebrate=levelup`) sans requête supplémentaire. Ignorée par tous
+ * les autres appelants (boucles sur plusieurs participants, backfill) —
+ * un `Promise` dont la valeur résolue n'est pas utilisée reste valide.
  */
 export async function awardXp(
   userId: string,
@@ -37,7 +44,7 @@ export async function awardXp(
   sourceId: string,
   baseAmount: number,
   { applyStreak = true }: { applyStreak?: boolean } = {}
-): Promise<void> {
+): Promise<{ leveledUp: boolean }> {
   const before = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -47,7 +54,7 @@ export async function awardXp(
       silenceReminders: true,
     },
   });
-  if (!before) return;
+  if (!before) return { leveledUp: false };
 
   const multiplier = applyStreak ? streakMultiplier(before.streakCount) : 1;
   const amount = Math.round(baseAmount * multiplier);
@@ -55,7 +62,7 @@ export async function awardXp(
   try {
     await prisma.xpEvent.create({ data: { userId, reason, sourceId, amount } });
   } catch (error) {
-    if (isUniqueConstraintViolation(error)) return;
+    if (isUniqueConstraintViolation(error)) return { leveledUp: false };
     throw error;
   }
 
@@ -67,7 +74,8 @@ export async function awardXp(
 
   const beforeLevel = levelForXp(before.xpTotal);
   const afterLevel = levelForXp(updated.xpTotal);
-  if (afterLevel > beforeLevel) {
+  const leveledUp = afterLevel > beforeLevel;
+  if (leveledUp) {
     // Refonte home ("Activité récente") : même détection que la notif
     // Discord ci-dessous, persistée cette fois pour pouvoir l'afficher.
     // Jamais écrit par le backfill (prisma/backfill-xp.mjs), qui ne passe
@@ -76,6 +84,8 @@ export async function awardXp(
     await prisma.levelUpEvent.create({ data: { userId, level: afterLevel } });
     await announceLevelUp({ discordId: updated.discordId }, beforeLevel, afterLevel);
   }
+
+  return { leveledUp };
 }
 
 const STREAK_MIN_GAP_MS = 12 * 60 * 60 * 1000;

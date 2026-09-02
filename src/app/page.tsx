@@ -9,11 +9,13 @@ import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/w
 import { getRecentActivity, getGroupStats, getWeekAvailability } from "@/lib/home";
 import { getScoreboard } from "@/lib/scoreboard";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
+import { shouldShowOnboarding } from "@/lib/onboarding";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Logo } from "@/components/Logo";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
+import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 import { Stagger, StaggerItem } from "@/components/motion";
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -104,6 +106,11 @@ export default async function Home({
     return null;
   }
 
+  const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
+  const badgeCount = showOnboarding
+    ? await prisma.userBadge.count({ where: { userId: user.id } })
+    : 0;
+
   const dueSession = await prisma.session.findFirst({
     where: { status: "VOTING", date: { lte: wallClockNow() } },
     select: { id: true },
@@ -166,6 +173,15 @@ export default async function Home({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
+      {showOnboarding && (
+        <OnboardingFlow
+          discordName={user.discordName}
+          discordAvatar={user.discordAvatar}
+          xpTotal={user.xpTotal}
+          badgeCount={badgeCount}
+        />
+      )}
+
       <div className="flex items-center gap-4">
         <RankAvatar
           src={session.user.image ?? null}

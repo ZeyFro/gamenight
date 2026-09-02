@@ -59,14 +59,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * fois-ci, pas "jamais" : un futur appel avec les bonnes stats les
  * check era). Idempotent : `unlockBadge` retombe silencieusement sur la
  * contrainte unique `@@unique([userId, badgeId])` en cas de course.
+ *
+ * Retourne `true` si au moins un badge a été débloqué (Sprint 2 PR-B,
+ * U9 — confettis `?celebrate=badge` sur les appelants qui redirigent
+ * vers une page vue par ce même user, ex. `createSession`).
  */
-async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<void> {
+async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<boolean> {
   const [alreadyUnlocked, badges] = await Promise.all([
     prisma.userBadge.findMany({ where: { userId }, select: { badgeId: true } }),
     prisma.badge.findMany({ where: { active: true } }),
   ]);
   const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
 
+  let unlockedAny = false;
   for (const badge of badges) {
     if (unlockedIds.has(badge.id)) continue;
 
@@ -75,15 +80,17 @@ async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<
     const value = stats[key];
     if (value === undefined || value < criteria.count) continue;
 
-    await unlockBadge(userId, badge);
+    const unlocked = await unlockBadge(userId, badge);
+    if (unlocked) unlockedAny = true;
   }
+  return unlockedAny;
 }
 
-async function unlockBadge(userId: string, badge: Badge): Promise<void> {
+async function unlockBadge(userId: string, badge: Badge): Promise<boolean> {
   try {
     await prisma.userBadge.create({ data: { userId, badgeId: badge.id } });
   } catch (error) {
-    if (isUniqueConstraintViolation(error)) return;
+    if (isUniqueConstraintViolation(error)) return false;
     throw error;
   }
 
@@ -93,12 +100,13 @@ async function unlockBadge(userId: string, badge: Badge): Promise<void> {
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) await announceBadgeUnlocked(user, badge);
+  return true;
 }
 
 /** Après `createSession` — First Blood / Meneur / Community leader. */
-export async function checkSessionsCreatedBadges(userId: string): Promise<void> {
+export async function checkSessionsCreatedBadges(userId: string): Promise<boolean> {
   const count = await prisma.session.count({ where: { createdById: userId } });
-  await unlockMatchingBadges(userId, { sessionsCreated: count });
+  return unlockMatchingBadges(userId, { sessionsCreated: count });
 }
 
 /**
