@@ -88,7 +88,7 @@ export default async function CalendrierPage({
     : [undefined, undefined];
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-5xl">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">📅 Calendrier</h1>
         <p className="mt-1 text-sm text-muted">
@@ -97,75 +97,84 @@ export default async function CalendrierPage({
         </p>
       </div>
 
-      <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-        <Link
-          href={buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes })}
-          className={tabClass(mode === "collectif")}
-        >
-          Collectif
-        </Link>
-        <Link
-          href={buildCalendarHref({ date: sp.date, mode: "individuel", pote: sp.pote })}
-          className={tabClass(mode === "individuel")}
-        >
-          Individuel
-        </Link>
-      </div>
-
-      <MiniMonthCalendar
-        days={data.days}
-        selectedDate={selectedDate}
-        today={today}
-        currentMonth={selectedDate.getUTCMonth()}
-        mode={mode}
-        totalUsers={data.users.length}
-        pote={sp.pote}
-        potes={sp.potes}
-      />
-
-      {mode === "collectif" ? (
-        <PoteFilterDrawer users={data.users} visibleUserIds={visibleUserIds} />
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {data.users.map((u) => (
+      {/* Colonne mini-mois/filtres à gauche, timeline du jour à droite sur
+          desktop — sur mobile (< lg), tout reste empilé dans le même
+          ordre qu'avant. */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
             <Link
-              key={u.id}
-              href={buildCalendarHref({ mode: "individuel", pote: u.id, date: sp.date })}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                selectedUserId === u.id
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border text-muted hover:text-foreground"
-              }`}
+              href={buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes })}
+              className={tabClass(mode === "collectif")}
             >
-              <ColorDot color={u.color} size={8} />
-              {u.id === user.id ? "Toi" : u.discordName}
+              Collectif
             </Link>
-          ))}
+            <Link
+              href={buildCalendarHref({ date: sp.date, mode: "individuel", pote: sp.pote })}
+              className={tabClass(mode === "individuel")}
+            >
+              Individuel
+            </Link>
+          </div>
+
+          <MiniMonthCalendar
+            days={data.days}
+            selectedDate={selectedDate}
+            today={today}
+            currentMonth={selectedDate.getUTCMonth()}
+            mode={mode}
+            totalUsers={data.users.length}
+            pote={sp.pote}
+            potes={sp.potes}
+          />
+
+          {mode === "collectif" ? (
+            <PoteFilterDrawer users={data.users} visibleUserIds={visibleUserIds} />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {data.users.map((u) => (
+                <Link
+                  key={u.id}
+                  href={buildCalendarHref({ mode: "individuel", pote: u.id, date: sp.date })}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    selectedUserId === u.id
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border text-muted hover:text-foreground"
+                  }`}
+                >
+                  <ColorDot color={u.color} size={8} />
+                  {u.id === user.id ? "Toi" : u.discordName}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      <DayTimeline
-        key={toDateInputValue(selectedDate)}
-        day={selectedDay}
-        users={data.users}
-        mode={mode}
-        selectedUserId={selectedUserId}
-        date={selectedDate}
-        today={today}
-        pote={sp.pote}
-        potes={sp.potes}
-        canEdit={canEdit}
-        ownWeeklySlots={ownWeeklySlots}
-        ownOverrideForDay={ownOverrideForDay}
-        ownColor={user.color}
-      />
+        <div className="flex flex-col gap-5">
+          <DayTimeline
+            key={toDateInputValue(selectedDate)}
+            day={selectedDay}
+            users={data.users}
+            mode={mode}
+            selectedUserId={selectedUserId}
+            date={selectedDate}
+            today={today}
+            pote={sp.pote}
+            potes={sp.potes}
+            canEdit={canEdit}
+            ownWeeklySlots={ownWeeklySlots}
+            ownOverrideForDay={ownOverrideForDay}
+            ownColor={user.color}
+          />
 
-      <p className="text-center text-xs text-faint">
-        Besoin de régler tes créneaux hebdo ou une exception ponctuelle ?{" "}
-        <Link href="/disponibilites" className="text-accent hover:underline">
-          Configuration détaillée
-        </Link>
-      </p>
+          <p className="text-center text-xs text-faint">
+            Besoin de régler tes créneaux hebdo ou une exception ponctuelle ?{" "}
+            <Link href="/disponibilites" className="text-accent hover:underline">
+              Configuration détaillée
+            </Link>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

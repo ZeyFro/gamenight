@@ -4805,3 +4805,138 @@ mock complexe, conformément à la demande) :
   silence ou d'un mauvais message vers une erreur propre) ; `bestSlot` du
   calendrier calcule exactement la même valeur qu'avant l'extraction
   (couvert par `findBestSlot`)
+
+## Sprint 2 — UX/Polish, PR-A (layout desktop + soirées + potes + skeletons + calendrier)
+
+Retours utilisateurs après le Sprint 1 : "trop vide", "trop de scroll",
+"espace perdu à gauche/droite sur desktop", "les annulées polluent", "pas
+de nombre de participants", "page potes moche", "GIFs pas visibles". PR-A
+couvre les 5 chantiers qui ne touchent pas le schéma (layout, onglets
+soirées, refonte potes, skeletons, points colorés calendrier) — PR-B
+(onboarding premier login, page `/guide`, confettis) suivra une fois
+celle-ci mergée, seule à nécessiter une migration Prisma et une nouvelle
+dépendance.
+
+### 1. Layout desktop — utiliser l'espace
+
+`max-w-2xl` → `lg:max-w-6xl` (`lg:max-w-5xl` sur `/calendrier`, plus
+compact car la timeline reste fondamentalement une liste verticale) sur
+les 5 pages principales, avec un `lg:grid` à 2 colonnes qui ne s'active
+qu'à partir du breakpoint `lg` — en dessous, tout reste dans l'ordre
+d'origine, une seule colonne, aucun changement visuel mobile :
+
+- **Home** (`src/app/page.tsx`) : "Prochaine soirée" + "Stats du groupe"
+  côte à côte, puis "Activité récente" + "Dispos de la semaine" côte à
+  côte (2 `<div className="lg:grid lg:grid-cols-2">` distincts imbriqués
+  dans le `Stagger` existant plutôt qu'un unique grid sur toute la
+  section — nécessaire pour garder l'ordre de lecture "1 colonne" correct
+  en mobile sans dupliquer le JSX derrière un `hidden lg:block`).
+- **Soirées** (`src/app/sessions/page.tsx`) : formulaire de création à
+  gauche (`lg:grid-cols-[380px_1fr]`), liste à droite.
+- **Classement** (`src/app/classement/page.tsx`) : podium à gauche
+  (`lg:sticky lg:top-4` — reste visible pendant le scroll de la liste),
+  tableau complet à droite.
+- **Potes** (`src/app/potes/page.tsx`) : grille `lg:grid-cols-2` de
+  cards (voir section 3).
+- **Calendrier** (`src/app/calendrier/page.tsx`) : mini-mois + onglets +
+  filtres en colonne de gauche compacte (`lg:grid-cols-[320px_1fr]`),
+  timeline du jour à droite. Traitement non explicitement demandé pour
+  cette page dans la liste des grilles 2 colonnes, mais élargir le
+  `max-w` seul sans grille aurait laissé son problème principal ("espace
+  perdu") non résolu — décision assumée.
+
+### 2. Page Soirées — onglets + participants
+
+Onglets **"À venir"** (défaut, sessions `VOTING`+`SCHEDULED`, triées par
+date croissante — la requête globale est triée `desc`, re-triée
+explicitement pour cette liste car "à venir" doit montrer le plus proche
+en premier) et **"Historique"** (`DONE`+`CANCELLED`), pilotés par
+`?tab=upcoming|history` — même pattern query-param sans état client que
+`/classement?periode=` et `AdminTabs`. Sous-filtre "Afficher les
+annulées" dans Historique (`?cancelled=1`, décoché par défaut — un simple
+lien qui bascule le query param plutôt qu'une vraie checkbox, cohérent
+avec l'absence d'état client de la page).
+
+Chaque card affiche maintenant "X joueur(s) inscrit(s)" avec une pile de
+mini-avatars (5 max puis "+N") — même définition de "joueurs inscrits"
+que la home (voteurs de la proposition gagnante une fois `decidedGameId`
+connu, sinon tous les voteurs). Un composant décoratif local (pas le
+`VoterAvatars` existant, qui est interactif/`Dialog` — l'imbriquer dans le
+`<Link>` de la card aurait créé un bouton dans un lien) affiche ces
+avatars. Couleurs de badge de statut inchangées (`SESSION_STATUS_LABELS`
+non modifié).
+
+### 3. Page Potes — refonte visuelle + GIFs
+
+Liste plate → grille de cards (`lg:grid-cols-2` desktop, 1 colonne
+mobile) avec, par pote : bannière en haut (même technique
+`background-image` CSS que `/profil` — **jamais** `next/image`, seule
+manière de garantir qu'un GIF anime réellement plutôt que d'être figé sur
+sa première frame), avatar à anneau coloré par rang + pastille de niveau
+(reproduction visuelle de `RankAvatar` sans son bouton interactif — le
+composant partagé ne peut pas être imbriqué dans le `<Link>` de la card
+pour la même raison que `VoterAvatars` ci-dessus), rang, 3 stats rapides
+(soirées jouées, XP, streak actif avec `StreakFlame` animée),
+`User.color` en bordure de card (`color-mix` avec `var(--border)` à 45%),
+lien vers le profil complet. Stagger Framer Motion inchangé (juste
+regridé). "Soirées jouées" vient d'une seule requête `groupBy` sur
+`XpEvent` (`reason: "PARTICIPATE"`) plutôt que N requêtes par pote — XP
+total et streak sont déjà des colonnes `User`, aucune requête
+supplémentaire nécessaire pour elles.
+
+### 4. Skeleton loaders
+
+Le composant `<Skeleton />` et les `loading.tsx` `/sessions`,
+`/bibliotheque`, `/disponibilites`, `/sessions/[id]` existaient déjà
+(Sprint 1 v2) et couvrent déjà "composant réutilisable + Suspense
+`loading.tsx`". Ajout des 4 `loading.tsx` manquants pour les pages
+retouchées ci-dessus — `/calendrier`, `/classement`, `/profil`, `/potes`
+— reproduisant leur nouvelle structure large/regrid (mêmes largeurs
+`lg:max-w-*`/`lg:grid-cols-*` que la page réelle, pour qu'il n'y ait pas
+de saut de layout au chargement) ; `/sessions/loading.tsx` mis à jour
+pour refléter son nouveau layout formulaire/liste. La home (`/`) reste
+sur le spinner générique de `src/app/loading.tsx` (Sprint 1 v2) : `/` et
+le segment racine coïncidant dans l'App Router, lui donner un skeleton
+dédié aurait demandé de déplacer `page.tsx` dans un groupe de routes
+`(home)/` — restructuration non demandée et hors scope pour un simple
+fallback de chargement.
+
+### 5. Avatars couleur — calendrier collectif
+
+En vue Collectif, hors mode édition, une cellule horaire avec 2+ potes
+dispo affiche maintenant leurs ronds `User.color` côte à côte (16px, 4 +
+"+N" au-delà de 5) au lieu du fond violet uni — le fond accent/densité
+existant (`color-mix` sur `var(--accent)`) reste la base visuelle, les
+ronds se superposent par-dessus. Un tap ouvre un bottom-sheet (même
+pattern `Dialog` que la création de soirée) listant les pseudos. Ce
+nouveau comportement remplace, uniquement pour ces cellules à 2+ potes,
+le tap "créer une soirée ici" — qui reste inchangé pour les cellules à
+0/1 pote dispo, où voir "qui est dispo" n'apporte rien. Le cas à 1 seul
+pote dispo (cellule teintée de sa couleur perso) est inchangé.
+
+### Fichiers modifiés/ajoutés
+
+- `src/app/page.tsx`, `src/app/sessions/page.tsx`,
+  `src/app/classement/page.tsx`, `src/app/potes/page.tsx`,
+  `src/app/calendrier/page.tsx` — layout desktop
+- `src/components/calendar/DayTimeline.tsx` — ronds de couleur +
+  bottom-sheet
+- `src/app/sessions/loading.tsx` (mis à jour), `src/app/calendrier/loading.tsx`,
+  `src/app/classement/loading.tsx`, `src/app/profil/loading.tsx`,
+  `src/app/potes/loading.tsx` (nouveaux)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur, toutes les routes
+  existantes inchangées
+- `npx vitest run` : 70 tests, 0 skip, tout vert (aucun test touché par
+  cette PR, purement UI)
+- Smoke test `next dev` : `/`, `/sessions`, `/potes`, `/classement`,
+  `/calendrier` répondent 200 sans erreur d'application
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : aucune requête Prisma existante modifiée en dehors
+  des `select`/`include` étendus pour les nouveaux besoins d'affichage
+  (participants soirées, stats potes) ; aucun champ de schéma touché ;
+  mobile (`< lg`) visuellement identique à avant sur les 5 pages
+  retouchées

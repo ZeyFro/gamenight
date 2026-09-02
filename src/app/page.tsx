@@ -165,7 +165,7 @@ export default async function Home({
   const [first, second, third] = podium;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       <div className="flex items-center gap-4">
         <RankAvatar
           src={session.user.image ?? null}
@@ -186,7 +186,10 @@ export default async function Home({
       </div>
 
       <Stagger className="flex flex-col gap-4" staggerDelay={0.1}>
-        {/* Prochaine soirée */}
+        {/* Prochaine soirée + Stats du groupe côte à côte sur desktop —
+            l'espace vide à gauche/droite était le retour le plus fréquent
+            en desktop (cf. README, section dédiée). */}
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
         <StaggerItem>
           {nextSession ? (
             <Link href={`/sessions/${nextSession.id}`}>
@@ -247,30 +250,6 @@ export default async function Home({
           )}
         </StaggerItem>
 
-        {/* Activité récente */}
-        <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">Activité récente</p>
-            {activity.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">Rien à signaler pour l&apos;instant.</p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-3">
-                {activity.map((item) => (
-                  <li key={item.id} className="flex items-center gap-3">
-                    <span className="text-lg shrink-0" aria-hidden>
-                      {item.icon}
-                    </span>
-                    <p className="min-w-0 flex-1 truncate text-sm text-foreground">{item.text}</p>
-                    <span className="shrink-0 text-xs text-muted">
-                      il y a {formatDurationFr(now - item.timestamp.getTime())}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </StaggerItem>
-
         {/* Stats du groupe */}
         <StaggerItem>
           <Card>
@@ -329,6 +308,32 @@ export default async function Home({
             </div>
           </Card>
         </StaggerItem>
+        </div>
+
+        {/* Activité récente + Dispos de la semaine côte à côte sur desktop */}
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
+        <StaggerItem>
+          <Card>
+            <p className="text-sm text-muted">Activité récente</p>
+            {activity.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">Rien à signaler pour l&apos;instant.</p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-3">
+                {activity.map((item) => (
+                  <li key={item.id} className="flex items-center gap-3">
+                    <span className="text-lg shrink-0" aria-hidden>
+                      {item.icon}
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm text-foreground">{item.text}</p>
+                    <span className="shrink-0 text-xs text-muted">
+                      il y a {formatDurationFr(now - item.timestamp.getTime())}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </StaggerItem>
 
         {/* Dispos de la semaine */}
         <StaggerItem>
@@ -354,6 +359,7 @@ export default async function Home({
             </div>
           </Card>
         </StaggerItem>
+        </div>
 
         {/* Classement rapide */}
         <StaggerItem>

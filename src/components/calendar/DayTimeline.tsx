@@ -151,6 +151,7 @@ export function DayTimeline({
     ownOverrideForDay ?? null
   );
   const [createPromptHour, setCreatePromptHour] = useState<number | null>(null);
+  const [avatarSheetHour, setAvatarSheetHour] = useState<number | null>(null);
   const [pendingStart, setPendingStart] = useState<number | null>(null);
   const pendingStartRef = useRef<number | null>(null);
   const [, startTransition] = useTransition();
@@ -295,6 +296,11 @@ export function DayTimeline({
       ? `/sessions?date=${toDateInputValue(date)}&time=${pad2(createPromptHour)}:00`
       : null;
 
+  const avatarSheetIds =
+    avatarSheetHour !== null
+      ? (day.hours.find((h) => h.hour === avatarSheetHour)?.availableUserIds ?? [])
+      : [];
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -419,7 +425,13 @@ export function DayTimeline({
           // point de la couleur perso marque en plus SA PROPRE dispo,
           // seul signal sinon invisible tant qu'on n'a pas tapé.
           const showOwnDot = editable && mode === "collectif" && isAvailable && !!ownColor;
-          const canPromptCreate = !editMode && sessionsAtHour.length === 0;
+          // Ronds de couleur perso par pote dispo (retour terrain "qui est
+          // dispo ?" pas visible d'un coup d'œil en vue Collectif) — prend
+          // le pas sur le tap "créer une soirée" quand 2+ potes sont
+          // dispo sur ce créneau : voir qui est libre est plus utile ici
+          // qu'un raccourci de création, qui reste inchangé pour 0/1 pote.
+          const showAvailabilityDots = mode === "collectif" && !editable && availableIds.length >= 2;
+          const canPromptCreate = !editMode && !showAvailabilityDots && sessionsAtHour.length === 0;
           const cellClassName = `h-7 rounded-md transition-transform ${
             isBestHour ? "ring-2 ring-accent" : ""
           } ${editable || canPromptCreate ? "active:scale-95" : ""} ${
@@ -462,6 +474,30 @@ export function DayTimeline({
                         style={{ backgroundColor: ownColor }}
                       />
                     )}
+                  </button>
+                ) : showAvailabilityDots ? (
+                  <button
+                    type="button"
+                    onClick={() => setAvatarSheetHour(hour)}
+                    aria-label={`${pad2(hour)}h — ${availableIds.length} potes dispo, taper pour voir qui`}
+                    title={title}
+                    className={`${cellClassName} relative w-full`}
+                    style={cellStyle}
+                  >
+                    <span className="absolute inset-0 flex items-center gap-1 px-1.5">
+                      {availableIds.slice(0, availableIds.length > 5 ? 4 : 5).map((id) => (
+                        <ColorDot
+                          key={id}
+                          color={usersById.get(id)?.color ?? "var(--accent)"}
+                          size={16}
+                        />
+                      ))}
+                      {availableIds.length > 5 && (
+                        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-background px-1 text-[9px] font-semibold text-foreground ring-2 ring-surface">
+                          +{availableIds.length - 4}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 ) : canPromptCreate ? (
                   <button
@@ -523,6 +559,47 @@ export function DayTimeline({
                   </Dialog.Close>
                 )}
               </div>
+            </motion.div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
+        open={avatarSheetHour !== null}
+        onOpenChange={(next) => !next && setAvatarSheetHour(null)}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/70" />
+          <Dialog.Content asChild aria-describedby={undefined}>
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 420, damping: 32 }}
+              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border bg-surface p-4 sm:inset-x-auto sm:top-1/2 sm:left-1/2 sm:bottom-auto sm:w-full sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-6"
+            >
+              <Dialog.Title className="text-lg font-semibold text-foreground">
+                {avatarSheetHour !== null ? `Dispo à ${pad2(avatarSheetHour)}h` : "Dispo"}
+              </Dialog.Title>
+              <ul className="mt-3 flex flex-col gap-2">
+                {avatarSheetIds.map((id) => {
+                  const u = usersById.get(id);
+                  if (!u) return null;
+                  return (
+                    <li key={id} className="flex items-center gap-2 text-sm text-foreground">
+                      <ColorDot color={u.color} size={12} />
+                      {u.discordName}
+                    </li>
+                  );
+                })}
+              </ul>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="mt-5 w-full rounded-lg border border-border px-4 py-3 text-sm font-medium text-muted transition-colors hover:text-foreground"
+                >
+                  Fermer
+                </button>
+              </Dialog.Close>
             </motion.div>
           </Dialog.Content>
         </Dialog.Portal>
