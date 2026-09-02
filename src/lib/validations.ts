@@ -155,6 +155,11 @@ export const playerCountsSchema = z
  * jeux importés depuis Steam, jamais saisis à la main) : le seul
  * identifiant externe optionnel saisissable ici est `igdbId`.
  */
+/** `createTagAction` — nom de tag libre, court (chip UI). */
+export const tagNameSchema = z.object({
+  name: z.string().trim().min(1, "Le nom du tag ne peut pas être vide.").max(24, "24 caractères max."),
+});
+
 export const addManualGameSchema = z.object({
   name: z.string().trim().min(1, "Le nom du jeu ne peut pas être vide."),
   igdbId: z.union([

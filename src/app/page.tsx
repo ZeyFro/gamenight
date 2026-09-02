@@ -201,6 +201,15 @@ export default async function Home({
             Niveau {level} · {title} · {rank.name}
           </p>
         </div>
+        {/* FIX1 (retours visuels post-Sprint2) : le bouton "?" flottant
+            (`GuideFab`) est discret par design (coin d'écran, toujours
+            visible) — pas assez visible en tant que point d'entrée
+            principal vers le guide pour un nouvel utilisateur. Lien
+            explicite ici, juste après l'en-tête, en plus du FAB (les deux
+            coexistent, cf. spec). */}
+        <ButtonLink href="/guide" variant="ghost" size="sm" className="shrink-0 !px-2">
+          📖 Guide
+        </ButtonLink>
       </div>
 
       <Stagger className="flex flex-col gap-4" staggerDelay={0.1}>

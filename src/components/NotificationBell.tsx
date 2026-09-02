@@ -24,6 +24,7 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   SESSION_RESULT: "🎮",
   SESSION_CREATED: "📣",
   REMINDER: "⏰",
+  REVANCHE: "🔄",
 };
 
 /**

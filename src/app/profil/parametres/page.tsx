@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
 import { toggleSilenceReminders, toggleSoundEnabled } from "@/app/profil/actions";
+import { createTagAction, toggleUserTagAction } from "@/app/tags-actions";
+import { prisma } from "@/lib/prisma";
+import { tagColor } from "@/lib/tags";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -46,6 +49,14 @@ export default async function ProfilParametresPage({
   const { steam, count, upload } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
 
+  // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
+  // ce user, pour afficher les chips "actif"/"inactif".
+  const [allTags, ownUserTags] = await Promise.all([
+    prisma.tag.findMany({ orderBy: { name: "asc" } }),
+    prisma.userTag.findMany({ where: { userId: user.id }, select: { tagId: true } }),
+  ]);
+  const ownTagIds = new Set(ownUserTags.map((t) => t.tagId));
+
   return (
     <Stagger className="flex flex-col gap-6">
       <StaggerItem>
@@ -71,6 +82,56 @@ export default async function ProfilParametresPage({
             image), ta fiche pote, tes votes et le classement.
           </p>
           <ColorPickerField currentColor={user.color} />
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Mes tags</h2>
+          <p className="text-sm text-muted">
+            Utilisés à la création d&apos;une soirée pour cocher d&apos;un
+            coup tous les potes d&apos;un même tag (ex. sélectionner
+            &laquo;&nbsp;FPS&nbsp;&raquo; pour prévenir tous les joueurs
+            FPS).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map((tag) => {
+              const active = ownTagIds.has(tag.id);
+              const color = tagColor(tag.name);
+              return (
+                <form key={tag.id} action={toggleUserTagAction}>
+                  <input type="hidden" name="tagId" value={tag.id} />
+                  <button
+                    type="submit"
+                    className="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: `color-mix(in srgb, ${color} 20%, transparent)`,
+                            borderColor: color,
+                            color,
+                          }
+                        : { borderColor: "var(--border)", color: "var(--muted)" }
+                    }
+                  >
+                    {tag.name}
+                  </button>
+                </form>
+              );
+            })}
+          </div>
+          <form action={createTagAction} className="flex gap-2">
+            <input
+              type="text"
+              name="name"
+              maxLength={24}
+              placeholder="Nouveau tag (ex. Retro)"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+            />
+            <Button type="submit" variant="secondary" size="sm">
+              + Ajouter
+            </Button>
+          </form>
         </Card>
       </StaggerItem>
 

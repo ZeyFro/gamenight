@@ -25,6 +25,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 
 type SessionParticipant = {
@@ -157,11 +158,23 @@ export default async function SessionsPage({
     ? await prisma.game.findUnique({ where: { id: gameId } })
     : null;
 
-  const potes = await prisma.user.findMany({
-    where: { id: { not: user.id } },
-    select: { id: true, discordName: true, discordAvatar: true, color: true },
-    orderBy: { discordName: "asc" },
-  });
+  const [potesRaw, tags] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { not: user.id } },
+      select: {
+        id: true,
+        discordName: true,
+        discordAvatar: true,
+        color: true,
+        userTags: { select: { tagId: true } },
+      },
+      orderBy: { discordName: "asc" },
+    }),
+    prisma.tag.findMany({ orderBy: { name: "asc" } }),
+  ]);
+  // Sprint 3 (FEATURE 6) — sélection groupée par tag dans `NotifyRecipientsField`.
+  const potes = potesRaw.map((p) => ({ ...p, tagIds: p.userTags.map((t) => t.tagId) }));
+  const tagOptions = tags.map((t) => ({ id: t.id, name: t.name, color: tagColor(t.name) }));
 
   const dueSessions = await prisma.session.findMany({
     where: { status: "VOTING", date: { lte: wallClockNow() } },
@@ -321,7 +334,7 @@ export default async function SessionsPage({
 
             <ReminderTimingsField />
 
-            <NotifyRecipientsField potes={potes} />
+            <NotifyRecipientsField potes={potes} tags={tagOptions} />
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="custom-reminder">

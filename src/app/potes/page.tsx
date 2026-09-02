@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { bannerFallbackStyle } from "@/lib/user-color";
+import { tagColor } from "@/lib/tags";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
@@ -38,6 +39,8 @@ export default async function PotesPage() {
       xpTotal: true,
       streakCount: true,
       steamId64: true,
+      // Sprint 3 (FEATURE 6) — chips de tags sur la carte pote.
+      userTags: { select: { tag: { select: { id: true, name: true } } } },
     },
   });
 
@@ -145,6 +148,23 @@ export default async function PotesPage() {
                       <Badge tone={pote.steamId64 ? "accent" : "neutral"} className="w-fit">
                         {pote.steamId64 ? "Steam lié" : "Steam non lié"}
                       </Badge>
+
+                      {pote.userTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {pote.userTags.map(({ tag }) => (
+                            <span
+                              key={tag.id}
+                              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `color-mix(in srgb, ${tagColor(tag.name)} 18%, transparent)`,
+                                color: tagColor(tag.name),
+                              }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Link>
