@@ -99,7 +99,7 @@ export default async function ClassementPage({
   const [first, second, third] = podium;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           🏆 Classement
@@ -107,12 +107,12 @@ export default async function ClassementPage({
         <p className="mt-1 text-sm text-muted">Qui domine le groupe.</p>
       </div>
 
-      <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
+      <div className="flex gap-2 rounded-lg border border-border bg-background p-1 lg:w-fit">
         {SCOREBOARD_PERIODS.map((p) => (
           <Link
             key={p}
             href={`/classement?periode=${p}`}
-            className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors lg:flex-none lg:px-6 ${
               period === p
                 ? "bg-accent text-accent-foreground"
                 : "text-muted hover:text-foreground"
@@ -128,9 +128,12 @@ export default async function ClassementPage({
           <p className="text-sm text-muted">Personne dans le groupe pour l&apos;instant.</p>
         </Card>
       ) : (
-        <>
+        // Podium à gauche, liste complète à droite sur desktop — le podium
+        // reste "sticky" visuellement en haut de sa colonne pendant qu'on
+        // scrolle la liste complète.
+        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
           {podium.length > 0 && (
-            <div className="flex items-end justify-center gap-3 sm:gap-6">
+            <div className="flex items-end justify-center gap-3 sm:gap-6 lg:sticky lg:top-4">
               {second && <PodiumSpot entry={second} place={2} />}
               {first && <PodiumSpot entry={first} place={1} />}
               {third && <PodiumSpot entry={third} place={3} />}
@@ -148,7 +151,7 @@ export default async function ClassementPage({
               </StaggerItem>
             ))}
           </Stagger>
-        </>
+        </div>
       )}
     </div>
   );
