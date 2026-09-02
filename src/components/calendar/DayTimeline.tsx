@@ -13,6 +13,7 @@ import { removeOverrideForDate, upsertOverride } from "@/app/disponibilites/acti
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { addDays, buildCalendarHref, type CalendarMode } from "@/lib/calendar-dates";
 import { isAvailableAt, type OverrideForDate, type WeeklySlot } from "@/lib/availability";
+import { haptics } from "@/lib/haptics";
 import { formatDateFr, sameUtcDate, toDateInputValue } from "@/lib/wallclock";
 import type { CalendarDay, CalendarSession, CalendarUser } from "@/lib/calendar";
 
@@ -274,6 +275,7 @@ export function DayTimeline({
    */
   function handleTapHour(hour: number) {
     if (!canEdit || !editMode) return;
+    haptics.light();
 
     const anchor = pendingStartRef.current;
     if (anchor === null) {

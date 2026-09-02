@@ -177,6 +177,19 @@ export default async function ProfilParametresPage({
           </ButtonLink>
         </Card>
       </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Aide</h2>
+          <p className="text-sm text-muted">
+            Un rappel rapide de comment fonctionne chaque partie de
+            l&apos;app.
+          </p>
+          <ButtonLink href="/guide" variant="secondary" fullWidthOnMobile>
+            📖 Comment ça marche
+          </ButtonLink>
+        </Card>
+      </StaggerItem>
     </Stagger>
   );
 }

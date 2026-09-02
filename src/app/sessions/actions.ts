@@ -91,8 +91,13 @@ export async function createSession(formData: FormData) {
     },
   });
 
-  await awardXp(user.id, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
-  await checkSessionsCreatedBadges(user.id);
+  const xpResult = await awardXp(
+    user.id,
+    "CREATE_SESSION",
+    session.id,
+    XP_AMOUNTS.CREATE_SESSION
+  );
+  const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de
@@ -116,6 +121,10 @@ export async function createSession(formData: FormData) {
   const params = new URLSearchParams();
   if (deadlineAdjusted) params.set("deadline", "ajustee");
   if (!announceResult.ok) params.set("discord", "echec");
+  // Confettis (Sprint 2 PR-B, U9) — badge prioritaire sur level up si les
+  // deux se produisent au même moment (plus rare, mérite plus l'attention).
+  if (badgeUnlocked) params.set("celebrate", "badge");
+  else if (xpResult.leveledUp) params.set("celebrate", "levelup");
   const query = params.toString();
   redirect(`/sessions/${session.id}${query ? `?${query}` : ""}`);
 }
@@ -507,6 +516,13 @@ export async function submitSessionResultsAction(formData: FormData) {
     3: XP_AMOUNTS.PODIUM_3RD,
   };
   const usedPlacements = new Set<number>();
+  // Confettis (Sprint 2 PR-B, U9) — seule la place/le level up DU CRÉATEUR
+  // (le seul à voir la redirection de cette action) compte ici, jamais
+  // celle d'un autre participant : `?celebrate=win` doit refléter une
+  // victoire vécue par l'utilisateur qui regarde son écran, pas un
+  // événement arrivé à quelqu'un d'autre.
+  let ownPlacement: number | null = null;
+  let ownLeveledUp = false;
 
   for (const { userId: participantId } of participantVotes) {
     let placement: number | null = null;
@@ -523,21 +539,30 @@ export async function submitSessionResultsAction(formData: FormData) {
       data: { sessionId, userId: participantId, placement },
     });
 
+    let xpResult: { leveledUp: boolean } | null = null;
     if (isCoop) {
-      await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
+      xpResult = await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
     } else if (placement) {
-      await awardXp(
+      xpResult = await awardXp(
         participantId,
         "SESSION_RESULT",
         sessionId,
         placementAmounts[placement]
       );
     }
+
+    if (participantId === user.id) {
+      ownPlacement = placement;
+      ownLeveledUp = xpResult?.leveledUp ?? false;
+    }
   }
 
   revalidatePath(`/sessions/${sessionId}/resultats`);
   revalidatePath(`/sessions/${sessionId}`);
-  redirect(`/sessions/${sessionId}/resultats`);
+  const celebrate = ownPlacement === 1 ? "win" : ownLeveledUp ? "levelup" : null;
+  redirect(
+    `/sessions/${sessionId}/resultats${celebrate ? `?celebrate=${celebrate}` : ""}`
+  );
 }
 
 /**

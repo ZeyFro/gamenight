@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ColorDot } from "@/components/ColorDot";
 import { StreakFlame } from "@/components/StreakFlame";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
@@ -53,6 +54,7 @@ export default async function PotesPage() {
   );
 
   return (
+    <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Potes</h1>
@@ -152,5 +154,6 @@ export default async function PotesPage() {
         </Stagger>
       )}
     </div>
+    </PullToRefresh>
   );
 }
