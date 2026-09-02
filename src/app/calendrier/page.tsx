@@ -9,6 +9,7 @@ import { MiniMonthCalendar } from "@/components/calendar/MiniMonthCalendar";
 import { DayTimeline } from "@/components/calendar/DayTimeline";
 import { PoteFilterDrawer } from "@/components/calendar/PoteFilterDrawer";
 import { ColorDot } from "@/components/ColorDot";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 interface CalendrierSearchParams {
   date?: string;
@@ -88,6 +89,7 @@ export default async function CalendrierPage({
     : [undefined, undefined];
 
   return (
+    <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-5xl">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">📅 Calendrier</h1>
@@ -176,5 +178,6 @@ export default async function CalendrierPage({
         </div>
       </div>
     </div>
+    </PullToRefresh>
   );
 }

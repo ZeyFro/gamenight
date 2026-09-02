@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
@@ -20,9 +20,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// PWA basique (Sprint 2, U7) : manifest + meta Apple pour permettre
+// l'ajout à l'écran d'accueil (icône seule, sans barre de navigateur) —
+// volontairement PAS de service worker (pas de cache offline, pas de
+// push), juste ce qu'il faut pour l'installation.
 export const metadata: Metadata = {
   title: "GameNight",
   description: "Organise tes soirées jeux avec tes potes.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "GameNight",
+  },
+  icons: {
+    apple: "/icon-192.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#8b5cf6",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

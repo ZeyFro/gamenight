@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
@@ -210,6 +211,7 @@ export default async function SessionsPage({
   );
 
   return (
+    <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
         Soirées
@@ -414,5 +416,6 @@ export default async function SessionsPage({
         </div>
       </div>
     </div>
+    </PullToRefresh>
   );
 }

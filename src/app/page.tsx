@@ -16,6 +16,7 @@ import { Logo } from "@/components/Logo";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -172,6 +173,7 @@ export default async function Home({
   const [first, second, third] = podium;
 
   return (
+    <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       {showOnboarding && (
         <OnboardingFlow
@@ -419,5 +421,6 @@ export default async function Home({
         </Button>
       </form>
     </div>
+    </PullToRefresh>
   );
 }

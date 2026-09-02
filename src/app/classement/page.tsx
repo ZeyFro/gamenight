@@ -12,6 +12,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 
 const PERIOD_LABELS: Record<ScoreboardPeriod, string> = {
@@ -99,6 +100,7 @@ export default async function ClassementPage({
   const [first, second, third] = podium;
 
   return (
+    <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
@@ -154,5 +156,6 @@ export default async function ClassementPage({
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }

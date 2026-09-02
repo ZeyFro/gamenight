@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { toggleVote } from "@/app/sessions/actions";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { haptics } from "@/lib/haptics";
 
 export function VoteButton({
   proposalId,
@@ -24,6 +25,7 @@ export function VoteButton({
   const [isPending, startTransition] = useTransition();
 
   function handleClick() {
+    haptics.medium();
     const nextVoted = !voted;
     setVoted(nextVoted);
     setCount((c) => c + (nextVoted ? 1 : -1));

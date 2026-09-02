@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
+import { haptics } from "@/lib/haptics";
 
 const CELEBRATE_KINDS = new Set(["levelup", "badge", "win"]);
 
@@ -33,6 +34,19 @@ export function CelebrationConfetti() {
       origin: { y: 0.6 },
       colors: ["#8b5cf6", "#a78bfa", "#facc15", "#f8fafc"],
     });
+
+    // Feedback haptique (Sprint 2, U8) — level up/badge ont leur propre
+    // pattern double (plus marquant), la victoire de soirée un simple
+    // buzz de 200ms accompagnant les confettis.
+    if (celebrate === "levelup" || celebrate === "badge") {
+      haptics.success();
+    } else if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try {
+        navigator.vibrate(200);
+      } catch {
+        // Ignoré — l'absence de vibration n'est jamais une erreur utilisateur.
+      }
+    }
 
     const url = new URL(window.location.href);
     url.searchParams.delete("celebrate");

@@ -5044,3 +5044,86 @@ large hors scope de cette PR.
   ignorent simplement la nouvelle valeur de retour, comportement inchangé ;
   migration additive (`DEFAULT false`, `NOT NULL`) sans effet sur les
   comptes existants au-delà du nouveau champ
+
+## Sprint 2 PR-B, extension (lien guide + PWA + pull-to-refresh + haptique)
+
+Complète PR-B avant merge : un oubli du chantier "page guide" (lien
+profil), plus 3 chantiers Sprint 2 supplémentaires qui ne touchent pas le
+schéma — ajoutés sur la même branche/PR (#49, encore ouverte) plutôt que
+d'ouvrir une PR séparée qui dépendrait d'elle avant même d'exister.
+
+### Lien "Comment ça marche" depuis le profil
+
+`/profil/parametres` — nouvelle card "Aide" en bas de page avec un bouton
+vers `/guide`, en complément du "?" flottant déjà en place.
+
+### PWA basique (U7)
+
+`public/manifest.json` (name/short_name "GameNight", `display:
+standalone`, `theme_color` violet `#8b5cf6`, `background_color` sombre)
++ 2 icônes PNG (192/512, générées depuis `src/app/icon.svg` existant via
+`sharp`). Câblé dans `src/app/layout.tsx` via l'API `Metadata`/`Viewport`
+native de Next (`manifest`, `appleWebApp`, `icons.apple`, `viewport.themeColor`)
+plutôt que des balises `<link>`/`<meta>` posées à la main — Next les génère
+lui-même dans le `<head>` à partir de ces exports. Volontairement **aucun
+service worker** : pas de cache offline, pas de push, juste ce qu'il faut
+pour que le bouton "Ajouter à l'écran d'accueil" apparaisse.
+
+### Pull-to-refresh mobile (U6)
+
+`<PullToRefresh>` (`src/components/PullToRefresh.tsx`) — implémentation
+maison en `touchstart`/`touchmove`/`touchend` (~60 lignes), zéro
+dépendance. Ne s'active que si le geste commence tout en haut de la page
+(`window.scrollY === 0`), au-delà de 60px de mouvement vers le bas ;
+relâchement → `router.refresh()` + petit indicateur de chargement
+(masqué après un délai fixe, `router.refresh()` ne renvoyant pas de
+promesse). Wrappe le contenu des 5 pages principales : home, soirées,
+calendrier, classement, potes.
+
+### Feedback haptique (U8)
+
+`src/lib/haptics.ts` — `haptics.light/medium/heavy/success()`, fine
+couche sur `navigator.vibrate()` (guardée `typeof`, no-op silencieux sur
+iOS/Safari/desktop où l'API n'existe pas). Câblé sur : `VoteButton`
+(`medium`, à chaque tap voter/dévoter), tap dispo sur le calendrier dans
+`DayTimeline` (`light`, uniquement en mode édition — un tap hors édition
+ouvre le prompt de création de soirée, pas une dispo), et
+`CelebrationConfetti` (`success` — pattern double — pour level up/badge,
+un simple `vibrate(200)` pour une victoire de soirée).
+
+### Fichiers modifiés/ajoutés
+
+- `src/app/profil/parametres/page.tsx` (card Aide)
+- `public/manifest.json`, `public/icon-192.png`, `public/icon-512.png` (nouveaux)
+- `src/app/layout.tsx` (metadata PWA)
+- `src/components/PullToRefresh.tsx` (nouveau) + wiring dans `src/app/page.tsx`,
+  `src/app/sessions/page.tsx`, `src/app/calendrier/page.tsx`,
+  `src/app/classement/page.tsx`, `src/app/potes/page.tsx`
+- `src/lib/haptics.ts` (nouveau) + wiring dans `src/components/VoteButton.tsx`,
+  `src/components/calendar/DayTimeline.tsx`, `src/components/CelebrationConfetti.tsx`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Smoke test `next dev` : `/`, `/manifest.json`, `/icon-192.png`,
+  `/icon-512.png`, `/sessions`, `/calendrier`, `/classement`, `/potes`,
+  `/profil/parametres` répondent 200
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : `PullToRefresh` ne `preventDefault` jamais le scroll
+  natif (reste un pur indicateur visuel) ; `haptics.*` no-op silencieux
+  partout où `navigator.vibrate` n'existe pas
+
+## Reste à faire (Sprint 2, différé après merge de PR-B)
+
+Sur les 8 chantiers demandés dans le dernier message, 2 restent — tous
+deux nécessitant une migration Prisma, à traiter dans une PR-C séparée
+une fois PR-B mergée (branche redémarrée depuis `main` à jour) :
+
+- **U10 — Son de notification in-app** : `User.soundEnabled` (migration
+  additive, défaut `true`) + toggle dans `/profil/parametres` + fichiers
+  audio courts joués sur soirée validée / level up / badge débloqué.
+- **U3 — Notifications in-app (cloche)** : modèle `Notification` (migration)
+  + une ligne écrite à chaque envoi de webhook Discord existant + icône
+  cloche avec badge non-lus dans le header/BottomNav + panneau de la liste.
