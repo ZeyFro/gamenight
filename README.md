@@ -5115,15 +5115,95 @@ un simple `vibrate(200)` pour une victoire de soirée).
   natif (reste un pur indicateur visuel) ; `haptics.*` no-op silencieux
   partout où `navigator.vibrate` n'existe pas
 
-## Reste à faire (Sprint 2, différé après merge de PR-B)
+## Sprint 2 PR-C — son de notification + cloche in-app
 
-Sur les 8 chantiers demandés dans le dernier message, 2 restent — tous
-deux nécessitant une migration Prisma, à traiter dans une PR-C séparée
-une fois PR-B mergée (branche redémarrée depuis `main` à jour) :
+Suite de PR-B (mergée) — les 2 derniers chantiers du Sprint 2 UX/Polish,
+tous deux nécessitant une migration Prisma (branche redémarrée depuis
+`main` à jour après le merge de PR-B).
 
-- **U10 — Son de notification in-app** : `User.soundEnabled` (migration
-  additive, défaut `true`) + toggle dans `/profil/parametres` + fichiers
-  audio courts joués sur soirée validée / level up / badge débloqué.
-- **U3 — Notifications in-app (cloche)** : modèle `Notification` (migration)
-  + une ligne écrite à chaque envoi de webhook Discord existant + icône
-  cloche avec badge non-lus dans le header/BottomNav + panneau de la liste.
+### Son de notification in-app (U10)
+
+`User.soundEnabled Boolean @default(true)` (migration additive) — toggle
+dans `/profil/parametres` (carte "Sons", `toggleSoundEnabled`). N'affecte
+que la lecture audio locale : les webhooks Discord et les notifications
+in-app elles-mêmes restent écrits en base même son coupé.
+
+2 fichiers `.wav` courts (~0.3-0.5s), **générés** plutôt que trouvés en
+ligne (aucun accès réseau fiable en sandbox pour vérifier une licence
+libre de droits) — synthèse pure en Node (`Buffer`/en-tête WAV manuel,
+sinusoïdes avec fade in/out, zéro dépendance) dans
+`public/sounds/{achievement,success}.wav` : `achievement.wav` (3 notes
+ascendantes) pour level up/badge, `success.wav` (2 notes, ding) pour une
+soirée validée. Joués via `new Audio()` depuis `CelebrationConfetti`
+(déjà monté dans le layout racine pour les confettis — même événement
+`?celebrate=`, un seul composant déclenche confettis + haptique + son),
+`soundEnabled` récupéré une fois dans `layout.tsx` et passé en prop.
+
+### Notifications in-app — cloche (U3)
+
+`Notification` (migration additive) : `userId`, `type` (enum
+`NotificationType` : `LEVEL_UP`/`BADGE`/`SESSION_RESULT`/
+`SESSION_CREATED`/`REMINDER`), `title`, `message`, `read`, `createdAt`,
+`relatedSessionId`/`relatedBadgeId` — ces deux derniers en ids "libres"
+**sans** relation Prisma/contrainte FK (une notification doit rester
+lisible même si la session référencée est supprimée entre temps par son
+créateur, cf. la fonctionnalité de suppression de session existante).
+
+`src/lib/notifications.ts` — `createNotification`/`createNotifications`
+(best-effort, jamais bloquant : une erreur d'écriture ici ne doit pas
+faire échouer l'action Discord qui vient de réussir, même philosophie que
+`postToDiscord` qui ne lève jamais), `getUnreadNotificationCount`,
+`listRecentNotifications`, `notificationHref`.
+
+Écriture systématique **en plus** de chaque webhook Discord déjà envoyé
+(mêmes destinataires, mêmes données — jamais recalculés séparément) :
+- `xp-actions.ts` (`awardXp`, level up) → `LEVEL_UP`
+- `badges.ts` (`unlockBadge`) → `BADGE`
+- `discord-session-created.ts` (`announceSessionCreated`) → `SESSION_CREATED`,
+  mêmes destinataires que les mentions Discord (`others`, déjà filtrés par
+  `notifiedUserIds`/`silenceReminders`)
+- `discord-announce.ts` (`announceSessionResult`, soirée validée) →
+  `SESSION_RESULT`, mêmes destinataires que `notifiedVotes`
+- `discord-reminder.ts` (`sendSessionReminder`, cron) → `REMINDER`, mêmes
+  destinataires que `players`
+
+`NotificationBell` (`src/components/Header.tsx`) — cloche avec badge
+non-lus, panneau en bottom-sheet Radix `Dialog` (même pattern que le
+reste de l'app — création de soirée sur le calendrier, liste des
+votants — plutôt qu'un nouveau composant dropdown/popover, zéro nouvelle
+dépendance). Ouverture du panneau = marque tout comme lu (+ bouton
+explicite "Tout marquer comme lu" en plus, redondant mais demandé
+explicitement). 20 dernières notifications, lien vers la page concernée
+si `relatedSessionId`/`relatedBadgeId`.
+
+Placement assumé, différent de l'énoncé littéral : la cloche est dans le
+**header** (sticky, visible à toutes les tailles d'écran) plutôt que
+dupliquée dans `BottomNav`, dont la grille à 6 cases est dédiée aux
+routes principales — y ajouter un 7e élément non-navigationnel (un
+déclencheur de panneau, pas un lien) aurait cassé la cohérence de cette
+grille pour un gain d'accessibilité mobile nul (le header reste visible
+en scrollant sur toutes les pages).
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` + migration `add_notifications_and_sound_toggle`
+- `src/lib/notifications.ts`, `src/app/notifications-actions.ts` (nouveaux)
+- `src/components/NotificationBell.tsx` (nouveau) + wiring dans `src/components/Header.tsx`
+- `public/sounds/achievement.wav`, `public/sounds/success.wav` (nouveaux, générés)
+- `src/app/profil/actions.ts` (`toggleSoundEnabled`), `src/app/profil/parametres/page.tsx` (carte Sons)
+- `src/components/CelebrationConfetti.tsx` (lecture son), `src/app/layout.tsx` (fetch `soundEnabled`)
+- `src/lib/xp-actions.ts`, `src/lib/badges.ts`, `src/lib/discord-session-created.ts`,
+  `src/lib/discord-announce.ts`, `src/lib/discord-reminder.ts` (écriture `Notification`)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Smoke test `next dev` : `/`, `/sessions`, `/profil/parametres`,
+  `/sounds/achievement.wav`, `/sounds/success.wav` répondent 200
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : `createNotification`/`createNotifications` best-effort
+  (loggées, jamais levées) — une panne d'écriture de notification ne peut
+  pas casser la création de soirée, le vote, le level up, etc. ; migration
+  additive sans effet sur les comptes/sessions existants

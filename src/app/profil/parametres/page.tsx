@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
-import { toggleSilenceReminders } from "@/app/profil/actions";
+import { toggleSilenceReminders, toggleSoundEnabled } from "@/app/profil/actions";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -175,6 +175,22 @@ export default async function ProfilParametresPage({
           <ButtonLink href="/admin?tab=badges" variant="ghost" size="sm">
             Gérer les badges →
           </ButtonLink>
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Sons</h2>
+          <p className="text-sm text-muted">
+            {user.soundEnabled
+              ? "Un son joue lors des célébrations (level up, badge débloqué, soirée validée)."
+              : "Les célébrations restent visibles (confettis, notifications) mais sans son."}
+          </p>
+          <form action={toggleSoundEnabled}>
+            <Button type="submit" variant="secondary" fullWidthOnMobile>
+              {user.soundEnabled ? "🔇 Couper les sons" : "🔊 Activer les sons"}
+            </Button>
+          </form>
         </Card>
       </StaggerItem>
 

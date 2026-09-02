@@ -2,6 +2,7 @@ import type { Badge } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { announceBadgeUnlocked } from "@/lib/discord-badge-unlocked";
+import { createNotification } from "@/lib/notifications";
 export { BADGE_XP_BY_RARITY, RARITY_LABELS, CATEGORY_LABELS } from "@/lib/badge-rarity";
 
 /**
@@ -100,6 +101,15 @@ async function unlockBadge(userId: string, badge: Badge): Promise<boolean> {
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) await announceBadgeUnlocked(user, badge);
+  // Notification in-app (Sprint 2 PR-C, U3) — même événement que le
+  // webhook Discord ci-dessus, écrit en parallèle.
+  await createNotification({
+    userId,
+    type: "BADGE",
+    title: `${badge.icon} ${badge.name}`,
+    message: badge.description,
+    relatedBadgeId: badge.id,
+  });
   return true;
 }
 

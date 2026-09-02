@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 import { auth } from "@/auth";
+import { getCurrentUser } from "@/lib/current-user";
 import { Header } from "@/components/Header";
 import { BottomNav } from "@/components/BottomNav";
 import { GuideFab } from "@/components/GuideFab";
@@ -44,6 +45,7 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
+  const user = session?.user ? await getCurrentUser() : null;
 
   return (
     <html
@@ -58,7 +60,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </main>
           {session?.user && <BottomNav />}
           {session?.user && <GuideFab />}
-          {session?.user && <CelebrationConfetti />}
+          {session?.user && <CelebrationConfetti soundEnabled={user?.soundEnabled ?? true} />}
           <Toaster theme="dark" position="bottom-center" richColors />
         </MotionConfig>
       </body>

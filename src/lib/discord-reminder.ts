@@ -9,6 +9,7 @@ import { pickMessageTemplate, substituteVariables } from "@/lib/message-template
 import { toTimeInputValue } from "@/lib/wallclock";
 import { formatReminderTimingShort, isCloseReminder } from "@/lib/reminder-timings";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { createNotifications } from "@/lib/notifications";
 import type { Game, Session } from "@prisma/client";
 
 /**
@@ -53,6 +54,19 @@ export async function sendSessionReminder(
     .filter((u) => !u.silenceReminders)
     .filter((u) => !notifiedUserIds || notifiedUserIds.includes(u.id));
   const mentions = players.map((u) => `<@${u.discordId}>`);
+
+  // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
+  // les mentions Discord ci-dessous (déjà filtrées par `silenceReminders`
+  // et `notifiedUserIds`).
+  await createNotifications(
+    players.map((u) => ({
+      userId: u.id,
+      type: "REMINDER" as const,
+      title: `⏰ Rappel — dans ${formatReminderTimingShort(minutesBefore)} !`,
+      message: session.decidedGame!.name,
+      relatedSessionId: session.id,
+    }))
+  );
 
   const vars = {
     pote: mentions.join(" "),
