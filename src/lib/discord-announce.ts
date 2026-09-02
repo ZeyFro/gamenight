@@ -9,6 +9,7 @@ import {
 } from "@/lib/discord";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { createNotifications } from "@/lib/notifications";
 
 export type ProposalWithVotesAndGame = Proposal & {
   game: Game;
@@ -29,7 +30,7 @@ export type ProposalWithVotesAndGame = Proposal & {
  * restriction (comportement historique).
  */
 export async function announceSessionResult(
-  session: Pick<Session, "date" | "notifiedUserIds">,
+  session: Pick<Session, "id" | "date" | "notifiedUserIds">,
   winner: ProposalWithVotesAndGame | null,
   tie: boolean
 ): Promise<PostToDiscordResult> {
@@ -47,6 +48,18 @@ export async function announceSessionResult(
     (v) => !notifiedUserIds || notifiedUserIds.includes(v.user.id)
   );
   const mentions = notifiedVotes.map((v) => `<@${v.user.discordId}>`);
+
+  // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que les
+  // mentions Discord ci-dessus (déjà filtrées par `notifiedUserIds`).
+  await createNotifications(
+    notifiedVotes.map((v) => ({
+      userId: v.user.id,
+      type: "SESSION_RESULT" as const,
+      title: `🎮 Soirée validée : ${winner.game.name}`,
+      message: formatDateTimeFr(session.date),
+      relatedSessionId: session.id,
+    }))
+  );
   const fields: DiscordEmbedField[] = [
     { name: "Joueurs", value: String(winner.votes.length), inline: true },
     {

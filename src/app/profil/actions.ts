@@ -49,6 +49,26 @@ export async function toggleSilenceReminders() {
 }
 
 /**
+ * Toggle "Sons" (Sprint 2 PR-C, U10) — n'affecte que la lecture locale
+ * d'un son sur les célébrations (`CelebrationConfetti`), jamais les
+ * webhooks Discord ni les notifications in-app elles-mêmes (qui restent
+ * écrites en base même son coupé — seule la lecture audio est
+ * conditionnée à ce champ).
+ */
+export async function toggleSoundEnabled() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "toggleSoundEnabled")) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { soundEnabled: !user.soundEnabled },
+  });
+
+  revalidatePath("/profil/parametres");
+}
+
+/**
  * Bannière de profil (PR 8/9) — URL uniquement, pas d'upload (décision
  * documentée dans le README). Vide = retour à la bannière par défaut
  * (dégradé CSS, `.profile-banner-default`). Validation minimale

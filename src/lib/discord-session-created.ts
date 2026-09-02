@@ -8,6 +8,7 @@ import {
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { formatDateTimeFr, toTimeInputValue } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { createNotifications } from "@/lib/notifications";
 import type { Session, User } from "@prisma/client";
 
 function absoluteSessionUrl(sessionId: string): string {
@@ -61,6 +62,19 @@ export async function announceSessionCreated(
     },
   });
   const mentions = others.map((u) => `<@${u.discordId}>`);
+
+  // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
+  // les mentions Discord ci-dessus (déjà filtrées par `notifiedUserIds`
+  // et `silenceReminders`).
+  await createNotifications(
+    others.map((u) => ({
+      userId: u.id,
+      type: "SESSION_CREATED" as const,
+      title: "📣 Nouvelle soirée",
+      message: vars.date,
+      relatedSessionId: session.id,
+    }))
+  );
 
   const embed: DiscordEmbed = {
     title: "📣 Nouvelle soirée",

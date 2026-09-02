@@ -114,6 +114,16 @@ model User {
   // Refonte home — historique des passages de niveau (voir `LevelUpEvent`).
   levelUpEvents LevelUpEvent[]
 
+  // Sprint 2 PR-C — préférence son des célébrations in-app (défaut activé,
+  // n'affecte jamais l'envoi des webhooks Discord, seulement la lecture
+  // locale d'un son côté client). Voir `soundEnabled` sur
+  // `/profil/parametres` et `src/lib/haptics.ts`/`CelebrationConfetti`
+  // pour le pendant haptique/visuel, déjà en place.
+  soundEnabled Boolean @default(true)
+
+  // Sprint 2 PR-C — historique des notifications in-app (voir `Notification`).
+  notifications Notification[]
+
   @@index([xpTotal])
 }
 
@@ -754,4 +764,41 @@ model UserBadge {
   badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
   @@unique([userId, badgeId])
+}
+
+// Sprint 2 PR-C (U3) — notifications in-app, écrites en parallèle de
+// chaque webhook Discord déjà envoyé (mêmes événements, mêmes données) :
+// jamais une source de vérité à la place de Discord, juste une copie
+// consultable dans l'app pour les utilisateurs qui ne regardent pas le
+// salon en continu. `relatedSessionId`/`relatedBadgeId` sont des ids
+// "libres" (PAS de relation Prisma/contrainte FK) — la notification doit
+// rester lisible même si la session ou le badge est supprimé entre
+// temps (une session peut être supprimée par son créateur, cf. PR2) ;
+// le lien construit à l'affichage tombe simplement en 404 dans ce cas
+// rare plutôt que de complexifier la migration avec des règles
+// onDelete.
+enum NotificationType {
+  LEVEL_UP
+  BADGE
+  SESSION_RESULT
+  SESSION_CREATED
+  REMINDER
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  relatedSessionId String?
+  relatedBadgeId   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }

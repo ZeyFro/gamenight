@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 import type { XpReason } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { announceLevelUp } from "@/lib/discord-level-up";
-import { levelForXp, streakMultiplier } from "@/lib/xp";
+import { levelForXp, rankForLevel, streakMultiplier, titleForLevel } from "@/lib/xp";
+import { createNotification } from "@/lib/notifications";
 
 export function isUniqueConstraintViolation(error: unknown): boolean {
   return (
@@ -83,6 +84,14 @@ export async function awardXp(
     // schéma.
     await prisma.levelUpEvent.create({ data: { userId, level: afterLevel } });
     await announceLevelUp({ discordId: updated.discordId }, beforeLevel, afterLevel);
+    // Notification in-app (Sprint 2 PR-C, U3) — même événement que le
+    // webhook Discord ci-dessus, écrit en parallèle.
+    await createNotification({
+      userId,
+      type: "LEVEL_UP",
+      title: "🎉 Level up !",
+      message: `Niveau ${beforeLevel} → ${afterLevel} · ${titleForLevel(afterLevel)} · ${rankForLevel(afterLevel).name}`,
+    });
   }
 
   return { leveledUp };
