@@ -5207,3 +5207,110 @@ en scrollant sur toutes les pages).
   (loggées, jamais levées) — une panne d'écriture de notification ne peut
   pas casser la création de soirée, le vote, le level up, etc. ; migration
   additive sans effet sur les comptes/sessions existants
+
+## Sprint 3, PR-A — correctifs visuels + Tags + Revanche auto
+
+Retours visuels post-Sprint2 (3 correctifs) + 2 des 6 features "v2" — les
+4 restantes (roue du gambling, défis hebdo, achievements de groupe,
+dettes/gage) sont trop volumineuses pour la même PR (cf. sections
+suivantes, PR-B et PR-C).
+
+### FIX1 — Bouton Guide sur la Home
+
+`ButtonLink` discret ("📖 Guide", variant `ghost`) ajouté juste après
+l'en-tête "Salut, [pseudo]" sur `/`, en plus du "?" flottant (`GuideFab`)
+déjà en place — les deux coexistent, le bouton texte étant un point
+d'entrée plus visible pour un nouvel arrivant que le FAB en coin d'écran.
+
+### FIX2 — Pastilles calendrier collectif : fond neutre
+
+Le remplissage coloré (violet accent avec opacité proportionnelle au
+nombre de dispos, ou couleur perso pleine à 1 seul pote dispo) est retiré
+des créneaux en vue Collectif de `/calendrier` (`DayTimeline.tsx`) — le
+fond redevient neutre (`var(--surface-hover)`) partout en Collectif. Seules
+les pastilles de couleur par pote (`ColorDot`, ~16px, overlap façon
+GitHub) restent visibles, désormais affichées dès qu'AU MOINS un pote est
+dispo (avant : seulement à partir de 2, en dessous de quoi le créneau
+proposait la création de soirée au tap). Vue 1 jour inchangée (pas de vue
+multi-jours). Vue Individuel non touchée (une seule couleur possible, pas
+de surcharge visuelle à corriger).
+
+### FIX3 — Espace Home desktop
+
+Vérifié par audit de code (pas de screenshot possible : aucun accès DB
+dans ce sandbox pour un dev smoke test authentifié) — déjà satisfait par
+la refonte layout de la PR-A du Sprint 2 : `Card`/`Button`/`Stagger` n'ont
+aucune contrainte de largeur, et le conteneur de la home utilise le même
+`lg:max-w-6xl` + `lg:grid-cols-2` que `/classement`, `/sessions`, `/potes`.
+Aucun changement de code nécessaire.
+
+### FEATURE 6 — Tags/rôles ping
+
+- `Tag`/`UserTag` (migration additive) — tags libres, `Tag.name` unique.
+  6 tags par défaut seedés (`prisma/seed-tags.mjs`, idempotent par nom,
+  ajouté au script `build`) : FPS, Coop, Compétitif, Chill, Horreur,
+  Stratégie. N'importe quel pote peut en créer un nouveau (pas de rôle
+  admin dédié, même philosophie que `MessageTemplate`/`SuperlativeCategory`).
+- Auto-attribution depuis `/profil/parametres` (nouvelle card "Mes tags") —
+  chips togglables (`toggleUserTagAction`) + petit formulaire "+ Ajouter"
+  (`createTagAction`, upsert par nom : créer un tag déjà existant
+  l'attribue simplement).
+- Couleur de chip dérivée du nom (hash déterministe sur la palette de
+  `User.color`, cf. `src/lib/tags.ts`) — pas de colonne couleur en base,
+  un même tag a toujours la même couleur partout sans état à synchroniser.
+- Sélection groupée par tag à la création d'une soirée
+  (`NotifyRecipientsField`) : cliquer un chip tag coche d'un coup tous les
+  potes qui le portent (ou les décoche tous si déjà tous cochés).
+- Chips affichés à côté du pseudo sur les cartes `/potes`.
+
+### FEATURE 3 — Revanche auto
+
+Entièrement dérivé de `SessionResult` existant, aucune nouvelle table.
+`src/lib/revanche.ts` (`checkRevancheAfterSessionResults`), appelé juste
+après l'enregistrement des résultats (`submitSessionResultsAction`,
+best-effort comme les autres écritures de notification) : pour chaque
+participant de la session qui vient d'atteindre exactement sa 3e
+participation à ce jeu sans jamais avoir été 1er, notifie tous les AUTRES
+membres du groupe (jamais le participant concerné lui-même) — notif
+`REVANCHE` ("🔄 [Pote] n'a jamais gagné à [Jeu] en 3 parties — proposer une
+revanche ?"), qui pointe vers `/sessions?gameId=…` (préremplit la création
+de soirée avec ce jeu, mécanisme déjà existant). Ne s'applique qu'aux jeux
+compétitifs (`isCoop = false`, seuls à porter un `placement`) ; se déclenche
+une seule fois par (pote, jeu) — pas à chaque défaite suivante.
+
+`Notification` étendu (migration additive) : nouvelle valeur d'enum
+`REVANCHE` + colonne `relatedGameId` (id "libre", même philosophie que
+`relatedSessionId`/`relatedBadgeId`) ; `notificationHref` sait construire
+le lien `/sessions?gameId=…` à partir de ce champ.
+
+### Fichiers modifiés/ajoutés
+
+- `src/app/page.tsx` — bouton Guide
+- `src/components/calendar/DayTimeline.tsx` — fond neutre + seuil pastilles
+- `prisma/schema.prisma` — `Tag`/`UserTag`, `Notification.relatedGameId` +
+  `NotificationType.REVANCHE`
+- `prisma/migrations/20260902140000_add_tags/`
+- `prisma/migrations/20260902150000_add_revanche_notification/`
+- `prisma/seed-tags.mjs` (+ wiré dans `npm run build`)
+- `src/lib/tags.ts`, `src/app/tags-actions.ts`
+- `src/app/profil/parametres/page.tsx` — card "Mes tags"
+- `src/components/NotifyRecipientsField.tsx` — sélection groupée par tag
+- `src/app/sessions/page.tsx` — fetch tags + tagIds par pote
+- `src/app/potes/page.tsx` — chips de tags sur les cartes
+- `src/lib/notifications.ts` — `relatedGameId` + `notificationHref`
+- `src/lib/revanche.ts` (nouveau)
+- `src/app/sessions/actions.ts` — appel `checkRevancheAfterSessionResults`
+- `src/components/NotificationBell.tsx` — icône `REVANCHE`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Pas de dev smoke test authentifié possible (aucun `DATABASE_URL` dans ce
+  sandbox) — vérifié par audit de code et build/lint/tests
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : migrations additives, `notificationHref` reste
+  rétrocompatible (les 3 champs `relatedX` sont vérifiés dans le même
+  ordre, un ancien enregistrement sans `relatedGameId` se comporte
+  exactement comme avant)

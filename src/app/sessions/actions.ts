@@ -22,6 +22,7 @@ import {
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
 import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
+import { checkRevancheAfterSessionResults } from "@/lib/revanche";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
@@ -556,6 +557,11 @@ export async function submitSessionResultsAction(formData: FormData) {
       ownLeveledUp = xpResult?.leveledUp ?? false;
     }
   }
+
+  // FEATURE 3 (revanche auto) — best-effort, jamais bloquant pour la
+  // saisie des résultats elle-même (même philosophie que
+  // `createNotification`, qui avale déjà ses propres erreurs).
+  await checkRevancheAfterSessionResults(sessionId);
 
   revalidatePath(`/sessions/${sessionId}/resultats`);
   revalidatePath(`/sessions/${sessionId}`);

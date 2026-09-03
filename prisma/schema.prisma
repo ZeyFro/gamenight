@@ -124,6 +124,9 @@ model User {
   // Sprint 2 PR-C — historique des notifications in-app (voir `Notification`).
   notifications Notification[]
 
+  // Sprint 3 (FEATURE 6) — tags perso auto-attribués (voir `Tag`/`UserTag`).
+  userTags UserTag[]
+
   @@index([xpTotal])
 }
 
@@ -783,6 +786,9 @@ enum NotificationType {
   SESSION_RESULT
   SESSION_CREATED
   REMINDER
+  // Sprint 3 (FEATURE 3) — suggestion de revanche, cf. `relatedGameId` et
+  // `src/lib/revanche.ts`.
+  REVANCHE
 }
 
 model Notification {
@@ -796,9 +802,48 @@ model Notification {
 
   relatedSessionId String?
   relatedBadgeId   String?
+  // Sprint 3 (FEATURE 3) — id "libre" (même philosophie que
+  // `relatedSessionId`/`relatedBadgeId`, pas de relation Prisma) du jeu
+  // concerné par une notif REVANCHE. Sert à construire le lien
+  // "Proposer" (`/sessions?gameId=…`, préremplit la création de soirée
+  // avec ce jeu — mécanisme déjà existant, réutilisé tel quel).
+  relatedGameId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
   @@index([userId, createdAt])
+}
+
+// Sprint 3 (FEATURE 6) — tags libres que chaque pote s'attribue lui-même
+// depuis son profil (ex. "FPS", "Chill"), réutilisés à la création d'une
+// soirée pour cocher d'un coup tous les potes portant un tag donné
+// (`NotifyRecipientsField`). Pas de notion de propriétaire/créateur sur
+// `Tag` : n'importe qui peut créer un nouveau tag depuis son profil (même
+// esprit ouvert que `MessageTemplate`/`SuperlativeCategory` — pas de rôle
+// admin dédié dans ce MVP), les 6 tags par défaut sont juste seedés en
+// avance pour éviter que tout le monde retape "FPS" avec une casse
+// différente. `name` unique (idempotence du seed, et évite les doublons
+// quasi identiques créés à la volée).
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  userTags UserTag[]
+}
+
+// Attribution d'un tag à un user, en libre-service. `@@id([userId, tagId])`
+// plutôt qu'un id dédié + contrainte unique : cette table n'est jamais
+// référencée par sa propre clé ailleurs (pas de `UserTag.id` à pointer),
+// juste lue en jointure depuis `User`/`Tag` — même choix que `UserGame`.
+model UserTag {
+  userId String
+  tagId  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tagId])
+  @@index([tagId])
 }

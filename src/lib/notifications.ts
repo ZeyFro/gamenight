@@ -9,6 +9,7 @@ export interface CreateNotificationInput {
   message: string;
   relatedSessionId?: string;
   relatedBadgeId?: string;
+  relatedGameId?: string;
 }
 
 /**
@@ -56,8 +57,15 @@ export async function listRecentNotifications(
 }
 
 /** Lien vers la page concernée par une notification, `null` si aucune. */
-export function notificationHref(notification: Pick<Notification, "relatedSessionId" | "relatedBadgeId">): string | null {
+export function notificationHref(
+  notification: Pick<Notification, "relatedSessionId" | "relatedBadgeId" | "relatedGameId">
+): string | null {
   if (notification.relatedSessionId) return `/sessions/${notification.relatedSessionId}`;
   if (notification.relatedBadgeId) return "/profil/badges";
+  // FEATURE 3 (revanche) — même mécanisme de préremplissage que "Proposer
+  // une soirée avec ce jeu" depuis une fiche jeu (`?gameId=`), réutilisé
+  // tel quel : le bouton "Proposer" de la notif atterrit directement sur
+  // le formulaire de création avec ce jeu déjà sélectionné.
+  if (notification.relatedGameId) return `/sessions?gameId=${notification.relatedGameId}`;
   return null;
 }

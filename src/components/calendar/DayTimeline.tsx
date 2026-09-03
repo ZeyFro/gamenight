@@ -394,24 +394,20 @@ export function DayTimeline({
           const sessionsAtHour = sessionsByHour.get(hour) ?? [];
           const isBestHour = bestHour === hour;
 
-          // Couleur du bloc (PR propagation User.color) : en individuel,
-          // toujours la couleur du pote affiché. En collectif, un seul
-          // pote dispo sur ce créneau → sa couleur perso directement
-          // (identifie qui est libre d'un coup d'œil) ; 2+ potes → violet
-          // accent neutre avec la même rampe d'intensité qu'avant —
-          // mélanger plusieurs couleurs perso arbitraires dans une barre
-          // de 28px serait illisible sur mobile, l'intensité reste le
-          // signal le plus clair pour "combien de monde".
+          // Couleur du bloc (PR propagation User.color) : en individuel
+          // uniquement, toujours la couleur du pote affiché — remplit tout
+          // le créneau (un seul utilisateur possible, pas de lisibilité en
+          // jeu). En collectif, plus AUCUN remplissage de fond coloré
+          // (FIX2, retours visuels post-Sprint2) : le fond violet/jaune
+          // intense derrière les créneaux rendait la vue chargée et peu
+          // lisible d'un coup d'œil. Le fond reste neutre
+          // (`var(--surface-hover)`, cf. `cellStyle` plus bas) — seules les
+          // petites pastilles de couleur par pote (`showAvailabilityDots`)
+          // portent l'info de qui est dispo.
           let blockColor: string | undefined;
-          let opacityPercent = 100;
-          if (mode === "individuel") {
-            if (isAvailable) blockColor = selectedUserColor;
-          } else if (availableIds.length === 1) {
-            blockColor = usersById.get(availableIds[0])?.color ?? "var(--accent)";
-          } else if (availableIds.length > 1) {
-            blockColor = "var(--accent)";
-            opacityPercent =
-              totalUsers > 0 ? Math.round((availableIds.length / totalUsers) * 100) : 100;
+          const opacityPercent = 100;
+          if (mode === "individuel" && isAvailable) {
+            blockColor = selectedUserColor;
           }
 
           const title =
