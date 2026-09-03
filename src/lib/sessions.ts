@@ -6,8 +6,9 @@ import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
+import { checkGroupAchievements } from "@/lib/group-achievements";
 import type { PostToDiscordResult } from "@/lib/discord";
-import type { Game, Session, User } from "@prisma/client";
+import type { Game, GroupAchievement, Session, User } from "@prisma/client";
 
 /**
  * Le vote ferme à `votingDeadline` si elle est définie, sinon à l'heure de
@@ -194,12 +195,14 @@ export async function cancelSession(sessionId: string): Promise<void> {
   });
 }
 
-export async function markSessionDone(sessionId: string): Promise<void> {
+export async function markSessionDone(
+  sessionId: string
+): Promise<{ unlockedAchievements: GroupAchievement[] }> {
   const result = await prisma.session.updateMany({
     where: { id: sessionId, status: "SCHEDULED" },
     data: { status: "DONE" },
   });
-  if (result.count === 0) return;
+  if (result.count === 0) return { unlockedAchievements: [] };
 
   // PR 5/9 — ouvre la fenêtre de vote de superlatifs entre potes dès que
   // la session passe DONE (voir src/lib/superlative-voting.ts).
@@ -208,6 +211,14 @@ export async function markSessionDone(sessionId: string): Promise<void> {
     select: { decidedGameId: true },
   });
   await openSuperlativeVotingWindow(sessionId, session?.decidedGameId ?? null);
+
+  // Sprint 3 suite — les trophées de groupe ("clôture" = soirée DONE) se
+  // vérifient à chaque appel, manuel (bouton créateur) ou automatique
+  // (cron `closeOverdueScheduledSessions`) : les deux passent par cette
+  // même fonction, aucun appelant n'a besoin de dupliquer l'appel.
+  const unlockedAchievements = await checkGroupAchievements();
+
+  return { unlockedAchievements };
 }
 
 /**

@@ -5531,3 +5531,110 @@ reste disponible tel quel, derrière un toggle.
 - Zéro régression : migration additive ; mode instant inchangé derrière le
   toggle ; `createdViaRoulette` reste le seul contrat entre les deux modes
   et le reste de l'app
+
+## Sprint 3 suite, PR-D — Défis hebdo + Achievements de groupe + Dettes/gage
+
+### FEATURE — Défis hebdo 🎯
+
+- `WeeklyChallenge` (migration additive) — une ligne par semaine
+  calendaire (`weekStart`, lundi 00:00, `@@unique`), piochée au hasard
+  parmi 15 templates fixes (`CHALLENGE_TEMPLATES`,
+  `src/lib/weekly-challenges.ts`) à la génération, elle-même **paresseuse**
+  (au premier appel de `getCurrentWeeklyChallenge()` sur la semaine — Home
+  et `/sessions/[id]` — pas de cron dédié, catch sur la contrainte unique
+  pour l'idempotence sous accès concurrents).
+- Card "🎯 Défi de la semaine" sur la Home (lecture seule).
+- Complétion : bouton "🎯 Marquer le défi comme complété" sur
+  `/sessions/[id]` (soirée `DONE`, créateur uniquement, seulement si le
+  défi de la semaine EN COURS n'est pas déjà complété ET que la soirée
+  appartient à cette même semaine — une vieille soirée ne peut jamais
+  cocher rétroactivement un défi ultérieur). Réclamé atomiquement
+  (`updateMany` sur `completedAt: null`, même mécanique que
+  `claimSessionClose`/`claimRouletteSpin`).
+- 100 XP à chaque participant réel de la soirée (mêmes voteurs de la
+  proposition gagnante que partout ailleurs) — nouveau `XpReason`
+  `CHALLENGE_COMPLETE`. Badge "🎯 Challenger" au 5ème défi complété par un
+  même user (nouveau critère `CHALLENGES_COMPLETED` dans
+  `src/lib/badges.ts`, même système que les 15 badges existants).
+
+### FEATURE — Achievements de groupe 🏅
+
+- `GroupAchievement` (migration additive) — 10 lignes seedées à l'avance
+  (`prisma/seed-group-achievements.mjs`, idempotent par `key`, même
+  philosophie que `Badge`/`seed-badges.mjs`), `unlockedAt` nul = pas
+  encore débloqué.
+- `checkGroupAchievements()` (`src/lib/group-achievements.ts`) — recalcul
+  complet à chaque clôture de soirée (`markSessionDone`, "clôture" =
+  soirée passée `DONE`, manuelle ou cron), réclame chaque déblocage
+  atomiquement. Les 10 critères : Première soirée, Squad (5 joueurs
+  différents), Marathoniens (10 soirées), Diversité (10 jeux différents),
+  Réguliers (4 semaines consécutives), Noctambules (soirée après 23h),
+  Century (100 soirées), Collectionneur collectif (500 jeux biblio
+  groupe), Full House (soirée avec tout le groupe), Légendaire (1 membre
+  rang Légende).
+- Notif Discord (embed fixe, pas de `MessageTemplate` — même choix que les
+  annonces roulette) + notification in-app à TOUT le groupe
+  (`createNotifications` batch) + confettis pour le créateur qui vient de
+  clôturer (`?celebrate=achievement`, nouveau kind dans
+  `CelebrationConfetti`).
+- "🏅 Trophées du groupe" sur la Home — les 10 lignes toujours affichées
+  (encyclopédique, comme `BadgeGrid`), débloqués en couleur, verrouillés
+  grisés.
+
+### FEATURE — Dettes/gage 💀
+
+- `Debt` (migration additive, FK cascade vers `User`/`Session`) — détectée
+  automatiquement à la saisie des résultats d'une soirée
+  (`submitSessionResultsAction`) : le formulaire de résultats gagne un
+  toggle "Présent" par participant (coché par défaut) ; un voteur décoché
+  n'a ni `SessionResult` ni XP, et devient débiteur (`detectDebts`,
+  `src/lib/debts.ts`) — `reason` fige le jeu + la date au moment de la
+  détection.
+- Gage (texte libre) et statut "soldée" gérés depuis la Home
+  (`src/app/dettes/actions.ts`), réservés au créateur de la soirée qui a
+  généré la dette — pas au débiteur lui-même ("gage défini par le
+  créateur", spec).
+- Badge "💀" à côté du pseudo (Home — greeting du user courant — et
+  `/potes`) tant qu'au moins une dette est active. "💀 Dettes du groupe"
+  sur la Home, masquée s'il n'y en a aucune (même philosophie que "Actu
+  gaming").
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `WeeklyChallenge`, `GroupAchievement`, `Debt`,
+  `NotificationType.ACHIEVEMENT`, `XpReason.CHALLENGE_COMPLETE`
+- `prisma/migrations/20260903150000_add_weekly_challenge_group_achievement_debt/`
+- `src/lib/weekly-challenges.ts`, `src/lib/group-achievements.ts`,
+  `src/lib/debts.ts` (nouveaux)
+- `src/lib/discord-group-achievement.ts` (nouveau)
+- `prisma/seed-group-achievements.mjs` (nouveau, wired dans `npm run build`)
+- `src/lib/badges.ts` — critère `CHALLENGES_COMPLETED` +
+  `checkChallengeBadges`
+- `prisma/seed-badges.mjs` — badge "Challenger"
+- `src/lib/xp.ts` — `XP_AMOUNTS.CHALLENGE_COMPLETE`
+- `src/lib/sessions.ts` — `markSessionDone` appelle
+  `checkGroupAchievements()`, retourne les trophées débloqués
+- `src/lib/validations.ts` — `setDebtGageSchema`
+- `src/app/dettes/actions.ts` (nouveau)
+- `src/app/sessions/actions.ts` — `completeWeeklyChallengeAction`,
+  `markSessionDoneAction` (celebrate achievement), `submitSessionResultsAction`
+  (toggle présent + `detectDebts`)
+- `src/components/SessionResultsForm.tsx` — toggle "Présent" par participant
+- `src/components/CelebrationConfetti.tsx` — kind `achievement`
+- `src/app/page.tsx` — 3 nouvelles cards + badge 💀 sur le greeting
+- `src/app/potes/page.tsx` — badge 💀
+- `src/app/sessions/[id]/page.tsx` — bouton "Marquer le défi comme complété"
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Pas de dev smoke test authentifié possible (aucun `DATABASE_URL` dans ce
+  sandbox) — vérifié par audit de code et build/lint/tests
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : migrations additives ; les 3 features n'introduisent
+  aucun nouveau champ obligatoire sur un flux existant (le toggle
+  "Présent" du formulaire de résultats est coché par défaut pour tous —
+  un formulaire soumis sans y toucher produit exactement le même résultat
+  qu'avant cette PR)

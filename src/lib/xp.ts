@@ -18,6 +18,10 @@ export const XP_AMOUNTS = {
   PODIUM_2ND: 25,
   PODIUM_3RD: 10,
   COOP_BONUS: 15,
+  // Sprint 3 suite (défis hebdo) — même montant fixe pour tous les
+  // participants d'une soirée qui complète le défi de la semaine (cf.
+  // spec, pas de variation par placement contrairement au podium).
+  CHALLENGE_COMPLETE: 100,
 } as const;
 
 /**

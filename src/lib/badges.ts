@@ -19,7 +19,9 @@ export type BadgeCriteria =
   | { type: "SUPERLATIVES_WON"; count: number }
   | { type: "LIBRARY_SIZE"; count: number }
   | { type: "STREAK_DAYS"; count: number }
-  | { type: "ACCOUNT_AGE_DAYS"; count: number };
+  | { type: "ACCOUNT_AGE_DAYS"; count: number }
+  // Sprint 3 suite (défis hebdo) — "Challenger" au 5ème défi complété.
+  | { type: "CHALLENGES_COMPLETED"; count: number };
 
 /**
  * Stats partielles passées à `unlockMatchingBadges` — chaque appelant ne
@@ -39,6 +41,7 @@ export interface BadgeStats {
   libraryCount?: number;
   streakCount?: number;
   accountAgeDays?: number;
+  challengesCompleted?: number;
 }
 
 const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats> = {
@@ -49,6 +52,7 @@ const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats
   LIBRARY_SIZE: "libraryCount",
   STREAK_DAYS: "streakCount",
   ACCOUNT_AGE_DAYS: "accountAgeDays",
+  CHALLENGES_COMPLETED: "challengesCompleted",
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -153,6 +157,17 @@ export async function checkSuperlativesWonBadges(userId: string): Promise<void> 
 export async function checkLibraryBadges(userId: string): Promise<void> {
   const count = await prisma.userGame.count({ where: { userId, owned: true } });
   await unlockMatchingBadges(userId, { libraryCount: count });
+}
+
+/**
+ * Après `completeWeeklyChallenge` (Sprint 3 suite), pour chaque
+ * participant — "Challenger" au 5ème défi. Compte les `XpEvent`
+ * CHALLENGE_COMPLETE, même mécanique que `checkSessionsParticipatedBadges`
+ * (le cumul historique compte, pas un état recalculable autrement).
+ */
+export async function checkChallengeBadges(userId: string): Promise<boolean> {
+  const count = await prisma.xpEvent.count({ where: { userId, reason: "CHALLENGE_COMPLETE" } });
+  return unlockMatchingBadges(userId, { challengesCompleted: count });
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
+import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { VoterAvatars } from "@/components/VoterAvatars";
@@ -30,6 +31,7 @@ import { ProposeGameForm } from "@/components/ProposeGameForm";
 import {
   cancelSessionAction,
   closeSessionAction,
+  completeWeeklyChallengeAction,
   markSessionDoneAction,
   resendDiscordAction,
 } from "../actions";
@@ -128,6 +130,18 @@ export default async function SessionDetailPage({
   // Modifier n'a de sens que pour une soirée pas encore figée — pas pour
   // une session DONE (déjà jouée) ou CANCELLED (rien à reprogrammer).
   const canEdit = session.status === "VOTING" || session.status === "SCHEDULED";
+
+  // Défi hebdo (Sprint 3 suite) — bouton "Marquer comme complété" réservé
+  // au créateur d'une soirée DONE, et seulement si le défi de LA SEMAINE
+  // EN COURS n'est pas déjà complété (`completeWeeklyChallenge` refuse de
+  // toute façon une vieille soirée hors de cette semaine, cf. son
+  // commentaire — la requête n'est faite que si elle peut servir).
+  const weeklyChallenge =
+    session.status === "DONE" && isCreator ? await getCurrentWeeklyChallenge() : null;
+  const canCompleteWeeklyChallenge =
+    weeklyChallenge !== null &&
+    !weeklyChallenge.completedAt &&
+    session.date >= weeklyChallenge.weekStart;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -301,6 +315,14 @@ export default async function SessionDetailPage({
               ? "Voir les résultats"
               : "🏆 Saisir les résultats"}
           </ButtonLink>
+          {canCompleteWeeklyChallenge && (
+            <form action={completeWeeklyChallengeAction}>
+              <input type="hidden" name="sessionId" value={session.id} />
+              <Button type="submit" variant="secondary" size="sm">
+                🎯 Marquer le défi comme complété
+              </Button>
+            </form>
+          )}
         </div>
       )}
 

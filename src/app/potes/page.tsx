@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { bannerFallbackStyle } from "@/lib/user-color";
+import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -55,6 +56,9 @@ export default async function PotesPage() {
   const sessionsPlayedByUser = new Map(
     sessionsPlayedRows.map((row) => [row.userId, row._count._all])
   );
+
+  // Sprint 3 suite (dettes/gage) — badge "💀" à côté du pseudo.
+  const activeDebtorIds = await getActiveDebtorIds();
 
   return (
     <PullToRefresh>
@@ -116,6 +120,9 @@ export default async function PotesPage() {
                         <p className="flex items-center gap-2 truncate font-medium text-foreground">
                           <span className="truncate">{pote.discordName}</span>
                           <ColorDot color={pote.color} />
+                          {activeDebtorIds.has(pote.id) && (
+                            <span title="Dette de gage active">💀</span>
+                          )}
                         </p>
                         <span
                           className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${rank.colorClass}`}

@@ -16,6 +16,7 @@ const XP_REASON_LABELS: Record<XpReason, string> = {
   SESSION_RESULT: "a reçu un bonus de résultats",
   SUPERLATIVE_AWARD: "a gagné une récompense",
   BADGE_UNLOCKED: "a débloqué un badge",
+  CHALLENGE_COMPLETE: "a complété le défi de la semaine",
 };
 
 /** Onglet "Aperçu" (route par défaut de /profil) — voir `layout.tsx` pour l'en-tête. */

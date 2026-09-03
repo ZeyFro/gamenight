@@ -131,6 +131,9 @@ model User {
   createdRoulettes Roulette[]
   rouletteEntries  RouletteEntry[]
 
+  // Sprint 3 (dettes/gage) — voir `Debt`.
+  debts Debt[]
+
   @@index([xpTotal])
 }
 
@@ -379,6 +382,8 @@ model Session {
   results           SessionResult[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
+  // Sprint 3 (dettes/gage) — voir `Debt`.
+  debts             Debt[]
 }
 
 model Proposal {
@@ -478,6 +483,8 @@ enum XpReason {
   SESSION_RESULT
   SUPERLATIVE_AWARD
   BADGE_UNLOCKED
+  // Sprint 3 (défis hebdo) — voir `WeeklyChallenge`/`src/lib/weekly-challenges.ts`.
+  CHALLENGE_COMPLETE
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -832,6 +839,8 @@ enum NotificationType {
   // Sprint 3 (FEATURE 3) — suggestion de revanche, cf. `relatedGameId` et
   // `src/lib/revanche.ts`.
   REVANCHE
+  // Sprint 3 (achievements de groupe) — voir `GroupAchievement`.
+  ACHIEVEMENT
 }
 
 model Notification {
@@ -958,4 +967,79 @@ model RouletteEntry {
   game     Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([rouletteId, userId, gameId])
+}
+
+// Défi hebdo (Sprint 3 suite) — UNE ligne par semaine calendaire pour tout
+// le groupe (pas par user), piochée au hasard parmi 15 templates fixes
+// (voir `CHALLENGE_TEMPLATES`, src/lib/weekly-challenges.ts) au premier
+// chargement de la Home dans cette semaine (`weekStart` = lundi 00:00,
+// même convention horloge-murale que `getWeekStart`/calendar-dates.ts) —
+// génération paresseuse, pas de cron dédié. `@@unique([weekStart])`
+// garantit qu'une seule ligne existe par semaine même sous accès
+// concurrents (idempotence par `catch` sur la contrainte, même mécanique
+// que `unlockBadge`).
+//
+// `type` conserve le slug du template piochant ("T01".."T15") — permet de
+// distinguer les défis en base sans reparser `description` si jamais le
+// texte d'un template est retouché plus tard. `completedBySessionId`
+// (id "libre", même famille que `Notification.relatedSessionId`) : la
+// soirée qui a permis de cocher le défi cette semaine-là, renseignée par
+// `completeWeeklyChallenge` (créateur de cette session uniquement).
+model WeeklyChallenge {
+  id                   String    @id @default(cuid())
+  description          String
+  type                 String
+  weekStart            DateTime
+  completedAt          DateTime?
+  completedBySessionId String?
+  createdAt            DateTime  @default(now())
+
+  @@unique([weekStart])
+}
+
+// Trophée de GROUPE (Sprint 3 suite) — contrairement à `Badge`/`UserBadge`
+// (individuels, une ligne de progrès par user), un `GroupAchievement` est
+// débloqué UNE SEULE FOIS pour tout le groupe : `unlockedAt` nul = pas
+// encore débloqué, non-nul = débloqué pour toujours (jamais retiré, même
+// philosophie que les badges). Encyclopédique comme `Badge` : les 10
+// lignes sont seedées à l'avance (`prisma/seed-group-achievements.mjs`,
+// idempotent par `key`) puis seulement mises à jour (`unlockedAt`), jamais
+// recréées — permet d'afficher "verrouillé" pour les trophées pas encore
+// atteints sur la Home (cf. spec : "débloqués brillants, verrouillés
+// grisés"). Vérifiés par `checkGroupAchievements` (src/lib/group-achievements.ts),
+// appelée à chaque clôture de soirée (`markSessionDone`).
+model GroupAchievement {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  name        String
+  description String
+  icon        String
+  unlockedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// Dette de gage (Sprint 3 suite, "Dettes/gage") — détectée automatiquement
+// à la saisie des résultats d'une soirée (`submitSessionResultsAction`,
+// src/app/sessions/actions.ts) : un voteur de la proposition gagnante qui
+// n'a PAS été coché comme présent dans le formulaire de résultats devient
+// débiteur. `reason` fige le contexte au moment de la détection (jeu +
+// date), pour rester lisible même si la session est modifiée après coup.
+// `gage` nullable : la dette existe dès la détection, le texte du gage est
+// saisi séparément par le créateur de la session (`setDebtGageAction`) —
+// pas de valeur par défaut, un gage non défini doit rester visiblement
+// "à définir" plutôt que vide. `paidAt` nul = dette active (affichée sur
+// la Home, badge "💀" sur le pseudo du débiteur), non-nul = soldée.
+// `onDelete: Cascade` des deux côtés : une dette n'a plus de sens si la
+// soirée ou l'utilisateur qui la doit disparaît.
+model Debt {
+  id        String    @id @default(cuid())
+  debtorId  String
+  sessionId String
+  reason    String
+  gage      String?
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  debtor  User    @relation(fields: [debtorId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
