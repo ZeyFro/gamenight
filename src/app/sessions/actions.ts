@@ -23,6 +23,8 @@ import {
 } from "@/lib/superlative-voting";
 import { checkSessionsCreatedBadges, checkVotesCastBadges } from "@/lib/badges";
 import { checkRevancheAfterSessionResults } from "@/lib/revanche";
+import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
+import { detectDebts } from "@/lib/debts";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
@@ -453,9 +455,49 @@ export async function markSessionDoneAction(formData: FormData) {
   });
   if (!session || session.createdById !== user.id) return;
 
-  await markSessionDone(sessionId);
+  const { unlockedAchievements } = await markSessionDone(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
+  revalidatePath("/");
+
+  // Sprint 3 suite — confettis pour le créateur qui vient de clôturer,
+  // si ça a débloqué un trophée de groupe (même mécanique `?celebrate=`
+  // que badge/level up ailleurs dans le chantier).
+  if (unlockedAchievements.length > 0) {
+    redirect(`/sessions/${sessionId}?celebrate=achievement`);
+  }
+}
+
+/**
+ * Marque le défi hebdo de la semaine en cours comme complété par CETTE
+ * soirée (Sprint 3 suite) — bouton créateur, sur une soirée `DONE`
+ * uniquement. `completeWeeklyChallenge` fait toutes les vérifications
+ * (défi pas déjà complété, soirée dans la bonne semaine) et l'attribution
+ * XP/badge ; ici on ne fait que le contrôle de permission et rediriger
+ * avec `?celebrate=badge` si LE créateur (l'utilisateur qui vient de
+ * cliquer, seul spectateur de cette redirection) a débloqué "Challenger".
+ */
+export async function completeWeeklyChallengeAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "completeWeeklyChallenge")) return;
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session || session.createdById !== user.id) return;
+
+  const { badgeUnlockedByUserId } = await completeWeeklyChallenge(sessionId);
+  revalidatePath(`/sessions/${sessionId}`);
+  revalidatePath("/");
+
+  if (badgeUnlockedByUserId[user.id]) {
+    redirect(`/sessions/${sessionId}?celebrate=badge`);
+  }
 }
 
 /**
@@ -524,8 +566,17 @@ export async function submitSessionResultsAction(formData: FormData) {
   // événement arrivé à quelqu'un d'autre.
   let ownPlacement: number | null = null;
   let ownLeveledUp = false;
+  // Dettes/gage (Sprint 3 suite) — un voteur non coché "présent" ci-dessous
+  // n'a ni `SessionResult` ni XP : il a voté mais n'est pas venu.
+  const absentIds: string[] = [];
 
   for (const { userId: participantId } of participantVotes) {
+    const present = formData.get(`present-${participantId}`) === "1";
+    if (!present) {
+      absentIds.push(participantId);
+      continue;
+    }
+
     let placement: number | null = null;
 
     if (!isCoop) {
@@ -558,6 +609,10 @@ export async function submitSessionResultsAction(formData: FormData) {
     }
   }
 
+  if (session.decidedGame) {
+    await detectDebts(sessionId, absentIds, session.decidedGame.name, session.date);
+  }
+
   // FEATURE 3 (revanche auto) — best-effort, jamais bloquant pour la
   // saisie des résultats elle-même (même philosophie que
   // `createNotification`, qui avale déjà ses propres erreurs).
@@ -565,6 +620,7 @@ export async function submitSessionResultsAction(formData: FormData) {
 
   revalidatePath(`/sessions/${sessionId}/resultats`);
   revalidatePath(`/sessions/${sessionId}`);
+  revalidatePath("/");
   const celebrate = ownPlacement === 1 ? "win" : ownLeveledUp ? "levelup" : null;
   redirect(
     `/sessions/${sessionId}/resultats${celebrate ? `?celebrate=${celebrate}` : ""}`

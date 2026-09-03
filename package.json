@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy && node prisma/seed.mjs && node prisma/fix-invalid-templates.mjs && node prisma/backfill-xp.mjs && node prisma/backfill-user-colors.mjs && node prisma/seed-game-stats.mjs && node prisma/seed-superlatives.mjs && node prisma/seed-badges.mjs && node prisma/backfill-badges.mjs && node prisma/seed-tags.mjs && next build",
+    "build": "prisma migrate deploy && node prisma/seed.mjs && node prisma/fix-invalid-templates.mjs && node prisma/backfill-xp.mjs && node prisma/backfill-user-colors.mjs && node prisma/seed-game-stats.mjs && node prisma/seed-superlatives.mjs && node prisma/seed-badges.mjs && node prisma/backfill-badges.mjs && node prisma/seed-tags.mjs && node prisma/seed-group-achievements.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -19,6 +19,7 @@
     "seed-badges": "node prisma/seed-badges.mjs",
     "backfill-badges": "node prisma/backfill-badges.mjs",
     "seed-tags": "node prisma/seed-tags.mjs",
+    "seed-group-achievements": "node prisma/seed-group-achievements.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

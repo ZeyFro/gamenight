@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import { haptics } from "@/lib/haptics";
 
-const CELEBRATE_KINDS = new Set(["levelup", "badge", "win"]);
+const CELEBRATE_KINDS = new Set(["levelup", "badge", "win", "achievement"]);
 
 /**
  * Confettis de célébration (Sprint 2 PR-B, U9) — déclenchés par
@@ -38,7 +38,7 @@ export function CelebrationConfetti({ soundEnabled }: { soundEnabled: boolean })
     // Feedback haptique (Sprint 2, U8) — level up/badge ont leur propre
     // pattern double (plus marquant), la victoire de soirée un simple
     // buzz de 200ms accompagnant les confettis.
-    if (celebrate === "levelup" || celebrate === "badge") {
+    if (celebrate === "levelup" || celebrate === "badge" || celebrate === "achievement") {
       haptics.success();
     } else if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       try {
@@ -53,7 +53,10 @@ export function CelebrationConfetti({ soundEnabled }: { soundEnabled: boolean })
     // (aucun service tiers requis) : "achievement.wav" pour level
     // up/badge, "success.wav" pour une victoire de soirée.
     if (soundEnabled) {
-      const file = celebrate === "levelup" || celebrate === "badge" ? "achievement" : "success";
+      const file =
+        celebrate === "levelup" || celebrate === "badge" || celebrate === "achievement"
+          ? "achievement"
+          : "success";
       try {
         const audio = new Audio(`/sounds/${file}.wav`);
         audio.volume = 0.5;

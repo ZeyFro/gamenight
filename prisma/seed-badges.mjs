@@ -143,6 +143,14 @@ const BADGES = [
     rarity: "EPIC",
     criteria: { type: "SUPERLATIVES_WON", count: 20 },
   },
+  {
+    name: "Challenger",
+    icon: "🎯",
+    description: "Compléter 5 défis hebdo.",
+    category: "ENGAGEMENT",
+    rarity: "RARE",
+    criteria: { type: "CHALLENGES_COMPLETED", count: 5 },
+  },
 ];
 
 const prisma = new PrismaClient();

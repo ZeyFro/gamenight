@@ -202,3 +202,9 @@ export const addManualGameSchema = z.object({
  * pour tout le reste des règles métier (cf. le commentaire en tête de
  * fichier).
  */
+
+/** `setDebtGageAction` (Sprint 3 suite, dettes/gage) — texte libre saisi par le créateur. */
+export const setDebtGageSchema = z.object({
+  debtId: idSchema,
+  gage: z.string().trim().min(1, "Le gage ne peut pas être vide.").max(200, "200 caractères max."),
+});

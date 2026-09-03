@@ -10,8 +10,12 @@ import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNew
 import { getScoreboard } from "@/lib/scoreboard";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
+import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
+import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
+import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Avatar } from "@/components/ui/Avatar";
 import { Logo } from "@/components/Logo";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
@@ -119,7 +123,18 @@ export default async function Home({
   });
   if (dueSession) await closeSessionIfDue(dueSession.id);
 
-  const [nextSession, activity, groupStats, weekAvailability, scoreboard, gameNews] = await Promise.all([
+  const [
+    nextSession,
+    activity,
+    groupStats,
+    weekAvailability,
+    scoreboard,
+    gameNews,
+    weeklyChallenge,
+    groupAchievements,
+    activeDebts,
+    activeDebtorIds,
+  ] = await Promise.all([
     prisma.session.findFirst({
       where: { status: { in: ["VOTING", "SCHEDULED"] } },
       orderBy: { date: "asc" },
@@ -139,6 +154,10 @@ export default async function Home({
     getWeekAvailability(),
     getScoreboard("global"),
     getRecentGameNews(),
+    getCurrentWeeklyChallenge(),
+    prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),
+    getActiveDebts(),
+    getActiveDebtorIds(),
   ]);
 
   // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
@@ -197,6 +216,11 @@ export default async function Home({
           <p className="text-sm text-muted">Salut,</p>
           <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
             {session.user.name}
+            {activeDebtorIds.has(user.id) && (
+              <span className="ml-1" title="Dette de gage active">
+                💀
+              </span>
+            )}
           </h1>
           <p className="mt-0.5 text-xs text-muted">
             Niveau {level} · {title} · {rank.name}
@@ -426,6 +450,109 @@ export default async function Home({
                     </a>
                   </li>
                 ))}
+              </ul>
+            </Card>
+          </StaggerItem>
+        )}
+
+        {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
+            semaine en cours par `getCurrentWeeklyChallenge` ci-dessus. La
+            complétion se fait depuis une soirée DONE (bouton créateur),
+            jamais directement ici — la Home reste en lecture seule. */}
+        <StaggerItem>
+          <Card>
+            <p className="text-sm text-muted">🎯 Défi de la semaine</p>
+            <p className="mt-2 text-foreground">{weeklyChallenge.description}</p>
+            <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
+              {weeklyChallenge.completedAt
+                ? "✅ Complété !"
+                : "Complète-le depuis une soirée terminée cette semaine."}
+            </p>
+          </Card>
+        </StaggerItem>
+
+        {/* Trophées du groupe (Sprint 3 suite) — encyclopédique comme
+            `BadgeGrid` : les 10 lignes sont toujours affichées, débloquées
+            en couleur, verrouillées grisées. */}
+        <StaggerItem>
+          <Card>
+            <p className="text-sm text-muted">🏅 Trophées du groupe</p>
+            <div className="mt-3 grid grid-cols-4 gap-3 sm:grid-cols-5">
+              {groupAchievements.map((a) => (
+                <div
+                  key={a.id}
+                  title={`${a.name} — ${a.description}`}
+                  className={`flex flex-col items-center gap-1 text-center ${
+                    a.unlockedAt ? "" : "opacity-30 grayscale"
+                  }`}
+                >
+                  <span className="text-2xl">{a.icon}</span>
+                  <span className="w-full truncate text-[10px] text-muted">{a.name}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+
+        {/* Dettes du groupe (Sprint 3 suite) — masquée s'il n'y a aucune
+            dette active, même philosophie que "Actu gaming" ci-dessus.
+            Définir le gage/marquer soldée réservé au créateur de la
+            soirée qui a généré la dette (mêmes gardes côté serveur dans
+            `src/app/dettes/actions.ts`). */}
+        {activeDebts.length > 0 && (
+          <StaggerItem>
+            <Card>
+              <p className="text-sm text-muted">💀 Dettes du groupe</p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {activeDebts.map((debt) => {
+                  const isDebtCreator = debt.session.createdById === user.id;
+                  return (
+                    <li
+                      key={debt.id}
+                      className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar
+                          src={debt.debtor.discordAvatar}
+                          alt={debt.debtor.discordName}
+                          size={24}
+                        />
+                        <span className="text-sm font-medium text-foreground">
+                          {debt.debtor.discordName}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted">{debt.reason}</p>
+                      {debt.gage ? (
+                        <p className="text-sm text-accent">Gage : {debt.gage}</p>
+                      ) : (
+                        <p className="text-xs text-warning">Gage pas encore défini.</p>
+                      )}
+                      {isDebtCreator && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <form action={setDebtGageAction} className="flex flex-1 gap-2">
+                            <input type="hidden" name="debtId" value={debt.id} />
+                            <input
+                              type="text"
+                              name="gage"
+                              placeholder="Définir le gage…"
+                              defaultValue={debt.gage ?? ""}
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+                            />
+                            <Button type="submit" variant="secondary" size="sm">
+                              OK
+                            </Button>
+                          </form>
+                          <form action={markDebtPaidAction}>
+                            <input type="hidden" name="debtId" value={debt.id} />
+                            <Button type="submit" variant="ghost" size="sm">
+                              Soldée
+                            </Button>
+                          </form>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           </StaggerItem>
