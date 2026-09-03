@@ -14,6 +14,8 @@ const TABS = [
   // logique dupliquée) — /tierlist reste utilisable en parallèle depuis
   // LibraryTabs.
   { href: "/profil/tierlist", label: "Tierlist" },
+  // Sprint 4 (Saisons mensuelles) — résultats passés, saison par saison.
+  { href: "/profil/saisons", label: "Saisons" },
   { href: "/profil/parametres", label: "Rappels perso" },
 ] as const;
 
