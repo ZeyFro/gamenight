@@ -177,6 +177,49 @@ export async function getGroupStats(): Promise<GroupStats> {
   };
 }
 
+export interface GameNewsItem {
+  id: string;
+  gameName: string;
+  gameCoverUrl: string | null;
+  title: string;
+  url: string;
+  publishedAt: Date;
+}
+
+const RECENT_NEWS_COUNT = 5;
+
+/**
+ * Card "Actu gaming" (Sprint 3) — lit uniquement le cache `GameNews`,
+ * jamais l'API Steam elle-même (rafraîchi à part par
+ * `runGameNewsBackfill`, cf. ce fichier). Comme le backfill ne peuple
+ * JAMAIS cette table pour un jeu hors du top 10 le plus joué au moment où
+ * il tourne, un simple tri par `publishedAt` desc sur toute la table
+ * suffit à retrouver "les news des jeux les plus joués" sans reference
+ * séparée au classement — pas besoin de refiltrer par jeu ici.
+ */
+export async function getRecentGameNews(limit = RECENT_NEWS_COUNT): Promise<GameNewsItem[]> {
+  const news = await prisma.gameNews.findMany({
+    orderBy: { publishedAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      title: true,
+      url: true,
+      publishedAt: true,
+      game: { select: { name: true, coverUrl: true } },
+    },
+  });
+
+  return news.map((n) => ({
+    id: n.id,
+    gameName: n.game.name,
+    gameCoverUrl: n.game.coverUrl,
+    title: n.title,
+    url: n.url,
+    publishedAt: n.publishedAt,
+  }));
+}
+
 export interface WeekAvailabilityDay {
   date: Date;
   label: string;

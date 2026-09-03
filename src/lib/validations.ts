@@ -155,6 +155,14 @@ export const playerCountsSchema = z
  * jeux importés depuis Steam, jamais saisis à la main) : le seul
  * identifiant externe optionnel saisissable ici est `igdbId`.
  */
+/** `createSessionFromRouletteAction` — jeu gagnant + créneau + participants. */
+export const createRouletteSessionSchema = z.object({
+  gameId: idSchema,
+  date: dateStringSchema,
+  time: timeStringSchema,
+  participantIds: z.array(idSchema).min(2, "Il faut au moins 2 participants."),
+});
+
 /** `createTagAction` — nom de tag libre, court (chip UI). */
 export const tagNameSchema = z.object({
   name: z.string().trim().min(1, "Le nom du tag ne peut pas être vide.").max(24, "24 caractères max."),

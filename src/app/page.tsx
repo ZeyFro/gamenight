@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
-import { getRecentActivity, getGroupStats, getWeekAvailability } from "@/lib/home";
+import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
 import { getScoreboard } from "@/lib/scoreboard";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
@@ -119,7 +119,7 @@ export default async function Home({
   });
   if (dueSession) await closeSessionIfDue(dueSession.id);
 
-  const [nextSession, activity, groupStats, weekAvailability, scoreboard] = await Promise.all([
+  const [nextSession, activity, groupStats, weekAvailability, scoreboard, gameNews] = await Promise.all([
     prisma.session.findFirst({
       where: { status: { in: ["VOTING", "SCHEDULED"] } },
       orderBy: { date: "asc" },
@@ -134,10 +134,11 @@ export default async function Home({
         },
       },
     }),
-    getRecentActivity(5),
+    getRecentActivity(3),
     getGroupStats(),
     getWeekAvailability(),
     getScoreboard("global"),
+    getRecentGameNews(),
   ]);
 
   // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
@@ -387,6 +388,48 @@ export default async function Home({
           </Card>
         </StaggerItem>
         </div>
+
+        {/* Actu gaming (Sprint 3) — cache uniquement (`GameNews`, rafraîchi
+            par `runGameNewsBackfill`, jamais l'API Steam directement ici),
+            entièrement masquée s'il n'y a aucune actu en cache (spec). */}
+        {gameNews.length > 0 && (
+          <StaggerItem>
+            <Card>
+              <p className="text-sm text-muted">📰 Actu gaming</p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {gameNews.map((item) => (
+                  <li key={item.id}>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 rounded-lg transition-colors hover:bg-surface-hover"
+                    >
+                      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-md bg-surface-hover">
+                        {item.gameCoverUrl && (
+                          <Image
+                            src={item.gameCoverUrl}
+                            alt=""
+                            width={32}
+                            height={32}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-foreground">{item.title}</p>
+                        <p className="truncate text-xs text-muted">{item.gameName}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-faint">
+                        il y a {formatDurationFr(now - item.publishedAt.getTime())}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </StaggerItem>
+        )}
 
         {/* Classement rapide */}
         <StaggerItem>

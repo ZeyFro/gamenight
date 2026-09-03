@@ -5314,3 +5314,114 @@ le lien `/sessions?gameId=…` à partir de ce champ.
   rétrocompatible (les 3 champs `relatedX` sont vérifiés dans le même
   ordre, un ancien enregistrement sans `relatedGameId` se comporte
   exactement comme avant)
+
+## Sprint 3, PR-B — Activité compacte + Actu gaming + Roue du gambling
+
+### FIX — Activité récente plus compacte
+
+`getRecentActivity(3)` au lieu de `getRecentActivity(5)` sur la home — la
+fonction elle-même n'a pas changé (son paramètre `limit` existait déjà),
+seul l'appel change.
+
+### FEATURE — Actu gaming 📰
+
+- `GameNews` (migration additive) — cache des news Steam
+  (`ISteamNews/GetNewsForApp/v2`, endpoint public, **aucune clé requise**
+  contrairement à `GetOwnedGames` : rien à ajouter à `.env.example`).
+  `@@unique([steamAppId, title])` pour l'idempotence.
+- `src/lib/steam-news.ts` — `fetchGameNews(steamAppId)`, appel réseau brut.
+- `src/lib/backfill-game-news.ts` — `runGameNewsBackfill()` : les 10 jeux
+  les plus joués du groupe (le plus de soirées `DONE`, même `groupBy` que
+  `getGroupStats`) parmi les jeux `source=STEAM` avec un `steamAppId`
+  (jeux IGDB-only skippés silencieusement). Chaque jeu traité
+  indépendamment — une erreur réseau sur l'un n'affecte jamais les autres
+  ni le cache déjà en base (spec "si l'API est down → actus en cache, pas
+  d'erreur").
+- `POST /api/backfill/game-news` (202 + `after()`, `CRON_SECRET`) — même
+  mécanique que `/api/backfill/igdb-coop`/`/steam-store`. **À ajouter au
+  même cron externe quotidien** que ces deux routes (voir § "Configurer
+  le cron externe" plus haut) : `https://ton-projet.vercel.app/api/backfill/game-news`,
+  `POST`, une fois par jour max — jamais appelé à un chargement de page.
+- `getRecentGameNews(5)` (`src/lib/home.ts`) — lit uniquement le cache
+  `GameNews`, jamais l'API Steam ; comme le backfill ne peuple cette table
+  que pour le top 10 du moment, un simple tri `publishedAt desc` global
+  suffit à retrouver "les news des jeux les plus joués".
+- Card "📰 Actu gaming" sur la home, après "Activité récente" — mini cover
+  (32px) + titre tronqué 1 ligne + jeu + date relative, tap → `feedurl`
+  dans un nouvel onglet. **Masquée entièrement** si aucune actu en cache
+  (spec).
+
+### FEATURE — Roue du gambling 🎰
+
+- `Session.createdViaRoulette` (migration additive, défaut `false`) —
+  pas de table dédiée à la roulette : une roulette EST une session,
+  identique en tout point à une session normale une fois le jeu décidé.
+- `/roulette` — bouton "🎰 Roulette" sur `/sessions`, en-tête. 2 onglets
+  (`?tab=roue` par défaut / `?tab=historique`, même pattern query-param
+  que `/sessions?tab=`).
+  - **Préparation** : le créateur est auto-participant (non désélectionnable),
+    coche d'autres potes (checkboxes + avatars). Pour chaque participant
+    sélectionné, une card dédiée permet de chercher/ajouter EXACTEMENT 2
+    jeux depuis SA bibliothèque perso (`UserGame.owned=true`) — c'est
+    toujours le créateur qui pilote cette UI (pas de session multi-device
+    en temps réel dans cette app), donc "choisir pour un pote absent" est
+    structurellement la seule interaction possible, pas un mode à part.
+    "Lancer la roulette" reste désactivé tant que 2+ participants n'ont
+    pas chacun leurs 2 jeux.
+  - **La roue** : `RouletteWizard.tsx` (client) — roue en conic-gradient
+    (segments = tous les jeux proposés, une couleur par segment sur une
+    palette de 8) tournée via `motion.div`/`animate={{ rotate }}` — le
+    delta de rotation ajouté est toujours calculé en avant (jamais négatif)
+    depuis la rotation accumulée, pour que "Relancer" ne fasse jamais
+    sauter la roue en arrière. Tic sonore (`public/sounds/tick.wav`, généré
+    par synthèse WAV brute comme `achievement.wav`/`success.wav`) toutes
+    les 90ms pendant les 3,6s de rotation si `User.soundEnabled`.
+    Confettis (`canvas-confetti`) + `haptics.success()` à l'arrêt.
+  - **Résultat** : cover + nom du jeu gagnant, champ date/heure (défaut
+    aujourd'hui 20h, calculé côté serveur — jamais `new Date()` côté
+    client pendant le rendu), bouton "Créer la soirée"
+    (`createSessionFromRouletteAction`) et "Relancer" (respin pur client,
+    mêmes jeux/participants, pas de reconfiguration).
+- `createSessionFromRouletteAction` (`src/app/roulette/actions.ts`) — crée
+  la session directement `SCHEDULED` avec `decidedGameId`/`decidedTime`
+  déjà posés (exactement l'état dans lequel `closeSession` laisse une
+  session normale une fois le vote clôturé, cf. `src/lib/sessions.ts`),
+  PLUS un `Proposal` et un `Vote` par participant sur le jeu gagnant — ça
+  fait fonctionner sans aucune modification tout ce qui lit "les votants
+  du jeu gagnant" ailleurs (compteur "joueurs inscrits", saisie des
+  résultats, vote de superlatifs...). XP `CREATE_SESSION` + check badges
+  identiques à `createSession`. Annonce Discord via `announceSessionResult`
+  (même embed "🎮 Soirée validée : [Jeu]" que la clôture normale d'un
+  vote) plutôt que `announceSessionCreated` — un jeu déjà décidé par la
+  roue n'a rien à faire voter.
+- Onglet "Historique" — sessions `createdViaRoulette=true`, même style de
+  card que `/sessions` (réimplémenté localement plutôt qu'extrait en
+  composant partagé, pour ne pas toucher `/sessions` qui fonctionne déjà).
+
+### Fichiers modifiés/ajoutés
+
+- `src/app/page.tsx` — `getRecentActivity(3)`, card "Actu gaming"
+- `prisma/schema.prisma` — `GameNews`, `Session.createdViaRoulette`
+- `prisma/migrations/20260903100000_add_game_news/`
+- `prisma/migrations/20260903100100_add_session_created_via_roulette/`
+- `src/lib/steam-news.ts`, `src/lib/backfill-game-news.ts` (nouveaux)
+- `src/app/api/backfill/game-news/route.ts` (nouveau)
+- `src/lib/home.ts` — `getRecentGameNews`
+- `src/lib/validations.ts` — `createRouletteSessionSchema`
+- `src/app/roulette/page.tsx`, `src/app/roulette/actions.ts` (nouveaux)
+- `src/components/roulette/RouletteWizard.tsx` (nouveau)
+- `src/app/sessions/page.tsx` — bouton "🎰 Roulette"
+- `public/sounds/tick.wav` (nouveau)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Pas de dev smoke test authentifié possible (aucun `DATABASE_URL` dans ce
+  sandbox) — vérifié par audit de code et build/lint/tests
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : migrations additives ; `createSessionFromRouletteAction`
+  produit exactement l'état post-clôture d'une session normale (mêmes
+  invariants que `closeSession`), donc aucune page existante n'a besoin
+  d'un cas particulier pour une session créée via la roue

@@ -18,7 +18,7 @@ import {
 import { createSession } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -226,9 +226,15 @@ export default async function SessionsPage({
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-        Soirées
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+          Soirées
+        </h1>
+        {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
+        <ButtonLink href="/roulette" variant="secondary" size="sm">
+          🎰 Roulette
+        </ButtonLink>
+      </div>
 
       {errorMessage && (
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

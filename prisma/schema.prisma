@@ -178,9 +178,39 @@ model Game {
   decidedSessions Session[]
   statTypes       GameStatType[]
   tierlistEntries TierlistEntry[]
+  news            GameNews[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
+}
+
+// Sprint 3 — card "Actu gaming" sur la Home. Cache des news Steam
+// (`ISteamNews/GetNewsForApp`) pour les jeux les plus joués du groupe,
+// rafraîchi au maximum 1x/jour par `runGameNewsBackfill`
+// (src/lib/steam-news.ts), jamais appelé à un chargement de page — voir
+// le commentaire en tête de ce fichier pour la même philosophie que
+// `runSteamCoopBackfill`. `gameId` pointe toujours un jeu `source =
+// STEAM` (seuls ceux-là ont un `steamAppId`, cf. le skip IGDB-only dans
+// le backfill) mais `steamAppId` est dupliqué ici en scalaire plutôt que
+// relu via la relation à chaque affichage — évite une jointure
+// supplémentaire pour un champ qui ne change jamais après coup.
+// `@@unique([steamAppId, title])` : idempotence du backfill (rejoué
+// quotidiennement) — un même article Steam ne doit jamais créer une
+// deuxième ligne.
+model GameNews {
+  id          String   @id @default(cuid())
+  gameId      String
+  steamAppId  Int
+  title       String
+  url         String
+  feedLabel   String
+  publishedAt DateTime
+  fetchedAt   DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([steamAppId, title])
+  @@index([publishedAt])
 }
 
 // PR "Import biblio Steam Family" : distingue COMMENT l'utilisateur
@@ -329,6 +359,14 @@ model Session {
   // référentielle nécessaire (juste un filtre de mentions Discord, jamais
   // relu/joint ailleurs).
   notifiedUserIds Json?
+
+  // Sprint 3 (roue du gambling, /roulette) — `true` pour une session créée
+  // depuis le résultat de la roue plutôt que par le formulaire habituel de
+  // `/sessions`. Pas de table dédiée à la roulette elle-même : une
+  // roulette EST une session, ce booléen sert uniquement à filtrer
+  // l'onglet "Historique" de `/roulette` (sessions
+  // `createdViaRoulette = true`, mêmes cards que `/sessions`).
+  createdViaRoulette Boolean @default(false)
 
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
