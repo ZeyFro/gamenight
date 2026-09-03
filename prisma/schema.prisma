@@ -127,6 +127,10 @@ model User {
   // Sprint 3 (FEATURE 6) — tags perso auto-attribués (voir `Tag`/`UserTag`).
   userTags UserTag[]
 
+  // Sprint 3 (roulette asynchrone) — voir `Roulette`/`RouletteEntry`.
+  createdRoulettes Roulette[]
+  rouletteEntries  RouletteEntry[]
+
   @@index([xpTotal])
 }
 
@@ -179,6 +183,7 @@ model Game {
   statTypes       GameStatType[]
   tierlistEntries TierlistEntry[]
   news            GameNews[]
+  rouletteEntries RouletteEntry[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -884,4 +889,73 @@ model UserTag {
 
   @@id([userId, tagId])
   @@index([tagId])
+}
+
+// Sprint 3 — roue du gambling en mode ASYNCHRONE : contrairement au mode
+// instant (une session `Session.createdViaRoulette` créée directement, sans
+// table dédiée, cf. commentaire sur ce champ), le mode async doit exister
+// AVANT que le jeu ne soit décidé — les potes proposent leurs jeux à leur
+// rythme, pas forcément tous en même temps. `status` suit un cycle simple
+// OPEN (propositions ouvertes) → SPINNING (verrou transitoire pendant le
+// calcul du gagnant, cf. `spinRouletteIfDue`/`src/lib/roulette.ts`, même
+// rôle que le `updateMany` conditionné de `claimSessionClose` pour les
+// sessions — évite un double tirage si le cron et un chargement de page
+// paresseux se chevauchent) → DONE (gagnant tiré ET session créée, ou
+// annulation silencieuse si moins de 2 potes ont proposé — même
+// philosophie que "0 votant" sur une session classique).
+//
+// `resultGameId`/`resultSessionId` sont des ids "libres" (pas de relation
+// Prisma), même choix que `Notification.relatedSessionId` : `null` tant
+// que `status != DONE`, ou si la roulette a été annulée faute de
+// participants. `notifiedUserIds` (même type `Json?` que
+// `Session.notifiedUserIds`) porte la liste des potes INVITÉS à proposer
+// — distincte de qui a réellement proposé (`RouletteEntry`), nécessaire
+// pour afficher le compteur "X/Y ont proposé" et pour les mentions
+// Discord. `reminderSent` : un seul rappel (deadline − 1h) suffit ici, pas
+// besoin du tableau `remindersSent` façon `Session` (une seule fenêtre,
+// pas plusieurs préréglages).
+enum RouletteStatus {
+  OPEN
+  SPINNING
+  DONE
+}
+
+model Roulette {
+  id          String         @id @default(cuid())
+  createdById String
+  scheduledAt DateTime
+  deadline    DateTime
+  status      RouletteStatus @default(OPEN)
+
+  resultGameId    String?
+  resultSessionId String?
+
+  notifiedUserIds Json?
+  reminderSent    Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  createdBy User            @relation(fields: [createdById], references: [id])
+  entries   RouletteEntry[]
+
+  @@index([status, deadline])
+}
+
+// Une proposition de jeu d'un pote pour une roulette async — 2 lignes par
+// pote une fois qu'il a fini de proposer (validé côté application, pas en
+// base : rien n'empêche techniquement une 3e ligne, `submitRouletteEntryAction`
+// refuse simplement si `count >= 2` déjà atteint pour ce user). Chaque
+// ligne est un segment de la roue au tirage (mêmes règles qu'en mode
+// instant : proposer 2x le même jeu compte pour 2 segments).
+model RouletteEntry {
+  id         String   @id @default(cuid())
+  rouletteId String
+  userId     String
+  gameId     String
+  createdAt  DateTime @default(now())
+
+  roulette Roulette @relation(fields: [rouletteId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game     Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([rouletteId, userId, gameId])
 }

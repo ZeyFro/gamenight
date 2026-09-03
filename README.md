@@ -5425,3 +5425,109 @@ seul l'appel change.
   produit exactement l'état post-clôture d'une session normale (mêmes
   invariants que `closeSession`), donc aucune page existante n'a besoin
   d'un cas particulier pour une session créée via la roue
+
+## Sprint 3, PR-C — Roulette asynchrone 🎰
+
+### Contexte
+
+La roulette du PR-B (mode "instant") exige que tout le monde soit présent
+en même temps pour choisir ses jeux — en pratique les potes ne sont pas
+synchronisés. Ce PR ajoute un mode **asynchrone** : chacun propose ses 2
+jeux séparément, à son rythme, avant une deadline ; la roue tourne toute
+seule (via cron) une fois la deadline passée. Le mode instant existant
+reste disponible tel quel, derrière un toggle.
+
+### Modèle de données
+
+- `Roulette` — `scheduledAt` (heure de la soirée), `deadline` (limite de
+  proposition, défaut `scheduledAt - 1h`), `status`
+  (`OPEN`/`SPINNING`/`DONE`), `resultGameId`/`resultSessionId` (ids
+  scalaires "libres", même pattern que `Notification.relatedSessionId` —
+  pas de FK vers un jeu/session qui pourrait être supprimé plus tard),
+  `notifiedUserIds` (`Json?`, même pattern que `Session.notifiedUserIds`),
+  `reminderSent`.
+- `RouletteEntry` — une ligne par jeu proposé (`@@unique([rouletteId,
+  userId, gameId])`), 2 lignes par participant une fois qu'il a fini.
+
+### Fonctionnement
+
+1. **Création** (`/roulette?tab=creer`) — créneau + deadline + potes
+   invités (même composant `NotifyRecipientsField` que le ping sélectif,
+   désormais paramétrable via `fieldName`/`label`) → notif Discord "🎰
+   ROULETTE DU GAMBLING !" mentionnant les invités.
+2. **Propositions** (`/roulette/[id]`) — chacun propose ses 2 jeux depuis
+   sa bibliothèque. Tant que `status === OPEN`, les jeux des AUTRES ne
+   sont **jamais chargés côté serveur** (pas juste cachés en CSS) — seul
+   un compteur "X/Y ont proposé" est calculé, à partir d'un `groupBy` qui
+   ne renvoie que des `userId`. Rappel Discord automatique 1h avant la
+   deadline pour qui n'a pas fini.
+3. **Tirage** — déclenché soit manuellement par le créateur ("Lancer la
+   roue maintenant"), soit automatiquement à la deadline. Deux
+   déclencheurs concurrents possibles (cron externe + chargement de page
+   paresseux) : réclamé atomiquement via un `updateMany` conditionné sur
+   `status: OPEN` (`claimRouletteSpin`), exactement le même mécanisme que
+   `claimSessionClose`. Moins de 2 participants ayant proposé → annulation
+   silencieuse (`resultGameId: null`), même philosophie que "0 votant" sur
+   une session classique. Sinon : une `Session` est créée directement
+   `SCHEDULED` avec le jeu gagnant décidé, plus un `Proposal`/`Vote` par
+   participant ayant réellement proposé — exactement l'invariant déjà
+   utilisé par le mode instant, donc rien d'autre dans l'app n'a besoin de
+   savoir qu'une session vient d'une roulette async.
+4. **Révélation** — qui visite `/roulette/[id]` après le tirage voit un
+   `RouletteResultReveal` qui rejoue l'animation de roue jusqu'au résultat
+   déjà décidé côté serveur (`computeWinningRotation`, extrait dans
+   `RouletteWheelDisplay.tsx` et réutilisé par le mode instant, qui
+   dupliquait auparavant ce même code). Pour qui n'est pas présent :
+   notification Discord "🎰 La roue a choisi : [Jeu] !".
+5. **Cron** — pas de nouvel endpoint : `processOpenRoulettes()` est greffé
+   à la fin de `/api/cron/close-sessions` (déjà appelée toutes les 15 min
+   par le cron externe existant), pour éviter d'imposer une config cron
+   supplémentaire.
+
+### Intégration
+
+- `/sessions/[id]` (soirée en "Vote en cours", créateur) — bouton "🎰
+  Roulette" vers `/roulette?tab=creer&date=...&time=...`, date préremplie.
+- `/roulette` — toggle "Mode async" (par défaut) / "Mode instant"
+  (`RouletteWizard`, inchangé) ; mode async en 3 onglets "En cours" /
+  "Créer" / "Historique". L'historique liste les sessions
+  `createdViaRoulette=true` des DEUX modes (même champ, posé par les deux
+  chemins de création).
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `Roulette`, `RouletteEntry`, `RouletteStatus`
+- `prisma/migrations/20260903120000_add_roulette_async/`
+- `src/lib/roulette.ts` (nouveau) — logique métier (claim atomique,
+  tirage, rappel, traitement batch)
+- `src/lib/discord-roulette.ts` (nouveau) — 4 annonces Discord + notifs
+  in-app
+- `src/lib/validations.ts` — `createRouletteSchema`,
+  `submitRouletteEntriesSchema`
+- `src/app/roulette/actions.ts` — `createRouletteAction`,
+  `submitRouletteEntriesAction`, `forceSpinRouletteAction`
+- `src/app/roulette/[id]/page.tsx` (nouveau)
+- `src/app/roulette/page.tsx` — réécrit (toggle + 3 onglets)
+- `src/components/roulette/RouletteWheelDisplay.tsx` (nouveau) — roue
+  partagée, extraite de `RouletteWizard`
+- `src/components/roulette/RouletteCountdown.tsx`,
+  `RouletteEntryForm.tsx`, `RouletteResultReveal.tsx` (nouveaux)
+- `src/components/roulette/RouletteWizard.tsx` — réutilise
+  `RouletteWheelDisplay`/`computeWinningRotation` au lieu de dupliquer
+- `src/components/NotifyRecipientsField.tsx` — `fieldName`/`label`
+  paramétrables (réutilisé pour les participants d'une roulette)
+- `src/app/api/cron/close-sessions/route.ts` — appelle
+  `processOpenRoulettes()`
+- `src/app/sessions/[id]/page.tsx` — bouton "🎰 Roulette"
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Pas de dev smoke test authentifié possible (aucun `DATABASE_URL` dans ce
+  sandbox) — vérifié par audit de code et build/lint/tests
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : migration additive ; mode instant inchangé derrière le
+  toggle ; `createdViaRoulette` reste le seul contrat entre les deux modes
+  et le reste de l'app
