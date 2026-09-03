@@ -5659,7 +5659,7 @@ déconnexion/reconnexion").
 rafraîchit TOUT LE MONDE via le jeton du **bot** Discord de l'application
 (`GET /users/{id}`, ne périme jamais), indépendamment de toute session
 active. Nouvelle route `GET /api/cron/refresh-discord-profiles`, appelée
-par un cron externe toutes les heures, même protection `CRON_SECRET` que
+par un cron externe toutes les 1h, même protection `CRON_SECRET` que
 les autres crons. `DISCORD_BOT_TOKEN` optionnelle — no-op silencieux
 (warning loggé) si absente ; le rafraîchissement passif au login continue
 de fonctionner seul dans ce cas.
@@ -5670,7 +5670,7 @@ de fonctionner seul dans ce cas.
 URL     : https://ton-projet.vercel.app/api/cron/refresh-discord-profiles
 Méthode : GET
 Header  : Authorization: Bearer <CRON_SECRET>
-Fréquence : toutes les heures (0 * * * *)
+Fréquence : toutes les 1h (0 * * * *)
 ```
 
 **Config bot Discord** : Developer Portal → ton application → onglet
@@ -5690,8 +5690,8 @@ cron `/api/backfill/steam-store` existant ne fait que resynchroniser
 `isCoop` pour des jeux déjà en base, jamais d'appel `GetOwnedGames`).
 
 **Fix** : nouvelle route `GET /api/cron/steam-library-sync`, qui appelle
-`importSteamLibrary` pour chaque user avec un `steamId64`, une fois par
-jour. `importSteamLibrary` renvoie désormais `newCount` (jeux que le user
+`importSteamLibrary` pour chaque user avec un `steamId64`, toutes les 1h.
+`importSteamLibrary` renvoie désormais `newCount` (jeux que le user
 ne possédait pas encore juste avant cet appel), loggé quand > 0. Boucle
 "best-effort par user" — une panne Steam sur un compte n'empêche jamais
 de traiter les autres (même philosophie que
@@ -5703,7 +5703,7 @@ de traiter les autres (même philosophie que
 URL     : https://ton-projet.vercel.app/api/cron/steam-library-sync
 Méthode : GET
 Header  : Authorization: Bearer <CRON_SECRET>
-Fréquence : une fois par jour
+Fréquence : toutes les 1h (0 * * * *)
 ```
 
 ### FIX 3 — Steam Family re-sync facile
