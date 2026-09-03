@@ -37,9 +37,14 @@ export interface NotifyTagOption {
 export function NotifyRecipientsField({
   potes,
   tags = [],
+  fieldName = "notifyUserId",
+  label = "Qui prévenir ?",
 }: {
   potes: NotifyRecipientCandidate[];
   tags?: NotifyTagOption[];
+  /** Roulette async (Sprint 3) réutilise ce même composant pour choisir les participants invités (`participantId`) plutôt que des destinataires de notif — le nom du champ posté doit donc rester paramétrable. */
+  fieldName?: string;
+  label?: string;
 }) {
   const [checked, setChecked] = useState<string[]>(() => potes.map((p) => p.id));
 
@@ -66,7 +71,7 @@ export function NotifyRecipientsField({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted">
-          Qui prévenir ? ({checked.length}/{potes.length})
+          {label} ({checked.length}/{potes.length})
         </span>
         <div className="flex gap-3">
           <button
@@ -114,7 +119,7 @@ export function NotifyRecipientsField({
               <label className="flex items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
                 <input
                   type="checkbox"
-                  name="notifyUserId"
+                  name={fieldName}
                   value={pote.id}
                   checked={isChecked}
                   onChange={() => toggle(pote.id)}

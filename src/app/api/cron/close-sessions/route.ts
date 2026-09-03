@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
+import { processOpenRoulettes } from "@/lib/roulette";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 
@@ -102,5 +103,12 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done });
+  // Roulette asynchrone (Sprint 3) — même cron, même logique de
+  // déclenchement que la clôture de session ci-dessus : rappel (deadline
+  // − 1h) puis tirage des roulettes `OPEN` dont la deadline est dépassée.
+  // Voir `src/lib/roulette.ts` pour le détail (verrous atomiques, mêmes
+  // mécaniques que `claimSessionClose`).
+  const roulettes = await processOpenRoulettes();
+
+  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done, roulettes });
 }

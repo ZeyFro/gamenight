@@ -245,6 +245,16 @@ export default async function SessionDetailPage({
               Clôturer le vote maintenant
             </Button>
           </form>
+          {/* FIX Sprint 3 (roulette async) — alternative au vote classique : au
+              lieu de proposer/voter à la main, le créateur peut basculer sur
+              une roulette pré-remplie avec la date déjà choisie ici. */}
+          <ButtonLink
+            href={`/roulette?tab=creer&date=${toDateInputValue(session.date)}&time=${toTimeInputValue(session.date)}`}
+            variant="secondary"
+            size="sm"
+          >
+            🎰 Roulette
+          </ButtonLink>
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
             <Button type="submit" variant="destructive" size="sm">

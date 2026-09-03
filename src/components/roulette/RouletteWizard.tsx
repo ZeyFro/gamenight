@@ -9,6 +9,11 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { haptics } from "@/lib/haptics";
+import {
+  RouletteWheelDisplay,
+  computeWinningRotation,
+  type WheelSegment,
+} from "@/components/roulette/RouletteWheelDisplay";
 
 export interface RouletteGame {
   id: string;
@@ -24,17 +29,6 @@ export interface RouletteCandidate {
   games: RouletteGame[];
 }
 
-const WHEEL_COLORS = [
-  "#8b5cf6",
-  "#ec4899",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#06b6d4",
-  "#3b82f6",
-  "#ef4444",
-];
-const WHEEL_SIZE_PX = 280;
 const SPIN_DURATION_S = 3.6;
 const TICK_INTERVAL_MS = 90;
 const GAMES_PER_PARTICIPANT = 2;
@@ -129,20 +123,7 @@ export function RouletteWizard({
     setSpinning(true);
 
     const winnerIndex = Math.floor(Math.random() * segments.length);
-    const segmentAngle = 360 / segments.length;
-    const winnerCenter = winnerIndex * segmentAngle + segmentAngle / 2;
-    // Le pointeur fixe est en haut (0°). Il faut que le CENTRE du segment
-    // gagnant atterrisse à cet angle après rotation — la rotation "utile"
-    // modulo 360 est donc `360 - winnerCenter`. On ajoute toujours un delta
-    // FORWARD (jamais négatif) à partir de la rotation accumulée actuelle,
-    // pour que "Relancer" ne fasse jamais sauter la roue en arrière.
-    const currentMod = ((rotation % 360) + 360) % 360;
-    const desiredMod = (360 - winnerCenter) % 360;
-    const forwardDelta = ((desiredMod - currentMod) + 360) % 360;
-    const extraSpins = 5 * 360;
-    const finalRotation = rotation + extraSpins + forwardDelta;
-
-    setRotation(finalRotation);
+    setRotation(computeWinningRotation(rotation, winnerIndex, segments.length));
 
     let elapsed = 0;
     tickIntervalRef.current = setInterval(() => {
@@ -172,56 +153,19 @@ export function RouletteWizard({
     requestAnimationFrame(() => spin());
   }
 
-  const segmentPercent = segments.length > 0 ? 100 / segments.length : 100;
-  const conicGradient =
-    segments.length > 0
-      ? `conic-gradient(${segments
-          .map((_, i) => {
-            const color = WHEEL_COLORS[i % WHEEL_COLORS.length];
-            return `${color} ${i * segmentPercent}% ${(i + 1) * segmentPercent}%`;
-          })
-          .join(", ")})`
-      : "var(--surface-hover)";
+  const wheelSegments: WheelSegment[] = segments.map((seg) => ({
+    key: `${seg.userId}-${seg.game.id}`,
+    label: seg.game.name,
+  }));
 
   if (phase === "wheel") {
     return (
       <div className="flex flex-col items-center gap-6">
-        <div className="relative" style={{ width: WHEEL_SIZE_PX, height: WHEEL_SIZE_PX }}>
-          <div
-            className="absolute -top-1 left-1/2 z-10 -translate-x-1/2"
-            style={{
-              width: 0,
-              height: 0,
-              borderLeft: "10px solid transparent",
-              borderRight: "10px solid transparent",
-              borderTop: "18px solid var(--accent)",
-            }}
-          />
-          <motion.div
-            className="h-full w-full rounded-full border-4 border-border shadow-lg"
-            style={{ background: conicGradient }}
-            animate={{ rotate: rotation }}
-            transition={{ duration: SPIN_DURATION_S, ease: [0.12, 0.67, 0.2, 0.99] }}
-          >
-            {segments.map((seg, i) => {
-              const angle = i * (360 / segments.length) + 360 / segments.length / 2;
-              return (
-                <div
-                  key={`${seg.userId}-${seg.game.id}-${i}`}
-                  className="absolute top-1/2 left-1/2 h-0 w-0"
-                  style={{ transform: `rotate(${angle}deg)` }}
-                >
-                  <span
-                    className="absolute top-[-7px] left-3 truncate text-[10px] font-semibold text-white"
-                    style={{ width: WHEEL_SIZE_PX / 2 - 30 }}
-                  >
-                    {seg.game.name}
-                  </span>
-                </div>
-              );
-            })}
-          </motion.div>
-        </div>
+        <RouletteWheelDisplay
+          segments={wheelSegments}
+          rotation={rotation}
+          durationS={SPIN_DURATION_S}
+        />
 
         {winnerGame && !spinning && (
           <motion.div
