@@ -22,6 +22,8 @@ export const XP_AMOUNTS = {
   // participants d'une soirée qui complète le défi de la semaine (cf.
   // spec, pas de variation par placement contrairement au podium).
   CHALLENGE_COMPLETE: 100,
+  // Sprint 4 (Pronostics) — voir src/lib/pronostics.ts.
+  PRONOSTIC_CORRECT: 50,
 } as const;
 
 /**

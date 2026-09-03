@@ -26,6 +26,8 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   REMINDER: "⏰",
   REVANCHE: "🔄",
   ACHIEVEMENT: "🏅",
+  PRONOSTIC: "🔮",
+  XP_BET: "🎲",
 };
 
 /**

@@ -3,7 +3,23 @@ import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
 import { announceSessionAwards } from "@/lib/discord-session-awards";
 import { checkSuperlativesWonBadges } from "@/lib/badges";
+import { resolvePronostics } from "@/lib/pronostics";
+import { resolveBets } from "@/lib/xp-bets";
 import type { User } from "@prisma/client";
+
+/**
+ * Sprint 4 (Pronostics + Paris d'XP) — "a gagné Le Carry ou MVP" (spec)
+ * pointe des catégories `SuperlativeCategory` gérées depuis /admin/superlatifs
+ * (texte libre, pas un enum figé) : la seule qui existe au seed est "MVP de
+ * la soirée" (voir prisma/seed-superlatives.mjs), mais un admin peut très
+ * bien en ajouter/renommer une "Carry" plus tard. Matching par mot-clé sur
+ * le nom plutôt qu'un id en dur — reste correct tant que l'admin garde
+ * "carry" ou "mvp" quelque part dans le nom de la catégorie visée.
+ */
+export function isCarryOrMvpCategory(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes("carry") || lower.includes("mvp");
+}
 
 const VOTING_WINDOW_MS = 24 * 60 * 60 * 1000;
 // En dessous de 2 participants, il n'y a personne à désigner pour l'autre
@@ -95,6 +111,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
+    await resolvePronostics(sessionId, new Set());
+    await resolveBets(sessionId, new Set());
     return;
   }
 
@@ -130,6 +148,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
+    await resolvePronostics(sessionId, new Set());
+    await resolveBets(sessionId, new Set());
     return;
   }
 
@@ -158,6 +178,20 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     where: { id: sessionId },
     data: { superlativeVotingClosed: true },
   });
+
+  // Pronostics + Paris d'XP (Sprint 4) — "a gagné Le Carry ou MVP" (spec) :
+  // l'ensemble des users ayant remporté une catégorie dont le nom matche
+  // (voir `isCarryOrMvpCategory` en tête de fichier).
+  const carryMvpWinnerIds = new Set(
+    awards
+      .filter((a) => {
+        const category = categories.find((c) => c.id === a.categoryId);
+        return category ? isCarryOrMvpCategory(category.name) : false;
+      })
+      .map((a) => a.winnerUserId)
+  );
+  await resolvePronostics(sessionId, carryMvpWinnerIds);
+  await resolveBets(sessionId, carryMvpWinnerIds);
 
   const winners = await prisma.user.findMany({
     where: { id: { in: awards.map((a) => a.winnerUserId) } },

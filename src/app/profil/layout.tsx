@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
 import { bannerFallbackStyle } from "@/lib/user-color";
+import { formatDurationFr, nowMs } from "@/lib/wallclock";
 import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { ProfilTabs } from "@/components/ProfilTabs";
@@ -112,6 +113,14 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
             Rang global #{globalRank.position} sur {globalRank.total}
           </Link>
         </p>
+
+        {/* Sprint 4 (FEATURE 4) — consultation passive, jamais de notif. */}
+        {user.steamId64 && user.lastPlayedGame && user.lastPlayedAt && (
+          <p className="text-xs text-muted">
+            🎮 Joue à {user.lastPlayedGame} — il y a{" "}
+            {formatDurationFr(nowMs() - user.lastPlayedAt.getTime())}
+          </p>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <div className="h-2 overflow-hidden rounded-full bg-surface-hover">

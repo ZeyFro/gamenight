@@ -13,6 +13,7 @@ import {
   finalizeSuperlativeVotingIfDue,
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
+import { getPronosticEligibleUsers } from "@/lib/pronostics";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -28,6 +29,8 @@ import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
 import { EditSessionDialog } from "@/components/EditSessionDialog";
 import { WithdrawProposalDialog } from "@/components/WithdrawProposalDialog";
 import { ProposeGameForm } from "@/components/ProposeGameForm";
+import { PronosticForm } from "@/components/PronosticForm";
+import { XpBetForm } from "@/components/XpBetForm";
 import {
   cancelSessionAction,
   closeSessionAction,
@@ -98,6 +101,73 @@ export default async function SessionDetailPage({
         where: { sessionId: session.id, voterUserId: user.id },
       });
       needsSuperlativeVote = alreadyVoted === 0;
+    }
+  }
+
+  // Sprint 4 — Pronostics + Paris d'XP, ouverts pendant que la soirée est
+  // `SCHEDULED` (mêmes participants éligibles que le futur vote de
+  // superlatifs) ; révélés une fois `DONE` ET les superlatifs clôturés
+  // (`superlativeVotingClosed`), pour ne jamais montrer un résultat avant
+  // que le "carry" de la soirée soit connu.
+  let pronosticData: {
+    participants: { id: string; discordName: string; discordAvatar: string | null }[];
+    isParticipant: boolean;
+    alreadySubmitted: boolean;
+    submittedCount: number;
+  } | null = null;
+  let revealData: {
+    pronostics: { voterName: string; predictedName: string; correct: boolean | null }[];
+    bets: { voterName: string; targetName: string; amount: number; won: boolean | null }[];
+  } | null = null;
+
+  if (session.status === "SCHEDULED" && session.decidedGameId) {
+    const participants = await getPronosticEligibleUsers(session.id, session.decidedGameId);
+    const isParticipant = participants.some((p) => p.id === user.id);
+    if (isParticipant) {
+      const [ownPronostic, submittedCount] = await Promise.all([
+        prisma.pronostic.findUnique({
+          where: { sessionId_voterId: { sessionId: session.id, voterId: user.id } },
+        }),
+        prisma.pronostic.count({ where: { sessionId: session.id } }),
+      ]);
+      pronosticData = {
+        participants: participants.map((p) => ({
+          id: p.id,
+          discordName: p.discordName,
+          discordAvatar: p.discordAvatar,
+        })),
+        isParticipant,
+        alreadySubmitted: ownPronostic !== null,
+        submittedCount,
+      };
+    }
+  }
+
+  if (session.status === "DONE" && session.superlativeVotingClosed) {
+    const [pronostics, bets] = await Promise.all([
+      prisma.pronostic.findMany({
+        where: { sessionId: session.id },
+        include: { voter: true, predictedUser: true },
+      }),
+      prisma.xpBet.findMany({
+        where: { sessionId: session.id },
+        include: { voter: true, target: true },
+      }),
+    ]);
+    if (pronostics.length > 0 || bets.length > 0) {
+      revealData = {
+        pronostics: pronostics.map((p) => ({
+          voterName: p.voter.discordName,
+          predictedName: p.predictedUser.discordName,
+          correct: p.correct,
+        })),
+        bets: bets.map((b) => ({
+          voterName: b.voter.discordName,
+          targetName: b.target.discordName,
+          amount: b.amount,
+          won: b.won,
+        })),
+      };
     }
   }
 
@@ -224,6 +294,78 @@ export default async function SessionDetailPage({
             </div>
           </Card>
         )}
+
+      {pronosticData && (
+        <Card className="flex flex-col gap-4">
+          <div>
+            <h2 className="font-semibold text-foreground">🔮 Qui va carry ?</h2>
+            <p className="text-xs text-muted">
+              {pronosticData.submittedCount}/{pronosticData.participants.length} ont
+              pronostiqué. Résultat révélé après la soirée.
+            </p>
+          </div>
+          {pronosticData.alreadySubmitted ? (
+            <p className="text-sm text-accent">
+              Pronostic enregistré — réponse au tirage des récompenses.
+            </p>
+          ) : (
+            <PronosticForm
+              sessionId={session.id}
+              voterId={user.id}
+              participants={pronosticData.participants}
+            />
+          )}
+
+          <div className="border-t border-border pt-4">
+            <h2 className="font-semibold text-foreground">🎲 Paris</h2>
+            <p className="mb-3 text-xs text-muted">
+              Mise de l&apos;XP sur qui va carry — double ou rien.
+            </p>
+            <XpBetForm
+              sessionId={session.id}
+              voterId={user.id}
+              xpTotal={user.xpTotal}
+              targets={pronosticData.participants}
+            />
+          </div>
+        </Card>
+      )}
+
+      {revealData && (revealData.pronostics.length > 0 || revealData.bets.length > 0) && (
+        <Card className="flex flex-col gap-4">
+          {revealData.pronostics.length > 0 && (
+            <div>
+              <h2 className="font-semibold text-foreground">🔮 Résultats des pronostics</h2>
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {revealData.pronostics.map((p, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span>{p.correct ? "✅" : "❌"}</span>
+                    <span className="text-muted">
+                      {p.voterName} avait prédit {p.predictedName}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {revealData.bets.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <h2 className="font-semibold text-foreground">🎲 Résultats des paris</h2>
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {revealData.bets.map((b, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span>{b.won ? "✅" : "❌"}</span>
+                    <span className="text-muted">
+                      {b.voterName} a parié {b.amount} XP sur {b.targetName}
+                      {b.won ? ` — +${b.amount * 2} XP` : " — perdu"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
 
       {session.status === "CANCELLED" && (
         <Card>
