@@ -1,10 +1,15 @@
 "use server";
 
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkLibraryBadges } from "@/lib/badges";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { matchGameName } from "@/lib/family-import";
+import { importSteamLibrary } from "@/lib/steam";
+import { logger } from "@/lib/logger";
 
 export interface FamilyImportGameSummary {
   id: string;
@@ -143,4 +148,46 @@ export async function matchFamilyImportBatch(
   if (importedCount > 0) await checkLibraryBadges(user.id);
 
   return results;
+}
+
+/**
+ * Fix bug remonté (biblio Steam Family pénible à synchroniser) — bouton
+ * "🔄 Resynchroniser Family" à côté de l'import copier-coller. Rappelle
+ * `getOwnedGames`/`importSteamLibrary` avec `include_played_free_games`
+ * désormais posé (voir `src/lib/steam.ts`), qui inclut parfois les jeux
+ * Family selon les comptes — Steam ne documente aucune garantie officielle
+ * là-dessus (aucun endpoint Family public), donc le résultat dépend du
+ * compte. `newCount === 0` → l'API n'a rien renvoyé de nouveau, message
+ * clair redirigeant vers le copier-coller plutôt qu'un faux "à jour"
+ * silencieux.
+ */
+export async function resyncSteamFamilyAction() {
+  const user = await getCurrentUser();
+  if (!user?.steamId64) redirect("/profil/parametres");
+  if (!checkRateLimit(user.id, "resyncSteamFamily")) {
+    redirect("/profil/parametres?family=rate_limited");
+  }
+
+  // `redirect()` fonctionne en interne par exception (`NEXT_REDIRECT`) —
+  // le `try` ne doit couvrir QUE l'appel réseau, jamais les `redirect()`
+  // ci-dessous, sinon le `catch` générique les avalerait par erreur
+  // (même garde-fou documenté sur `reimportSteamLibrary`, src/app/actions.ts).
+  let result: Awaited<ReturnType<typeof importSteamLibrary>>;
+  try {
+    result = await importSteamLibrary(user.id, user.steamId64);
+  } catch (error) {
+    logger.error("steam", error, { userId: user.id, action: "resyncSteamFamily" });
+    redirect("/profil/parametres?family=indisponible");
+  }
+
+  revalidatePath("/bibliotheque");
+
+  if (result.status !== "imported") {
+    redirect("/profil/parametres?family=prive");
+  }
+  redirect(
+    result.newCount > 0
+      ? `/profil/parametres?family=resync_ok&new=${result.newCount}`
+      : "/profil/parametres?family=resync_vide"
+  );
 }

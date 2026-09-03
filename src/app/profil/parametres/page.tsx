@@ -2,10 +2,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
+import { resyncSteamFamilyAction } from "@/app/profil/family-import-actions";
 import { toggleSilenceReminders, toggleSoundEnabled } from "@/app/profil/actions";
 import { createTagAction, toggleUserTagAction } from "@/app/tags-actions";
 import { prisma } from "@/lib/prisma";
 import { tagColor } from "@/lib/tags";
+import { formatDurationFr, nowMs } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -38,16 +40,48 @@ const UPLOAD_FEEDBACK: Record<string, { text: string; className: string }> = {
   },
 };
 
+/**
+ * Fix bug remonté (Family re-sync) — messages du bouton "🔄
+ * Resynchroniser Family". `resync_vide` ne veut PAS dire "erreur" : Steam
+ * n'a simplement rien renvoyé de nouveau, cas attendu si le compte ne
+ * partage pas ses jeux Family via l'API (limitation Steam, cf.
+ * `resyncSteamFamilyAction`) — d'où le renvoi explicite vers le
+ * copier-coller plutôt qu'un silence qui laisserait croire à une biblio
+ * déjà à jour.
+ */
+const FAMILY_FEEDBACK: Record<string, { text: string; className: string }> = {
+  resync_vide: {
+    text: "Aucun nouveau jeu détecté — Steam ne partage pas les jeux Family via son API pour ce compte. Colle la liste depuis la page Steam Family ci-dessous.",
+    className: "bg-warning/10 text-warning",
+  },
+  prive: {
+    text: "Ton profil Steam est privé, impossible de vérifier les jeux Family.",
+    className: "bg-warning/10 text-warning",
+  },
+  indisponible: {
+    text: "Steam est temporairement indisponible, réessaie dans un instant.",
+    className: "bg-destructive/10 text-destructive",
+  },
+  rate_limited: { text: RATE_LIMIT_MESSAGE, className: "bg-warning/10 text-warning" },
+};
+
 export default async function ProfilParametresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ steam?: string; count?: string; upload?: string }>;
+  searchParams: Promise<{
+    steam?: string;
+    count?: string;
+    upload?: string;
+    family?: string;
+    new?: string;
+  }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload } = await searchParams;
+  const { steam, count, upload, family, new: newCount } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
+  const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
   // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
   // ce user, pour afficher les chips "actif"/"inactif".
@@ -183,6 +217,14 @@ export default async function ProfilParametresPage({
                 Compte Steam lié ({user.steamId64}) — bibliothèque{" "}
                 {user.steamPublic ? "publique" : "privée ou inconnue"}.
               </p>
+              {/* Fix bug remonté — indicateur de fraîcheur, posé par
+                  `importSteamLibrary` à chaque sync (lien, réimport manuel,
+                  cron quotidien, resync Family). */}
+              <p className="text-xs text-faint">
+                {user.steamLastSyncAt
+                  ? `Dernière sync : il y a ${formatDurationFr(nowMs() - user.steamLastSyncAt.getTime())}`
+                  : "Jamais synchronisée."}
+              </p>
               <form action={reimportSteamLibrary}>
                 <Button type="submit" fullWidthOnMobile>
                   Réimporter ma bibliothèque Steam
@@ -210,6 +252,27 @@ export default async function ProfilParametresPage({
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Bibliothèque Steam Family</h2>
+
+          {familyFeedback && (
+            <p className={`rounded-lg p-3 text-sm ${familyFeedback.className}`}>
+              {familyFeedback.text}
+            </p>
+          )}
+          {family === "resync_ok" && (
+            <p className="rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              {newCount} nouveau{newCount === "1" ? "" : "x"} jeu
+              {newCount === "1" ? "" : "x"} importé{newCount === "1" ? "" : "s"}.
+            </p>
+          )}
+
+          {user.steamId64 && (
+            <form action={resyncSteamFamilyAction}>
+              <Button type="submit" variant="secondary" fullWidthOnMobile>
+                🔄 Resynchroniser Family
+              </Button>
+            </form>
+          )}
+
           <FamilyImportForm />
         </Card>
       </StaggerItem>
