@@ -57,6 +57,18 @@ export default async function PotesPage() {
     sessionsPlayedRows.map((row) => [row.userId, row._count._all])
   );
 
+  // Idem pour le nombre de jeux possédés (même convention que
+  // `getProfileStats` : `owned: true`) — une requête groupée pour toutes
+  // les cartes plutôt qu'un `count` par pote.
+  const gamesOwnedRows = await prisma.userGame.groupBy({
+    by: ["userId"],
+    where: { userId: { in: potes.map((p) => p.id) }, owned: true },
+    _count: { _all: true },
+  });
+  const gamesOwnedByUser = new Map(
+    gamesOwnedRows.map((row) => [row.userId, row._count._all])
+  );
+
   // Sprint 3 suite (dettes/gage) — badge "💀" à côté du pseudo.
   const activeDebtorIds = await getActiveDebtorIds();
 
@@ -80,6 +92,7 @@ export default async function PotesPage() {
             const level = levelForXp(pote.xpTotal);
             const rank = rankForLevel(level);
             const sessionsPlayed = sessionsPlayedByUser.get(pote.id) ?? 0;
+            const gamesOwned = gamesOwnedByUser.get(pote.id) ?? 0;
             return (
               <StaggerItem key={pote.id}>
                 <Link href={`/potes/${pote.id}`}>
@@ -150,6 +163,7 @@ export default async function PotesPage() {
                           }
                           label="streak"
                         />
+                        <QuickStat value={`🎮 ${gamesOwned}`} label="jeux" />
                       </div>
 
                       <Badge tone={pote.steamId64 ? "accent" : "neutral"} className="w-fit">

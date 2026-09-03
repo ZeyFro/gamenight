@@ -11,7 +11,7 @@ import { logger } from "@/lib/logger";
  * correctement... si quelque chose appelait cette fonction sans action
  * explicite de l'utilisateur. Ce n'était le cas qu'au lien initial du
  * compte et via le bouton "Réimporter" — cette route comble ce trou,
- * appelée par un cron externe une fois par jour, même mécanisme de
+ * appelée par un cron externe toutes les 1h, même mécanisme de
  * protection (`CRON_SECRET`) que les autres crons du projet.
  *
  * Boucle "best-effort par user" (une panne Steam sur un compte ne doit
