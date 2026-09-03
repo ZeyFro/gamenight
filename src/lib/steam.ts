@@ -48,6 +48,14 @@ export async function verifySteamOpenId(
 export interface SteamOwnedGame {
   appid: number;
   name: string;
+  // Sprint 4 (FEATURE 4, dernière activité Steam) — timestamp Unix
+  // (secondes) renvoyé par Steam pour chaque jeu possédé, non documenté
+  // officiellement mais stable en pratique (déjà exploité par de
+  // nombreux clients tiers) : évite un second appel API dédié
+  // (`GetRecentlyPlayedGames` ne donne qu'un temps de jeu sur 2 semaines,
+  // pas un vrai timestamp de dernière session) — `getOwnedGames` (déjà
+  // appelée par le cron `steam-library-sync` existant) suffit.
+  rtime_last_played?: number;
 }
 
 export type GetOwnedGamesResult =
@@ -186,6 +194,22 @@ export async function importSteamLibrary(
   }
 
   await checkLibraryBadges(userId);
+
+  // Sprint 4 (FEATURE 4) — jeu le plus récemment joué, si Steam a renvoyé
+  // au moins un timestamp exploitable (`rtime_last_played` absent ou à 0
+  // pour un jeu jamais lancé). `null` sur les deux champs plutôt qu'une
+  // absence de mise à jour : un compte dont plus aucun jeu récent n'a de
+  // timestamp valide ne doit pas garder affiché un ancien "Joue à X" figé.
+  const mostRecent = result.games
+    .filter((g) => (g.rtime_last_played ?? 0) > 0)
+    .sort((a, b) => (b.rtime_last_played ?? 0) - (a.rtime_last_played ?? 0))[0];
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      lastPlayedGame: mostRecent?.name ?? null,
+      lastPlayedAt: mostRecent ? new Date(mostRecent.rtime_last_played! * 1000) : null,
+    },
+  });
 
   return { status: "imported", count: result.games.length, newCount };
 }

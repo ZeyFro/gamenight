@@ -5760,3 +5760,88 @@ pragmatiques :
   un champ (`newCount`) sans retirer ni changer les existants, tous les
   appelants déjà en place continuent de fonctionner sans modification
   (vérifié par grep de tous les usages)
+
+## Sprint 4 PR-A : Pronostics, Paris d'XP, Dernière activité Steam
+
+Première moitié du Sprint 4 (3 features moyennes sur 5, découpé en 2 PR
+comme demandé — la seconde moitié, Recap mensuel + Saisons, arrive dans
+une PR séparée).
+
+### FEATURE 1 — Pronostics 🔮
+
+Avant une soirée `SCHEDULED`, chaque participant prédit qui va "carry" la
+soirée (`Pronostic`, 1 par personne et par soirée). Résolu automatiquement
+en même temps que le vote de superlatifs (`resolvePronostics`,
+src/lib/pronostics.ts, appelée depuis `finalizeSuperlativeVoting`) :
+correct = le prédit a gagné une catégorie superlatif dont le nom contient
+"carry" ou "mvp" (matching par mot-clé — `isCarryOrMvpCategory`,
+src/lib/superlative-voting.ts — les catégories sont admin-éditables sur
+/admin/superlatifs, pas un enum figé ; le seed ne fournit que "MVP de la
+soirée" aujourd'hui).
+
+- Prono correct → +50 XP, notif Discord ("🔮 [Pote] avait prédit juste —
+  +50 XP") et notif in-app.
+- Stat "taux de prono correct" (X/Y = Z%) sur /profil.
+- Badge "🔮 Oracle" : 10 pronos corrects.
+- Aucun aperçu des pronos des autres avant la révélation (seul le compte
+  "X/Y ont pronostiqué" est visible pendant la fenêtre de prédiction).
+
+### FEATURE 5 — Paris d'XP 🎲
+
+Même fenêtre que les pronostics (soirée `SCHEDULED`), avec une mise d'XP :
+slider 10 → 50% du solde actuel, par tranches de 10. La mise est déduite
+immédiatement à la pose du pari (`placeBet`, src/lib/xp-bets.ts,
+transaction atomique création + décrément) — jamais négative, le slider
+est borné côté serveur avant toute écriture. Résolu en même temps que les
+pronostics : pari gagné (la cible a gagné carry/mvp) → double mise
+créditée ; perdu → rien de plus (mise déjà déduite).
+
+- Badge "🎲 High Roller" : 5 paris gagnés.
+- Badge "💰 All In" : parier 50% pile de son solde ET gagner (`XpBet.allIn`
+  figé au moment du pari, `xpTotal` pouvant changer après coup).
+- Historique gains/pertes sur /profil.
+
+### FEATURE 4 — Dernière activité Steam 🎮
+
+`importSteamLibrary` (src/lib/steam.ts) calcule désormais le jeu le plus
+récemment joué à partir du champ `rtime_last_played` que Steam renvoie
+pour chaque jeu de `GetOwnedGames` (non documenté officiellement mais
+stable en pratique) — pas de second appel API (`GetRecentlyPlayedGames`
+ne donne qu'un temps de jeu sur 2 semaines, pas un vrai timestamp).
+Rafraîchi automatiquement par le cron `steam-library-sync` existant
+(toutes les 1h), le lien initial et le bouton "Réimporter" — aucun
+changement de cron nécessaire.
+
+Affiché sur `/potes` (sous chaque card) et en en-tête de `/profil` : "🎮
+Joue à [Jeu] — il y a Xh". Consultation passive uniquement, aucune notif
+Discord. N'affiche rien si `steamId64` n'est pas lié.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `Pronostic`, `XpBet`, `User.lastPlayedGame`/
+  `lastPlayedAt`, `XpReason.PRONOSTIC_CORRECT`/`XP_BET_WON`,
+  `NotificationType.PRONOSTIC`/`XP_BET`
+- `prisma/migrations/20260903200000_add_pronostics_xp_bets_steam_activity/`
+- `src/lib/pronostics.ts`, `src/lib/xp-bets.ts` (nouveaux)
+- `src/lib/superlative-voting.ts` — `isCarryOrMvpCategory` + wiring
+  `resolvePronostics`/`resolveBets` dans `finalizeSuperlativeVoting`
+- `src/lib/badges.ts` — critères `PRONOSTICS_CORRECT`/`BETS_WON`/
+  `ALL_IN_WIN` + `checkPronosticBadges`/`checkBetBadges`
+- `prisma/seed-badges.mjs` — Oracle, High Roller, All In
+- `src/lib/steam.ts` — `rtime_last_played`, calcul dernière activité dans
+  `importSteamLibrary`
+- `src/lib/xp.ts` — `XP_AMOUNTS.PRONOSTIC_CORRECT`
+- `src/app/sessions/actions.ts` — `submitPronosticAction`, `placeBetAction`
+- `src/components/PronosticForm.tsx`, `src/components/XpBetForm.tsx` (nouveaux)
+- `src/app/sessions/[id]/page.tsx` — sections pronos/paris (SCHEDULED) +
+  révélation (DONE)
+- `src/app/profil/page.tsx` — taux de prono correct + historique paris
+- `src/app/potes/page.tsx`, `src/app/profil/layout.tsx` — "🎮 Joue à..."
+- `src/lib/validations.ts` — `pronosticSchema`, `xpBetSchema`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, tout vert
+- Migration purement additive — zéro régression PR #1-56

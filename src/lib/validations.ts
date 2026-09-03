@@ -96,6 +96,19 @@ export const superlativeVoteEntrySchema = z.object({
   votedForUserId: idSchema,
 });
 
+/** Sprint 4 (Pronostics) — `submitPronosticAction`. */
+export const pronosticSchema = z.object({
+  sessionId: idSchema,
+  predictedUserId: idSchema,
+});
+
+/** Sprint 4 (Paris d'XP) — `placeBetAction`. Bornes réelles (10-50% du solde, tranches de 10) revalidées dans `isValidBetAmount` (src/lib/xp-bets.ts), zod ne garantit ici que la forme (entier positif). */
+export const xpBetSchema = z.object({
+  sessionId: idSchema,
+  targetUserId: idSchema,
+  amount: z.coerce.number().int().positive(),
+});
+
 /** `addWeeklySlot` — créneau hebdomadaire récurrent. */
 export const weeklySlotSchema = z.object({
   dayOfWeek: z

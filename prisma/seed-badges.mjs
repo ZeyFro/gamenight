@@ -151,6 +151,30 @@ const BADGES = [
     rarity: "RARE",
     criteria: { type: "CHALLENGES_COMPLETED", count: 5 },
   },
+  {
+    name: "Oracle",
+    icon: "🔮",
+    description: "10 pronostics corrects.",
+    category: "ENGAGEMENT",
+    rarity: "EPIC",
+    criteria: { type: "PRONOSTICS_CORRECT", count: 10 },
+  },
+  {
+    name: "High Roller",
+    icon: "🎲",
+    description: "Gagner 5 paris d'XP.",
+    category: "ENGAGEMENT",
+    rarity: "RARE",
+    criteria: { type: "BETS_WON", count: 5 },
+  },
+  {
+    name: "All In",
+    icon: "💰",
+    description: "Parier 50% de son XP sur un pari... et le gagner.",
+    category: "ENGAGEMENT",
+    rarity: "LEGENDARY",
+    criteria: { type: "ALL_IN_WIN", count: 1 },
+  },
 ];
 
 const prisma = new PrismaClient();

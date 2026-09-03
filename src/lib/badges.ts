@@ -21,7 +21,16 @@ export type BadgeCriteria =
   | { type: "STREAK_DAYS"; count: number }
   | { type: "ACCOUNT_AGE_DAYS"; count: number }
   // Sprint 3 suite (défis hebdo) — "Challenger" au 5ème défi complété.
-  | { type: "CHALLENGES_COMPLETED"; count: number };
+  | { type: "CHALLENGES_COMPLETED"; count: number }
+  // Sprint 4 (Pronostics) — "Oracle" à 10 pronos corrects.
+  | { type: "PRONOSTICS_CORRECT"; count: number }
+  // Sprint 4 (Paris d'XP) — "High Roller" à 5 paris gagnés.
+  | { type: "BETS_WON"; count: number }
+  // Sprint 4 (Paris d'XP) — "All In" : parier 50% du solde ET gagner.
+  // `count` toujours 1 ici (pas un seuil cumulatif comme les autres
+  // critères) — la stat correspondante (`allInWin`) vaut 0 ou 1, jamais
+  // plus, cf. `checkBetBadges`.
+  | { type: "ALL_IN_WIN"; count: number };
 
 /**
  * Stats partielles passées à `unlockMatchingBadges` — chaque appelant ne
@@ -42,6 +51,9 @@ export interface BadgeStats {
   streakCount?: number;
   accountAgeDays?: number;
   challengesCompleted?: number;
+  pronosticsCorrect?: number;
+  betsWon?: number;
+  allInWin?: number;
 }
 
 const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats> = {
@@ -53,6 +65,9 @@ const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats
   STREAK_DAYS: "streakCount",
   ACCOUNT_AGE_DAYS: "accountAgeDays",
   CHALLENGES_COMPLETED: "challengesCompleted",
+  PRONOSTICS_CORRECT: "pronosticsCorrect",
+  BETS_WON: "betsWon",
+  ALL_IN_WIN: "allInWin",
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -168,6 +183,30 @@ export async function checkLibraryBadges(userId: string): Promise<void> {
 export async function checkChallengeBadges(userId: string): Promise<boolean> {
   const count = await prisma.xpEvent.count({ where: { userId, reason: "CHALLENGE_COMPLETE" } });
   return unlockMatchingBadges(userId, { challengesCompleted: count });
+}
+
+/** Après un prono résolu correct (`resolvePronostics`) — "Oracle" à 10 pronos corrects. */
+export async function checkPronosticBadges(userId: string): Promise<void> {
+  const count = await prisma.pronostic.count({ where: { voterId: userId, correct: true } });
+  await unlockMatchingBadges(userId, { pronosticsCorrect: count });
+}
+
+/**
+ * Après un pari gagné (`resolveBets`) — "High Roller" à 5 paris gagnés, et
+ * "All In" au premier pari `allIn` gagné (`stats.allInWin` vaut 1 si CE
+ * pari qui vient d'être résolu était `allIn`, 0/absent sinon — pas un
+ * cumul, contrairement aux autres critères : un seul pari all-in gagné
+ * suffit).
+ */
+export async function checkBetBadges(userId: string): Promise<void> {
+  const [betsWonCount, allInWinCount] = await Promise.all([
+    prisma.xpBet.count({ where: { voterId: userId, won: true } }),
+    prisma.xpBet.count({ where: { voterId: userId, won: true, allIn: true } }),
+  ]);
+  await unlockMatchingBadges(userId, {
+    betsWon: betsWonCount,
+    allInWin: allInWinCount > 0 ? 1 : 0,
+  });
 }
 
 /**

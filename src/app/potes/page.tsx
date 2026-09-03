@@ -14,6 +14,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { StreakFlame } from "@/components/StreakFlame";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { formatDurationFr, nowMs } from "@/lib/wallclock";
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   return (
@@ -40,6 +41,8 @@ export default async function PotesPage() {
       xpTotal: true,
       streakCount: true,
       steamId64: true,
+      lastPlayedGame: true,
+      lastPlayedAt: true,
       // Sprint 3 (FEATURE 6) — chips de tags sur la carte pote.
       userTags: { select: { tag: { select: { id: true, name: true } } } },
     },
@@ -71,6 +74,12 @@ export default async function PotesPage() {
 
   // Sprint 3 suite (dettes/gage) — badge "💀" à côté du pseudo.
   const activeDebtorIds = await getActiveDebtorIds();
+
+  // Sprint 4 (FEATURE 4) — consultation passive uniquement, calculée une
+  // fois pour toute la liste plutôt qu'à chaque carte (`nowMs()` dans le
+  // corps du composant casserait la pureté React Compiler, cf. convention
+  // déjà établie ailleurs dans l'app).
+  const now = nowMs();
 
   return (
     <PullToRefresh>
@@ -169,6 +178,13 @@ export default async function PotesPage() {
                       <Badge tone={pote.steamId64 ? "accent" : "neutral"} className="w-fit">
                         {pote.steamId64 ? "Steam lié" : "Steam non lié"}
                       </Badge>
+
+                      {pote.steamId64 && pote.lastPlayedGame && pote.lastPlayedAt && (
+                        <p className="text-xs text-muted">
+                          🎮 Joue à {pote.lastPlayedGame} — il y a{" "}
+                          {formatDurationFr(now - pote.lastPlayedAt.getTime())}
+                        </p>
+                      )}
 
                       {pote.userTags.length > 0 && (
                         <div className="flex flex-wrap gap-1">

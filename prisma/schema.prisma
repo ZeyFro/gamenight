@@ -142,6 +142,26 @@ model User {
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts Debt[]
 
+  // Sprint 4 (Pronostics) — qui a prédit quoi (voir `Pronostic`). Deux
+  // relations distinctes vers `Pronostic` (voteur ≠ prédit), mêmes noms
+  // explicites obligatoires que `SuperlativeVote` plus haut.
+  pronosticsMade      Pronostic[] @relation("PronosticVoter")
+  pronosticsReceived  Pronostic[] @relation("PronosticPredicted")
+
+  // Sprint 4 (Paris d'XP) — mêmes deux rôles distincts (parieur ≠ cible).
+  xpBetsPlaced XpBet[] @relation("XpBetVoter")
+  xpBetsTarget XpBet[] @relation("XpBetTarget")
+
+  // Sprint 4 (FEATURE 4) — dernière activité Steam connue, rafraîchie par
+  // le cron `steam-library-sync` existant (`GetRecentlyPlayedGames`,
+  // src/lib/steam.ts). `null` tant qu'aucune partie récente n'a jamais été
+  // détectée (compte non lié, ou aucune activité sur les 2 dernières
+  // semaines — fenêtre imposée par l'API Steam elle-même). Consultation
+  // passive uniquement (/potes, /profil) — jamais de notif Discord, cf.
+  // spec.
+  lastPlayedGame String?
+  lastPlayedAt   DateTime?
+
   @@index([xpTotal])
 }
 
@@ -392,6 +412,68 @@ model Session {
   superlativeAwards SuperlativeAward[]
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts             Debt[]
+  // Sprint 4 — voir `Pronostic`/`XpBet`.
+  pronostics        Pronostic[]
+  xpBets            XpBet[]
+}
+
+// Sprint 4 (FEATURE 1, Pronostics) — avant une soirée SCHEDULED, chaque
+// participant prédit qui va "carry" (gagner MVP/Carry). `voterId` = celui
+// qui prédit, `predictedUserId` = celui qu'il désigne. `@@unique([sessionId,
+// voterId])` : un seul prono par personne et par soirée, comme demandé.
+// Résolu par `resolvePronostics` (src/lib/pronostics.ts), appelée juste
+// après `finalizeSuperlativeVoting` (src/lib/superlative-voting.ts) une
+// fois les awards de la soirée connus — "correct" = `predictedUserId` a
+// gagné une catégorie superlatif dont le nom contient "carry" ou "mvp"
+// (catégories admin-éditables sur /admin/superlatifs, pas d'enum figé
+// possible ici — voir le commentaire sur `isCarryOrMvpCategory` dans
+// pronostics.ts pour le detail du matching).
+model Pronostic {
+  id              String   @id @default(cuid())
+  sessionId       String
+  voterId         String
+  predictedUserId String
+  // `null` tant que non résolu ; posé par `resolvePronostics` en même temps
+  // que l'XP/notif — même rôle que `XpBet.won` (voir plus bas), pour ne
+  // jamais recalculer la correspondance carry/mvp à chaque lecture (ex.
+  // "taux de prono correct" sur /profil).
+  correct         Boolean?
+  createdAt       DateTime @default(now())
+
+  session       Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  voter         User    @relation("PronosticVoter", fields: [voterId], references: [id], onDelete: Cascade)
+  predictedUser User    @relation("PronosticPredicted", fields: [predictedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, voterId])
+}
+
+// Sprint 4 (FEATURE 5, Paris d'XP) — même fenêtre que les pronostics
+// (soirée SCHEDULED), mais avec une mise d'XP. `amount` est déduit du
+// solde du parieur DÈS la pose du pari (mise "en jeu", jamais négative :
+// `placeBetAction` valide `amount <= floor(xpTotal * 0.5)` avant d'écrire).
+// `won` reste `null` tant que non résolu ; résolu en même temps que les
+// pronostics, par `resolveBets` (src/lib/xp-bets.ts) — pari gagné =
+// `targetUserId` a gagné une catégorie carry/mvp, double mise créditée via
+// `awardXp` (reason `XP_BET_WON`) ; perdu = rien de plus (mise déjà
+// déduite). `allIn` fige si la mise valait 50% pile du solde au moment du
+// pari (badge "All In" : parier 50% ET gagner) — recalculer ça après coup
+// à partir du seul `amount` serait faux, `xpTotal` ayant pu changer entre
+// temps.
+model XpBet {
+  id           String   @id @default(cuid())
+  sessionId    String
+  voterId      String
+  targetUserId String
+  amount       Int
+  won          Boolean?
+  allIn        Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  voter   User    @relation("XpBetVoter", fields: [voterId], references: [id], onDelete: Cascade)
+  target  User    @relation("XpBetTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, voterId])
 }
 
 model Proposal {
@@ -493,6 +575,12 @@ enum XpReason {
   BADGE_UNLOCKED
   // Sprint 3 (défis hebdo) — voir `WeeklyChallenge`/`src/lib/weekly-challenges.ts`.
   CHALLENGE_COMPLETE
+  // Sprint 4 — voir `Pronostic`/`src/lib/pronostics.ts`.
+  PRONOSTIC_CORRECT
+  // Sprint 4 — voir `XpBet`/`src/lib/xp-bets.ts`. `applyStreak: false` sur
+  // l'appel `awardXp` correspondant (rendre une mise + gains n'est pas un
+  // "gain" au sens streak, cf. le commentaire sur `awardXp`).
+  XP_BET_WON
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -849,6 +937,10 @@ enum NotificationType {
   REVANCHE
   // Sprint 3 (achievements de groupe) — voir `GroupAchievement`.
   ACHIEVEMENT
+  // Sprint 4 — pronostic correct (voir `Pronostic`).
+  PRONOSTIC
+  // Sprint 4 — pari d'XP résolu, gagné ou perdu (voir `XpBet`).
+  XP_BET
 }
 
 model Notification {
