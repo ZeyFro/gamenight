@@ -162,6 +162,9 @@ model User {
   lastPlayedGame String?
   lastPlayedAt   DateTime?
 
+  // Sprint 4 (Saisons mensuelles) — voir `SeasonSnapshot`.
+  seasonSnapshots SeasonSnapshot[]
+
   @@index([xpTotal])
 }
 
@@ -1142,4 +1145,65 @@ model Debt {
 
   debtor  User    @relation(fields: [debtorId], references: [id], onDelete: Cascade)
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+// Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — snapshot figé du mois
+// précédent, généré au 1er passage du cron `monthly-tasks` sur ou après le
+// 1er du mois (`generateMonthlyRecapIfDue`, src/lib/monthly-recap.ts).
+// `@@unique([year, month])` : idempotent — un mois déjà recapé n'est
+// jamais recalculé (le recap est un instantané, pas une vue vivante, pour
+// que /recap/[year]/[month] reste identique même après coup si les stats
+// sous-jacentes changeaient). `data` en JSON libre plutôt que des colonnes
+// dédiées : la forme suit `MonthlyRecapData` (src/lib/monthly-recap.ts),
+// display-only, jamais requêtée par champ.
+model MonthlyRecap {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@unique([year, month])
+}
+
+// Sprint 4 (FEATURE 3, Saisons mensuelles) — reset mensuel du classement
+// XP. Une seule saison `isActive` à la fois (invariant applicatif, pas de
+// contrainte DB dédiée — `finalizeSeasonIfDue`, src/lib/seasons.ts, est le
+// seul point d'écriture). `number` incrémental (`@unique`), `name`
+// dérivé ("Saison N") mais stocké en dur pour rester affichable même si la
+// formule de nommage change plus tard. Saison 1 bootstrapée par
+// `prisma/seed-season.mjs` au déploiement, SANS reset rétroactif (scores
+// actuels conservés comme tête de départ, cf. spec).
+model Season {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+
+  snapshots SeasonSnapshot[]
+}
+
+// Classement figé d'un user à la clôture d'une saison — écrit par
+// `finalizeSeasonIfDue` juste avant le reset de `User.xpTotal`, seule
+// façon de consulter "qui était où" une fois le classement remis à zéro.
+// `position === 1` = champion de la saison (affiché "🏆 Champion Saison N"
+// sur /profil/saisons et /saisons) — pas un `Badge`/`UserBadge` : le
+// système de badges (critères `{ type, count }` à seuil cumulatif) ne
+// modélise pas "était 1er à un instant T", c'est une notion par saison,
+// pas un cumul statistique.
+model SeasonSnapshot {
+  id       String @id @default(cuid())
+  seasonId String
+  userId   String
+  xp       Int
+  level    Int
+  rank     String
+  position Int
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, userId])
 }
