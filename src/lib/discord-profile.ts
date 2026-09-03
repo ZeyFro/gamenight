@@ -61,3 +61,61 @@ export async function refreshDiscordProfile(discordId: string, accessToken: stri
     logger.error("discord-profile", error, { discordId });
   }
 }
+
+/**
+ * Fix bug remonté : le rafraîchissement ci-dessus dépend du jeton d'accès
+ * OAuth d'un user précis, disponible uniquement DANS SA propre session JWT
+ * — un jeton Discord expire au bout de ~7 jours, et sans reconnexion
+ * complète entre-temps `refreshDiscordProfile` échoue silencieusement en
+ * boucle (`res.ok` faux) jusqu'à la prochaine vraie reconnexion. Cette
+ * fonction rafraîchit TOUT LE MONDE depuis un cron, sans dépendre d'une
+ * session active ni d'un jeton individuel : `GET /users/{id}` avec le
+ * jeton du BOT de l'application (Developer Portal → Bot), qui ne périme
+ * jamais. Nécessite que le bot soit membre du serveur Discord du groupe.
+ * `DISCORD_BOT_TOKEN` optionnelle — même philosophie que
+ * `DEEPL_API_KEY`/`BLOB_READ_WRITE_TOKEN` : no-op silencieux (avec un
+ * warning loggé une fois par appel) si non configurée, jamais une erreur
+ * qui casserait le cron.
+ */
+export async function refreshAllDiscordProfilesViaBot(): Promise<{
+  checked: number;
+  updated: number;
+}> {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    logger.warn(
+      "discord-profile",
+      "DISCORD_BOT_TOKEN non configurée — rafraîchissement cron ignoré."
+    );
+    return { checked: 0, updated: 0 };
+  }
+
+  const users = await prisma.user.findMany({
+    select: { discordId: true, discordName: true, discordAvatar: true },
+  });
+
+  let updated = 0;
+  for (const user of users) {
+    try {
+      const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (!res.ok) continue;
+
+      const profile = (await res.json()) as DiscordSelfResponse;
+      const freshName = profile.global_name ?? profile.username;
+      const freshAvatar = discordAvatarUrl(profile.id, profile.avatar, profile.discriminator);
+      if (freshName === user.discordName && freshAvatar === user.discordAvatar) continue;
+
+      await prisma.user.update({
+        where: { discordId: user.discordId },
+        data: { discordName: freshName, discordAvatar: freshAvatar },
+      });
+      updated += 1;
+    } catch (error) {
+      logger.error("discord-profile", error, { discordId: user.discordId });
+    }
+  }
+
+  return { checked: users.length, updated };
+}

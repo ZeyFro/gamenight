@@ -28,6 +28,14 @@ model User {
   bannerUrl        String?
   steamId64        String?  @unique
   steamPublic      Boolean  @default(false)
+  // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
+  // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
+  // resync Family) : source de vérité unique pour "Dernière sync : il y a
+  // Xj" sur /profil/parametres, plutôt que de la déduire indirectement de
+  // `Game.createdAt`/`UserGame.createdAt` (imprécis : une sync sans aucun
+  // nouveau jeu ne toucherait aucune de ces dates alors qu'une sync a bien
+  // eu lieu).
+  steamLastSyncAt DateTime?
   // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
   // utilisateur — le message est quand même posté dans le salon, il n'est
   // simplement pas mentionné.

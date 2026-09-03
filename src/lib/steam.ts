@@ -1,6 +1,7 @@
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkLibraryBadges } from "@/lib/badges";
+import { wallClockNow } from "@/lib/wallclock";
 
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
 const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
@@ -71,6 +72,11 @@ export async function getOwnedGames(
   url.searchParams.set("key", apiKey);
   url.searchParams.set("steamid", steamId64);
   url.searchParams.set("include_appinfo", "true");
+  // Fix bug remonté (Family/free games manquants) : sans ce paramètre,
+  // Steam omet parfois les jeux free-to-play joués et certains titres
+  // partagés — l'inclure est strictement plus permissif, jamais moins
+  // (aucun jeu normalement possédé n'est filtré par ce flag).
+  url.searchParams.set("include_played_free_games", "true");
   url.searchParams.set("format", "json");
 
   const res = await fetch(url, { cache: "no-store" });
@@ -98,13 +104,30 @@ export function steamPrivacySettingsUrl(steamId64: string): string {
 }
 
 export type ImportSteamLibraryResult =
-  | { status: "imported"; count: number }
+  | { status: "imported"; count: number; newCount: number }
   | { status: "private" };
 
 /**
  * Importe la bibliothèque Steam d'un utilisateur : upsert chaque jeu dans
  * `Game` (source STEAM) et marque `UserGame.owned = true`. Met aussi à jour
- * `User.steamPublic` pour refléter le dernier statut de visibilité constaté.
+ * `User.steamPublic` pour refléter le dernier statut de visibilité constaté,
+ * et `User.steamLastSyncAt` (fix bug remonté : indicateur "Dernière sync"
+ * sur /profil/parametres) — posé à CHAQUE appel de cette fonction, quel
+ * que soit le déclencheur (lien initial, bouton "Réimporter", cron
+ * quotidien `steam-library-sync`, resync Family), pour rester la seule
+ * source de vérité de "quand a-t-on parlé à l'API Steam pour ce user".
+ *
+ * `newCount` (fix bug remonté : nouveaux achats jamais détectés) : cette
+ * fonction traite déjà TOUS les jeux renvoyés par Steam à chaque appel
+ * (pas seulement ceux manquants en base) — un jeu nouvellement acheté est
+ * donc upserté comme n'importe quel autre. Le vrai bug était l'absence de
+ * déclenchement périodique (personne n'appelait cette fonction sans une
+ * action explicite de l'utilisateur) ; `steam-library-sync`
+ * (`src/app/api/cron/steam-library-sync/route.ts`) comble ce trou.
+ * `newCount` (jeux que ce user ne possédait pas encore juste avant cet
+ * appel) sert à distinguer un run silencieux d'un run qui a vraiment
+ * trouvé du nouveau, pour le logging du cron et le message de la
+ * resync Family.
  */
 export async function importSteamLibrary(
   userId: string,
@@ -114,14 +137,25 @@ export async function importSteamLibrary(
 
   await prisma.user.update({
     where: { id: userId },
-    data: { steamPublic: result.ok },
+    data: { steamPublic: result.ok, steamLastSyncAt: wallClockNow() },
   });
 
   if (!result.ok) {
     return { status: "private" };
   }
 
+  const alreadyOwnedAppIds = new Set(
+    (
+      await prisma.userGame.findMany({
+        where: { userId, owned: true, game: { steamAppId: { not: null } } },
+        select: { game: { select: { steamAppId: true } } },
+      })
+    ).map((ug) => ug.game.steamAppId)
+  );
+  let newCount = 0;
+
   for (const game of result.games) {
+    if (!alreadyOwnedAppIds.has(game.appid)) newCount += 1;
     const dbGame = await prisma.game.upsert({
       where: { steamAppId: game.appid },
       update: { name: game.name, coverUrl: steamCoverUrl(game.appid) },
@@ -153,5 +187,5 @@ export async function importSteamLibrary(
 
   await checkLibraryBadges(userId);
 
-  return { status: "imported", count: result.games.length };
+  return { status: "imported", count: result.games.length, newCount };
 }

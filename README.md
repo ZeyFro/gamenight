@@ -5638,3 +5638,125 @@ reste disponible tel quel, derrière un toggle.
   "Présent" du formulaire de résultats est coché par défaut pour tous —
   un formulaire soumis sans y toucher produit exactement le même résultat
   qu'avant cette PR)
+
+## Fixes bugs remontés (priorité Sprint 4)
+
+Trois bugs remontés par les utilisateurs, traités avant le Sprint 4.
+
+### FIX 1 — Avatars/pseudos Discord auto-refresh
+
+Un rafraîchissement passif existait déjà (`src/auth.ts`, callback `jwt`,
+toutes les 12h) mais dépend du jeton OAuth **individuel** de chaque
+user, stocké uniquement dans SON JWT de session (pas d'adapter Prisma —
+`session: { strategy: "jwt" }`, aucune table `Account`). Un jeton Discord
+expire au bout de ~7 jours sans jamais se renouveler tout seul (pas de
+refresh token géré) : passé ce délai, `refreshDiscordProfile` échoue
+silencieusement en boucle (`res.ok` faux) jusqu'à la prochaine vraie
+reconnexion — d'où le bug remonté ("ne se met à jour qu'à la
+déconnexion/reconnexion").
+
+**Fix** : `refreshAllDiscordProfilesViaBot()` (`src/lib/discord-profile.ts`)
+rafraîchit TOUT LE MONDE via le jeton du **bot** Discord de l'application
+(`GET /users/{id}`, ne périme jamais), indépendamment de toute session
+active. Nouvelle route `GET /api/cron/refresh-discord-profiles`, appelée
+par un cron externe toutes les heures, même protection `CRON_SECRET` que
+les autres crons. `DISCORD_BOT_TOKEN` optionnelle — no-op silencieux
+(warning loggé) si absente ; le rafraîchissement passif au login continue
+de fonctionner seul dans ce cas.
+
+**Config cron-job.org** (ou équivalent), en plus des crons déjà en place :
+
+```
+URL     : https://ton-projet.vercel.app/api/cron/refresh-discord-profiles
+Méthode : GET
+Header  : Authorization: Bearer <CRON_SECRET>
+Fréquence : toutes les heures (0 * * * *)
+```
+
+**Config bot Discord** : Developer Portal → ton application → onglet
+"Bot" → "Reset Token" pour obtenir `DISCORD_BOT_TOKEN` → inviter le bot
+sur le serveur Discord du groupe (OAuth2 → URL Generator → scope `bot`,
+aucune permission particulière requise pour `GET /users/{id}`).
+
+### FIX 2 — Bibliothèque Steam auto-sync (nouveaux achats)
+
+`importSteamLibrary` traitait déjà TOUS les jeux renvoyés par
+`GetOwnedGames` à chaque appel (upsert, jamais un ajout des seuls jeux
+manquants) — un nouvel achat aurait donc été importé correctement...
+si quelque chose appelait cette fonction sans action explicite de
+l'utilisateur. Ce n'était le cas qu'au lien initial du compte Steam et
+via le bouton "Réimporter" manuel : aucun cron n'existait pour ça (le
+cron `/api/backfill/steam-store` existant ne fait que resynchroniser
+`isCoop` pour des jeux déjà en base, jamais d'appel `GetOwnedGames`).
+
+**Fix** : nouvelle route `GET /api/cron/steam-library-sync`, qui appelle
+`importSteamLibrary` pour chaque user avec un `steamId64`, une fois par
+jour. `importSteamLibrary` renvoie désormais `newCount` (jeux que le user
+ne possédait pas encore juste avant cet appel), loggé quand > 0. Boucle
+"best-effort par user" — une panne Steam sur un compte n'empêche jamais
+de traiter les autres (même philosophie que
+`processOpenRoulettes`/`closeOverdueScheduledSessions`).
+
+**Config cron-job.org** :
+
+```
+URL     : https://ton-projet.vercel.app/api/cron/steam-library-sync
+Méthode : GET
+Header  : Authorization: Bearer <CRON_SECRET>
+Fréquence : une fois par jour
+```
+
+### FIX 3 — Steam Family re-sync facile
+
+Aucun endpoint Steam public n'expose la bibliothèque Family Sharing
+(confirmé par le commentaire déjà présent sur `family-import.ts`) — le
+copier-coller reste la seule solution garantie. Deux améliorations
+pragmatiques :
+
+- `getOwnedGames` pose désormais `include_played_free_games=1` (en plus
+  d'`include_appinfo=1` déjà présent) — strictement plus permissif,
+  capture certains jeux gratuits/partagés que Steam omettait sinon selon
+  les comptes (aucune garantie officielle documentée par Steam sur les
+  jeux Family spécifiquement).
+- Bouton "🔄 Resynchroniser Family" sur `/profil/parametres`, à côté de
+  l'import copier-coller (`resyncSteamFamilyAction`,
+  `src/app/profil/family-import-actions.ts`) — rappelle
+  `importSteamLibrary` et distingue deux cas via `newCount` : des
+  nouveaux jeux trouvés (import silencieux, message de succès) ou aucun
+  (message clair renvoyant vers le copier-coller, plutôt qu'un faux "à
+  jour" silencieux — Steam n'a simplement rien renvoyé de nouveau pour ce
+  compte).
+- `User.steamLastSyncAt` (nouveau champ, migration additive) — posé par
+  `importSteamLibrary` à CHAQUE appel (lien initial, réimport manuel,
+  cron quotidien, resync Family), seule source de vérité pour "Dernière
+  sync : il y a Xj" affiché sur `/profil/parametres`. Volontairement pas
+  déduit de `Game.createdAt`/`UserGame.createdAt` : un run sans aucun
+  nouveau jeu ne toucherait aucune de ces dates alors qu'une sync a bien
+  eu lieu.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `User.steamLastSyncAt`
+- `prisma/migrations/20260903180000_add_steam_last_sync/`
+- `src/lib/discord-profile.ts` — `refreshAllDiscordProfilesViaBot`
+- `src/app/api/cron/refresh-discord-profiles/route.ts` (nouveau)
+- `src/lib/steam.ts` — `include_played_free_games`, `steamLastSyncAt`,
+  `ImportSteamLibraryResult.newCount`
+- `src/app/api/cron/steam-library-sync/route.ts` (nouveau)
+- `src/app/profil/family-import-actions.ts` — `resyncSteamFamilyAction`
+- `src/app/profil/parametres/page.tsx` — bouton resync Family, indicateur
+  "Dernière sync"
+- `.env.example` — `DISCORD_BOT_TOKEN`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, 0 skip, tout vert
+- Pas de dev smoke test authentifié possible (aucun `DATABASE_URL` dans ce
+  sandbox) — vérifié par audit de code et build/lint/tests
+- `.next`/`AGENTS.md`/`CLAUDE.md` nettoyés avant commit
+- Zéro régression : migration additive ; `ImportSteamLibraryResult` gagne
+  un champ (`newCount`) sans retirer ni changer les existants, tous les
+  appelants déjà en place continuent de fonctionner sans modification
+  (vérifié par grep de tous les usages)
