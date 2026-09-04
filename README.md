@@ -6037,3 +6037,75 @@ victoire, "Gladiateur" 5 participations), annonce Discord.
 - `npx next build` : compile et type-check sans erreur (44 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Migration purement additive — zéro régression PR #1-60
+
+## Sprint 5 PR-B : Chat in-app 💬 + Wishlist 🛒
+
+### Chat in-app (FEATURE 2)
+
+Messagerie **polling** (PAS de websockets — Vercel Hobby ne supporte pas
+les connexions persistantes, cf. demande) : le client relit
+`getChatMessagesAction` (appelée directement depuis le composant client,
+même pattern que `markAllNotificationsReadAction`/`NotificationBell`)
+toutes les 10s, avec indicateur "Actualisation…".
+
+- `ChatMessage` (canal global si `sessionId` null, sinon canal dédié à
+  une soirée — même table filtrée) + `ChatReaction` (une réaction par
+  personne par message, `@@unique([messageId, userId])` : reproposer une
+  réaction différente la remplace, retaper la même la retire).
+- Icône 💬 dans le header à côté de la cloche → panneau plein écran sur
+  mobile, glissant depuis la droite sur desktop (même famille que
+  `GameFilterDrawer`, plein écran plutôt que bottom-sheet sur mobile,
+  demandé explicitement pour le chat).
+- Onglet "💬 Chat" embarqué directement sur `/sessions/[id]` (canal
+  scopé à la soirée).
+- Bulles colorées avec `User.color`, envoyé à droite/reçu à gauche
+  (iMessage), réactions par longue-pression (👍😂🔥💀), max 200 messages
+  chargés (jamais supprimés en base, juste plus affichés au-delà).
+
+### Wishlist jeux à acheter (FEATURE 3, V17)
+
+`/wishlist` — nouvel onglet "🛒 À acheter" dans `LibraryTabs` (à côté de
+"Ma bibliothèque"/"Groupe"/"Tierlist"/"À vérifier").
+
+- `GameWishlist` (`@@unique([gameId])` : un jeu ne peut avoir qu'une
+  seule entrée à la fois, proposer un jeu déjà listé revient à voter
+  dessus) + `GameWishlistVote` (`interested` 👍/👎, `@@unique([wishlistId,
+  userId])`).
+- Tri par nombre d'intéressés décroissant, badge "X/6 intéressés" en
+  vert dès la majorité du groupe.
+- **Détection automatique d'achat** : `checkWishlistPurchases`
+  (src/lib/wishlist.ts) tourne après CHAQUE import Steam réussi
+  (`importSteamLibrary` — donc le cron `steam-library-sync` ET le bouton
+  "Réimporter" manuel) — dès qu'un membre possède désormais un jeu de la
+  wishlist, l'entrée est marquée "✅ Acheté par [Pote]" toute seule,
+  jamais un état à cocher à la main. Vérifiée aussi à la proposition
+  elle-même (si quelqu'un possède déjà le jeu au moment où il est
+  proposé).
+- Cover reprise directement de `Game.coverUrl` (déjà résolue à
+  l'import/ajout, aucun nouvel appel IGDB). Prix Steam **best-effort**,
+  jamais mis en cache (contrairement à `Game.igdbDetails` — un prix
+  change, une fiche jeu non) : fetch live à l'affichage de la page pour
+  les jeux Steam non encore achetés, silencieusement absent si Steam
+  Store est injoignable ou n'a pas de prix (gratuit, retiré du store…).
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `ChatMessage`, `ChatReaction`,
+  `GameWishlist`, `GameWishlistVote`
+- `prisma/migrations/20260904120000_add_chat_wishlist/`
+- `src/lib/chat.ts`, `src/app/chat/actions.ts` (nouveaux)
+- `src/components/chat/ChatMessages.tsx`, `src/components/chat/ChatPanel.tsx` (nouveaux)
+- `src/components/Header.tsx` — icône 💬
+- `src/app/sessions/[id]/page.tsx` — section "💬 Chat"
+- `src/lib/wishlist.ts`, `src/app/wishlist/actions.ts`, `src/app/wishlist/page.tsx` (nouveaux)
+- `src/lib/steam-store.ts` — `priceFormatted` sur `SteamStoreDetails`
+- `src/lib/steam.ts` — `checkWishlistPurchases` appelée après chaque import
+- `src/components/LibraryTabs.tsx` — onglet "🛒 À acheter"
+- `src/lib/validations.ts` — schémas chat + wishlist
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Migration purement additive — zéro régression PR #1-61

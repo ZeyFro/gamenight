@@ -2,9 +2,11 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { getUnreadNotificationCount, listRecentNotifications, notificationHref } from "@/lib/notifications";
+import { getChatMessages } from "@/lib/chat";
 import { Logo } from "@/components/Logo";
 import { HeaderNavLinks } from "@/components/HeaderNavLinks";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 
 export async function Header() {
   const session = await auth();
@@ -16,12 +18,16 @@ export async function Header() {
   // juste en dessous (`hidden sm:flex`).
   let unreadCount = 0;
   let notifications: NotificationItem[] = [];
+  let currentUserId: string | null = null;
+  let initialChatMessages: Awaited<ReturnType<typeof getChatMessages>> = [];
   if (session?.user) {
     const user = await getCurrentUser();
     if (user) {
-      const [count, recent] = await Promise.all([
+      currentUserId = user.id;
+      const [count, recent, chatMessages] = await Promise.all([
         getUnreadNotificationCount(user.id),
         listRecentNotifications(user.id, 20),
+        getChatMessages(null),
       ]);
       unreadCount = count;
       notifications = recent.map((n) => ({
@@ -33,6 +39,7 @@ export async function Header() {
         createdAtIso: n.createdAt.toISOString(),
         href: notificationHref(n),
       }));
+      initialChatMessages = chatMessages;
     }
   }
 
@@ -47,6 +54,9 @@ export async function Header() {
             <nav className="hidden items-center gap-1 sm:flex">
               <HeaderNavLinks />
             </nav>
+            {currentUserId && (
+              <ChatPanel currentUserId={currentUserId} initialMessages={initialChatMessages} />
+            )}
             <NotificationBell initialUnreadCount={unreadCount} notifications={notifications} />
           </div>
         )}

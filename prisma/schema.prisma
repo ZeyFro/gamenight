@@ -176,6 +176,17 @@ model User {
   tournamentMatchesAsP2   TournamentMatch[]        @relation("TournamentMatchPlayer2")
   tournamentMatchesWon    TournamentMatch[]        @relation("TournamentMatchWinner")
 
+  // Sprint 5 (FEATURE 2, Chat in-app) — voir `ChatMessage`/`ChatReaction`.
+  chatMessages  ChatMessage[]
+  chatReactions ChatReaction[]
+
+  // Sprint 5 (FEATURE 3, Wishlist) — voir `GameWishlist`/`GameWishlistVote`.
+  // Trois relations distinctes vers `GameWishlist` (proposant ≠ acheteur),
+  // mêmes noms explicites obligatoires que `SuperlativeVote` plus haut.
+  wishlistProposals  GameWishlist[]     @relation("WishlistProposedBy")
+  wishlistPurchases  GameWishlist[]     @relation("WishlistPurchasedBy")
+  wishlistVotes      GameWishlistVote[]
+
   @@index([xpTotal])
 }
 
@@ -232,6 +243,11 @@ model Game {
 
   // Sprint 5 (Tournois Bracket) — jeu du tournoi.
   tournaments Tournament[]
+
+  // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
+  // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
+  // plutôt qu'un tableau.
+  wishlistEntry GameWishlist?
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -432,6 +448,8 @@ model Session {
   // Sprint 4 — voir `Pronostic`/`XpBet`.
   pronostics        Pronostic[]
   xpBets            XpBet[]
+  // Sprint 5 (Chat in-app) — canal dédié à cette soirée (`ChatMessage.sessionId`).
+  chatMessages      ChatMessage[]
 }
 
 // Sprint 4 (FEATURE 1, Pronostics) — avant une soirée SCHEDULED, chaque
@@ -1308,4 +1326,86 @@ model TournamentMatch {
   winner     User?      @relation("TournamentMatchWinner", fields: [winnerId], references: [id])
 
   @@unique([tournamentId, round, position])
+}
+
+// Sprint 5 (FEATURE 2, Chat in-app) — messagerie POLLING (PAS de
+// websockets : Vercel Hobby ne supporte pas les connexions persistantes,
+// cf. spec) : le client relit `getChatMessagesAction` toutes les 10s
+// (src/components/chat/ChatMessages.tsx). `sessionId` null = canal
+// global, sinon canal dédié à une soirée — même table pour les deux,
+// filtrée par `sessionId`. `content` validé à 500 caractères max côté
+// zod (src/lib/validations.ts), jamais tronqué en base. Les messages ne
+// sont jamais supprimés (juste plus affichés au-delà de 200, cf.
+// `getChatMessages`) — pas de `deletedAt`, l'énoncé ne demande pas de
+// modération.
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String?
+  content   String
+  createdAt DateTime @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   Session?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  reactions ChatReaction[]
+
+  @@index([sessionId, createdAt])
+}
+
+// Une réaction par personne par message (`@@unique`, cf. énoncé) —
+// reproposer une réaction DIFFÉRENTE remplace la précédente (upsert),
+// retaper la MÊME la retire (toggle) — cf. `toggleReactionAction`.
+model ChatReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+// Sprint 5 (FEATURE 3, Wishlist V17) — jeux que le groupe aimerait
+// acheter, proposés puis votés. `@@unique([gameId])` : un jeu ne peut
+// avoir qu'UNE seule entrée wishlist à la fois — proposer un jeu déjà
+// présent revient à voter dessus plutôt qu'à dupliquer la carte.
+// `purchasedById`/`purchasedAt` posés par `checkWishlistPurchases`
+// (src/lib/wishlist.ts), appelée après chaque import Steam réussi (cron
+// ET réimport manuel) : dès qu'un membre possède désormais ce jeu, la
+// wishlist se met à jour toute seule, jamais un état à cocher à la main.
+model GameWishlist {
+  id            String    @id @default(cuid())
+  gameId        String
+  proposedById  String
+  reason        String?
+  createdAt     DateTime  @default(now())
+  purchasedById String?
+  purchasedAt   DateTime?
+
+  game        Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  proposedBy  User               @relation("WishlistProposedBy", fields: [proposedById], references: [id])
+  purchasedBy User?              @relation("WishlistPurchasedBy", fields: [purchasedById], references: [id])
+  votes       GameWishlistVote[]
+
+  @@unique([gameId])
+}
+
+// `interested` : true = "Intéressé 👍", false = "Pas pour moi 👎" —
+// toujours un vote explicite des deux côtés (pas de valeur par défaut
+// implicite), `@@unique([wishlistId, userId])` pour qu'un revote change
+// juste la valeur existante (upsert) plutôt que d'en empiler une deuxième.
+model GameWishlistVote {
+  id         String   @id @default(cuid())
+  wishlistId String
+  userId     String
+  interested Boolean
+  createdAt  DateTime @default(now())
+
+  wishlist GameWishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistId, userId])
 }

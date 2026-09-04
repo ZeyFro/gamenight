@@ -1,6 +1,7 @@
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkLibraryBadges } from "@/lib/badges";
+import { checkWishlistPurchases } from "@/lib/wishlist";
 import { wallClockNow } from "@/lib/wallclock";
 
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
@@ -194,6 +195,10 @@ export async function importSteamLibrary(
   }
 
   await checkLibraryBadges(userId);
+
+  // Sprint 5 (Wishlist) — dès qu'un membre possède désormais un jeu de la
+  // wishlist du groupe, l'entrée se marque "achetée" toute seule.
+  await checkWishlistPurchases(userId);
 
   // Sprint 4 (FEATURE 4) — jeu le plus récemment joué, si Steam a renvoyé
   // au moins un timestamp exploitable (`rtime_last_played` absent ou à 0
