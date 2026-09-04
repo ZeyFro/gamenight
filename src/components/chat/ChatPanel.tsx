@@ -14,9 +14,15 @@ import type { ChatMessageDTO } from "@/lib/chat";
  */
 export function ChatPanel({
   currentUserId,
+  currentUserName,
+  currentUserAvatar,
+  currentUserColor,
   initialMessages,
 }: {
   currentUserId: string;
+  currentUserName: string;
+  currentUserAvatar: string | null;
+  currentUserColor: string;
   initialMessages: ChatMessageDTO[];
 }) {
   return (
@@ -55,6 +61,9 @@ export function ChatPanel({
               <ChatMessages
                 sessionId={null}
                 currentUserId={currentUserId}
+                currentUserName={currentUserName}
+                currentUserAvatar={currentUserAvatar}
+                currentUserColor={currentUserColor}
                 initialMessages={initialMessages}
               />
             </div>

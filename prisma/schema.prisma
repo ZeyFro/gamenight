@@ -450,6 +450,13 @@ model Session {
   xpBets            XpBet[]
   // Sprint 5 (Chat in-app) — canal dédié à cette soirée (`ChatMessage.sessionId`).
   chatMessages      ChatMessage[]
+
+  // Infra (Sprint 5 suite, I4) — `/sessions`, la Home et les crons
+  // filtrent quasi systématiquement par `status` puis trient par `date`
+  // (prochaine soirée VOTING/SCHEDULED, sessions VOTING dues pour la
+  // clôture...) ; seul modèle "chaud" de l'app qui n'avait encore aucun
+  // index.
+  @@index([status, date])
 }
 
 // Sprint 4 (FEATURE 1, Pronostics) — avant une soirée SCHEDULED, chaque

@@ -248,9 +248,18 @@ export const toggleReactionSchema = z.object({
   emoji: z.enum(CHAT_REACTION_EMOJIS),
 });
 
-/** Sprint 5 (Wishlist) — `proposeWishlistGameAction`. `reason` optionnel. */
+/**
+ * Fix (Sprint 5 suite) — `proposeWishlistGameAction`. La wishlist doit
+ * pouvoir proposer un jeu que PERSONNE ne possède encore (ex. un jeu pas
+ * encore sorti) : recherche IGDB plutôt qu'un select limité à la biblio
+ * du groupe, `igdbId` obligatoire (même logique que l'ajout manuel,
+ * `addManualGameSchema` — le jeu est upsert par `igdbId`, cf.
+ * `proposeWishlistGameAction`). `reason` optionnel.
+ */
 export const proposeWishlistGameSchema = z.object({
-  gameId: idSchema,
+  igdbId: z.string().regex(/^\d+$/, "Identifiant IGDB invalide."),
+  name: z.string().trim().min(1, "Nom manquant.").max(200, "200 caractères max."),
+  coverUrl: z.union([httpUrlSchema, z.literal("")]),
   reason: z.union([z.string().trim().max(200, "200 caractères max."), z.literal("")]),
 });
 

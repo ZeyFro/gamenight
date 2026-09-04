@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDurationFr } from "@/lib/wallclock";
 import { CHAT_REACTION_EMOJIS } from "@/lib/validations";
+import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import type { ChatMessageDTO } from "@/lib/chat";
 import {
   getChatMessagesAction,
@@ -25,10 +27,16 @@ const LONG_PRESS_MS = 500;
 export function ChatMessages({
   sessionId,
   currentUserId,
+  currentUserName,
+  currentUserAvatar,
+  currentUserColor,
   initialMessages,
 }: {
   sessionId: string | null;
   currentUserId: string;
+  currentUserName: string;
+  currentUserAvatar: string | null;
+  currentUserColor: string;
   initialMessages: ChatMessageDTO[];
 }) {
   const [messages, setMessages] = useState(initialMessages);
@@ -64,12 +72,37 @@ export function ChatMessages({
     if (!content) return;
     setDraft("");
 
+    // Mise à jour optimiste (Sprint 5 suite, I2) — la bulle apparaît
+    // immédiatement, un id temporaire suffit puisqu'elle n'est jamais
+    // affichée plus de quelques centaines de ms : soit `refresh()` la
+    // remplace par la vraie ligne (envoi réussi), soit elle est retirée
+    // (échec, cf. plus bas).
+    const tempId = `optimistic-${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage: ChatMessageDTO = {
+      id: tempId,
+      content,
+      createdAtIso: new Date().toISOString(),
+      userId: currentUserId,
+      discordName: currentUserName,
+      discordAvatar: currentUserAvatar,
+      color: currentUserColor,
+      reactions: [],
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+
     const formData = new FormData();
     formData.set("content", content);
     formData.set("sessionId", sessionId ?? "");
 
     startTransition(async () => {
-      await sendChatMessageAction(formData);
+      const result = await sendChatMessageAction(formData);
+      if (!result.ok) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        toast.error(
+          result.error === RATE_LIMIT_ERROR_KEY ? RATE_LIMIT_MESSAGE : "Une erreur est survenue."
+        );
+        return;
+      }
       await refresh();
     });
   }

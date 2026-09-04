@@ -2,9 +2,15 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
 import { getChatMessages, type ChatMessageDTO } from "@/lib/chat";
+
+/** Même contrat que `ToggleVoteResult` — la bulle affichée en optimiste (ChatMessages) doit pouvoir se retirer si l'envoi échoue. */
+export interface SendChatMessageResult {
+  ok: boolean;
+  error?: string;
+}
 
 /**
  * Appelée directement (pas via `<form action>`) par `ChatMessages`
@@ -26,26 +32,29 @@ export async function getChatMessagesAction(
  * que 10/min) : un chat en direct implique naturellement plus d'envois
  * rapprochés qu'un formulaire classique.
  */
-export async function sendChatMessageAction(formData: FormData) {
+export async function sendChatMessageAction(formData: FormData): Promise<SendChatMessageResult> {
   const user = await getCurrentUser();
-  if (!user) return;
-  if (!checkRateLimit(user.id, "sendChatMessage", { limit: 20, windowMs: 60_000 })) return;
+  if (!user) return { ok: false };
+  if (!checkRateLimit(user.id, "sendChatMessage", { limit: 20, windowMs: 60_000 })) {
+    return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  }
 
   const input = sendChatMessageSchema.safeParse({
     content: String(formData.get("content") ?? ""),
     sessionId: String(formData.get("sessionId") ?? ""),
   });
-  if (!input.success) return;
+  if (!input.success) return { ok: false };
 
   const sessionId = input.data.sessionId || null;
   if (sessionId) {
     const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true } });
-    if (!session) return;
+    if (!session) return { ok: false };
   }
 
   await prisma.chatMessage.create({
     data: { userId: user.id, sessionId, content: input.data.content },
   });
+  return { ok: true };
 }
 
 /**

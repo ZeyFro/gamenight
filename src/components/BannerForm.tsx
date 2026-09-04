@@ -7,6 +7,58 @@ import { Button } from "@/components/ui/Button";
 const MAX_BANNER_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
+// Infra (Sprint 5 suite, I3) — bande passante Vercel Hobby limitée : une
+// bannière n'a jamais besoin d'être plus grande que sa taille d'affichage
+// (1500×500 recommandé, cf. placeholder ci-dessous) ni conservée au format
+// d'origine (souvent un PNG/JPEG plein cadre sorti tel quel du téléphone,
+// plusieurs Mo). Redimensionnée et recompressée côté client (canvas,
+// qualité 80%) AVANT l'upload Vercel Blob — jamais après, l'objectif est
+// justement de ne pas envoyer l'original lourd sur le réseau.
+const BANNER_MAX_WIDTH = 1500;
+const BANNER_MAX_HEIGHT = 500;
+const BANNER_COMPRESS_QUALITY = 0.8;
+
+/**
+ * Redimensionne (sans jamais agrandir) et recompresse une image côté
+ * client via `<canvas>`. Retourne le fichier original si le
+ * redimensionnement échoue (canvas indisponible, décodage impossible…) —
+ * dégradation silencieuse, l'upload doit rester possible même si cette
+ * optimisation échoue.
+ */
+async function compressBannerImage(file: File): Promise<File> {
+  try {
+    const objectUrl = URL.createObjectURL(file);
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Image illisible."));
+      image.src = objectUrl;
+    });
+
+    const scale = Math.min(1, BANNER_MAX_WIDTH / img.width, BANNER_MAX_HEIGHT / img.height);
+    const width = Math.round(img.width * scale);
+    const height = Math.round(img.height * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Contexte canvas indisponible.");
+    ctx.drawImage(img, 0, 0, width, height);
+    URL.revokeObjectURL(objectUrl);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", BANNER_COMPRESS_QUALITY)
+    );
+    if (!blob) throw new Error("Compression échouée.");
+
+    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], name, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 function BannerPreview({ url }: { url: string | null }) {
   return (
     <div
@@ -43,8 +95,9 @@ export function BannerForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.target;
+    const file = input.files?.[0];
     setFileError(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
@@ -53,16 +106,24 @@ export function BannerForm({
 
     if (!ALLOWED_BANNER_MIME_TYPES.includes(file.type)) {
       setFileError("Format non supporté (jpg, png, webp ou gif uniquement).");
-      e.target.value = "";
+      input.value = "";
       return;
     }
     if (file.size > MAX_BANNER_UPLOAD_BYTES) {
       setFileError("Fichier trop lourd (5 Mo max).");
-      e.target.value = "";
+      input.value = "";
       return;
     }
 
-    setPreviewUrl(URL.createObjectURL(file));
+    const compressed = await compressBannerImage(file);
+    // Remplace le fichier sélectionné par la version compressée : l'upload
+    // (form action native, pas un fetch piloté ici) part bien de ce fichier
+    // réduit, jamais de l'original.
+    const transfer = new DataTransfer();
+    transfer.items.add(compressed);
+    input.files = transfer.files;
+
+    setPreviewUrl(URL.createObjectURL(compressed));
   }
 
   return (
