@@ -22,6 +22,11 @@ export interface SteamStoreCategory {
 export interface SteamStoreDetails {
   categories: SteamStoreCategory[];
   isCoop: boolean;
+  // Sprint 5 (Wishlist) — prix affiché tel quel par Steam ("19,99€",
+  // déjà formaté FR via `?l=french`), `null` si le jeu est gratuit ou si
+  // Steam n'a pas renvoyé de `price_overview` (jeu retiré du store,
+  // région sans prix…) — "approximatif" et best-effort, cf. spec.
+  priceFormatted: string | null;
 }
 
 /**
@@ -80,11 +85,21 @@ export async function fetchSteamStoreDetails(
 
   const body = (await res.json()) as Record<
     string,
-    { success: boolean; data?: { categories?: SteamStoreCategory[] } }
+    {
+      success: boolean;
+      data?: {
+        categories?: SteamStoreCategory[];
+        is_free?: boolean;
+        price_overview?: { final_formatted?: string };
+      };
+    }
   >;
   const entry = body[String(steamAppId)];
   if (!entry?.success || !entry.data) return null;
 
   const categories = entry.data.categories ?? [];
-  return { categories, isCoop: deriveIsCoopFromCategories(categories) };
+  const priceFormatted = entry.data.is_free
+    ? null
+    : (entry.data.price_overview?.final_formatted ?? null);
+  return { categories, isCoop: deriveIsCoopFromCategories(categories), priceFormatted };
 }

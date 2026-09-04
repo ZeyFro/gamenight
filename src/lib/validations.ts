@@ -234,3 +234,28 @@ export const setDebtGageSchema = z.object({
   debtId: idSchema,
   gage: z.string().trim().min(1, "Le gage ne peut pas être vide.").max(200, "200 caractères max."),
 });
+
+/** Sprint 5 (Chat in-app) — `sendChatMessageAction`. `sessionId` absent/vide = canal global. */
+export const sendChatMessageSchema = z.object({
+  content: z.string().trim().min(1, "Message vide.").max(500, "500 caractères max."),
+  sessionId: z.union([idSchema, z.literal("")]),
+});
+
+/** Sprint 5 (Chat in-app) — `toggleReactionAction`. 4 emojis fixes (cf. spec), pas de saisie libre. */
+export const CHAT_REACTION_EMOJIS = ["👍", "😂", "🔥", "💀"] as const;
+export const toggleReactionSchema = z.object({
+  messageId: idSchema,
+  emoji: z.enum(CHAT_REACTION_EMOJIS),
+});
+
+/** Sprint 5 (Wishlist) — `proposeWishlistGameAction`. `reason` optionnel. */
+export const proposeWishlistGameSchema = z.object({
+  gameId: idSchema,
+  reason: z.union([z.string().trim().max(200, "200 caractères max."), z.literal("")]),
+});
+
+/** Sprint 5 (Wishlist) — `voteWishlistAction`. */
+export const voteWishlistSchema = z.object({
+  wishlistId: idSchema,
+  interested: z.enum(["true", "false"]),
+});

@@ -14,6 +14,7 @@ import {
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
 import { getPronosticEligibleUsers } from "@/lib/pronostics";
+import { getChatMessages } from "@/lib/chat";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -31,6 +32,7 @@ import { WithdrawProposalDialog } from "@/components/WithdrawProposalDialog";
 import { ProposeGameForm } from "@/components/ProposeGameForm";
 import { PronosticForm } from "@/components/PronosticForm";
 import { XpBetForm } from "@/components/XpBetForm";
+import { ChatMessages } from "@/components/chat/ChatMessages";
 import {
   cancelSessionAction,
   closeSessionAction,
@@ -212,6 +214,9 @@ export default async function SessionDetailPage({
     weeklyChallenge !== null &&
     !weeklyChallenge.completedAt &&
     session.date >= weeklyChallenge.weekStart;
+
+  // Sprint 5 (Chat in-app) — canal dédié à cette soirée.
+  const chatMessages = await getChatMessages(session.id);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -621,6 +626,15 @@ export default async function SessionDetailPage({
           )}
         </section>
       )}
+
+      <section className="flex min-h-0 flex-col gap-3">
+        <h2 className="text-lg font-semibold text-foreground">💬 Chat</h2>
+        <Card className="flex h-[28rem] flex-col p-0">
+          <div className="flex min-h-0 flex-1 flex-col p-2">
+            <ChatMessages sessionId={session.id} currentUserId={user.id} initialMessages={chatMessages} />
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }
