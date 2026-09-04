@@ -24,6 +24,10 @@ export const XP_AMOUNTS = {
   CHALLENGE_COMPLETE: 100,
   // Sprint 4 (Pronostics) — voir src/lib/pronostics.ts.
   PRONOSTIC_CORRECT: 50,
+  // Sprint 5 (Tournois Bracket) — voir src/lib/tournaments.ts.
+  TOURNAMENT_1ST: 200,
+  TOURNAMENT_2ND: 100,
+  TOURNAMENT_SEMIFINALIST: 50,
 } as const;
 
 /**

@@ -19,6 +19,7 @@ const XP_REASON_LABELS: Record<XpReason, string> = {
   CHALLENGE_COMPLETE: "a complété le défi de la semaine",
   PRONOSTIC_CORRECT: "a fait un pronostic correct",
   XP_BET_WON: "a gagné un pari d'XP",
+  TOURNAMENT_RESULT: "a marqué en tournoi",
 };
 
 /** Onglet "Aperçu" (route par défaut de /profil) — voir `layout.tsx` pour l'en-tête. */
