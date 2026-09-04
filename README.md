@@ -5924,3 +5924,31 @@ Fréquence : 1x par jour
 - `npx next build` : compile et type-check sans erreur (39 routes)
 - `npx vitest run` : 70 tests, tout vert
 - Migration purement additive — zéro régression PR #1-56 + PR-A
+
+## Fix bug remonté : Saison 1 jamais créée au déploiement
+
+`prisma/seed-season.mjs` ne bootstrappe Saison 1 qu'au `npm run build` —
+en pratique, la migration ajoutant `Season` a été appliquée après le
+build qui aurait dû lancer ce script, donc aucune saison n'a jamais été
+créée en prod (`getSeasonProgress()` et `finalizeSeasonIfDue()`
+retournaient silencieusement sans rien faire, faute de saison active).
+
+**Fix** : `ensureFirstSeasonExists()` (src/lib/seasons.ts) — garde-fou
+idempotent (si une saison active existe, `findFirst` et sort
+immédiatement ; sinon crée Saison 1, contrainte unique sur
+`Season.number` comme filet de sécurité contre un double-appel
+concurrent) appelé à la volée à deux endroits : chargement de la Home et
+cron `close-sessions` (toutes les 15 min) — répare l'état sans dépendre
+uniquement d'un script de build, y compris après un bug futur ou une
+purge accidentelle de la table `Season`.
+
+### Fichiers modifiés
+
+- `src/lib/seasons.ts` — `ensureFirstSeasonExists`
+- `src/app/page.tsx`, `src/app/api/cron/close-sessions/route.ts` — wiring
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 70 tests, tout vert

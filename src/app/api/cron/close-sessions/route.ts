@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
 import { processOpenRoulettes } from "@/lib/roulette";
+import { ensureFirstSeasonExists } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 
@@ -46,6 +47,16 @@ export async function GET(request: Request) {
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
+  }
+
+  // Fix bug remonté (Saison 1 jamais créée au déploiement) — garde-fou
+  // idempotent, voir le commentaire sur `ensureFirstSeasonExists`
+  // (src/lib/seasons.ts). Best-effort : une panne ici ne doit jamais
+  // empêcher la clôture des sessions, seule vraie responsabilité de ce cron.
+  try {
+    await ensureFirstSeasonExists();
+  } catch (error) {
+    logger.error("cron:close-sessions", error, { task: "ensureFirstSeasonExists" });
   }
 
   const now = wallClockNow();

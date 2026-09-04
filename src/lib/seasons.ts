@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { logger } from "@/lib/logger";
 
 /**
@@ -12,6 +13,44 @@ import { logger } from "@/lib/logger";
  */
 export async function getActiveSeason() {
   return prisma.season.findFirst({ where: { isActive: true } });
+}
+
+/**
+ * Fix bug remonté (Saison 1 jamais créée au déploiement) — `prisma/
+ * seed-season.mjs` ne tourne qu'au `npm run build`, ce qui suppose que le
+ * script s'exécute correctement à CHAQUE déploiement de la base
+ * concernée ; en pratique le premier déploiement de ce chantier ne l'a
+ * pas fait (migration appliquée après coup, script jamais rejoué). Plutôt
+ * que de dépendre uniquement d'un script de build, cette fonction est
+ * appelée à la volée (Home, cron `close-sessions`) : garde-fou
+ * idempotent qui ne coûte qu'un `findFirst` tant qu'une saison active
+ * existe déjà (99.9% des appels), et qui répare l'état sinon — y compris
+ * après un bug ou une purge accidentelle de la table `Season`.
+ *
+ * Idempotent par construction : `getActiveSeason()` retrouve la saison
+ * dès qu'une existe, et la contrainte unique sur `Season.number` empêche
+ * une double création en cas d'appels concurrents (retombe
+ * silencieusement, même filet de sécurité que `unlockBadge`).
+ */
+export async function ensureFirstSeasonExists(): Promise<void> {
+  const active = await getActiveSeason();
+  if (active) return;
+
+  const now = wallClockNow();
+  try {
+    await prisma.season.create({
+      data: {
+        number: 1,
+        name: "Saison 1",
+        startDate: now,
+        endDate: endOfMonthUTC(now),
+        isActive: true,
+      },
+    });
+  } catch (error) {
+    if (isUniqueConstraintViolation(error)) return;
+    throw error;
+  }
 }
 
 /**
