@@ -13,6 +13,8 @@ import { shouldShowOnboarding } from "@/lib/onboarding";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
+import { getMonthlyRecap } from "@/lib/monthly-recap";
+import { getSeasonProgress } from "@/lib/seasons";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -158,6 +160,17 @@ export default async function Home({
     prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),
     getActiveDebts(),
     getActiveDebtorIds(),
+  ]);
+
+  // Sprint 4 — card "📊 Recap" (mois dernier, si déjà généré par le cron
+  // `monthly-tasks`) et barre de progression de la saison en cours.
+  const wallNow = wallClockNow();
+  const prevMonthDate = new Date(Date.UTC(wallNow.getUTCFullYear(), wallNow.getUTCMonth() - 1, 1));
+  const recapYear = prevMonthDate.getUTCFullYear();
+  const recapMonth = prevMonthDate.getUTCMonth() + 1;
+  const [lastMonthRecap, seasonProgress] = await Promise.all([
+    getMonthlyRecap(recapYear, recapMonth),
+    getSeasonProgress(),
   ]);
 
   // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
@@ -412,6 +425,47 @@ export default async function Home({
           </Card>
         </StaggerItem>
         </div>
+
+        {/* Sprint 4 (Saisons mensuelles) — barre de progression de la
+            saison en cours, masquée si aucune saison active (ne devrait
+            pas arriver post-bootstrap, cf. prisma/seed-season.mjs). */}
+        {seasonProgress && (
+          <StaggerItem>
+            <Link href="/saisons">
+              <Card className="flex flex-col gap-2">
+                <p className="text-sm text-muted">
+                  🏆 {seasonProgress.name} — Jour {seasonProgress.dayOfMonth}/
+                  {seasonProgress.totalDays}
+                </p>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+                  <div
+                    className="h-full rounded-full bg-accent"
+                    style={{
+                      width: `${Math.min(100, (seasonProgress.dayOfMonth / seasonProgress.totalDays) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </Card>
+            </Link>
+          </StaggerItem>
+        )}
+
+        {/* Sprint 4 (Recap mensuel Wrapped) — n'apparaît qu'une fois le
+            recap du mois dernier généré par le cron `monthly-tasks`
+            (silencieux tant qu'il n'existe pas, jamais de placeholder
+            vide). */}
+        {lastMonthRecap && (
+          <StaggerItem>
+            <Link href={`/recap/${recapYear}/${recapMonth}`}>
+              <Card className="card-glow flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">
+                  📊 Le recap du mois dernier est prêt !
+                </p>
+                <span className="text-accent">→</span>
+              </Card>
+            </Link>
+          </StaggerItem>
+        )}
 
         {/* Actu gaming (Sprint 3) — cache uniquement (`GameNews`, rafraîchi
             par `runGameNewsBackfill`, jamais l'API Steam directement ici),

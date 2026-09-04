@@ -117,6 +117,18 @@ export function todayDateOnly(): Date {
   );
 }
 
+/** Sprint 4 (Saisons/Recap) — 1er du mois de `date`, à minuit. */
+export function startOfMonthUTC(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+/** Sprint 4 (Saisons/Recap) — dernier instant du mois de `date` (23:59:59.999 le dernier jour). */
+export function endOfMonthUTC(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999)
+  );
+}
+
 /**
  * `Date.now()` isolé dans une fonction nommée — le lint `react-hooks/purity`
  * (React Compiler) interdit l'appel direct à `Date.now`/`new Date` dans le

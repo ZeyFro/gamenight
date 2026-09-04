@@ -5845,3 +5845,82 @@ Discord. N'affiche rien si `steamId64` n'est pas lié.
 - `npx next build` : compile et type-check sans erreur
 - `npx vitest run` : 70 tests, tout vert
 - Migration purement additive — zéro régression PR #1-56
+
+## Sprint 4 PR-B : Recap mensuel Wrapped, Saisons mensuelles
+
+Seconde moitié du Sprint 4 — dépend du modèle `Pronostic` introduit par la
+PR-A (stat "meilleur pronostiqueur" du recap) : branche basée sur
+`sprint4-pr-a`, PR ouverte contre cette base plutôt que `main` (stacked
+PR), à merger après la PR-A.
+
+### FEATURE 2 — Recap mensuel Wrapped 📊
+
+Un seul cron quotidien (`/api/cron/monthly-tasks`, voir plus bas) génère,
+au premier passage à partir du 1er du mois, un recap figé du mois
+précédent (`MonthlyRecap`, `@@unique([year, month])` — idempotent, jamais
+recalculé après coup). Stats : soirées jouées, jeu le plus joué, MVP du
+mois (le plus de fois élu "MVP de la soirée"), joueur le plus actif (le
+plus de soirées), meilleur streak, meilleur pronostiqueur (le plus de
+pronos corrects du mois), XP total du groupe. Silencieux si aucune soirée
+jouée ce mois-là (pas de recap vide).
+
+`/recap/[year]/[month]` — style Spotify Wrapped : dégradé violet→noir,
+scroll-snap vertical, une stat par écran révélée en Framer Motion
+`whileInView` au scroll (le "tap ou auto-scroll" de la spec). Card "📊
+Recap" sur la Home dès que le recap du mois dernier existe. Notif Discord
+avec lien direct vers le recap.
+
+### FEATURE 3 — Saisons mensuelles 🏆
+
+Reset mensuel du classement XP (`Season`/`SeasonSnapshot`). Une seule
+saison `isActive` à la fois ; `finalizeSeasonIfDue` (src/lib/seasons.ts,
+appelée par le même cron quotidien) clôture la saison dès que sa
+`endDate` (dernier jour du mois) est dépassée : snapshot du classement
+AVANT reset (seule façon de consulter "qui était où"), annonce Discord du
+champion, `xpTotal` remis à 0 pour tout le monde (badges/achievements/
+streak jamais touchés), nouvelle saison ouverte immédiatement (jamais de
+trou sans saison active).
+
+Saison 1 bootstrapée par `prisma/seed-season.mjs` au déploiement de cette
+PR — **sans reset rétroactif** : les scores XP actuels des users restent
+la tête de départ, comme demandé.
+
+- `/saisons` — historique des saisons terminées, podium top 3.
+- `/profil/saisons` — résultats passés de l'utilisateur, "🏆 Champion"
+  si `position === 1`. Pas un `Badge`/`UserBadge` : le système de badges
+  (critères à seuil cumulatif) ne modélise pas "était 1er à un instant
+  T", propre à chaque saison plutôt qu'un cumul statistique.
+- Home : "🏆 Saison X — Jour Y/30" avec barre de progression.
+
+**Config cron-job.org** (ou équivalent), en plus des crons déjà en
+place :
+
+```
+URL     : https://ton-projet.vercel.app/api/cron/monthly-tasks
+Méthode : GET
+Header  : Authorization: Bearer <CRON_SECRET>
+Fréquence : 1x par jour
+```
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `MonthlyRecap`, `Season`, `SeasonSnapshot`,
+  `User.seasonSnapshots`
+- `prisma/migrations/20260903210000_add_monthly_recap_seasons/`
+- `prisma/seed-season.mjs` (nouveau, bootstrap Saison 1) + wiring dans
+  `npm run build`
+- `src/lib/wallclock.ts` — `startOfMonthUTC`, `endOfMonthUTC`
+- `src/lib/seasons.ts`, `src/lib/monthly-recap.ts` (nouveaux)
+- `src/app/api/cron/monthly-tasks/route.ts` (nouveau)
+- `src/components/RecapWrapped.tsx` (nouveau)
+- `src/app/recap/[year]/[month]/page.tsx`,
+  `src/app/saisons/page.tsx`, `src/app/profil/saisons/page.tsx` (nouveaux)
+- `src/components/ProfilTabs.tsx` — onglet "Saisons"
+- `src/app/page.tsx` — cards recap + progression de saison
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (39 routes)
+- `npx vitest run` : 70 tests, tout vert
+- Migration purement additive — zéro régression PR #1-56 + PR-A
