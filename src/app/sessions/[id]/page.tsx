@@ -309,17 +309,12 @@ export default async function SessionDetailPage({
               pronostiqué. Résultat révélé après la soirée.
             </p>
           </div>
-          {pronosticData.alreadySubmitted ? (
-            <p className="text-sm text-accent">
-              Pronostic enregistré — réponse au tirage des récompenses.
-            </p>
-          ) : (
-            <PronosticForm
-              sessionId={session.id}
-              voterId={user.id}
-              participants={pronosticData.participants}
-            />
-          )}
+          <PronosticForm
+            sessionId={session.id}
+            voterId={user.id}
+            participants={pronosticData.participants}
+            initialAlreadySubmitted={pronosticData.alreadySubmitted}
+          />
 
           <div className="border-t border-border pt-4">
             <h2 className="font-semibold text-foreground">🎲 Paris</h2>
@@ -631,7 +626,14 @@ export default async function SessionDetailPage({
         <h2 className="text-lg font-semibold text-foreground">💬 Chat</h2>
         <Card className="flex h-[28rem] flex-col p-0">
           <div className="flex min-h-0 flex-1 flex-col p-2">
-            <ChatMessages sessionId={session.id} currentUserId={user.id} initialMessages={chatMessages} />
+            <ChatMessages
+              sessionId={session.id}
+              currentUserId={user.id}
+              currentUserName={user.discordName}
+              currentUserAvatar={user.discordAvatar}
+              currentUserColor={user.color}
+              initialMessages={chatMessages}
+            />
           </div>
         </Card>
       </section>

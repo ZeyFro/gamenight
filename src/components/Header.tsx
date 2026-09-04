@@ -18,12 +18,18 @@ export async function Header() {
   // juste en dessous (`hidden sm:flex`).
   let unreadCount = 0;
   let notifications: NotificationItem[] = [];
-  let currentUserId: string | null = null;
+  let currentUser: { id: string; discordName: string; discordAvatar: string | null; color: string } | null =
+    null;
   let initialChatMessages: Awaited<ReturnType<typeof getChatMessages>> = [];
   if (session?.user) {
     const user = await getCurrentUser();
     if (user) {
-      currentUserId = user.id;
+      currentUser = {
+        id: user.id,
+        discordName: user.discordName,
+        discordAvatar: user.discordAvatar,
+        color: user.color,
+      };
       const [count, recent, chatMessages] = await Promise.all([
         getUnreadNotificationCount(user.id),
         listRecentNotifications(user.id, 20),
@@ -54,8 +60,14 @@ export async function Header() {
             <nav className="hidden items-center gap-1 sm:flex">
               <HeaderNavLinks />
             </nav>
-            {currentUserId && (
-              <ChatPanel currentUserId={currentUserId} initialMessages={initialChatMessages} />
+            {currentUser && (
+              <ChatPanel
+                currentUserId={currentUser.id}
+                currentUserName={currentUser.discordName}
+                currentUserAvatar={currentUser.discordAvatar}
+                currentUserColor={currentUser.color}
+                initialMessages={initialChatMessages}
+              />
             )}
             <NotificationBell initialUnreadCount={unreadCount} notifications={notifications} />
           </div>

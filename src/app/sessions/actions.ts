@@ -752,32 +752,41 @@ export async function forceCloseSuperlativeVotingAction(formData: FormData) {
  * ailleurs) — pas de sens à prédire pour une soirée à laquelle on ne
  * participe pas. 1 seul prono par personne (contrainte unique côté
  * `submitPronostic`, retombe silencieusement en cas de doublon).
+ *
+ * Infra (Sprint 5 suite, I2) — renvoie un résultat (au lieu d'un simple
+ * `void`), même contrat que `ToggleVoteResult` : `PronosticForm` fait une
+ * mise à jour optimiste avant d'appeler cette action, elle doit pouvoir
+ * la défaire si la requête est refusée plutôt que de laisser affiché "Pronostic
+ * enregistré" alors que rien n'a été enregistré côté serveur.
  */
-export async function submitPronosticAction(formData: FormData) {
+export async function submitPronosticAction(formData: FormData): Promise<ToggleVoteResult> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (!checkRateLimit(user.id, "submitPronostic")) return;
+  if (!checkRateLimit(user.id, "submitPronostic")) {
+    return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  }
 
   const input = pronosticSchema.safeParse({
     sessionId: String(formData.get("sessionId") ?? ""),
     predictedUserId: String(formData.get("predictedUserId") ?? ""),
   });
-  if (!input.success) return;
+  if (!input.success) return { ok: true };
   const { sessionId, predictedUserId } = input.data;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { status: true, decidedGameId: true },
   });
-  if (!session || session.status !== "SCHEDULED" || !session.decidedGameId) return;
+  if (!session || session.status !== "SCHEDULED" || !session.decidedGameId) return { ok: true };
 
   const eligible = await getPronosticEligibleUsers(sessionId, session.decidedGameId);
   const eligibleIds = new Set(eligible.map((u) => u.id));
-  if (!eligibleIds.has(user.id) || !eligibleIds.has(predictedUserId)) return;
-  if (predictedUserId === user.id) return;
+  if (!eligibleIds.has(user.id) || !eligibleIds.has(predictedUserId)) return { ok: true };
+  if (predictedUserId === user.id) return { ok: true };
 
   await submitPronostic(sessionId, user.id, predictedUserId);
   revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
 }
 
 /**

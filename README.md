@@ -6109,3 +6109,106 @@ toutes les 10s, avec indicateur "Actualisation…".
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Migration purement additive — zéro régression PR #1-61
+
+## Sprint 5 suite : fix wishlist + infra/perf
+
+### FIX — Wishlist : recherche IGDB plutôt que la biblio du groupe
+
+Le but de la wishlist est de proposer un jeu que PERSONNE dans le groupe
+ne possède encore (ex. un jeu pas encore sorti) — un `<select>` limité à
+`prisma.game.findMany()` ne pouvait donc jamais servir son but premier.
+`WishlistProposeForm` (nouveau) remplace ce select par une recherche IGDB
+en autocomplete (debounce 300ms, même endpoint `/api/igdb/search` que
+`AjouterJeuForm`) : cover + nom dans les résultats, tap → jeu upsert par
+`igdbId` (même logique que `addManualGame`, src/app/actions.ts — si le
+jeu existe déjà en base, ex. import Steam matché, on l'attache
+directement plutôt que de dupliquer la ligne `Game`) → entrée wishlist
+créée. `proposeWishlistGameSchema` mis à jour en conséquence (`igdbId`
+obligatoire, plus de `gameId`).
+
+### I1 — Cache des covers IGDB/Steam
+
+`next/image` sert déjà ces domaines via l'optimiseur intégré
+(`remotePatterns`, en place depuis la 1ère PR) mais sans
+`minimumCacheTTL` explicite, il ne gardait le fichier optimisé en cache
+que quelques heures. Une cover IGDB/Steam ne change quasiment jamais une
+fois résolue — `next.config.ts` fixe maintenant `minimumCacheTTL` à 30
+jours.
+
+### I2 — Optimistic UI
+
+Audit de l'existant avant d'ajouter quoi que ce soit : le vote sur les
+propositions de soirée (`VoteButton`) et le toggle de dispo sur
+`/calendrier` (`DayTimeline`) avaient déjà le pattern complet (mise à
+jour immédiate + défait avec toast si le serveur refuse). Étendu aux 3
+endroits qui ne l'avaient pas encore, même pattern partout :
+
+- **Pronostic** (`PronosticForm`) — "Pronostic enregistré" s'affiche dès
+  le clic ; `submitPronosticAction` renvoie maintenant un résultat
+  (`{ok, error?}`, même contrat que `ToggleVoteResult`) pour pouvoir
+  redéfaire l'affichage si l'action échoue.
+- **Vote wishlist** (`WishlistVoteButtons`, nouveau) — bouton actif +
+  badge "X/6 intéressés" mis à jour immédiatement ; `voteWishlistAction`
+  renvoie désormais `VoteWishlistResult`.
+- **Envoi de message chat** (`ChatMessages`) — la bulle apparaît
+  immédiatement (id temporaire, remplacée par la vraie ligne au prochain
+  `refresh()`, ou retirée + toast si `sendChatMessageAction` échoue,
+  désormais elle aussi à résultat).
+
+### I3 — Compression des bannières avant upload
+
+`BannerForm` redimensionne (sans jamais agrandir, `min(1, 1500/largeur,
+500/hauteur)`) et recompresse (canvas `toBlob`, JPEG qualité 80%) côté
+client AVANT l'upload Vercel Blob — le fichier compressé remplace le
+fichier sélectionné dans l'`<input type="file">` (trick `DataTransfer`)
+pour que l'upload natif (`<form action={uploadBannerAction}>`) parte
+bien de la version réduite. Dégradation silencieuse (fichier original
+conservé) si la compression échoue (canvas indisponible, image
+indécodable…) — l'upload doit rester possible dans tous les cas.
+
+### I4 — Index Prisma
+
+Audit des index existants avant d'en ajouter (cf. demande) :
+`UserGame.userId` (déjà couvert par `@@id([userId, gameId])`),
+`Notification.userId+read` (déjà exact), `AvailabilityOverride.userId+date`
+(déjà couvert par `@@unique([userId, date])`) et `XpEvent.userId` (déjà
+en place) n'avaient besoin de rien. `ChatMessage.createdAt` est mieux
+couvert par l'index composite `(sessionId, createdAt)` déjà posé au
+Sprint 5 PR-B (nos requêtes filtrent toujours par `sessionId`). Seul
+`Session` (filtré par `status` puis trié par `date` sur `/sessions`, la
+Home et les crons) n'avait encore aucun index — ajouté
+(`@@index([status, date])`).
+
+### I5 — Tableau récapitulatif des crons
+
+Aucun doublon constaté (chaque cron couvre une tâche distincte) :
+
+| Cron | URL | Fréquence | Ce qu'il fait |
+| :--- | :-- | :-------- | :------------ |
+| Clôture des soirées | `/api/cron/close-sessions` | 15 min | `VOTING → SCHEDULED/CANCELLED`, `SCHEDULED → DONE`, tirage des roulettes async dues, garde-fou Saison 1 |
+| Rappels de soirée | `/api/cron/reminders` | 15 min | Envoie les rappels Discord programmés (`Session.reminderTimings`) |
+| Sync bibliothèques Steam | `/api/cron/steam-library-sync` | 1h | Réimporte la biblio Steam de chaque compte lié, badges, détection d'achats wishlist |
+| Rafraîchissement profils Discord | `/api/cron/refresh-discord-profiles` | 1h | Avatar/pseudo de tout le monde via le bot Discord (contourne l'expiration du token OAuth individuel) |
+| Tâches mensuelles | `/api/cron/monthly-tasks` | 1x/jour | Clôture de saison si échue, génération du recap Wrapped du mois si le 1er |
+
+### Fichiers modifiés/ajoutés
+
+- `src/components/wishlist/WishlistProposeForm.tsx` (nouveau),
+  `src/app/wishlist/actions.ts`, `src/app/wishlist/page.tsx`,
+  `src/lib/validations.ts`
+- `next.config.ts` — `minimumCacheTTL`
+- `src/components/PronosticForm.tsx`, `src/app/sessions/actions.ts` —
+  `submitPronosticAction` à résultat
+- `src/components/wishlist/WishlistVoteButtons.tsx` (nouveau) —
+  `voteWishlistAction` à résultat
+- `src/components/chat/ChatMessages.tsx`, `src/app/chat/actions.ts` —
+  `sendChatMessageAction` à résultat, bulle optimiste
+- `src/components/BannerForm.tsx` — compression client-side
+- `prisma/schema.prisma`, `prisma/migrations/20260904140000_add_session_status_date_index/`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Migration purement additive — zéro régression PR #1-62
