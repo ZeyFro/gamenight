@@ -165,6 +165,17 @@ model User {
   // Sprint 4 (Saisons mensuelles) — voir `SeasonSnapshot`.
   seasonSnapshots SeasonSnapshot[]
 
+  // Sprint 5 (Tournois Bracket) — voir `Tournament`/`TournamentParticipant`/
+  // `TournamentMatch`. Quatre relations distinctes vers `TournamentMatch`
+  // (joueur 1 ≠ joueur 2 ≠ gagnant), mêmes noms explicites obligatoires
+  // que `SuperlativeVote` plus haut.
+  createdTournaments      Tournament[]
+  wonTournaments          Tournament[]             @relation("TournamentChampion")
+  tournamentParticipation TournamentParticipant[]
+  tournamentMatchesAsP1   TournamentMatch[]        @relation("TournamentMatchPlayer1")
+  tournamentMatchesAsP2   TournamentMatch[]        @relation("TournamentMatchPlayer2")
+  tournamentMatchesWon    TournamentMatch[]        @relation("TournamentMatchWinner")
+
   @@index([xpTotal])
 }
 
@@ -218,6 +229,9 @@ model Game {
   tierlistEntries TierlistEntry[]
   news            GameNews[]
   rouletteEntries RouletteEntry[]
+
+  // Sprint 5 (Tournois Bracket) — jeu du tournoi.
+  tournaments Tournament[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -584,6 +598,10 @@ enum XpReason {
   // l'appel `awardXp` correspondant (rendre une mise + gains n'est pas un
   // "gain" au sens streak, cf. le commentaire sur `awardXp`).
   XP_BET_WON
+  // Sprint 5 (Tournois Bracket) — voir `src/lib/tournaments.ts`. Un seul
+  // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
+  // `SESSION_RESULT` pour le podium de soirée.
+  TOURNAMENT_RESULT
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -1206,4 +1224,88 @@ model SeasonSnapshot {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([seasonId, userId])
+}
+
+// Sprint 5 (FEATURE 1, Tournois Bracket) — élimination directe entre
+// potes. `maxPlayers` limité à {4, 6, 8} côté formulaire (pas de valeur
+// arbitraire) : détermine `bracketSize` (prochaine puissance de 2 ≥
+// maxPlayers — 4→4, 6→8, 8→8), calculé côté application
+// (src/lib/tournaments.ts), jamais stocké. Un bracket à 6 joueurs tourne
+// sur une structure à 8 slots avec des "byes" (2 slots vides, résolus
+// immédiatement au tirage — cf. `generateBracket`).
+enum TournamentStatus {
+  REGISTRATION
+  IN_PROGRESS
+  DONE
+}
+
+model Tournament {
+  id          String           @id @default(cuid())
+  name        String
+  createdById String
+  gameId      String
+  status      TournamentStatus @default(REGISTRATION)
+  maxPlayers  Int
+  createdAt   DateTime         @default(now())
+
+  // Dénormalisé, posé par `finalizeTournament` (src/lib/tournaments.ts) en
+  // même temps que `status = DONE` — évite d'avoir à retrouver "le match
+  // de la finale" (le round le plus élevé, variable selon `maxPlayers`)
+  // à chaque lecture pour savoir qui a gagné (affichage, badges).
+  championId String?
+
+  createdBy    User                     @relation(fields: [createdById], references: [id])
+  game         Game                     @relation(fields: [gameId], references: [id])
+  champion     User?                    @relation("TournamentChampion", fields: [championId], references: [id])
+  participants TournamentParticipant[]
+  matches      TournamentMatch[]
+}
+
+// `seed` : ordre de tirage aléatoire au lancement du tournoi (pas de
+// classement par XP, cf. spec) — posé par `generateBracket`, pas à
+// l'inscription (`seed` vaut 0 tant que le tournoi est en REGISTRATION).
+// `eliminatedAt` : posé dès la perte du premier match, purement informatif
+// pour l'affichage ("éliminé") — la position réelle dans le bracket vit
+// sur `TournamentMatch`, pas ici.
+model TournamentParticipant {
+  id           String    @id @default(cuid())
+  tournamentId String
+  userId       String
+  seed         Int       @default(0)
+  eliminatedAt DateTime?
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+}
+
+// Un match du bracket. `round` 1-indexé (1 = premier tour, ex.
+// quarts pour un bracket à 8) ; `position` 0-indexée au sein du round
+// (2 matchs du round N convergent vers 1 match `position = position/2`
+// du round N+1 — `advanceWinner`, src/lib/tournaments.ts). TOUS les
+// matchs de TOUS les rounds sont créés d'un coup par `generateBracket`
+// (round 1 avec les joueurs déjà connus, rounds suivants avec
+// `player1Id`/`player2Id` null, remplis au fur et à mesure) — le bracket
+// entier existe dès le lancement, jamais généré round par round.
+// `player1Id`/`player2Id` null = "bye" (moins de joueurs que de slots) ou
+// "en attente du round précédent". `winnerId` non-null + `completedAt`
+// = résolu.
+model TournamentMatch {
+  id           String    @id @default(cuid())
+  tournamentId String
+  round        Int
+  position     Int
+  player1Id    String?
+  player2Id    String?
+  winnerId     String?
+  scheduledAt  DateTime?
+  completedAt  DateTime?
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player1    User?      @relation("TournamentMatchPlayer1", fields: [player1Id], references: [id])
+  player2    User?      @relation("TournamentMatchPlayer2", fields: [player2Id], references: [id])
+  winner     User?      @relation("TournamentMatchWinner", fields: [winnerId], references: [id])
+
+  @@unique([tournamentId, round, position])
 }

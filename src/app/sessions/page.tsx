@@ -230,10 +230,16 @@ export default async function SessionsPage({
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           Soirées
         </h1>
-        {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
-        <ButtonLink href="/roulette" variant="secondary" size="sm">
-          🎰 Roulette
-        </ButtonLink>
+        <div className="flex shrink-0 gap-2">
+          {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
+          <ButtonLink href="/roulette" variant="secondary" size="sm">
+            🎰 Roulette
+          </ButtonLink>
+          {/* Tournois bracket (Sprint 5) — même logique de découvrabilité. */}
+          <ButtonLink href="/tournois" variant="secondary" size="sm">
+            🏆 Tournois
+          </ButtonLink>
+        </div>
       </div>
 
       {errorMessage && (

@@ -30,7 +30,11 @@ export type BadgeCriteria =
   // `count` toujours 1 ici (pas un seuil cumulatif comme les autres
   // critères) — la stat correspondante (`allInWin`) vaut 0 ou 1, jamais
   // plus, cf. `checkBetBadges`.
-  | { type: "ALL_IN_WIN"; count: number };
+  | { type: "ALL_IN_WIN"; count: number }
+  // Sprint 5 (Tournois Bracket) — "Champion de tournoi" (1 tournoi gagné),
+  // "Gladiateur" (5 tournois joués).
+  | { type: "TOURNAMENTS_WON"; count: number }
+  | { type: "TOURNAMENTS_PARTICIPATED"; count: number };
 
 /**
  * Stats partielles passées à `unlockMatchingBadges` — chaque appelant ne
@@ -54,6 +58,8 @@ export interface BadgeStats {
   pronosticsCorrect?: number;
   betsWon?: number;
   allInWin?: number;
+  tournamentsWon?: number;
+  tournamentsParticipated?: number;
 }
 
 const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats> = {
@@ -68,6 +74,8 @@ const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats
   PRONOSTICS_CORRECT: "pronosticsCorrect",
   BETS_WON: "betsWon",
   ALL_IN_WIN: "allInWin",
+  TOURNAMENTS_WON: "tournamentsWon",
+  TOURNAMENTS_PARTICIPATED: "tournamentsParticipated",
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -206,6 +214,22 @@ export async function checkBetBadges(userId: string): Promise<void> {
   await unlockMatchingBadges(userId, {
     betsWon: betsWonCount,
     allInWin: allInWinCount > 0 ? 1 : 0,
+  });
+}
+
+/**
+ * Après la fin d'un tournoi (`finalizeTournament`, src/lib/tournaments.ts),
+ * pour chaque participant — "Champion de tournoi" (1 victoire) et
+ * "Gladiateur" (5 tournois joués, gagnés ou non).
+ */
+export async function checkTournamentBadges(userId: string): Promise<void> {
+  const [won, participated] = await Promise.all([
+    prisma.tournament.count({ where: { championId: userId } }),
+    prisma.tournamentParticipant.count({ where: { userId } }),
+  ]);
+  await unlockMatchingBadges(userId, {
+    tournamentsWon: won,
+    tournamentsParticipated: participated,
   });
 }
 

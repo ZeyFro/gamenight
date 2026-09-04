@@ -5952,3 +5952,88 @@ purge accidentelle de la table `Season`.
 - `npx eslint .` : clean
 - `npx next build` : compile et type-check sans erreur
 - `npx vitest run` : 70 tests, tout vert
+
+## Sprint 5 PR-A : Tournois Bracket 🏆
+
+Tournois à élimination directe entre potes, sur un jeu de la bibliothèque
+commune — 4, 6 ou 8 joueurs, bracket généré automatiquement, XP et badges
+à la clé.
+
+### Modèle et génération du bracket
+
+`Tournament` (statuts `REGISTRATION` → `IN_PROGRESS` → `DONE`,
+`championId` dénormalisé pour éviter de re-dériver "qui a gagné la
+finale" partout où c'est affiché), `TournamentParticipant` (seed
+aléatoire, `eliminatedAt` informatif), `TournamentMatch` (`round`,
+`position`, `player1Id`/`player2Id`/`winnerId` nullables).
+
+`bracketSizeFor(maxPlayers)` — prochaine puissance de 2 ≥ maxPlayers (6
+joueurs → bracket à 8 slots, avec 2 "byes"). `generateBracket` :
+
+- Tirage aléatoire (pas de seeding par XP, cf. demande), TOUS les matchs
+  de TOUS les rounds créés d'un coup (round 1 avec les joueurs tirés, les
+  suivants avec des slots `null` à remplir au fur et à mesure) — le
+  bracket entier existe dès le lancement, plus simple à requêter/afficher
+  qu'une génération paresseuse round par round.
+- **Répartition des "byes"** : remplir d'abord TOUS les `player1` (un par
+  match, garanti non-null), puis les `player2` avec les participants
+  restants — un remplissage séquentiel naïf (`slots[i]=shuffled[i]`,
+  paires `(2i,2i+1)`) regrouperait les byes en fin de bracket au point de
+  laisser un match totalement vide sur le cas le plus fréquent de la
+  demande (6 joueurs / 8 slots) ; cette répartition garantit au contraire
+  qu'aucun match du round 1 n'a ses deux joueurs vides. Les byes sont
+  résolus immédiatement (le joueur seul avance sans jouer), jamais
+  affichés comme un match "à jouer".
+- Lancement soit automatique (places pleines), soit anticipé par le
+  créateur (`launchTournamentAction`, dès 2 inscrits).
+
+`declareWinner` (créateur du tournoi OU l'un des deux joueurs du match) →
+`advanceWinner` fait avancer le gagnant au round suivant
+(`nextPosition = floor(position/2)`) jusqu'à la finale, qui déclenche
+`finalizeTournament` : XP (1er 200, 2e 100, demi-finalistes 50 — "demi-
+finalistes" = perdants du round `totalRounds - 1`, formule qui généralise
+correctement au bracket à 4 comme à 8), badges ("Champion de tournoi" 1
+victoire, "Gladiateur" 5 participations), annonce Discord.
+
+### UI
+
+- `/tournois` — 3 onglets (En cours/À venir/Terminés).
+- `/tournois/creer` — nom, jeu (biblio commune), 4/6/8 joueurs.
+- `/tournois/[id]` — inscriptions (liste + S'inscrire/Se désinscrire/
+  Lancer) en `REGISTRATION`, bracket visuel en `IN_PROGRESS`/`DONE`.
+- `TournamentBracket` — rendu **récursif** depuis la finale vers le round
+  1 (chaque nœud empile ses 2 enfants du round précédent dans une colonne
+  centrée `items-center`) : l'alignement vertical entre rounds est garanti
+  par le layout flexbox lui-même, sans calcul de pixels. Connecteurs CSS
+  (bordure + traits), animation Framer Motion à l'affichage de chaque
+  match, boutons "[Joueur] gagne" par match jouable.
+- Découvrabilité : bouton "🏆 Tournois" sur `/sessions` (même pattern que
+  "🎰 Roulette"), card Home "🏆 Tournoi en cours" si un tournoi est actif
+  (inscriptions ouvertes ou en cours).
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` — `Tournament`, `TournamentParticipant`,
+  `TournamentMatch`, `TournamentStatus`, `XpReason.TOURNAMENT_RESULT`
+- `prisma/migrations/20260904090000_add_tournaments/`
+- `src/lib/tournaments.ts` (nouveau) — génération bracket, résolution,
+  finalisation
+- `src/lib/xp.ts` — `TOURNAMENT_1ST`/`TOURNAMENT_2ND`/`TOURNAMENT_SEMIFINALIST`
+- `src/lib/badges.ts` — critères `TOURNAMENTS_WON`/`TOURNAMENTS_PARTICIPATED`
+  + `checkTournamentBadges`
+- `prisma/seed-badges.mjs` — badges "Champion de tournoi", "Gladiateur"
+- `src/lib/validations.ts` — `createTournamentSchema`, `declareWinnerSchema`
+- `src/app/tournois/actions.ts`, `src/app/tournois/page.tsx`,
+  `src/app/tournois/creer/page.tsx`, `src/app/tournois/[id]/page.tsx`
+  (nouveaux)
+- `src/components/tournaments/TournamentBracket.tsx` (nouveau)
+- `src/app/page.tsx` — card "Tournoi en cours"
+- `src/app/sessions/page.tsx` — bouton "🏆 Tournois"
+- `src/app/profil/page.tsx` — libellé `XP_REASON_LABELS.TOURNAMENT_RESULT`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (44 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Migration purement additive — zéro régression PR #1-60

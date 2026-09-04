@@ -175,6 +175,22 @@ const BADGES = [
     rarity: "LEGENDARY",
     criteria: { type: "ALL_IN_WIN", count: 1 },
   },
+  {
+    name: "Champion de tournoi",
+    icon: "🏆",
+    description: "Gagner un tournoi.",
+    category: "ENGAGEMENT",
+    rarity: "EPIC",
+    criteria: { type: "TOURNAMENTS_WON", count: 1 },
+  },
+  {
+    name: "Gladiateur",
+    icon: "⚔️",
+    description: "Participer à 5 tournois.",
+    category: "ENGAGEMENT",
+    rarity: "RARE",
+    criteria: { type: "TOURNAMENTS_PARTICIPATED", count: 5 },
+  },
 ];
 
 const prisma = new PrismaClient();

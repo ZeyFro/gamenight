@@ -109,6 +109,19 @@ export const xpBetSchema = z.object({
   amount: z.coerce.number().int().positive(),
 });
 
+/** Sprint 5 (Tournois Bracket) — `createTournamentAction`. `maxPlayers` limité à {4, 6, 8} (cf. `bracketSizeFor`, src/lib/tournaments.ts). */
+export const createTournamentSchema = z.object({
+  name: z.string().trim().min(1, "Nom manquant.").max(60, "Nom trop long (max 60 caractères)."),
+  gameId: idSchema,
+  maxPlayers: z.coerce.number().int().refine((n) => [4, 6, 8].includes(n), "4, 6 ou 8 joueurs uniquement."),
+});
+
+/** Sprint 5 (Tournois Bracket) — `declareWinnerAction`. */
+export const declareWinnerSchema = z.object({
+  matchId: idSchema,
+  winnerId: idSchema,
+});
+
 /** `addWeeklySlot` — créneau hebdomadaire récurrent. */
 export const weeklySlotSchema = z.object({
   dayOfWeek: z
