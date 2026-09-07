@@ -9,6 +9,7 @@ import {
 import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { PodiumSpot } from "@/components/PodiumSpot";
+import { PodiumConfetti } from "@/components/PodiumConfetti";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -25,6 +26,29 @@ function isScoreboardPeriod(value: string | undefined): value is ScoreboardPerio
   return !!value && (SCOREBOARD_PERIODS as readonly string[]).includes(value);
 }
 
+/**
+ * Flèche de delta de position (amélioration classement) — `null`/`0`
+ * rendus différemment : `null` (périodes non-globales) n'affiche rien du
+ * tout plutôt qu'un "=" qui laisserait croire à une vraie mesure de
+ * stabilité sur une fenêtre qui vient de se réinitialiser.
+ */
+function PositionDelta({ delta }: { delta: number | null }) {
+  if (delta === null) return null;
+  if (delta === 0) {
+    return <span className="text-xs text-faint" title="Position stable depuis 7 jours">=</span>;
+  }
+  const up = delta > 0;
+  return (
+    <span
+      className={`text-xs font-medium ${up ? "text-emerald-400" : "text-destructive"}`}
+      title={`${up ? "+" : ""}${delta} place${Math.abs(delta) > 1 ? "s" : ""} depuis 7 jours`}
+    >
+      {up ? "↑" : "↓"}
+      {Math.abs(delta)}
+    </span>
+  );
+}
+
 function ScoreboardRow({
   entry,
   position,
@@ -35,36 +59,45 @@ function ScoreboardRow({
   isMe: boolean;
 }) {
   return (
-    <Card className="flex items-center gap-4">
-      <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-muted">
-        {position}
-      </span>
-      <RankAvatar
-        src={entry.discordAvatar}
-        alt={entry.discordName}
-        level={entry.level}
-        rank={entry.rank}
-        size={44}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2 truncate font-medium text-foreground">
-          <span className="truncate">{entry.discordName}</span>
-          <ColorDot color={entry.color} />
-          {isMe && (
-            <Badge tone="accent" className="shrink-0">
-              Toi
-            </Badge>
-          )}
-        </p>
-        <p className="truncate text-xs text-muted">
-          Niveau {entry.level} · {entry.title} · {entry.rank.name}
-        </p>
+    <Card className="flex flex-col gap-2">
+      <div className="flex items-center gap-4">
+        <span className="flex w-6 shrink-0 flex-col items-center gap-0.5 text-center text-sm font-semibold tabular-nums text-muted">
+          {position}
+          <PositionDelta delta={entry.weekDeltaPosition} />
+        </span>
+        <RankAvatar
+          src={entry.discordAvatar}
+          alt={entry.discordName}
+          level={entry.level}
+          rank={entry.rank}
+          size={44}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2 truncate font-medium text-foreground">
+            <span className="truncate">{entry.discordName}</span>
+            <ColorDot color={entry.color} />
+            {isMe && (
+              <Badge tone="accent" className="shrink-0">
+                Toi
+              </Badge>
+            )}
+          </p>
+          <p className="truncate text-xs text-muted">
+            Niveau {entry.level} · {entry.title} · {entry.rank.name}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-semibold tabular-nums text-foreground">{entry.periodXp} XP</p>
+          <p className="text-xs tabular-nums text-muted">
+            {entry.sessionsPlayed} soirée{entry.sessionsPlayed === 1 ? "" : "s"}
+          </p>
+        </div>
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold tabular-nums text-foreground">{entry.periodXp} XP</p>
-        <p className="text-xs tabular-nums text-muted">
-          {entry.sessionsPlayed} soirée{entry.sessionsPlayed === 1 ? "" : "s"}
-        </p>
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-hover">
+        <div
+          className="h-full rounded-full bg-accent"
+          style={{ width: `${Math.min(100, Math.max(0, entry.levelProgress * 100))}%` }}
+        />
       </div>
     </Card>
   );
@@ -131,7 +164,8 @@ export default async function ClassementPage({
         // scrolle la liste complète.
         <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
           {podium.length > 0 && (
-            <div className="podium-glow-bg flex items-end justify-center gap-3 rounded-2xl p-4 sm:gap-6 lg:sticky lg:top-4">
+            <div className="podium-glow-bg relative flex items-end justify-center gap-3 rounded-2xl p-4 sm:gap-6 lg:sticky lg:top-4">
+              <PodiumConfetti />
               {second && <PodiumSpot entry={second} place={2} />}
               {first && <PodiumSpot entry={first} place={1} />}
               {third && <PodiumSpot entry={third} place={3} />}

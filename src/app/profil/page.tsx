@@ -1,12 +1,16 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { formatDateTimeFr } from "@/lib/wallclock";
+import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
+import { XpEvolutionChart, type XpEvolutionPoint } from "@/components/XpEvolutionChart";
+
+const XP_CHART_DAYS = 30;
 
 const XP_REASON_LABELS: Record<XpReason, string> = {
   CREATE_SESSION: "a créé une soirée",
@@ -28,45 +32,129 @@ export default async function ProfilApercuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const [nextSession, lastActivity, recentAwards, pronosticStats, recentBets] =
-    await Promise.all([
-      prisma.session.findFirst({
-        where: { status: { in: ["VOTING", "SCHEDULED"] } },
-        include: { decidedGame: true },
-        orderBy: { date: "asc" },
-      }),
-      prisma.xpEvent.findFirst({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.superlativeAward.findMany({
-        where: { winnerUserId: user.id },
-        include: { category: true, session: { include: { decidedGame: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-      }),
-      // Sprint 4 (Pronostics) — taux de réussite sur les pronos déjà résolus
-      // (`correct` non-null), un prono en attente (soirée pas encore
-      // `DONE`) ne compte ni pour ni contre.
-      prisma.pronostic.groupBy({
-        by: ["correct"],
-        where: { voterId: user.id, correct: { not: null } },
-        _count: { _all: true },
-      }),
-      // Sprint 4 (Paris d'XP) — historique gains/pertes, résolus seulement.
-      prisma.xpBet.findMany({
-        where: { voterId: user.id, won: { not: null } },
-        include: { target: true, session: { select: { decidedGame: { select: { name: true } } } } },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      }),
-    ]);
+  const now = nowMs();
+  const xpChartSince = new Date(now - XP_CHART_DAYS * 24 * 60 * 60 * 1000);
+
+  const [
+    nextSession,
+    lastActivity,
+    recentAwards,
+    pronosticStats,
+    recentBets,
+    sessionResults,
+    xpBetsWon,
+    recentXpEvents,
+  ] = await Promise.all([
+    prisma.session.findFirst({
+      where: { status: { in: ["VOTING", "SCHEDULED"] } },
+      include: { decidedGame: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.xpEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.superlativeAward.findMany({
+      where: { winnerUserId: user.id },
+      include: { category: true, session: { include: { decidedGame: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+    }),
+    // Sprint 4 (Pronostics) — taux de réussite sur les pronos déjà résolus
+    // (`correct` non-null), un prono en attente (soirée pas encore
+    // `DONE`) ne compte ni pour ni contre.
+    prisma.pronostic.groupBy({
+      by: ["correct"],
+      where: { voterId: user.id, correct: { not: null } },
+      _count: { _all: true },
+    }),
+    // Sprint 4 (Paris d'XP) — historique gains/pertes, résolus seulement.
+    prisma.xpBet.findMany({
+      where: { voterId: user.id, won: { not: null } },
+      include: { target: true, session: { select: { decidedGame: { select: { name: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+    // Amélioration profil (stats) — sert à la fois le win rate et le jeu
+    // le plus joué, une seule requête pour les deux.
+    prisma.sessionResult.findMany({
+      where: { userId: user.id },
+      select: { placement: true, session: { select: { decidedGame: true } } },
+    }),
+    prisma.xpBet.aggregate({
+      where: { voterId: user.id, won: true },
+      _sum: { amount: true },
+    }),
+    prisma.xpEvent.findMany({
+      where: { userId: user.id, createdAt: { gte: xpChartSince } },
+      select: { amount: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
 
   const pronosticCorrect =
     pronosticStats.find((s) => s.correct === true)?._count._all ?? 0;
   const pronosticTotal = pronosticStats.reduce((sum, s) => sum + s._count._all, 0);
   const pronosticRate =
     pronosticTotal > 0 ? Math.round((pronosticCorrect / pronosticTotal) * 100) : null;
+
+  // Amélioration profil (stats) — win rate calculé uniquement sur les
+  // soirées compétitives (`placement` non-null) : une soirée coop n'a pas
+  // de podium (`placement` toujours `null`, cf. `submitSessionResultsAction`
+  // dans sessions/actions.ts) donc pas de notion de "gagnée/perdue" fiable
+  // à en tirer sans introduire un nouveau signal en base.
+  const competitiveResults = sessionResults.filter((r) => r.placement !== null);
+  const winRate =
+    competitiveResults.length > 0
+      ? Math.round(
+          (competitiveResults.filter((r) => r.placement === 1).length /
+            competitiveResults.length) *
+            100
+        )
+      : null;
+
+  // Jeu le plus joué — toutes soirées confondues (coop incluses), simple
+  // décompte en mémoire (pas de `groupBy` possible à travers une relation
+  // en Prisma), même approche que `monthly-recap.ts`.
+  const gamePlayCounts = new Map<string, { name: string; coverUrl: string | null; count: number }>();
+  for (const result of sessionResults) {
+    const game = result.session.decidedGame;
+    if (!game) continue;
+    const entry = gamePlayCounts.get(game.id);
+    if (entry) entry.count += 1;
+    else gamePlayCounts.set(game.id, { name: game.name, coverUrl: game.coverUrl, count: 1 });
+  }
+  const mostPlayedGame = [...gamePlayCounts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
+
+  // Paris d'XP gagnés payent double (cf. `resolveBets` dans xp-bets.ts).
+  const xpWonFromBets = (xpBetsWon._sum.amount ?? 0) * 2;
+
+  const memberSinceDays = Math.floor(
+    (now - user.createdAt.getTime()) / (24 * 60 * 60 * 1000)
+  );
+
+  // Courbe XP 30 jours — cumul reconstruit à partir de `xpTotal` actuel
+  // moins la somme des événements de la période (= XP au tout début de la
+  // fenêtre), puis on ajoute jour par jour. Un jour sans XpEvent garde le
+  // même total que la veille (ligne plate, pas un trou dans le graphe).
+  const xpAtWindowStart =
+    user.xpTotal - recentXpEvents.reduce((sum, e) => sum + e.amount, 0);
+  const dailyXpGain = new Map<string, number>();
+  for (const event of recentXpEvents) {
+    const key = event.createdAt.toISOString().slice(0, 10);
+    dailyXpGain.set(key, (dailyXpGain.get(key) ?? 0) + event.amount);
+  }
+  const xpEvolution: XpEvolutionPoint[] = [];
+  let runningXp = xpAtWindowStart;
+  for (let i = XP_CHART_DAYS - 1; i >= 0; i--) {
+    const day = new Date(now - i * 24 * 60 * 60 * 1000);
+    const key = day.toISOString().slice(0, 10);
+    runningXp += dailyXpGain.get(key) ?? 0;
+    xpEvolution.push({
+      label: `${String(day.getDate()).padStart(2, "0")}/${String(day.getMonth() + 1).padStart(2, "0")}`,
+      xp: runningXp,
+    });
+  }
 
   return (
     <FadeInView className="flex flex-col gap-6">
@@ -95,6 +183,74 @@ export default async function ProfilApercuPage() {
             <p className="text-sm text-muted">Aucune soirée prévue pour l&apos;instant.</p>
           </Card>
         )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-muted">📊 Statistiques</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card className="flex flex-col items-center gap-1 p-3 text-center">
+            <span className="text-lg font-bold text-foreground">
+              {winRate === null ? "—" : `${winRate}%`}
+            </span>
+            <span className="text-[11px] text-muted">Win rate</span>
+          </Card>
+          <Card className="flex flex-col items-center gap-1 p-3 text-center">
+            <span className="text-lg font-bold text-foreground">{user.bestStreakCount}</span>
+            <span className="text-[11px] text-muted">Meilleur streak</span>
+          </Card>
+          <Card className="flex flex-col items-center gap-1 p-3 text-center">
+            <span className="text-lg font-bold text-foreground">
+              {pronosticTotal === 0 ? "—" : `${pronosticCorrect}/${pronosticTotal}`}
+            </span>
+            <span className="text-[11px] text-muted">
+              Pronos {pronosticTotal > 0 && `(${pronosticRate}%)`}
+            </span>
+          </Card>
+          <Card className="flex flex-col items-center gap-1 p-3 text-center">
+            <span className="text-lg font-bold text-foreground">
+              {xpWonFromBets > 0 ? `+${xpWonFromBets}` : "0"}
+            </span>
+            <span className="text-[11px] text-muted">XP gagné en paris</span>
+          </Card>
+        </div>
+
+        {mostPlayedGame && (
+          <Card className="flex items-center gap-3">
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-background">
+              {mostPlayedGame.coverUrl ? (
+                <Image
+                  src={mostPlayedGame.coverUrl}
+                  alt={mostPlayedGame.name}
+                  fill
+                  sizes="56px"
+                  className="object-cover"
+                />
+              ) : (
+                <span className="flex h-full items-center justify-center p-1 text-center text-[9px] leading-tight text-muted">
+                  {mostPlayedGame.name}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted">Jeu le plus joué</p>
+              <p className="truncate text-sm font-medium text-foreground">{mostPlayedGame.name}</p>
+              <p className="text-xs text-muted">
+                {mostPlayedGame.count} soirée{mostPlayedGame.count > 1 ? "s" : ""}
+              </p>
+            </div>
+          </Card>
+        )}
+
+        <Card className="flex flex-col gap-2">
+          <p className="text-xs text-muted">Évolution XP — 30 derniers jours</p>
+          <div className="h-32">
+            <XpEvolutionChart data={xpEvolution} />
+          </div>
+        </Card>
+
+        <p className="text-xs text-muted">
+          Membre depuis {memberSinceDays} jour{memberSinceDays > 1 ? "s" : ""}
+        </p>
       </section>
 
       <section className="flex flex-col gap-2">

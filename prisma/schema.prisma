@@ -64,6 +64,10 @@ model User {
   xpTotal            Int       @default(0)
   streakCount        Int       @default(0)
   streakLastActiveAt DateTime?
+  // Amélioration profil (stats) — `streakCount` repart à 1 dès qu'un
+  // streak casse, l'historique du meilleur streak est donc perdu sans ce
+  // champ dédié. Mis à jour dans `touchStreak()` (jamais décrémenté).
+  bestStreakCount    Int       @default(0)
 
   // Sprint 2 PR-B — onboarding premier login (4 écrans swipe). `false`
   // par défaut pour tout compte existant : migration additive, ne

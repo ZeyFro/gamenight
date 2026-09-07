@@ -6802,102 +6802,93 @@ Vercel, aucun changement de code ne peut la remplacer.
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-69
 
-## Amélioration des features existantes, PR-B (récap visuel, notifs plus utiles, roulette plus de spectacle)
+## Amélioration des features existantes, PR-A (profil enrichi, classement engageant, ligne "maintenant")
 
-Suite de la PR-A (profil enrichi, classement engageant, ligne "maintenant"
-— voir PR #71) : les 3 features restantes de la même demande utilisateur.
-Toujours PAS de `whileInView` Framer Motion — uniquement `initial`/
-`animate` déclenchés au montage.
+Première des deux PR de la demande "amélioration des features
+existantes" (items 1, 2, 5 — profil, classement, calendrier ; la
+seconde PR couvre récap de soirée, notifications groupées, roulette).
+⚠️ Aucun `whileInView` Framer Motion nulle part dans cette PR — toutes
+les animations utilisent `animate` déclenché au montage, conformément à
+la contrainte explicite après les 3 PR de fix `/profil`.
 
-### 1. Soirées — récap visuel
+### 1. Profil — section "📊 Statistiques"
 
-Sur une soirée `DONE`, une nouvelle card "📋 Récap" (`src/app/sessions/[id]/page.tsx`)
-remplace l'ancienne card `revealData` (pronostics/paris en simples `<ul>`)
-par un seul bloc visuel regroupant :
+Nouvelle section sur l'onglet Aperçu (`/profil`), entre "Prochaine
+soirée" et "Dernière activité" :
 
-- le jeu joué (cover + nom, réutilise `session.decidedGame`) ;
-- les participants (avatars en ligne, nouvelle requête
-  `prisma.sessionResult.findMany({ include: { user: true } })`, triés par
-  `placement`) ;
-- les récompenses de superlatifs de CETTE soirée (icône + nom + gagnant,
-  nouvelle requête `prisma.superlativeAward.findMany({ where: { sessionId } })`
-  — différent de `SuperlativesWonGrid` sur `/profil` qui agrège tout
-  l'historique d'un seul user) ;
-- les pronostics (✅/❌) et les paris (gagné/perdu, montants) — contenu
-  identique à l'ancienne card `revealData`, juste réintégré dans le même
-  bloc visuel plutôt que dans une card séparée.
+- **Win rate** — `sessionResult.placement === 1` / total, calculé
+  uniquement sur les soirées **compétitives** (`placement` non-null) :
+  une soirée coop n'a pas de podium (`placement` toujours `null`, cf.
+  `submitSessionResultsAction`), donc pas de notion fiable de
+  "gagnée/perdue" à en tirer sans introduire un nouveau signal en base.
+  `—` si aucune soirée compétitive jouée.
+- **Meilleur streak historique** — nouveau champ `User.bestStreakCount`
+  (migration), mis à jour dans `touchStreak()` en parallèle de
+  `streakCount` (jamais décrémenté). `streakCount` repart à 1 dès qu'un
+  streak casse, cet historique n'existait nulle part ailleurs — pas
+  reconstructible rétroactivement, seulement à partir de maintenant.
+- **Jeu le plus joué** (avec cover) — décompte en mémoire sur
+  `SessionResult` (toutes soirées, coop incluses), même approche que
+  `monthly-recap.ts` (pas de `groupBy` possible à travers une relation
+  Prisma).
+- **Pronos corrects** — réutilise l'agrégat déjà calculé sur cette page.
+- **Total XP gagné en paris** — `xpBet.aggregate` sur les paris gagnés,
+  ×2 (les paris gagnés payent double, cf. `resolveBets`).
+- **Graphique XP 30 jours** — Recharts (nouvelle dépendance, `LineChart`
+  simple), cumul reconstruit à partir de `xpTotal` actuel moins la somme
+  des `XpEvent` de la fenêtre (pas de nouvelle table d'historique).
+- **"Membre depuis X jours"** — sous le rang, dans la nouvelle section.
 
-Récompenses et pronostics/paris restent gardés derrière
-`superlativeVotingClosed` comme avant (jamais un gagnant affiché avant que
-le vote de superlatifs soit clos) ; le jeu et les participants s'affichent
-dès que la soirée est `DONE`.
+Aucune de ces stats ne nécessitait de migration à part
+`bestStreakCount` — tout le reste est dérivable des modèles existants.
 
-### 2. Notifications — plus utiles
+### 2. Classement — plus engageant
 
-- **Regroupement** — `groupNotifications` (`src/lib/notifications.ts`,
-  appelée depuis `Header.tsx`) fusionne les notifications
-  `SUPERLATIVE_AWARD` d'une même soirée en une seule ligne ("5
-  récompenses pour la soirée Deadlock" plutôt que 5 lignes "X a gagné...").
-  Les autres types ne sont jamais groupés. Le nom du jeu est re-résolu via
-  une requête dédiée (`relatedSessionId` est un id "libre", sans relation
-  Prisma, donc pas stocké sur la notification elle-même). `NotificationBell`
-  affiche un badge `×N` quand une ligne est groupée.
-- **Pastille de couleur par type** — un point coloré à côté de l'icône
-  (`TYPE_DOT_COLORS` dans `NotificationBell.tsx`) : violet (`LEVEL_UP`),
-  vert (`BADGE`), rouge (`DEBT`), orange (tout le reste — résultats,
-  création, rappel, revanche, achievement, pronostic, pari, récompense —
-  tout ce qui touche une soirée).
-- **Nouveaux événements notifiés** — deux trous comblés qui ne
-  généraient encore AUCUNE notification in-app :
-  - `detectDebts` (`src/lib/debts.ts`) crée maintenant une notif `DEBT`
-    par débiteur (jusqu'ici une dette n'était visible qu'en tombant
-    dessus sur la Home) ;
-  - `finalizeSuperlativeVoting` (`src/lib/superlative-voting.ts`) crée
-    maintenant une notif `SUPERLATIVE_AWARD` par récompense (jusqu'ici
-    seul le webhook Discord `announceSessionAwards` existait).
-  - Nouvelles valeurs d'enum `SUPERLATIVE_AWARD`/`DEBT` sur
-    `NotificationType` (migration `20260909090000_add_notification_types_debt_award`).
-- **Cliquable** — déjà le cas via `notificationHref` (inchangé) ; les
-  nouvelles notifs `DEBT`/`SUPERLATIVE_AWARD` portent `relatedSessionId`
-  et pointent donc directement vers `/sessions/[id]`.
+- **Deltas de position ↑/↓/=** — reconstruit le total XP d'il y a 7
+  jours par soustraction (`xpTotal` actuel moins les gains `XpEvent` de
+  la semaine écoulée), sans nouvelle table de snapshot hebdomadaire.
+  Uniquement sur la période "Global" (seule où la position est stable
+  dans le temps, pas réinitialisée comme "Ce mois"/"Cette semaine") —
+  `null` sinon, pas de flèche affichée plutôt qu'un delta trompeur.
+- **Barre de progression XP** vers le niveau suivant sous chaque ligne
+  du classement (`levelProgress`, calculé sur `xpTotal` à vie comme le
+  niveau lui-même).
+- **Confettis légers sur le podium** — `canvas-confetti` (déjà une
+  dépendance, utilisée par `CelebrationConfetti`), nouveau composant
+  dédié `PodiumConfetti` avec des réglages volontairement discrets
+  (peu de particules, gravité/vitesse basses) pour un effet "tombe
+  doucement" plutôt qu'une explosion — distinct de
+  `CelebrationConfetti`, un vrai burst pour une victoire ponctuelle, pas
+  adapté à un effet d'ambiance rejoué à chaque visite de la page.
 
-### 3. Roulette — plus de spectacle
+### 5. Calendrier — ligne "maintenant"
 
-`RouletteWizard.tsx` (mode instant) et `RouletteResultReveal.tsx` (mode
-async) partagent le même traitement :
+Trait horizontal orange dans `DayTimeline`, façon Outlook/Google
+Calendar, uniquement sur le jour affiché s'il s'agit d'aujourd'hui
+(`isToday`). Position verticale calculée en pourcentage de la hauteur de
+la ligne d'heure courante (minute du jour / 60), fond de cette ligne
+légèrement teinté (`bg-accent/5`). Se déplace en temps réel
+(`setInterval` 60s, même pattern que `VotingCountdown` : valeur initiale
+via un initialiseur paresseux de `useState` — jamais calculée dans le
+corps de l'effet — pour éviter tout risque de décalage d'hydratation).
+`wallClockNow()` (horloge murale Paris) plutôt que `new Date()` local,
+cohérent avec le reste du fichier.
 
-- **Vibration par segment** — `haptics.light()` ajouté dans le tick
-  interval existant (déjà utilisé pour le son `tick.wav`), à chaque
-  "clic" de la roue pendant la rotation.
-- **Zoom-in + flash AVANT les confettis** — nouvelle prop `celebrate` sur
-  `RouletteWheelDisplay` : à l'arrêt de la roue, un court délai
-  (320 ms) déclenche un zoom (`scale: 1.08`) sur la roue + un flash blanc
-  bref (`opacity: 0 → 0.85 → 0`), PUIS seulement ensuite les confettis et
-  le son de victoire — un temps fort distinct plutôt que tout d'un coup.
-- **Son "DING" distinct** — nouvelle fonction `playVictory()` (dans les
-  deux composants) qui réutilise `/sounds/achievement.wav` (déjà présent
-  pour les badges) au lieu de `tick.wav`/`success.wav`, pour un son de
-  victoire clairement différent du tic-tic de rotation.
+### Fichiers modifiés/ajoutés
 
-### Fichiers modifiés/créés
-
-- `prisma/schema.prisma` + migration `20260909090000_add_notification_types_debt_award`
-  — `NotificationType.SUPERLATIVE_AWARD` / `.DEBT`
-- `src/app/sessions/[id]/page.tsx` — card "📋 Récap" unifiée
-- `src/lib/notifications.ts` — `groupNotifications` + `GroupedNotificationItem`
-- `src/lib/debts.ts` — notif `DEBT` par débiteur détecté
-- `src/lib/superlative-voting.ts` — notif `SUPERLATIVE_AWARD` par récompense
-- `src/components/Header.tsx` — branché sur `groupNotifications`
-- `src/components/NotificationBell.tsx` — icônes/pastilles pour les 2
-  nouveaux types + badge `×N` sur une ligne groupée
-- `src/components/roulette/RouletteWheelDisplay.tsx` — prop `celebrate`
-  (zoom + flash)
-- `src/components/roulette/RouletteWizard.tsx` / `RouletteResultReveal.tsx`
-  — haptique par tick, séquence célébration → confettis, son de victoire
+- `prisma/schema.prisma` + migration — `User.bestStreakCount`
+- `src/lib/xp-actions.ts` — `touchStreak` maintient `bestStreakCount`
+- `src/app/profil/page.tsx` — section Statistiques
+- `src/components/XpEvolutionChart.tsx` (nouveau) — Recharts
+- `src/lib/scoreboard.ts` — `weekDeltaPosition`, `levelProgress`
+- `src/app/classement/page.tsx` — flèches delta, barre XP, confettis
+- `src/components/PodiumConfetti.tsx` (nouveau)
+- `src/components/calendar/DayTimeline.tsx` — ligne "maintenant"
+- `package.json` — nouvelle dépendance `recharts`
 
 ### Vérification
 
 - `npx eslint .` : clean
-- `npx next build` : compile et type-check sans erreur
+- `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
-- Zéro régression PR #1-71
+- Zéro régression PR #1-69

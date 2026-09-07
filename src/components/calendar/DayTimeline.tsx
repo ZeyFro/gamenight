@@ -14,7 +14,7 @@ import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { addDays, buildCalendarHref, type CalendarMode } from "@/lib/calendar-dates";
 import { isAvailableAt, type OverrideForDate, type WeeklySlot } from "@/lib/availability";
 import { haptics } from "@/lib/haptics";
-import { formatDateFr, sameUtcDate, toDateInputValue } from "@/lib/wallclock";
+import { formatDateFr, sameUtcDate, toDateInputValue, wallClockNow } from "@/lib/wallclock";
 import type { CalendarDay, CalendarSession, CalendarUser } from "@/lib/calendar";
 
 const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
@@ -163,6 +163,29 @@ export function DayTimeline({
   }
 
   const isToday = sameUtcDate(date, today);
+
+  // Amélioration calendrier — ligne "maintenant" façon Outlook/Google
+  // Calendar. `null` tant que l'effet n'a pas tourné (jamais calculé
+  // pendant le rendu initial, serveur ou client) : évite tout risque de
+  // léger décalage d'hydratation entre le rendu serveur et le premier
+  // rendu client si les deux tombent de part et d'autre d'une frontière
+  // de minute — la ligne apparaît juste une frame plus tard, sans
+  // conséquence visuelle. `wallClockNow()` (pas `new Date()`) pour rester
+  // sur l'horloge murale Paris du reste du fichier (`getUTCHours()` sur
+  // les dates de session, etc.), pas le fuseau local du navigateur.
+  const [nowClock, setNowClock] = useState<{ hour: number; minute: number } | null>(() => {
+    if (!isToday) return null;
+    const wallNow = wallClockNow();
+    return { hour: wallNow.getUTCHours(), minute: wallNow.getUTCMinutes() };
+  });
+  useEffect(() => {
+    if (!isToday) return;
+    const interval = setInterval(() => {
+      const wallNow = wallClockNow();
+      setNowClock({ hour: wallNow.getUTCHours(), minute: wallNow.getUTCMinutes() });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [isToday]);
   const prevDate = addDays(date, -1);
   const nextDate = addDays(date, 1);
   const prevHref = buildCalendarHref({ date: toDateInputValue(prevDate), mode, pote, potes });
@@ -441,12 +464,26 @@ export function DayTimeline({
               : "var(--surface-hover)",
           };
 
+          const isCurrentHour = nowClock !== null && nowClock.hour === hour;
+
           return (
             <div
               key={hour}
               ref={hour === AUTO_SCROLL_HOUR ? highlightRef : undefined}
-              className="flex items-start gap-2 border-t border-border/60 px-3 py-1.5 first:border-t-0"
+              className={`relative flex items-start gap-2 border-t border-border/60 px-3 py-1.5 first:border-t-0 ${
+                isCurrentHour ? "bg-accent/5" : ""
+              }`}
             >
+              {isCurrentHour && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
+                  style={{ top: `${(nowClock.minute / 60) * 100}%` }}
+                >
+                  <span className="-ml-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+                  <span className="h-px flex-1 bg-orange-500" />
+                </div>
+              )}
               <span className="w-9 shrink-0 pt-1.5 text-right text-[11px] text-faint">
                 {String(hour).padStart(2, "0")}h
               </span>
