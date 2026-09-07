@@ -16,6 +16,8 @@ export interface NotificationItem {
   read: boolean;
   createdAtIso: string;
   href: string | null;
+  /** > 1 pour une ligne regroupée (ex. "5 récompenses pour la soirée X"). */
+  count: number;
 }
 
 const TYPE_ICONS: Record<NotificationType, string> = {
@@ -28,6 +30,30 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   ACHIEVEMENT: "🏅",
   PRONOSTIC: "🔮",
   XP_BET: "🎲",
+  SUPERLATIVE_AWARD: "🏆",
+  DEBT: "💀",
+};
+
+/**
+ * Pastille de couleur par type (Amélioration des features existantes,
+ * PR-B, item 4) — violet=level up, orange=tout ce qui touche une soirée
+ * (résultats, création, rappel, revanche, achievement, pronostic, pari,
+ * récompense), vert=badge, rouge=dette. Un simple point à côté de l'icône
+ * (déjà distinctive par emoji) plutôt qu'un recoloriage complet de la
+ * ligne, pour rester lisible sur les notifs déjà lues (fond neutre).
+ */
+const TYPE_DOT_COLORS: Record<NotificationType, string> = {
+  LEVEL_UP: "bg-accent",
+  BADGE: "bg-emerald-500",
+  DEBT: "bg-destructive",
+  SESSION_RESULT: "bg-orange-500",
+  SESSION_CREATED: "bg-orange-500",
+  REMINDER: "bg-orange-500",
+  REVANCHE: "bg-orange-500",
+  ACHIEVEMENT: "bg-orange-500",
+  PRONOSTIC: "bg-orange-500",
+  XP_BET: "bg-orange-500",
+  SUPERLATIVE_AWARD: "bg-orange-500",
 };
 
 /**
@@ -129,11 +155,21 @@ export function NotificationBell({
                         n.read ? "" : "bg-accent/10"
                       } ${n.href ? "hover:bg-surface-hover" : ""}`}
                     >
-                      <span className="shrink-0 text-xl" aria-hidden>
+                      <span className="relative shrink-0 text-xl" aria-hidden>
                         {TYPE_ICONS[n.type]}
+                        <span
+                          className={`absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full ${TYPE_DOT_COLORS[n.type]}`}
+                        />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{n.title}</p>
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {n.title}
+                          {n.count > 1 && (
+                            <span className="ml-1.5 rounded-full bg-surface-hover px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                              ×{n.count}
+                            </span>
+                          )}
+                        </p>
                         <p className="truncate text-xs text-muted">{n.message}</p>
                       </div>
                       {ago && (

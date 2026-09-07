@@ -46,6 +46,7 @@ export function RouletteWheelDisplay({
   sizePx = 280,
   durationS = 3.6,
   spinning = false,
+  celebrate = false,
 }: {
   segments: WheelSegment[];
   rotation: number;
@@ -53,6 +54,14 @@ export function RouletteWheelDisplay({
   durationS?: number;
   /** Ondes concentriques derrière la roue pendant qu'elle tourne (design de fond, `.radar-pulse`). */
   spinning?: boolean;
+  /**
+   * Zoom-in bref sur la roue + flash lumineux (Amélioration des features
+   * existantes, PR-B, item 6 — "plus de spectacle") — déclenché par le
+   * parent juste après l'arrêt de la roue, AVANT les confettis, pour
+   * marquer un temps fort avant la célébration plutôt que tout enchaîner
+   * d'un coup.
+   */
+  celebrate?: boolean;
 }) {
   const segmentPercent = segments.length > 0 ? 100 / segments.length : 100;
   const conicGradient =
@@ -81,8 +90,11 @@ export function RouletteWheelDisplay({
       <motion.div
         className="h-full w-full rounded-full border-4 border-border shadow-lg"
         style={{ background: conicGradient }}
-        animate={{ rotate: rotation }}
-        transition={{ duration: durationS, ease: [0.12, 0.67, 0.2, 0.99] }}
+        animate={{ rotate: rotation, scale: celebrate ? 1.08 : 1 }}
+        transition={{
+          rotate: { duration: durationS, ease: [0.12, 0.67, 0.2, 0.99] },
+          scale: { duration: 0.32, ease: "easeOut" },
+        }}
       >
         {segments.map((seg, i) => {
           const angle = i * (360 / segments.length) + 360 / segments.length / 2;
@@ -102,6 +114,15 @@ export function RouletteWheelDisplay({
           );
         })}
       </motion.div>
+      {celebrate && (
+        <motion.div
+          className="pointer-events-none absolute inset-0 rounded-full bg-white"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.85, 0] }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
