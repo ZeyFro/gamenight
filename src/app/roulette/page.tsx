@@ -15,6 +15,8 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 import { RouletteWizard } from "@/components/roulette/RouletteWizard";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { createRouletteAction } from "./actions";
 
 const ROULETTE_ERROR_MESSAGES: Record<string, string> = {
@@ -59,65 +61,27 @@ export default async function RoulettePage({
           </p>
         )}
 
-        <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-          <Link
-            href="/roulette"
-            className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-              !isInstant
-                ? "bg-accent text-accent-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            Mode async
-          </Link>
-          <Link
-            href="/roulette?mode=instant"
-            className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-              isInstant
-                ? "bg-accent text-accent-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            Mode instant
-          </Link>
-        </div>
-
+        <SegmentedControl
+          groupId="roulette-mode"
+          activeKey={isInstant ? "instant" : "async"}
+          options={[
+            { key: "async", label: "Mode async", href: "/roulette" },
+            { key: "instant", label: "Mode instant", href: "/roulette?mode=instant" },
+          ]}
+        />
         {isInstant ? (
           <InstantMode user={user} />
         ) : (
           <>
-            <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-              <Link
-                href="/roulette?tab=en-cours"
-                className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                  activeTab === "en-cours"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                En cours
-              </Link>
-              <Link
-                href="/roulette?tab=creer"
-                className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                  activeTab === "creer"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                Créer
-              </Link>
-              <Link
-                href="/roulette?tab=historique"
-                className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                  activeTab === "historique"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                Historique
-              </Link>
-            </div>
+            <SegmentedControl
+              groupId="roulette-tabs"
+              activeKey={activeTab}
+              options={[
+                { key: "en-cours", label: "En cours", href: "/roulette?tab=en-cours" },
+                { key: "creer", label: "Créer", href: "/roulette?tab=creer" },
+                { key: "historique", label: "Historique", href: "/roulette?tab=historique" },
+              ]}
+            />
 
             {activeTab === "en-cours" && <EnCoursTab />}
             {activeTab === "creer" && (
@@ -158,7 +122,7 @@ async function EnCoursTab() {
   );
 
   if (openRoulettes.length === 0) {
-    return <p className="text-sm text-muted">Aucune roulette en cours pour l&apos;instant.</p>;
+    return <EmptyState icon="🎰" title="Aucune roulette en cours pour l'instant." />;
   }
 
   return (
@@ -293,7 +257,7 @@ async function HistoriqueTab() {
   });
 
   if (history.length === 0) {
-    return <p className="text-sm text-muted">Aucune roulette lancée pour l&apos;instant.</p>;
+    return <EmptyState icon="📜" title="Aucune roulette lancée pour l'instant." />;
   }
 
   return (

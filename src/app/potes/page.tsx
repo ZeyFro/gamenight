@@ -147,7 +147,7 @@ export default async function PotesPage() {
                           )}
                         </p>
                         <span
-                          className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${rank.colorClass}`}
+                          className={`rank-badge-shimmer mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${rank.colorClass}`}
                         >
                           {rank.name}
                         </span>

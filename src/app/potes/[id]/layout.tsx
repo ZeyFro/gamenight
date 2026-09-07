@@ -63,7 +63,9 @@ export default async function PoteLayout({
               <ColorDot color={pote.color} title={`Couleur de ${pote.discordName}`} />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${rank.colorClass}`}>
+              <span
+                className={`rank-badge-shimmer rounded-full px-2.5 py-1 text-xs font-medium ${rank.colorClass}`}
+              >
                 {rank.name}
               </span>
               <Badge tone={pote.steamId64 ? "accent" : "neutral"}>

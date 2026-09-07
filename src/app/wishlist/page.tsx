@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { WishlistProposeForm } from "@/components/wishlist/WishlistProposeForm";
 import { WishlistVoteButtons } from "@/components/wishlist/WishlistVoteButtons";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const WISHLIST_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
@@ -46,7 +47,7 @@ export default async function WishlistPage({
       </Card>
 
       {entries.length === 0 ? (
-        <p className="text-sm text-muted">Aucun jeu proposé pour l&apos;instant.</p>
+        <EmptyState icon="🛒" title="Propose un jeu que le groupe devrait acheter" />
       ) : (
         <Stagger className="flex flex-col gap-3">
           {entries.map((e) => {

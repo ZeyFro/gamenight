@@ -7,6 +7,8 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const TABS = [
   { key: "en-cours", label: "En cours" },
@@ -58,24 +60,22 @@ export default async function TournoisPage({
           </ButtonLink>
         </div>
 
-        <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-          {TABS.map((t) => (
-            <Link
-              key={t.key}
-              href={`/tournois?tab=${t.key}`}
-              className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                activeTab === t.key
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </div>
+        <SegmentedControl
+          groupId="tournois-tabs"
+          activeKey={activeTab}
+          options={TABS.map((t) => ({ key: t.key, label: t.label, href: `/tournois?tab=${t.key}` }))}
+        />
 
         {tournaments.length === 0 ? (
-          <p className="text-sm text-muted">Aucun tournoi ici pour l&apos;instant.</p>
+          <EmptyState
+            icon="🏆"
+            title="Lance le premier tournoi entre potes"
+            action={
+              <ButtonLink href="/tournois/creer" variant="primary" size="sm">
+                + Créer un tournoi
+              </ButtonLink>
+            }
+          />
         ) : (
           <Stagger className="flex flex-col gap-3">
             {tournaments.map((t) => (

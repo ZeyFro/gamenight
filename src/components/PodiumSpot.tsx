@@ -32,7 +32,7 @@ export function PodiumSpot({ entry, place }: { entry: ScoreboardEntry; place: 1 
         <span className="truncate">{entry.discordName}</span>
         <ColorDot color={entry.color} />
       </p>
-      <p className="text-xs text-muted">{entry.periodXp} XP</p>
+      <p className="text-xs tabular-nums text-muted">{entry.periodXp} XP</p>
       <div className={`w-full rounded-t-xl bg-surface-hover ${pedestalHeight}`} />
     </div>
   );

@@ -20,6 +20,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
@@ -368,35 +370,19 @@ export default async function SessionsPage({
         </Card>
 
         <div className="flex flex-col gap-4">
-          <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-            <Link
-              href="/sessions?tab=upcoming"
-              className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                activeTab === "upcoming"
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              À venir
-            </Link>
-            <Link
-              href="/sessions?tab=history"
-              className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-                activeTab === "history"
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              Historique
-            </Link>
-          </div>
+          <SegmentedControl
+            groupId="sessions-tabs"
+            activeKey={activeTab}
+            options={[
+              { key: "upcoming", label: "À venir", href: "/sessions?tab=upcoming" },
+              { key: "history", label: "Historique", href: "/sessions?tab=history" },
+            ]}
+          />
 
           {activeTab === "upcoming" ? (
             <section className="flex flex-col gap-3">
               {upcoming.length === 0 && (
-                <p className="text-sm text-muted">
-                  Aucune soirée prévue pour l&apos;instant.
-                </p>
+                <EmptyState icon="🎮" title="Pas encore de soirée — crée la première 🎮" />
               )}
               <Stagger className="flex flex-col gap-3">
                 {upcoming.map((session) => (
@@ -424,7 +410,7 @@ export default async function SessionsPage({
                 Afficher les annulées
               </Link>
               {pastDisplayed.length === 0 && (
-                <p className="text-sm text-muted">Aucune soirée dans l&apos;historique.</p>
+                <EmptyState icon="📜" title="Aucune soirée dans l'historique." />
               )}
               <Stagger className="flex flex-col gap-3">
                 {pastDisplayed.map((session) => (

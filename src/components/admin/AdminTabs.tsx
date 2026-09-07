@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TabLink } from "@/components/ui/TabLink";
 
 export type AdminTabKey = "messages" | "superlatifs" | "badges" | "jeux-stats";
 
@@ -24,17 +24,14 @@ export function AdminTabs({ active }: { active: AdminTabKey }) {
   return (
     <div className="flex gap-4 overflow-x-auto border-b border-border">
       {TABS.map((tab) => (
-        <Link
+        <TabLink
           key={tab.key}
           href={`/admin?tab=${tab.key}`}
-          className={`shrink-0 px-1 pb-3 text-sm font-medium transition-colors ${
-            active === tab.key
-              ? "border-b-2 border-accent text-foreground"
-              : "text-muted hover:text-foreground"
-          }`}
+          active={active === tab.key}
+          layoutId="admin-tabs-underline"
         >
           {tab.label}
-        </Link>
+        </TabLink>
       ))}
     </div>
   );

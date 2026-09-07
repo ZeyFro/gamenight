@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { TabLink } from "@/components/ui/TabLink";
 
 const TAB_LABELS = [
   { suffix: "", label: "Dispos" },
@@ -27,19 +27,10 @@ export function PoteTabs({ poteId }: { poteId: string }) {
     <div className="flex gap-4 overflow-x-auto border-b border-border">
       {TAB_LABELS.map(({ suffix, label }) => {
         const href = `${base}${suffix}`;
-        const active = pathname === href;
         return (
-          <Link
-            key={href}
-            href={href}
-            className={`shrink-0 px-1 pb-3 text-sm font-medium transition-colors ${
-              active
-                ? "border-b-2 border-accent text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
+          <TabLink key={href} href={href} active={pathname === href} layoutId="pote-tabs-underline">
             {label}
-          </Link>
+          </TabLink>
         );
       })}
     </div>
