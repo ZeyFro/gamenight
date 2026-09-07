@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { SuperlativesWonGrid } from "@/components/SuperlativesWonGrid";
+import { FadeInView } from "@/components/ui/FadeInView";
 
 /** Onglet "Superlatifs gagnés" — voir `../layout.tsx` pour l'en-tête. */
 export default async function ProfilSuperlatifsPage() {
@@ -15,16 +16,18 @@ export default async function ProfilSuperlatifsPage() {
   });
 
   return (
-    <SuperlativesWonGrid
-      awards={awards.map((a) => ({
-        id: a.id,
-        categoryIcon: a.category.icon,
-        categoryName: a.category.name,
-        gameName: a.session.decidedGame?.name ?? "?",
-        sessionDate: a.session.date,
-        voteCount: a.voteCount,
-      }))}
-      emptyMessage="Aucune récompense gagnée pour l'instant."
-    />
+    <FadeInView>
+      <SuperlativesWonGrid
+        awards={awards.map((a) => ({
+          id: a.id,
+          categoryIcon: a.category.icon,
+          categoryName: a.category.name,
+          gameName: a.session.decidedGame?.name ?? "?",
+          sessionDate: a.session.date,
+          voteCount: a.voteCount,
+        }))}
+        emptyMessage="Aucune récompense gagnée pour l'instant."
+      />
+    </FadeInView>
   );
 }

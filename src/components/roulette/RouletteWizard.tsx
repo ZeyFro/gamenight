@@ -165,6 +165,7 @@ export function RouletteWizard({
           segments={wheelSegments}
           rotation={rotation}
           durationS={SPIN_DURATION_S}
+          spinning={spinning}
         />
 
         {winnerGame && !spinning && (

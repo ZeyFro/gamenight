@@ -6392,4 +6392,150 @@ et XP de `/classement` (lignes + podium).
 - Pas d'accès DB/réseau live dans ce sandbox : build + lint + tests +
   vérification manuelle du diff, pas de test navigateur authentifié
   possible (Discord OAuth) au-delà d'un smoke test de la page de login
+
+## Fix urgent (page /profil blanche sur desktop) + design de fond
+
+### Bug urgent — CountUp cassait /profil
+
+`CountUp` (nouveau composant de la PR-A ci-dessus) utilisait
+`useMotionValue`/`useTransform` de Framer Motion et rendait la valeur
+dérivée directement comme enfant de `motion.span`
+(`<motion.span>{rounded}</motion.span>`, un `MotionValue` plutôt qu'un
+`ReactNode` classique) — un crash de rendu sur ce composant fait tomber
+tout l'arbre React jusqu'à la limite d'erreur la plus proche, ce qui
+explique une page `/profil` entièrement blanche (le composant apparaît
+dans l'en-tête ET dans les stat cards, sur le même arbre que le reste de
+la page). Réécrit avec un simple `useState` mis à jour depuis le callback
+`onUpdate` de l'API impérative `animate()` — plus aucune valeur non-
+primitive rendue comme enfant React. `prefers-reduced-motion` toujours
+respecté via une durée `0` (au lieu d'un retour anticipé avec `setState`
+synchrone dans le corps de l'effet, qui aurait déclenché des rendus en
+cascade — repéré par la règle ESLint `react-hooks/set-state-in-effect`).
+
+### Design de fond
+
+L'app était jugée trop "noir plat" — ajout d'une couche de profondeur
+visuelle cohérente sur tout le site, PERFORMANCE FIRST (`transform`/
+`opacity`/`background-position` uniquement, jamais de reflow ; effets
+coûteux allégés ou désactivés sur mobile).
+
+- **Mesh gradient de fond** (`body` dans `globals.css`) — 3 taches de
+  couleur (violet/indigo/bleu foncé) en `color-mix` à faible dosage
+  (8-10 % directement dans les stops du dégradé, jamais une `opacity`
+  globale qui aurait aussi atténué le fond solide et donc le contraste du
+  texte). `background-attachment: fixed` + animation `background-
+  position` (32s) seulement à partir de `sm:` — statique sur mobile
+  (l'attachement fixe force un repaint au scroll sur certains navigateurs
+  mobiles, et l'anim n'a pas la place de se voir sur un petit écran).
+- **Glassmorphism** — `Card` (composant partagé, ~100+ usages dans
+  l'app) passe en fond semi-transparent (`bg-surface/70`) + bordure type
+  verre (`border-white/10`) + flou seulement à partir de `sm:`
+  (`backdrop-blur-sm`, coûteux au scroll sur mobile). Sans support
+  `backdrop-filter`, le navigateur ignore juste la classe et garde le
+  fond semi-transparent uni — pas de `@supports` nécessaire. `.gradient-
+  border` (PR-A) mis à jour pour rester cohérent (fond translucide au
+  lieu d'opaque).
+- **Parallax léger** — nouveau `ParallaxHeader`
+  (`useScroll`/`useTransform` de Framer, `transform` pur donc coût quasi
+  nul) posé sur l'en-tête de la home et celui de `/profil`, facteur ~0.3.
+- **Fade-in au scroll** — nouveau `FadeInView` (`whileInView`, distinct
+  de `Stagger`/`StaggerItem` qui animent au montage) posé sur les 5
+  sous-routes de `/profil` (aperçu, historique, badges, superlatifs,
+  saisons) — periphérie représentative plutôt qu'exhaustive sur "toutes
+  les pages" (risque de régression trop élevé pour une seule PR sur des
+  dizaines de pages déjà animées différemment).
+- **Particules flottantes** (home, `FloatingParticles`) — 10 points CSS
+  purs derrière l'en-tête, positions/délais **déterministes** (dérivés de
+  l'index, jamais `Math.random()` — un générateur aléatoire diffère entre
+  le rendu serveur et l'hydratation client, ce qui casse l'hydratation).
+  Masquées sur mobile (`hidden sm:block`).
+- **Glow doré/argenté/bronze** sur le podium (`PodiumSpot`,
+  `/classement`) — dégradé radial flouté par place, distinct de l'anneau
+  de rang XP (deux signaux différents).
+- **Ken Burns** sur la bannière `/profil` (`.banner-ken-burns`, scale
+  1→1.05→1, 22s) — conteneur passé en `overflow-hidden` pour ne pas
+  déborder sur le reste de la page.
+- **Ondes radar** derrière la roue de la roulette pendant qu'elle tourne
+  (`.radar-pulse`, nouveau prop `spinning` sur `RouletteWheelDisplay`,
+  câblé depuis `RouletteWizard` ET `RouletteResultReveal` — composant
+  partagé par les deux modes).
+- **Traînée du curseur** (desktop uniquement, `pointer: fine`) — nouveau
+  `CursorTrail` (monté globalement dans `layout.tsx`, manipule le DOM
+  directement plutôt que du state React : un `mousemove` peut tirer des
+  dizaines de fois par seconde, recycler 5 `div` ainsi coûte bien moins
+  cher qu'un re-rendu React à cette fréquence). Réglage cosmétique en
+  `localStorage` (`src/lib/cursor-trail-preference.ts`, pas de colonne
+  `User` — pas lié au compte), activé par défaut, toggle dans
+  `/profil/parametres` (`CursorTrailToggle`, `useSyncExternalStore` pour
+  lire `localStorage` sans risque de mismatch d'hydratation — même classe
+  de bug que celui du CountUp corrigé ci-dessus, évitée ici dès le
+  départ).
+
+### Fichiers modifiés/ajoutés
+
+- `src/components/ui/CountUp.tsx` — fix
+- `src/app/globals.css` — mesh gradient, Ken Burns, particules, radar,
+  traînée du curseur (classes CSS)
+- `src/components/ui/Card.tsx` — glassmorphism
+- `src/components/ui/ParallaxHeader.tsx`, `FadeInView.tsx` (nouveaux)
+- `src/components/FloatingParticles.tsx`, `CursorTrail.tsx`,
+  `CursorTrailToggle.tsx` (nouveaux)
+- `src/lib/cursor-trail-preference.ts` (nouveau)
+- `src/app/page.tsx`, `src/app/profil/layout.tsx` — parallax + particules
+- `src/app/profil/page.tsx`, `historique/`, `badges/`, `superlatifs/`,
+  `saisons/` — `FadeInView`
+- `src/app/profil/parametres/page.tsx` — section "Effets visuels"
+- `src/components/PodiumSpot.tsx` — glow par place
+- `src/components/roulette/RouletteWheelDisplay.tsx`, `RouletteWizard.tsx`,
+  `RouletteResultReveal.tsx` — radar pulse
+- `src/app/layout.tsx` — montage `CursorTrail`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-64
 - Zéro régression PR #1-63
+
+## Fix urgent : chat polling actif même onglet en arrière-plan
+
+Le chat (`ChatMessages`, canal global ET onglet "💬 Chat" d'une soirée)
+faisait un `setInterval(refresh, 10_000)` sans condition — même onglet en
+arrière-plan, consommant du quota Vercel (requêtes serveur) pour rien
+pendant des heures sur un onglet oublié ouvert.
+
+- **API Page Visibility** (`document.hidden` / `visibilitychange`) — une
+  seule fonction `syncWithVisibility`, appelée au montage ET à chaque
+  bascule de visibilité : onglet caché → `clearInterval` ; onglet visible →
+  `refresh()` immédiat puis relance de l'intervalle. Pas de code dupliqué
+  entre le cas "montage initial" et le cas "retour au premier plan".
+- **Intervalle 10s → 15s** — suffisant pour un groupe de ~6 potes,
+  ~33 % de requêtes en moins même onglet actif.
+- **Panneau de chat fermé → polling coupé** — déjà couvert sans code
+  supplémentaire : `ChatPanel` utilise un `Dialog.Root` Radix non contrôlé
+  dont le contenu n'a aucune transition/animation CSS (l'animation
+  d'entrée est pilotée en JS par Framer Motion) — `Presence` de Radix
+  démonte donc `ChatMessages` immédiatement à la fermeture, ce qui
+  déclenche déjà le cleanup de l'effet (`clearInterval` +
+  retrait du listener `visibilitychange`). Vérifié en lisant
+  `ChatPanel.tsx` et le code de `@radix-ui/react-dialog`/`-presence`
+  avant d'écarter une restructuration plus lourde (prop `open`/`active`
+  contrôlée) au profit de ce fix auto-suffisant dans `ChatMessages.tsx`
+  seul. Bonus : le `refresh()` immédiat à la réouverture élimine aussi les
+  messages périmés affichés entre la réouverture et le premier tick.
+- Gain estimé : ~90 % des requêtes de polling en moins sur un usage
+  normal (onglet en arrière-plan la majorité du temps + panneau global
+  fermé la majorité du temps).
+
+### Fichiers modifiés
+
+- `src/components/chat/ChatMessages.tsx` — intervalle 15s, effet de
+  polling réécrit avec `syncWithVisibility`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-65

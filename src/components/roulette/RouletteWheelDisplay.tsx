@@ -45,11 +45,14 @@ export function RouletteWheelDisplay({
   rotation,
   sizePx = 280,
   durationS = 3.6,
+  spinning = false,
 }: {
   segments: WheelSegment[];
   rotation: number;
   sizePx?: number;
   durationS?: number;
+  /** Ondes concentriques derrière la roue pendant qu'elle tourne (design de fond, `.radar-pulse`). */
+  spinning?: boolean;
 }) {
   const segmentPercent = segments.length > 0 ? 100 / segments.length : 100;
   const conicGradient =
@@ -64,6 +67,7 @@ export function RouletteWheelDisplay({
 
   return (
     <div className="relative" style={{ width: sizePx, height: sizePx }}>
+      {spinning && <span className="radar-pulse" aria-hidden />}
       <div
         className="absolute -top-1 left-1/2 z-10 -translate-x-1/2"
         style={{

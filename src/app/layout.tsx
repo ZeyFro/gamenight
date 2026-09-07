@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { GuideFab } from "@/components/GuideFab";
 import { CelebrationConfetti } from "@/components/CelebrationConfetti";
 import { PageTransition } from "@/components/PageTransition";
+import { CursorTrail } from "@/components/CursorTrail";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -62,6 +63,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           {session?.user && <GuideFab />}
           {session?.user && <CelebrationConfetti soundEnabled={user?.soundEnabled ?? true} />}
           <Toaster theme="dark" position="bottom-center" richColors />
+          <CursorTrail />
         </MotionConfig>
       </body>
     </html>

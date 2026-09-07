@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { BadgeGrid, type BadgeGridItem } from "@/components/BadgeGrid";
+import { FadeInView } from "@/components/ui/FadeInView";
 
 /** Onglet "Badges" — voir `../layout.tsx` pour l'en-tête. */
 export default async function ProfilBadgesPage() {
@@ -24,5 +25,9 @@ export default async function ProfilBadgesPage() {
     unlockedAt: unlockedAtByBadgeId.get(badge.id) ?? null,
   }));
 
-  return <BadgeGrid badges={items} />;
+  return (
+    <FadeInView>
+      <BadgeGrid badges={items} />
+    </FadeInView>
+  );
 }

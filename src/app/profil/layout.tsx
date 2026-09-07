@@ -13,6 +13,7 @@ import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
 import { StreakFlame } from "@/components/StreakFlame";
 import { ButtonLink } from "@/components/ui/Button";
 import { CountUp } from "@/components/ui/CountUp";
+import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 
 function formatMemberSince(date: Date): string {
   return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(date);
@@ -70,9 +71,9 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8 sm:pb-12">
-      <div className="relative">
+      <div className="relative overflow-hidden">
         <div
-          className="h-40 w-full sm:h-56 md:h-64"
+          className="banner-ken-burns h-40 w-full sm:h-56 md:h-64"
           style={
             user.bannerUrl
               ? {
@@ -92,7 +93,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
       </div>
 
       <div className="flex flex-col gap-4 px-4 sm:px-6">
-        <div className="-mt-16 flex items-end gap-4 sm:-mt-20">
+        <ParallaxHeader className="-mt-16 flex items-end gap-4 sm:-mt-20">
           <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} size={96} />
           <div className="name-halo relative flex flex-1 flex-col gap-1 pb-1">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
@@ -108,7 +109,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
               <span className="text-xs text-muted">{title}</span>
             </div>
           </div>
-        </div>
+        </ParallaxHeader>
 
         <p className="text-xs text-muted">
           Membre depuis {formatMemberSince(user.createdAt)} ·{" "}
