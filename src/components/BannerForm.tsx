@@ -24,6 +24,12 @@ const BANNER_COMPRESS_QUALITY = 0.8;
  * redimensionnement échoue (canvas indisponible, décodage impossible…) —
  * dégradation silencieuse, l'upload doit rester possible même si cette
  * optimisation échoue.
+ *
+ * Fix bug remonté (bannières GIF invisibles) : ne JAMAIS appeler cette
+ * fonction sur un GIF — `drawImage` ne capture que la 1ère frame et
+ * `canvas.toBlob` ré-encode toujours en JPEG statique (pas de support GIF),
+ * ce qui détruit l'animation. Les GIF doivent être uploadés tels quels
+ * (voir l'appelant, qui saute cet appel pour `image/gif`).
  */
 async function compressBannerImage(file: File): Promise<File> {
   try {
@@ -115,7 +121,11 @@ export function BannerForm({
       return;
     }
 
-    const compressed = await compressBannerImage(file);
+    // Les GIF ne passent jamais par la compression canvas (voir doc de
+    // `compressBannerImage`) : elle les remplacerait par un JPEG statique
+    // 1ère frame, donc une bannière "GIF" qui ne bouge plus — déjà limités
+    // à 5 Mo ci-dessus, l'upload part directement du fichier original.
+    const compressed = file.type === "image/gif" ? file : await compressBannerImage(file);
     // Remplace le fichier sélectionné par la version compressée : l'upload
     // (form action native, pas un fetch piloté ici) part bien de ce fichier
     // réduit, jamais de l'original.
