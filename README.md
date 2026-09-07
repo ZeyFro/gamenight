@@ -6612,3 +6612,59 @@ invisible.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-66
+
+## Fix bug remonté : /profil blanche en navigation client — indice décisif (le resize la fait réapparaître)
+
+### Nouvel indice du testeur
+
+Complément du bug ci-dessus (PR #67, pas résolu) : la page reste
+blanche en navigation client, mais **un simple resize de la fenêtre la
+fait réapparaître instantanément** — comme le F5. Signature classique
+d'un composant dont le tout premier rendu dépend d'un mécanisme externe
+(ici un `IntersectionObserver`) qui ne se déclenche pas de façon fiable
+sur un montage 100 % client, mais dont un resize force le recalcul.
+
+### Root cause identifiée : `FadeInView`
+
+`FadeInView` pilotait son animation via `whileInView` (Framer Motion,
+donc un `IntersectionObserver` sous le capot) — utilisé sur `/profil` et
+ses 4 sous-routes pour faire apparaître **le contenu entier de la page**
+au chargement, jamais pour du vrai scroll-reveal de contenu hors écran
+(à la différence de `RecapWrapped`, qui garde `whileInView` à raison).
+Sur un montage purement côté client (navigation App Router — pas de HTML
+serveur à hydrater, contrairement à un F5), la toute première
+notification de l'observateur peut être retardée par le navigateur
+jusqu'au prochain recalcul de layout — un `resize` (ou un scroll) en
+force un, ce qui explique exactement le symptôme rapporté. Tant que rien
+ne force ce recalcul, le contenu reste bloqué à `opacity: 0` : invisible,
+mais toujours présent dans le DOM (aucune erreur JS à voir en console,
+ce qui explique aussi pourquoi l'audit précédent — qui cherchait un
+crash — n'avait rien trouvé côté `FadeInView`).
+
+Recherche complémentaire demandée (`window.innerWidth`/`innerHeight`,
+`matchMedia`, `ResizeObserver`) : aucun composant de l'app n'utilise ces
+API pour conditionner un premier rendu — seuls `CountUp` (déjà safe) et
+`CursorTrail` utilisent `matchMedia`, tous deux dans un effet, sans
+jamais masquer de contenu.
+
+### Fix
+
+`FadeInView` ne dépend plus d'un `IntersectionObserver` : l'animation
+est maintenant déclenchée par un `useEffect` (`requestAnimationFrame`,
+garanti de s'exécuter après le commit — hard refresh comme navigation
+client, sans dépendre d'un observateur externe ni d'un événement
+utilisateur). Le contenu est **toujours rendu dès le tout premier
+rendu** (jamais masqué en attendant un événement) ; seule l'animation
+d'entrée est retardée d'une frame.
+
+### Fichiers modifiés
+
+- `src/components/ui/FadeInView.tsx` — retire `whileInView`, anime au
+  montage via `useEffect`/`requestAnimationFrame`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-67
