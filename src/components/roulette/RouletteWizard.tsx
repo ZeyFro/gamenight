@@ -57,9 +57,11 @@ export function RouletteWizard({
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [winnerGame, setWinnerGame] = useState<RouletteGame | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState("20:00");
   const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const participants = candidates.filter((c) => participantIds.includes(c.id));
   const allReady =
@@ -116,11 +118,29 @@ export function RouletteWizard({
     }
   }
 
+  // Son "DING" distinct du tic-tic de rotation (Amélioration des features
+  // existantes, PR-B, item 6) — réutilise `achievement.wav` (déjà présent
+  // pour les badges) plutôt qu'un nouvel asset audio.
+  function playVictory() {
+    if (!soundEnabled) return;
+    try {
+      const audio = new Audio("/sounds/achievement.wav");
+      audio.volume = 0.5;
+      void audio.play().catch(() => {
+        // Ignoré — lecture auto potentiellement bloquée hors geste utilisateur.
+      });
+    } catch {
+      // Ignoré — jamais bloquant.
+    }
+  }
+
   function spin() {
     if (segments.length === 0) return;
     haptics.medium();
     setWinnerGame(null);
+    setCelebrate(false);
     setSpinning(true);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
 
     const winnerIndex = Math.floor(Math.random() * segments.length);
     setRotation(computeWinningRotation(rotation, winnerIndex, segments.length));
@@ -129,22 +149,31 @@ export function RouletteWizard({
     tickIntervalRef.current = setInterval(() => {
       elapsed += TICK_INTERVAL_MS;
       playTick();
+      haptics.light();
       if (elapsed >= SPIN_DURATION_S * 1000 && tickIntervalRef.current) {
         clearInterval(tickIntervalRef.current);
       }
     }, TICK_INTERVAL_MS);
 
+    // Zoom-in + flash lumineux sur la roue AVANT les confettis (spec) —
+    // un temps fort distinct plutôt que tout déclencher d'un coup à
+    // l'arrêt de la roue.
+    const CELEBRATE_FLASH_MS = 320;
     setTimeout(() => {
       setSpinning(false);
-      setWinnerGame(segments[winnerIndex].game);
       if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
-      confetti({
-        particleCount: 140,
-        spread: 75,
-        origin: { y: 0.6 },
-        colors: ["#8b5cf6", "#a78bfa", "#facc15", "#f8fafc"],
-      });
-      haptics.success();
+      setCelebrate(true);
+      flashTimeoutRef.current = setTimeout(() => {
+        setWinnerGame(segments[winnerIndex].game);
+        confetti({
+          particleCount: 140,
+          spread: 75,
+          origin: { y: 0.6 },
+          colors: ["#8b5cf6", "#a78bfa", "#facc15", "#f8fafc"],
+        });
+        haptics.success();
+        playVictory();
+      }, CELEBRATE_FLASH_MS);
     }, SPIN_DURATION_S * 1000);
   }
 
@@ -166,6 +195,7 @@ export function RouletteWizard({
           rotation={rotation}
           durationS={SPIN_DURATION_S}
           spinning={spinning}
+          celebrate={celebrate}
         />
 
         {winnerGame && !spinning && (

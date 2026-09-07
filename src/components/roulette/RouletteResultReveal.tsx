@@ -51,7 +51,9 @@ export function RouletteResultReveal({
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(canSpin);
   const [revealed, setRevealed] = useState(!canSpin);
+  const [celebrate, setCelebrate] = useState(false);
   const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const started = useRef(false);
 
   function playTick() {
@@ -59,6 +61,22 @@ export function RouletteResultReveal({
     try {
       const audio = new Audio("/sounds/tick.wav");
       audio.volume = 0.4;
+      void audio.play().catch(() => {
+        // Ignoré — lecture auto potentiellement bloquée hors geste utilisateur.
+      });
+    } catch {
+      // Ignoré — jamais bloquant.
+    }
+  }
+
+  // Son "DING" distinct du tic-tic de rotation (Amélioration des features
+  // existantes, PR-B, item 6) — réutilise `achievement.wav` (déjà présent
+  // pour les badges) plutôt qu'un nouvel asset audio.
+  function playVictory() {
+    if (!soundEnabled) return;
+    try {
+      const audio = new Audio("/sounds/achievement.wav");
+      audio.volume = 0.5;
       void audio.play().catch(() => {
         // Ignoré — lecture auto potentiellement bloquée hors geste utilisateur.
       });
@@ -78,26 +96,36 @@ export function RouletteResultReveal({
     tickIntervalRef.current = setInterval(() => {
       elapsed += TICK_INTERVAL_MS;
       playTick();
+      haptics.light();
       if (elapsed >= SPIN_DURATION_S * 1000 && tickIntervalRef.current) {
         clearInterval(tickIntervalRef.current);
       }
     }, TICK_INTERVAL_MS);
 
+    // Zoom-in + flash lumineux sur la roue AVANT les confettis (spec) —
+    // un temps fort distinct plutôt que tout déclencher d'un coup à
+    // l'arrêt de la roue.
+    const CELEBRATE_FLASH_MS = 320;
     const timeout = setTimeout(() => {
       setSpinning(false);
-      setRevealed(true);
       if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
-      confetti({
-        particleCount: 140,
-        spread: 75,
-        origin: { y: 0.6 },
-        colors: ["#8b5cf6", "#a78bfa", "#facc15", "#f8fafc"],
-      });
-      haptics.success();
+      setCelebrate(true);
+      flashTimeoutRef.current = setTimeout(() => {
+        setRevealed(true);
+        confetti({
+          particleCount: 140,
+          spread: 75,
+          origin: { y: 0.6 },
+          colors: ["#8b5cf6", "#a78bfa", "#facc15", "#f8fafc"],
+        });
+        haptics.success();
+        playVictory();
+      }, CELEBRATE_FLASH_MS);
     }, SPIN_DURATION_S * 1000);
 
     return () => {
       clearTimeout(timeout);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
       if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne doit tourner qu'une fois, au montage
@@ -105,7 +133,12 @@ export function RouletteResultReveal({
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <RouletteWheelDisplay segments={segments} rotation={rotation} spinning={spinning} />
+      <RouletteWheelDisplay
+        segments={segments}
+        rotation={rotation}
+        spinning={spinning}
+        celebrate={celebrate}
+      />
 
       {spinning && <p className="text-sm text-muted">La roue tourne…</p>}
 

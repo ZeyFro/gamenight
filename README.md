@@ -6801,3 +6801,103 @@ Vercel, aucun changement de code ne peut la remplacer.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-69
+
+## Amélioration des features existantes, PR-B (récap visuel, notifs plus utiles, roulette plus de spectacle)
+
+Suite de la PR-A (profil enrichi, classement engageant, ligne "maintenant"
+— voir PR #71) : les 3 features restantes de la même demande utilisateur.
+Toujours PAS de `whileInView` Framer Motion — uniquement `initial`/
+`animate` déclenchés au montage.
+
+### 1. Soirées — récap visuel
+
+Sur une soirée `DONE`, une nouvelle card "📋 Récap" (`src/app/sessions/[id]/page.tsx`)
+remplace l'ancienne card `revealData` (pronostics/paris en simples `<ul>`)
+par un seul bloc visuel regroupant :
+
+- le jeu joué (cover + nom, réutilise `session.decidedGame`) ;
+- les participants (avatars en ligne, nouvelle requête
+  `prisma.sessionResult.findMany({ include: { user: true } })`, triés par
+  `placement`) ;
+- les récompenses de superlatifs de CETTE soirée (icône + nom + gagnant,
+  nouvelle requête `prisma.superlativeAward.findMany({ where: { sessionId } })`
+  — différent de `SuperlativesWonGrid` sur `/profil` qui agrège tout
+  l'historique d'un seul user) ;
+- les pronostics (✅/❌) et les paris (gagné/perdu, montants) — contenu
+  identique à l'ancienne card `revealData`, juste réintégré dans le même
+  bloc visuel plutôt que dans une card séparée.
+
+Récompenses et pronostics/paris restent gardés derrière
+`superlativeVotingClosed` comme avant (jamais un gagnant affiché avant que
+le vote de superlatifs soit clos) ; le jeu et les participants s'affichent
+dès que la soirée est `DONE`.
+
+### 2. Notifications — plus utiles
+
+- **Regroupement** — `groupNotifications` (`src/lib/notifications.ts`,
+  appelée depuis `Header.tsx`) fusionne les notifications
+  `SUPERLATIVE_AWARD` d'une même soirée en une seule ligne ("5
+  récompenses pour la soirée Deadlock" plutôt que 5 lignes "X a gagné...").
+  Les autres types ne sont jamais groupés. Le nom du jeu est re-résolu via
+  une requête dédiée (`relatedSessionId` est un id "libre", sans relation
+  Prisma, donc pas stocké sur la notification elle-même). `NotificationBell`
+  affiche un badge `×N` quand une ligne est groupée.
+- **Pastille de couleur par type** — un point coloré à côté de l'icône
+  (`TYPE_DOT_COLORS` dans `NotificationBell.tsx`) : violet (`LEVEL_UP`),
+  vert (`BADGE`), rouge (`DEBT`), orange (tout le reste — résultats,
+  création, rappel, revanche, achievement, pronostic, pari, récompense —
+  tout ce qui touche une soirée).
+- **Nouveaux événements notifiés** — deux trous comblés qui ne
+  généraient encore AUCUNE notification in-app :
+  - `detectDebts` (`src/lib/debts.ts`) crée maintenant une notif `DEBT`
+    par débiteur (jusqu'ici une dette n'était visible qu'en tombant
+    dessus sur la Home) ;
+  - `finalizeSuperlativeVoting` (`src/lib/superlative-voting.ts`) crée
+    maintenant une notif `SUPERLATIVE_AWARD` par récompense (jusqu'ici
+    seul le webhook Discord `announceSessionAwards` existait).
+  - Nouvelles valeurs d'enum `SUPERLATIVE_AWARD`/`DEBT` sur
+    `NotificationType` (migration `20260909090000_add_notification_types_debt_award`).
+- **Cliquable** — déjà le cas via `notificationHref` (inchangé) ; les
+  nouvelles notifs `DEBT`/`SUPERLATIVE_AWARD` portent `relatedSessionId`
+  et pointent donc directement vers `/sessions/[id]`.
+
+### 3. Roulette — plus de spectacle
+
+`RouletteWizard.tsx` (mode instant) et `RouletteResultReveal.tsx` (mode
+async) partagent le même traitement :
+
+- **Vibration par segment** — `haptics.light()` ajouté dans le tick
+  interval existant (déjà utilisé pour le son `tick.wav`), à chaque
+  "clic" de la roue pendant la rotation.
+- **Zoom-in + flash AVANT les confettis** — nouvelle prop `celebrate` sur
+  `RouletteWheelDisplay` : à l'arrêt de la roue, un court délai
+  (320 ms) déclenche un zoom (`scale: 1.08`) sur la roue + un flash blanc
+  bref (`opacity: 0 → 0.85 → 0`), PUIS seulement ensuite les confettis et
+  le son de victoire — un temps fort distinct plutôt que tout d'un coup.
+- **Son "DING" distinct** — nouvelle fonction `playVictory()` (dans les
+  deux composants) qui réutilise `/sounds/achievement.wav` (déjà présent
+  pour les badges) au lieu de `tick.wav`/`success.wav`, pour un son de
+  victoire clairement différent du tic-tic de rotation.
+
+### Fichiers modifiés/créés
+
+- `prisma/schema.prisma` + migration `20260909090000_add_notification_types_debt_award`
+  — `NotificationType.SUPERLATIVE_AWARD` / `.DEBT`
+- `src/app/sessions/[id]/page.tsx` — card "📋 Récap" unifiée
+- `src/lib/notifications.ts` — `groupNotifications` + `GroupedNotificationItem`
+- `src/lib/debts.ts` — notif `DEBT` par débiteur détecté
+- `src/lib/superlative-voting.ts` — notif `SUPERLATIVE_AWARD` par récompense
+- `src/components/Header.tsx` — branché sur `groupNotifications`
+- `src/components/NotificationBell.tsx` — icônes/pastilles pour les 2
+  nouveaux types + badge `×N` sur une ligne groupée
+- `src/components/roulette/RouletteWheelDisplay.tsx` — prop `celebrate`
+  (zoom + flash)
+- `src/components/roulette/RouletteWizard.tsx` / `RouletteResultReveal.tsx`
+  — haptique par tick, séquence célébration → confettis, son de victoire
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-71
