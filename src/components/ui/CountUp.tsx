@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
-import { animate, motion, useMotionValue, useTransform } from "framer-motion";
+import { useEffect, useState } from "react";
+import { animate } from "framer-motion";
 
 /**
  * Compteur qui monte de 0 à `value` à l'affichage (polish visuel) — XP,
- * soirées jouées, jeux en biblio, etc. Anime une `MotionValue` plutôt que
- * du `useState` + `requestAnimationFrame` maison : Framer Motion gère déjà
- * l'easing/l'annulation proprement, et binder la valeur directement en
- * enfant de `motion.span` évite un re-render React à chaque frame (Framer
- * met à jour le DOM lui-même). Saute l'animation (affiche `value`
- * directement) si `prefers-reduced-motion` est actif.
+ * soirées jouées, jeux en biblio, etc.
+ *
+ * Fix bug remonté (PR #65, page /profil blanche sur desktop) — la version
+ * précédente rendait une `MotionValue` directement comme enfant de
+ * `motion.span` (`useTransform` + `<motion.span>{rounded}</motion.span>`).
+ * `value` initial state ci-dessous : toujours `0`, calculé sans accéder à
+ * `window`/`document` pendant le rendu (seul le `useEffect` y touche, donc
+ * jamais exécuté côté serveur) — rendu serveur et client identiques au
+ * premier passage, aucun risque de mismatch d'hydratation.
  */
 export function CountUp({
   value,
@@ -21,20 +24,19 @@ export function CountUp({
   durationMs?: number;
   className?: string;
 }) {
-  const motionVal = useMotionValue(0);
-  const rounded = useTransform(motionVal, (v) => Math.round(v).toLocaleString("fr-FR"));
+  const [display, setDisplay] = useState(0);
 
   useEffect(() => {
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) {
-      motionVal.set(value);
-      return;
-    }
-    const controls = animate(motionVal, value, { duration: durationMs / 1000, ease: "easeOut" });
+    const controls = animate(0, value, {
+      duration: reduceMotion ? 0 : durationMs / 1000,
+      ease: "easeOut",
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
     return controls.stop;
-  }, [value, durationMs, motionVal]);
+  }, [value, durationMs]);
 
-  return <motion.span className={className}>{rounded}</motion.span>;
+  return <span className={className}>{display.toLocaleString("fr-FR")}</span>;
 }
