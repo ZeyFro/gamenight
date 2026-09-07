@@ -71,23 +71,33 @@ export async function refreshDiscordProfile(discordId: string, accessToken: stri
  * fonction rafraîchit TOUT LE MONDE depuis un cron, sans dépendre d'une
  * session active ni d'un jeton individuel : `GET /users/{id}` avec le
  * jeton du BOT de l'application (Developer Portal → Bot), qui ne périme
- * jamais. Nécessite que le bot soit membre du serveur Discord du groupe.
- * `DISCORD_BOT_TOKEN` optionnelle — même philosophie que
- * `DEEPL_API_KEY`/`BLOB_READ_WRITE_TOKEN` : no-op silencieux (avec un
- * warning loggé une fois par appel) si non configurée, jamais une erreur
- * qui casserait le cron.
+ * jamais — endpoint public de l'API Discord, ne nécessite PAS que le bot
+ * partage un serveur avec l'utilisateur (contrairement à un endpoint
+ * membre de guilde). `DISCORD_BOT_TOKEN` optionnelle — même philosophie
+ * que `DEEPL_API_KEY`/`BLOB_READ_WRITE_TOKEN` : no-op silencieux (jamais
+ * une erreur qui casserait le cron) si non configurée.
+ *
+ * Fix bug remonté (round 2) : cron-job.org affichait "Succès" sans
+ * qu'aucun avatar ne se mette à jour, et sans trace dans les logs
+ * Vercel — la rétention des logs sur le plan Hobby est courte, un run
+ * silencieux (jeton bot absent) est facile à manquer entre deux passages
+ * du cron horaire. Le diagnostic ne doit donc plus dépendre uniquement
+ * des logs Vercel : la cause exacte remonte maintenant dans le JSON de
+ * réponse lui-même (`botTokenConfigured`, `error`, `failed`), visible
+ * directement dans l'historique des runs de cron-job.org.
  */
 export async function refreshAllDiscordProfilesViaBot(): Promise<{
   checked: number;
   updated: number;
+  failed: number;
+  botTokenConfigured: boolean;
+  error?: string;
 }> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) {
-    logger.warn(
-      "discord-profile",
-      "DISCORD_BOT_TOKEN non configurée — rafraîchissement cron ignoré."
-    );
-    return { checked: 0, updated: 0 };
+    const error = "DISCORD_BOT_TOKEN non configurée sur ce déploiement.";
+    logger.error("discord-profile", error);
+    return { checked: 0, updated: 0, failed: 0, botTokenConfigured: false, error };
   }
 
   const users = await prisma.user.findMany({
@@ -96,12 +106,14 @@ export async function refreshAllDiscordProfilesViaBot(): Promise<{
   logger.info("discord-profile", `Cron bot : ${users.length} utilisateur(s) à vérifier.`);
 
   let updated = 0;
+  let failed = 0;
   for (const user of users) {
     try {
       const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
       if (!res.ok) {
+        failed += 1;
         const body = await res.text().catch(() => "");
         logger.error(
           "discord-profile",
@@ -129,9 +141,15 @@ export async function refreshAllDiscordProfilesViaBot(): Promise<{
         newName: freshName,
       });
     } catch (error) {
+      failed += 1;
       logger.error("discord-profile", error, { discordId: user.discordId });
     }
   }
 
-  return { checked: users.length, updated };
+  logger.info(
+    "discord-profile",
+    `Cron bot terminé : ${updated} mis à jour, ${failed} échec(s) sur ${users.length}.`
+  );
+
+  return { checked: users.length, updated, failed, botTokenConfigured: true };
 }

@@ -16,18 +16,35 @@ import { logger } from "@/lib/logger";
  * crons du projet.
  */
 export async function GET(request: Request) {
+  // Fix bug remonté (round 2) : premier log AVANT toute condition — si
+  // cette ligne n'apparaît jamais dans les Vercel Logs pour un run donné,
+  // la requête cron-job.org n'atteint pas ce handler du tout (mauvaise
+  // URL/domaine de preview au lieu de prod, etc.) ; si elle apparaît mais
+  // rien après, la cause est dans ce handler (auth ou `DISCORD_BOT_TOKEN`
+  // absente, cf. `refreshAllDiscordProfilesViaBot`) — voir aussi le JSON
+  // de réponse, qui porte maintenant la cause exacte (`botTokenConfigured`,
+  // `error`) sans dépendre des logs Vercel.
+  logger.info("cron:refresh-discord-profiles", "Handler appelé.");
+
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${cronSecret}`) {
+      logger.warn("cron:refresh-discord-profiles", "Authorization manquante/invalide — 401.");
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
+  } else {
+    logger.warn(
+      "cron:refresh-discord-profiles",
+      "CRON_SECRET non configurée — route accessible sans authentification."
+    );
   }
 
   const result = await refreshAllDiscordProfilesViaBot();
   logger.info(
     "cron:refresh-discord-profiles",
-    `${result.updated}/${result.checked} profil(s) Discord mis à jour.`
+    `${result.updated}/${result.checked} profil(s) Discord mis à jour (${result.failed} échec(s)).`,
+    result
   );
 
   return NextResponse.json(result);
