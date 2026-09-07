@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TabLink } from "@/components/ui/TabLink";
 
 const TABS = [
   { href: "/bibliotheque", label: "Ma bibliothèque", key: "perso" },
@@ -29,22 +29,14 @@ export function LibraryTabs({
   return (
     <div className="flex gap-4 overflow-x-auto border-b border-border">
       {TABS.map((tab) => (
-        <Link
-          key={tab.key}
-          href={tab.href}
-          className={`flex shrink-0 items-center gap-1.5 px-1 pb-3 text-sm font-medium transition-colors ${
-            active === tab.key
-              ? "border-b-2 border-accent text-foreground"
-              : "text-muted hover:text-foreground"
-          }`}
-        >
+        <TabLink key={tab.key} href={tab.href} active={active === tab.key} layoutId="library-tabs-underline">
           {tab.label}
           {tab.key === "a-verifier" && !!toVerifyCount && toVerifyCount > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-foreground">
               {toVerifyCount}
             </span>
           )}
-        </Link>
+        </TabLink>
       ))}
     </div>
   );

@@ -10,18 +10,13 @@ import { DayTimeline } from "@/components/calendar/DayTimeline";
 import { PoteFilterDrawer } from "@/components/calendar/PoteFilterDrawer";
 import { ColorDot } from "@/components/ColorDot";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 interface CalendrierSearchParams {
   date?: string;
   mode?: string;
   pote?: string;
   potes?: string;
-}
-
-function tabClass(active: boolean): string {
-  return `flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors ${
-    active ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
-  }`;
 }
 
 /**
@@ -104,20 +99,22 @@ export default async function CalendrierPage({
           ordre qu'avant. */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-6">
         <div className="flex flex-col gap-5">
-          <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-            <Link
-              href={buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes })}
-              className={tabClass(mode === "collectif")}
-            >
-              Collectif
-            </Link>
-            <Link
-              href={buildCalendarHref({ date: sp.date, mode: "individuel", pote: sp.pote })}
-              className={tabClass(mode === "individuel")}
-            >
-              Individuel
-            </Link>
-          </div>
+          <SegmentedControl
+            groupId="calendrier-mode"
+            activeKey={mode}
+            options={[
+              {
+                key: "collectif",
+                label: "Collectif",
+                href: buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes }),
+              },
+              {
+                key: "individuel",
+                label: "Individuel",
+                href: buildCalendarHref({ date: sp.date, mode: "individuel", pote: sp.pote }),
+              },
+            ]}
+          />
 
           <MiniMonthCalendar
             days={data.days}

@@ -104,6 +104,80 @@ body {
     var(--surface);
 }
 
+/* Micro-interactions (polish visuel) — presse au clic sur TOUS les
+   `<button>` natifs de l'app, pas seulement `Button`/`ButtonLink`
+   (qui gèrent déjà leur propre `whileTap` via Framer Motion — l'inline
+   style posé par Framer prime sur cette règle CSS, donc pas de conflit).
+   Une seule règle globale plutôt que d'auditer chaque bouton un par un. */
+button {
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+button:active {
+  transform: scale(0.97);
+}
+
+/* Bordure "dégradé" très subtile (violet → transparent) pour les cards de
+   la home — double-background classique (fond opaque en `padding-box`,
+   dégradé en `border-box`) plutôt qu'un `border-image`, qui ne supporte
+   pas `border-radius`. `!important` sur `border-color` seulement (pas de
+   raccourci `border`) : cette classe est posée à côté de `Card` (qui pose
+   déjà `border border-border` via Tailwind), l'ordre des deux classes
+   dans le DOM ne garantit pas laquelle l'emporte en cascade CSS pure —
+   `!important` la rend déterministe sans toucher largeur/style du bord. */
+.gradient-border {
+  border-color: transparent !important;
+  background-image:
+    linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 65%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+/* Halo dégradé discret derrière le nom, en-tête de profil. */
+.name-halo {
+  background: radial-gradient(60% 140% at 0% 50%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 75%);
+}
+
+/* Fond radial doux derrière le podium top 3 (`/classement`). */
+.podium-glow-bg {
+  background: radial-gradient(70% 60% at 50% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%);
+}
+
+/* Léger effet de brillance qui balaie le badge de rang (Bronze/Argent/Or…),
+   en boucle lente — un cran plus discret que `.badge-glow*` (statique),
+   pensé pour un petit texte plutôt qu'une icône de badge. */
+.rank-badge-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.rank-badge-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, white 35%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: rank-shimmer 3.2s ease-in-out infinite;
+}
+@keyframes rank-shimmer {
+  0% {
+    background-position: 160% 0;
+  }
+  60%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

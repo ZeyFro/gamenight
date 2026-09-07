@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Avatar } from "@/components/ui/Avatar";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDurationFr } from "@/lib/wallclock";
 import { CHAT_REACTION_EMOJIS } from "@/lib/validations";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -138,9 +139,7 @@ export function ChatMessages({
 
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 py-2">
         {messages.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted">
-            Aucun message pour l&apos;instant — lance la discussion !
-          </p>
+          <EmptyState icon="💬" title="Premier message ici — brise la glace !" className="my-4" />
         ) : (
           messages.map((m) => {
             const isMine = m.userId === currentUserId;

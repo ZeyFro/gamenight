@@ -18,6 +18,8 @@ import { ensureFirstSeasonExists, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { CountUp } from "@/components/ui/CountUp";
 import { Avatar } from "@/components/ui/Avatar";
 import { Logo } from "@/components/Logo";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -311,33 +313,38 @@ export default async function Home({
               </div>
             </Link>
           ) : (
-            <Card>
-              <p className="text-sm text-muted">
-                Aucune soirée prévue pour l&apos;instant.
-              </p>
-              <ButtonLink href="/sessions" variant="primary" className="mt-4">
-                Proposer une soirée
-              </ButtonLink>
-            </Card>
+            <EmptyState
+              icon="🎮"
+              title="Pas encore de soirée — crée la première 🎮"
+              action={
+                <ButtonLink href="/sessions" variant="primary">
+                  Proposer une soirée
+                </ButtonLink>
+              }
+            />
           )}
         </StaggerItem>
 
         {/* Stats du groupe */}
         <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">Stats du groupe</p>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">Stats du groupe</p>
             <div className="mt-3 grid grid-cols-2 gap-4">
               <div>
-                <p className="text-lg font-semibold text-foreground">
-                  {groupStats.totalSessionsPlayed}
-                </p>
+                <CountUp
+                  value={groupStats.totalSessionsPlayed}
+                  className="text-lg font-semibold tabular-nums text-foreground"
+                />
                 <p className="text-xs text-muted">
                   soirée{groupStats.totalSessionsPlayed === 1 ? "" : "s"} jouée
                   {groupStats.totalSessionsPlayed === 1 ? "" : "s"}
                 </p>
               </div>
               <div>
-                <p className="text-lg font-semibold text-foreground">{groupStats.activePlayers}</p>
+                <CountUp
+                  value={groupStats.activePlayers}
+                  className="text-lg font-semibold tabular-nums text-foreground"
+                />
                 <p className="text-xs text-muted">
                   joueur{groupStats.activePlayers === 1 ? "" : "s"} actif
                   {groupStats.activePlayers === 1 ? "" : "s"}
@@ -385,10 +392,10 @@ export default async function Home({
         {/* Activité récente + Dispos de la semaine côte à côte sur desktop */}
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
         <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">Activité récente</p>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">Activité récente</p>
             {activity.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">Rien à signaler pour l&apos;instant.</p>
+              <EmptyState icon="📡" title="L'activité du groupe apparaîtra ici" className="mt-3" />
             ) : (
               <ul className="mt-3 flex flex-col gap-3">
                 {activity.map((item) => (
@@ -409,8 +416,8 @@ export default async function Home({
 
         {/* Dispos de la semaine */}
         <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">Dispos de la semaine</p>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">Dispos de la semaine</p>
             <div className="mt-3 grid grid-cols-7 gap-1.5 sm:gap-2">
               {weekAvailability.map((day) => (
                 <Link
@@ -497,8 +504,8 @@ export default async function Home({
             entièrement masquée s'il n'y a aucune actu en cache (spec). */}
         {gameNews.length > 0 && (
           <StaggerItem>
-            <Card>
-              <p className="text-sm text-muted">📰 Actu gaming</p>
+            <Card className="gradient-border">
+              <p className="text-lg font-semibold text-foreground">📰 Actu gaming</p>
               <ul className="mt-3 flex flex-col gap-3">
                 {gameNews.map((item) => (
                   <li key={item.id}>
@@ -539,8 +546,8 @@ export default async function Home({
             complétion se fait depuis une soirée DONE (bouton créateur),
             jamais directement ici — la Home reste en lecture seule. */}
         <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">🎯 Défi de la semaine</p>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">🎯 Défi de la semaine</p>
             <p className="mt-2 text-foreground">{weeklyChallenge.description}</p>
             <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
               {weeklyChallenge.completedAt
@@ -554,8 +561,8 @@ export default async function Home({
             `BadgeGrid` : les 10 lignes sont toujours affichées, débloquées
             en couleur, verrouillées grisées. */}
         <StaggerItem>
-          <Card>
-            <p className="text-sm text-muted">🏅 Trophées du groupe</p>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">🏅 Trophées du groupe</p>
             <div className="mt-3 grid grid-cols-4 gap-3 sm:grid-cols-5">
               {groupAchievements.map((a) => (
                 <div
@@ -573,15 +580,22 @@ export default async function Home({
           </Card>
         </StaggerItem>
 
-        {/* Dettes du groupe (Sprint 3 suite) — masquée s'il n'y a aucune
-            dette active, même philosophie que "Actu gaming" ci-dessus.
-            Définir le gage/marquer soldée réservé au créateur de la
-            soirée qui a généré la dette (mêmes gardes côté serveur dans
-            `src/app/dettes/actions.ts`). */}
-        {activeDebts.length > 0 && (
-          <StaggerItem>
-            <Card>
-              <p className="text-sm text-muted">💀 Dettes du groupe</p>
+        {/* Dettes du groupe (Sprint 3 suite) — toujours affichée (polish
+            visuel : état vide célébré plutôt que section masquée, cf.
+            demande explicite) au lieu de disparaître s'il n'y a aucune
+            dette active. Définir le gage/marquer soldée réservé au
+            créateur de la soirée qui a généré la dette (mêmes gardes côté
+            serveur dans `src/app/dettes/actions.ts`). */}
+        <StaggerItem>
+          <Card className="gradient-border">
+            <p className="text-lg font-semibold text-foreground">💀 Dettes du groupe</p>
+            {activeDebts.length === 0 ? (
+              <EmptyState
+                icon="✨"
+                title="Personne ne doit rien — bravo le groupe !"
+                className="mt-3"
+              />
+            ) : (
               <ul className="mt-3 flex flex-col gap-3">
                 {activeDebts.map((debt) => {
                   const isDebtCreator = debt.session.createdById === user.id;
@@ -633,15 +647,15 @@ export default async function Home({
                   );
                 })}
               </ul>
-            </Card>
-          </StaggerItem>
-        )}
+            )}
+          </Card>
+        </StaggerItem>
 
         {/* Classement rapide */}
         <StaggerItem>
-          <Card>
+          <Card className="gradient-border">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted">Classement rapide</p>
+              <p className="text-lg font-semibold text-foreground">Classement rapide</p>
               <Link href="/classement" className="text-xs font-medium text-accent hover:underline">
                 Voir tout
               </Link>

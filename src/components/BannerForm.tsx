@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { setBannerUrlAction, uploadBannerAction } from "@/app/profil/actions";
 import { Button } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 const MAX_BANNER_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -138,26 +139,14 @@ export function BannerForm({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2 rounded-lg border border-border bg-background p-1">
-        <button
-          type="button"
-          onClick={() => setMode("url")}
-          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-            mode === "url" ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
-          }`}
-        >
-          URL
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("upload")}
-          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-            mode === "upload" ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
-          }`}
-        >
-          Uploader une image
-        </button>
-      </div>
+      <SegmentedControl
+        groupId="banner-mode"
+        activeKey={mode}
+        options={[
+          { key: "url", label: "URL", onClick: () => setMode("url") },
+          { key: "upload", label: "Uploader une image", onClick: () => setMode("upload") },
+        ]}
+      />
 
       {mode === "url" ? (
         <form action={setBannerUrlAction} className="flex flex-col gap-3">

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import {
@@ -14,6 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 const PERIOD_LABELS: Record<ScoreboardPeriod, string> = {
   global: "Global",
@@ -36,7 +36,7 @@ function ScoreboardRow({
 }) {
   return (
     <Card className="flex items-center gap-4">
-      <span className="w-6 shrink-0 text-center text-sm font-semibold text-muted">
+      <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-muted">
         {position}
       </span>
       <RankAvatar
@@ -61,8 +61,8 @@ function ScoreboardRow({
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold text-foreground">{entry.periodXp} XP</p>
-        <p className="text-xs text-muted">
+        <p className="text-sm font-semibold tabular-nums text-foreground">{entry.periodXp} XP</p>
+        <p className="text-xs tabular-nums text-muted">
           {entry.sessionsPlayed} soirée{entry.sessionsPlayed === 1 ? "" : "s"}
         </p>
       </div>
@@ -109,20 +109,16 @@ export default async function ClassementPage({
         <p className="mt-1 text-sm text-muted">Qui domine le groupe.</p>
       </div>
 
-      <div className="flex gap-2 rounded-lg border border-border bg-background p-1 lg:w-fit">
-        {SCOREBOARD_PERIODS.map((p) => (
-          <Link
-            key={p}
-            href={`/classement?periode=${p}`}
-            className={`flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors lg:flex-none lg:px-6 ${
-              period === p
-                ? "bg-accent text-accent-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {PERIOD_LABELS[p]}
-          </Link>
-        ))}
+      <div className="lg:w-fit">
+        <SegmentedControl
+          groupId="classement-periode"
+          activeKey={period}
+          options={SCOREBOARD_PERIODS.map((p) => ({
+            key: p,
+            label: PERIOD_LABELS[p],
+            href: `/classement?periode=${p}`,
+          }))}
+        />
       </div>
 
       {entries.length === 0 ? (
@@ -135,7 +131,7 @@ export default async function ClassementPage({
         // scrolle la liste complète.
         <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
           {podium.length > 0 && (
-            <div className="flex items-end justify-center gap-3 sm:gap-6 lg:sticky lg:top-4">
+            <div className="podium-glow-bg flex items-end justify-center gap-3 rounded-2xl p-4 sm:gap-6 lg:sticky lg:top-4">
               {second && <PodiumSpot entry={second} place={2} />}
               {first && <PodiumSpot entry={first} place={1} />}
               {third && <PodiumSpot entry={third} place={3} />}

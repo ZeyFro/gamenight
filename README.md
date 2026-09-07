@@ -6281,4 +6281,115 @@ validation existante juste au-dessus).
 - `npx eslint .` : clean
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
+
+## Polish visuel, PR-A (micro-interactions, états vides, dégradés, typo)
+
+Première des deux PR demandées ("polish visuel" + "amélioration des
+features existantes") — celle-ci couvre le polish visuel pur (items 1-4
+de la demande). L'amélioration des features (profil enrichi, classement
+engageant, récap de soirée, notifications groupées, ligne "maintenant" au
+calendrier, spectacle roulette) suivra dans une PR-B une fois celle-ci
+mergée, même découpage que les sprints précédents.
+
+### 1. Micro-interactions
+
+- **Boutons** : `Button`/`ButtonLink` avaient déjà `whileTap={{ scale:
+  0.97 }}` (Framer). Pour couvrir aussi les `<button>` natifs hors de ces
+  deux composants (icônes du header, boutons de dialog, toggles de
+  `DayTimeline`…) sans auditer chaque fichier un par un, une règle CSS
+  globale (`globals.css`) ajoute `transition: transform/background-color/…
+  150ms` + `:active { transform: scale(0.97) }` sur `button`. L'inline
+  style posé par Framer sur les boutons motion prime sur cette règle CSS
+  (pas de conflit visuel), donc les deux mécanismes cohabitent.
+- **Cards hover glow** : `Card`/`.card-glow` existaient déjà et sont
+  utilisés dans 13 fichiers (bibliothèque, sessions, tournois, potes…) —
+  couverture déjà large, pas de changement nécessaire ici.
+- **Onglets à soulignement animé** : nouveau composant partagé
+  `TabLink` (`src/components/ui/TabLink.tsx`) — un `motion.span` avec
+  `layoutId` (un id par barre d'onglets, jamais partagé entre deux barres
+  différentes) glisse sous l'onglet actif au lieu de réapparaître
+  instantanément. Remplace le `border-b-2` statique dans `ProfilTabs`,
+  `PoteTabs`, `LibraryTabs`, `AdminTabs`.
+- **Toggles à fond glissant** : nouveau composant partagé
+  `SegmentedControl` (`src/components/ui/SegmentedControl.tsx`) — même
+  principe (`layoutId`) mais le fond `bg-accent` glisse d'une pilule à
+  l'autre. Remplace le pattern "pilule pleine posée/retirée
+  instantanément" dans : `BannerForm` (URL/Upload), `/sessions` (À
+  venir/Historique), `/roulette` (mode async/instant, puis En
+  cours/Créer/Historique), `/calendrier` (Collectif/Individuel),
+  `/classement` (Global/Mois/Semaine).
+- **Compteurs count-up** : nouveau composant partagé `CountUp`
+  (`src/components/ui/CountUp.tsx`, anime une `MotionValue` Framer de 0
+  à la valeur cible en ~600ms, saute l'animation si
+  `prefers-reduced-motion`) — appliqué aux stat cards de `/profil`
+  (soirées jouées, jeux en biblio, soirées créées, récompenses, streak)
+  et aux stats du groupe sur la home (soirées jouées, joueurs actifs).
+
+### 2. États vides
+
+Nouveau composant partagé `EmptyState` (`src/components/ui/EmptyState.tsx`
+— icône + titre + action optionnelle) posé sur : home (aucune soirée à
+venir, activité récente vide, dettes du groupe — **la section "Dettes"
+ne se masque plus si vide, elle affiche désormais un état "✨ Personne ne
+doit rien" au lieu de disparaître**), `/sessions` (à venir/historique
+vides), `/tournois` (avec CTA "+ Créer un tournoi"), `/wishlist`, chat
+(`ChatMessages`, canal global et par soirée), `/roulette` (en
+cours/historique vides). Le pronostic sans participant (`PronosticForm`,
+`/sessions/[id]`) affiche désormais "🔮 Fais ton prono avant la soirée !"
+tant que personne n'a répondu, au lieu du simple compteur "0/N".
+
+### 3. Dégradés & fonds
+
+- Halo dégradé discret (`.name-halo`, radial violet→transparent) derrière
+  le nom sur l'en-tête `/profil`.
+- Bordure dégradé très subtile (`.gradient-border` — double
+  `background-clip` padding-box/border-box, `!important` sur
+  `border-color` uniquement pour rester déterministe à côté du `border
+  border-border` déjà posé par `Card`) sur les 8 cards de section de la
+  home.
+- Fond radial doux derrière le podium top 3 (`.podium-glow-bg`,
+  `/classement`).
+- Léger shimmer CSS en boucle (`.rank-badge-shimmer`, respecte
+  `prefers-reduced-motion` via la règle globale existante) sur les
+  badges de rang texte (Bronze/Argent/Or…) : `/profil`, `/potes/[id]`,
+  `/potes`.
+
+### 4. Typographie
+
+Titres de section de la home (Stats du groupe, Activité récente, Dispos
+de la semaine, Actu gaming, Défi de la semaine, Trophées du groupe,
+Dettes du groupe, Classement rapide) passés de `text-sm text-muted` à
+`text-lg font-semibold text-foreground`. `tabular-nums` ajouté sur les
+nombres qui doivent s'aligner proprement : stats du groupe et stats de
+profil (déjà couvertes par `CountUp`), XP/streak de `/profil`, position
+et XP de `/classement` (lignes + podium).
+
+### Fichiers modifiés/ajoutés
+
+- `src/components/ui/TabLink.tsx`, `SegmentedControl.tsx`,
+  `EmptyState.tsx`, `CountUp.tsx` (nouveaux)
+- `src/app/globals.css` — transition boutons, `.gradient-border`,
+  `.name-halo`, `.podium-glow-bg`, `.rank-badge-shimmer`
+- `src/components/ProfilTabs.tsx`, `PoteTabs.tsx`, `LibraryTabs.tsx`,
+  `admin/AdminTabs.tsx` — `TabLink`
+- `src/app/sessions/page.tsx`, `roulette/page.tsx`, `calendrier/page.tsx`,
+  `classement/page.tsx`, `src/components/BannerForm.tsx` —
+  `SegmentedControl`
+- `src/app/page.tsx`, `tournois/page.tsx`, `wishlist/page.tsx`,
+  `src/components/chat/ChatMessages.tsx` — `EmptyState`
+- `src/app/profil/layout.tsx` — `CountUp`, halo, shimmer, tabular-nums
+- `src/app/classement/page.tsx`, `src/components/PodiumSpot.tsx` —
+  podium glow, tabular-nums
+- `src/app/potes/[id]/layout.tsx`, `src/app/potes/page.tsx` — shimmer
+  badge de rang
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-64
+- Pas d'accès DB/réseau live dans ce sandbox : build + lint + tests +
+  vérification manuelle du diff, pas de test navigateur authentifié
+  possible (Discord OAuth) au-delà d'un smoke test de la page de login
 - Zéro régression PR #1-63

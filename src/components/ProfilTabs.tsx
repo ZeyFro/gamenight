@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { TabLink } from "@/components/ui/TabLink";
 
 const TABS = [
   { href: "/profil", label: "Aperçu" },
@@ -30,22 +30,11 @@ export function ProfilTabs() {
 
   return (
     <div className="flex gap-4 overflow-x-auto border-b border-border">
-      {TABS.map((tab) => {
-        const active = pathname === tab.href;
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={`shrink-0 px-1 pb-3 text-sm font-medium transition-colors ${
-              active
-                ? "border-b-2 border-accent text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+      {TABS.map((tab) => (
+        <TabLink key={tab.href} href={tab.href} active={pathname === tab.href} layoutId="profil-tabs-underline">
+          {tab.label}
+        </TabLink>
+      ))}
     </div>
   );
 }

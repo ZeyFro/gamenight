@@ -12,6 +12,7 @@ import { ProfilTabs } from "@/components/ProfilTabs";
 import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
 import { StreakFlame } from "@/components/StreakFlame";
 import { ButtonLink } from "@/components/ui/Button";
+import { CountUp } from "@/components/ui/CountUp";
 
 function formatMemberSince(date: Date): string {
   return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(date);
@@ -20,7 +21,7 @@ function formatMemberSince(date: Date): string {
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-surface p-3 text-center">
-      <span className="text-xl font-bold text-foreground">{value}</span>
+      <CountUp value={value} className="text-xl font-bold tabular-nums text-foreground" />
       <span className="text-[11px] text-muted">{label}</span>
     </div>
   );
@@ -29,8 +30,8 @@ function StatCard({ label, value }: { label: string; value: number }) {
 function StreakStatCard({ value }: { value: number }) {
   return (
     <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-surface p-3 text-center">
-      <span className="flex items-center gap-1 text-xl font-bold text-foreground">
-        {value}
+      <span className="flex items-center gap-1 text-xl font-bold tabular-nums text-foreground">
+        <CountUp value={value} />
         {value > 0 && <StreakFlame />}
       </span>
       <span className="text-[11px] text-muted">Streak</span>
@@ -93,13 +94,15 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
       <div className="flex flex-col gap-4 px-4 sm:px-6">
         <div className="-mt-16 flex items-end gap-4 sm:-mt-20">
           <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} size={96} />
-          <div className="flex flex-1 flex-col gap-1 pb-1">
+          <div className="name-halo relative flex flex-1 flex-col gap-1 pb-1">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
               {user.discordName}
               <ColorDot color={user.color} title="Ta couleur perso" />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}>
+              <span
+                className={`rank-badge-shimmer rounded-full px-3 py-1 text-xs font-medium ${rank.colorClass}`}
+              >
                 {rank.name}
               </span>
               <span className="text-xs text-muted">{title}</span>
@@ -129,7 +132,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
               style={{ width: `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%` }}
             />
           </div>
-          <p className="text-xs text-muted">
+          <p className="text-xs tabular-nums text-muted">
             {user.xpTotal} XP au total — {xpIntoLevel} / {xpForNextLevel} vers le niveau{" "}
             {level + 1}
           </p>
