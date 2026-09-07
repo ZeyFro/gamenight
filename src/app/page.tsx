@@ -20,6 +20,8 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CountUp } from "@/components/ui/CountUp";
+import { FloatingParticles } from "@/components/FloatingParticles";
+import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { Logo } from "@/components/Logo";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -226,7 +228,8 @@ export default async function Home({
         />
       )}
 
-      <div className="flex items-center gap-4">
+      <ParallaxHeader className="relative flex items-center gap-4">
+        <FloatingParticles />
         <RankAvatar
           src={session.user.image ?? null}
           alt={`Avatar de ${session.user.name}`}
@@ -257,7 +260,7 @@ export default async function Home({
         <ButtonLink href="/guide" variant="ghost" size="sm" className="shrink-0 !px-2">
           📖 Guide
         </ButtonLink>
-      </div>
+      </ParallaxHeader>
 
       <Stagger className="flex flex-col gap-4" staggerDelay={0.1}>
         {/* Prochaine soirée + Stats du groupe côte à côte sur desktop —

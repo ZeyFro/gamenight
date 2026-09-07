@@ -6,6 +6,7 @@ import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { FadeInView } from "@/components/ui/FadeInView";
 
 const PLACEMENT_LABELS: Record<number, string> = {
   1: "🥇 1er",
@@ -47,9 +48,11 @@ export default async function ProfilHistoriquePage() {
 
   if (rows.length === 0) {
     return (
-      <Card>
-        <p className="text-sm text-muted">Aucune soirée jouée pour l&apos;instant.</p>
-      </Card>
+      <FadeInView>
+        <Card>
+          <p className="text-sm text-muted">Aucune soirée jouée pour l&apos;instant.</p>
+        </Card>
+      </FadeInView>
     );
   }
 

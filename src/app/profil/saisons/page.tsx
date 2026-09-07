@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
+import { FadeInView } from "@/components/ui/FadeInView";
 
 /** Onglet "Saisons" du profil — résultats passés de l'utilisateur, saison par saison. */
 export default async function ProfilSaisonsPage() {
@@ -16,16 +17,18 @@ export default async function ProfilSaisonsPage() {
 
   if (snapshots.length === 0) {
     return (
-      <Card>
-        <p className="text-sm text-muted">
-          Aucune saison terminée pour l&apos;instant — reviens à la fin du mois.
-        </p>
-      </Card>
+      <FadeInView>
+        <Card>
+          <p className="text-sm text-muted">
+            Aucune saison terminée pour l&apos;instant — reviens à la fin du mois.
+          </p>
+        </Card>
+      </FadeInView>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <FadeInView className="flex flex-col gap-2">
       {snapshots.map((snap) => (
         <Card key={snap.id} className="flex items-center justify-between gap-3">
           <div>
@@ -43,6 +46,6 @@ export default async function ProfilSaisonsPage() {
           </div>
         </Card>
       ))}
-    </div>
+    </FadeInView>
   );
 }

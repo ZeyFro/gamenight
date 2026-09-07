@@ -53,12 +53,53 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Mesh gradient de fond, très subtil (design de fond) — 3 taches de
+   couleur en `color-mix` à faible dosage (8-10%) directement dans les
+   stops du dégradé plutôt qu'un calque séparé + `opacity` globale, qui
+   aurait aussi atténué `var(--background)` (donc le contraste du texte).
+   `background-attachment: fixed` seulement à partir de `sm:` (perf mobile
+   — cet attachement force un repaint au scroll sur certains navigateurs
+   mobiles) : sur mobile le fond reste statique, sans l'anim
+   `background-position` (coût de repaint continu inutile sur un petit
+   écran qui n'a de toute façon pas la place de voir les taches dériver). */
 body {
-  background: var(--background);
+  background:
+    radial-gradient(35% 40% at 20% 20%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    radial-gradient(30% 35% at 80% 25%, color-mix(in srgb, #4f46e5 9%, transparent), transparent 70%),
+    radial-gradient(40% 45% at 50% 90%, color-mix(in srgb, #1e3a8a 8%, transparent), transparent 70%),
+    var(--background);
+  background-size:
+    200% 200%,
+    200% 200%,
+    200% 200%,
+    auto;
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   font-size: 15px;
   line-height: 1.5;
+}
+@media (min-width: 640px) {
+  body {
+    background-attachment: fixed, fixed, fixed, scroll;
+    animation: mesh-drift 32s ease-in-out infinite;
+  }
+}
+@keyframes mesh-drift {
+  0%,
+  100% {
+    background-position:
+      0% 0%,
+      100% 0%,
+      50% 100%,
+      0 0;
+  }
+  50% {
+    background-position:
+      100% 100%,
+      0% 100%,
+      50% 0%,
+      0 0;
+  }
 }
 
 /* Dégradé radial très discret d'accent color, pour le header/hero. */
@@ -122,17 +163,24 @@ button:active {
 }
 
 /* Bordure "dégradé" très subtile (violet → transparent) pour les cards de
-   la home — double-background classique (fond opaque en `padding-box`,
-   dégradé en `border-box`) plutôt qu'un `border-image`, qui ne supporte
-   pas `border-radius`. `!important` sur `border-color` seulement (pas de
+   la home — double-background classique (fond en `padding-box`, dégradé
+   en `border-box`) plutôt qu'un `border-image`, qui ne supporte pas
+   `border-radius`. `!important` sur `border-color` seulement (pas de
    raccourci `border`) : cette classe est posée à côté de `Card` (qui pose
-   déjà `border border-border` via Tailwind), l'ordre des deux classes
+   déjà `border border-white/10` via Tailwind), l'ordre des deux classes
    dans le DOM ne garantit pas laquelle l'emporte en cascade CSS pure —
-   `!important` la rend déterministe sans toucher largeur/style du bord. */
+   `!important` la rend déterministe sans toucher largeur/style du bord.
+   Fond du `padding-box` en `color-mix` translucide (pas `var(--surface)`
+   plein) pour rester cohérent avec le glassmorphism de `Card` — le
+   `backdrop-blur` posé par `Card` floute ce qu'il y a derrière quel que
+   soit ce calque, seule la teinte de surface doit matcher visuellement. */
 .gradient-border {
   border-color: transparent !important;
   background-image:
-    linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(
+      color-mix(in srgb, var(--surface) 70%, transparent),
+      color-mix(in srgb, var(--surface) 70%, transparent)
+    ),
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 65%);
   background-origin: border-box;
   background-clip: padding-box, border-box;
@@ -176,6 +224,97 @@ button:active {
   100% {
     background-position: -60% 0;
   }
+}
+
+/* Effet Ken Burns très lent sur la bannière de profil (design de fond). */
+.banner-ken-burns {
+  animation: ken-burns 22s ease-in-out infinite;
+}
+@keyframes ken-burns {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Particules flottantes très subtiles (design de fond, home) — dérive
+   lente en CSS pur, pas de lib. Chaque particule porte son propre délai/
+   durée via `style` inline (voir `FloatingParticles`) pour ne pas
+   dupliquer 10 keyframes ; celle-ci ne gère que la trajectoire. */
+.floating-particle {
+  position: absolute;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: particle-drift linear infinite;
+  pointer-events: none;
+}
+@keyframes particle-drift {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--drift-x, 20px), var(--drift-y, -40px));
+    opacity: 0;
+  }
+}
+
+/* Ondes concentriques type radar derrière la roue de la roulette pendant
+   qu'elle tourne (design de fond). Un seul élément, 3 anneaux dessinés en
+   `box-shadow` inset répétés via l'anim plutôt que 3 divs. */
+.radar-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.radar-pulse::before,
+.radar-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: radar-ping 2s ease-out infinite;
+}
+.radar-pulse::after {
+  animation-delay: 1s;
+}
+@keyframes radar-ping {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Traînée du curseur (desktop uniquement, cf. `CursorTrail`) — chaque
+   point est un `div` positionné en JS via `left`/`top`, cette classe ne
+   gère que l'apparence + le fondu. */
+.cursor-trail-dot {
+  position: fixed;
+  z-index: 100;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--accent);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 400ms ease,
+    transform 400ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
