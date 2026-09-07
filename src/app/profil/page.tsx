@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
+import { FadeInView } from "@/components/ui/FadeInView";
 
 const XP_REASON_LABELS: Record<XpReason, string> = {
   CREATE_SESSION: "a créé une soirée",
@@ -68,7 +69,7 @@ export default async function ProfilApercuPage() {
     pronosticTotal > 0 ? Math.round((pronosticCorrect / pronosticTotal) * 100) : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <FadeInView className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-muted">Prochaine soirée</h2>
         {nextSession ? (
@@ -174,6 +175,6 @@ export default async function ProfilApercuPage() {
           </div>
         </section>
       )}
-    </div>
+    </FadeInView>
   );
 }

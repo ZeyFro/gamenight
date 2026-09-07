@@ -15,6 +15,7 @@ import { BannerForm } from "@/components/BannerForm";
 import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
+import { CursorTrailToggle } from "@/components/CursorTrailToggle";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 /**
@@ -315,6 +316,18 @@ export default async function ProfilParametresPage({
               {user.soundEnabled ? "🔇 Couper les sons" : "🔊 Activer les sons"}
             </Button>
           </form>
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Effets visuels</h2>
+          <p className="text-sm text-muted">
+            Une traînée de points violets suit ta souris sur desktop (design de
+            fond). Purement cosmétique, réglage gardé sur cet appareil
+            uniquement.
+          </p>
+          <CursorTrailToggle />
         </Card>
       </StaggerItem>
 

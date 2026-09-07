@@ -105,7 +105,7 @@ export function RouletteResultReveal({
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <RouletteWheelDisplay segments={segments} rotation={rotation} />
+      <RouletteWheelDisplay segments={segments} rotation={rotation} spinning={spinning} />
 
       {spinning && <p className="text-sm text-muted">La roue tourne…</p>}
 
