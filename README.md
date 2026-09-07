@@ -6801,3 +6801,94 @@ Vercel, aucun changement de code ne peut la remplacer.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-69
+
+## Amélioration des features existantes, PR-A (profil enrichi, classement engageant, ligne "maintenant")
+
+Première des deux PR de la demande "amélioration des features
+existantes" (items 1, 2, 5 — profil, classement, calendrier ; la
+seconde PR couvre récap de soirée, notifications groupées, roulette).
+⚠️ Aucun `whileInView` Framer Motion nulle part dans cette PR — toutes
+les animations utilisent `animate` déclenché au montage, conformément à
+la contrainte explicite après les 3 PR de fix `/profil`.
+
+### 1. Profil — section "📊 Statistiques"
+
+Nouvelle section sur l'onglet Aperçu (`/profil`), entre "Prochaine
+soirée" et "Dernière activité" :
+
+- **Win rate** — `sessionResult.placement === 1` / total, calculé
+  uniquement sur les soirées **compétitives** (`placement` non-null) :
+  une soirée coop n'a pas de podium (`placement` toujours `null`, cf.
+  `submitSessionResultsAction`), donc pas de notion fiable de
+  "gagnée/perdue" à en tirer sans introduire un nouveau signal en base.
+  `—` si aucune soirée compétitive jouée.
+- **Meilleur streak historique** — nouveau champ `User.bestStreakCount`
+  (migration), mis à jour dans `touchStreak()` en parallèle de
+  `streakCount` (jamais décrémenté). `streakCount` repart à 1 dès qu'un
+  streak casse, cet historique n'existait nulle part ailleurs — pas
+  reconstructible rétroactivement, seulement à partir de maintenant.
+- **Jeu le plus joué** (avec cover) — décompte en mémoire sur
+  `SessionResult` (toutes soirées, coop incluses), même approche que
+  `monthly-recap.ts` (pas de `groupBy` possible à travers une relation
+  Prisma).
+- **Pronos corrects** — réutilise l'agrégat déjà calculé sur cette page.
+- **Total XP gagné en paris** — `xpBet.aggregate` sur les paris gagnés,
+  ×2 (les paris gagnés payent double, cf. `resolveBets`).
+- **Graphique XP 30 jours** — Recharts (nouvelle dépendance, `LineChart`
+  simple), cumul reconstruit à partir de `xpTotal` actuel moins la somme
+  des `XpEvent` de la fenêtre (pas de nouvelle table d'historique).
+- **"Membre depuis X jours"** — sous le rang, dans la nouvelle section.
+
+Aucune de ces stats ne nécessitait de migration à part
+`bestStreakCount` — tout le reste est dérivable des modèles existants.
+
+### 2. Classement — plus engageant
+
+- **Deltas de position ↑/↓/=** — reconstruit le total XP d'il y a 7
+  jours par soustraction (`xpTotal` actuel moins les gains `XpEvent` de
+  la semaine écoulée), sans nouvelle table de snapshot hebdomadaire.
+  Uniquement sur la période "Global" (seule où la position est stable
+  dans le temps, pas réinitialisée comme "Ce mois"/"Cette semaine") —
+  `null` sinon, pas de flèche affichée plutôt qu'un delta trompeur.
+- **Barre de progression XP** vers le niveau suivant sous chaque ligne
+  du classement (`levelProgress`, calculé sur `xpTotal` à vie comme le
+  niveau lui-même).
+- **Confettis légers sur le podium** — `canvas-confetti` (déjà une
+  dépendance, utilisée par `CelebrationConfetti`), nouveau composant
+  dédié `PodiumConfetti` avec des réglages volontairement discrets
+  (peu de particules, gravité/vitesse basses) pour un effet "tombe
+  doucement" plutôt qu'une explosion — distinct de
+  `CelebrationConfetti`, un vrai burst pour une victoire ponctuelle, pas
+  adapté à un effet d'ambiance rejoué à chaque visite de la page.
+
+### 5. Calendrier — ligne "maintenant"
+
+Trait horizontal orange dans `DayTimeline`, façon Outlook/Google
+Calendar, uniquement sur le jour affiché s'il s'agit d'aujourd'hui
+(`isToday`). Position verticale calculée en pourcentage de la hauteur de
+la ligne d'heure courante (minute du jour / 60), fond de cette ligne
+légèrement teinté (`bg-accent/5`). Se déplace en temps réel
+(`setInterval` 60s, même pattern que `VotingCountdown` : valeur initiale
+via un initialiseur paresseux de `useState` — jamais calculée dans le
+corps de l'effet — pour éviter tout risque de décalage d'hydratation).
+`wallClockNow()` (horloge murale Paris) plutôt que `new Date()` local,
+cohérent avec le reste du fichier.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` + migration — `User.bestStreakCount`
+- `src/lib/xp-actions.ts` — `touchStreak` maintient `bestStreakCount`
+- `src/app/profil/page.tsx` — section Statistiques
+- `src/components/XpEvolutionChart.tsx` (nouveau) — Recharts
+- `src/lib/scoreboard.ts` — `weekDeltaPosition`, `levelProgress`
+- `src/app/classement/page.tsx` — flèches delta, barre XP, confettis
+- `src/components/PodiumConfetti.tsx` (nouveau)
+- `src/components/calendar/DayTimeline.tsx` — ligne "maintenant"
+- `package.json` — nouvelle dépendance `recharts`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-69

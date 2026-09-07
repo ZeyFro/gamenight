@@ -115,6 +115,7 @@ export async function touchStreak(user: {
   id: string;
   streakCount: number;
   streakLastActiveAt: Date | null;
+  bestStreakCount: number;
 }): Promise<{ streakCount: number; streakLastActiveAt: Date }> {
   const now = new Date();
 
@@ -134,9 +135,16 @@ export async function touchStreak(user: {
 
   const nextStreakCount = withinStreakWindow ? user.streakCount + 1 : 1;
 
+  // Amélioration profil (stats) — `streakCount` repart à 1 dès qu'un
+  // streak casse, donc `bestStreakCount` doit être maintenu à part pour
+  // garder l'historique du meilleur streak (jamais décrémenté).
   await prisma.user.update({
     where: { id: user.id },
-    data: { streakCount: nextStreakCount, streakLastActiveAt: now },
+    data: {
+      streakCount: nextStreakCount,
+      streakLastActiveAt: now,
+      bestStreakCount: Math.max(user.bestStreakCount, nextStreakCount),
+    },
   });
 
   return { streakCount: nextStreakCount, streakLastActiveAt: now };

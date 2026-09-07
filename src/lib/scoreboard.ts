@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { levelForXp, rankForLevel, titleForLevel, type Rank } from "@/lib/xp";
+import { levelForXp, rankForLevel, titleForLevel, xpForLevel, type Rank } from "@/lib/xp";
+
+const WEEK_DELTA_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const SCOREBOARD_PERIODS = ["global", "month", "week"] as const;
 export type ScoreboardPeriod = (typeof SCOREBOARD_PERIODS)[number];
@@ -14,6 +16,16 @@ export interface ScoreboardEntry {
   title: string;
   periodXp: number;
   sessionsPlayed: number;
+  /**
+   * Amélioration classement — delta de position par rapport à il y a 7
+   * jours (positif = a gagné des places, négatif = en a perdu, `0` =
+   * stable). `null` pour les périodes "Ce mois"/"Cette semaine" (un
+   * delta de position n'a de sens que sur un classement global stable,
+   * pas sur une fenêtre qui se réinitialise) — voir `weekDeltaPositions`.
+   */
+  weekDeltaPosition: number | null;
+  /** XP dans le niveau courant / XP requis pour le niveau suivant (0-1). */
+  levelProgress: number;
 }
 
 /**
@@ -63,7 +75,7 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
 
-  const [xpByUser, sessionsByUser] = await Promise.all([
+  const [xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
     period === "global"
       ? null
       : prisma.xpEvent.groupBy({
@@ -76,13 +88,35 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
       where: { reason: "PARTICIPATE", ...createdAtFilter },
       _count: { _all: true },
     }),
+    // Amélioration classement — deltas de position ↑/↓ vs il y a 7 jours,
+    // uniquement pour "Global" (seule période où la position est stable
+    // dans le temps, pas réinitialisée). Reconstruit le total XP d'il y a
+    // 7 jours par simple soustraction (`xpTotal` actuel moins les gains
+    // de la semaine écoulée) plutôt que de maintenir un nouvel historique
+    // en base — aucune table de snapshot hebdomadaire n'existe, et cette
+    // approche donne exactement le même résultat sans migration.
+    period === "global"
+      ? prisma.xpEvent.groupBy({
+          by: ["userId"],
+          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) } },
+          _sum: { amount: true },
+        })
+      : null,
   ]);
 
   const xpMap = new Map(xpByUser?.map((row) => [row.userId, row._sum.amount ?? 0]));
   const sessionsMap = new Map(sessionsByUser.map((row) => [row.userId, row._count._all]));
+  const xpGainedLast7DaysMap = new Map(
+    xpLast7Days?.map((row) => [row.userId, row._sum.amount ?? 0])
+  );
+  const xpOneWeekAgoMap = new Map(
+    users.map((u) => [u.id, u.xpTotal - (xpGainedLast7DaysMap.get(u.id) ?? 0)])
+  );
 
-  const entries = users.map((user): ScoreboardEntry => {
+  const entries: Omit<ScoreboardEntry, "weekDeltaPosition">[] = users.map((user) => {
     const level = levelForXp(user.xpTotal);
+    const currentLevelXp = xpForLevel(level);
+    const nextLevelXp = xpForLevel(level + 1);
     return {
       userId: user.id,
       discordName: user.discordName,
@@ -93,6 +127,7 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
       title: titleForLevel(level),
       periodXp: period === "global" ? user.xpTotal : (xpMap.get(user.id) ?? 0),
       sessionsPlayed: sessionsMap.get(user.id) ?? 0,
+      levelProgress: (user.xpTotal - currentLevelXp) / (nextLevelXp - currentLevelXp),
     };
   });
 
@@ -100,5 +135,19 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
     (a, b) => b.periodXp - a.periodXp || a.discordName.localeCompare(b.discordName, "fr")
   );
 
-  return entries;
+  if (period !== "global") {
+    return entries.map((entry) => ({ ...entry, weekDeltaPosition: null }));
+  }
+
+  const lastWeekOrder = [...entries]
+    .sort((a, b) => {
+      const diff = (xpOneWeekAgoMap.get(b.userId) ?? 0) - (xpOneWeekAgoMap.get(a.userId) ?? 0);
+      return diff || a.discordName.localeCompare(b.discordName, "fr");
+    })
+    .map((entry) => entry.userId);
+
+  return entries.map((entry, index) => ({
+    ...entry,
+    weekDeltaPosition: lastWeekOrder.indexOf(entry.userId) - index,
+  }));
 }
