@@ -991,6 +991,16 @@ enum NotificationType {
   PRONOSTIC
   // Sprint 4 — pari d'XP résolu, gagné ou perdu (voir `XpBet`).
   XP_BET
+  // Amélioration des features existantes, PR-B (item 4, notifs plus
+  // utiles) — récompense de superlatif gagnée (voir `SuperlativeAward`) ;
+  // jusqu'ici seul le webhook Discord (`announceSessionAwards`) existait,
+  // aucune notif in-app. Groupée par soirée dans `groupNotifications`
+  // ("5 récompenses pour la soirée X") plutôt qu'affichée ligne par ligne.
+  SUPERLATIVE_AWARD
+  // Amélioration des features existantes, PR-B (item 4) — dette de gage
+  // détectée (voir `Debt`/`detectDebts`), jusqu'ici sans aucune
+  // notification in-app.
+  DEBT
 }
 
 model Notification {

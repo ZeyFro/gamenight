@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateTimeFr } from "@/lib/wallclock";
+import { createNotifications } from "@/lib/notifications";
 import type { Debt } from "@prisma/client";
 
 /**
@@ -27,6 +28,19 @@ export async function detectDebts(
   await prisma.debt.createMany({
     data: absentUserIds.map((debtorId) => ({ debtorId, sessionId, reason })),
   });
+
+  // Notification in-app (Amélioration des features existantes, PR-B, item
+  // 4) — jusqu'ici `detectDebts` ne créait aucune notif, l'unique moyen de
+  // découvrir une dette était de tomber dessus sur la Home.
+  await createNotifications(
+    absentUserIds.map((debtorId) => ({
+      userId: debtorId,
+      type: "DEBT" as const,
+      title: "💀 Nouveau gage",
+      message: `Tu as voté pour ${gameName} mais tu n'es pas venu — un gage t'attend.`,
+      relatedSessionId: sessionId,
+    }))
+  );
 }
 
 export interface ActiveDebt extends Debt {

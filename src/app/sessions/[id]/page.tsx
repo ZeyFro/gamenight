@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import {
@@ -22,6 +23,7 @@ import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { VoterAvatars } from "@/components/VoterAvatars";
+import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -172,6 +174,39 @@ export default async function SessionDetailPage({
       };
     }
   }
+
+  // Amélioration des features existantes, PR-B (récap visuel) — participants
+  // de la soirée (via `SessionResult`, seule source qui liste qui a
+  // effectivement joué, indépendamment des votes/propositions) et
+  // récompenses de superlatifs propres à CETTE soirée (par opposition à
+  // `SuperlativesWonGrid` sur /profil qui agrège tout l'historique d'un
+  // seul user). Les récompenses attendent `superlativeVotingClosed` comme
+  // `revealData` ci-dessus, pour ne jamais montrer un gagnant avant que le
+  // vote de superlatifs soit clos.
+  let sessionParticipants: Prisma.SessionResultGetPayload<{ include: { user: true } }>[] = [];
+  let sessionAwards: Prisma.SuperlativeAwardGetPayload<{
+    include: { category: true; winner: true };
+  }>[] = [];
+  if (session.status === "DONE") {
+    [sessionParticipants, sessionAwards] = await Promise.all([
+      prisma.sessionResult.findMany({
+        where: { sessionId: session.id },
+        include: { user: true },
+        orderBy: { placement: "asc" },
+      }),
+      session.superlativeVotingClosed
+        ? prisma.superlativeAward.findMany({
+            where: { sessionId: session.id },
+            include: { category: true, winner: true },
+          })
+        : Promise.resolve([]),
+    ]);
+  }
+  const hasRecap =
+    session.status === "DONE" &&
+    (sessionParticipants.length > 0 ||
+      sessionAwards.length > 0 ||
+      (revealData !== null && (revealData.pronostics.length > 0 || revealData.bets.length > 0)));
 
   const availability = await getProposalAvailability(
     session.date,
@@ -331,12 +366,78 @@ export default async function SessionDetailPage({
         </Card>
       )}
 
-      {revealData && (revealData.pronostics.length > 0 || revealData.bets.length > 0) && (
+      {hasRecap && (
         <Card className="flex flex-col gap-4">
-          {revealData.pronostics.length > 0 && (
+          <h2 className="font-semibold text-foreground">📋 Récap</h2>
+
+          {session.decidedGame && (
+            <div className="flex items-center gap-3">
+              {session.decidedGame.coverUrl && (
+                <Image
+                  src={session.decidedGame.coverUrl}
+                  alt={session.decidedGame.name}
+                  width={44}
+                  height={59}
+                  className="shrink-0 rounded object-cover"
+                />
+              )}
+              <p className="font-medium text-foreground">{session.decidedGame.name}</p>
+            </div>
+          )}
+
+          {sessionParticipants.length > 0 && (
             <div>
-              <h2 className="font-semibold text-foreground">🔮 Résultats des pronostics</h2>
-              <ul className="mt-2 flex flex-col gap-1 text-sm">
+              <p className="mb-2 text-xs font-medium text-muted">
+                {sessionParticipants.length} participant
+                {sessionParticipants.length > 1 ? "s" : ""}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {sessionParticipants.map((result) => (
+                  <div
+                    key={result.id}
+                    className="flex items-center gap-1.5 rounded-full bg-surface-hover py-1 pr-3 pl-1"
+                  >
+                    <Avatar
+                      src={result.user.discordAvatar}
+                      alt={result.user.discordName}
+                      size={24}
+                      ringColor={result.user.color}
+                    />
+                    <span className="text-xs font-medium text-foreground">
+                      {result.user.discordName}
+                      {result.placement && (
+                        <span className="text-muted"> · #{result.placement}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sessionAwards.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-xs font-medium text-muted">Récompenses</p>
+              <ul className="flex flex-col gap-2">
+                {sessionAwards.map((award) => (
+                  <li key={award.id} className="flex items-center gap-2 text-sm">
+                    <span className="text-lg" aria-hidden>
+                      {award.category.icon}
+                    </span>
+                    <span className="text-foreground">
+                      <span className="font-medium">{award.winner.discordName}</span>{" "}
+                      <span className="text-muted">— {award.category.name}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {revealData && revealData.pronostics.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-xs font-medium text-muted">🔮 Pronostics</p>
+              <ul className="flex flex-col gap-1 text-sm">
                 {revealData.pronostics.map((p, i) => (
                   <li key={i} className="flex items-center gap-2">
                     <span>{p.correct ? "✅" : "❌"}</span>
@@ -348,10 +449,10 @@ export default async function SessionDetailPage({
               </ul>
             </div>
           )}
-          {revealData.bets.length > 0 && (
+          {revealData && revealData.bets.length > 0 && (
             <div className="border-t border-border pt-4">
-              <h2 className="font-semibold text-foreground">🎲 Résultats des paris</h2>
-              <ul className="mt-2 flex flex-col gap-1 text-sm">
+              <p className="mb-2 text-xs font-medium text-muted">🎲 Paris</p>
+              <ul className="flex flex-col gap-1 text-sm">
                 {revealData.bets.map((b, i) => (
                   <li key={i} className="flex items-center gap-2">
                     <span>{b.won ? "✅" : "❌"}</span>

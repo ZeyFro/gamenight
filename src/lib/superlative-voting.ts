@@ -5,6 +5,7 @@ import { announceSessionAwards } from "@/lib/discord-session-awards";
 import { checkSuperlativesWonBadges } from "@/lib/badges";
 import { resolvePronostics } from "@/lib/pronostics";
 import { resolveBets } from "@/lib/xp-bets";
+import { createNotifications } from "@/lib/notifications";
 import type { User } from "@prisma/client";
 
 /**
@@ -197,6 +198,24 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     where: { id: { in: awards.map((a) => a.winnerUserId) } },
   });
   const winnerMap = new Map(winners.map((w) => [w.id, w]));
+
+  // Notifications in-app (Amélioration des features existantes, PR-B, item
+  // 4) — jusqu'ici seul le webhook Discord (`announceSessionAwards`
+  // ci-dessous) existait, aucune notif in-app pour "qui a gagné quoi".
+  // `groupNotifications` (src/lib/notifications.ts) les regroupe ensuite
+  // en une seule ligne "N récompenses pour la soirée X" côté affichage.
+  await createNotifications(
+    awards.map((a) => {
+      const category = categories.find((c) => c.id === a.categoryId);
+      return {
+        userId: a.winnerUserId,
+        type: "SUPERLATIVE_AWARD" as const,
+        title: `${category?.icon ?? "🏆"} ${category?.name ?? "Récompense"}`,
+        message: `Tu as gagné "${category?.name ?? "?"}" pour la soirée ${session.decidedGame!.name}`,
+        relatedSessionId: sessionId,
+      };
+    })
+  );
 
   await announceSessionAwards(
     session.decidedGame.name,

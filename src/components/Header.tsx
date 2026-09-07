@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
-import { getUnreadNotificationCount, listRecentNotifications, notificationHref } from "@/lib/notifications";
+import { getUnreadNotificationCount, listRecentNotifications, groupNotifications } from "@/lib/notifications";
 import { getChatMessages } from "@/lib/chat";
 import { Logo } from "@/components/Logo";
 import { HeaderNavLinks } from "@/components/HeaderNavLinks";
@@ -36,15 +36,7 @@ export async function Header() {
         getChatMessages(null),
       ]);
       unreadCount = count;
-      notifications = recent.map((n) => ({
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        message: n.message,
-        read: n.read,
-        createdAtIso: n.createdAt.toISOString(),
-        href: notificationHref(n),
-      }));
+      notifications = await groupNotifications(recent);
       initialChatMessages = chatMessages;
     }
   }
