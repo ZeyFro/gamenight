@@ -15,7 +15,7 @@ import {
   toggleReactionAction,
 } from "@/app/chat/actions";
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 15_000;
 const LONG_PRESS_MS = 500;
 
 /**
@@ -57,9 +57,51 @@ export function ChatMessages({
     setRefreshing(false);
   }
 
+  // Fix urgent (perf) — le polling tournait même onglet en arrière-plan,
+  // consommant du quota Vercel pour rien. Page Visibility API : coupe
+  // l'intervalle dès que l'onglet passe en arrière-plan (`document.
+  // hidden`), le relance avec un fetch immédiat dès qu'il redevient actif
+  // — même fonction `syncWithVisibility` pour les deux cas (montage
+  // initial ET chaque bascule de visibilité), pas de code dupliqué. Le
+  // panneau de chat global (`ChatPanel`, Radix `Dialog`) démonte déjà
+  // entièrement `ChatMessages` à la fermeture (aucune animation CSS sur
+  // le contenu, `Presence` de Radix ne temporise donc pas le démontage),
+  // donc l'intervalle est de toute façon coupé net à ce moment via le
+  // cleanup ci-dessous — et le fetch immédiat au montage couvre la
+  // réouverture (au lieu d'attendre le prochain tick avec des messages
+  // potentiellement périmés depuis `initialMessages`, rendu au chargement
+  // de la page).
   useEffect(() => {
-    const interval = setInterval(refresh, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling() {
+      if (interval) return;
+      interval = setInterval(refresh, POLL_INTERVAL_MS);
+    }
+
+    function stopPolling() {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    }
+
+    function syncWithVisibility() {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        refresh();
+        startPolling();
+      }
+    }
+
+    syncWithVisibility();
+    document.addEventListener("visibilitychange", syncWithVisibility);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", syncWithVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 

@@ -6497,3 +6497,45 @@ coûteux allégés ou désactivés sur mobile).
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-64
 - Zéro régression PR #1-63
+
+## Fix urgent : chat polling actif même onglet en arrière-plan
+
+Le chat (`ChatMessages`, canal global ET onglet "💬 Chat" d'une soirée)
+faisait un `setInterval(refresh, 10_000)` sans condition — même onglet en
+arrière-plan, consommant du quota Vercel (requêtes serveur) pour rien
+pendant des heures sur un onglet oublié ouvert.
+
+- **API Page Visibility** (`document.hidden` / `visibilitychange`) — une
+  seule fonction `syncWithVisibility`, appelée au montage ET à chaque
+  bascule de visibilité : onglet caché → `clearInterval` ; onglet visible →
+  `refresh()` immédiat puis relance de l'intervalle. Pas de code dupliqué
+  entre le cas "montage initial" et le cas "retour au premier plan".
+- **Intervalle 10s → 15s** — suffisant pour un groupe de ~6 potes,
+  ~33 % de requêtes en moins même onglet actif.
+- **Panneau de chat fermé → polling coupé** — déjà couvert sans code
+  supplémentaire : `ChatPanel` utilise un `Dialog.Root` Radix non contrôlé
+  dont le contenu n'a aucune transition/animation CSS (l'animation
+  d'entrée est pilotée en JS par Framer Motion) — `Presence` de Radix
+  démonte donc `ChatMessages` immédiatement à la fermeture, ce qui
+  déclenche déjà le cleanup de l'effet (`clearInterval` +
+  retrait du listener `visibilitychange`). Vérifié en lisant
+  `ChatPanel.tsx` et le code de `@radix-ui/react-dialog`/`-presence`
+  avant d'écarter une restructuration plus lourde (prop `open`/`active`
+  contrôlée) au profit de ce fix auto-suffisant dans `ChatMessages.tsx`
+  seul. Bonus : le `refresh()` immédiat à la réouverture élimine aussi les
+  messages périmés affichés entre la réouverture et le premier tick.
+- Gain estimé : ~90 % des requêtes de polling en moins sur un usage
+  normal (onglet en arrière-plan la majorité du temps + panneau global
+  fermé la majorité du temps).
+
+### Fichiers modifiés
+
+- `src/components/chat/ChatMessages.tsx` — intervalle 15s, effet de
+  polling réécrit avec `syncWithVisibility`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-65
