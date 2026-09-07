@@ -6733,3 +6733,71 @@ eu. Laissé tel quel ; à signaler si un bug similaire y est constaté.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-68
+
+## Fix bug remonté : cron avatars Discord "Succès" sur cron-job.org mais rien ne se met à jour, aucune trace Vercel
+
+### Diagnostic
+
+`refreshAllDiscordProfilesViaBot()` (`src/lib/discord-profile.ts`) fait
+un retour anticipé silencieux — `{ checked: 0, updated: 0 }`, HTTP 200 —
+si `DISCORD_BOT_TOKEN` n'est pas configurée sur le déploiement. C'est
+déjà le diagnostic posé dans le fix précédent ("Fix bugs remontés : cron
+avatars Discord silencieux...", plus haut) qui avait ajouté les logs
+structurés manquants — mais la rétention des logs Vercel sur le plan
+Hobby est courte, et un run silencieux (200 OK sans rien faire) toutes
+les heures est facile à manquer entre deux consultations. Le diagnostic
+ne peut donc plus dépendre uniquement des Vercel Logs.
+
+Vérifications complémentaires demandées :
+- `DISCORD_BOT_TOKEN` est bien lu depuis `process.env` (`discord-profile.ts`).
+- `GET /users/{id}` avec un jeton de **bot** (`Authorization: Bot ...`)
+  est un endpoint public de l'API Discord — il ne nécessite pas que le
+  bot partage un serveur avec l'utilisateur (contrairement à un endpoint
+  membre de guilde). Vérifié correct, pas un bug de requête.
+- Bascule sur les jetons OAuth individuels de la table `Account`
+  (Auth.js) **délibérément écartée** : c'est précisément le mécanisme
+  que ce cron a été créé pour contourner (`refreshDiscordProfile`,
+  toujours utilisée par `auth.ts`, dépend du jeton OAuth de chaque user
+  qui expire au bout de ~7 jours sans jamais se renouveler — cf. le
+  commentaire de `refreshAllDiscordProfilesViaBot` lui-même). Y basculer
+  réintroduirait exactement le bug que ce cron corrige.
+
+### Fix
+
+- **Le JSON de réponse porte maintenant la cause exacte** —
+  `botTokenConfigured`, `failed`, `error?` — visible directement dans
+  l'historique des runs de cron-job.org (qui affiche le corps de chaque
+  réponse), sans dépendre des Vercel Logs.
+- Log `logger.info` en tout premier dans le handler, avant toute
+  condition (`"Handler appelé."`) : si cette ligne n'apparaît jamais
+  dans les Vercel Logs pour un run donné, la requête n'atteint pas ce
+  handler du tout (mauvaise URL configurée sur cron-job.org — domaine de
+  preview au lieu de prod, par exemple) ; si elle apparaît mais rien
+  après, la cause est dans ce handler.
+- Log explicite de l'issue de l'auth `CRON_SECRET` (401 loggé, ou
+  avertissement si la variable n'est pas configurée).
+- `DISCORD_BOT_TOKEN` absente passe de `logger.warn` à `logger.error`
+  (plus visible/alertable) et compte désormais les échecs HTTP par user
+  (`failed`) dans le résumé de fin de run.
+
+### Si le bug persiste après cette PR
+
+Si le prochain run cron-job.org affiche `"botTokenConfigured": false`
+dans le corps de la réponse, la cause est confirmée : `DISCORD_BOT_TOKEN`
+doit être ajoutée aux variables d'environnement du projet Vercel
+(Production), pas seulement en local — action à faire côté dashboard
+Vercel, aucun changement de code ne peut la remplacer.
+
+### Fichiers modifiés
+
+- `src/lib/discord-profile.ts` — diagnostic dans le retour JSON,
+  compteur d'échecs, `warn`→`error`
+- `src/app/api/cron/refresh-discord-profiles/route.ts` — log au tout
+  début du handler, log explicite de l'auth
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-69
