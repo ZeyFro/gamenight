@@ -6668,3 +6668,68 @@ d'entrée est retardée d'une frame.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-67
+
+## Fix bug remonté : /profil — le contenu apparaît puis disparaît (le fix précédent avait une faille)
+
+### Confirmation finale du testeur
+
+Le fix de la PR précédente (retirer `whileInView`) n'a pas suffi : en
+navigation privée (donc pas une extension navigateur), le contenu de
+`/profil` apparaît ~0.1s puis **disparaît** — un symptôme différent du
+"jamais affiché" d'avant, qui pointait vers une faille dans le fix
+lui-même plutôt qu'un nouveau bug.
+
+### Root cause : le fix précédent démontait/remontait le nœud DOM
+
+`FadeInView` gardait un `useState`+`useEffect` "monté ?" : premier
+rendu → `<div>` simple (contenu visible), une frame plus tard → bascule
+vers `<motion.div initial={{opacity:0}} animate={{opacity:1}}>`. Ce
+changement de **type d'élément** (`div` → `motion.div`) force React à
+démonter le premier nœud et en monter un tout nouveau — Framer Motion
+applique alors `initial` (`opacity: 0`) instantanément sur ce nouveau
+nœud, invisible le temps que `animate` le refasse apparaître sur 0.5s.
+D'où : visible → invisible → visible à nouveau, exactement le symptôme
+rapporté. Le même défaut existait dans `ParallaxHeader` (ajouté par
+précaution dans une PR encore antérieure, jamais confirmé nécessaire —
+son usage de `useScroll` est SSR-safe par construction, vérifié dans le
+code source de Framer Motion).
+
+### Fix radical (comme demandé, sans demi-mesure)
+
+Les deux composants n'ont plus qu'un seul élément `motion.div`, jamais
+démonté/remonté :
+
+- **`FadeInView`** — plus de `useState`/`useEffect` du tout. Juste
+  `initial={{opacity:0, y:20}}` + `animate={{opacity:1, y:0}}` sur un
+  unique `motion.div`, animé au montage par Framer Motion lui-même
+  (jamais `whileInView`, jamais d'`IntersectionObserver`) — fiable de
+  façon identique en hydratation (F5) comme en montage 100% client
+  (navigation).
+- **`ParallaxHeader`** — retrait de la garde `useSyncExternalStore`
+  ajoutée par précaution : inutile (le composant est déjà SSR-safe) et
+  dangereuse pour la même raison structurelle que ci-dessus.
+
+Vérification demandée sur `whileInView` + `initial` opacity 0 dans tout
+le reste de l'app : `FadeInView` est utilisé uniquement sur `/profil`
+et ses 4 sous-routes (`historique`, `badges`, `superlatifs`, `saisons`)
+— aucun autre composant sur `home`, `potes`, `classement`, `soirées`,
+`calendrier` ou `bibliothèque` n'utilise ce couple. Seul
+`RecapWrapped` (`/recap/[year]/[month]`, hors de la liste de pages à
+vérifier) garde `whileInView` — délibérément : chaque stat doit
+apparaître au moment précis où on scrolle jusqu'à elle (effet "Spotify
+Wrapped"), un vrai besoin de scroll-reveal que `FadeInView` n'a jamais
+eu. Laissé tel quel ; à signaler si un bug similaire y est constaté.
+
+### Fichiers modifiés
+
+- `src/components/ui/FadeInView.tsx` — un seul `motion.div`, `initial`/
+  `animate` uniquement, plus aucun état de montage manuel
+- `src/components/ui/ParallaxHeader.tsx` — retrait de la garde de
+  montage devenue inutile (et dangereuse)
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-68
