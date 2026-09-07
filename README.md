@@ -6539,3 +6539,76 @@ pendant des heures sur un onglet oublié ouvert.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-65
+
+## Fix bug remonté : /profil blanche uniquement en navigation client (pas au F5)
+
+### Limite de l'environnement
+
+Ce bug ne se reproduit qu'avec une session Discord authentifiée
+(`/profil` redirige vers `/` sans utilisateur connecté) — ce sandbox n'a
+pas de `DATABASE_URL`/`AUTH_SECRET` réels ni d'accès réseau, donc pas de
+session vivante possible ici. Impossible d'ouvrir un vrai F12 sur une
+navigation authentifiée pour lire l'erreur JS exacte demandée en étape 1 :
+ce qui suit est une revue de code exhaustive des composants listés
+(étape 3), pas une lecture de stack trace en direct.
+
+### Composants audités
+
+- **CountUp** — déjà corrigé (fix précédent, `useState`+`onUpdate`,
+  aucun accès `window`/`document` pendant le rendu). Confirmé sain.
+- **Shimmer badges** (`LegendaryPulse`/`LegendaryGlow`) — utilisent
+  `useReducedMotion` de Framer Motion, conçu pour être sûr en SSR
+  (retourne `null` côté serveur/premier rendu, se resynchronise ensuite).
+  Rien à corriger.
+- **Ken Burns**, **gradient halo**, **glassmorphism** — CSS pur (classes
+  dans `globals.css`/`Card.tsx`), aucun JS exécuté au rendu, ne peuvent
+  pas causer une erreur React.
+- **Cursor trail** — ne rend jamais rien (`return null`), toute la
+  logique est dans un `useEffect` ; ne peut pas faire planter un rendu.
+  Monté une seule fois dans le layout racine (persiste entre les
+  navigations), donc pas spécifique à une navigation vers `/profil`.
+- **Particles** — CSS pur, et de toute façon pas monté sur `/profil`
+  (seulement sur la home).
+- **Parallax scroll (`ParallaxHeader`)** — seul autre composant du lot à
+  manipuler une `MotionValue` (`useScroll`/`useTransform`, même famille
+  que le bug CountUp original). Le code source de `useScroll` (Framer
+  Motion) confirme qu'il est bien protégé (`typeof window === "undefined"`)
+  et n'exécute rien de risqué en dehors d'effets — mais reste le
+  composant le plus exposé structurellement : seul à dépendre d'un état
+  de scroll global au moment précis où `/profil` est monté "à froid" lors
+  d'une navigation client (contrairement à l'hydratation d'un F5, qui
+  rejoue un rendu déjà produit côté serveur).
+
+### Fix appliqué
+
+- **`ParallaxHeader`** — retarde tout rendu lié à `scrollY` au premier
+  rendu monté (`useSyncExternalStore`, même technique que
+  `CursorTrailToggle` pour rester compatible avec la règle ESLint
+  `react-hooks/set-state-in-effect`) : le tout premier rendu, serveur
+  comme client, affiche le contenu dans un `<div>` simple, puis bascule
+  sur la version `motion.div` avec le décalage parallax juste après.
+  Élimine toute dépendance à `scrollY` pendant la phase de rendu la plus
+  sensible, sans changement visuel perceptible.
+- **`src/app/global-error.tsx`** (nouveau) — `error.tsx` existant ne
+  couvre explicitement pas les erreurs du layout racine lui-même
+  (`Header`, `auth()`, `CursorTrail` — cf. son propre commentaire) : une
+  erreur à cet endroit précis produisait une page blanche muette plutôt
+  qu'un message. Ce fichier comble ce trou (API Next.js dédiée) et logue
+  l'erreur + son `digest` via `logger.error` — la prochaine fois qu'un
+  crash survient à cet endroit, on aura enfin de quoi le diagnostiquer au
+  lieu d'une page blanche silencieuse.
+
+### Si le bug persiste après cette PR
+
+Sans repro live possible ici, la piste la plus utile serait de coller le
+contenu exact de l'onglet Console (F12) au moment du clic sur "Profil"
+dans la nav — avec `global-error.tsx` en place, une éventuelle erreur du
+layout racine sera au moins loguée (`logger.error`) au lieu de rester
+invisible.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-66
