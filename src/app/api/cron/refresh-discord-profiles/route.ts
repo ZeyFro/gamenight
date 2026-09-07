@@ -25,12 +25,10 @@ export async function GET(request: Request) {
   }
 
   const result = await refreshAllDiscordProfilesViaBot();
-  if (result.updated > 0) {
-    logger.info(
-      "cron:refresh-discord-profiles",
-      `${result.updated}/${result.checked} profil(s) Discord mis à jour.`
-    );
-  }
+  logger.info(
+    "cron:refresh-discord-profiles",
+    `${result.updated}/${result.checked} profil(s) Discord mis à jour.`
+  );
 
   return NextResponse.json(result);
 }

@@ -93,6 +93,7 @@ export async function refreshAllDiscordProfilesViaBot(): Promise<{
   const users = await prisma.user.findMany({
     select: { discordId: true, discordName: true, discordAvatar: true },
   });
+  logger.info("discord-profile", `Cron bot : ${users.length} utilisateur(s) à vérifier.`);
 
   let updated = 0;
   for (const user of users) {
@@ -100,7 +101,15 @@ export async function refreshAllDiscordProfilesViaBot(): Promise<{
       const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        logger.error(
+          "discord-profile",
+          `GET /users/${user.discordId} a répondu ${res.status} — profil ignoré.`,
+          { discordId: user.discordId, status: res.status, body: body.slice(0, 300) }
+        );
+        continue;
+      }
 
       const profile = (await res.json()) as DiscordSelfResponse;
       const freshName = profile.global_name ?? profile.username;
@@ -112,6 +121,13 @@ export async function refreshAllDiscordProfilesViaBot(): Promise<{
         data: { discordName: freshName, discordAvatar: freshAvatar },
       });
       updated += 1;
+      logger.info("discord-profile", `Profil mis à jour : ${user.discordId}.`, {
+        discordId: user.discordId,
+        oldAvatar: user.discordAvatar,
+        newAvatar: freshAvatar,
+        oldName: user.discordName,
+        newName: freshName,
+      });
     } catch (error) {
       logger.error("discord-profile", error, { discordId: user.discordId });
     }

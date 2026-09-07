@@ -6212,3 +6212,73 @@ Aucun doublon constaté (chaque cron couvre une tâche distincte) :
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Migration purement additive — zéro régression PR #1-62
+
+## Fix bugs remontés : cron avatars Discord silencieux + bannières GIF figées à l'upload
+
+### Bug 1 — cron avatars Discord sans trace de diagnostic
+
+Le cron `/api/cron/refresh-discord-profiles` (1h, cron-job.org) utilise
+bien `refreshAllDiscordProfilesViaBot()` (`src/lib/discord-profile.ts`) —
+jeton du **bot** Discord (`Authorization: Bot ...`), jamais périmé,
+indépendant de la session OAuth d'un utilisateur (contrairement à
+`refreshDiscordProfile()`, appelée depuis `auth.ts`, qui dépend elle du
+jeton d'accès individuel de chaque user et casse silencieusement après
+~7 jours faute de refresh token — comportement connu, documenté plus haut
+dans "Fixes bugs remontés (priorité Sprint 4)", non concerné par ce fix).
+Vérifié : construction de l'URL avatar (`discordAvatarUrl()`) identique
+byte pour byte au mapping du provider Discord natif de `@auth/core`
+(formule avatar par défaut, détection GIF via préfixe `a_`) — pas un bug
+de format.
+
+Le vrai problème : **aucune trace de diagnostic sur les échecs**. Un
+`if (!res.ok) continue;` avalait silencieusement toute erreur HTTP (jeton
+bot absent, invalide, révoqué, `403`, `429`...) sans logger ni le
+`discordId` concerné ni le code retour, et la route ne loguait un résumé
+que si `updated > 0` — un run qui échoue à 100 % ne laissait donc aucune
+trace dans les logs Vercel, rendant la cause racine (probablement
+`DISCORD_BOT_TOKEN` jamais configurée ou invalide en prod — aucun accès
+réseau/DB dans ce sandbox pour le confirmer empiriquement) impossible à
+diagnostiquer à distance. Fix : logs structurés (`logger.info`/`error`)
+ajoutés à chaque étape — nombre d'utilisateurs à vérifier au démarrage,
+échec HTTP par user (`discordId` + status + corps de réponse tronqué),
+mise à jour effective par user (`discordId` + ancien/nouvel avatar et nom),
+et résumé de la route à chaque run (plus seulement si `updated > 0`). Le
+prochain run en prod rendra la cause racine immédiatement visible dans les
+Vercel Logs.
+
+### Bug 2 — bannières GIF figées après upload
+
+Les bannières (`/potes`, `/profil`) sont déjà rendues en `background-image`
+CSS natif, jamais via `next/image` — choix déjà documenté plus haut ("Page
+Potes — refonte visuelle + GIFs", Sprint 2 PR-A) précisément pour éviter
+qu'un GIF soit figé sur sa première frame. `images.remotePatterns` (3
+domaines : `cdn.discordapp.com`, `cdn.akamai.steamstatic.com`,
+`images.igdb.com`) n'intervient donc pas ici — `bannerUrl` accepte toute
+URL `http(s)` (`httpUrlSchema`, aucune liste blanche de domaines côté
+stockage).
+
+Le vrai bug avait été réintroduit ailleurs, par une feature plus récente :
+l'upload de bannière (PR 28, FIX4) recompresse **toute** image côté client
+via `<canvas>` avant l'envoi vers Vercel Blob
+(`compressBannerImage`) — `drawImage` ne capture que la 1ère frame d'un
+GIF, et `canvas.toBlob` ré-encode systématiquement en JPEG statique (pas
+de support GIF). Résultat : tout pote ayant uploadé un GIF (plutôt que
+collé une URL externe déjà hébergée) se retrouvait avec une bannière
+figée sur une frame — pas de bug de rendu, un bug de perte de données à la
+source. Fix (`src/components/BannerForm.tsx`) : `handleFileChange` saute
+désormais l'appel à `compressBannerImage` pour `file.type === "image/gif"`
+et envoie le fichier original tel quel (déjà plafonné à 5 Mo par la
+validation existante juste au-dessus).
+
+### Fichiers modifiés
+
+- `src/lib/discord-profile.ts`, `src/app/api/cron/refresh-discord-profiles/route.ts`
+  — logs structurés
+- `src/components/BannerForm.tsx` — GIF non compressés à l'upload
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (45 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-63
