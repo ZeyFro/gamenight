@@ -6892,3 +6892,71 @@ cohérent avec le reste du fichier.
 - `npx next build` : compile et type-check sans erreur (45 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-69
+
+## Fix bug remonté : /profil blanc en navigation client — la vraie root cause (enfin)
+
+### Nouvel indice décisif
+
+Aucune erreur console. Le contenu est dans le DOM mais invisible
+(`opacity`/`visibility`/`display` suspect), réapparaît au F5 ou au resize,
+jamais en navigation client (clic menu). Les 3 PR précédentes
+(`FadeInView`/`ParallaxHeader`, cf. sections plus haut) n'ont pas réglé le
+problème — logique : elles corrigeaient de vrais défauts, mais pas
+**celui-ci**.
+
+### Root cause : `/profil` est la SEULE route avec une mise en page imbriquée
+
+`PageTransition` (`src/components/PageTransition.tsx`, monté dans
+`app/layout.tsx` autour de `{children}`, donc sur TOUTE l'app) anime un
+fondu `initial={{opacity:0}}` → `animate={{opacity:1}}` sur un
+`motion.div` unique keyé par `pathname`, sous `AnimatePresence
+mode="wait"`. Ça fonctionne pour toutes les routes... sauf `/profil`, qui
+est la seule à avoir sa propre `layout.tsx` EN PLUS de sa `page.tsx` —
+`find src/app -maxdepth 2 -name layout.tsx` ne retourne que
+`app/layout.tsx` et `app/profil/layout.tsx`, aucune autre route n'a ce
+découpage. Les deux sont des Server Components `async` (chacun avec ses
+propres requêtes Prisma).
+
+Next.js diffuse donc `/profil` en plusieurs temps (le layout, puis la
+page), alors que `PageTransition` ne voit qu'UNE seule clé (`pathname`)
+pour toute la navigation. Le fondu se termine dès que le premier flux
+arrive ; le contenu qui arrive ensuite (le vrai contenu de la page)
+atterrit dans le calque déjà "figé" par le compositeur du navigateur —
+invisible jusqu'à un reflow forcé (resize/F5 recalculent tout), sans
+jamais lever d'erreur JS puisque rien ne plante réellement, c'est un
+problème de peinture/compositing, pas de logique. `mode="wait"` aggrave
+l'effet en séquençant explicitement sortie/entrée sur cette frontière
+déjà fragile.
+
+`MeshGradientBackground`/`GlassmorphismCard` (suggérés dans le rapport) —
+vérifiés : **n'existent pas** dans ce code, aucune piste à explorer
+là-dessus.
+
+### Fix
+
+`PageTransition` sort `/profil` (et toutes ses sous-routes) du fondu de
+transition — rendu direct, sans `motion.div` ni `AnimatePresence`, sur
+cette route précise seulement. Le reste de l'app (aucune autre route
+n'a de layout imbriqué, donc aucune autre route n'est exposée à ce
+défaut) garde le fondu normalement, zéro changement visuel ailleurs.
+
+### Limite de vérification
+
+Impossible de rejouer le scénario exact (navigation client vers
+`/profil`) dans ce sandbox : `/profil` exige une session Discord
+authentifiée, aucun compte de test disponible ici pour piloter un vrai
+navigateur. Le diagnostic ci-dessus est structurel (le seul layout
+imbriqué de l'app, comportement Next.js/Framer Motion documenté) et
+vérifié par lecture de code, pas par capture DevTools réelle — à
+confirmer par toi en prod comme demandé.
+
+### Fichiers modifiés
+
+- `src/components/PageTransition.tsx` — bypass du fondu pour `/profil`
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-71 (aucune autre route touchée)
