@@ -7105,3 +7105,130 @@ normalement).
 - `npx next build` : compile et type-check sans erreur (55 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-73
+
+## Feature : forcer la reconnexion globale (rollout du cron avatars Discord)
+
+### Objectif
+
+Le cron `refresh-discord-profiles` (PR 74) ne peut rafraîchir un avatar via
+OAuth que pour les users ayant un jeton stocké en base — posé uniquement à
+une VRAIE reconnexion (voir `auth.ts`). Sans action, ce rollout resterait
+lent et passif (jusqu'à 30 jours par user, durée de vie max d'une session
+JWT). Cette feature ajoute un déclencheur explicite, à usage ponctuel :
+déconnecter tout le monde d'un coup pour accélérer ce rollout, avec une
+notif Discord expliquant pourquoi.
+
+### Correction de piste : pas de "table Account" à vider
+
+La demande initiale supposait d'invalider les sessions "en changeant
+AUTH_SECRET" ou via une table `Session`/`Account` Auth.js — rappel du même
+point que la PR 74 : cette app utilise `session: { strategy: "jwt" }` sans
+adaptateur Prisma, donc aucune table de ce genre n'existe. Changer
+`AUTH_SECRET` invaliderait bien tous les JWT existants, mais de façon
+brutale et non pilotable depuis le code applicatif (secret d'environnement,
+pas une donnée en base) — pas de notif propre au bon moment, pas adapté à
+un déclenchement depuis un bouton `/admin`.
+
+### Fonctionnement retenu (schéma `sessionVersion`-like, sans nouveau champ sur le JWT à invalider)
+
+- `User.forceReloginAt` (`DateTime?`) — un seul timestamp, posé à la même
+  valeur sur TOUS les users par `triggerGlobalRelogin`
+  (`src/lib/force-relogin.ts`).
+- `token.sessionCreatedAt` (JWT, `auth.ts`) — posé UNE SEULE FOIS par
+  session, à la connexion OAuth fraîche (jamais réécrit ensuite, jusqu'à
+  expiration/reconnexion).
+- `getCurrentUser()` (`src/lib/current-user.ts`) compare les deux : si
+  `forceReloginAt` est plus récent que `sessionCreatedAt` du token courant
+  (ou si le token n'a pas ce champ du tout — le cas de TOUTES les sessions
+  actives avant ce déploiement), la session est traitée comme déconnectée
+  (`getCurrentUser` renvoie `null`). Chaque page protégée fait déjà
+  `if (!user) redirect("/")` : aucun changement nécessaire là où l'app
+  utilise déjà `getCurrentUser()` pour ses gardes d'accès (toutes les
+  server actions, déjà auditées — voir plus bas pour les 3 exceptions
+  écartées).
+- Pas de cookie à effacer explicitement, pas de table à purger : la
+  prochaine vraie reconnexion OAuth repose un `sessionCreatedAt` frais qui
+  repasse après `forceReloginAt`, donc pas de reboucle.
+
+### Bug corrigé en cours de route : pages qui gardaient `auth()` comme source de vérité
+
+`session?.user` (retour brut de `auth()`) reste VRAI pour un JWT posé avant
+un `forceReloginAt` — Auth.js ne sait rien de ce marqueur, purement
+applicatif. Trois endroits utilisaient encore ce raccourci au lieu de
+`getCurrentUser()` pour décider quoi afficher, ce qui aurait cassé le but
+même de la feature :
+- `src/app/page.tsx` — gardait `if (!session?.user)` pour décider d'afficher
+  l'écran de connexion, puis appelait `getCurrentUser()` plus bas et
+  faisait `return null` (page blanche) si `null` — l'inverse du but
+  recherché. Corrigé : `getCurrentUser()` appelé en premier, c'est lui qui
+  décide de la branche "écran de connexion".
+- `src/app/layout.tsx` — `BottomNav`/`GuideFab`/confettis restaient
+  affichés (gate sur `session?.user`) par-dessus l'écran de connexion.
+  Corrigé : gate sur `getCurrentUser()`.
+- `src/components/Header.tsx` — même chose pour les liens de nav/cloche de
+  notifications. Corrigé.
+
+Les 3 routes API restantes qui utilisent encore `auth()` directement
+(`/api/steam/link`, `/api/steam/callback`, `/api/igdb/search`) sont
+volontairement laissées telles quelles : narrow, sans rendu UI affecté,
+risque de régression sur un flux OAuth tiers (Steam) jugé disproportionné
+par rapport au gain (fenêtre de tolérance de quelques jours max, pas un
+enjeu de sécurité — cette feature accélère un rollout, ce n'est pas une
+révocation de sécurité).
+
+### UI (bouton) vs route API (`CRON_SECRET`) — deux chemins, un seul cœur
+
+La demande initiale imaginait un unique endpoint protégé par
+`CRON_SECRET`, sur le modèle des routes `/api/cron/*`. Distinction faite en
+pratique, pour rester cohérent avec le reste de l'app :
+- **Bouton admin** (`/admin?tab=reglages`, `ForceReloginCard` +
+  `forceReloginAction`) — appelle une SERVER ACTION exécutée côté serveur,
+  jamais un `fetch` vers la route HTTP : `CRON_SECRET` n'a donc pas besoin
+  d'être exposé au navigateur. Accessible à tout le monde, comme le reste
+  de `/admin` ("Pas de rôle admin dédié : tout le monde peut gérer ces
+  réglages.", déjà le cas pour Messages/Récompenses/Badges/Jeux-stats) —
+  protégé uniquement par une confirmation modale (même gabarit que
+  `DeleteSessionDialog`, seule autre action destructrice du projet) et un
+  rate limit strict (1 déclenchement / 10 min).
+- **Route `/api/admin/force-relogin`** (POST, `Authorization: Bearer
+  <CRON_SECRET>`) — pour un déclenchement manuel/scripté (`curl`) sans
+  passer par l'UI, exactement le besoin décrit dans la demande initiale.
+  Les deux chemins appellent le même cœur, `triggerGlobalRelogin()`
+  (`src/lib/force-relogin.ts`).
+
+### Notif Discord
+
+Un seul appel `postToDiscord` dans `triggerGlobalRelogin` — le
+déclenchement lui-même (clic admin ou appel API) EST l'unique envoi, pas de
+logique de déduplication supplémentaire nécessaire (action manuelle, pas un
+cron répété). Message exact demandé : "🔄 Mise à jour de l'app —
+reconnectez-vous pour profiter des dernières features ! 👉 [lien]", avec un
+embed assorti. Best-effort (même convention que le reste du projet) : un
+échec Discord ne bloque jamais la reconnexion forcée, déjà actée en base.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` + migration `add_force_relogin_at` —
+  `User.forceReloginAt`
+- `src/types/next-auth.d.ts` — `Session.user.sessionCreatedAt` /
+  `JWT.sessionCreatedAt`
+- `src/auth.ts` — pose `sessionCreatedAt` à la connexion fraîche, l'expose
+  dans le callback `session`
+- `src/lib/current-user.ts` — check `forceReloginAt` vs `sessionCreatedAt`
+- `src/lib/force-relogin.ts` (nouveau) — `triggerGlobalRelogin`
+- `src/app/admin/reglages/actions.ts` (nouveau) — `forceReloginAction`
+- `src/components/admin/ForceReloginCard.tsx`,
+  `src/components/admin/ReglagesTab.tsx` (nouveaux)
+- `src/components/admin/AdminTabs.tsx`, `src/app/admin/page.tsx` —
+  nouvel onglet "Réglages"
+- `src/app/api/admin/force-relogin/route.ts` (nouveau) — déclenchement
+  manuel/scripté, `CRON_SECRET`
+- `src/app/page.tsx`, `src/app/layout.tsx`, `src/components/Header.tsx` —
+  gate sur `getCurrentUser()` au lieu de `session?.user` brut
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (56 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-74

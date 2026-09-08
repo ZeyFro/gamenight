@@ -1,14 +1,21 @@
 import { TabLink } from "@/components/ui/TabLink";
 
-export type AdminTabKey = "messages" | "superlatifs" | "badges" | "jeux-stats";
+export type AdminTabKey = "messages" | "superlatifs" | "badges" | "jeux-stats" | "reglages";
 
-export const ADMIN_TAB_KEYS: AdminTabKey[] = ["messages", "superlatifs", "badges", "jeux-stats"];
+export const ADMIN_TAB_KEYS: AdminTabKey[] = [
+  "messages",
+  "superlatifs",
+  "badges",
+  "jeux-stats",
+  "reglages",
+];
 
 const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "messages", label: "Messages Discord" },
   { key: "superlatifs", label: "Récompenses" },
   { key: "badges", label: "Badges" },
   { key: "jeux-stats", label: "Jeux-stats" },
+  { key: "reglages", label: "Réglages" },
 ];
 
 /**

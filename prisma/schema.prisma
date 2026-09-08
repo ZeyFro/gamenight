@@ -40,6 +40,18 @@ model User {
   discordAccessToken    String?   @db.Text
   discordRefreshToken   String?   @db.Text
   discordTokenExpiresAt DateTime?
+  // Feature "forcer la reconnexion globale" (/admin, PR 75) — posé à la
+  // même valeur sur TOUS les users par `triggerGlobalRelogin`
+  // (`src/lib/force-relogin.ts`). Sessions JWT (pas de table `Session` en
+  // base, cf. commentaire ci-dessus) : impossible de les révoquer une par
+  // une côté serveur. À la place, chaque JWT porte son propre
+  // `sessionCreatedAt` (posé une seule fois, à la connexion — voir
+  // `auth.ts`) ; `getCurrentUser` traite la session comme déconnectée si
+  // `forceReloginAt` est plus récent que `sessionCreatedAt` du token (ou si
+  // le token n'a pas ce champ — cas de TOUTES les sessions actives avant ce
+  // déploiement). Une vraie reconnexion repose un `sessionCreatedAt` frais,
+  // qui repasse après `forceReloginAt` : pas de reboucle.
+  forceReloginAt DateTime?
   // PR 8/9 — bannière de profil personnalisable. URL absolue uniquement
   // (pas de stockage de fichier ni service d'upload tiers — décision
   // documentée dans le README : la complexité d'un vrai upload n'était

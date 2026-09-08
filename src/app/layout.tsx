@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
-import { auth } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { Header } from "@/components/Header";
 import { BottomNav } from "@/components/BottomNav";
@@ -45,8 +44,12 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const session = await auth();
-  const user = session?.user ? await getCurrentUser() : null;
+  // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
+  // est la seule source de vérité "vraiment connecté" (tient compte de
+  // `forceReloginAt`, contrairement à `auth()` seul, cf. commentaire dans
+  // `page.tsx`) : BottomNav/GuideFab/confettis ne doivent pas rester
+  // affichés par-dessus l'écran de connexion après un déclenchement.
+  const user = await getCurrentUser();
 
   return (
     <html
@@ -56,12 +59,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <MotionConfig reducedMotion="user">
           <Header />
-          <main className={`flex flex-1 flex-col ${session?.user ? "pb-16 sm:pb-0" : ""}`}>
+          <main className={`flex flex-1 flex-col ${user ? "pb-16 sm:pb-0" : ""}`}>
             <PageTransition>{children}</PageTransition>
           </main>
-          {session?.user && <BottomNav />}
-          {session?.user && <GuideFab />}
-          {session?.user && <CelebrationConfetti soundEnabled={user?.soundEnabled ?? true} />}
+          {user && <BottomNav />}
+          {user && <GuideFab />}
+          {user && <CelebrationConfetti soundEnabled={user.soundEnabled} />}
           <Toaster theme="dark" position="bottom-center" richColors />
           <CursorTrail />
         </MotionConfig>
