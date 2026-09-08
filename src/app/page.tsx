@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { auth, signIn, signOut } from "@/auth";
+import { signIn, signOut } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
@@ -63,14 +63,23 @@ export default async function Home({
 }: {
   searchParams: Promise<{ error?: string; redirect?: string }>;
 }) {
-  const session = await auth();
+  // Feature "forcer la reconnexion globale" (PR 75) — un ancien code
+  // utilisait `auth()` directement ici pour décider d'afficher la page de
+  // connexion (`session?.user` reste vrai pour un JWT posé avant un
+  // `forceReloginAt`, Auth.js ne sait rien de ce marqueur, purement
+  // applicatif). `getCurrentUser()` est la seule source de vérité qui en
+  // tient compte (renvoie `null` dans ce cas) — sans ce changement, la
+  // page serait tombée dans la branche "connecté" plus bas puis aurait
+  // rendu une page blanche au lieu du bouton de connexion, l'inverse du
+  // but de la feature.
+  const user = await getCurrentUser();
   const { error, redirect: redirectParam } = await searchParams;
   const errorMessage = error
     ? (AUTH_ERROR_MESSAGES[error] ??
       "La connexion a échoué. Réessaie dans un instant.")
     : null;
 
-  if (!session?.user) {
+  if (!user) {
     let redirectTarget: { path: string; pseudo: string } | null = null;
     const match = redirectParam ? POTE_REDIRECT_PATTERN.exec(redirectParam) : null;
     if (match) {
@@ -125,11 +134,6 @@ export default async function Home({
         </Card>
       </div>
     );
-  }
-
-  const user = await getCurrentUser();
-  if (!user) {
-    return null;
   }
 
   const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
@@ -245,8 +249,8 @@ export default async function Home({
       <ParallaxHeader className="relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
-          src={session.user.image ?? null}
-          alt={`Avatar de ${session.user.name}`}
+          src={user.discordAvatar}
+          alt={`Avatar de ${user.discordName}`}
           level={level}
           rank={rank}
           size={64}
@@ -254,7 +258,7 @@ export default async function Home({
         <div className="min-w-0">
           <p className="text-sm text-muted">Salut,</p>
           <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
-            {session.user.name}
+            {user.discordName}
             {activeDebtorIds.has(user.id) && (
               <span className="ml-1" title="Dette de gage active">
                 💀

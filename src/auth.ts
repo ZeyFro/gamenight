@@ -70,6 +70,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.discordAccessToken = account.access_token;
         token.discordSyncedAt = Date.now();
 
+        // Feature "forcer la reconnexion globale" — posé une seule fois,
+        // à cette connexion OAuth fraîche (jamais réécrit tant que la
+        // session JWT vit, jusqu'à 30 jours). `getCurrentUser` compare
+        // cette valeur à `User.forceReloginAt` pour décider si CE token
+        // précède un déclenchement de reconnexion forcée.
+        token.sessionCreatedAt = Date.now();
+
         // Fix bug remonté (cron avatars Discord silencieux) — persiste
         // aussi `refresh_token`/`expires_at` EN BASE (pas seulement dans
         // ce JWT) : c'est la seule façon pour le cron
@@ -117,6 +124,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       if (token.discordId) {
         session.user.discordId = token.discordId as string;
+      }
+      if (token.sessionCreatedAt) {
+        session.user.sessionCreatedAt = token.sessionCreatedAt as number;
       }
       return session;
     },

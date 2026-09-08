@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { getUnreadNotificationCount, listRecentNotifications, groupNotifications } from "@/lib/notifications";
 import { getChatMessages } from "@/lib/chat";
@@ -9,7 +8,12 @@ import { NotificationBell, type NotificationItem } from "@/components/Notificati
 import { ChatPanel } from "@/components/chat/ChatPanel";
 
 export async function Header() {
-  const session = await auth();
+  // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
+  // est la seule source de vérité "vraiment connecté" (voir commentaire
+  // dans `page.tsx`) ; le gate du header s'appuie dessus plutôt que sur
+  // `auth()` seul, sinon les liens de nav/cloche resteraient visibles
+  // par-dessus l'écran de connexion après un déclenchement.
+  const user = await getCurrentUser();
 
   // Cloche de notifications (Sprint 2 PR-C, U3) — dans le header plutôt
   // que la BottomNav mobile (dont la grille à 6 cases est dédiée aux
@@ -21,24 +25,21 @@ export async function Header() {
   let currentUser: { id: string; discordName: string; discordAvatar: string | null; color: string } | null =
     null;
   let initialChatMessages: Awaited<ReturnType<typeof getChatMessages>> = [];
-  if (session?.user) {
-    const user = await getCurrentUser();
-    if (user) {
-      currentUser = {
-        id: user.id,
-        discordName: user.discordName,
-        discordAvatar: user.discordAvatar,
-        color: user.color,
-      };
-      const [count, recent, chatMessages] = await Promise.all([
-        getUnreadNotificationCount(user.id),
-        listRecentNotifications(user.id, 20),
-        getChatMessages(null),
-      ]);
-      unreadCount = count;
-      notifications = await groupNotifications(recent);
-      initialChatMessages = chatMessages;
-    }
+  if (user) {
+    currentUser = {
+      id: user.id,
+      discordName: user.discordName,
+      discordAvatar: user.discordAvatar,
+      color: user.color,
+    };
+    const [count, recent, chatMessages] = await Promise.all([
+      getUnreadNotificationCount(user.id),
+      listRecentNotifications(user.id, 20),
+      getChatMessages(null),
+    ]);
+    unreadCount = count;
+    notifications = await groupNotifications(recent);
+    initialChatMessages = chatMessages;
   }
 
   return (
@@ -47,7 +48,7 @@ export async function Header() {
         <Link href="/" className="shrink-0">
           <Logo />
         </Link>
-        {session?.user && (
+        {user && (
           <div className="flex items-center gap-1">
             <nav className="hidden items-center gap-1 sm:flex">
               <HeaderNavLinks />

@@ -13,6 +13,21 @@ export async function getCurrentUser(): Promise<User | null> {
   });
   if (!user) return null;
 
+  // Feature "forcer la reconnexion globale" — traite la session comme
+  // déconnectée si elle précède le dernier déclenchement (ou si le token
+  // n'a pas `sessionCreatedAt` du tout, cas de TOUTES les sessions actives
+  // avant ce déploiement : sans lecture possible de leur date de création
+  // réelle, on les considère par prudence comme antérieures). Chaque page
+  // protégée fait déjà `if (!user) redirect("/")`, donc renvoyer `null`
+  // ici suffit à forcer un vrai re-login — aucun cookie à effacer
+  // explicitement, pas de table `Session` à purger (JWT sans base).
+  if (user.forceReloginAt) {
+    const sessionCreatedAt = session.user.sessionCreatedAt;
+    if (!sessionCreatedAt || user.forceReloginAt.getTime() > sessionCreatedAt) {
+      return null;
+    }
+  }
+
   // Chantier XP : tient le streak de connexion à jour à chaque page
   // protégée — `touchStreak` throttle lui-même ses écritures (pas de
   // requête supplémentaire tant que < 12h se sont écoulées depuis le
