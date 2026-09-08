@@ -6960,3 +6960,148 @@ confirmer par toi en prod comme demandé.
 - `npx next build` : compile et type-check sans erreur
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-71 (aucune autre route touchée)
+
+## Fix 4 bugs remontés : cron avatars Discord, bannières GIF bloquées, cron rappels inactif, erreur PKCE
+
+### Bug 1 — cron avatars Discord toujours sans effet
+
+Correction du premier diagnostic transmis : le projet **n'a pas** de table
+`Account` Auth.js avec des colonnes `access_token`/`refresh_token` — la
+session utilise `strategy: "jwt"` **sans adaptateur Prisma**, donc Auth.js
+ne persiste jamais de jeton en base nulle part. C'est justement la cause
+racine du bug : jusqu'ici, un jeton OAuth Discord ne vivait que dans le
+cookie de session chiffré de l'utilisateur connecté, invisible et
+inaccessible à un cron qui tourne hors de toute session.
+
+Le jeton **bot**, lui, existait déjà (`DISCORD_BOT_TOKEN`, PR précédente)
+mais restait silencieux en pratique : `GET /users/{id}` avec `Authorization:
+Bot ...` est fiable, donc le vrai suspect était soit la variable absente
+sur Vercel, soit un problème de rate-limit/erreurs HTTP jamais remontées
+clairement — les deux plus difficiles à diagnostiquer sans jeton individuel
+de comparaison.
+
+**Nouvelle architecture (ce fix)** : `src/auth.ts`, callback `jwt`, persiste
+désormais `discordAccessToken`/`discordRefreshToken`/`discordTokenExpiresAt`
+sur la ligne `User` elle-même (3 nouvelles colonnes, migration
+`add_discord_oauth_tokens`) à chaque connexion OAuth réelle. Le cron
+`/api/cron/refresh-discord-profiles` (`refreshAllDiscordProfiles`,
+`src/lib/discord-profile.ts`) :
+1. **Mécanisme principal** — pour chaque user avec un jeton stocké,
+   rafraîchit son `access_token` via `POST
+   https://discord.com/api/v10/oauth2/token` (`grant_type=refresh_token`)
+   si expiré (avec marge de sécurité de 5 min), persiste la nouvelle paire
+   de jetons (Discord **fait tourner** le `refresh_token` à chaque usage —
+   l'ancien devient invalide, il faut toujours sauvegarder le nouveau), puis
+   rappelle `/users/@me` pour mettre à jour avatar/pseudo.
+2. **Repli bot** — uniquement pour les users qui n'ont pas encore de jeton
+   stocké (pas reconnectés depuis ce déploiement), en réutilisant
+   `DISCORD_BOT_TOKEN` comme avant.
+
+Réponse JSON détaillée : `{ oauth: { checked, updated, skipped, failed },
+bot: { checked, updated, failed } }`, avec un log `logger.info` récapitulatif
+à la fin de chaque run et un log au tout premier appel du handler (même
+garde-fou que le fix cron précédent).
+
+**Limite connue (rollout progressif)** : les jetons OAuth ne se peuplent en
+base qu'à la PROCHAINE vraie reconnexion de chaque utilisateur (une session
+JWT peut rester valide jusqu'à 30 jours sans repasser par le flux OAuth).
+Entre le déploiement de ce fix et cette reconnexion, ces users restent
+couverts par le repli bot (donc le cron continue à fonctionner pour eux,
+sans interruption), puis basculent automatiquement sur le mécanisme
+principal dès leur prochain login.
+
+### Bug 2 — bannières GIF bloquées (`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`)
+
+Le blocage vient d'un en-tête `Cross-Origin-Resource-Policy` posé côté
+hébergeur du GIF (klipy.com) sur SA réponse — pas quelque chose que
+`referrerPolicy`, `next.config.js` ou tout autre réglage côté navigateur/app
+peut contourner : `referrerPolicy` ne gouverne que l'en-tête `Referer`
+sortant, un mécanisme sans rapport avec CORP. Ajouté quand même à
+`BannerImage` (demandé, inoffensif) mais ce n'est pas le vrai fix.
+
+Changements :
+- `klipy.com` ajouté à `images.remotePatterns` (`next.config.ts`) — utile
+  pour d'autres hébergeurs de bannière compatibles `next/image`, mais **ne
+  résout pas** un blocage CORP (celui-ci bloque même une requête `<img>`
+  native, avant que `next/image` n'entre en jeu).
+- Nouveau composant partagé `src/components/BannerImage.tsx` : `<img>`
+  natif (nécessaire pour disposer d'un événement `onError`, absent d'un
+  `background-image` CSS) avec `onError` basculant sur le même dégradé de
+  secours (`bannerFallbackStyle`) que l'absence de bannière — **c'est le
+  vrai fix** : une bannière bloquée par CORP reste invisible sans previous
+  fix, désormais elle affiche proprement le dégradé de la couleur du user
+  au lieu d'un blanc/erreur silencieux. Utilisé sur `/profil` et `/potes`.
+
+### Bug 3 — cron rappels inactif depuis le 21/08
+
+L'URL de la route n'a jamais changé (`/api/cron/reminders`, export `GET`
+uniquement, cohérent avec toute la documentation existante) — vérifié via
+l'historique git. La date du 21/08 correspond exactement au commit de
+migration du cron Vercel (limité à un intervalle minimum non disponible sur
+le plan Hobby) vers un cron externe (cron-job.org) : tout indique une
+configuration cron-job.org jamais finalisée ou une désactivation
+automatique après une série d'échecs (comportement cron-job.org : un job qui
+échoue plusieurs fois d'affilée est auto-désactivé et doit être
+**manuellement réactivé** dans le dashboard — aucun changement de code ne
+peut le faire à sa place).
+
+Durcissement appliqué (pour empêcher que ça se reproduise une fois
+réactivé) : la boucle de scan/envoi de rappels est maintenant enveloppée
+dans un try/catch renvoyant `{ checked: 0, sent: [], error }` en HTTP 200 au
+lieu de laisser une éventuelle erreur inattendue remonter en 500 non
+capturé (même garde-fou que les autres crons du projet) ; log
+`logger.info` au tout premier appel du handler ; log explicite de l'échec
+d'authentification `CRON_SECRET`.
+
+**Action manuelle requise** : vérifier/réactiver le job dans le dashboard
+cron-job.org, et confirmer que l'URL configurée pointe vers le domaine de
+production (`https://gamenight-zeyfro.vercel.app/api/cron/reminders`) avec
+l'en-tête `Authorization: Bearer <CRON_SECRET>`.
+
+### Bug 4 — erreur PKCE (`pkceCodeVerifier value could not be parsed`)
+
+`trustHost: true` et `AUTH_URL` sont déjà correctement configurés
+(`src/auth.ts`, `.env.example`) — écartés comme cause. Recherche des
+retours connus sur cette erreur Auth.js : aucune cause racine confirmée par
+les mainteneurs à ce jour ; le pattern le plus documenté dans la communauté
+est la perte de cookies lors d'une redirection OAuth cross-origin ouverte
+depuis un **navigateur intégré** (in-app browser d'une autre app — typiquement
+le navigateur intégré de l'app mobile Discord elle-même quand le lien de
+connexion est ouvert depuis là), qui bloque plus agressivement les cookies
+que Safari/Chrome/Firefox. Auth.js masque volontairement la vraie cause
+derrière `error=Configuration` sur toute erreur de ce type — seul le
+callback `logger.error` de `auth.ts` (déjà en place) en garde la trace
+réelle côté serveur.
+
+Fix appliqué, à la mesure de cette confiance : le message affiché sur
+`error=Configuration` (`src/app/page.tsx`) est maintenant actionnable —
+il suggère d'ouvrir le lien dans le navigateur du téléphone plutôt que
+depuis l'app qui l'a ouvert, au lieu d'un message générique. Aucun
+changement spéculatif de configuration cookies/PKCE n'a été fait sans
+cause confirmée (risque de régression pour les users qui se connectent
+normalement).
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma` + migration `add_discord_oauth_tokens` —
+  `User.discordAccessToken`/`discordRefreshToken`/`discordTokenExpiresAt`
+- `src/auth.ts` — persistance des jetons OAuth en base (callback `jwt`)
+- `src/lib/discord-profile.ts` — `refreshDiscordAccessToken`,
+  `refreshAllDiscordProfilesViaOAuth`, `refreshAllDiscordProfiles`
+  (nouveau point d'entrée combiné OAuth + repli bot)
+- `src/app/api/cron/refresh-discord-profiles/route.ts` — branché sur
+  `refreshAllDiscordProfiles`, try/catch
+- `src/components/BannerImage.tsx` (nouveau) — `<img>` + repli `onError`
+- `src/app/profil/layout.tsx`, `src/app/potes/page.tsx` — utilisent
+  `BannerImage`
+- `next.config.ts` — `klipy.com` dans `remotePatterns`
+- `src/app/api/cron/reminders/route.ts` — try/catch, logs
+- `src/app/page.tsx` — message d'erreur `Configuration` actionnable
+- `.env.example` — `DISCORD_BOT_TOKEN` redocumentée comme repli
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx next build` : compile et type-check sans erreur (55 routes)
+- `npx vitest run` : 73 tests, tout vert
+- Zéro régression PR #1-73
