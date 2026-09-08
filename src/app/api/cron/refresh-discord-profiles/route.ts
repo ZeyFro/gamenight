@@ -1,29 +1,34 @@
 import { NextResponse } from "next/server";
-import { refreshAllDiscordProfilesViaBot } from "@/lib/discord-profile";
+import { refreshAllDiscordProfiles } from "@/lib/discord-profile";
 import { logger } from "@/lib/logger";
 
 /**
  * Fix bug remonté : les avatars/pseudos Discord ne se mettaient à jour
  * qu'à une reconnexion complète — le rafraîchissement passif dans
  * `src/auth.ts` (callback `jwt`, toutes les 12h) dépend du jeton OAuth
- * individuel de chaque user, qui expire au bout de ~7 jours sans jamais
- * se renouveler tout seul (pas de refresh token géré) ; passé ce délai il
- * échoue silencieusement en boucle jusqu'à la prochaine vraie
- * reconnexion. Cette route, appelée par un cron externe toutes les
- * heures, rafraîchit TOUT LE MONDE via le bot Discord de l'application
- * (`refreshAllDiscordProfilesViaBot`), indépendamment de toute session
- * active — même mécanisme de protection (`CRON_SECRET`) que les autres
- * crons du projet.
+ * individuel de chaque user, qui expire au bout de ~1h sans jamais se
+ * renouveler tout seul côté client. Cette route, appelée par un cron
+ * externe toutes les heures, rafraîchit TOUT LE MONDE indépendamment de
+ * toute session active — même mécanisme de protection (`CRON_SECRET`)
+ * que les autres crons du projet.
+ *
+ * Fix bug remonté (round 3) : l'approche "jeton du bot" seule ne
+ * fonctionnait pas de façon fiable — `refreshAllDiscordProfiles`
+ * (`src/lib/discord-profile.ts`) privilégie désormais les VRAIS jetons
+ * OAuth de chaque user (persistés en base à chaque vraie reconnexion,
+ * voir `auth.ts`), avec le bot en repli uniquement pour les users pas
+ * encore reconnectés depuis ce déploiement. Voir le README pour le détail
+ * du diagnostic et le rollout progressif (les jetons OAuth ne se peuplent
+ * qu'à la prochaine vraie reconnexion de chaque utilisateur).
  */
 export async function GET(request: Request) {
-  // Fix bug remonté (round 2) : premier log AVANT toute condition — si
-  // cette ligne n'apparaît jamais dans les Vercel Logs pour un run donné,
-  // la requête cron-job.org n'atteint pas ce handler du tout (mauvaise
-  // URL/domaine de preview au lieu de prod, etc.) ; si elle apparaît mais
-  // rien après, la cause est dans ce handler (auth ou `DISCORD_BOT_TOKEN`
-  // absente, cf. `refreshAllDiscordProfilesViaBot`) — voir aussi le JSON
-  // de réponse, qui porte maintenant la cause exacte (`botTokenConfigured`,
-  // `error`) sans dépendre des logs Vercel.
+  // Premier log AVANT toute condition — si cette ligne n'apparaît jamais
+  // dans les Vercel Logs pour un run donné, la requête cron-job.org
+  // n'atteint pas ce handler du tout (mauvaise URL/domaine de preview au
+  // lieu de prod, etc.) ; si elle apparaît mais rien après, la cause est
+  // dans ce handler — voir aussi le JSON de réponse, qui porte la cause
+  // exacte (`bot.botTokenConfigured`, `bot.error`) sans dépendre des
+  // Vercel Logs.
   logger.info("cron:refresh-discord-profiles", "Handler appelé.");
 
   const cronSecret = process.env.CRON_SECRET;
@@ -40,12 +45,23 @@ export async function GET(request: Request) {
     );
   }
 
-  const result = await refreshAllDiscordProfilesViaBot();
-  logger.info(
-    "cron:refresh-discord-profiles",
-    `${result.updated}/${result.checked} profil(s) Discord mis à jour (${result.failed} échec(s)).`,
-    result
-  );
-
-  return NextResponse.json(result);
+  try {
+    const result = await refreshAllDiscordProfiles();
+    logger.info(
+      "cron:refresh-discord-profiles",
+      `OAuth : ${result.oauth.updated}/${result.oauth.checked} mis à jour (${result.oauth.skipped} sans jeton, ${result.oauth.failed} échec(s)). Bot (repli) : ${result.bot.updated}/${result.bot.checked} mis à jour.`,
+      result
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    // Même garde-fou que `cron:reminders` (bug remonté similaire) — ne
+    // jamais laisser une erreur inattendue remonter en 500 non capturé,
+    // cron-job.org compte ça comme un échec et peut finir par désactiver
+    // le job après plusieurs échecs consécutifs.
+    logger.error("cron:refresh-discord-profiles", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 200 }
+    );
+  }
 }

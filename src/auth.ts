@@ -69,6 +69,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (account?.access_token) {
         token.discordAccessToken = account.access_token;
         token.discordSyncedAt = Date.now();
+
+        // Fix bug remonté (cron avatars Discord silencieux) — persiste
+        // aussi `refresh_token`/`expires_at` EN BASE (pas seulement dans
+        // ce JWT) : c'est la seule façon pour le cron
+        // `refresh-discord-profiles` (hors de toute session) de rappeler
+        // l'API Discord au nom de cet utilisateur plus tard, y compris
+        // après expiration de son jeton d'accès (~1h côté Discord — le
+        // rafraîchir via `refresh_token` est le seul moyen d'y arriver
+        // sans repasser par tout le flux OAuth). Best-effort : ne doit
+        // jamais faire échouer la connexion.
+        if (profile?.id && account.refresh_token) {
+          try {
+            await prisma.user.update({
+              where: { discordId: profile.id as string },
+              data: {
+                discordAccessToken: account.access_token,
+                discordRefreshToken: account.refresh_token,
+                discordTokenExpiresAt: account.expires_at
+                  ? new Date(account.expires_at * 1000)
+                  : null,
+              },
+            });
+          } catch (error) {
+            appLogger.error("auth", error, { discordId: profile.id });
+          }
+        }
       }
 
       // Sessions JWT persistantes (jusqu'à 30 jours par défaut) : sans ce

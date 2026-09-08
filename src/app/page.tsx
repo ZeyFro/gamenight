@@ -30,9 +30,23 @@ import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 
+// Fix bug remonté (certains utilisateurs ne peuvent pas se connecter,
+// erreur "pkceCodeVerifier value could not be parsed" côté serveur) —
+// Auth.js masque volontairement la vraie cause derrière `error=Configuration`
+// pour tout `InvalidCheck`/`CallbackRouteError` (voir `auth.ts`, callback
+// `logger.error`, qui logue la vraie cause côté serveur). `trustHost`
+// est déjà activé et `AUTH_URL` déjà documentée comme requise (voir
+// README) — les deux pistes de fix habituelles pour ce type d'erreur.
+// La cause la plus probable restante pour un sous-ensemble d'utilisateurs
+// seulement : le cookie PKCE ne survit pas à l'aller-retour vers Discord
+// dans le navigateur intégré de l'appli Discord (ou d'une appli tierce),
+// notoirement agressif sur la suppression de cookies entre deux domaines
+// — un vrai navigateur (Safari/Chrome) n'a pas ce problème. Message
+// explicite plutôt que générique, pour donner une action concrète aux
+// utilisateurs concernés sans qu'ils aient besoin de nous contacter.
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   Configuration:
-    "Une erreur inattendue est survenue côté serveur pendant la connexion. Réessaie — si ça persiste, préviens l'admin.",
+    "La connexion a échoué (erreur serveur pendant l'aller-retour avec Discord). Si tu as cliqué sur le lien depuis l'appli Discord ou une autre appli, réessaie en ouvrant ce site dans ton navigateur (Safari, Chrome…) plutôt que dans leur fenêtre intégrée. Sinon, réessaie dans un instant — si ça persiste, préviens l'admin.",
   AccessDenied: "La connexion a été refusée.",
   OAuthCallbackError:
     "La connexion Discord a échoué (lien de connexion expiré ou déjà utilisé). Réessaie.",

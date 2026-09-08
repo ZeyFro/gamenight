@@ -20,6 +20,26 @@ model User {
   discordId        String   @unique
   discordName      String
   discordAvatar    String?
+  // Fix bug remonté (cron avatars Discord silencieux) — cette app utilise
+  // une session JWT sans base (`session: { strategy: "jwt" }` dans
+  // auth.ts, pas d'adapter Prisma), donc PAS de table `Account` Auth.js
+  // standard où piocher les jetons OAuth : contrairement à ce qu'on
+  // pourrait attendre par défaut, `access_token`/`refresh_token` ne
+  // vivaient jusqu'ici que dans le JWT chiffré de la session active de
+  // CHAQUE user (`token.discordAccessToken`), jamais en base — donc
+  // jamais accessibles depuis un cron qui tourne hors de toute session.
+  // Ces 3 champs persistent maintenant les jetons OAuth Discord de
+  // chaque user (posés à chaque vraie reconnexion, callback `jwt` dans
+  // auth.ts) pour que le cron `refresh-discord-profiles` puisse les
+  // réutiliser ET les rafraîchir lui-même (`POST /oauth2/token`,
+  // `grant_type=refresh_token`) sans dépendre d'une session active.
+  // Rollout : `null` pour tout user qui ne s'est pas reconnecté depuis ce
+  // déploiement — se peuple progressivement à la prochaine vraie
+  // reconnexion de chacun (pas à chaque chargement de page, le JWT
+  // persiste jusqu'à 30 jours sans repasser par le provider).
+  discordAccessToken    String?   @db.Text
+  discordRefreshToken   String?   @db.Text
+  discordTokenExpiresAt DateTime?
   // PR 8/9 — bannière de profil personnalisable. URL absolue uniquement
   // (pas de stockage de fichier ni service d'upload tiers — décision
   // documentée dans le README : la complexité d'un vrai upload n'était

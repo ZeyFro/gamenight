@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
-import { bannerFallbackStyle } from "@/lib/user-color";
 import { formatDurationFr, nowMs } from "@/lib/wallclock";
 import { RankAvatar } from "@/components/RankAvatar";
+import { BannerImage } from "@/components/BannerImage";
 import { ColorDot } from "@/components/ColorDot";
 import { ProfilTabs } from "@/components/ProfilTabs";
 import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
@@ -72,17 +72,10 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8 sm:pb-12">
       <div className="relative overflow-hidden">
-        <div
+        <BannerImage
+          url={user.bannerUrl}
+          color={user.color}
           className="banner-ken-burns h-40 w-full sm:h-56 md:h-64"
-          style={
-            user.bannerUrl
-              ? {
-                  backgroundImage: `url(${user.bannerUrl})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                }
-              : bannerFallbackStyle(user.color)
-          }
         />
         <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
           <CopyProfileLinkButton userId={user.id} />

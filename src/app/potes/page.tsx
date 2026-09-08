@@ -4,12 +4,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { levelForXp, rankForLevel } from "@/lib/xp";
-import { bannerFallbackStyle } from "@/lib/user-color";
 import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
+import { BannerImage } from "@/components/BannerImage";
 import { ColorDot } from "@/components/ColorDot";
 import { StreakFlame } from "@/components/StreakFlame";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -110,17 +110,10 @@ export default async function PotesPage() {
                     style={{ borderColor: `color-mix(in srgb, ${pote.color} 45%, var(--border))` }}
                   >
                     <div className="relative">
-                      <div
+                      <BannerImage
+                        url={pote.bannerUrl}
+                        color={pote.color}
                         className="h-24 w-full sm:h-28"
-                        style={
-                          pote.bannerUrl
-                            ? {
-                                backgroundImage: `url(${pote.bannerUrl})`,
-                                backgroundSize: "cover",
-                                backgroundPosition: "center",
-                              }
-                            : bannerFallbackStyle(pote.color)
-                        }
                       />
                       <div className="absolute -bottom-8 left-4">
                         <div className="relative" style={{ width: 64, height: 64 }}>
