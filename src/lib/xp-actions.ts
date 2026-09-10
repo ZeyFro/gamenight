@@ -16,8 +16,8 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
  * Attribue de l'XP à un user pour une action donnée — idempotent via la
  * contrainte unique `@@unique([userId, reason, sourceId])` sur `XpEvent` :
  * un second appel avec le même trio ne fait rien (silencieusement), ce qui
- * permet au script de backfill (prisma/backfill-xp.mjs) de tourner à
- * volonté sans jamais doubler une récompense déjà attribuée par le chemin
+ * permet au script de backfill (backfillXp, src/lib/backfill-xp.ts) de
+ * tourner à volonté sans jamais doubler une récompense déjà attribuée par le chemin
  * "live" (et vice-versa) — même mécanisme de prudence que le bug de seed
  * corrigé dans une PR précédente.
  *
@@ -102,7 +102,7 @@ export async function awardXp(
         // Refonte home ("Activité récente") — persisté dans la même
         // transaction que l'XP : jamais de passage de niveau "orphelin"
         // sans l'XP qui l'a déclenché, ni l'inverse. Jamais écrit par le
-        // backfill (prisma/backfill-xp.mjs), qui ne passe pas par
+        // backfill (backfillXp, src/lib/backfill-xp.ts), qui ne passe pas par
         // `awardXp` — voir le commentaire sur `LevelUpEvent` dans le
         // schéma.
         await tx.levelUpEvent.create({ data: { userId, level: afterLevel } });

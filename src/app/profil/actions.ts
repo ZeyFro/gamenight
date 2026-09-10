@@ -11,8 +11,8 @@ import { bannerUrlSchema, userColorSchema } from "@/lib/validations";
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
  * `colorCustomized: true` protège définitivement ce choix du backfill
- * `prisma/backfill-user-colors.mjs`, qui ne touche que les comptes encore
- * à la valeur par défaut.
+ * `backfillUserColors` (`src/lib/backfill-user-colors.ts`), qui ne touche
+ * que les comptes encore à la valeur par défaut.
  */
 export async function updateUserColor(formData: FormData) {
   const user = await getCurrentUser();

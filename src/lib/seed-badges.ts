@@ -1,27 +1,31 @@
-// Seed des 15 badges automatiques par défaut (PR 7/9). Node/ESM autonome,
-// même philosophie que les autres scripts prisma/*.mjs — wired dans `npm
-// run build`, doit rester silencieux et sûr à rejouer indéfiniment.
-//
-// Idempotent PAR NOM (`Badge.name` est `@unique`) : un badge déjà en base
-// avec ce nom exact n'est jamais recréé ni écrasé — si son critère ou son
-// XP est modifié depuis /admin/badges (à venir) ou directement en base,
-// ce script ne revient jamais dessus.
-//
-// XP dérivé de la rareté (`BADGE_XP_BY_RARITY`, dupliqué ici depuis
-// src/lib/badge-rarity.ts — même raison que backfill-xp.mjs duplique
-// XP_AMOUNTS : un module TS avec alias `@/...` n'est pas exécutable tel
-// quel par Node). À GARDER EN SYNC si l'échelle change.
+import { prisma } from "@/lib/prisma";
+import { BADGE_XP_BY_RARITY } from "@/lib/badge-rarity";
+import type { BadgeCriteria } from "@/lib/badges";
+import type { BadgeCategory, BadgeRarity } from "@prisma/client";
 
-import { PrismaClient } from "@prisma/client";
+/**
+ * Seed des 15 badges automatiques par défaut. Convertie depuis
+ * `prisma/seed-badges.mjs` (PR "build ne fait plus que compiler") :
+ * importe directement `BADGE_XP_BY_RARITY` de `@/lib/badge-rarity` au
+ * lieu de le dupliquer — l'ancienne version Node/ESM autonome ne pouvait
+ * pas résoudre l'alias `@/...`.
+ *
+ * Idempotent PAR NOM (`Badge.name` est `@unique`) : un badge déjà en base
+ * avec ce nom exact n'est jamais recréé ni écrasé — si son critère ou son
+ * XP est modifié depuis `/admin/badges` ou directement en base, ce script
+ * ne revient jamais dessus.
+ */
 
-const BADGE_XP_BY_RARITY = {
-  COMMON: 20,
-  RARE: 40,
-  EPIC: 75,
-  LEGENDARY: 150,
-};
+interface BadgeSeed {
+  name: string;
+  icon: string;
+  description: string;
+  category: BadgeCategory;
+  rarity: BadgeRarity;
+  criteria: BadgeCriteria;
+}
 
-const BADGES = [
+const BADGES: BadgeSeed[] = [
   {
     name: "First Blood",
     icon: "🎉",
@@ -193,44 +197,15 @@ const BADGES = [
   },
 ];
 
-const prisma = new PrismaClient();
-
-async function main() {
-  // `modifiedById` (audit trail, PR 8/9 — /admin/badges) est devenu
-  // obligatoire sur Badge. Même garde-fou que les autres seeds : pas
-  // d'utilisateur encore en base -> reporté au prochain build, plutôt
-  // que de planter (cf. le hotfix appliqué à seed-game-stats.mjs après
-  // le même oubli lors de l'ajout de l'audit trail sur GameStatType).
+export async function seedBadges(): Promise<void> {
   const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!author) {
-    console.log(
-      "[seed-badges] Aucun utilisateur en base pour l'instant — seed reporté au prochain build."
-    );
-    return;
-  }
+  if (!author) return; // aucun user pour l'instant — reporté au prochain passage
 
-  console.log("\n=== Seed badges ===");
-  let created = 0;
   for (const badge of BADGES) {
     const existing = await prisma.badge.findUnique({ where: { name: badge.name } });
-    if (existing) {
-      console.log(`- ${badge.icon} ${badge.name} : déjà en base — rien à faire.`);
-      continue;
-    }
+    if (existing) continue;
 
     const xpReward = BADGE_XP_BY_RARITY[badge.rarity];
     await prisma.badge.create({ data: { ...badge, xpReward, modifiedById: author.id } });
-    created += 1;
-    console.log(
-      `- ${badge.icon} ${badge.name} (${badge.rarity}) : créé (+${xpReward} XP, critère ${badge.criteria.type} >= ${badge.criteria.count}).`
-    );
   }
-  console.log(`=== ${created} badge(s) créé(s) sur ${BADGES.length} ===\n`);
 }
-
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());

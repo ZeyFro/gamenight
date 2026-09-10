@@ -149,6 +149,15 @@ npx prisma migrate deploy
 - La commande `npm run build` lance `prisma migrate deploy` avant `next
   build` : toute migration ajoutée au repo est donc appliquée
   automatiquement à chaque déploiement Vercel (voir §5).
+- **PR "build ne fait plus que compiler"** : `npm run build` ne fait
+  désormais QUE `prisma migrate deploy && next build` — aucune écriture de
+  données métier (seeds/backfills) au build. Ces 11 tâches (seed des
+  messages Discord, badges, tags, trophées de groupe, superlatifs,
+  stats jeux, saison 1 ; backfills XP, couleurs, badges, templates
+  invalides), auparavant chaînées dans `npm run build`, vivent maintenant
+  dans `src/lib/seed-*.ts`/`backfill-*.ts` et sont déclenchées via
+  `POST /api/backfill/seed-reconcile` (cron quotidien + curl manuel) —
+  voir « Seeds & backfills en tâche de fond » plus bas.
 
 ## 4. Lancer en local
 
@@ -2037,6 +2046,160 @@ fenêtre de 60s d'un seul appel (voir limite ci-dessus), relance
 simplement la même commande `curl` une seconde fois — idempotent, sans
 risque à répéter.
 
+## Seeds & backfills en tâche de fond (build ne fait plus que compiler)
+
+**Problème identifié à l'audit (item #06)** : `npm run build` enchaînait
+`prisma migrate deploy` avec 11 scripts `prisma/*.mjs` (seeds de
+référentiel + backfills de réconciliation) avant `next build`. Un simple
+déploiement pouvait donc muter des données, et un bug dans n'importe
+lequel de ces 11 scripts bloquait `next build` — donc le déploiement
+entier — même si la migration s'était bien passée. Contrairement aux
+backfills IGDB/Steam Store (section précédente), ces 11 scripts n'ont
+jamais eu de problème de LENTEUR (aucun appel réseau, purement en base,
+coût négligeable pour la taille de ce groupe) : le problème ici est la
+DISPONIBILITÉ du déploiement, pas la vitesse du build.
+
+`prisma migrate deploy` reste dans `npm run build` — c'est la pratique
+recommandée pour un plan Vercel Hobby (pas d'étape de release séparée) :
+la seule alternative réaliste (route dédiée aux migrations) demande de
+lancer la CLI Prisma depuis une fonction serverless, jamais fait ailleurs
+dans ce repo, et ouvre une fenêtre où le nouveau code tourne contre
+l'ancien schéma tant que la migration n'a pas été déclenchée à la main —
+un risque pire que celui qu'on cherche à corriger. Seuls les 11
+seeds/backfills, eux, sortent du build.
+
+### Ce qui a changé
+
+`npm run build` :
+
+```
+prisma migrate deploy && next build
+```
+
+Les 11 anciens scripts (`prisma/seed.mjs`, `fix-invalid-templates.mjs`,
+`backfill-xp.mjs`, `backfill-user-colors.mjs`, `seed-game-stats.mjs`,
+`seed-superlatives.mjs`, `seed-badges.mjs`, `backfill-badges.mjs`,
+`seed-tags.mjs`, `seed-group-achievements.mjs`, `seed-season.mjs`) sont
+convertis en fonctions `src/lib/seed-*.ts`/`backfill-*.ts` (même logique,
+aucune régression de comportement — voir le détail ci-dessous), et
+regroupés dans `runSeedReconciliation()` (`src/lib/seed-reconciliation.ts`),
+appelée par une route unique :
+
+### `POST /api/backfill/seed-reconcile`
+
+Même protection `CRON_SECRET` que le reste des routes `/api/cron/*` et
+`/api/backfill/*`. Contrairement à `igdb-coop`/`steam-store` (traitement
+en tâche de fond via `after()` + réponse `202` immédiate, nécessaire
+parce qu'elles appellent des API externes lentes) : ici, traitement
+**synchrone** — les 11 tâches sont 100% lecture/écriture base, largement
+sous la seconde pour ce groupe, donc la réponse contient directement le
+résultat réel par tâche :
+
+```json
+{
+  "ok": true,
+  "results": {
+    "seedDefaultMessages": "ok",
+    "fixInvalidMessageTemplates": "ok",
+    "backfillXp": "ok",
+    "backfillUserColors": "ok",
+    "seedGameStats": "ok",
+    "seedSuperlatives": "ok",
+    "seedBadges": "ok",
+    "backfillBadges": "ok",
+    "seedTags": "ok",
+    "seedGroupAchievements": "ok",
+    "seedInitialSeason": "ok"
+  }
+}
+```
+
+**Best-effort strict** : chaque tâche dans son propre `try`/`catch` (voir
+`src/lib/seed-reconciliation.ts`) — un échec de l'une (`"error"` dans
+`results`, détail dans les logs Vercel) n'empêche JAMAIS les 10 autres de
+s'exécuter, et cette route répond toujours `200` (jamais de 5xx qui
+pourrait faire croire à un cron externe que "tout" a échoué). Contraste
+volontaire avec le comportement précédent, où une exception importait
+tout le build.
+
+**Ordre figé, identique à l'ancien `npm run build`** : les 11 tâches
+tournent dans la même fonction plutôt que dans des routes séparées, à
+cause d'une dépendance réelle entre deux d'entre elles — `backfillBadges`
+a besoin que `seedBadges` ait déjà créé les 15 `Badge` en base. Pas de
+découpage "seeds de référentiel vs backfills" en plusieurs routes : ça
+aurait recréé le risque d'un appel dans le mauvais ordre.
+
+**Dédoublonnage au passage** : converties en `src/lib/*.ts`, ces
+fonctions importent maintenant directement les constantes/fonctions
+canoniques (`@/lib/xp`, `@/lib/user-color`, `@/lib/badge-rarity`,
+`@/lib/message-templates`, `@/lib/group-achievements`, `@/lib/wallclock`)
+au lieu de les dupliquer — impossible depuis un script Node/ESM autonome
+(alias `@/...` non résolu), plus un problème une fois dans `src/lib/`.
+Seule exception volontaire : `backfillBadges` garde sa propre logique de
+calcul de stats et d'attribution silencieuse (`src/lib/backfill-badges.ts`)
+plutôt que de réutiliser le chemin live (`unlockBadge`,
+`src/lib/badges.ts`), qui déclenche systématiquement une notif Discord —
+un comportement que ce backfill doit explicitement ne jamais avoir
+(décision produit historique, PR 7/9 : pas de spam rétroactif de "badge
+débloqué" pour des exploits vieux de plusieurs mois).
+
+### Configurer le cron externe (cron-job.org ou équivalent)
+
+Même compte que les autres crons de ce projet — ajouter un nouveau cron
+job :
+
+```
+URL     : https://ton-projet.vercel.app/api/backfill/seed-reconcile
+Méthode : POST
+Header  : Authorization: Bearer <CRON_SECRET>
+Fréquence : 1x par jour
+```
+
+Fréquence quotidienne délibérément choisie plutôt que le cron 15 min déjà
+utilisé pour `close-sessions`/`reminders` : les 11 tâches sont déjà
+idempotentes par construction (contrainte unique, `findFirst`/`count`
+avant écriture, `upsert`) — pas besoin d'un marqueur "déjà fait"
+supplémentaire — donc le seul coût d'un passage à vide est 9-11 petites
+lectures, mais les payer 96 fois par jour (cron 15 min) au lieu d'une
+seule aurait été du gaspillage pour un gain nul (aucune de ces tâches
+n'a besoin d'une réconciliation à la minute près).
+
+### Déclenchement manuel (re-seed à la demande)
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://gamenight-zeyfro.vercel.app/api/backfill/seed-reconcile
+```
+
+Une seule commande pour tout re-seeder/backfiller — utile après un
+déploiement qui ajoute un nouveau badge/tag/message par défaut, sans
+attendre le prochain passage du cron quotidien. Idempotent, sans risque à
+répéter.
+
+### ⚠️ Procédure de bascule au merge de cette PR (à ne pas oublier)
+
+Le danger n'est pas le régime permanent (tout idempotent, base déjà
+seedée) mais l'INSTANT du merge : dès que cette PR est déployée, le build
+ne lance plus les 11 seeds/backfills, mais le cron externe ci-dessus
+n'existe pas encore tant qu'il n'a pas été créé à la main sur
+cron-job.org. Fenêtre où plus rien ne réconcilie automatiquement — sans
+conséquence pratique (base déjà seedée par les anciens passages du build,
+rien ne manque à cet instant précis), mais à fermer explicitement plutôt
+que de compter dessus par hasard :
+
+1. **Merger la PR.**
+2. **Vérifier que le déploiement Vercel passe au vert** (build =
+   `prisma migrate deploy && next build`, plus aucune écriture de données
+   métier dedans).
+3. **Créer le cron sur cron-job.org** — voir « Configurer le cron
+   externe » ci-dessus (URL `/api/backfill/seed-reconcile`, `POST`,
+   header `Authorization: Bearer <CRON_SECRET>`, 1x/jour).
+4. **Lancer le curl manuel une fois** (voir « Déclenchement manuel »
+   ci-dessus) pour confirmer que la route répond
+   `{ "ok": true, "results": {...} }` avec les 11 tâches à `"ok"`.
+5. Seulement à ce stade, c'est fini — plus aucune manip requise pour les
+   déploiements suivants.
+
 ## 5. Déploiement Vercel
 
 1. Importer le repo sur [vercel.com](https://vercel.com), renseigner les
@@ -2056,7 +2219,10 @@ risque à répéter.
    après le premier déploiement avec les bonnes variables d'environnement.
    Si `DATABASE_URL` est injoignable ou mal configurée, le build échoue
    (volontairement, plutôt que de déployer une app qui pointerait vers une
-   base sans les bonnes tables).
+   base sans les bonnes tables). Depuis la PR "build ne fait plus que
+   compiler", `npm run build` ne fait QUE `prisma migrate deploy && next
+   build` — aucune écriture de données métier (seeds/backfills) au build,
+   voir le point 8 ci-dessous.
 5. **Rappels (F7)** : pas de Vercel Cron — le plan Hobby n'autorise pas
    une fréquence de 15 min (minimum imposé : 1 exécution/jour, voir « Rappels
    drôles avant session » ci-dessus). Configure plutôt un cron externe
@@ -2064,9 +2230,10 @@ risque à répéter.
    `https://ton-projet.vercel.app/api/cron/reminders` toutes les 15 min,
    avec l'en-tête `Authorization: Bearer <CRON_SECRET>` si tu as défini
    `CRON_SECRET` dans les variables d'environnement du projet (recommandé,
-   l'URL étant publique). Une fois déployé, lance `npm run seed` une fois
-   (en local, pointé sur `DATABASE_URL` de prod, ou via `vercel env pull`)
-   pour peupler les 9 messages de rappel initiaux.
+   l'URL étant publique). Les 9 messages de rappel initiaux (et tout le
+   reste des seeds) sont peuplés via le point 8 ci-dessous
+   (`/api/backfill/seed-reconcile`), pas par un `npm run seed` local (qui
+   n'existe plus).
 6. **Backfills coop (IGDB + Steam Store)** : ne tournent plus pendant le
    build (voir « Backfills coop en tâche de fond » ci-dessous) — configure
    un cron externe (même service que les rappels ci-dessus, ou un second
@@ -2085,6 +2252,14 @@ risque à répéter.
    cron, la clôture reste fonctionnelle mais redevient "paresseuse"
    (déclenchée seulement au chargement d'une page), exactement le bug
    remonté en prod.
+8. **Seeds & backfills** (PR "build ne fait plus que compiler") : ne
+   tournent plus pendant le build — configure un cron externe (même
+   compte cron-job.org) pointant vers
+   `https://ton-projet.vercel.app/api/backfill/seed-reconcile`, en
+   `POST`, une fois par jour, avec l'en-tête
+   `Authorization: Bearer <CRON_SECRET>`. Voir « Seeds & backfills en
+   tâche de fond » ci-dessous pour le détail et la procédure de bascule
+   au merge (checklist à suivre une fois, à ne pas oublier).
 
 ## Dépannage
 

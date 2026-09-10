@@ -1,32 +1,33 @@
-// Seed des stats + superlatifs par défaut pour 3-4 jeux populaires de la
-// bibliothèque commune (chantier XP, Axe 3, PR 4/9). Node/ESM autonome,
-// même philosophie que prisma/seed.mjs et prisma/backfill-xp.mjs (pas de
-// ts-node/tsx en dépendance) — wired dans `npm run build`, donc doit
-// rester silencieux et sûr à rejouer indéfiniment.
-//
-// IMPORTANT — ce script tourne contre la vraie base au déploiement, PAS
-// pendant le développement de cette PR : ce sandbox n'a aucun accès à la
-// base de prod pour "regarder la vraie bibliothèque commune" au sens
-// littéral. La sélection des jeux est donc entièrement PILOTÉE PAR LES
-// DONNÉES RÉELLES au moment du build, plutôt que devinée à l'avance :
-// - Contenu tout fait (stats + superlatifs) pour 4 jeux couramment cités
-//   par l'utilisateur (Lethal Company, Content Warning, Counter-Strike 2,
-//   Apex Legends) — utilisé UNIQUEMENT si un jeu correspondant existe
-//   réellement dans la bibliothèque commune (au moins un `UserGame.owned`).
-// - S'il manque des jeux curés (moins de 4 trouvés), les places restantes
-//   sont comblées par les jeux réellement les plus possédés du groupe,
-//   avec un petit set de stats génériques (score/morts) — mieux que rien
-//   pour un jeu que je ne connais pas.
-// - Idempotent PAR JEU : un jeu déjà configuré (au moins une
-//   `GameStatType`) est laissé tel quel, jamais écrasé.
-// - Imprime un récapitulatif à chaque run (jeux sélectionnés, popularité,
-//   origine du contenu) — visible dans les logs de build Vercel, pour
-//   vérifier que la sélection colle à la vraie bibliothèque commune,
-//   même logique que le récapitulatif du backfill XP.
+import { prisma } from "@/lib/prisma";
+import type { StatType, SuperlativeRule } from "@prisma/client";
 
-import { PrismaClient } from "@prisma/client";
+/**
+ * Seed des stats + superlatifs par défaut pour 3-4 jeux populaires de la
+ * bibliothèque commune. Convertie depuis `prisma/seed-game-stats.mjs` (PR
+ * "build ne fait plus que compiler") — port mécanique, `CURATED_GAMES`
+ * n'est dupliqué nulle part ailleurs dans le repo.
+ *
+ * Sélection PILOTÉE PAR LES DONNÉES RÉELLES au moment de l'exécution :
+ * - Contenu tout fait (stats + superlatifs) pour 4 jeux couramment cités
+ *   (Lethal Company, Content Warning, Counter-Strike 2, Apex Legends) —
+ *   utilisé UNIQUEMENT si un jeu correspondant existe réellement dans la
+ *   bibliothèque commune (au moins un `UserGame.owned`).
+ * - S'il manque des jeux curés, les places restantes sont comblées par
+ *   les jeux réellement les plus possédés du groupe, avec un set de stats
+ *   génériques (score/morts).
+ * - Idempotent PAR JEU : un jeu déjà configuré (au moins une
+ *   `GameStatType`) est laissé tel quel, jamais écrasé.
+ */
 
-const CURATED_GAMES = [
+interface StatTemplate {
+  key: string;
+  label: string;
+  type: StatType;
+  higherIsBetter: boolean;
+  superlatives: { name: string; rule: SuperlativeRule; xpReward: number }[];
+}
+
+const CURATED_GAMES: { matchNames: string[]; stats: StatTemplate[] }[] = [
   {
     matchNames: ["lethal company"],
     stats: [
@@ -126,9 +127,9 @@ const CURATED_GAMES = [
   },
 ];
 
-// Filet de sécurité pour un jeu populaire mais inconnu de moi — 2 stats
+// Filet de sécurité pour un jeu populaire mais non curé — 2 stats
 // universelles plutôt que rien.
-const GENERIC_STATS = [
+const GENERIC_STATS: StatTemplate[] = [
   {
     key: "score",
     label: "Score",
@@ -147,28 +148,30 @@ const GENERIC_STATS = [
 
 const MAX_SEEDED_GAMES = 4;
 
-const prisma = new PrismaClient();
-
-function normalize(name) {
+function normalize(name: string): string {
   return name.toLowerCase().trim();
 }
 
-function matchesCurated(game, curated) {
+function matchesCurated(
+  game: { name: string },
+  curated: { matchNames: string[] }
+): boolean {
   const n = normalize(game.name);
   return curated.matchNames.some((m) => n.includes(m) || m.includes(n));
 }
 
-async function seedGameStats(game, statsTemplate, authorId) {
-  const existing = await prisma.gameStatType.count({ where: { gameId: game.id } });
-  if (existing > 0) {
-    console.log(`  déjà configuré (${existing} stat(s)) — rien à faire.`);
-    return;
-  }
+async function seedStatsForGame(
+  gameId: string,
+  statsTemplate: StatTemplate[],
+  authorId: string
+): Promise<void> {
+  const existing = await prisma.gameStatType.count({ where: { gameId } });
+  if (existing > 0) return;
 
   for (const stat of statsTemplate) {
     await prisma.gameStatType.create({
       data: {
-        gameId: game.id,
+        gameId,
         key: stat.key,
         label: stat.label,
         type: stat.type,
@@ -180,29 +183,11 @@ async function seedGameStats(game, statsTemplate, authorId) {
       },
     });
   }
-
-  const superlativeCount = statsTemplate.reduce(
-    (n, s) => n + s.superlatives.length,
-    0
-  );
-  console.log(
-    `  ${statsTemplate.length} stat(s) + ${superlativeCount} superlatif(s) créés.`
-  );
 }
 
-async function main() {
-  // `modifiedById` (audit trail, PR "avant 5/9") est devenu obligatoire sur
-  // GameStatType/Superlative — nécessaire pour créer quoi que ce soit ici.
-  // En pratique toujours présent dès qu'un jeu est "owned" (ça implique un
-  // User), mais on garde le même garde-fou "pas d'utilisateur -> seed
-  // reporté" que prisma/seed.mjs plutôt que de le supposer.
+export async function seedGameStats(): Promise<void> {
   const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!author) {
-    console.log(
-      "[seed-game-stats] Aucun utilisateur en base pour l'instant — seed reporté au prochain build."
-    );
-    return;
-  }
+  if (!author) return; // aucun user pour l'instant — reporté au prochain passage
 
   const games = await prisma.game.findMany({
     select: {
@@ -217,45 +202,26 @@ async function main() {
     .filter((g) => g.ownerCount > 0)
     .sort((a, b) => b.ownerCount - a.ownerCount);
 
-  if (owned.length === 0) {
-    console.log(
-      "[seed-game-stats] Aucun jeu dans la bibliothèque commune pour l'instant — seed reporté au prochain build."
-    );
-    return;
-  }
+  if (owned.length === 0) return;
 
-  const usedIds = new Set();
-  const selected = [];
+  const usedIds = new Set<string>();
+  const selected: { gameId: string; stats: StatTemplate[] }[] = [];
 
   for (const curated of CURATED_GAMES) {
     const match = owned.find((g) => !usedIds.has(g.id) && matchesCurated(g, curated));
     if (!match) continue;
     usedIds.add(match.id);
-    selected.push({ game: match, stats: curated.stats, source: "sur-mesure" });
+    selected.push({ gameId: match.id, stats: curated.stats });
   }
 
   for (const game of owned) {
     if (selected.length >= MAX_SEEDED_GAMES) break;
     if (usedIds.has(game.id)) continue;
     usedIds.add(game.id);
-    selected.push({ game, stats: GENERIC_STATS, source: "générique" });
+    selected.push({ gameId: game.id, stats: GENERIC_STATS });
   }
 
-  console.log(
-    `\n=== Seed stats & superlatifs — ${selected.length} jeu(x) sélectionné(s) sur ${owned.length} possédé(s) ===`
-  );
-  for (const { game, stats, source } of selected) {
-    console.log(
-      `- ${game.name} (${game.ownerCount} possesseur(s) — contenu ${source})`
-    );
-    await seedGameStats(game, stats, author.id);
+  for (const { gameId, stats } of selected) {
+    await seedStatsForGame(gameId, stats, author.id);
   }
-  console.log("=== Fin ===\n");
 }
-
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());

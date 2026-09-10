@@ -114,7 +114,7 @@ export async function ensureActiveSeasonExists(): Promise<void> {
  */
 export async function finalizeSeasonIfDue(): Promise<void> {
   const season = await getActiveSeason();
-  if (!season) return; // Bootstrapée par prisma/seed-season.mjs au déploiement.
+  if (!season) return; // Bootstrapée par ensureActiveSeasonExists (ci-dessus) ou seedInitialSeason (src/lib/seed-season.ts).
   if (wallClockNow() < season.endDate) return;
 
   const users = await prisma.user.findMany({

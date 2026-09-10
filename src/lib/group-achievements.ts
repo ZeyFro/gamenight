@@ -9,8 +9,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Les 10 trophées de groupe (Sprint 3 suite) — définitions de référence,
- * seedées en base par `prisma/seed-group-achievements.mjs` (idempotent
- * par `key`, même philosophie que `Badge`/`seed-badges.mjs`). Ce tableau
+ * seedées en base par `seedGroupAchievements` (`src/lib/seed-group-achievements.ts`,
+ * idempotent par `key`, même philosophie que `Badge`/`seedBadges`). Ce tableau
  * ne sert qu'au seed ; `checkGroupAchievements` ci-dessous lit les
  * critères depuis un `switch` sur `key`, pas depuis ce tableau (les
  * critères de groupe, contrairement à `Badge.criteria`, ne sont pas tous

@@ -62,7 +62,13 @@ export interface BadgeStats {
   tournamentsParticipated?: number;
 }
 
-const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats> = {
+/**
+ * Exportée (PR "build ne fait plus que compiler") pour être réutilisée par
+ * `src/lib/backfill-badges.ts` sans la dupliquer — même mapping critère →
+ * clé de stat des deux côtés (live et backfill), une seule source de
+ * vérité.
+ */
+export const STAT_KEY_FOR_CRITERIA_TYPE: Record<BadgeCriteria["type"], keyof BadgeStats> = {
   SESSIONS_CREATED: "sessionsCreated",
   SESSIONS_PARTICIPATED: "sessionsParticipated",
   VOTES_CAST: "votesCast",

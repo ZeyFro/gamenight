@@ -12,7 +12,7 @@ import type { User } from "@prisma/client";
  * Sprint 4 (Pronostics + Paris d'XP) — "a gagné Le Carry ou MVP" (spec)
  * pointe des catégories `SuperlativeCategory` gérées depuis /admin/superlatifs
  * (texte libre, pas un enum figé) : la seule qui existe au seed est "MVP de
- * la soirée" (voir prisma/seed-superlatives.mjs), mais un admin peut très
+ * la soirée" (voir seedSuperlatives, src/lib/seed-superlatives.ts), mais un admin peut très
  * bien en ajouter/renommer une "Carry" plus tard. Matching par mot-clé sur
  * le nom plutôt qu'un id en dur — reste correct tant que l'admin garde
  * "carry" ou "mvp" quelque part dans le nom de la catégorie visée.
