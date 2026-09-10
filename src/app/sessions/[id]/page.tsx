@@ -665,7 +665,6 @@ export default async function SessionDetailPage({
                   <div className="flex items-center justify-between gap-3">
                     <VoteButton
                       proposalId={proposal.id}
-                      sessionId={session.id}
                       initialVoted={voted}
                       initialCount={proposal.votes.length}
                       disabled={!votingOpen}

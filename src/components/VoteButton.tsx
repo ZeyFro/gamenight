@@ -9,13 +9,11 @@ import { haptics } from "@/lib/haptics";
 
 export function VoteButton({
   proposalId,
-  sessionId,
   initialVoted,
   initialCount,
   disabled,
 }: {
   proposalId: string;
-  sessionId: string;
   initialVoted: boolean;
   initialCount: number;
   disabled: boolean;
@@ -32,7 +30,6 @@ export function VoteButton({
 
     const formData = new FormData();
     formData.set("proposalId", proposalId);
-    formData.set("sessionId", sessionId);
 
     startTransition(async () => {
       const result = await toggleVote(formData);
