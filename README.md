@@ -649,7 +649,9 @@ bouton **« Renvoyer dans Discord »** (`resendDiscordAction` →
 `resendSessionAnnouncement` dans `src/lib/sessions.ts`) reconstruit et
 reposte le même embed — pratique si le webhook a échoué la première fois
 (ou si le message a été supprimé côté Discord). Un bandeau confirme
-l'envoi ou l'échec, même mécanisme que la clôture manuelle.
+l'envoi ou l'échec, même mécanisme que la clôture manuelle. Réservé au
+créateur de la session ou à un admin (PR "Accès & secrets" — jusqu'ici
+ouvert à tout le monde, voir la section « Rôle admin »).
 
 ## Rôle admin (PR « Accès & secrets »)
 
@@ -864,9 +866,11 @@ ouverts à tout le groupe.
   ci-dessous). Un utilisateur qui n'est pas le créateur voit ces boutons
   masqués sur `/sessions/[id]`, et l'action serveur correspondante est un
   no-op silencieux si jamais elle est appelée directement — la vraie
-  protection est côté serveur, pas le masquage UI. Proposer un jeu, voter
-  et renvoyer l'annonce Discord (`resendDiscordAction`, non destructif)
-  restent ouverts à tout le monde. La clôture **automatique**
+  protection est côté serveur, pas le masquage UI. Proposer un jeu et voter
+  restent ouverts à tout le monde ; renvoyer l'annonce Discord
+  (`resendDiscordAction`, non destructif) est réservé au créateur ou à un
+  admin depuis la PR "Accès & secrets" (ouvert à tout le monde avant). La
+  clôture **automatique**
   (`closeSessionIfDue`, à la lecture) reste elle aussi ouverte à tout le
   monde — voir la révision dans la section F5 ci-dessus.
 - **Suppression (`DeleteSessionDialog.tsx` + `deleteSessionAction`)** :
