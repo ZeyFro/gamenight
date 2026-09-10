@@ -156,3 +156,29 @@ export function streakMultiplier(streakCount: number): number {
   if (streakCount <= 1) return 1;
   return 1 + Math.min((streakCount - 1) * STREAK_BONUS_PER_DAY, STREAK_BONUS_CAP);
 }
+
+/**
+ * Montant final attribué pour une action XP — extrait de `awardXp` (fix
+ * bug remonté, XP transactionnelle) pour rester testable sans Prisma.
+ * `applyStreak = false` pour le backfill historique (le streak n'a pas de
+ * sens pour de l'XP reconstruite après coup) — même contrat qu'avant.
+ */
+export function computeAwardedAmount(
+  baseAmount: number,
+  streakCount: number,
+  applyStreak: boolean
+): number {
+  const multiplier = applyStreak ? streakMultiplier(streakCount) : 1;
+  return Math.round(baseAmount * multiplier);
+}
+
+/**
+ * Un gain d'XP a-t-il fait franchir un palier de niveau ? Extrait de
+ * `awardXp` (fix bug remonté, XP transactionnelle) — l'appelant doit
+ * fournir `beforeXpTotal` dérivé du résultat de l'incrément atomique
+ * (`updated.xpTotal - amount`), jamais d'une lecture séparée faite avant
+ * l'écriture (fenêtre de course sous gains XP simultanés).
+ */
+export function didLevelUp(beforeXpTotal: number, afterXpTotal: number): boolean {
+  return levelForXp(afterXpTotal) > levelForXp(beforeXpTotal);
+}

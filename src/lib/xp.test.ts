@@ -5,6 +5,8 @@ import {
   titleForLevel,
   rankForLevel,
   streakMultiplier,
+  computeAwardedAmount,
+  didLevelUp,
 } from "@/lib/xp";
 
 describe("xpForLevel / levelForXp (courbe 50 × (niveau-1)²)", () => {
@@ -82,5 +84,45 @@ describe("streakMultiplier", () => {
   it("plafonne à +50 % à partir du jour 11", () => {
     expect(streakMultiplier(11)).toBeCloseTo(1.5);
     expect(streakMultiplier(50)).toBeCloseTo(1.5);
+  });
+});
+
+describe("computeAwardedAmount (extrait de awardXp, PR atomicité XP)", () => {
+  it("sans streak (streak <= 1) : montant de base inchangé", () => {
+    expect(computeAwardedAmount(30, 0, true)).toBe(30);
+    expect(computeAwardedAmount(30, 1, true)).toBe(30);
+  });
+
+  it("applique le multiplicateur de streak quand applyStreak est vrai", () => {
+    // streak 3 → ×1.10 (cf. streakMultiplier), 30 × 1.10 = 33
+    expect(computeAwardedAmount(30, 3, true)).toBe(33);
+  });
+
+  it("ignore le streak quand applyStreak est faux (backfill)", () => {
+    expect(computeAwardedAmount(30, 11, false)).toBe(30);
+  });
+
+  it("arrondit le montant final", () => {
+    // streak 2 → ×1.05, 15 × 1.05 = 15.75 → 16
+    expect(computeAwardedAmount(15, 2, true)).toBe(16);
+  });
+});
+
+describe("didLevelUp (extrait de awardXp, PR atomicité XP)", () => {
+  it("détecte un franchissement de palier", () => {
+    // xpForLevel(2) = 50 : avant 45 (niveau 1), après 55 (niveau 2)
+    expect(didLevelUp(45, 55)).toBe(true);
+  });
+
+  it("aucun franchissement si le niveau reste le même", () => {
+    expect(didLevelUp(10, 45)).toBe(false);
+  });
+
+  it("pas de faux positif pile au seuil (avant == seuil, après > seuil)", () => {
+    expect(didLevelUp(xpForLevel(2), xpForLevel(2) + 1)).toBe(false);
+  });
+
+  it("détecte le franchissement pile sur le seuil suivant", () => {
+    expect(didLevelUp(xpForLevel(2) - 1, xpForLevel(2))).toBe(true);
   });
 });
