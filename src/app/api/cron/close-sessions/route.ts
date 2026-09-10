@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
 import { processOpenRoulettes } from "@/lib/roulette";
-import { ensureFirstSeasonExists } from "@/lib/seasons";
+import { ensureActiveSeasonExists } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -50,14 +50,13 @@ export async function GET(request: Request) {
     );
   }
 
-  // Fix bug remonté (Saison 1 jamais créée au déploiement) — garde-fou
-  // idempotent, voir le commentaire sur `ensureFirstSeasonExists`
+  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExists`
   // (src/lib/seasons.ts). Best-effort : une panne ici ne doit jamais
   // empêcher la clôture des sessions, seule vraie responsabilité de ce cron.
   try {
-    await ensureFirstSeasonExists();
+    await ensureActiveSeasonExists();
   } catch (error) {
-    logger.error("cron:close-sessions", error, { task: "ensureFirstSeasonExists" });
+    logger.error("cron:close-sessions", error, { task: "ensureActiveSeasonExists" });
   }
 
   const now = wallClockNow();
