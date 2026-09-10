@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { triggerGlobalRelogin } from "@/lib/force-relogin";
 import type { ActionFormResult } from "@/components/ActionForm";
@@ -14,8 +14,8 @@ import type { ActionFormResult } from "@/components/ActionForm";
  * accidentels, cette limite protège d'un spam volontaire du bouton.
  */
 export async function forceReloginAction(): Promise<ActionFormResult> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "unauthenticated" };
+  const user = await requireAdmin();
+  if (!user) return { ok: false, error: "unauthorized" };
   if (!checkRateLimit(user.id, "forceRelogin", { limit: 1, windowMs: 10 * 60_000 })) {
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }

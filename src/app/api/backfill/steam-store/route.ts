@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { runSteamCoopBackfill } from "@/lib/backfill-steam-coop";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
  * Plafond du plan Vercel Hobby — voir la même note dans
@@ -18,12 +19,12 @@ export const maxDuration = 60;
  * `/api/cron/reminders` (`CRON_SECRET`).
  */
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.status === 503 ? "not_configured" : "unauthorized" },
+      { status: auth.status }
+    );
   }
 
   after(() => {

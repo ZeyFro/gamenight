@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importSteamLibrary } from "@/lib/steam";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
  * Fix bug remonté : quand un pote achète un nouveau jeu Steam, rien ne le
@@ -19,12 +20,12 @@ import { logger } from "@/lib/logger";
  * `processOpenRoulettes`/`closeOverdueScheduledSessions`.
  */
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.status === 503 ? "not_configured" : "unauthorized" },
+      { status: auth.status }
+    );
   }
 
   const users = await prisma.user.findMany({

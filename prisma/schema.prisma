@@ -15,11 +15,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// PR "Accès & secrets" — désigne les users autorisés sur /admin. `USER` par
+// défaut pour tout compte (existant ou nouveau) : personne ne devient admin
+// implicitement à cette migration. Filet anti-verrouillage indépendant de ce
+// champ : `ADMIN_DISCORD_IDS` (env, voir src/lib/admin.ts) traite toujours un
+// discordId listé comme admin même si `role` dit `USER` en base.
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
-  id               String   @id @default(cuid())
-  discordId        String   @unique
-  discordName      String
-  discordAvatar    String?
+  id                    String    @id @default(cuid())
+  discordId             String    @unique
+  discordName           String
+  discordAvatar         String?
   // Fix bug remonté (cron avatars Discord silencieux) — cette app utilise
   // une session JWT sans base (`session: { strategy: "jwt" }` dans
   // auth.ts, pas d'adapter Prisma), donc PAS de table `Account` Auth.js
@@ -51,15 +61,15 @@ model User {
   // le token n'a pas ce champ — cas de TOUTES les sessions actives avant ce
   // déploiement). Une vraie reconnexion repose un `sessionCreatedAt` frais,
   // qui repasse après `forceReloginAt` : pas de reboucle.
-  forceReloginAt DateTime?
+  forceReloginAt        DateTime?
   // PR 8/9 — bannière de profil personnalisable. URL absolue uniquement
   // (pas de stockage de fichier ni service d'upload tiers — décision
   // documentée dans le README : la complexité d'un vrai upload n'était
   // pas justifiée pour v1). `null` = bannière par défaut (dégradé violet
   // CSS, `.profile-banner-default`).
-  bannerUrl        String?
-  steamId64        String?  @unique
-  steamPublic      Boolean  @default(false)
+  bannerUrl             String?
+  steamId64             String?   @unique
+  steamPublic           Boolean   @default(false)
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
@@ -67,12 +77,15 @@ model User {
   // `Game.createdAt`/`UserGame.createdAt` (imprécis : une sync sans aucun
   // nouveau jeu ne toucherait aucune de ces dates alors qu'une sync a bien
   // eu lieu).
-  steamLastSyncAt DateTime?
+  steamLastSyncAt       DateTime?
   // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
   // utilisateur — le message est quand même posté dans le salon, il n'est
   // simplement pas mentionné.
-  silenceReminders Boolean  @default(false)
-  createdAt        DateTime @default(now())
+  silenceReminders      Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  // PR "Accès & secrets" — voir l'enum `UserRole` ci-dessus pour le
+  // mécanisme complet (filet anti-verrouillage `ADMIN_DISCORD_IDS`).
+  role                  UserRole  @default(USER)
 
   // PR 4/4 (sous-PR 1) — couleur perso, retrouvée partout dans l'app
   // (calendrier, bannière fallback, /potes/[id], avatars voteurs,
@@ -151,7 +164,7 @@ model User {
   tierlistEntries TierlistEntry[]
 
   // PR 7/9 — badges automatiques débloqués (voir `Badge`/`UserBadge`).
-  userBadges UserBadge[]
+  userBadges     UserBadge[]
   // PR 8/9 — audit trail sur /admin/badges (qui a créé/modifié un badge).
   modifiedBadges Badge[]
 
@@ -181,8 +194,8 @@ model User {
   // Sprint 4 (Pronostics) — qui a prédit quoi (voir `Pronostic`). Deux
   // relations distinctes vers `Pronostic` (voteur ≠ prédit), mêmes noms
   // explicites obligatoires que `SuperlativeVote` plus haut.
-  pronosticsMade      Pronostic[] @relation("PronosticVoter")
-  pronosticsReceived  Pronostic[] @relation("PronosticPredicted")
+  pronosticsMade     Pronostic[] @relation("PronosticVoter")
+  pronosticsReceived Pronostic[] @relation("PronosticPredicted")
 
   // Sprint 4 (Paris d'XP) — mêmes deux rôles distincts (parieur ≠ cible).
   xpBetsPlaced XpBet[] @relation("XpBetVoter")
@@ -206,11 +219,11 @@ model User {
   // (joueur 1 ≠ joueur 2 ≠ gagnant), mêmes noms explicites obligatoires
   // que `SuperlativeVote` plus haut.
   createdTournaments      Tournament[]
-  wonTournaments          Tournament[]             @relation("TournamentChampion")
+  wonTournaments          Tournament[]            @relation("TournamentChampion")
   tournamentParticipation TournamentParticipant[]
-  tournamentMatchesAsP1   TournamentMatch[]        @relation("TournamentMatchPlayer1")
-  tournamentMatchesAsP2   TournamentMatch[]        @relation("TournamentMatchPlayer2")
-  tournamentMatchesWon    TournamentMatch[]        @relation("TournamentMatchWinner")
+  tournamentMatchesAsP1   TournamentMatch[]       @relation("TournamentMatchPlayer1")
+  tournamentMatchesAsP2   TournamentMatch[]       @relation("TournamentMatchPlayer2")
+  tournamentMatchesWon    TournamentMatch[]       @relation("TournamentMatchWinner")
 
   // Sprint 5 (FEATURE 2, Chat in-app) — voir `ChatMessage`/`ChatReaction`.
   chatMessages  ChatMessage[]
@@ -219,9 +232,9 @@ model User {
   // Sprint 5 (FEATURE 3, Wishlist) — voir `GameWishlist`/`GameWishlistVote`.
   // Trois relations distinctes vers `GameWishlist` (proposant ≠ acheteur),
   // mêmes noms explicites obligatoires que `SuperlativeVote` plus haut.
-  wishlistProposals  GameWishlist[]     @relation("WishlistProposedBy")
-  wishlistPurchases  GameWishlist[]     @relation("WishlistPurchasedBy")
-  wishlistVotes      GameWishlistVote[]
+  wishlistProposals GameWishlist[]     @relation("WishlistProposedBy")
+  wishlistPurchases GameWishlist[]     @relation("WishlistPurchasedBy")
+  wishlistVotes     GameWishlistVote[]
 
   @@index([xpTotal])
 }
@@ -422,7 +435,7 @@ model Session {
   // Tableau JSON plutôt que des booléens dédiés : les fenêtres sont un
   // détail d'implémentation (cf. `reminderTimings` ci-dessous), pas une
   // invariante du modèle.
-  remindersSent  Json          @default("[]")
+  remindersSent         Json    @default("[]")
   // PR 31 (2/4, Bloc A) : minutes avant la session auxquelles un rappel
   // Discord doit partir — choisi par le créateur à la création (cases à
   // cocher parmi 8 préréglages + rappels custom, 5 max). Remplace les
@@ -431,7 +444,7 @@ model Session {
   // réglage explicite, et pour les sessions créées AVANT cette PR (valeur
   // par défaut Postgres appliquée à la colonne existante par la
   // migration, pas de backfill séparé nécessaire).
-  reminderTimings Int[]        @default([1440, 120])
+  reminderTimings       Int[]   @default([1440, 120])
 
   // PR 5/9 — fenêtre de vote des superlatifs entre potes, ouverte par
   // `markSessionDone` (cf. src/lib/sessions.ts) : `superlativeVotingDeadline`
@@ -859,10 +872,10 @@ model SuperlativeVote {
   votedForUserId String
   createdAt      DateTime @default(now())
 
-  session   Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  category  SuperlativeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  voter     User                @relation("SuperlativeVoter", fields: [voterUserId], references: [id], onDelete: Cascade)
-  votedFor  User                @relation("SuperlativeVotedFor", fields: [votedForUserId], references: [id], onDelete: Cascade)
+  session  Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  category SuperlativeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  voter    User                @relation("SuperlativeVoter", fields: [voterUserId], references: [id], onDelete: Cascade)
+  votedFor User                @relation("SuperlativeVotedFor", fields: [votedForUserId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, categoryId, voterUserId])
 }
@@ -1051,7 +1064,7 @@ model Notification {
   // concerné par une notif REVANCHE. Sert à construire le lien
   // "Proposer" (`/sessions?gameId=…`, préremplit la création de soirée
   // avec ce jeu — mécanisme déjà existant, réutilisé tel quel).
-  relatedGameId String?
+  relatedGameId    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1325,9 +1338,9 @@ model Tournament {
   // à chaque lecture pour savoir qui a gagné (affichage, badges).
   championId String?
 
-  createdBy    User                     @relation(fields: [createdById], references: [id])
-  game         Game                     @relation(fields: [gameId], references: [id])
-  champion     User?                    @relation("TournamentChampion", fields: [championId], references: [id])
+  createdBy    User                    @relation(fields: [createdById], references: [id])
+  game         Game                    @relation(fields: [gameId], references: [id])
+  champion     User?                   @relation("TournamentChampion", fields: [championId], references: [id])
   participants TournamentParticipant[]
   matches      TournamentMatch[]
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { refreshAllDiscordProfiles } from "@/lib/discord-profile";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
  * Fix bug remonté : les avatars/pseudos Discord ne se mettaient à jour
@@ -31,18 +32,17 @@ export async function GET(request: Request) {
   // Vercel Logs.
   logger.info("cron:refresh-discord-profiles", "Handler appelé.");
 
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      logger.warn("cron:refresh-discord-profiles", "Authorization manquante/invalide — 401.");
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    if (auth.status === 503) {
+      logger.error(
+        "cron:refresh-discord-profiles",
+        "CRON_SECRET non configurée — route désactivée."
+      );
+      return NextResponse.json({ error: "not_configured" }, { status: 503 });
     }
-  } else {
-    logger.warn(
-      "cron:refresh-discord-profiles",
-      "CRON_SECRET non configurée — route accessible sans authentification."
-    );
+    logger.warn("cron:refresh-discord-profiles", "Authorization manquante/invalide — 401.");
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {

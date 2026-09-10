@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 import { wallClockNow } from "@/lib/wallclock";
 import {
   applyReminderResults,
@@ -60,18 +61,14 @@ import {
 export async function GET(request: Request) {
   logger.info("cron:reminders", "Handler appelé.");
 
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      logger.warn("cron:reminders", "Authorization manquante/invalide — 401.");
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    if (auth.status === 503) {
+      logger.error("cron:reminders", "CRON_SECRET non configurée — route désactivée.");
+      return NextResponse.json({ error: "not_configured" }, { status: 503 });
     }
-  } else {
-    logger.warn(
-      "cron:reminders",
-      "CRON_SECRET non configurée — route accessible sans authentification."
-    );
+    logger.warn("cron:reminders", "Authorization manquante/invalide — 401.");
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {

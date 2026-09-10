@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { BadgeCategory, BadgeRarity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import { CRITERIA_TYPES } from "@/lib/badge-rarity";
 
 const CATEGORIES: BadgeCategory[] = [
@@ -31,7 +31,7 @@ function parseXpReward(formData: FormData): number | null {
 }
 
 export async function addBadge(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const name = String(formData.get("name") ?? "").trim();
@@ -73,7 +73,7 @@ export async function addBadge(formData: FormData) {
 }
 
 export async function updateBadge(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -113,7 +113,7 @@ export async function updateBadge(formData: FormData) {
 }
 
 export async function toggleBadgeActive(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -130,7 +130,7 @@ export async function toggleBadgeActive(formData: FormData) {
 }
 
 export async function deleteBadge(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");

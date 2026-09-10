@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { finalizeSeasonIfDue } from "@/lib/seasons";
 import { generateMonthlyRecapIfDue } from "@/lib/monthly-recap";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
  * Sprint 4 (Recap mensuel Wrapped + Saisons mensuelles) — un seul cron
@@ -13,12 +14,12 @@ import { logger } from "@/lib/logger";
  * ça. Même protection `CRON_SECRET` que les autres crons du projet.
  */
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.status === 503 ? "not_configured" : "unauthorized" },
+      { status: auth.status }
+    );
   }
 
   try {

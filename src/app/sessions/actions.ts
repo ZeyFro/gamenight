@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
@@ -388,6 +389,12 @@ export async function closeSessionAction(formData: FormData) {
   }
 }
 
+/**
+ * Réservé au créateur de la session (même contrainte que
+ * `cancelSessionAction` juste en dessous) OU à un admin (PR "Accès &
+ * secrets" — jusqu'ici n'importe quel pote connecté pouvait renvoyer
+ * l'annonce Discord de n'importe quelle session).
+ */
 export async function resendDiscordAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -395,6 +402,13 @@ export async function resendDiscordAction(formData: FormData) {
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true },
+  });
+  if (!session) return;
+  if (session.createdById !== user.id && !(await requireAdmin())) return;
 
   const result = await resendSessionAnnouncement(sessionId);
   redirect(`/sessions/${sessionId}?discord=${result.ok ? "envoye" : "echec"}`);

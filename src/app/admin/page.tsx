@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import { AdminTabs, ADMIN_TAB_KEYS, type AdminTabKey } from "@/components/admin/AdminTabs";
 import { MessagesTab } from "@/components/admin/MessagesTab";
 import { SuperlativesTab } from "@/components/admin/SuperlativesTab";
@@ -24,7 +24,7 @@ export default async function AdminPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const { tab: tabRaw } = await searchParams;
@@ -37,7 +37,7 @@ export default async function AdminPage({
           Administration
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Pas de rôle admin dédié : tout le monde peut gérer ces réglages.
+          Réservé aux admins du groupe.
         </p>
       </div>
 

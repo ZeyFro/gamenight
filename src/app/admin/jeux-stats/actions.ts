@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { StatType, SuperlativeRule } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 
 const STAT_TYPES: StatType[] = ["INT", "FLOAT", "BOOL"];
 const SUPERLATIVE_RULES: SuperlativeRule[] = ["MAX", "MIN", "TRUE_COUNT"];
@@ -15,7 +15,7 @@ function parseXpReward(formData: FormData): number {
 }
 
 export async function addGameStatType(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const gameId = String(formData.get("gameId") ?? "");
@@ -37,7 +37,7 @@ export async function addGameStatType(formData: FormData) {
 }
 
 export async function updateGameStatType(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -56,7 +56,7 @@ export async function updateGameStatType(formData: FormData) {
 }
 
 export async function deleteGameStatType(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -70,7 +70,7 @@ export async function deleteGameStatType(formData: FormData) {
 }
 
 export async function addSuperlative(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const gameId = String(formData.get("gameId") ?? "");
@@ -93,7 +93,7 @@ export async function addSuperlative(formData: FormData) {
 }
 
 export async function updateSuperlative(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -111,7 +111,7 @@ export async function updateSuperlative(formData: FormData) {
 }
 
 export async function deleteSuperlative(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
