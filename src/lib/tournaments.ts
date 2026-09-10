@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
@@ -33,34 +34,72 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Fait avancer le gagnant d'un match vers le match du round suivant
- * (`nextRound = round + 1`, `nextPosition = floor(position / 2)`, posé
- * en `player1` si `position` est pair, `player2` sinon) — TOUS les
- * matchs de tous les rounds existent déjà dès `generateBracket` (créés
- * avec des joueurs `null`), cette fonction ne fait que les remplir au
- * fur et à mesure. Si `nextRound` n'existe pas, `round` était la finale
- * → `finalizeTournament`.
+ * Perdant d'un match à partir du gagnant déclaré — pure, extraite de
+ * `declareWinner` (PR "Atomicité saisons + tournois") pour rester
+ * testable sans Prisma.
+ */
+export function computeMatchLoser(
+  winnerId: string,
+  player1Id: string | null,
+  player2Id: string | null
+): string | null {
+  return winnerId === player1Id ? player2Id : player1Id;
+}
+
+/**
+ * Emplacement du round suivant vers lequel un gagnant avance — pure,
+ * extraite d'`advanceWinner`. `position` pair → `player1Id` du match
+ * `floor(position/2)` du round suivant, impair → `player2Id` (2 matchs
+ * du round N convergent vers 1 match `position/2` du round N+1).
+ */
+export function computeNextSlot(
+  round: number,
+  position: number
+): { nextRound: number; nextPosition: number; field: "player1Id" | "player2Id" } {
+  return {
+    nextRound: round + 1,
+    nextPosition: Math.floor(position / 2),
+    field: position % 2 === 0 ? "player1Id" : "player2Id",
+  };
+}
+
+/**
+ * Fait avancer le gagnant d'un match vers le round suivant, DANS la
+ * transaction du claim de l'appelant (`declareWinner`, ou la résolution
+ * des byes dans `generateBracket`) — TOUS les matchs de tous les rounds
+ * existent déjà dès `generateBracket` (créés avec des joueurs `null`),
+ * cette fonction ne fait que les remplir au fur et à mesure.
+ *
+ * Si `nextRound` n'existe pas (`round >= totalRounds`), `round` était la
+ * finale : marque le tournoi `DONE` + `championId` (pure écriture DB,
+ * toujours via `tx`, jamais d'effet externe ici) et renvoie
+ * `tournamentFinalized: true` — c'est à l'appelant de déclencher les
+ * effets post-commit (XP/badges/Discord, voir
+ * `announceTournamentFinalization`) une fois SA transaction committée.
  */
 async function advanceWinner(
+  tx: Prisma.TransactionClient,
   tournamentId: string,
   round: number,
   position: number,
   winnerId: string,
   totalRounds: number
-): Promise<void> {
+): Promise<{ tournamentFinalized: boolean }> {
   if (round >= totalRounds) {
-    await finalizeTournament(tournamentId, winnerId);
-    return;
+    await tx.tournament.update({
+      where: { id: tournamentId },
+      data: { status: "DONE", championId: winnerId },
+    });
+    return { tournamentFinalized: true };
   }
 
-  const nextRound = round + 1;
-  const nextPosition = Math.floor(position / 2);
-  const field = position % 2 === 0 ? "player1Id" : "player2Id";
+  const { nextRound, nextPosition, field } = computeNextSlot(round, position);
 
-  await prisma.tournamentMatch.update({
+  await tx.tournamentMatch.update({
     where: { tournamentId_round_position: { tournamentId, round: nextRound, position: nextPosition } },
     data: { [field]: winnerId },
   });
+  return { tournamentFinalized: false };
 }
 
 /**
@@ -71,6 +110,27 @@ async function advanceWinner(
  * avec des slots vides à remplir plus tard), résolution immédiate des
  * "byes" (moins de participants que de slots — le joueur seul avance
  * sans jouer).
+ *
+ * Fix bug remonté (atomicité tournois, PR "Atomicité saisons +
+ * tournois") — tout ce qui suit le tirage tourne maintenant dans UNE
+ * transaction, ouverte par un claim atomique (`updateMany` conditionné
+ * sur `status: "REGISTRATION"`, même pattern que `claimSessionClose`,
+ * `src/lib/sessions.ts`) : deux appels concurrents (ex. une inscription
+ * qui remplit les dernières places pile au moment où le créateur clique
+ * "Lancer maintenant") ne peuvent plus tous les deux construire un
+ * bracket — le perdant de la course trouve `count !== 1` et s'arrête
+ * immédiatement, sans toucher aux seeds ni tenter de créer le moindre
+ * match (avant ce fix : la contrainte unique `TournamentMatch(tournamentId,
+ * round, position)` finissait par faire planter le 2e appel avec une
+ * erreur non catchée — pas de double bracket, mais un crash visible côté
+ * appelant). Le reste de la construction (seeds, création des matchs de
+ * tous les rounds, résolution des byes) est regroupé dans la même
+ * transaction : un crash en cours de route ne peut plus laisser un
+ * bracket à moitié construit. Aucun effet externe ici (jamais de
+ * Discord/XP dans cette fonction) — un bye au round 1 ne peut jamais
+ * atteindre la finale tant que `maxPlayers` est limité à {4, 6, 8} côté
+ * formulaire (`totalRounds` vaut toujours 2 ou 3), donc tout regrouper
+ * ne coûte rien.
  */
 export async function generateBracket(tournamentId: string): Promise<void> {
   const tournament = await prisma.tournament.findUnique({
@@ -89,12 +149,6 @@ export async function generateBracket(tournamentId: string): Promise<void> {
 
   const shuffled = shuffle(tournament.participants);
 
-  await Promise.all(
-    shuffled.map((p, i) =>
-      prisma.tournamentParticipant.update({ where: { id: p.id }, data: { seed: i + 1 } })
-    )
-  );
-
   // Remplit d'abord TOUS les `player1` (garanti par le garde-fou
   // ci-dessus), puis les `player2` dans la limite des participants
   // restants — répartit les "byes" sur plusieurs matchs plutôt que de les
@@ -110,41 +164,54 @@ export async function generateBracket(tournamentId: string): Promise<void> {
     round1Matches.push({ position: i, player1Id: player1, player2Id: player2 });
   }
 
-  await prisma.tournamentMatch.createMany({
-    data: round1Matches.map((m) => ({
-      tournamentId,
-      round: 1,
-      position: m.position,
-      player1Id: m.player1Id,
-      player2Id: m.player2Id,
-    })),
-  });
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.tournament.updateMany({
+      where: { id: tournamentId, status: "REGISTRATION" },
+      data: { status: "IN_PROGRESS" },
+    });
+    if (claim.count !== 1) return; // déjà lancé par un appel concurrent
 
-  for (let round = 2; round <= totalRounds; round++) {
-    const matchesInRound = bracketSize / 2 ** round;
-    await prisma.tournamentMatch.createMany({
-      data: Array.from({ length: matchesInRound }, (_, position) => ({
+    await Promise.all(
+      shuffled.map((p, i) => tx.tournamentParticipant.update({ where: { id: p.id }, data: { seed: i + 1 } }))
+    );
+
+    await tx.tournamentMatch.createMany({
+      data: round1Matches.map((m) => ({
         tournamentId,
-        round,
-        position,
+        round: 1,
+        position: m.position,
+        player1Id: m.player1Id,
+        player2Id: m.player2Id,
       })),
     });
-  }
 
-  await prisma.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
+    for (let round = 2; round <= totalRounds; round++) {
+      const matchesInRound = bracketSize / 2 ** round;
+      await tx.tournamentMatch.createMany({
+        data: Array.from({ length: matchesInRound }, (_, position) => ({
+          tournamentId,
+          round,
+          position,
+        })),
+      });
+    }
 
-  // Byes : un seul joueur sur les deux slots du match → avance sans jouer,
-  // résolu immédiatement (jamais affiché comme un vrai match à jouer côté UI).
-  for (const m of round1Matches) {
-    const winner =
-      m.player1Id && !m.player2Id ? m.player1Id : !m.player1Id && m.player2Id ? m.player2Id : null;
-    if (!winner) continue;
-    await prisma.tournamentMatch.update({
-      where: { tournamentId_round_position: { tournamentId, round: 1, position: m.position } },
-      data: { winnerId: winner, completedAt: wallClockNow() },
-    });
-    await advanceWinner(tournamentId, 1, m.position, winner, totalRounds);
-  }
+    // Byes : un seul joueur sur les deux slots du match → avance sans jouer,
+    // résolu immédiatement (jamais affiché comme un vrai match à jouer côté UI).
+    for (const m of round1Matches) {
+      const winner =
+        m.player1Id && !m.player2Id ? m.player1Id : !m.player1Id && m.player2Id ? m.player2Id : null;
+      if (!winner) continue;
+      await tx.tournamentMatch.update({
+        where: { tournamentId_round_position: { tournamentId, round: 1, position: m.position } },
+        data: { winnerId: winner, completedAt: wallClockNow() },
+      });
+      // `tournamentFinalized` volontairement ignoré : structurellement
+      // inatteignable ici (totalRounds vaut toujours 2 ou 3, donc round 1
+      // < totalRounds systématiquement — voir docstring ci-dessus).
+      await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds);
+    }
+  });
 }
 
 /** Home ("🏆 Tournoi en cours", cf. spec) — le tournoi actif le plus récent, tous statuts hors `DONE`. */
@@ -167,6 +234,31 @@ export interface DeclareWinnerResult {
  * l'un des deux joueurs du match (cf. spec). Marque le perdant "éliminé"
  * (`TournamentParticipant.eliminatedAt`, purement informatif pour
  * l'affichage) et fait avancer le gagnant au round suivant.
+ *
+ * Fix bug remonté (atomicité tournois, PR "Atomicité saisons +
+ * tournois") — l'ancien code faisait un `update` inconditionnel par id :
+ * deux appels concurrents sur le MÊME match (double clic, ou les deux
+ * joueurs qui déclarent chacun leur propre victoire à quelques secondes
+ * d'écart — aucun rate-limit ne protège contre ça en pratique) réussissaient
+ * TOUS LES DEUX, le dernier à committer l'emportant silencieusement :
+ * pouvait marquer les DEUX joueurs éliminés (chaque appel élimine "son"
+ * perdant) et faire avancer un gagnant arbitraire vers le round suivant,
+ * sans la moindre erreur ni log. Le claim ci-dessous (`updateMany`
+ * conditionné sur `completedAt: null`, même pattern que
+ * `claimSessionClose`, `src/lib/sessions.ts`) garantit qu'un seul appel
+ * gagne la course ; l'autre trouve `count !== 1` et s'arrête sans avoir
+ * touché ni le perdant ni le round suivant ni l'XP.
+ *
+ * Élimination du perdant + avancement vers le round suivant (ou clôture
+ * du tournoi si c'était la finale) vivent dans la MÊME transaction que le
+ * claim : un crash en cours de route ne peut plus laisser un match
+ * "tranché" sans que son perdant soit marqué éliminé, ou sans que le
+ * gagnant ait avancé.
+ *
+ * Effets post-commit (XP, badges, annonce Discord) : déclenchés
+ * uniquement si la transaction a réellement clôturé le tournoi
+ * (`tournamentFinalized`), APRÈS que la transaction ait committé, jamais
+ * à l'intérieur — voir `announceTournamentFinalization`.
  */
 export async function declareWinner(
   matchId: string,
@@ -178,6 +270,9 @@ export async function declareWinner(
     include: { tournament: true },
   });
   if (!match || match.tournament.status !== "IN_PROGRESS") return { ok: false, tournamentDone: false };
+  // Raccourci : évite d'ouvrir une transaction pour un clic manifestement
+  // périmé (page pas rafraîchie). Ne garantit rien à lui seul contre la
+  // course — la vraie protection est le claim transactionnel plus bas.
   if (match.completedAt) return { ok: false, tournamentDone: false };
   if (winnerId !== match.player1Id && winnerId !== match.player2Id) {
     return { ok: false, tournamentDone: false };
@@ -187,99 +282,126 @@ export async function declareWinner(
   const isPlayer = actorUserId === match.player1Id || actorUserId === match.player2Id;
   if (!isCreator && !isPlayer) return { ok: false, tournamentDone: false };
 
-  const loserId = winnerId === match.player1Id ? match.player2Id : match.player1Id;
+  const loserId = computeMatchLoser(winnerId, match.player1Id, match.player2Id);
+  const totalRounds = totalRoundsFor(bracketSizeFor(match.tournament.maxPlayers));
 
-  await prisma.tournamentMatch.update({
-    where: { id: matchId },
-    data: { winnerId, completedAt: wallClockNow() },
-  });
-  if (loserId) {
-    await prisma.tournamentParticipant.updateMany({
-      where: { tournamentId: match.tournamentId, userId: loserId },
-      data: { eliminatedAt: wallClockNow() },
+  let claimed = false;
+  let tournamentFinalized = false;
+
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.tournamentMatch.updateMany({
+      where: { id: matchId, completedAt: null },
+      data: { winnerId, completedAt: wallClockNow() },
     });
+    if (claim.count !== 1) return; // course perdue — le match a déjà été tranché
+
+    claimed = true;
+
+    if (loserId) {
+      await tx.tournamentParticipant.updateMany({
+        where: { tournamentId: match.tournamentId, userId: loserId },
+        data: { eliminatedAt: wallClockNow() },
+      });
+    }
+
+    const result = await advanceWinner(
+      tx,
+      match.tournamentId,
+      match.round,
+      match.position,
+      winnerId,
+      totalRounds
+    );
+    tournamentFinalized = result.tournamentFinalized;
+  });
+
+  if (!claimed) return { ok: false, tournamentDone: false };
+
+  if (tournamentFinalized) {
+    await announceTournamentFinalization(match.tournamentId, winnerId);
   }
 
-  const totalRounds = totalRoundsFor(bracketSizeFor(match.tournament.maxPlayers));
-  await advanceWinner(match.tournamentId, match.round, match.position, winnerId, totalRounds);
-
-  const updated = await prisma.tournament.findUnique({
-    where: { id: match.tournamentId },
-    select: { status: true },
-  });
-
-  return { ok: true, tournamentDone: updated?.status === "DONE" };
+  return { ok: true, tournamentDone: tournamentFinalized };
 }
 
 /**
- * Clôture le tournoi : XP (1er 200, 2e 100, demi-finalistes 50 chacun —
- * les perdants du round juste avant la finale, `totalRounds - 1`,
- * généralise à tout bracket : pour un 4-bracket ce round EST déjà le
- * round 1, donc ses 2 perdants sont directement les "demi-finalistes"),
- * badges, annonce Discord.
+ * Effets post-commit de la clôture d'un tournoi — XP (1er 200, 2e 100,
+ * demi-finalistes 50 chacun — les perdants du round juste avant la
+ * finale, `totalRounds - 1`, généralise à tout bracket : pour un
+ * 4-bracket ce round EST déjà le round 1, donc ses 2 perdants sont
+ * directement les "demi-finalistes"), badges, annonce Discord.
+ *
+ * Appelée par `declareWinner` UNIQUEMENT après que sa transaction ait
+ * committé `Tournament.status = DONE` + `championId` (PR "Atomicité
+ * saisons + tournois" — avant ce fix, ces effets vivaient DANS la même
+ * séquence que l'écriture DB, jamais explicitement séparés). Best-effort,
+ * enveloppée dans son propre try/catch : un échec ici (Discord down,
+ * etc.) ne doit jamais faire passer `declareWinner` pour un échec — le
+ * match et la clôture du tournoi sont déjà actés en base à ce stade.
+ * Chaque `awardXp` reste individuellement atomique/idempotent (PR
+ * "Atomicité XP").
  */
-async function finalizeTournament(tournamentId: string, championId: string): Promise<void> {
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
-    include: { game: true, matches: true, champion: true },
-  });
-  if (!tournament) return;
-
-  const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
-  const finalMatch = tournament.matches.find((m) => m.round === totalRounds);
-  const runnerUpId =
-    finalMatch && finalMatch.winnerId
-      ? finalMatch.player1Id === finalMatch.winnerId
-        ? finalMatch.player2Id
-        : finalMatch.player1Id
-      : null;
-
-  const semifinalRound = totalRounds - 1;
-  const semifinalLoserIds = tournament.matches
-    .filter((m) => m.round === semifinalRound && m.winnerId)
-    .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
-    .filter((id): id is string => id !== null);
-
-  await prisma.tournament.update({
-    where: { id: tournamentId },
-    data: { status: "DONE", championId },
-  });
-
-  await awardXp(championId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
-  if (runnerUpId) {
-    await awardXp(
-      runnerUpId,
-      "TOURNAMENT_RESULT",
-      `${tournamentId}:2nd`,
-      XP_AMOUNTS.TOURNAMENT_2ND
-    );
-  }
-  for (const loserId of semifinalLoserIds) {
-    await awardXp(
-      loserId,
-      "TOURNAMENT_RESULT",
-      `${tournamentId}:semi:${loserId}`,
-      XP_AMOUNTS.TOURNAMENT_SEMIFINALIST
-    );
-  }
-
-  const participantIds = await prisma.tournamentParticipant.findMany({
-    where: { tournamentId },
-    select: { userId: true },
-  });
-  for (const p of participantIds) {
-    await checkTournamentBadges(p.userId);
-  }
-
-  const champion = await prisma.user.findUnique({ where: { id: championId } });
-  if (champion) {
-    const result = await postToDiscord({
-      title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
-      description: `Sur ${tournament.game.name} — GG à tous les participants !`,
-      color: ACCENT_COLOR,
+async function announceTournamentFinalization(tournamentId: string, championId: string): Promise<void> {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: { game: true, matches: true },
     });
-    if (!result.ok) {
-      logger.warn("tournaments", "Notif Discord fin de tournoi non envoyée.", { tournamentId });
+    if (!tournament) return;
+
+    const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
+    const finalMatch = tournament.matches.find((m) => m.round === totalRounds);
+    const runnerUpId =
+      finalMatch && finalMatch.winnerId
+        ? finalMatch.player1Id === finalMatch.winnerId
+          ? finalMatch.player2Id
+          : finalMatch.player1Id
+        : null;
+
+    const semifinalRound = totalRounds - 1;
+    const semifinalLoserIds = tournament.matches
+      .filter((m) => m.round === semifinalRound && m.winnerId)
+      .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
+      .filter((id): id is string => id !== null);
+
+    await awardXp(championId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
+    if (runnerUpId) {
+      await awardXp(
+        runnerUpId,
+        "TOURNAMENT_RESULT",
+        `${tournamentId}:2nd`,
+        XP_AMOUNTS.TOURNAMENT_2ND
+      );
     }
+    for (const loserId of semifinalLoserIds) {
+      await awardXp(
+        loserId,
+        "TOURNAMENT_RESULT",
+        `${tournamentId}:semi:${loserId}`,
+        XP_AMOUNTS.TOURNAMENT_SEMIFINALIST
+      );
+    }
+
+    const participantIds = await prisma.tournamentParticipant.findMany({
+      where: { tournamentId },
+      select: { userId: true },
+    });
+    for (const p of participantIds) {
+      await checkTournamentBadges(p.userId);
+    }
+
+    const champion = await prisma.user.findUnique({ where: { id: championId } });
+    if (champion) {
+      const result = await postToDiscord({
+        title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
+        description: `Sur ${tournament.game.name} — GG à tous les participants !`,
+        color: ACCENT_COLOR,
+      });
+      if (!result.ok) {
+        logger.warn("tournaments", "Notif Discord fin de tournoi non envoyée.", { tournamentId });
+      }
+    }
+  } catch (error) {
+    logger.error("tournaments", error, { tournamentId, championId, effect: "finalization" });
   }
 }

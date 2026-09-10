@@ -14,7 +14,7 @@ import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
-import { ensureFirstSeasonExists, getSeasonProgress } from "@/lib/seasons";
+import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -148,10 +148,9 @@ export default async function Home({
   });
   if (dueSession) await closeSessionIfDue(dueSession.id);
 
-  // Fix bug remonté (Saison 1 jamais créée au déploiement) — garde-fou
-  // idempotent, voir le commentaire sur `ensureFirstSeasonExists`
+  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExists`
   // (src/lib/seasons.ts).
-  await ensureFirstSeasonExists();
+  await ensureActiveSeasonExists();
 
   const [
     nextSession,
