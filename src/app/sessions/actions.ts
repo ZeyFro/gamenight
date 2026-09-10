@@ -37,6 +37,7 @@ import {
   sessionGameRefSchema,
   sessionProposalRefSchema,
   superlativeVoteEntrySchema,
+  toggleVoteSchema,
   VALIDATION_ERROR_KEY,
   xpBetSchema,
 } from "@/lib/validations";
@@ -273,18 +274,27 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 
-  const input = sessionProposalRefSchema.safeParse({
+  const input = toggleVoteSchema.safeParse({
     proposalId: String(formData.get("proposalId") ?? ""),
-    sessionId: String(formData.get("sessionId") ?? ""),
   });
   if (!input.success) return { ok: true };
-  const { proposalId, sessionId } = input.data;
+  const { proposalId } = input.data;
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { status: true, date: true, votingDeadline: true },
+  // Fix bug remonté (vote inter-session) — la session vient UNIQUEMENT de
+  // `Proposal.sessionId`, jamais d'un champ transmis par le client (qui
+  // n'existe plus, cf. `toggleVoteSchema`) : voter avec un `proposalId`
+  // valide vote toujours sur SA propre session, impossible d'associer une
+  // proposition d'une autre session (potentiellement fermée) en la
+  // faisant passer pour ouverte.
+  const proposal = await prisma.proposal.findUnique({
+    where: { id: proposalId },
+    select: {
+      sessionId: true,
+      session: { select: { status: true, date: true, votingDeadline: true } },
+    },
   });
-  if (!session || !isVotingOpen(session)) return { ok: true };
+  if (!proposal || !isVotingOpen(proposal.session)) return { ok: true };
+  const sessionId = proposal.sessionId;
 
   const existing = await prisma.vote.findUnique({
     where: { proposalId_userId: { proposalId, userId: user.id } },

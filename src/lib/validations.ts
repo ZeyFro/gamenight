@@ -87,8 +87,18 @@ export const sessionProposalRefSchema = z.object({
   proposalId: idSchema,
 });
 
-/** `toggleVote` (castVote) — l'auteur du vote est toujours `getCurrentUser()`, jamais lu depuis `formData`. */
-export const toggleVoteSchema = sessionProposalRefSchema;
+/**
+ * `toggleVote` (castVote) — PAS de `sessionId` (contrairement à
+ * `sessionProposalRefSchema` ci-dessus) : fix bug remonté (vote
+ * inter-session) — le client ne fournit plus qu'un `proposalId`, la
+ * session est dérivée server-side depuis `Proposal.sessionId` (voir
+ * `toggleVote`), jamais depuis une valeur transmise par le navigateur.
+ * L'auteur du vote est lui aussi toujours `getCurrentUser()`, jamais lu
+ * depuis `formData`.
+ */
+export const toggleVoteSchema = z.object({
+  proposalId: idSchema,
+});
 
 /** `submitSuperlativeVotesAction` (castSuperlativeVote) — un vote par catégorie active, formulaire tout-ou-rien. */
 export const superlativeVoteEntrySchema = z.object({
