@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
 import { logger } from "@/lib/logger";
-
-function parseRemindersSent(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((v): v is string => typeof v === "string")
-    : [];
-}
+import { wallClockNow } from "@/lib/wallclock";
+import {
+  applyReminderResults,
+  computeTimingsDue,
+  parseRemindersSent,
+  type ReminderSendOutcome,
+} from "@/lib/reminders";
 
 /**
  * Route destinée à être appelée toutes les 15 min par un cron externe
@@ -38,6 +39,23 @@ function parseRemindersSent(value: unknown): string[] {
  * "Handler appelé." avant toute condition, et la cause exacte remonte
  * maintenant dans le JSON de réponse (`error`) plutôt que de dépendre
  * uniquement des Vercel Logs.
+ *
+ * Fix bugs remontés (round 2) — deux problèmes distincts corrigés
+ * ensemble :
+ * 1. Un rappel était ajouté à `remindersSent` MÊME quand l'envoi Discord
+ *    échouait (l'ancien code ne testait `result.ok` que pour un log) : un
+ *    échec restait marqué "envoyé" pour toujours, sans jamais pouvoir être
+ *    réessayé. La logique de décision (`computeTimingsDue`/
+ *    `applyReminderResults`, `src/lib/reminders.ts`) n'ajoute désormais un
+ *    timing à `remindersSent` qu'après un succès Discord confirmé — un
+ *    échec (y compris une exception inattendue, voir plus bas) reste
+ *    absent, donc automatiquement réessayable au prochain passage.
+ * 2. `new Date()` (heure réelle du serveur Vercel, UTC) était utilisé
+ *    à la place de `wallClockNow()` (heure murale de Paris — convention
+ *    de tout le projet pour comparer aux dates de session, voir
+ *    `wallclock.ts`) : décalage de 1-2h (CET/CEST) sur le calcul du temps
+ *    restant ET sur le filtre Prisma. Une seule référence `wallClockNow()`
+ *    par exécution, réutilisée pour les deux.
  */
 export async function GET(request: Request) {
   logger.info("cron:reminders", "Handler appelé.");
@@ -57,39 +75,54 @@ export async function GET(request: Request) {
   }
 
   try {
-    const now = new Date();
+    const now = wallClockNow();
     const sessions = await prisma.session.findMany({
       where: { status: "SCHEDULED", decidedGameId: { not: null }, date: { gt: now } },
       include: { decidedGame: true },
     });
 
     const sent: string[] = [];
+    const failed: string[] = [];
 
     for (const session of sessions) {
-      const minutesUntil = (session.date.getTime() - now.getTime()) / 60_000;
-      const remindersSent = parseRemindersSent(session.remindersSent);
-      // `reminderTimings` vide (créateur a décoché tous les rappels à la
-      // création) → `timingsDue` reste toujours vide, aucun rappel n'est
-      // jamais envoyé pour cette session. Comportement attendu, pas un cas
-      // limite à gérer à part.
-      const timingsDue = session.reminderTimings.filter(
-        (minutes) => minutesUntil <= minutes && !remindersSent.includes(String(minutes))
-      );
+      const timingsDue = computeTimingsDue(session, now);
+      if (timingsDue.length === 0) continue;
+
+      const outcomes: ReminderSendOutcome[] = [];
 
       for (const minutes of timingsDue) {
-        const result = await sendSessionReminder(session, minutes);
-        if (!result.ok) {
-          logger.error(
-            "cron:reminders",
-            `Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`,
-            { sessionId: session.id, minutes }
-          );
+        try {
+          const result = await sendSessionReminder(session, minutes);
+          outcomes.push({ minutes, ok: result.ok });
+          if (result.ok) {
+            sent.push(`${session.id}:${minutes}min`);
+          } else {
+            failed.push(`${session.id}:${minutes}min`);
+            logger.error(
+              "cron:reminders",
+              `Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`,
+              { sessionId: session.id, minutes }
+            );
+          }
+        } catch (error) {
+          // Une exception inattendue sur UN rappel (ex. base de données
+          // momentanément injoignable pendant l'envoi) ne doit abattre ni
+          // les autres timings de cette session ni les sessions
+          // suivantes — classé en échec (donc réessayable), la vraie
+          // cause reste dans les Vercel Logs, jamais dans la réponse JSON
+          // (pas de détail d'erreur potentiellement sensible exposé).
+          outcomes.push({ minutes, ok: false });
+          failed.push(`${session.id}:${minutes}min`);
+          logger.error("cron:reminders", error, { sessionId: session.id, minutes });
         }
-        remindersSent.push(String(minutes));
-        sent.push(`${session.id}:${minutes}min`);
       }
 
-      if (timingsDue.length > 0) {
+      const hasNewSuccess = outcomes.some((outcome) => outcome.ok);
+      if (hasNewSuccess) {
+        const remindersSent = applyReminderResults(
+          parseRemindersSent(session.remindersSent),
+          outcomes
+        );
         await prisma.session.update({
           where: { id: session.id },
           data: { remindersSent },
@@ -99,9 +132,9 @@ export async function GET(request: Request) {
 
     logger.info(
       "cron:reminders",
-      `${sent.length} rappel(s) envoyé(s) sur ${sessions.length} session(s) vérifiée(s).`
+      `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s) sur ${sessions.length} session(s) vérifiée(s).`
     );
-    return NextResponse.json({ checked: sessions.length, sent });
+    return NextResponse.json({ checked: sessions.length, sent, failed });
   } catch (error) {
     // Ne jamais laisser une erreur inattendue remonter en 500 non
     // capturé — cron-job.org compte ça comme un échec et finit par
@@ -109,10 +142,18 @@ export async function GET(request: Request) {
     // probable du bug remonté). Retourne 200 avec la cause en clair :
     // le run reste visible comme "réussi" côté cron-job.org (le run a
     // bien eu lieu), mais l'erreur reste diagnosticable sans dépendre
-    // des Vercel Logs.
+    // uniquement des Vercel Logs. Filet de sécurité global pré-existant
+    // (panne avant même la boucle par session, ex. connexion DB) —
+    // différent du try/catch par rappel ci-dessus, qui ne renvoie jamais
+    // le détail dans le JSON.
     logger.error("cron:reminders", error);
     return NextResponse.json(
-      { checked: 0, sent: [], error: error instanceof Error ? error.message : String(error) },
+      {
+        checked: 0,
+        sent: [],
+        failed: [],
+        error: error instanceof Error ? error.message : String(error),
+      },
       { status: 200 }
     );
   }
