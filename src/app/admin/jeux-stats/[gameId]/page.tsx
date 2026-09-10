@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -37,7 +37,7 @@ export default async function GameStatsAdminPage({
 }: {
   params: Promise<{ gameId: string }>;
 }) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const { gameId } = await params;

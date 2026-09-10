@@ -123,7 +123,8 @@ Puis remplir chaque variable :
 | `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (nécessite un compte Steam ayant dépensé au moins 5$). Utilisée pour l'import de bibliothèque (`GetOwnedGames`). *(F8 — présence — pas encore implémentée.)* |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Créer une application sur [dev.twitch.tv/console](https://dev.twitch.tv/console) (IGDB s'authentifie via l'API Twitch). Utilisées pour la recherche/enrichissement de jeux ajoutés manuellement, et la fiche jeu détaillée. |
 | `DEEPL_API_KEY` | *(Optionnelle)* [deepl.com/pro-api](https://www.deepl.com/pro-api) → créer un compte gratuit (plan **Free**, 500k caractères/mois) → clé dans le compte, onglet API. Traduit en français la description IGDB de la fiche jeu. Sans cette variable : description affichée en anglais (VO), aucun crash. |
-| `CRON_SECRET` | *(Optionnelle, recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège `/api/cron/reminders` (F7) — voir la section dédiée pour la configuration du cron externe. |
+| `CRON_SECRET` | *(Recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège toutes les routes `/api/cron/*`/`/api/backfill/*` — **absente = routes désactivées (503)**, voir la section dédiée pour la configuration du cron externe. |
+| `ADMIN_DISCORD_IDS` | Ton `discordId` (mode développeur Discord → clic droit sur ton profil → **Copier l'ID utilisateur**), et ceux d'autres admins si besoin, séparés par des virgules. Donne accès à `/admin` — voir la section « Rôle admin » ci-dessous. |
 
 ## 3. Base de données
 
@@ -649,6 +650,30 @@ bouton **« Renvoyer dans Discord »** (`resendDiscordAction` →
 reposte le même embed — pratique si le webhook a échoué la première fois
 (ou si le message a été supprimé côté Discord). Un bandeau confirme
 l'envoi ou l'échec, même mécanisme que la clôture manuelle.
+
+## Rôle admin (PR « Accès & secrets »)
+
+`/admin` (messages, badges, superlatifs, stats jeux, reconnexion globale)
+n'était protégé que par « être connecté » — n'importe quel pote du groupe
+pouvait tout modifier. Deux mécanismes cumulatifs décident maintenant qui
+est admin (`src/lib/admin.ts`, `requireAdmin()`) :
+
+- **`ADMIN_DISCORD_IDS`** (env, CSV de `discordId`) — bootstrap : garantit
+  un accès admin dès le premier déploiement, avant même une première
+  connexion, sans dépendre d'une ligne en base.
+- **`User.role`** (`UserRole.ADMIN`, colonne en base) — modifiable ensuite
+  (Prisma Studio ou SQL direct) sans redéploiement pour ajouter/retirer des
+  admins au fil de l'eau.
+
+Un `discordId` listé dans `ADMIN_DISCORD_IDS` est **toujours** traité comme
+admin, même si `role` dit `USER` en base (filet anti-verrouillage : l'env
+reste un accès de secours indépendant de la base).
+
+**Devenir admin au premier déploiement** : pose `ADMIN_DISCORD_IDS` sur
+Vercel (Project → Settings → Environment Variables) avec ton `discordId`
+(mode développeur Discord → clic droit sur ton profil → **Copier l'ID
+utilisateur**, pas ton pseudo). Ça fonctionne immédiatement, avant même ta
+première connexion à l'app.
 
 ## Messages Discord personnalisables (MessageTemplate)
 
@@ -1199,8 +1224,7 @@ réintroduction plus tard sans tout refaire.
 
 ### `/admin/jeux-stats`
 
-Même esprit que `/admin/messages` : pas de rôle admin dédié, tout le monde
-peut configurer. Liste des jeux de la biblio commune →
+Réservé aux admins (voir « Rôle admin » ci-dessous). Liste des jeux de la biblio commune →
 `/admin/jeux-stats/[gameId]` pour ajouter/éditer/supprimer ses stats et,
 pour chaque stat, ses superlatifs (formulaires imbriqués mais jamais des
 `<form>` HTML imbriqués — chaque ligne éditable et son bouton de
@@ -1317,10 +1341,10 @@ plus haut) : 30 secondes de tap par participant, zéro chiffre à saisir.
 ### Les 6 superlatifs seedés
 
 Configurables (icône, nom, description, XP, actif) sur `/admin/superlatifs`
-— même esprit que `/admin/messages` : pas de rôle admin dédié, tout le
-monde peut gérer la liste, traçabilité seule via `AuditLine` (crainte
-déjà documentée plus haut : un pote pourrait truquer un superlatif pour se
-farmer de l'XP — pas bloqué, juste tracé).
+— réservé aux admins (voir « Rôle admin »), traçabilité en plus via
+`AuditLine` (crainte déjà documentée plus haut : un pote pourrait truquer
+un superlatif pour se farmer de l'XP — désormais bloqué pour un
+non-admin, et de toute façon tracé).
 
 | Superlatif | XP |
 | --- | --- |

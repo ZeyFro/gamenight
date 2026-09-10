@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 
 const DEFAULT_XP_REWARD = 20;
 
 export async function addSuperlativeCategory(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const icon = String(formData.get("icon") ?? "").trim();
@@ -36,7 +36,7 @@ export async function addSuperlativeCategory(formData: FormData) {
 }
 
 export async function updateSuperlativeCategory(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -66,7 +66,7 @@ export async function updateSuperlativeCategory(formData: FormData) {
 }
 
 export async function toggleSuperlativeCategoryActive(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -83,7 +83,7 @@ export async function toggleSuperlativeCategoryActive(formData: FormData) {
 }
 
 export async function deleteSuperlativeCategory(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");

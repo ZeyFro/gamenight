@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { MessageCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/current-user";
+import { requireAdmin } from "@/lib/admin";
 import {
   ALL_MESSAGE_CATEGORIES,
   findInvalidCategoryVariables,
@@ -18,7 +18,7 @@ function parseCategories(formData: FormData): MessageCategory[] {
 }
 
 export async function addMessageTemplate(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const text = String(formData.get("text") ?? "").trim();
@@ -46,7 +46,7 @@ export async function addMessageTemplate(formData: FormData) {
 }
 
 export async function updateMessageTemplate(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -70,7 +70,7 @@ export async function updateMessageTemplate(formData: FormData) {
 }
 
 export async function toggleMessageTemplateActive(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
@@ -87,7 +87,7 @@ export async function toggleMessageTemplateActive(formData: FormData) {
 }
 
 export async function deleteMessageTemplate(formData: FormData) {
-  const user = await getCurrentUser();
+  const user = await requireAdmin();
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
