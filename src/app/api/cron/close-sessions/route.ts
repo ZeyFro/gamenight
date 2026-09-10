@@ -5,6 +5,7 @@ import { processOpenRoulettes } from "@/lib/roulette";
 import { ensureFirstSeasonExists } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
  * Route destinée à être appelée toutes les 15 min par un cron externe
@@ -41,12 +42,12 @@ import { logger } from "@/lib/logger";
  * réelle du serveur décalait toutes ces clôtures de 1-2h (CET/CEST).
  */
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  const auth = verifyCronRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.status === 503 ? "not_configured" : "unauthorized" },
+      { status: auth.status }
+    );
   }
 
   // Fix bug remonté (Saison 1 jamais créée au déploiement) — garde-fou
