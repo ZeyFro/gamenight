@@ -650,7 +650,7 @@ export default async function Home({
                               name="gage"
                               placeholder="Définir le gage…"
                               defaultValue={debt.gage ?? ""}
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                             />
                             <Button type="submit" variant="secondary" size="sm">
                               OK

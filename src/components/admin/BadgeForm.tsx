@@ -57,7 +57,7 @@ export function BadgeForm({
             required
             maxLength={4}
             placeholder="🏆"
-            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-center text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-center text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
         </div>
         <div className="flex flex-1 flex-col gap-1">
@@ -71,7 +71,7 @@ export function BadgeForm({
             defaultValue={initialName}
             required
             placeholder="GOAT"
-            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
         </div>
       </div>
@@ -87,7 +87,7 @@ export function BadgeForm({
           defaultValue={initialDescription}
           required
           placeholder="Participer à 50 soirées."
-          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
       </div>
 
@@ -100,7 +100,7 @@ export function BadgeForm({
             id={`${idPrefix}-category`}
             name="category"
             defaultValue={initialCategory}
-            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -117,7 +117,7 @@ export function BadgeForm({
             id={`${idPrefix}-rarity`}
             name="rarity"
             defaultValue={initialRarity}
-            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {RARITIES.map((r) => (
               <option key={r} value={r}>
@@ -137,7 +137,7 @@ export function BadgeForm({
             id={`${idPrefix}-criteriaType`}
             name="criteriaType"
             defaultValue={initialCriteriaType}
-            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {CRITERIA_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -157,7 +157,7 @@ export function BadgeForm({
             defaultValue={initialCriteriaCount}
             required
             min={1}
-            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
         </div>
       </div>
@@ -173,7 +173,7 @@ export function BadgeForm({
           defaultValue={initialXpReward ?? ""}
           min={0}
           placeholder="Aucun"
-          className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
       </div>
 

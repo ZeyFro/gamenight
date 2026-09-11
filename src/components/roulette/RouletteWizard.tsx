@@ -239,7 +239,7 @@ export function RouletteWizard({
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -253,7 +253,7 @@ export function RouletteWizard({
                     required
                     value={time}
                     onChange={(e) => setTime(e.target.value)}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
               </div>
@@ -386,7 +386,7 @@ function ParticipantGamesCard({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher un jeu de sa biblio…"
-            className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
           {query && (
             <ul className="flex max-h-40 flex-col overflow-y-auto rounded-lg border border-border bg-surface">

@@ -86,7 +86,7 @@ export function ReadOnlyGameGrid({
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Filtrer par nom…"
         aria-label="Filtrer par nom"
-        className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       />
 
       {filtered.length === 0 ? (

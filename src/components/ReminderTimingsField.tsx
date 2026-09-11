@@ -87,12 +87,12 @@ export function ReminderTimingsField() {
             min={1}
             required
             placeholder="Nombre"
-            className="w-24 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+            className="w-24 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
           <select
             name="reminderCustomUnit"
             defaultValue="heures"
-            className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <option value="minutes">minutes avant</option>
             <option value="heures">heures avant</option>

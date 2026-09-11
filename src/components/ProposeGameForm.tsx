@@ -125,7 +125,7 @@ export function ProposeGameForm({
           onKeyDown={handleKeyDown}
           placeholder="Rechercher un jeu…"
           autoComplete="off"
-          className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
 
         {open && (

@@ -116,7 +116,7 @@ export default async function DisponibilitesPage() {
                       type="time"
                       name="startTime"
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     />
                   </div>
                   <div className="flex flex-1 flex-col gap-1">
@@ -125,7 +125,7 @@ export default async function DisponibilitesPage() {
                       type="time"
                       name="endTime"
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     />
                   </div>
                   <Button type="submit" size="sm" className="shrink-0">
@@ -183,7 +183,7 @@ export default async function DisponibilitesPage() {
                 name="date"
                 required
                 min={toDateInputValue(todayDateOnly())}
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
             </div>
 
@@ -197,7 +197,7 @@ export default async function DisponibilitesPage() {
               <select
                 id="override-available"
                 name="available"
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <option value="true">Exceptionnellement dispo</option>
                 <option value="false">Exceptionnellement PAS dispo</option>
@@ -213,7 +213,7 @@ export default async function DisponibilitesPage() {
                   id="override-start"
                   type="time"
                   name="startTime"
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -224,7 +224,7 @@ export default async function DisponibilitesPage() {
                   id="override-end"
                   type="time"
                   name="endTime"
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 />
               </div>
             </div>

@@ -57,7 +57,7 @@ export default async function CreerTournoiPage({
                 required
                 maxLength={60}
                 placeholder="Ex. Le Tournoi du Vendredi"
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
             </div>
 
@@ -70,7 +70,7 @@ export default async function CreerTournoiPage({
                 name="gameId"
                 required
                 defaultValue=""
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <option value="" disabled>
                   Choisir un jeu…

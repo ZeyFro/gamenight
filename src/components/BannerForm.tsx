@@ -157,7 +157,7 @@ export function BannerForm({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://exemple.com/ma-banniere.jpg (1500×500 recommandé)"
-            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+            className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
           <p className="text-xs text-faint">
             Vide = bannière par défaut (dégradé violet). Format 1500×500 recommandé,

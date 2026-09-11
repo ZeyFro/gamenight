@@ -161,7 +161,7 @@ export default async function ProfilParametresPage({
               name="name"
               maxLength={24}
               placeholder="Nouveau tag (ex. Retro)"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
             <Button type="submit" variant="secondary" size="sm">
               + Ajouter

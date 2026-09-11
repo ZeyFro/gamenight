@@ -76,7 +76,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
                 setSelected(null);
               }}
               placeholder="ex. Minecraft, Valheim, ATM11…"
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
             <button
               type="button"
@@ -163,7 +163,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
               required
               value={minPlayers}
               onChange={(e) => setMinPlayers(Number(e.target.value))}
-              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -181,7 +181,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
                 setMaxPlayers(e.target.value === "" ? "" : Number(e.target.value))
               }
               placeholder="Optionnel"
-              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
           </div>
         </div>
