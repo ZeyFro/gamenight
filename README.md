@@ -2318,6 +2318,7 @@ que de compter dessus par hasard :
 ```
 prisma/schema.prisma        # Schéma de données complet (§5)
 src/auth.ts                 # Config Auth.js (provider Discord, callbacks)
+src/lib/discord-token-crypto.ts # Chiffrement AES-256-GCM des jetons OAuth Discord stockés en base
 src/lib/prisma.ts           # Client Prisma (adapter Neon serverless)
 src/lib/steam.ts            # OpenID 2.0 Steam + import GetOwnedGames
 src/lib/igdb.ts             # Client IGDB (token Twitch caché, recherche + fiche détaillée + multiplayer_modes)
@@ -7616,3 +7617,126 @@ changé — uniquement la taille et le nom accessible.
 - Sur mobile : le picker de réactions, les pastilles de compteur et le
   bouton d'envoi du chat sont confortablement appuyables (44px).
 - Aucune régression visuelle évidente sur les pages/composants touchés.
+
+## Chiffrement des jetons OAuth Discord stockés en base
+
+`User.discordAccessToken`/`discordRefreshToken` (persistés en base depuis
+le fix "cron avatars Discord silencieux", voir plus haut) étaient stockés
+en clair. Durci ici : chiffrés côté application avant chaque écriture,
+sans casser la connexion, le cron de rafraîchissement, le renouvellement
+des refresh tokens, les comptes dont le jeton actuel est encore en clair,
+ni le mécanisme de reconnexion globale.
+
+### Format — enveloppe versionnée et authentifiée
+
+```
+enc:v1:<iv base64>:<authTag base64>:<ciphertext base64>
+```
+
+`src/lib/discord-token-crypto.ts` — AES-256-GCM, IV aléatoire de 12 octets
+à CHAQUE chiffrement (jamais réutilisé), tag d'authentification 16 octets,
+version `"v1"` passée en AAD (donnée additionnelle authentifiée GCM) : la
+falsifier sans casser le tag est impossible. Clé dédiée
+(`DISCORD_TOKEN_ENCRYPTION_KEY`, Base64, 32 octets décodés), **distincte**
+de `AUTH_SECRET`/`CRON_SECRET`/`DATABASE_URL` — jamais dérivée d'elles.
+
+**Parsing strict au déchiffrement** — toute valeur commençant par `enc:`
+avec un format incorrect ou une version inconnue est `invalid`, **jamais**
+traitée comme un ancien jeton en clair (`legacy`) :
+- nombre de segments (exactement 5) ;
+- alphabet Base64 de chaque segment ;
+- IV décodé : exactement 12 octets ;
+- tag décodé : exactement 16 octets ;
+- ciphertext décodé : non vide ;
+- tag GCM vérifié (toute altération du ciphertext/IV/tag, ou une mauvaise
+  clé, fait échouer le déchiffrement).
+
+Seule une valeur qui ne commence PAS du tout par `enc:` est `legacy` —
+utilisée telle quelle, sans backfill.
+
+### Compatibilité ascendante sans backfill
+
+Aucun script de migration : le rollout progressif tombe du comportement
+déjà existant. Un jeton d'accès Discord expire au bout de ~1h ; le cron
+`refresh-discord-profiles` tourne toutes les heures et réécrit
+systématiquement la paire complète (access + refresh) dès qu'elle est
+proche de l'expiration. Résultat : dans l'heure ou les deux heures suivant
+le déploiement, chaque compte actif voit son jeton — en clair ou non —
+remplacé par une paire fraîche, chiffrée. Une vraie reconnexion produit le
+même effet immédiatement. Aucune suppression, aucun backfill pendant le
+build.
+
+### Comportement quand la clé manque
+
+`getEncryptionKey()` lève une erreur contrôlée (nom de variable + longueur
+obtenue, jamais son contenu) si `DISCORD_TOKEN_ENCRYPTION_KEY` est absente,
+pas du Base64 valide, ou ne décode pas en exactement 32 octets. Capturée
+par les `try/catch` déjà best-effort existants :
+- **`auth.ts`** (callback `jwt`, connexion) : aucune persistance du
+  nouveau jeton en base, ni en clair ni chiffré — **la connexion continue
+  normalement**, la session JWT ne dépend pas de cette écriture. Seul le
+  rafraîchissement auto d'avatar/pseudo hors session en pâtit pour ce
+  compte (déjà le comportement existant pour tout user pas encore
+  reconnecté).
+- **`discord-profile.ts`** (cron) : la clé est validée **une seule fois
+  avant la boucle**, avant tout appel réseau Discord — si elle échoue, un
+  seul log clair, aucun appel `/users/@me` ni `/oauth2/token` tenté, et
+  **tous** les jetons stockés basculent vers le repli bot
+  (`DISCORD_BOT_TOKEN`) s'il est configuré. Un jeton présent en base mais
+  illisible cette exécution (clé absente/invalide, enveloppe corrompue,
+  mauvaise clé après rotation) n'est **jamais** traité comme "couvert par
+  l'OAuth" au seul motif que la colonne n'est pas nulle : le repli bot
+  couvre maintenant explicitement cette catégorie (`unreadableUsers`), en
+  plus des users sans jeton du tout.
+
+### Rotation / perte de clé (MVP assumé)
+
+Si `DISCORD_TOKEN_ENCRYPTION_KEY` est perdue ou changée, toute valeur
+chiffrée avec l'ancienne clé devient définitivement `invalid` au
+déchiffrement (échec du tag GCM par construction — comportement attendu,
+pas un bug). Conséquence acceptée pour ce MVP : ces comptes perdent leur
+jeton stocké et doivent simplement **se reconnecter** — une vraie
+reconnexion régénère une paire fraîche, chiffrée avec la clé courante.
+Aucune perte de compte ni de donnée de jeu, uniquement le confort du
+rafraîchissement auto hors session le temps de la reconnexion (repli bot
+disponible entre-temps si configuré).
+
+### Rotation Discord — atomicité de la paire
+
+Lors d'un renouvellement (`refreshAllDiscordProfilesViaOAuth`, cron), la
+clé de chiffrement est validée **avant** d'appeler l'endpoint Discord de
+renouvellement (sinon Discord ferait tourner le `refresh_token` sans que
+l'app puisse persister la nouvelle paire — jeton perdu). Après la réponse
+Discord, les deux jetons sont chiffrés puis persistés en un **seul**
+`update` Prisma — jamais l'un sans l'autre.
+
+### Fichiers modifiés
+
+- `src/lib/discord-token-crypto.ts` (nouveau) — `getEncryptionKey`,
+  `encryptToken`, `decryptToken`, `isLegacyToken`, `resolveStoredToken`.
+- `src/lib/discord-token-crypto.test.ts` (nouveau) — helpers purs
+  uniquement, aucun appel Blob/Discord/Prisma réel.
+- `src/auth.ts` — chiffrement avant écriture dans le callback `jwt`.
+- `src/lib/discord-profile.ts` — validation de la clé une fois avant la
+  boucle du cron, déchiffrement/chiffrement dans
+  `refreshAllDiscordProfilesViaOAuth`, et bascule du repli bot vers les
+  jetons illisibles en plus des jetons absents (`refreshAllDiscordProfiles`).
+- `.env.example` — nouvelle variable `DISCORD_TOKEN_ENCRYPTION_KEY`.
+
+**Aucune migration Prisma** (colonnes déjà `TEXT`, illimitées côté
+Postgres). **Aucune nouvelle dépendance** (`node:crypto` est natif).
+
+### ⚠️ Avant de merger cette PR
+
+`DISCORD_TOKEN_ENCRYPTION_KEY` doit être générée et configurée dans Vercel
+(**Production ET Preview**) **avant** le déploiement de ce code :
+
+```bash
+openssl rand -base64 32
+```
+
+À coller dans Vercel → Settings → Environment Variables. Sans cette
+variable configurée au moment du déploiement, les nouveaux jetons ne sont
+simplement pas persistés en base tant qu'elle manque (dégradation sûre,
+jamais de jeton en clair écrit) — mais autant l'avoir en place dès le
+départ pour ne rien perdre.
