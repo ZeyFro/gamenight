@@ -2420,6 +2420,7 @@ src/app/profil/superlatifs/page.tsx # Onglet Superlatifs gagnés
 src/app/profil/badges/page.tsx      # Onglet Badges
 src/app/profil/parametres/page.tsx  # Onglet Rappels perso (bannière, Steam, silence, liens admin)
 src/app/profil/actions.ts   # Server actions toggle silence rappels + setBannerUrlAction + uploadBannerAction (Vercel Blob)
+src/lib/banner-blob.ts      # Détection de signature d'image + décision/suppression best-effort des blobs de bannière orphelins
 src/app/profil/tierlist/page.tsx    # Onglet Tierlist inline (fix UX PR 9/9, réutilise TierlistBoard)
 src/app/admin/page.tsx                      # Hub /admin (Messages/Superlatifs/Badges/Jeux-stats), piloté par ?tab=
 src/app/admin/messages/page.tsx             # Redirige (308) vers /admin?tab=messages
@@ -2584,11 +2585,87 @@ configuré.
 **Limites et validation.** 5 Mo max, formats jpg/png/webp/gif — vérifiés
 côté client (`BannerForm.tsx`, feedback immédiat + désactivation du
 bouton submit) *et* côté serveur (`uploadBannerAction`, jamais de
-confiance aveugle dans le client). Pas de compression automatique
-(bonus explicitement optionnel dans la demande, non implémenté en v1 —
-un fichier de 5 Mo reste raisonnable pour une bannière). Preview
-immédiate avant validation via `URL.createObjectURL` sur les deux
-onglets.
+confiance aveugle dans le client — voir « Durcissement des bannières »
+ci-dessous pour le détail de cette validation serveur). Pas de
+compression automatique dans FIX4 (ajoutée depuis côté client, voir plus
+bas). Preview immédiate avant validation via `URL.createObjectURL` sur
+les deux onglets.
+
+### Durcissement des bannières (validation réelle + anti-orphelins)
+
+`file.type` (le MIME déclaré par le navigateur au moment du `<input
+type="file">`) n'est qu'une étiquette côté client, trivialement
+falsifiable — renommer un fichier ou fabriquer un `File` arbitraire en
+JS suffit. Avant cette PR, `uploadBannerAction` ne validait QUE ce champ.
+Elle ne supprimait par ailleurs jamais l'ancien blob lors d'un
+remplacement de bannière : chaque nouvel upload laissait l'ancien fichier
+stocké indéfiniment sur Vercel Blob.
+
+**Validation par signature (`src/lib/banner-blob.ts`,
+`detectBannerImageSignature`).** Le format réel est désormais déterminé
+en lisant les premiers octets du fichier (signatures documentées : JPEG
+`FF D8 FF`, PNG `89 50 4E 47 0D 0A 1A 0A`, GIF `47 49 46 38 (37|39) 61`,
+WebP `RIFF….WEBP`) — jamais `file.type`. Lecture seule, aucun décodage ni
+réencodage : un GIF reste byte pour byte le fichier original, animation
+comprise. L'extension ET le `contentType` passés à `put()` viennent de ce
+format détecté, pas du champ déclaré — le Content-Type servi ensuite par
+le CDN Vercel Blob devient fiable lui aussi. Une signature non reconnue
+(fichier corrompu, ou tentative de déguiser un autre type de fichier en
+image) est rejetée avec le même message que l'ancien contrôle de format.
+Choix assumé : pas de nouvelle dépendance (type `file-type`) pour 4
+signatures fixes et bien documentées — une vérification manuelle de
+quelques octets est plus simple, entièrement auditable, et suffisante à
+cette échelle.
+
+**Suppression best-effort de l'ancien blob, jamais à l'aveugle.** Un
+`bannerUrl` peut être soit une URL externe arbitraire, soit un blob Vercel
+uploadé par n'importe quel membre du groupe : le distinguer avec
+certitude demande deux preuves, pas une seule.
+1. **Store** — `head(url)` du SDK `@vercel/blob` interroge l'API de
+   gestion Vercel Blob (jamais l'URL elle-même), authentifiée par notre
+   propre `BLOB_READ_WRITE_TOKEN` (le `storeId` qu'il encode est envoyé en
+   en-tête `x-vercel-blob-store-id`, vérifié dans les sources locales du
+   SDK, `chunk-YYMLUMXS.js`) : `head()` échoue pour tout blob qui
+   n'appartient pas à NOTRE store, y compris un blob hébergé sur le même
+   domaine `*.public.blob.vercel-storage.com` mais appartenant à un autre
+   projet Vercel.
+2. **Utilisateur** — un `head()` réussi prouve seulement que le blob est
+   dans notre store, pas qu'il appartient à CET utilisateur : rien
+   n'empêcherait un membre de coller comme bannière l'URL Blob d'un autre
+   membre du même groupe. D'où le namespace `banners/{userId}/...`
+   (`buildBannerBlobPathname`) pour tous les nouveaux uploads : la
+   suppression n'est autorisée que si le pathname du blob commence
+   exactement par `banners/{sonPropreUserId}/`.
+
+Les anciens blobs uploadés avant cette PR (format plat
+`banners/{userId}-{timestamp}.ext`, sans séparateur fiable) ne
+correspondent à aucun des deux formats reconnus : ils restent
+délibérément orphelins plutôt que d'être supprimés sur la foi d'un
+parsing de chaîne fragile — un stockage inutilisé qui persiste est
+largement préférable à un risque, même faible, de supprimer le fichier
+d'un autre utilisateur.
+
+**Ordre des opérations, strict dans les deux actions** (jamais de
+suppression avant que la nouvelle valeur soit committée en base — sinon
+un échec Prisma après coup laisserait `bannerUrl` pointer vers un fichier
+détruit) :
+- `uploadBannerAction` : upload du nouveau blob → mise à jour Prisma → si
+  échec, nettoyage immédiat du blob tout juste créé (`?upload=echec`,
+  jamais d'orphelin frais) → si succès, nettoyage best-effort de l'ancien
+  blob (seulement s'il est prouvé nôtre pour CET utilisateur) →
+  redirection.
+- `setBannerUrlAction` (bascule vers une URL externe, ou vidage de la
+  bannière) : mise à jour Prisma d'abord → nettoyage best-effort de
+  l'ancien blob ensuite.
+- Aucune suppression si l'ancienne et la nouvelle URL sont identiques
+  (`shouldDeleteOldBanner`).
+
+Aucune migration Prisma (la vérification se fait entièrement à la volée
+sur `bannerUrl`, pas besoin de stocker le pathname séparément pour 6
+utilisateurs). Tests (`src/lib/banner-blob.test.ts`) : détection de
+signature, décision pure de suppression (`canDeleteBannerBlob`,
+`shouldDeleteOldBanner`), et orchestration best-effort avec `head`/`del`
+injectés (jamais d'appel Vercel Blob réel dans les tests).
 
 ## Classement (PR 9/9 — dernière étape du chantier XP)
 
