@@ -38,10 +38,10 @@ import { ChatMessages } from "@/components/chat/ChatMessages";
 import {
   cancelSessionAction,
   closeSessionAction,
-  completeWeeklyChallengeAction,
   markSessionDoneAction,
   resendDiscordAction,
-} from "../actions";
+} from "../actions/session-lifecycle";
+import { completeWeeklyChallengeAction } from "../actions/results";
 
 const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
   // Texte volontairement générique ("l'action") : ce même statut couvre la

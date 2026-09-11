@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { placeBetAction } from "@/app/sessions/actions";
+import { placeBetAction } from "@/app/sessions/actions/predictions";
 import { XP_BET_MIN, XP_BET_STEP, maxBetAmount } from "@/lib/xp-bets";
 
 export interface XpBetTarget {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
-import { submitSessionResultsAction } from "@/app/sessions/actions";
+import { submitSessionResultsAction } from "@/app/sessions/actions/results";
 
 export interface ResultParticipant {
   id: string;

@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
-import { proposeGame } from "@/app/sessions/actions";
+import { proposeGame } from "@/app/sessions/actions/proposals-votes";
 
 interface ComboboxGame {
   id: string;

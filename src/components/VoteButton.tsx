@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { toggleVote } from "@/app/sessions/actions";
+import { toggleVote } from "@/app/sessions/actions/proposals-votes";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { haptics } from "@/lib/haptics";
 

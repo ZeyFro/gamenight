@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
-import { submitSuperlativeVotesAction } from "@/app/sessions/actions";
+import { submitSuperlativeVotesAction } from "@/app/sessions/actions/superlatives";
 
 export interface VoteParticipant {
   id: string;

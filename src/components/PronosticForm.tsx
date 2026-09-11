@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
-import { submitPronosticAction } from "@/app/sessions/actions";
+import { submitPronosticAction } from "@/app/sessions/actions/predictions";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 export interface PronosticParticipant {
