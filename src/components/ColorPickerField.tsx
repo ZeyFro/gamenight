@@ -115,7 +115,7 @@ export function ColorPickerField({ currentColor }: { currentColor: string }) {
               onChange={(e) => handleHexInputChange(e.target.value)}
               placeholder="#FFFFFF"
               maxLength={7}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
           </div>
         </div>
@@ -140,7 +140,7 @@ export function ColorPickerField({ currentColor }: { currentColor: string }) {
                 value={rgb[key]}
                 aria-label={`Valeur ${label} (0-255)`}
                 onChange={(e) => handleChannelChange(key, Number(e.target.value))}
-                className="w-16 shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground focus:border-accent focus:outline-none"
+                className="w-16 shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
             </div>
           ))}

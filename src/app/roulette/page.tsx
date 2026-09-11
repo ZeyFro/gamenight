@@ -200,7 +200,7 @@ async function CreerTab({
               name="date"
               required
               defaultValue={defaultDate}
-              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -213,7 +213,7 @@ async function CreerTab({
               name="time"
               required
               defaultValue={defaultTime}
-              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />
           </div>
         </div>
@@ -226,7 +226,7 @@ async function CreerTab({
             id="roulette-deadline-offset"
             name="deadlineOffset"
             defaultValue="1"
-            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+            className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <option value="0.5">30 min avant la soirée</option>
             <option value="1">1h avant la soirée</option>

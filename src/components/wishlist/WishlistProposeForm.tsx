@@ -83,7 +83,7 @@ export function WishlistProposeForm() {
           onChange={(e) => handleChange(e.target.value)}
           placeholder="Rechercher un jeu sur IGDB…"
           autoComplete="off"
-          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
         {searching && (
           <span className="absolute top-1/2 right-3 -translate-y-1/2 text-xs text-faint">
@@ -140,7 +140,7 @@ export function WishlistProposeForm() {
         name="reason"
         maxLength={200}
         placeholder="Pourquoi ce jeu ? (optionnel)"
-        className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+        className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       />
 
       <Button type="submit" variant="primary" fullWidthOnMobile disabled={!selected}>

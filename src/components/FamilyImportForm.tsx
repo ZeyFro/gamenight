@@ -174,7 +174,7 @@ export function FamilyImportForm() {
         rows={6}
         disabled={phase === "analyzing"}
         aria-label="Liste de jeux à importer"
-        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-60"
+        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60"
       />
 
       <Button
@@ -326,7 +326,7 @@ function PendingRow({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-accent focus:outline-none"
+            className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
           {item.suggestion && (
             <Badge tone="warning">

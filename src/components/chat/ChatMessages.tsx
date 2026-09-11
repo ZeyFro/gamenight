@@ -231,7 +231,8 @@ export function ChatMessages({
                               key={emoji}
                               type="button"
                               onClick={() => react(m.id, emoji)}
-                              className="flex h-8 w-8 items-center justify-center rounded-full text-lg transition-transform hover:scale-125"
+                              aria-label={`Réagir avec ${emoji}`}
+                              className="flex h-11 w-11 items-center justify-center rounded-full text-lg transition-transform hover:scale-125"
                             >
                               {emoji}
                             </button>
@@ -248,7 +249,8 @@ export function ChatMessages({
                           key={emoji}
                           type="button"
                           onClick={() => react(m.id, emoji)}
-                          className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[11px]"
+                          aria-label={`${count} réaction${count > 1 ? "s" : ""} ${emoji} — cliquer pour réagir aussi`}
+                          className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-border bg-background px-1.5 py-0.5 text-[11px]"
                         >
                           {emoji} {count}
                         </button>
@@ -273,13 +275,13 @@ export function ChatMessages({
           onChange={(e) => setDraft(e.target.value)}
           maxLength={500}
           placeholder="Écrire un message…"
-          className="min-w-0 flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="min-w-0 flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
         <button
           type="submit"
           disabled={!draft.trim()}
           aria-label="Envoyer"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity disabled:opacity-40"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity disabled:opacity-40"
         >
           ➤
         </button>

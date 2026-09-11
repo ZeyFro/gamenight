@@ -7439,3 +7439,103 @@ embed assorti. Best-effort (même convention que le reste du projet) : un
 - `npx next build` : compile et type-check sans erreur (56 routes)
 - `npx vitest run` : 73 tests, tout vert
 - Zéro régression PR #1-74
+
+## Accessibilité de base — focus clavier, noms accessibles et cibles tactiles du chat
+
+Première PR d'un audit accessibilité plus large (12 zones auditées :
+boutons icône, réactions du chat, cibles tactiles, navigation clavier de
+la tierlist, calendrier, combobox de proposition de jeu, dialogues Radix,
+bracket de tournoi, focus visible, champs non labellisés, messages
+dynamiques, imbrication de liens/boutons, contraste). Périmètre volontai-
+rement resserré à ce qui a le meilleur rapport valeur/risque et ne change
+ni le comportement ni la mise en page de l'app : le reste de l'audit
+(clavier sur la tierlist, `aria-live` sur le chat, redimensionnement du
+calendrier, contraste de `--faint`, etc.) est laissé pour des PR dédiées
+futures.
+
+### 1. Focus clavier visible
+
+`focus:border-accent focus:outline-none` (≈55 occurrences sur ~30
+fichiers) supprimait l'anneau de focus natif sur tous les champs texte/
+textarea/date/heure/url/fichier de l'app, sans le remplacer par un
+indicateur suffisamment visible (juste une couleur de bordure). Complété
+avec le pattern déjà existant et validé dans `RankAvatar.tsx` :
+`focus-visible:ring-2 focus-visible:ring-accent
+focus-visible:ring-offset-2 focus-visible:ring-offset-background`.
+
+- Chaque fichier a été vérifié individuellement (pas de remplacement
+  global aveugle) : recherche de tout ancêtre `overflow-hidden` qui
+  aurait pu rogner le nouvel anneau (aucun trouvé — les `overflow-hidden`
+  présents dans ces fichiers concernent des vignettes, barres de
+  progression ou aperçus d'image, jamais les champs concernés).
+- Les éléments qui avaient déjà un indicateur `focus-visible` correct
+  (`RankAvatar.tsx`) n'ont pas été touchés.
+- Les boutons natifs sans `focus:outline-none` (ex. réactions du chat)
+  gardent leur anneau de focus par défaut du navigateur, déjà correct —
+  pas de raison d'y toucher.
+- `focus:border-accent` (retour visuel souris) est conservé tel quel :
+  seul l'ajout de `focus-visible:ring-*` change, donc aucun changement
+  visuel pour un clic souris.
+
+### 2. Noms accessibles — réactions du chat
+
+`src/components/chat/ChatMessages.tsx` : les boutons du picker de
+réactions (emoji seul comme contenu) et les pastilles de compteur de
+réactions n'avaient pas de `aria-label`. Un lecteur d'écran lisait
+l'emoji de façon inconsistante selon l'OS, sans indiquer qu'il s'agit
+d'une action. Ajout de :
+- `aria-label={`Réagir avec ${emoji}`}` sur les boutons du picker.
+- `aria-label={`${count} réaction(s) ${emoji} — cliquer pour réagir
+  aussi`}` sur les pastilles de compteur.
+
+### 3. Cibles tactiles du chat (≥ 44×44 px)
+
+Toujours dans `ChatMessages.tsx`, trois cibles sous la recommandation
+44×44 px sont maintenant conformes :
+- Boutons du picker de réactions : `h-8 w-8` (32px) → `h-11 w-11`
+  (44px).
+- Pastilles de compteur de réactions : `min-h-11 min-w-11` ajouté (elles
+  restent des pastilles compactes visuellement, mais leur zone cliquable
+  atteint 44px).
+- Bouton d'envoi du message : `h-10 w-10` (40px) → `h-11 w-11` (44px).
+
+Aucune de ces trois zones n'a de logique, de texte ou de comportement
+changé — uniquement la taille et le nom accessible.
+
+### Explicitement hors périmètre (PR dédiées futures)
+
+- Interaction clavier pour ouvrir le picker de réactions (actuellement
+  long-press uniquement) — nécessite de concevoir une UX clavier.
+- `KeyboardSensor` dnd-kit sur `TierlistBoard.tsx` — drag-and-drop
+  clavier, changement fonctionnel plus large.
+- Hauteur des cellules de `DayTimeline.tsx` (28px) — changement visuel
+  majeur sur 24 lignes de calendrier.
+- Correction du contraste de `--faint` (`globals.css`) — impacte
+  visuellement toute l'app, gardé pour une PR dédiée au contraste.
+- `aria-live` sur les nouveaux messages de chat — comportement
+  fonctionnel à valider séparément.
+
+### Vérification
+
+- `npx eslint .` : clean
+- `npx tsc --noEmit` via `npx next build` (type-check Next.js complet,
+  56 routes) : compile sans erreur
+- `npx vitest run` : 122 tests, tout vert (aucun fichier de test modifié
+  — changements purement visuels/attributs, rien à tester en pur logique
+  ici)
+
+### Checklist de test manuel (desktop + mobile)
+
+- Navigation complète au clavier (`Tab` / `Shift+Tab`) sur les pages
+  modifiées : soirées, dispos, roulette, tournois, profil/paramètres,
+  bibliothèque, tierlist, messages/badges admin, formulaires d'import
+  familial, wishlist, chat.
+- Focus visible (anneau violet) sur chaque champ/bouton/lien modifié,
+  jamais rogné par son conteneur.
+- Ouverture et utilisation au clavier des dialogues concernés (édition
+  de soirée, édition de jeu).
+- Dans le chat : les boutons de réaction annoncent bien leur emoji au
+  lecteur d'écran (VoiceOver/NVDA) au lieu de rien.
+- Sur mobile : le picker de réactions, les pastilles de compteur et le
+  bouton d'envoi du chat sont confortablement appuyables (44px).
+- Aucune régression visuelle évidente sur les pages/composants touchés.

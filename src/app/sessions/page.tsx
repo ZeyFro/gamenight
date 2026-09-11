@@ -278,7 +278,7 @@ export default async function SessionsPage({
                   required
                   min={toDateInputValue(todayDateOnly())}
                   defaultValue={prefillDate}
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -291,7 +291,7 @@ export default async function SessionsPage({
                   name="time"
                   required
                   defaultValue={prefillTime}
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 />
               </div>
             </div>
@@ -304,7 +304,7 @@ export default async function SessionsPage({
                 id="deadline-offset"
                 name="deadlineOffset"
                 defaultValue="6"
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <option value="0.5">30 min avant la session</option>
                 <option value="1">1h avant la session</option>
@@ -329,7 +329,7 @@ export default async function SessionsPage({
                     id="deadline-date"
                     type="date"
                     name="deadlineDate"
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -340,7 +340,7 @@ export default async function SessionsPage({
                     id="deadline-time"
                     type="time"
                     name="deadlineTime"
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
               </div>
@@ -359,7 +359,7 @@ export default async function SessionsPage({
                 name="customReminderMessage"
                 rows={2}
                 placeholder="Remplace le tirage aléatoire — variables : {pote} {jeu} {heure}"
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
             </div>
 

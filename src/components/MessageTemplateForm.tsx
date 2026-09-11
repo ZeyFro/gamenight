@@ -128,7 +128,7 @@ export function MessageTemplateForm({
           rows={2}
           required
           placeholder="Ex. : Yo {pote}, dans 30 min c'est {jeu}."
-          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
         {suggestion && suggestions.length > 0 && (
           <ul className="absolute top-full z-10 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">

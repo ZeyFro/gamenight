@@ -68,7 +68,7 @@ export function EditSessionDialog({
                     name="date"
                     required
                     defaultValue={dateValue}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -81,7 +81,7 @@ export function EditSessionDialog({
                     name="time"
                     required
                     defaultValue={timeValue}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
               </div>
@@ -97,7 +97,7 @@ export function EditSessionDialog({
                     name="deadlineDate"
                     required
                     defaultValue={deadlineDateValue}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -110,7 +110,7 @@ export function EditSessionDialog({
                     name="deadlineTime"
                     required
                     defaultValue={deadlineTimeValue}
-                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none"
+                    className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 </div>
               </div>
