@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 import { refreshDiscordProfile } from "@/lib/discord-profile";
+import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
 
 /**
@@ -86,13 +87,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // rafraîchir via `refresh_token` est le seul moyen d'y arriver
         // sans repasser par tout le flux OAuth). Best-effort : ne doit
         // jamais faire échouer la connexion.
+        //
+        // Chiffrement (PR "Chiffrement des jetons OAuth Discord") — les
+        // deux valeurs sont chiffrées AVANT l'écriture, dans la même
+        // transaction implicite qu'un seul `update` : soit les deux sont
+        // persistées chiffrées, soit rien n'est écrit (`getEncryptionKey`
+        // lève si la clé est absente/invalide — capturé par le catch
+        // ci-dessous comme n'importe quelle autre erreur best-effort).
+        // Ne recycle jamais `token.discordAccessToken` (déjà posé en clair
+        // dans le JWT ci-dessus, jamais exposé au client — voir
+        // `next-auth.d.ts`) : c'est bien la valeur DB qui est chiffrée ici.
         if (profile?.id && account.refresh_token) {
           try {
+            const key = getEncryptionKey();
             await prisma.user.update({
               where: { discordId: profile.id as string },
               data: {
-                discordAccessToken: account.access_token,
-                discordRefreshToken: account.refresh_token,
+                discordAccessToken: encryptToken(account.access_token, key),
+                discordRefreshToken: encryptToken(account.refresh_token, key),
                 discordTokenExpiresAt: account.expires_at
                   ? new Date(account.expires_at * 1000)
                   : null,

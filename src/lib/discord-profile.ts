@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import {
+  DiscordTokenEncryptionKeyError,
+  encryptToken,
+  getEncryptionKey,
+  resolveStoredToken,
+} from "@/lib/discord-token-crypto";
 
 /**
  * Réplique exactement le mapping avatar/nom du provider Discord next-auth
@@ -108,6 +114,12 @@ async function refreshDiscordAccessToken(
 // lecture en base et l'appel réseau.
 const TOKEN_REFRESH_SAFETY_MARGIN_MS = 5 * 60 * 1000;
 
+interface OAuthProfileUser {
+  discordId: string;
+  discordName: string;
+  discordAvatar: string | null;
+}
+
 /**
  * Fix bug remonté (cron avatars Discord silencieux) — approche
  * privilégiée : réutilise le VRAI jeton OAuth de chaque utilisateur
@@ -121,12 +133,34 @@ const TOKEN_REFRESH_SAFETY_MARGIN_MS = 5 * 60 * 1000;
  * Ignore silencieusement les users sans `discordRefreshToken` en base
  * (pas encore reconnectés depuis ce déploiement) — comptés à part
  * (`skipped`) plutôt que mélangés aux échecs réels.
+ *
+ * Chiffrement (PR "Chiffrement des jetons OAuth Discord") :
+ * - La clé (`getEncryptionKey`) est validée UNE SEULE FOIS avant la boucle
+ *   — jamais par utilisateur — et TOUJOURS avant le premier appel réseau
+ *   vers Discord. Si elle est absente/invalide, aucun appel `/users/@me`
+ *   ni `/oauth2/token` n'est tenté : tous les jetons stockés sont traités
+ *   comme illisibles cette exécution (voir `unreadableUsers` ci-dessous),
+ *   un seul log clair au lieu d'un par utilisateur.
+ * - Un jeton stocké illisible (enveloppe invalide, mauvaise clé) pour UN
+ *   utilisateur ne bloque jamais le traitement des autres — même
+ *   `try/catch` par utilisateur qu'avant, `resolveStoredToken` ne lève de
+ *   toute façon jamais d'exception pour un problème de donnée.
+ * - Lors d'une rotation, Discord répond avec la nouvelle paire complète :
+ *   les DEUX valeurs sont chiffrées, puis persistées en un seul `update`
+ *   Prisma — jamais l'une sans l'autre.
+ * - `unreadableUsers` (jeton présent en base mais illisible cette
+ *   exécution, quelle qu'en soit la cause) est distinct de `skipped`
+ *   (jeton absent) : `refreshAllDiscordProfiles` bascule CES deux
+ *   catégories vers le repli bot, pas seulement la seconde — une colonne
+ *   non nulle mais illisible ne doit jamais empêcher le repli.
  */
 export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   checked: number;
   updated: number;
   failed: number;
   skipped: number;
+  unreadable: number;
+  unreadableUsers: OAuthProfileUser[];
 }> {
   const users = await prisma.user.findMany({
     where: { discordRefreshToken: { not: null } },
@@ -141,23 +175,73 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   });
   logger.info("discord-profile", `Cron OAuth : ${users.length} utilisateur(s) avec jeton stocké.`);
 
+  let encryptionKey;
+  try {
+    encryptionKey = getEncryptionKey();
+  } catch (error) {
+    // Erreur de configuration globale (pas par ligne) — un seul log,
+    // aucun appel Discord tenté, tout le monde bascule vers le repli bot
+    // (voir `refreshAllDiscordProfiles`) plutôt que de tenter puis
+    // échouer N fois de suite pour la même raison.
+    const reason = error instanceof DiscordTokenEncryptionKeyError ? "configuration absente/invalide" : "inconnue";
+    logger.error(
+      "discord-profile",
+      `Clé de chiffrement des jetons Discord indisponible (${reason}) — bascule repli bot pour tous les jetons stockés.`
+    );
+    return {
+      checked: users.length,
+      updated: 0,
+      failed: 0,
+      skipped: 0,
+      unreadable: users.length,
+      unreadableUsers: users.map((u) => ({
+        discordId: u.discordId,
+        discordName: u.discordName,
+        discordAvatar: u.discordAvatar,
+      })),
+    };
+  }
+
   let updated = 0;
   let failed = 0;
   let skipped = 0;
+  let unreadable = 0;
+  const unreadableUsers: OAuthProfileUser[] = [];
 
   for (const user of users) {
     try {
-      let accessToken = user.discordAccessToken;
+      const storedRefresh = resolveStoredToken(user.discordRefreshToken, encryptionKey);
+      if (!storedRefresh.ok) {
+        // Enveloppe invalide ou mauvaise clé pour CE jeton précis (pas un
+        // problème de configuration globale, déjà écarté ci-dessus) —
+        // candidat au repli bot, jamais compté "skipped" (réservé à
+        // l'absence pure et simple de jeton en base).
+        unreadable += 1;
+        unreadableUsers.push({
+          discordId: user.discordId,
+          discordName: user.discordName,
+          discordAvatar: user.discordAvatar,
+        });
+        logger.warn(
+          "discord-profile",
+          `Jeton de renouvellement illisible pour ${user.discordId} (enveloppe invalide ou déchiffrement impossible) — repli bot si disponible.`,
+          { discordId: user.discordId }
+        );
+        continue;
+      }
+
+      const storedAccess = user.discordAccessToken
+        ? resolveStoredToken(user.discordAccessToken, encryptionKey)
+        : { ok: false as const };
+      let accessToken = storedAccess.ok ? storedAccess.value : null;
+
       const isExpiredOrSoon =
+        !accessToken ||
         !user.discordTokenExpiresAt ||
         user.discordTokenExpiresAt.getTime() - Date.now() < TOKEN_REFRESH_SAFETY_MARGIN_MS;
 
       if (isExpiredOrSoon) {
-        if (!user.discordRefreshToken) {
-          skipped += 1;
-          continue;
-        }
-        const refreshed = await refreshDiscordAccessToken(user.discordRefreshToken);
+        const refreshed = await refreshDiscordAccessToken(storedRefresh.value);
         if (!refreshed) {
           // `refresh_token` révoqué/expiré côté Discord — rien à faire
           // ici, l'utilisateur redonnera un jeton valide à sa prochaine
@@ -171,11 +255,13 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
           continue;
         }
         accessToken = refreshed.access_token;
+        // Chiffre les DEUX valeurs avant d'écrire — un seul `update`
+        // Prisma pour la paire complète, jamais l'une sans l'autre.
         await prisma.user.update({
           where: { discordId: user.discordId },
           data: {
-            discordAccessToken: refreshed.access_token,
-            discordRefreshToken: refreshed.refresh_token,
+            discordAccessToken: encryptToken(refreshed.access_token, encryptionKey),
+            discordRefreshToken: encryptToken(refreshed.refresh_token, encryptionKey),
             discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
           },
         });
@@ -225,10 +311,10 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
   logger.info(
     "discord-profile",
-    `Cron OAuth terminé : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s) sur ${users.length}.`
+    `Cron OAuth terminé : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s), ${unreadable} illisible(s) sur ${users.length}.`
   );
 
-  return { checked: users.length, updated, failed, skipped };
+  return { checked: users.length, updated, failed, skipped, unreadable, unreadableUsers };
 }
 
 /**
@@ -236,13 +322,29 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
  * deux approches sans faire deux fois le travail sur un même user :
  * OAuth (ci-dessus) pour tout user ayant déjà un `discordRefreshToken` en
  * base (le cas normal une fois le rollout de ce fix propagé — se peuple
- * à chaque vraie reconnexion), et le jeton du bot en repli UNIQUEMENT
- * pour les users qui n'en ont pas encore (comptes pas reconnectés depuis
- * ce déploiement) — couverture progressive sans rien casser pour ceux
- * déjà couverts par l'approche OAuth.
+ * à chaque vraie reconnexion), et le jeton du bot en repli pour les users
+ * qui n'en ont pas encore (comptes pas reconnectés depuis ce déploiement)
+ * — couverture progressive sans rien casser pour ceux déjà couverts par
+ * l'approche OAuth.
+ *
+ * Chiffrement (PR "Chiffrement des jetons OAuth Discord") — le repli bot
+ * couvre maintenant DEUX catégories, pas une seule : les users sans
+ * `discordRefreshToken` en base (comme avant) ET ceux dont la colonne
+ * n'est PAS nulle mais dont le jeton s'est révélé illisible cette
+ * exécution (`oauth.unreadableUsers` — clé de chiffrement absente/
+ * invalide, ou enveloppe corrompue). Un jeton présent mais illisible ne
+ * doit jamais être traité comme "couvert par l'OAuth" au seul motif que
+ * la colonne n'est pas nulle.
  */
 export async function refreshAllDiscordProfiles(): Promise<{
-  oauth: { checked: number; updated: number; failed: number; skipped: number };
+  oauth: {
+    checked: number;
+    updated: number;
+    failed: number;
+    skipped: number;
+    unreadable: number;
+    unreadableUsers: OAuthProfileUser[];
+  };
   bot: {
     checked: number;
     updated: number;
@@ -253,11 +355,24 @@ export async function refreshAllDiscordProfiles(): Promise<{
 }> {
   const oauth = await refreshAllDiscordProfilesViaOAuth();
 
-  const usersWithoutToken = await prisma.user.count({ where: { discordRefreshToken: null } });
-  if (usersWithoutToken === 0) {
+  const usersWithoutTokenInDb = await prisma.user.findMany({
+    where: { discordRefreshToken: null },
+    select: { discordId: true, discordName: true, discordAvatar: true },
+  });
+
+  // Dédoublonne par discordId — un user ne peut apparaître dans les deux
+  // listes (`unreadableUsers` exige un `discordRefreshToken` non nul par
+  // construction de la requête dans `refreshAllDiscordProfilesViaOAuth`),
+  // mais on fusionne proprement plutôt que de supposer l'exclusivité.
+  const botCandidates = new Map<string, OAuthProfileUser>();
+  for (const user of usersWithoutTokenInDb) botCandidates.set(user.discordId, user);
+  for (const user of oauth.unreadableUsers) botCandidates.set(user.discordId, user);
+  const usersToCheckViaBot = [...botCandidates.values()];
+
+  if (usersToCheckViaBot.length === 0) {
     logger.info(
       "discord-profile",
-      "Tous les users ont un jeton OAuth stocké — bot Discord non nécessaire cette fois."
+      "Tous les users ont un jeton OAuth stocké et lisible — bot Discord non nécessaire cette fois."
     );
     return {
       oauth,
@@ -274,15 +389,11 @@ export async function refreshAllDiscordProfiles(): Promise<{
         updated: 0,
         failed: 0,
         botTokenConfigured: false,
-        error: `DISCORD_BOT_TOKEN non configurée — ${usersWithoutToken} user(s) sans jeton OAuth stocké resteront non rafraîchis jusqu'à leur prochaine vraie reconnexion.`,
+        error: `DISCORD_BOT_TOKEN non configurée — ${usersToCheckViaBot.length} user(s) sans jeton OAuth stocké/lisible resteront non rafraîchis jusqu'à leur prochaine vraie reconnexion.`,
       },
     };
   }
 
-  const usersToCheckViaBot = await prisma.user.findMany({
-    where: { discordRefreshToken: null },
-    select: { discordId: true, discordName: true, discordAvatar: true },
-  });
   const bot = await refreshAllDiscordProfilesViaBotFor(usersToCheckViaBot, botToken);
   return { oauth, bot };
 }
