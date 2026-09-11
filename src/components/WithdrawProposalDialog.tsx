@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
-import { withdrawProposalAction } from "@/app/sessions/actions";
+import { withdrawProposalAction } from "@/app/sessions/actions/proposals-votes";
 
 /**
  * Retrait de sa propre proposition, réservé au user qui l'a proposée (le

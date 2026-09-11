@@ -2454,7 +2454,11 @@ src/app/sessions/page.tsx               # Liste des soirées + création
 src/app/sessions/[id]/page.tsx          # Détail : proposer, voter, clôturer
 src/app/sessions/[id]/resultats/page.tsx # Saisie/consultation du podium ou du bonus coop (Axe 2)
 src/app/sessions/[id]/vote-superlatifs/page.tsx # Vote de superlatifs entre potes (PR 5/9)
-src/app/sessions/actions.ts             # Server actions soirées
+src/app/sessions/actions/session-lifecycle.ts # Server actions : cycle de vie session (create/edit/close/cancel/delete/markDone/resendDiscord)
+src/app/sessions/actions/proposals-votes.ts   # Server actions : proposer un jeu, voter, retirer une proposition
+src/app/sessions/actions/results.ts           # Server actions : saisie résultats, défi hebdo complété
+src/app/sessions/actions/superlatives.ts      # Server actions : vote de superlatifs
+src/app/sessions/actions/predictions.ts       # Server actions : pronostics, paris XP
 src/components/SessionResultsForm.tsx   # Formulaire podium/coop de la page résultats
 src/app/api/auth/[...nextauth]/route.ts # Route handler Auth.js
 src/app/api/steam/link/route.ts         # Redirige vers Steam (OpenID)

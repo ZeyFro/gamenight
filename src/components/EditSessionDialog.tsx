@@ -4,7 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState, type SVGProps } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
-import { editSessionAction } from "@/app/sessions/actions";
+import { editSessionAction } from "@/app/sessions/actions/session-lifecycle";
 
 /**
  * Édition du créneau d'une session (date, heure, deadline de vote),

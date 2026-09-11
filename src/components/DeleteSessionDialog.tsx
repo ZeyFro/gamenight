@@ -4,7 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
-import { deleteSessionAction } from "@/app/sessions/actions";
+import { deleteSessionAction } from "@/app/sessions/actions/session-lifecycle";
 
 /**
  * Suppression définitive d'une session, réservée au créateur (le bouton

@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { SuperlativeVoteForm } from "@/components/SuperlativeVoteForm";
-import { forceCloseSuperlativeVotingAction } from "../../actions";
+import { forceCloseSuperlativeVotingAction } from "../../actions/superlatives";
 
 /**
  * Vote de superlatifs entre potes (PR 5/9, version light) — page dédiée
