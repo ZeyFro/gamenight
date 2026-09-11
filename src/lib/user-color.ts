@@ -1,10 +1,9 @@
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — palette curatée proposée dans le
  * color picker de `/profil/parametres`, et utilisée par le backfill
- * (`prisma/backfill-user-colors.mjs`, qui duplique cette liste — pas
- * d'accès aux alias `@/...` depuis un script Node/ESM autonome, même
- * convention que les autres backfills de ce projet) pour diversifier les
- * comptes qui n'ont jamais choisi de couleur. Le violet en premier =
+ * (`backfillUserColors`, `src/lib/backfill-user-colors.ts`, importée
+ * directement depuis "build ne fait plus que compiler") pour diversifier
+ * les comptes qui n'ont jamais choisi de couleur. Le violet en premier =
  * l'accent existant de l'app, cohérent comme choix par défaut avant tout
  * choix explicite.
  */

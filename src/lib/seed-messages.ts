@@ -1,27 +1,24 @@
-// Seed des messages Discord par défaut (rappels F7 + notifs de
-// création/modification de session). Node/ESM autonome (pas de
-// ts-node/tsx en dépendance).
-//
-// Bug corrigé : ce script n'était appelé QUE manuellement (`npm run
-// seed`) — jamais par le build Vercel. Résultat en prod : les 9 rappels
-// F7 existaient (migrés depuis l'ancien ReminderTemplate), mais les
-// nouveaux messages SESSION_CREATED/SESSION_MODIFIED n'ont jamais été
-// créés, personne n'ayant lancé le seed à la main après la migration —
-// d'où le fallback hardcodé systématique à la création d'une session.
-// Le script tourne maintenant à CHAQUE build (`npm run build` :
-// `prisma migrate deploy && node prisma/seed.mjs && next build`), donc
-// il doit rester silencieux et sûr à rejouer indéfiniment :
-// - Idempotent PAR CATÉGORIE : chaque groupe n'est inséré que si aucun
-//   MessageTemplate existant ne porte déjà une de ses catégories — pas
-//   un seul check global, sinon une base déjà migrée avec les 9 rappels
-//   ne recevrait jamais les nouveaux groupes.
-// - Base toute neuve (déploiement initial, personne ne s'est encore
-//   connecté) : pas d'utilisateur pour porter `createdById` → le script
-//   log un avertissement et NE FAIT RIEN pour ce groupe, sans faire
-//   échouer le build (`process.exitCode` reste à 0). Il se rattrapera
-//   tout seul au prochain déploiement, une fois qu'un compte existera.
+import { prisma } from "@/lib/prisma";
+import type { MessageCategory } from "@prisma/client";
 
-import { PrismaClient } from "@prisma/client";
+/**
+ * Seed des messages Discord par défaut (rappels F7 + notifs de
+ * création/modification de session). Convertie depuis `prisma/seed.mjs`
+ * (PR "build ne fait plus que compiler") — cette version importe
+ * directement `@/lib/prisma`, plus besoin de dupliquer quoi que ce soit
+ * (l'ancienne version Node/ESM autonome ne pouvait pas résoudre l'alias
+ * `@/...`).
+ *
+ * Idempotent PAR CATÉGORIE : chaque groupe n'est inséré que si aucun
+ * `MessageTemplate` existant ne porte déjà une de ses catégories — pas un
+ * seul check global, sinon une base déjà migrée avec les 9 rappels ne
+ * recevrait jamais les nouveaux groupes.
+ *
+ * Base toute neuve (déploiement initial, personne ne s'est encore
+ * connecté) : pas d'utilisateur pour porter `createdById` → log un
+ * avertissement et NE FAIT RIEN pour ce groupe, sans lever d'exception —
+ * se rattrape tout seul au prochain passage.
+ */
 
 const REMINDER_MESSAGES = [
   "Yo {pote}, dans 30 min c'est {jeu}. Prépare ta Vodka KURVA",
@@ -67,30 +64,18 @@ const BADGE_UNLOCKED_MESSAGES = [
   "⚡ {user} unlock {badge_icon} {badge_name}, {rarity} édition !",
 ];
 
-const prisma = new PrismaClient();
-
-async function seedCategoryGroup(categories, messages, variables) {
+async function seedCategoryGroup(
+  categories: MessageCategory[],
+  messages: string[],
+  variables: string[]
+): Promise<void> {
   const existing = await prisma.messageTemplate.count({
     where: { categories: { hasSome: categories } },
   });
-  if (existing > 0) {
-    console.log(
-      `${categories.join("+")} : ${existing} message(s) déjà en base — rien à faire.`
-    );
-    return;
-  }
+  if (existing > 0) return;
 
   const author = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!author) {
-    // Pas une erreur de build : arrive normalement au tout premier
-    // déploiement, avant que quiconque se soit connecté. Le prochain
-    // build (déclenché par le prochain déploiement, ou en relançant
-    // manuellement `npm run seed`) réessaiera automatiquement.
-    console.warn(
-      `${categories.join("+")} : aucun utilisateur en base pour l'instant — seed reporté au prochain build.`
-    );
-    return;
-  }
+  if (!author) return; // aucun user pour l'instant — reporté au prochain passage
 
   await prisma.messageTemplate.createMany({
     data: messages.map((text) => ({
@@ -98,16 +83,12 @@ async function seedCategoryGroup(categories, messages, variables) {
       categories,
       variables,
       createdById: author.id,
-      // modifiedById est devenu obligatoire (audit trail, PR "avant 5/9") ;
-      // pour un message tout juste seedé, "dernière modif" = "création".
       modifiedById: author.id,
     })),
   });
-
-  console.log(`${messages.length} message(s) créés pour ${categories.join("+")}.`);
 }
 
-async function main() {
+export async function seedDefaultMessages(): Promise<void> {
   await seedCategoryGroup(
     ["REMINDER_24H", "REMINDER_2H"],
     REMINDER_MESSAGES,
@@ -135,10 +116,3 @@ async function main() {
     ["user", "badge_name", "badge_icon", "rarity"]
   );
 }
-
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());

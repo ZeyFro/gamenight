@@ -462,7 +462,8 @@ export default async function Home({
 
         {/* Sprint 4 (Saisons mensuelles) — barre de progression de la
             saison en cours, masquée si aucune saison active (ne devrait
-            pas arriver post-bootstrap, cf. prisma/seed-season.mjs). */}
+            pas arriver post-bootstrap, cf. ensureActiveSeasonExists dans
+            src/lib/seasons.ts, appelée juste au-dessus). */}
         {seasonProgress && (
           <StaggerItem>
             <Link href="/saisons">
