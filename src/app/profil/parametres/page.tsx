@@ -39,6 +39,10 @@ const UPLOAD_FEEDBACK: Record<string, { text: string; className: string }> = {
     text: "Upload désactivé : BLOB_READ_WRITE_TOKEN n'est pas configuré côté serveur. Contacte l'admin, ou utilise l'onglet URL.",
     className: "bg-warning/10 text-warning",
   },
+  echec: {
+    text: "Une erreur est survenue pendant l'enregistrement, réessaie.",
+    className: "bg-destructive/10 text-destructive",
+  },
 };
 
 /**

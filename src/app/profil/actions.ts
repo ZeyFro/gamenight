@@ -6,7 +6,15 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 import { bannerUrlSchema, userColorSchema } from "@/lib/validations";
+import {
+  BANNER_MIME_TO_EXT,
+  buildBannerBlobPathname,
+  cleanupOrphanedBannerUpload,
+  detectBannerImageSignature,
+  safelyDeleteOldBannerBlob,
+} from "@/lib/banner-blob";
 
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
@@ -75,6 +83,16 @@ export async function toggleSoundEnabled() {
  * (http/https) : c'est une simple `background-image` CSS, pas
  * `next/image`, donc pas de contrainte de domaine à vérifier — juste
  * s'assurer que ce n'est pas n'importe quoi (`javascript:`, etc.).
+ *
+ * Durcissement (PR "Durcissement des bannières") — si l'utilisateur avait
+ * précédemment uploadé une bannière vers Vercel Blob et bascule maintenant
+ * sur une URL externe (ou vide sa bannière), l'ancien blob est nettoyé en
+ * best-effort APRÈS le commit Prisma, jamais avant : si la suppression
+ * échouait avant l'update, une bannière encore affichée en base pointerait
+ * vers un fichier déjà détruit. `safelyDeleteOldBannerBlob` ne supprime de
+ * toute façon que ce qui est prouvé nôtre pour CET utilisateur (voir
+ * `src/lib/banner-blob.ts`) — jamais une URL externe, jamais le blob d'un
+ * autre membre.
  */
 export async function setBannerUrlAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -86,24 +104,15 @@ export async function setBannerUrlAction(formData: FormData) {
   });
   if (!input.success) return;
   const { bannerUrl: raw } = input.data;
+  const previousUrl = user.bannerUrl;
 
-  if (!raw) {
-    await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: null } });
-    revalidatePath("/profil");
-    return;
-  }
-
-  await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: raw } });
+  await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: raw || null } });
   revalidatePath("/profil");
+
+  await safelyDeleteOldBannerBlob(previousUrl, raw, user.id);
 }
 
 const MAX_BANNER_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ALLOWED_BANNER_MIME_TO_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
 
 /**
  * Upload de bannière (fix UX PR 9/9, suite au test prod de la PR 8/9 où
@@ -115,6 +124,25 @@ const ALLOWED_BANNER_MIME_TO_EXT: Record<string, string> = {
  * configuré, ou déploiement où l'admin n'a pas encore créé le store) :
  * on renvoie vers `?upload=desactive` plutôt que de laisser `put()`
  * lever une exception non gérée.
+ *
+ * Durcissement (PR "Durcissement des bannières") — `file.type` n'est
+ * qu'une déclaration du navigateur, trivialement falsifiable : le format
+ * réel est désormais déterminé par lecture des premiers octets
+ * (`detectBannerImageSignature`), jamais par ce champ. L'extension ET le
+ * `contentType` passés à `put()` viennent du format détecté, pas du
+ * fichier déclaré — le Content-Type servi par le CDN Vercel Blob devient
+ * fiable. Le buffer analysé n'est qu'un extrait en lecture seule ; le
+ * fichier original part intact vers `put()` (jamais retouché, un GIF reste
+ * animé).
+ *
+ * Ordre des opérations, strict : upload du nouveau blob → mise à jour
+ * Prisma → SI ÉCHEC, nettoyage du blob tout juste créé (`upload=echec`,
+ * jamais d'orphelin) → SI SUCCÈS, nettoyage best-effort de l'ancien blob
+ * (seulement s'il est prouvé nôtre pour CET utilisateur, cf.
+ * `src/lib/banner-blob.ts`) → redirection. Ne jamais supprimer l'ancien
+ * blob avant que la nouvelle valeur soit committée : un échec Prisma après
+ * une suppression prématurée laisserait la base référencer une bannière
+ * détruite.
  */
 export async function uploadBannerAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -132,17 +160,30 @@ export async function uploadBannerAction(formData: FormData) {
   if (file.size > MAX_BANNER_UPLOAD_BYTES) {
     redirect("/profil/parametres?upload=trop-lourd");
   }
-  const extension = ALLOWED_BANNER_MIME_TO_EXT[file.type];
-  if (!extension) {
+
+  const headerBytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const detectedMime = detectBannerImageSignature(headerBytes);
+  if (!detectedMime) {
     redirect("/profil/parametres?upload=format");
   }
+  const extension = BANNER_MIME_TO_EXT[detectedMime];
 
-  const blob = await put(`banners/${user.id}-${Date.now()}.${extension}`, file, {
+  const previousUrl = user.bannerUrl;
+  const blob = await put(buildBannerBlobPathname(user.id, extension), file, {
     access: "public",
     addRandomSuffix: true,
+    contentType: detectedMime,
   });
 
-  await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: blob.url } });
+  try {
+    await prisma.user.update({ where: { id: user.id }, data: { bannerUrl: blob.url } });
+  } catch (error) {
+    await cleanupOrphanedBannerUpload(blob.url);
+    logger.error("banner-blob", error, { userId: user.id, effect: "prisma-update" });
+    redirect("/profil/parametres?upload=echec");
+  }
+
   revalidatePath("/profil");
+  await safelyDeleteOldBannerBlob(previousUrl, blob.url, user.id);
   redirect("/profil/parametres?upload=ok");
 }
