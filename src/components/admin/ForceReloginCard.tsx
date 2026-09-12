@@ -2,6 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,7 @@ import { forceReloginAction } from "@/app/admin/reglages/actions";
  */
 export function ForceReloginCard({ lastTriggeredLabel }: { lastTriggeredLabel: string | null }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <Card className="flex flex-col gap-4">
@@ -71,6 +73,7 @@ export function ForceReloginCard({ lastTriggeredLabel }: { lastTriggeredLabel: s
                   action={forceReloginAction}
                   successMessage="Reconnexion forcée envoyée à tout le monde."
                   errorMessages={{ [RATE_LIMIT_ERROR_KEY]: RATE_LIMIT_MESSAGE }}
+                  onSuccess={() => router.push("/")}
                   className="flex-1"
                 >
                   <Button

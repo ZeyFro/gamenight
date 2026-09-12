@@ -7,6 +7,28 @@ export interface ForceReloginResult {
   discord: PostToDiscordResult;
 }
 
+/**
+ * Décision pure (testable sans Prisma/Auth.js) : une session doit-elle être
+ * traitée comme déconnectée par la feature "forcer la reconnexion globale" ?
+ *
+ * `forceReloginAt` null → jamais déclenché, session toujours valide.
+ * `sessionCreatedAt` absent (tout JWT émis avant l'ajout de ce champ, ou
+ * plus généralement une session dont on ne peut pas prouver la fraîcheur)
+ * → déconnexion par prudence, fail-closed.
+ * Égalité stricte (`forceReloginAt === sessionCreatedAt`) → déconnexion
+ * aussi : `>=` plutôt que `>`, cohérent avec le commentaire de schéma
+ * "pas de reboucle" sur `User.forceReloginAt" — seule une reconnexion
+ * OAuth postérieure au déclenchement doit être considérée valide.
+ */
+export function shouldForceRelogin(
+  forceReloginAt: Date | null,
+  sessionCreatedAt: number | null | undefined
+): boolean {
+  if (!forceReloginAt) return false;
+  if (!sessionCreatedAt) return true;
+  return forceReloginAt.getTime() >= sessionCreatedAt;
+}
+
 function absoluteAppUrl(): string {
   return (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
