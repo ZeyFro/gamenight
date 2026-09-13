@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { touchStreak } from "@/lib/xp-actions";
 import { checkTemporalBadges } from "@/lib/badges";
+import { shouldForceRelogin } from "@/lib/force-relogin";
 
 export async function getCurrentUser(): Promise<User | null> {
   const session = await auth();
@@ -21,11 +22,8 @@ export async function getCurrentUser(): Promise<User | null> {
   // protégée fait déjà `if (!user) redirect("/")`, donc renvoyer `null`
   // ici suffit à forcer un vrai re-login — aucun cookie à effacer
   // explicitement, pas de table `Session` à purger (JWT sans base).
-  if (user.forceReloginAt) {
-    const sessionCreatedAt = session.user.sessionCreatedAt;
-    if (!sessionCreatedAt || user.forceReloginAt.getTime() > sessionCreatedAt) {
-      return null;
-    }
+  if (shouldForceRelogin(user.forceReloginAt, session.user.sessionCreatedAt)) {
+    return null;
   }
 
   // Chantier XP : tient le streak de connexion à jour à chaque page
