@@ -102,42 +102,55 @@ async function advanceWinner(
   return { tournamentFinalized: false };
 }
 
+interface LockedTournamentRow {
+  id: string;
+  status: string;
+  maxPlayers: number;
+}
+
 /**
- * Génère le bracket complet au lancement d'un tournoi (inscriptions
- * pleines, ou le créateur clique "Lancer maintenant") : seed aléatoire
- * (pas de classement XP, cf. spec), création de TOUS les matchs de TOUS
- * les rounds d'un coup (round 1 avec les joueurs tirés, les suivants
- * avec des slots vides à remplir plus tard), résolution immédiate des
- * "byes" (moins de participants que de slots — le joueur seul avance
- * sans jouer).
+ * Cœur de `generateBracket` — pris en paramètre `tx` pour pouvoir être
+ * appelé soit par le wrapper public `generateBracket` (sa propre
+ * transaction, cas du lancement par le créateur), soit DIRECTEMENT par
+ * `registerForTournamentAction` quand l'inscription en cours remplit la
+ * dernière place (réutilise la transaction déjà ouverte par l'appelant —
+ * cette fonction ne fait jamais `prisma.$transaction` elle-même, jamais
+ * de seconde transaction imbriquée).
  *
- * Fix bug remonté (atomicité tournois, PR "Atomicité saisons +
- * tournois") — tout ce qui suit le tirage tourne maintenant dans UNE
- * transaction, ouverte par un claim atomique (`updateMany` conditionné
- * sur `status: "REGISTRATION"`, même pattern que `claimSessionClose`,
- * `src/lib/sessions.ts`) : deux appels concurrents (ex. une inscription
- * qui remplit les dernières places pile au moment où le créateur clique
- * "Lancer maintenant") ne peuvent plus tous les deux construire un
- * bracket — le perdant de la course trouve `count !== 1` et s'arrête
- * immédiatement, sans toucher aux seeds ni tenter de créer le moindre
- * match (avant ce fix : la contrainte unique `TournamentMatch(tournamentId,
- * round, position)` finissait par faire planter le 2e appel avec une
- * erreur non catchée — pas de double bracket, mais un crash visible côté
- * appelant). Le reste de la construction (seeds, création des matchs de
- * tous les rounds, résolution des byes) est regroupé dans la même
- * transaction : un crash en cours de route ne peut plus laisser un
- * bracket à moitié construit. Aucun effet externe ici (jamais de
- * Discord/XP dans cette fonction) — un bye au round 1 ne peut jamais
- * atteindre la finale tant que `maxPlayers` est limité à {4, 6, 8} côté
- * formulaire (`totalRounds` vaut toujours 2 ou 3), donc tout regrouper
- * ne coûte rien.
+ * Fix bug remonté (concurrence tournois, round 2 — inscription/
+ * désinscription concurrentes à un lancement anticipé) — verrouille
+ * D'ABORD la ligne `Tournament` (`SELECT ... FOR UPDATE`), AVANT de lire
+ * le moindre `TournamentParticipant`. L'ancienne version lisait les
+ * participants hors transaction, bien avant que le claim sur `status` ne
+ * prenne le moindre verrou : une désinscription atterrissant dans cette
+ * fenêtre supprimait une ligne que la transaction tentait ensuite de
+ * mettre à jour (`update` sur un id disparu → exception → rollback
+ * complet, y compris le `status` déjà basculé — visible comme une erreur
+ * serveur côté créateur). Le verrou est maintenant pris avant toute
+ * lecture, et `registerForTournamentAction`/`unregisterFromTournamentAction`
+ * verrouillent la MÊME ligne en premier (voir ces deux fonctions,
+ * src/app/tournois/actions.ts) — Postgres les sérialise : aucune des
+ * trois transactions ne peut plus s'intercaler dans la fenêtre d'une
+ * autre. Une seule ligne `Tournament` est jamais verrouillée par
+ * transaction (jamais deux à la fois) : pas d'ordre de verrouillage
+ * concurrent possible entre elles, donc pas de deadlock.
+ *
+ * Le claim précédent (`updateMany` conditionné sur `status`) est
+ * remplacé par un `update` simple : sous ce verrou, le statut vient
+ * d'être relu et personne d'autre ne peut l'avoir changé entre-temps — le
+ * conditionner à nouveau n'apporterait rien.
  */
-export async function generateBracket(tournamentId: string): Promise<void> {
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
-    include: { participants: true },
-  });
+export async function buildBracketInTransaction(
+  tx: Prisma.TransactionClient,
+  tournamentId: string
+): Promise<void> {
+  const locked = await tx.$queryRaw<LockedTournamentRow[]>`
+    SELECT id, status, "maxPlayers" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+  `;
+  const tournament = locked[0];
   if (!tournament || tournament.status !== "REGISTRATION") return;
+
+  const participants = await tx.tournamentParticipant.findMany({ where: { tournamentId } });
 
   const bracketSize = bracketSizeFor(tournament.maxPlayers);
   const totalRounds = totalRoundsFor(bracketSize);
@@ -145,9 +158,9 @@ export async function generateBracket(tournamentId: string): Promise<void> {
   // Lancement anticipé (avant que toutes les places soient prises) avec
   // trop peu de participants pour remplir au moins un joueur par match —
   // no-op plutôt qu'un bracket avec des matchs entièrement vides.
-  if (tournament.participants.length < matchCount) return;
+  if (participants.length < matchCount) return;
 
-  const shuffled = shuffle(tournament.participants);
+  const shuffled = shuffle(participants);
 
   // Remplit d'abord TOUS les `player1` (garanti par le garde-fou
   // ci-dessus), puis les `player2` dans la limite des participants
@@ -164,54 +177,64 @@ export async function generateBracket(tournamentId: string): Promise<void> {
     round1Matches.push({ position: i, player1Id: player1, player2Id: player2 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    const claim = await tx.tournament.updateMany({
-      where: { id: tournamentId, status: "REGISTRATION" },
-      data: { status: "IN_PROGRESS" },
-    });
-    if (claim.count !== 1) return; // déjà lancé par un appel concurrent
+  await tx.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
 
-    await Promise.all(
-      shuffled.map((p, i) => tx.tournamentParticipant.update({ where: { id: p.id }, data: { seed: i + 1 } }))
-    );
+  await Promise.all(
+    shuffled.map((p, i) => tx.tournamentParticipant.update({ where: { id: p.id }, data: { seed: i + 1 } }))
+  );
 
+  await tx.tournamentMatch.createMany({
+    data: round1Matches.map((m) => ({
+      tournamentId,
+      round: 1,
+      position: m.position,
+      player1Id: m.player1Id,
+      player2Id: m.player2Id,
+    })),
+  });
+
+  for (let round = 2; round <= totalRounds; round++) {
+    const matchesInRound = bracketSize / 2 ** round;
     await tx.tournamentMatch.createMany({
-      data: round1Matches.map((m) => ({
+      data: Array.from({ length: matchesInRound }, (_, position) => ({
         tournamentId,
-        round: 1,
-        position: m.position,
-        player1Id: m.player1Id,
-        player2Id: m.player2Id,
+        round,
+        position,
       })),
     });
+  }
 
-    for (let round = 2; round <= totalRounds; round++) {
-      const matchesInRound = bracketSize / 2 ** round;
-      await tx.tournamentMatch.createMany({
-        data: Array.from({ length: matchesInRound }, (_, position) => ({
-          tournamentId,
-          round,
-          position,
-        })),
-      });
-    }
+  // Byes : un seul joueur sur les deux slots du match → avance sans jouer,
+  // résolu immédiatement (jamais affiché comme un vrai match à jouer côté UI).
+  for (const m of round1Matches) {
+    const winner =
+      m.player1Id && !m.player2Id ? m.player1Id : !m.player1Id && m.player2Id ? m.player2Id : null;
+    if (!winner) continue;
+    await tx.tournamentMatch.update({
+      where: { tournamentId_round_position: { tournamentId, round: 1, position: m.position } },
+      data: { winnerId: winner, completedAt: wallClockNow() },
+    });
+    // `tournamentFinalized` volontairement ignoré : structurellement
+    // inatteignable ici (totalRounds vaut toujours 2 ou 3, donc round 1
+    // < totalRounds systématiquement — voir docstring ci-dessus).
+    await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds);
+  }
+}
 
-    // Byes : un seul joueur sur les deux slots du match → avance sans jouer,
-    // résolu immédiatement (jamais affiché comme un vrai match à jouer côté UI).
-    for (const m of round1Matches) {
-      const winner =
-        m.player1Id && !m.player2Id ? m.player1Id : !m.player1Id && m.player2Id ? m.player2Id : null;
-      if (!winner) continue;
-      await tx.tournamentMatch.update({
-        where: { tournamentId_round_position: { tournamentId, round: 1, position: m.position } },
-        data: { winnerId: winner, completedAt: wallClockNow() },
-      });
-      // `tournamentFinalized` volontairement ignoré : structurellement
-      // inatteignable ici (totalRounds vaut toujours 2 ou 3, donc round 1
-      // < totalRounds systématiquement — voir docstring ci-dessus).
-      await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds);
-    }
-  });
+/**
+ * Génère le bracket complet au lancement d'un tournoi (inscriptions
+ * pleines, ou le créateur clique "Lancer maintenant") : seed aléatoire
+ * (pas de classement XP, cf. spec), création de TOUS les matchs de TOUS
+ * les rounds d'un coup (round 1 avec les joueurs tirés, les suivants
+ * avec des slots vides à remplir plus tard), résolution immédiate des
+ * "byes" (moins de participants que de slots — le joueur seul avance
+ * sans jouer). Wrapper public — ouvre sa propre transaction autour de
+ * `buildBracketInTransaction` ; voir cette fonction pour le détail du
+ * verrouillage et l'historique des deux bugs de concurrence corrigés.
+ * Aucun effet externe ici (jamais de Discord/XP dans cette fonction).
+ */
+export async function generateBracket(tournamentId: string): Promise<void> {
+  await prisma.$transaction((tx) => buildBracketInTransaction(tx, tournamentId));
 }
 
 /** Home ("🏆 Tournoi en cours", cf. spec) — le tournoi actif le plus récent, tous statuts hors `DONE`. */

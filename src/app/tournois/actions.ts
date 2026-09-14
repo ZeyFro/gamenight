@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { generateBracket, declareWinner } from "@/lib/tournaments";
+import { generateBracket, declareWinner, buildBracketInTransaction } from "@/lib/tournaments";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
@@ -62,7 +62,33 @@ export async function createTournamentAction(formData: FormData) {
   redirect(`/tournois/${tournament.id}`);
 }
 
-/** Inscription à un tournoi encore en `REGISTRATION`, tant que les places ne sont pas toutes prises. */
+/**
+ * Inscription à un tournoi encore en `REGISTRATION`, tant que les places
+ * ne sont pas toutes prises.
+ *
+ * Fix bug remonté (concurrence tournois, round 2) — l'ancien code lisait
+ * `status`/le nombre de places/la présence de l'utilisateur AVANT de
+ * créer la ligne `TournamentParticipant`, sans le moindre verrou : deux
+ * inscriptions concurrentes sur la toute dernière place passaient
+ * toutes les deux ce contrôle (lu avant que l'autre n'ait committé),
+ * dépassant `maxPlayers` — le participant en trop restait inscrit en
+ * base mais silencieusement absent du bracket construit par
+ * `generateBracket` (qui ne prend que les `bracketSize` premiers tirés).
+ * Toute la vérification + l'écriture (et, le cas échéant, la
+ * construction du bracket si cette inscription remplit la dernière
+ * place) tournent maintenant dans UNE transaction qui verrouille D'ABORD
+ * la ligne `Tournament` (`SELECT ... FOR UPDATE`, même verrou que
+ * `unregisterFromTournamentAction`/`buildBracketInTransaction`, voir ces
+ * deux fonctions) — Postgres sérialise toute désinscription ou tentative
+ * de lancement concurrente sur ce même tournoi, aucune ne peut plus
+ * s'intercaler entre la lecture et l'écriture.
+ *
+ * Quand cette inscription remplit la dernière place, le bracket est
+ * construit via `buildBracketInTransaction(tx, ...)` — PAS via le
+ * wrapper public `generateBracket`, qui ouvrirait une seconde
+ * transaction : celle-ci réutilise le verrou déjà tenu par CETTE
+ * transaction (réentrant, jamais un deadlock avec soi-même).
+ */
 export async function registerForTournamentAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -72,31 +98,61 @@ export async function registerForTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
-    include: { participants: { select: { userId: true } } },
+  const registered = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string; status: string; maxPlayers: number }[]>`
+      SELECT id, status, "maxPlayers" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    `;
+    const tournament = locked[0];
+    if (!tournament || tournament.status !== "REGISTRATION") return false;
+
+    const participants = await tx.tournamentParticipant.findMany({
+      where: { tournamentId },
+      select: { userId: true },
+    });
+    if (participants.length >= tournament.maxPlayers) return false;
+    if (participants.some((p) => p.userId === user.id)) return false;
+
+    try {
+      await tx.tournamentParticipant.create({ data: { tournamentId, userId: user.id } });
+    } catch {
+      // Contrainte unique (déjà inscrit) — ne devrait plus se produire
+      // sous ce verrou (le re-check ci-dessus le prévient déjà pour
+      // toute transaction concurrente sur ce tournoi), gardé en filet de
+      // sécurité minimal, comportement identique à avant.
+      return false;
+    }
+
+    // Places pleines → lancement automatique du bracket (spec), dans
+    // CETTE transaction (voir docstring ci-dessus).
+    if (participants.length + 1 >= tournament.maxPlayers) {
+      await buildBracketInTransaction(tx, tournamentId);
+    }
+
+    return true;
   });
-  if (!tournament || tournament.status !== "REGISTRATION") return;
-  if (tournament.participants.length >= tournament.maxPlayers) return;
-  if (tournament.participants.some((p) => p.userId === user.id)) return;
 
-  try {
-    await prisma.tournamentParticipant.create({ data: { tournamentId, userId: user.id } });
-  } catch {
-    // Contrainte unique (déjà inscrit) : on ignore.
-    return;
-  }
-
-  // Places pleines → lancement automatique du bracket (spec).
-  if (tournament.participants.length + 1 >= tournament.maxPlayers) {
-    await generateBracket(tournamentId);
-  }
+  if (!registered) return;
 
   revalidatePath(`/tournois/${tournamentId}`);
   revalidatePath("/tournois");
 }
 
-/** Désinscription, réservée à soi-même, tant que le tournoi n'a pas encore démarré. */
+/**
+ * Désinscription, réservée à soi-même, tant que le tournoi n'a pas
+ * encore démarré.
+ *
+ * Fix bug remonté (concurrence tournois, round 2) — l'ancien code lisait
+ * `status` puis supprimait la ligne sans le moindre verrou : une
+ * désinscription pouvait s'intercaler entre la lecture des participants
+ * et l'écriture d'un lancement de bracket en cours
+ * (`generateBracket`/`registerForTournamentAction`), qui tentait ensuite
+ * de mettre à jour une ligne `TournamentParticipant` déjà supprimée —
+ * exception non catchée, transaction entière annulée (y compris le
+ * `status` déjà basculé). Verrouille maintenant D'ABORD la même ligne
+ * `Tournament` (`SELECT ... FOR UPDATE`) que `registerForTournamentAction`/
+ * `buildBracketInTransaction` avant de relire `status` et de supprimer —
+ * Postgres sérialise, aucune fenêtre ne subsiste.
+ */
 export async function unregisterFromTournamentAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -106,13 +162,19 @@ export async function unregisterFromTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
-    select: { status: true },
-  });
-  if (!tournament || tournament.status !== "REGISTRATION") return;
+  const unregistered = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
+      SELECT id, status FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    `;
+    const tournament = locked[0];
+    if (!tournament || tournament.status !== "REGISTRATION") return false;
 
-  await prisma.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
+    await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
+    return true;
+  });
+
+  if (!unregistered) return;
+
   revalidatePath(`/tournois/${tournamentId}`);
   revalidatePath("/tournois");
 }
