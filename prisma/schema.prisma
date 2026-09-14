@@ -1475,3 +1475,27 @@ model GameWishlistVote {
 
   @@unique([wishlistId, userId])
 }
+
+// Fix bug remonté (F7, rappels Discord en double) — verrou global pour
+// qu'au plus une exécution du cron `reminders` envoie des rappels à la
+// fois, même si deux exécutions se chevauchent (cron externe qui
+// redéclenche avant la fin d'un run précédent, retry côté cron-job.org...).
+// Une seule ligne singleton (`name = "reminders"`), créée par la migration
+// qui introduit ce modèle (`prisma migrate deploy`, exécutée avant tout
+// déploiement — voir cette migration) et jamais par le seed
+// quotidien/décorrélé (`runSeedReconciliation`) : la route ne doit jamais
+// pouvoir démarrer avant que cette ligne existe. `token` identifie
+// l'exécution qui détient le verrou — une exécution ne peut libérer QUE
+// son propre verrou (comparaison sur `token`), jamais celui d'une
+// exécution plus récente qui aurait déjà repris la main après expiration
+// du bail (`lockedAt` trop ancien, voir `src/lib/cron-lock.ts`). Limites
+// assumées, documentées dans le code et le README (pas de garantie
+// "exactement une fois", impossible côté webhook Discord) : un doublon
+// reste possible si le traitement dépasse le bail, et un rappel peut
+// rester manqué si le prochain run réussi arrive après la date de la
+// session concernée.
+model CronLock {
+  name     String    @id
+  lockedAt DateTime?
+  token    String?
+}

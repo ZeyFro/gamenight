@@ -4,12 +4,24 @@ import { sendSessionReminder } from "@/lib/discord-reminder";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { wallClockNow } from "@/lib/wallclock";
+import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import {
   applyReminderResults,
   computeTimingsDue,
   parseRemindersSent,
   type ReminderSendOutcome,
 } from "@/lib/reminders";
+
+/**
+ * Borne dure de durée d'exécution du plan Vercel Hobby (60s) — même
+ * convention que les routes de backfill IGDB/Steam/actus
+ * (`src/app/api/backfill/{igdb-coop,steam-store,game-news}/route.ts`).
+ * Déclarée explicitement ici en plus (auparavant implicite, jamais
+ * déclarée sur cette route) car c'est cette même limite de 60s qui sert
+ * de base au bail du verrou `CronLock` (voir `src/lib/cron-lock.ts`) : une
+ * exécution ne peut de toute façon jamais dépasser cette valeur.
+ */
+export const maxDuration = 60;
 
 /**
  * Route destinée à être appelée toutes les 15 min par un cron externe
@@ -57,6 +69,27 @@ import {
  *    `wallclock.ts`) : décalage de 1-2h (CET/CEST) sur le calcul du temps
  *    restant ET sur le filtre Prisma. Une seule référence `wallClockNow()`
  *    par exécution, réutilisée pour les deux.
+ *
+ * Fix bug remonté (F7, rappels Discord en double si deux exécutions du
+ * cron externe se chevauchent) — verrou global (`CronLock`, voir
+ * `src/lib/cron-lock.ts`) acquis avant la boucle ci-dessous et libéré
+ * dans le `finally` : la boucle d'envoi elle-même (sélection des
+ * sessions, `computeTimingsDue`, `sendSessionReminder`,
+ * `applyReminderResults`/`remindersSent`) n'est PAS modifiée par ce fix,
+ * seul l'admission d'une exécution au tout début change. Si le verrou est
+ * déjà détenu par une autre exécution en cours, ce run s'arrête
+ * immédiatement (`skipped: "already_running"`, 200 — cas normal, pas une
+ * erreur). Si la ligne `CronLock` manque ou que l'acquisition échoue pour
+ * toute autre raison, la route échoue de façon EXPLICITE
+ * (`error: "cron_lock_unavailable"`) et n'envoie AUCUN rappel — jamais de
+ * dégradation silencieuse vers un envoi non protégé, même si ce cas ne
+ * devrait jamais se produire en pratique (la ligne est créée par la
+ * migration `20260914120000_add_cron_lock`, appliquée avant tout
+ * déploiement). Limites résiduelles assumées et documentées dans
+ * `cron-lock.ts` et le README : un doublon reste possible si une
+ * exécution dépasse elle-même le bail du verrou, et un rappel peut rester
+ * manqué si la prochaine exécution qui réussit arrive après la date de la
+ * session (comportement de filtrage inchangé, déjà présent avant ce fix).
  */
 export async function GET(request: Request) {
   logger.info("cron:reminders", "Handler appelé.");
@@ -69,6 +102,29 @@ export async function GET(request: Request) {
     }
     logger.warn("cron:reminders", "Authorization manquante/invalide — 401.");
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const lock = await acquireCronLock();
+  if (!lock.acquired) {
+    if (lock.reason === "locked") {
+      logger.info(
+        "cron:reminders",
+        "Verrou déjà détenu par une autre exécution en cours — run ignoré (évite un doublon)."
+      );
+      return NextResponse.json({ checked: 0, sent: [], failed: [], skipped: "already_running" });
+    }
+    // lock.reason === "missing_row" — anomalie d'infra qui ne devrait
+    // jamais se produire (ligne créée par la migration au déploiement) :
+    // fail closed, aucun envoi non protégé, erreur explicite distincte du
+    // cas normal ci-dessus.
+    logger.error(
+      "cron:reminders",
+      "Verrou CronLock indisponible — aucun rappel envoyé (fail closed)."
+    );
+    return NextResponse.json(
+      { checked: 0, sent: [], failed: [], error: "cron_lock_unavailable" },
+      { status: 200 }
+    );
   }
 
   try {
@@ -153,5 +209,11 @@ export async function GET(request: Request) {
       },
       { status: 200 }
     );
+  } finally {
+    // Libération dans TOUS les cas (succès comme erreur) — sinon un run
+    // qui plante avant le return laisserait le verrou détenu jusqu'à
+    // l'expiration du bail, retardant inutilement la prochaine exécution
+    // réussie.
+    await releaseCronLock(lock.token);
   }
 }
