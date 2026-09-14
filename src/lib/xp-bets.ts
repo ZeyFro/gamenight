@@ -22,6 +22,9 @@ export function isValidBetAmount(amount: number, xpTotal: number): boolean {
   return amount <= maxBetAmount(xpTotal);
 }
 
+/** Débit refusé faute de solde suffisant AU MOMENT du débit — voir `placeBet`. */
+class InsufficientBalanceError extends Error {}
+
 /**
  * Pose un pari — 1 par personne et par soirée (`@@unique([sessionId,
  * voterId])`). La mise est déduite du solde IMMÉDIATEMENT (mise "en jeu",
@@ -29,6 +32,21 @@ export function isValidBetAmount(amount: number, xpTotal: number): boolean {
  * avant tout écriture). `allIn` fige si la mise valait le max autorisé au
  * moment du pari — nécessaire pour le badge "All In", `xpTotal` pouvant
  * changer après coup (cf. commentaire sur le modèle `XpBet`).
+ *
+ * Fix bug remonté (solde négatif, PR "Fiabilise la clôture des saisons")
+ * — la vérification ci-dessus (`isValidBetAmount(amount, voter.xpTotal)`)
+ * lit `xpTotal` HORS transaction, donc potentiellement périmée si le solde
+ * change avant l'écriture réelle (autre pari, ou clôture de saison —
+ * `finalizeSeasonIfDue`, `src/lib/seasons.ts`, qui verrouille les lignes
+ * `User` via `SELECT ... FOR UPDATE`). Un pari dont le débit attend ce
+ * verrou puis s'exécute APRÈS un reset à 0 appliquerait `decrement`
+ * inconditionnellement — solde négatif garanti, sans aucune règle qui
+ * l'empêche. La transaction ci-dessous revérifie donc `isValidBetAmount`
+ * sur la valeur RÉELLE, verrouillée, au moment du débit — mêmes règles que
+ * la vérification initiale (pas seulement "solde non négatif", la vraie
+ * règle métier mise <= 50% du solde). Un refus à ce stade fait échouer
+ * TOUTE la transaction, y compris le `xpBet.create` déjà exécuté : jamais
+ * de pari orphelin sans débit correspondant.
  */
 export async function placeBet(
   sessionId: string,
@@ -45,18 +63,29 @@ export async function placeBet(
   const allIn = amount === maxBetAmount(voter.xpTotal);
 
   try {
-    await prisma.$transaction([
-      prisma.xpBet.create({
+    await prisma.$transaction(async (tx) => {
+      await tx.xpBet.create({
         data: { sessionId, voterId, targetUserId, amount, allIn },
-      }),
-      prisma.user.update({
+      });
+
+      const locked = await tx.$queryRaw<{ xpTotal: number }[]>`
+        SELECT "xpTotal" FROM "User" WHERE id = ${voterId} FOR UPDATE
+      `;
+      const currentXpTotal = locked[0]?.xpTotal;
+      if (currentXpTotal === undefined || !isValidBetAmount(amount, currentXpTotal)) {
+        throw new InsufficientBalanceError();
+      }
+
+      await tx.user.update({
         where: { id: voterId },
         data: { xpTotal: { decrement: amount } },
-      }),
-    ]);
+      });
+    });
     return true;
   } catch {
-    // Contrainte unique (déjà parié pour cette soirée) : on ignore.
+    // Contrainte unique (déjà parié pour cette soirée) OU solde
+    // insuffisant au moment du débit (InsufficientBalanceError ci-dessus)
+    // : même refus silencieux qu'avant ce fix.
     return false;
   }
 }
