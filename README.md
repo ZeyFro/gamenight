@@ -1855,8 +1855,10 @@ les sessions `SCHEDULED` à jeu décidé et à venir, et envoie un rappel pour
 chaque timing de `Session.reminderTimings` dès que le seuil est franchi
 *et* que ce timing n'a pas déjà été envoyé (`Session.remindersSent`,
 tableau JSON de minutes en string, ex. `["1440", "120"]` — évite les
-doublons si le cron retombe plusieurs fois sur le même timing, y compris
-si le service externe déclenche un appel en double). Une session créée
+doublons entre deux appels **successifs** sur le même timing ; la
+protection contre deux exécutions **simultanées** est un mécanisme
+séparé, voir « Protection contre les envois en double » ci-dessous). Une
+session créée
 très en retard peut recevoir plusieurs rappels **dans le même appel** —
 chaque timing est vérifié indépendamment. **Depuis PR 31 (2/4, Bloc A),
 `reminderTimings` est configurable par le créateur à la création** (24h +
@@ -1870,6 +1872,77 @@ Vercel Cron, un service tiers ne le fait pas tout seul). Sans
 `CRON_SECRET` configurée, la route reste appelable par n'importe qui
 connaissant l'URL — acceptable pour un usage perso/petit groupe, mais
 `CRON_SECRET` est recommandée dès que l'URL est publique.
+
+### Protection contre les envois en double (verrou global)
+
+`Session.remindersSent` empêche un timing déjà envoyé avec succès d'être
+renvoyé lors d'un appel **suivant**, mais ne protège pas contre **deux
+exécutions en cours en même temps** (ex. un cron externe qui redéclenche
+avant la fin d'un run précédent) : les deux liraient le même
+`remindersSent` "pas encore envoyé" avant que l'une des deux ait eu le
+temps d'écrire son résultat, et enverraient chacune le même rappel
+Discord.
+
+Fix : un verrou global (`CronLock`, `src/lib/cron-lock.ts`), une seule
+ligne singleton (`name = "reminders"`) créée par la migration
+`20260914120000_add_cron_lock` — **pas** par le seed quotidien/décorrélé
+(`runSeedReconciliation`, appelé uniquement par
+`POST /api/backfill/seed-reconcile`), puisque `prisma migrate deploy`
+s'exécute de façon synchrone dans `npm run build`, avant que le nouveau
+déploiement ne serve le moindre trafic (cutover atomique Vercel) — la
+ligne existe donc forcément avant le premier appel possible à la route.
+
+- Acquisition **atomique** (un seul `updateMany` conditionné, même
+  pattern que `claimSessionClose`/`finalizeSeasonIfDue`) : la route
+  n'entre dans la boucle d'envoi que si elle a réussi à poser le verrou.
+- Chaque exécution écrit un `token` aléatoire à l'acquisition et ne peut
+  libérer **que son propre verrou** (comparaison sur ce `token`) — une
+  exécution qui a dépassé le bail ne peut jamais écraser le verrou d'une
+  exécution plus récente qui aurait déjà repris la main.
+- **Bail (TTL) = 90s** : la limite dure de durée d'exécution du plan
+  Vercel Hobby est de 60s (`maxDuration`, désormais déclarée explicitement
+  sur cette route comme sur les routes de backfill IGDB/Steam/actus) +
+  30s de marge pour la latence réseau et un éventuel écart d'horloge — une
+  exécution ne peut de toute façon jamais dépasser 60s, donc un verrou
+  plus vieux que le bail ne peut correspondre qu'à une exécution déjà
+  morte.
+- Si le verrou est déjà détenu par une autre exécution en cours, ce run
+  s'arrête immédiatement (réponse `{ skipped: "already_running" }`, 200 —
+  cas normal, pas une erreur, aucun rappel de cette session/ce timing
+  n'est perdu : il sera repris par l'exécution qui détient le verrou, ou
+  au prochain passage).
+- Si la ligne `CronLock` manque ou que l'acquisition échoue pour toute
+  autre raison, la route **échoue explicitement**
+  (`{ error: "cron_lock_unavailable" }`) et n'envoie **aucun** rappel —
+  jamais de dégradation silencieuse vers un envoi non protégé, même si ce
+  cas ne devrait jamais se produire en pratique vu la garantie de la
+  migration ci-dessus.
+
+**Limites résiduelles assumées** (pas de solution — impossibles à éliminer
+avec un simple verrou à bail, hors scope de ce fix) :
+
+- **Doublon toujours possible** si une exécution dépasse elle-même le
+  bail (dans les faits jamais plus de 60s, la limite plateforme) : une
+  exécution suivante peut alors reprendre la main avant que la première
+  ne soit réellement terminée. Le webhook Discord standard ne fournit
+  aucun mécanisme d'idempotence (pas de clé de déduplication possible côté
+  appelant) — une garantie "exactement une fois" n'est donc **pas**
+  atteignable avec cette intégration, quel que soit le mécanisme de
+  verrouillage choisi.
+- **Un rappel peut rester manqué** si, après un crash, la prochaine
+  exécution qui réussit à acquérir le verrou arrive après que `date` de
+  la session soit déjà passée — le filtre `date: { gt: now }` de la route
+  l'exclut alors définitivement. Comportement de filtrage inchangé par ce
+  fix (déjà présent avant lui) : le choix fait ici priorise "ne jamais
+  perdre un rappel à cause du verrou lui-même" plutôt que "garantir
+  zéro doublon à tout prix" — un verrou par rappel individuel (claim
+  avant envoi) aurait risqué l'inverse (perte définitive sur un crash
+  entre la réservation et l'envoi réel), jugé pire.
+- **Notifications in-app** (`createNotifications`, bulle 🔔) : leur propre
+  risque de duplication (écrites avant même de connaître le résultat de
+  l'envoi Discord) est **antérieur** à ce fix et **hors scope** — non
+  traité ici, cf. le code de `sendSessionReminder`
+  (`src/lib/discord-reminder.ts`).
 
 ### Contenu du rappel
 
