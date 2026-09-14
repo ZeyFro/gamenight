@@ -76,12 +76,7 @@ export function ForceReloginCard({ lastTriggeredLabel }: { lastTriggeredLabel: s
                   onSuccess={() => router.push("/")}
                   className="flex-1"
                 >
-                  <Button
-                    type="submit"
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => setOpen(false)}
-                  >
+                  <Button type="submit" variant="destructive" className="w-full">
                     Oui, déconnecter tout le monde
                   </Button>
                 </ActionForm>
