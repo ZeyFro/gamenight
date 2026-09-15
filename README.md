@@ -6353,6 +6353,59 @@ finalistes" = perdants du round `totalRounds - 1`, formule qui généralise
 correctement au bracket à 4 comme à 8), badges ("Champion de tournoi" 1
 victoire, "Gladiateur" 5 participations), annonce Discord.
 
+### Atomicité inscription / désinscription / lancement (fix concurrence, round 2)
+
+`declareWinner`/`advanceWinner` étaient déjà protégés (claim atomique sur
+`TournamentMatch.completedAt`, dans une transaction — voir PR "Atomicité
+saisons + tournois"). L'inscription, la désinscription et la génération du
+bracket ne l'étaient pas : chacune lisait `Tournament`/`TournamentParticipant`
+puis écrivait, sans le moindre verrou.
+
+**Bug remonté** : deux inscriptions concurrentes sur la toute dernière
+place pouvaient toutes les deux passer le contrôle "places restantes"
+(lu avant que l'autre n'ait committé) et dépasser `maxPlayers` — le
+participant en trop restait inscrit en base mais silencieusement absent
+du bracket (`generateBracket` ne prend que les `bracketSize` premiers
+tirés). Variante plus grave : une désinscription atterrissant pendant la
+fenêtre entre la lecture des participants de `generateBracket` (faite
+hors transaction) et l'écriture de son bracket faisait planter la
+transaction entière (`update` sur une ligne `TournamentParticipant` déjà
+supprimée) — rollback complet, y compris le `status` déjà basculé en
+`IN_PROGRESS`, erreur serveur visible côté créateur.
+
+**Fix** : les trois parcours (`registerForTournamentAction`,
+`unregisterFromTournamentAction`, `generateBracket`) verrouillent
+maintenant D'ABORD la même ligne `Tournament`
+(`SELECT ... FOR UPDATE`, avant toute lecture de `TournamentParticipant`)
+dans une transaction, avant de re-vérifier `status`/places/déjà-inscrit
+et d'écrire. Une seule ligne `Tournament` verrouillée par transaction,
+jamais deux : Postgres sérialise les trois parcours entre eux sans aucun
+risque de deadlock (pas d'ordre de verrouillage concurrent possible avec
+une seule ressource par transaction).
+
+Le cœur de la génération du bracket est extrait en
+`buildBracketInTransaction(tx, tournamentId)` — appelée par le wrapper
+public `generateBracket` (sa propre transaction, cas du lancement par le
+créateur) OU directement par `registerForTournamentAction` quand
+l'inscription en cours remplit la dernière place, en réutilisant SA
+transaction déjà ouverte (jamais une seconde transaction imbriquée — le
+verrou Postgres est réentrant pour une même transaction).
+
+`declareWinner`/`advanceWinner` non touchés par ce fix — protection déjà
+correcte, axe de concurrence différent (résolution d'un match, pas
+mutation de la liste des participants).
+
+**Limite honnêtement assumée** : comme pour les fixes précédents de ce
+type (clôture de saison, pari XP, verrou cron), aucun mock Prisma
+n'existe dans ce projet — l'atomicité du verrouillage ne peut être
+prouvée que par lecture du diff, jamais par un test automatisé. Les
+helpers purs déjà couverts (`bracketSizeFor`, `totalRoundsFor`,
+`computeMatchLoser`, `computeNextSlot`) sont inchangés et leurs tests
+existants passent toujours ; aucun nouveau helper pur n'a été introduit
+par ce fix (la correction porte entièrement sur l'ordonnancement
+transactionnel, pas sur une nouvelle logique de décision testable en
+isolation).
+
 ### UI
 
 - `/tournois` — 3 onglets (En cours/À venir/Terminés).
