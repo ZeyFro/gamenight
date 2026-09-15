@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
-import { formatDurationFr, nowMs } from "@/lib/wallclock";
+import { nowMs } from "@/lib/wallclock";
+import { formatSteamActivityLabel } from "@/lib/steam";
 import { RankAvatar } from "@/components/RankAvatar";
 import { BannerImage } from "@/components/BannerImage";
 import { ColorDot } from "@/components/ColorDot";
@@ -63,6 +64,11 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
   const title = titleForLevel(level);
   const xpIntoLevel = user.xpTotal - xpForLevel(level);
   const xpForNextLevel = xpForLevel(level + 1) - xpForLevel(level);
+  const steamActivityLabel = formatSteamActivityLabel(
+    user.lastPlayedGame,
+    user.lastPlayedAt,
+    nowMs()
+  );
 
   const [stats, globalRank] = await Promise.all([
     getProfileStats(user.id, user.streakCount),
@@ -112,11 +118,8 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
         </p>
 
         {/* Sprint 4 (FEATURE 4) — consultation passive, jamais de notif. */}
-        {user.steamId64 && user.lastPlayedGame && user.lastPlayedAt && (
-          <p className="text-xs text-muted">
-            🎮 Joue à {user.lastPlayedGame} — il y a{" "}
-            {formatDurationFr(nowMs() - user.lastPlayedAt.getTime())}
-          </p>
+        {user.steamId64 && steamActivityLabel && (
+          <p className="text-xs text-muted">🎮 {steamActivityLabel}</p>
         )}
 
         <div className="flex flex-col gap-1.5">

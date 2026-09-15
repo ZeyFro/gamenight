@@ -2,7 +2,8 @@ import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkLibraryBadges } from "@/lib/badges";
 import { checkWishlistPurchases } from "@/lib/wishlist";
-import { wallClockNow } from "@/lib/wallclock";
+import { wallClockNow, formatDurationFr } from "@/lib/wallclock";
+import { logger } from "@/lib/logger";
 
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
 const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
@@ -50,12 +51,18 @@ export interface SteamOwnedGame {
   appid: number;
   name: string;
   // Sprint 4 (FEATURE 4, dernière activité Steam) — timestamp Unix
-  // (secondes) renvoyé par Steam pour chaque jeu possédé, non documenté
-  // officiellement mais stable en pratique (déjà exploité par de
-  // nombreux clients tiers) : évite un second appel API dédié
-  // (`GetRecentlyPlayedGames` ne donne qu'un temps de jeu sur 2 semaines,
-  // pas un vrai timestamp de dernière session) — `getOwnedGames` (déjà
-  // appelée par le cron `steam-library-sync` existant) suffit.
+  // (secondes) renvoyé par Steam pour certains jeux possédés, NON
+  // documenté officiellement par Valve (absent de la référence
+  // ISteamWebAPI de `GetOwnedGames`). Investigation post-déploiement
+  // (fix "activité Steam invisible") : en Production, avec une
+  // bibliothèque correctement importée (compteur de jeux exact, badge
+  // "Collectionneur" déclenché), ce champ n'a jamais permis de calculer
+  // de jeu récent — cohérent avec un champ non garanti par le contrat
+  // officiel de cet endpoint plutôt qu'avec un bug de ce fichier (lu,
+  // filtré, trié et converti correctement, vérifié ligne à ligne).
+  // Conservé en tentative PRIORITAIRE (donnée la plus précise si elle
+  // arrive un jour à être renseignée) mais plus comme unique source —
+  // voir `getRecentlyPlayedGames` ci-dessous pour le repli officiel.
   rtime_last_played?: number;
 }
 
@@ -102,6 +109,148 @@ export async function getOwnedGames(
   }
 
   return { ok: true, games: data.response.games ?? [] };
+}
+
+export interface SteamRecentGame {
+  appid: number;
+  name: string;
+  // Minutes jouées sur les 2 dernières semaines — PAS un timestamp, cf.
+  // docstring de la fonction ci-dessous.
+  playtime_2weeks?: number;
+  playtime_forever?: number;
+}
+
+/**
+ * Repli OFFICIELLEMENT documenté (`IPlayerService/GetRecentlyPlayedGames`,
+ * référence ISteamWebAPI de Valve) — contrairement à `rtime_last_played`
+ * (`getOwnedGames` ci-dessus, non documenté et jamais confirmé fiable en
+ * Prod, cf. investigation "activité Steam invisible"). Limite assumée et
+ * inhérente à cet endpoint : fenêtre glissante de 2 semaines seulement, et
+ * AUCUN timestamp exact — seulement des minutes jouées (`playtime_2weeks`).
+ * Impossible d'en dériver un "il y a X heures" précis ; voir
+ * `formatSteamActivityLabel` pour le libellé dégradé qui en découle
+ * ("a joué récemment", sans durée).
+ *
+ * L'ordre des jeux dans la réponse n'est PAS contractuellement garanti par
+ * la documentation Valve — `importSteamLibrary` ne se fie donc jamais à
+ * l'ordre renvoyé et retrie explicitement par `playtime_2weeks` décroissant
+ * pour un choix déterministe.
+ *
+ * Appelée UNIQUEMENT en repli (jamais systématiquement) — voir
+ * `importSteamLibrary` : seulement quand `rtime_last_played` n'a permis de
+ * retenir aucun jeu, pour ne jamais doubler inutilement les appels Steam.
+ */
+export async function getRecentlyPlayedGames(
+  steamId64: string
+): Promise<SteamRecentGame[]> {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) throw new Error("STEAM_API_KEY n'est pas configurée.");
+
+  const url = new URL(
+    "https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/"
+  );
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("steamid", steamId64);
+  url.searchParams.set("format", "json");
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Steam GetRecentlyPlayedGames a répondu ${res.status}`);
+  }
+
+  const data = (await res.json()) as {
+    response?: { games?: SteamRecentGame[] };
+  };
+
+  return data.response?.games ?? [];
+}
+
+/** Jeu avec le `rtime_last_played` le plus récent (> 0), ou `undefined` si aucun n'est exploitable. Pure, extraite pour être testable sans mock Prisma/réseau. */
+export function selectMostRecentByTimestamp(
+  games: SteamOwnedGame[]
+): SteamOwnedGame | undefined {
+  return games
+    .filter((g) => (g.rtime_last_played ?? 0) > 0)
+    .sort((a, b) => (b.rtime_last_played ?? 0) - (a.rtime_last_played ?? 0))[0];
+}
+
+/** Jeu avec le plus de `playtime_2weeks`, ou `undefined` si la liste est vide — sélection déterministe, cf. docstring de `getRecentlyPlayedGames` (ordre non garanti par Valve). Pure. */
+export function selectMostRecentByPlaytime(
+  games: SteamRecentGame[]
+): SteamRecentGame | undefined {
+  return [...games].sort((a, b) => (b.playtime_2weeks ?? 0) - (a.playtime_2weeks ?? 0))[0];
+}
+
+export interface SteamActivityUpdate {
+  lastPlayedGame: string | null;
+  lastPlayedAt: Date | null;
+}
+
+/** Résultat du repli `GetRecentlyPlayedGames` — `undefined` si non appelé (le niveau précis a déjà trouvé un jeu, cf. `importSteamLibrary`). */
+export type RecentGamesOutcome = { status: "success"; games: SteamRecentGame[] } | { status: "error" };
+
+/**
+ * Décision PURE (fix "activité Steam invisible") — que faut-il écrire pour
+ * `lastPlayedGame`/`lastPlayedAt` ? Séparée de tout accès Prisma/réseau
+ * pour rester testable sans mock (convention déjà établie dans ce dépôt —
+ * `isLockAvailable`/`checkCronAuth`/`resolveAppOrigin` suivent le même
+ * principe). `null` en retour = ne rien écrire du tout, conserver la
+ * valeur déjà en base (cas d'erreur réseau sur le repli — jamais remplacer
+ * une info valide par du vide silencieusement).
+ *
+ * Ordre de priorité :
+ * 1. `rtime_last_played` exploitable (précis, source non garantie mais
+ *    prioritaire quand elle répond) → timestamp exact.
+ * 2. Repli réussi avec au moins un jeu récent → nom seul, `lastPlayedAt`
+ *    délibérément `null` (jamais de date fabriquée à partir d'autre chose
+ *    que `rtime_last_played` — ni `steamLastSyncAt`, ni le temps de jeu).
+ * 3. Repli réussi mais liste vide → aucune activité récente, les DEUX
+ *    champs sont explicitement remis à `null` (un compte qui n'a plus
+ *    rien joué sur les 2 dernières semaines ne doit pas garder affiché un
+ *    ancien jeu figé).
+ * 4. Repli en erreur (réseau/timeout/réponse invalide) → `null` global,
+ *    l'appelant ne touche pas la ligne en base.
+ */
+export function computeSteamActivityUpdate(
+  ownedGames: SteamOwnedGame[],
+  recentGamesOutcome?: RecentGamesOutcome
+): SteamActivityUpdate | null {
+  const mostRecent = selectMostRecentByTimestamp(ownedGames);
+  if (mostRecent) {
+    return {
+      lastPlayedGame: mostRecent.name,
+      lastPlayedAt: new Date(mostRecent.rtime_last_played! * 1000),
+    };
+  }
+
+  if (!recentGamesOutcome || recentGamesOutcome.status === "error") return null;
+
+  const best = selectMostRecentByPlaytime(recentGamesOutcome.games);
+  return { lastPlayedGame: best?.name ?? null, lastPlayedAt: null };
+}
+
+/**
+ * Libellé FR affiché sur `/potes` et l'en-tête `/profil` — honnête sur la
+ * précision réelle de la donnée (fix "Joue à" trompeur, qui prétendait à
+ * tort une activité EN COURS alors que la donnée est toujours une activité
+ * PASSÉE, précise ou non selon la source qui a pu la fournir) :
+ * - `lastPlayedAt` connu (timestamp exact, source `rtime_last_played`) →
+ *   "A joué à X — il y a Y" ;
+ * - `lastPlayedAt` absent mais `lastPlayedGame` connu (repli
+ *   `GetRecentlyPlayedGames`, aucun timestamp exact disponible) → "A joué
+ *   récemment à X", sans durée fabriquée ;
+ * - aucun jeu connu → `null` (rien affiché), jamais de texte par défaut.
+ */
+export function formatSteamActivityLabel(
+  lastPlayedGame: string | null,
+  lastPlayedAt: Date | null,
+  nowMsValue: number
+): string | null {
+  if (!lastPlayedGame) return null;
+  if (lastPlayedAt) {
+    return `A joué à ${lastPlayedGame} — il y a ${formatDurationFr(nowMsValue - lastPlayedAt.getTime())}`;
+  }
+  return `A joué récemment à ${lastPlayedGame}`;
 }
 
 export function steamCoverUrl(appid: number): string {
@@ -200,21 +349,28 @@ export async function importSteamLibrary(
   // wishlist du groupe, l'entrée se marque "achetée" toute seule.
   await checkWishlistPurchases(userId);
 
-  // Sprint 4 (FEATURE 4) — jeu le plus récemment joué, si Steam a renvoyé
-  // au moins un timestamp exploitable (`rtime_last_played` absent ou à 0
-  // pour un jeu jamais lancé). `null` sur les deux champs plutôt qu'une
-  // absence de mise à jour : un compte dont plus aucun jeu récent n'a de
-  // timestamp valide ne doit pas garder affiché un ancien "Joue à X" figé.
-  const mostRecent = result.games
-    .filter((g) => (g.rtime_last_played ?? 0) > 0)
-    .sort((a, b) => (b.rtime_last_played ?? 0) - (a.rtime_last_played ?? 0))[0];
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      lastPlayedGame: mostRecent?.name ?? null,
-      lastPlayedAt: mostRecent ? new Date(mostRecent.rtime_last_played! * 1000) : null,
-    },
-  });
+  // Sprint 4 (FEATURE 4) suite (fix "activité Steam invisible") — deux
+  // niveaux, décision déléguée à `computeSteamActivityUpdate` (pure,
+  // testée séparément). Le repli `GetRecentlyPlayedGames` n'est appelé
+  // QUE si `rtime_last_played` n'a permis de retenir aucun jeu — jamais
+  // systématiquement, jamais doublé.
+  let recentGamesOutcome: RecentGamesOutcome | undefined;
+  if (!selectMostRecentByTimestamp(result.games)) {
+    try {
+      recentGamesOutcome = { status: "success", games: await getRecentlyPlayedGames(steamId64) };
+    } catch (error) {
+      // Erreur réseau/timeout/réponse invalide : `computeSteamActivityUpdate`
+      // renverra `null` pour ce statut — la ligne en base n'est PAS touchée,
+      // une ancienne valeur valide n'est jamais remplacée par du vide.
+      logger.error("steam", error, { userId, step: "recently-played-fallback" });
+      recentGamesOutcome = { status: "error" };
+    }
+  }
+
+  const activityUpdate = computeSteamActivityUpdate(result.games, recentGamesOutcome);
+  if (activityUpdate) {
+    await prisma.user.update({ where: { id: userId }, data: activityUpdate });
+  }
 
   return { status: "imported", count: result.games.length, newCount };
 }
