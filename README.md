@@ -6406,6 +6406,37 @@ par ce fix (la correction porte entièrement sur l'ordonnancement
 transactionnel, pas sur une nouvelle logique de décision testable en
 isolation).
 
+### Lien direct dans l'annonce Discord de création (fix UX)
+
+L'annonce "🏆 Tournoi ... — inscriptions ouvertes !" (`createTournamentAction`,
+`src/app/tournois/actions.ts`) ne contenait jusqu'ici aucun moyen d'atteindre
+`/tournois/{id}` depuis Discord — il fallait chercher la page à la main.
+
+`resolveAppOrigin`/`resolveAbsoluteUrl` (`src/lib/app-url.ts`, fonctions
+pures testées isolément) dérivent l'URL absolue de l'app **sans domaine
+codé en dur**, à partir des variables que Vercel injecte automatiquement à
+l'exécution (aucune configuration côté projet) :
+
+- `VERCEL_ENV === "production"` → `VERCEL_PROJECT_PRODUCTION_URL` (domaine
+  stable de Production, ou domaine personnalisé le cas échéant) ;
+- sinon (Preview) → `VERCEL_URL` (URL unique du déploiement courant) —
+  volontairement **pas** `VERCEL_PROJECT_PRODUCTION_URL` en Preview, sinon
+  un lien Preview pointerait à tort vers la Production.
+
+**Comportement explicite si l'URL ne peut pas être résolue** (dev local
+sans ces variables, ou — cas qui ne devrait jamais arriver en déploiement
+réel — variables Vercel absentes) : le lien est **omis** du message (texte
+d'origine conservé tel quel), et un `logger.warn` explicite le signale —
+jamais de lien cassé (`.../undefined`) envoyé dans Discord. `postToDiscord`
+lui-même n'est pas modifié : son propre comportement (no-op + warning si
+`DISCORD_WEBHOOK_URL` absente) reste inchangé et s'applique par-dessus,
+indépendamment de la résolution de l'URL.
+
+Portée volontairement limitée à cette seule annonce : les autres messages
+Discord du projet (clôture de session, fin de saison, victoires de
+tournoi, rappels...) n'ont pas été touchés — même limite pointée par la
+reconnaissance préalable, traitée séparément si besoin.
+
 ### UI
 
 - `/tournois` — 3 onglets (En cours/À venir/Terminés).

@@ -8,6 +8,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { generateBracket, declareWinner, buildBracketInTransaction } from "@/lib/tournaments";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { logger } from "@/lib/logger";
 import {
   createTournamentSchema,
@@ -22,6 +23,17 @@ import {
  * même logique que `createSession`/proposer un jeu — un tournoi concerne
  * tout le groupe) et le nombre de places (4/6/8, cf. `bracketSizeFor`).
  * Annonce Discord immédiate ("inscriptions ouvertes").
+ *
+ * Fix bug remonté (annonce tournoi sans lien) — le message ne contenait
+ * jusqu'ici aucun moyen d'atteindre `/tournois/{id}`, obligeant à
+ * chercher la page à la main. `resolveAbsoluteUrl` (src/lib/app-url.ts)
+ * dérive l'URL absolue depuis les variables que Vercel injecte
+ * automatiquement (Production ET Preview, sans domaine codé en dur, sans
+ * configuration côté projet). Si elle ne peut pas être résolue (dev
+ * local, ou variables Vercel absentes — cas qui ne devrait jamais
+ * arriver en déploiement réel), le lien est explicitement omis du
+ * message (texte d'origine conservé, warning loggué) — jamais de lien
+ * cassé (`.../undefined`) envoyé dans Discord.
  */
 export async function createTournamentAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -47,9 +59,24 @@ export async function createTournamentAction(formData: FormData) {
     data: { name, gameId, maxPlayers, createdById: user.id },
   });
 
+  const tournamentUrl = resolveAbsoluteUrl(`/tournois/${tournament.id}`, {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  });
+  if (!tournamentUrl) {
+    logger.warn(
+      "tournaments",
+      "URL absolue indisponible (dev local ou variables Vercel absentes) — lien omis de l'annonce Discord.",
+      { tournamentId: tournament.id }
+    );
+  }
+
   const result = await postToDiscord({
     title: `🏆 Tournoi ${name} sur ${game.name} — inscriptions ouvertes !`,
-    description: `${maxPlayers} places disponibles. Inscris-toi sur l'app !`,
+    description: tournamentUrl
+      ? `${maxPlayers} places disponibles. Inscris-toi ici : ${tournamentUrl}`
+      : `${maxPlayers} places disponibles. Inscris-toi sur l'app !`,
     color: ACCENT_COLOR,
   });
   if (!result.ok) {
