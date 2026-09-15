@@ -4,8 +4,13 @@ import {
   selectMostRecentByPlaytime,
   computeSteamActivityUpdate,
   formatSteamActivityLabel,
+  categorizeActivityOutcome,
+  buildActivityRefreshWrite,
+  STEAM_ACTIVITY_CALL_TIMEOUT_MS,
   type SteamOwnedGame,
   type SteamRecentGame,
+  type GetOwnedGamesResult,
+  type ActivityRefreshOutcome,
 } from "@/lib/steam";
 
 /**
@@ -128,5 +133,143 @@ describe("formatSteamActivityLabel", () => {
 
   it("cas incohérent (lastPlayedAt sans lastPlayedGame) : null quand même, jamais de texte sans nom de jeu", () => {
     expect(formatSteamActivityLabel(null, new Date(now), now)).toBeNull();
+  });
+});
+
+/**
+ * Fix "cron Steam surdimensionné" — `refreshSteamActivity` (rafraîchissement
+ * léger, sans réimport de bibliothèque) délègue sa décision d'écriture à ces
+ * deux fonctions PURES, testées ici sans aucun accès réseau/Prisma. Les 5
+ * catégories demandées (precise/approximate/none/private/error) doivent
+ * rester mutuellement distinguables jusque dans l'écriture Prisma produite.
+ */
+describe("categorizeActivityOutcome", () => {
+  it("profil privé (getOwnedGames ok:false) : catégorie private, quel que soit le repli", () => {
+    const ownedGamesResult: GetOwnedGamesResult = { ok: false, reason: "private" };
+    expect(categorizeActivityOutcome(ownedGamesResult)).toEqual({ category: "private" });
+  });
+
+  it("rtime_last_played exploitable : catégorie precise, priorité sur tout repli", () => {
+    const ownedGamesResult: GetOwnedGamesResult = {
+      ok: true,
+      games: [{ appid: 1, name: "Précis", rtime_last_played: 1_700_000_000 }],
+    };
+    expect(categorizeActivityOutcome(ownedGamesResult)).toEqual({
+      category: "precise",
+      lastPlayedGame: "Précis",
+      lastPlayedAt: new Date(1_700_000_000 * 1000),
+    });
+  });
+
+  it("aucun rtime_last_played, repli avec résultat : catégorie approximate", () => {
+    const ownedGamesResult: GetOwnedGamesResult = {
+      ok: true,
+      games: [{ appid: 1, name: "Sans timestamp" }],
+    };
+    expect(
+      categorizeActivityOutcome(ownedGamesResult, {
+        status: "success",
+        games: [{ appid: 2, name: "Repli", playtime_2weeks: 42 }],
+      })
+    ).toEqual({ category: "approximate", lastPlayedGame: "Repli" });
+  });
+
+  it("aucun rtime_last_played, repli réussi mais vide : catégorie none", () => {
+    const ownedGamesResult: GetOwnedGamesResult = { ok: true, games: [{ appid: 1, name: "X" }] };
+    expect(
+      categorizeActivityOutcome(ownedGamesResult, { status: "success", games: [] })
+    ).toEqual({ category: "none" });
+  });
+
+  it("aucun rtime_last_played, repli en erreur : catégorie error (jamais confondue avec none)", () => {
+    const ownedGamesResult: GetOwnedGamesResult = { ok: true, games: [{ appid: 1, name: "X" }] };
+    expect(categorizeActivityOutcome(ownedGamesResult, { status: "error" })).toEqual({
+      category: "error",
+    });
+  });
+
+  it("aucun rtime_last_played, repli jamais tenté (outcome absent) : catégorie error", () => {
+    const ownedGamesResult: GetOwnedGamesResult = { ok: true, games: [{ appid: 1, name: "X" }] };
+    expect(categorizeActivityOutcome(ownedGamesResult)).toEqual({ category: "error" });
+  });
+});
+
+describe("buildActivityRefreshWrite", () => {
+  const now = new Date("2026-09-15T12:00:00.000Z");
+
+  it("error : ne touche NI steamPublic NI l'activité affichée, seul steamActivityCheckedAt est posé", () => {
+    const write = buildActivityRefreshWrite({ category: "error" }, now);
+    expect(write).toEqual({ steamActivityCheckedAt: now });
+    expect(write.steamPublic).toBeUndefined();
+    expect(write.lastPlayedGame).toBeUndefined();
+    expect(write.lastPlayedAt).toBeUndefined();
+  });
+
+  it("private : efface explicitement l'activité affichée et marque steamPublic false", () => {
+    const write = buildActivityRefreshWrite({ category: "private" }, now);
+    expect(write).toEqual({
+      steamActivityCheckedAt: now,
+      steamPublic: false,
+      lastPlayedGame: null,
+      lastPlayedAt: null,
+    });
+  });
+
+  it("precise : steamPublic true + activité exacte", () => {
+    const outcome: ActivityRefreshOutcome = {
+      category: "precise",
+      lastPlayedGame: "Minecraft",
+      lastPlayedAt: new Date("2026-09-15T10:00:00.000Z"),
+    };
+    expect(buildActivityRefreshWrite(outcome, now)).toEqual({
+      steamActivityCheckedAt: now,
+      steamPublic: true,
+      lastPlayedGame: "Minecraft",
+      lastPlayedAt: new Date("2026-09-15T10:00:00.000Z"),
+    });
+  });
+
+  it("approximate : steamPublic true + nom seul, lastPlayedAt explicitement null (jamais de date fabriquée)", () => {
+    const outcome: ActivityRefreshOutcome = { category: "approximate", lastPlayedGame: "Splatoon" };
+    expect(buildActivityRefreshWrite(outcome, now)).toEqual({
+      steamActivityCheckedAt: now,
+      steamPublic: true,
+      lastPlayedGame: "Splatoon",
+      lastPlayedAt: null,
+    });
+  });
+
+  it("none : steamPublic true + activité effacée (aucune activité récente, pas d'ancien jeu figé)", () => {
+    const write = buildActivityRefreshWrite({ category: "none" }, now);
+    expect(write).toEqual({
+      steamActivityCheckedAt: now,
+      steamPublic: true,
+      lastPlayedGame: null,
+      lastPlayedAt: null,
+    });
+  });
+});
+
+/**
+ * Fix (correction utilisateur — pire cas initial sous-évalué à 16s au lieu
+ * de 32s réels) : pour 5 comptes en lots de 3 (`BATCH_SIZE`, cf.
+ * `steam-library-sync/route.ts`), il faut 2 lots séquentiels (3 puis 2),
+ * jusqu'à 2 appels Steam séquentiels par compte (précis + repli). Ce test
+ * fige l'arithmétique pour ne plus jamais la laisser dériver silencieusement
+ * si `STEAM_ACTIVITY_CALL_TIMEOUT_MS` change sans que quelqu'un revérifie le
+ * pire cas contre le timeout 30s du déclencheur externe (cron-job.org).
+ */
+describe("pire cas théorique du cron léger (arithmétique figée)", () => {
+  it("2 lots séquentiels x 2 appels x timeout individuel reste sous 30s", () => {
+    const BATCH_SIZE = 3;
+    const userCount = 5;
+    const batchCount = Math.ceil(userCount / BATCH_SIZE);
+    const maxSequentialCallsPerUser = 2; // précis + repli
+
+    const worstCaseMs = batchCount * maxSequentialCallsPerUser * STEAM_ACTIVITY_CALL_TIMEOUT_MS;
+
+    expect(batchCount).toBe(2);
+    expect(worstCaseMs).toBe(24_000);
+    expect(worstCaseMs).toBeLessThan(30_000);
   });
 });

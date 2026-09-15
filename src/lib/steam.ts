@@ -76,8 +76,14 @@ export type GetOwnedGamesResult =
  * (potentiellement `games: []` pour une biblio publique mais vide) sinon.
  * On distingue les deux cas sur la présence de `game_count`.
  */
+export interface SteamCallOptions {
+  /** Optionnel — permet d'imposer un timeout individuel (ex. `AbortSignal.timeout(ms)`), utilisé par `refreshSteamActivity` (jamais par `importSteamLibrary`, qui garde son comportement d'origine sans signal). */
+  signal?: AbortSignal;
+}
+
 export async function getOwnedGames(
-  steamId64: string
+  steamId64: string,
+  options?: SteamCallOptions
 ): Promise<GetOwnedGamesResult> {
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey) throw new Error("STEAM_API_KEY n'est pas configurée.");
@@ -95,7 +101,7 @@ export async function getOwnedGames(
   url.searchParams.set("include_played_free_games", "true");
   url.searchParams.set("format", "json");
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { cache: "no-store", signal: options?.signal });
   if (!res.ok) {
     throw new Error(`Steam GetOwnedGames a répondu ${res.status}`);
   }
@@ -141,7 +147,8 @@ export interface SteamRecentGame {
  * retenir aucun jeu, pour ne jamais doubler inutilement les appels Steam.
  */
 export async function getRecentlyPlayedGames(
-  steamId64: string
+  steamId64: string,
+  options?: SteamCallOptions
 ): Promise<SteamRecentGame[]> {
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey) throw new Error("STEAM_API_KEY n'est pas configurée.");
@@ -153,7 +160,7 @@ export async function getRecentlyPlayedGames(
   url.searchParams.set("steamid", steamId64);
   url.searchParams.set("format", "json");
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { cache: "no-store", signal: options?.signal });
   if (!res.ok) {
     throw new Error(`Steam GetRecentlyPlayedGames a répondu ${res.status}`);
   }
@@ -230,6 +237,197 @@ export function computeSteamActivityUpdate(
 }
 
 /**
+ * Timeout individuel par appel Steam pour le rafraîchissement léger
+ * (`refreshSteamActivity`, cron `steam-library-sync` toutes les ~2 min) —
+ * fix "cron Steam surdimensionné". Calcul du pire cas validé : lots de 3
+ * (`processInBatches`), jusqu'à 2 appels Steam séquentiels par compte
+ * (précis puis repli) → pour 5 comptes, 2 lots successifs (3 puis 2) × 2
+ * appels × 6s = 24s, sous les 30s du déclencheur cron-job.org ET sous le
+ * `maxDuration` Vercel déclaré sur la route (budget de temps route en plus,
+ * filet de sécurité). JAMAIS utilisé par `importSteamLibrary` (pas de
+ * `signal` passé), qui garde son comportement d'origine sans timeout
+ * individuel.
+ */
+export const STEAM_ACTIVITY_CALL_TIMEOUT_MS = 6_000;
+
+export type SteamActivityCategory =
+  | "precise"
+  | "approximate"
+  | "none"
+  | "private"
+  | "error";
+
+/**
+ * Résultat catégorisé du rafraîchissement léger — distinct de
+ * `SteamActivityUpdate`/`computeSteamActivityUpdate` (utilisés par
+ * `importSteamLibrary`, non touchés, pour ne rien risquer sur l'import
+ * complet) : ici il faut aussi distinguer "erreur" de "profil privé" et de
+ * "aucune activité récente" pour l'observabilité du cron (5 catégories
+ * demandées), alors que `computeSteamActivityUpdate` traite ces trois cas de
+ * façon uniforme (retourne `null`/champs vides) car `importSteamLibrary` n'a
+ * pas besoin de les distinguer.
+ */
+export type ActivityRefreshOutcome =
+  | { category: "private" }
+  | { category: "precise"; lastPlayedGame: string; lastPlayedAt: Date }
+  | { category: "approximate"; lastPlayedGame: string }
+  | { category: "none" }
+  | { category: "error" };
+
+/**
+ * Décision PURE (fix "cron Steam surdimensionné") — catégorise le résultat
+ * d'un appel `getOwnedGames` (+ éventuel repli `getRecentlyPlayedGames`)
+ * pour le rafraîchissement léger. Ne fait aucun accès Prisma/réseau, comme
+ * `computeSteamActivityUpdate`. `recentGamesOutcome` n'est fourni par
+ * l'appelant que lorsque le niveau précis n'a rien trouvé (jamais appelé
+ * sinon, cf. `refreshSteamActivity`) — son absence alors que le profil est
+ * public et sans `rtime_last_played` exploitable est traitée comme une
+ * erreur (l'appelant n'a pas pu tenter le repli, par ex. budget de temps
+ * épuisé).
+ */
+export function categorizeActivityOutcome(
+  ownedGamesResult: GetOwnedGamesResult,
+  recentGamesOutcome?: RecentGamesOutcome
+): ActivityRefreshOutcome {
+  if (!ownedGamesResult.ok) return { category: "private" };
+
+  const mostRecent = selectMostRecentByTimestamp(ownedGamesResult.games);
+  if (mostRecent) {
+    return {
+      category: "precise",
+      lastPlayedGame: mostRecent.name,
+      lastPlayedAt: new Date(mostRecent.rtime_last_played! * 1000),
+    };
+  }
+
+  if (!recentGamesOutcome || recentGamesOutcome.status === "error") {
+    return { category: "error" };
+  }
+
+  const best = selectMostRecentByPlaytime(recentGamesOutcome.games);
+  if (best) return { category: "approximate", lastPlayedGame: best.name };
+  return { category: "none" };
+}
+
+/**
+ * Écriture PURE (fix "cron Steam surdimensionné") — traduit une
+ * `ActivityRefreshOutcome` en objet `data` pour `prisma.user.update`, sans
+ * jamais appeler Prisma elle-même (testable sans mock). Règles validées
+ * avec l'utilisateur :
+ * - `steamActivityCheckedAt` est TOUJOURS posé (c'est la sémantique même du
+ *   champ — "dernière tentative", succès ou erreur confondus) ;
+ * - "error" ne touche NI `steamPublic` NI l'activité affichée — une panne
+ *   réseau/timeout transitoire ne doit jamais effacer une info valide déjà
+ *   en base ;
+ * - "private" efface explicitement l'activité affichée (`lastPlayedGame`/
+ *   `lastPlayedAt` → `null`) — ni `/potes` ni `/profil` ne filtrent sur
+ *   `steamPublic` à l'affichage (vérifié), donc une activité obsolète
+ *   resterait visible indéfiniment sans cet effacement explicite ;
+ * - "precise"/"approximate"/"none" posent `steamPublic: true` (on sait que
+ *   `getOwnedGames` a réussi) avec l'activité correspondante.
+ */
+export function buildActivityRefreshWrite(
+  outcome: ActivityRefreshOutcome,
+  now: Date
+): {
+  steamActivityCheckedAt: Date;
+  steamPublic?: boolean;
+  lastPlayedGame?: string | null;
+  lastPlayedAt?: Date | null;
+} {
+  switch (outcome.category) {
+    case "error":
+      return { steamActivityCheckedAt: now };
+    case "private":
+      return {
+        steamActivityCheckedAt: now,
+        steamPublic: false,
+        lastPlayedGame: null,
+        lastPlayedAt: null,
+      };
+    case "precise":
+      return {
+        steamActivityCheckedAt: now,
+        steamPublic: true,
+        lastPlayedGame: outcome.lastPlayedGame,
+        lastPlayedAt: outcome.lastPlayedAt,
+      };
+    case "approximate":
+      return {
+        steamActivityCheckedAt: now,
+        steamPublic: true,
+        lastPlayedGame: outcome.lastPlayedGame,
+        lastPlayedAt: null,
+      };
+    case "none":
+      return {
+        steamActivityCheckedAt: now,
+        steamPublic: true,
+        lastPlayedGame: null,
+        lastPlayedAt: null,
+      };
+  }
+}
+
+/**
+ * Rafraîchissement LÉGER de l'activité Steam (fix "cron Steam
+ * surdimensionné") — appelé par le cron `steam-library-sync` toutes les
+ * ~2 min, à la place d'`importSteamLibrary` qui réimportait toute la
+ * bibliothèque (upserts `Game`/`UserGame`, badges, wishlist) rien que pour
+ * rafraîchir un libellé d'activité. Ici : UNIQUEMENT `getOwnedGames` (et son
+ * repli `getRecentlyPlayedGames` si besoin), AUCUN upsert, AUCUN badge,
+ * AUCUNE vérification wishlist, et une seule écriture `prisma.user.update`
+ * par compte.
+ *
+ * Isolation par utilisateur : chaque appel Steam individuel est borné par
+ * `AbortSignal.timeout(STEAM_ACTIVITY_CALL_TIMEOUT_MS)` — un compte qui
+ * bloque ou répond lentement ne peut jamais affecter les autres (ni les
+ * bloquer, ni consommer leur propre budget de temps), et une erreur ici ne
+ * doit jamais interrompre le lot appelant (`processInBatches` isole déjà
+ * chaque `worker` via `Promise.allSettled, mais on catch aussi ici pour
+ * pouvoir écrire `steamActivityCheckedAt` même en cas d'échec).
+ *
+ * N'écrit jamais `steamLastSyncAt` (réservé exclusivement à
+ * `importSteamLibrary`, une synchronisation complète réussie) — voir
+ * `steamActivityCheckedAt` à la place.
+ */
+export async function refreshSteamActivity(
+  userId: string,
+  steamId64: string
+): Promise<{ userId: string; category: SteamActivityCategory }> {
+  let ownedGamesResult: GetOwnedGamesResult;
+  try {
+    ownedGamesResult = await getOwnedGames(steamId64, {
+      signal: AbortSignal.timeout(STEAM_ACTIVITY_CALL_TIMEOUT_MS),
+    });
+  } catch (error) {
+    logger.error("steam-activity", error, { userId, step: "owned-games" });
+    const write = buildActivityRefreshWrite({ category: "error" }, wallClockNow());
+    await prisma.user.update({ where: { id: userId }, data: write });
+    return { userId, category: "error" };
+  }
+
+  let recentGamesOutcome: RecentGamesOutcome | undefined;
+  if (ownedGamesResult.ok && !selectMostRecentByTimestamp(ownedGamesResult.games)) {
+    try {
+      const games = await getRecentlyPlayedGames(steamId64, {
+        signal: AbortSignal.timeout(STEAM_ACTIVITY_CALL_TIMEOUT_MS),
+      });
+      recentGamesOutcome = { status: "success", games };
+    } catch (error) {
+      logger.error("steam-activity", error, { userId, step: "recently-played-fallback" });
+      recentGamesOutcome = { status: "error" };
+    }
+  }
+
+  const outcome = categorizeActivityOutcome(ownedGamesResult, recentGamesOutcome);
+  const write = buildActivityRefreshWrite(outcome, wallClockNow());
+  await prisma.user.update({ where: { id: userId }, data: write });
+
+  return { userId, category: outcome.category };
+}
+
+/**
  * Libellé FR affiché sur `/potes` et l'en-tête `/profil` — honnête sur la
  * précision réelle de la donnée (fix "Joue à" trompeur, qui prétendait à
  * tort une activité EN COURS alors que la donnée est toujours une activité
@@ -293,12 +491,11 @@ export async function importSteamLibrary(
 ): Promise<ImportSteamLibraryResult> {
   const result = await getOwnedGames(steamId64);
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { steamPublic: result.ok, steamLastSyncAt: wallClockNow() },
-  });
-
   if (!result.ok) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { steamPublic: false, steamLastSyncAt: wallClockNow() },
+    });
     return { status: "private" };
   }
 
@@ -368,9 +565,21 @@ export async function importSteamLibrary(
   }
 
   const activityUpdate = computeSteamActivityUpdate(result.games, recentGamesOutcome);
-  if (activityUpdate) {
-    await prisma.user.update({ where: { id: userId }, data: activityUpdate });
-  }
+
+  // Fix (rotation import complet non fiable) — `steamPublic`/`steamLastSyncAt`
+  // ne sont plus posés dès la réponse `getOwnedGames`, mais fusionnés ici en
+  // UNE SEULE écriture finale, atteinte seulement après le succès complet
+  // des upserts/badges/wishlist ci-dessus : un import interrompu en cours de
+  // route (crash, timeout) ne laisse plus `steamLastSyncAt` prétendre à tort
+  // à une synchronisation réussie.
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      steamPublic: true,
+      steamLastSyncAt: wallClockNow(),
+      ...(activityUpdate ?? {}),
+    },
+  });
 
   return { status: "imported", count: result.games.length, newCount };
 }
