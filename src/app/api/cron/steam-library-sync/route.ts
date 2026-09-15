@@ -18,7 +18,19 @@ import { verifyCronRequest } from "@/lib/cron-auth";
  * Boucle "best-effort par user" (une panne Steam sur un compte ne doit
  * jamais empêcher de traiter les autres) — même philosophie que
  * `processOpenRoulettes`/`closeOverdueScheduledSessions`.
+ *
+ * Fix (repli `GetRecentlyPlayedGames`) — cette route pouvait déjà dépasser
+ * 30s pour plusieurs users AVANT le repli (un appel Steam par user). Le
+ * repli ajoute au pire UN second appel par user, jamais systématique (voir
+ * `importSteamLibrary`) — `maxDuration` n'était pourtant pas déclaré ici
+ * (contrairement à `reminders`/`igdb-coop`/`steam-store`/`game-news`, qui
+ * l'exposent déjà toutes explicitement à 60s, la limite dure du plan
+ * Vercel Hobby) : sans elle, la route tournait sous la limite par défaut,
+ * plus courte. L'ajouter ici suit la même convention déjà en place
+ * ailleurs, pas un mécanisme nouveau.
  */
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const auth = verifyCronRequest(request);
   if (!auth.ok) {

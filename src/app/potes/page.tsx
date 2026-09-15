@@ -14,7 +14,8 @@ import { ColorDot } from "@/components/ColorDot";
 import { StreakFlame } from "@/components/StreakFlame";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
-import { formatDurationFr, nowMs } from "@/lib/wallclock";
+import { nowMs } from "@/lib/wallclock";
+import { formatSteamActivityLabel } from "@/lib/steam";
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   return (
@@ -102,6 +103,11 @@ export default async function PotesPage() {
             const rank = rankForLevel(level);
             const sessionsPlayed = sessionsPlayedByUser.get(pote.id) ?? 0;
             const gamesOwned = gamesOwnedByUser.get(pote.id) ?? 0;
+            const steamActivityLabel = formatSteamActivityLabel(
+              pote.lastPlayedGame,
+              pote.lastPlayedAt,
+              now
+            );
             return (
               <StaggerItem key={pote.id}>
                 <Link href={`/potes/${pote.id}`}>
@@ -172,11 +178,8 @@ export default async function PotesPage() {
                         {pote.steamId64 ? "Steam lié" : "Steam non lié"}
                       </Badge>
 
-                      {pote.steamId64 && pote.lastPlayedGame && pote.lastPlayedAt && (
-                        <p className="text-xs text-muted">
-                          🎮 Joue à {pote.lastPlayedGame} — il y a{" "}
-                          {formatDurationFr(now - pote.lastPlayedAt.getTime())}
-                        </p>
+                      {pote.steamId64 && steamActivityLabel && (
+                        <p className="text-xs text-muted">🎮 {steamActivityLabel}</p>
                       )}
 
                       {pote.userTags.length > 0 && (
