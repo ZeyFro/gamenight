@@ -12,6 +12,7 @@ import {
   addManualGameSchema,
   idSchema,
   playerCountsSchema,
+  resolveIgdbGameSchema,
   VALIDATION_ERROR_KEY,
 } from "@/lib/validations";
 import { logger } from "@/lib/logger";
@@ -89,6 +90,67 @@ export async function addManualGame(formData: FormData) {
 
   revalidatePath("/bibliotheque");
   redirect("/bibliotheque");
+}
+
+export interface ResolveIgdbGameResult {
+  ok: boolean;
+  gameId?: string;
+  gameName?: string;
+  error?: string;
+}
+
+/**
+ * Sélecteur de jeu (création de tournoi) — upsert MINIMAL d'un candidat
+ * IGDB choisi, sans les effets de bord d'`addManualGame` (pas d'ownership
+ * `UserGame`, pas de check de badges, pas de redirection) : ce flux a
+ * seulement besoin d'un `gameId` réel à transmettre ensuite à
+ * `createTournamentAction`. Invoquée directement depuis un composant
+ * client (comme `updateGame`/`voteWishlistAction` ci-dessus), jamais via
+ * un `<form action=…>` natif — le composant a besoin du `gameId` retourné
+ * de façon synchrone pour peupler le champ caché du formulaire de
+ * création.
+ *
+ * Même garantie anti-doublon que `addManualGame`/`proposeWishlistGameAction`
+ * (src/app/wishlist/actions.ts) : `upsert({where:{igdbId}})`, `Game.igdbId`
+ * est `@@unique` (prisma/schema.prisma) — un jeu déjà présent en base avec
+ * cet `igdbId` est réutilisé tel quel, jamais dupliqué. N'accorde aucun
+ * droit supplémentaire : même contrôle (`getCurrentUser`) que tous les
+ * autres flux d'ajout de jeu déjà existants, qui permettent déjà à
+ * n'importe quel utilisateur authentifié d'ajouter un jeu à la biblio
+ * commune.
+ */
+export async function resolveIgdbGameAction(
+  formData: FormData
+): Promise<ResolveIgdbGameResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "unauthenticated" };
+  if (!checkRateLimit(user.id, "resolveIgdbGame")) {
+    return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  }
+
+  const input = resolveIgdbGameSchema.safeParse({
+    igdbId: String(formData.get("igdbId") ?? ""),
+    name: String(formData.get("name") ?? ""),
+    coverUrl: String(formData.get("coverUrl") ?? ""),
+  });
+  if (!input.success) return { ok: false, error: VALIDATION_ERROR_KEY };
+  const { name, coverUrl } = input.data;
+  const igdbId = Number(input.data.igdbId);
+
+  const game = await prisma.game.upsert({
+    where: { igdbId },
+    update: {},
+    create: {
+      name,
+      coverUrl: coverUrl || null,
+      source: GameSource.IGDB,
+      igdbId,
+      minPlayers: 2,
+      addedById: user.id,
+    },
+  });
+
+  return { ok: true, gameId: game.id, gameName: game.name };
 }
 
 export interface UpdateGameResult {

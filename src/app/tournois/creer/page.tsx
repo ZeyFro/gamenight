@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { createTournamentAction } from "../actions";
+import { TournamentCreateForm } from "@/components/tournois/TournamentCreateForm";
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
@@ -24,8 +23,11 @@ export default async function CreerTournoiPage({
   const { error } = await searchParams;
   const errorMessage = error ? (TOURNAMENT_ERROR_MESSAGES[error] ?? null) : null;
 
+  // igdbId inclus (en plus de id/name) : nécessaire à `TournamentGameField`
+  // pour ne pas afficher deux fois le même jeu (biblio locale + résultat
+  // IGDB) quand ils partagent le même identifiant externe.
   const games = await prisma.game.findMany({
-    select: { id: true, name: true },
+    select: { id: true, name: true, igdbId: true },
     orderBy: { name: "asc" },
   });
 
@@ -37,79 +39,9 @@ export default async function CreerTournoiPage({
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p>
       )}
 
-      {games.length === 0 ? (
-        <Card>
-          <p className="text-sm text-muted">
-            Aucun jeu dans la bibliothèque commune pour l&apos;instant — ajoute d&apos;abord un jeu.
-          </p>
-        </Card>
-      ) : (
-        <Card>
-          <form action={createTournamentAction} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted" htmlFor="tournament-name">
-                Nom du tournoi
-              </label>
-              <input
-                id="tournament-name"
-                type="text"
-                name="name"
-                required
-                maxLength={60}
-                placeholder="Ex. Le Tournoi du Vendredi"
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted" htmlFor="tournament-game">
-                Jeu
-              </label>
-              <select
-                id="tournament-game"
-                name="gameId"
-                required
-                defaultValue=""
-                className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <option value="" disabled>
-                  Choisir un jeu…
-                </option>
-                {games.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted">Nombre de places</span>
-              <div className="grid grid-cols-3 gap-2">
-                {[4, 6, 8].map((n) => (
-                  <label
-                    key={n}
-                    className="flex cursor-pointer items-center justify-center rounded-lg border border-border bg-background px-3 py-3 text-sm font-medium text-foreground has-[:checked]:border-accent has-[:checked]:bg-accent/10 has-[:checked]:text-accent"
-                  >
-                    <input
-                      type="radio"
-                      name="maxPlayers"
-                      value={n}
-                      defaultChecked={n === 8}
-                      className="sr-only"
-                    />
-                    {n} joueurs
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <Button type="submit" variant="primary" fullWidthOnMobile>
-              Créer le tournoi 🏆
-            </Button>
-          </form>
-        </Card>
-      )}
+      <Card>
+        <TournamentCreateForm localGames={games} />
+      </Card>
     </div>
   );
 }
