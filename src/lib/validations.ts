@@ -278,3 +278,15 @@ export const voteWishlistSchema = z.object({
   wishlistId: idSchema,
   interested: z.enum(["true", "false"]),
 });
+
+/**
+ * `resolveIgdbGameAction` (sélecteur de jeu, création de tournoi) — upsert
+ * minimal d'un candidat IGDB choisi. Mêmes contraintes de forme que
+ * `proposeWishlistGameSchema`, sans `reason` (pas de champ équivalent
+ * dans ce flux).
+ */
+export const resolveIgdbGameSchema = z.object({
+  igdbId: z.string().regex(/^\d+$/, "Identifiant IGDB invalide."),
+  name: z.string().trim().min(1, "Nom manquant.").max(200, "200 caractères max."),
+  coverUrl: z.union([httpUrlSchema, z.literal("")]),
+});
