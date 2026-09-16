@@ -10,6 +10,7 @@ import { formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { createNotifications } from "@/lib/notifications";
 import type { Roulette, User } from "@prisma/client";
+import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 
 function absoluteRouletteUrl(rouletteId: string): string {
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -28,9 +29,10 @@ export async function announceRouletteCreated(
   creator: Pick<User, "id" | "discordId">
 ): Promise<PostToDiscordResult> {
   const notifiedUserIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
-  const others = await prisma.user.findMany({
-    where: { id: { in: notifiedUserIds, not: creator.id }, silenceReminders: false },
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: notifiedUserIds, not: creator.id } },
   });
+  const others = await filterUsersByNotificationPreference(candidates, "ROULETTE");
   const mentions = others.map((u) => `<@${u.discordId}>`);
 
   await createNotifications(
@@ -58,11 +60,11 @@ export async function announceRouletteReminder(
   roulette: Pick<Roulette, "id" | "deadline">,
   missingUserIds: string[]
 ): Promise<PostToDiscordResult> {
-  const missing = await prisma.user.findMany({
-    where: { id: { in: missingUserIds }, silenceReminders: false },
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: missingUserIds } },
   });
+  const missing = await filterUsersByNotificationPreference(candidates, "ROULETTE");
   const mentions = missing.map((u) => `<@${u.discordId}>`);
-  if (mentions.length === 0) return { ok: true };
 
   const embed: DiscordEmbed = {
     title: "⏰ Roulette — dernière ligne droite",
@@ -71,7 +73,9 @@ export async function announceRouletteReminder(
     fields: [{ name: "Lien", value: absoluteRouletteUrl(roulette.id) }],
   };
 
-  return postToDiscord(embed, mentions.join(" "));
+  // Le refus retire la sollicitation personnelle, jamais l'annonce
+  // collective du salon — même si plus personne ne peut être mentionné.
+  return postToDiscord(embed, mentions.length > 0 ? mentions.join(" ") : undefined);
 }
 
 /** Résultat du tirage — mêmes destinataires que les votants créés (`RouletteEntry` distinctes). */
@@ -82,9 +86,10 @@ export async function announceRouletteResult(
   winnerUserIds: string[],
   sessionId: string
 ): Promise<PostToDiscordResult> {
-  const winners = await prisma.user.findMany({
-    where: { id: { in: winnerUserIds }, silenceReminders: false },
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: winnerUserIds } },
   });
+  const winners = await filterUsersByNotificationPreference(candidates, "ROULETTE");
   const mentions = winners.map((u) => `<@${u.discordId}>`);
 
   await createNotifications(

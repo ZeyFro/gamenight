@@ -11,6 +11,7 @@ import { formatReminderTimingShort, isCloseReminder } from "@/lib/reminder-timin
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { createNotifications } from "@/lib/notifications";
 import type { Game, Session } from "@prisma/client";
+import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 
 /**
  * Envoie le rappel Discord d'une session pour un timing donné (minutes
@@ -49,10 +50,10 @@ export async function sendSessionReminder(
   });
 
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
-  const players = (proposal?.votes ?? [])
+  const selectedPlayers = (proposal?.votes ?? [])
     .map((v) => v.user)
-    .filter((u) => !u.silenceReminders)
     .filter((u) => !notifiedUserIds || notifiedUserIds.includes(u.id));
+  const players = await filterUsersByNotificationPreference(selectedPlayers, "SESSION");
   const mentions = players.map((u) => `<@${u.discordId}>`);
 
   // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que

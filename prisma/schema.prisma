@@ -26,10 +26,10 @@ enum UserRole {
 }
 
 model User {
-  id                    String    @id @default(cuid())
-  discordId             String    @unique
-  discordName           String
-  discordAvatar         String?
+  id                       String    @id @default(cuid())
+  discordId                String    @unique
+  discordName              String
+  discordAvatar            String?
   // Fix bug remonté (cron avatars Discord silencieux) — cette app utilise
   // une session JWT sans base (`session: { strategy: "jwt" }` dans
   // auth.ts, pas d'adapter Prisma), donc PAS de table `Account` Auth.js
@@ -47,9 +47,9 @@ model User {
   // déploiement — se peuple progressivement à la prochaine vraie
   // reconnexion de chacun (pas à chaque chargement de page, le JWT
   // persiste jusqu'à 30 jours sans repasser par le provider).
-  discordAccessToken    String?   @db.Text
-  discordRefreshToken   String?   @db.Text
-  discordTokenExpiresAt DateTime?
+  discordAccessToken       String?   @db.Text
+  discordRefreshToken      String?   @db.Text
+  discordTokenExpiresAt    DateTime?
   // Feature "forcer la reconnexion globale" (/admin, PR 75) — posé à la
   // même valeur sur TOUS les users par `triggerGlobalRelogin`
   // (`src/lib/force-relogin.ts`). Sessions JWT (pas de table `Session` en
@@ -61,15 +61,15 @@ model User {
   // le token n'a pas ce champ — cas de TOUTES les sessions actives avant ce
   // déploiement). Une vraie reconnexion repose un `sessionCreatedAt` frais,
   // qui repasse après `forceReloginAt` : pas de reboucle.
-  forceReloginAt        DateTime?
+  forceReloginAt           DateTime?
   // PR 8/9 — bannière de profil personnalisable. URL absolue uniquement
   // (pas de stockage de fichier ni service d'upload tiers — décision
   // documentée dans le README : la complexité d'un vrai upload n'était
   // pas justifiée pour v1). `null` = bannière par défaut (dégradé violet
   // CSS, `.profile-banner-default`).
-  bannerUrl             String?
-  steamId64             String?   @unique
-  steamPublic           Boolean   @default(false)
+  bannerUrl                String?
+  steamId64                String?   @unique
+  steamPublic              Boolean   @default(false)
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
@@ -77,7 +77,7 @@ model User {
   // `Game.createdAt`/`UserGame.createdAt` (imprécis : une sync sans aucun
   // nouveau jeu ne toucherait aucune de ces dates alors qu'une sync a bien
   // eu lieu).
-  steamLastSyncAt       DateTime?
+  steamLastSyncAt          DateTime?
   // Fix (cron Steam surdimensionné) — `steamLastSyncAt` ci-dessus reste
   // EXCLUSIVEMENT réservé à une synchronisation COMPLÈTE de la
   // bibliothèque réussie (`importSteamLibrary`, écrit seulement après la
@@ -105,11 +105,11 @@ model User {
   // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
   // utilisateur — le message est quand même posté dans le salon, il n'est
   // simplement pas mentionné.
-  silenceReminders      Boolean   @default(false)
-  createdAt             DateTime  @default(now())
+  silenceReminders         Boolean   @default(false)
+  createdAt                DateTime  @default(now())
   // PR "Accès & secrets" — voir l'enum `UserRole` ci-dessus pour le
   // mécanisme complet (filet anti-verrouillage `ADMIN_DISCORD_IDS`).
-  role                  UserRole  @default(USER)
+  role                     UserRole  @default(USER)
 
   // PR 4/4 (sous-PR 1) — couleur perso, retrouvée partout dans l'app
   // (calendrier, bannière fallback, /potes/[id], avatars voteurs,
@@ -204,6 +204,11 @@ model User {
 
   // Sprint 2 PR-C — historique des notifications in-app (voir `Notification`).
   notifications Notification[]
+
+  // Préférences de sollicitations personnelles par catégorie. Une ligne
+  // explicite prime sur `silenceReminders`; l'ancien booléen reste présent
+  // pendant la transition et sert de repli aux comptes sans ligne.
+  notificationPreferences UserNotificationPreference[]
 
   // Sprint 3 (FEATURE 6) — tags perso auto-attribués (voir `Tag`/`UserTag`).
   userTags UserTag[]
@@ -1546,6 +1551,26 @@ enum NotificationCategory {
   ADMIN
 }
 
+// Catégories réellement pilotables aujourd'hui depuis le profil. Cet enum
+// reste volontairement plus petit que `NotificationCategory` : afficher un
+// réglage qui n'est pas encore appliqué par tous les chemins donnerait un
+// faux sentiment de contrôle.
+enum UserNotificationCategory {
+  SESSION
+  ROULETTE
+}
+
+model UserNotificationPreference {
+  userId    String
+  category  UserNotificationCategory
+  enabled   Boolean                  @default(true)
+  updatedAt DateTime                 @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
+}
+
 // Destination logique d'une livraison, indépendante du transport réellement
 // utilisé (`DeliveryTransport`) — une livraison DISCORD_CHANNEL part en
 // webhook aujourd'hui, en bot demain, sans que cette valeur change.
@@ -1596,24 +1621,24 @@ enum DeliveryStatus {
 model NotificationEvent {
   id String @id @default(cuid())
 
-  category  NotificationCategory
+  category   NotificationCategory
   // Identifiant libre de type d'événement (ex. "SESSION_CREATED",
   // "REWARD_DAILY_RECAP", "INSTANT_SESSION_GAME_CHANGED") — pas d'enum : les
   // types d'événements des futures PR (salons, récaps, sessions instantanées)
   // ne sont pas tous connus aujourd'hui, et un enum Prisma se migre plus
   // difficilement qu'une valeur applicative validée côté code.
-  eventType String
+  eventType  String
   // Id "libre" de l'entité métier à l'origine de l'événement (sessionId,
   // tournamentId, userId pour un récap...) — même philosophie que
   // `Notification.relatedSessionId` : pas de relation Prisma/FK, cet
   // événement doit rester lisible même si l'entité source est supprimée
   // depuis.
-  sourceId String
+  sourceId   String
   // Distingue deux occurrences du même (category, eventType, sourceId) —
   // ex. la date du jour pour un récap quotidien, ou un compteur de
   // modification pour une soirée éditée plusieurs fois. Chaîne vide par
   // défaut quand une seule occurrence a jamais de sens pour ce eventType.
-  occurrence String @default("")
+  occurrence String               @default("")
 
   createdAt DateTime @default(now())
 
@@ -1678,16 +1703,16 @@ model NotificationDelivery {
   // risquer un envoi/une édition concurrente incohérente. Deux
   // `targetSlot` différents (ex. annonce et fil d'une même soirée) restent
   // entièrement indépendants et progressent en parallèle.
-  targetSlot String
+  targetSlot   String
 
-  status DeliveryStatus @default(PENDING)
+  status           DeliveryStatus @default(PENDING)
   // Étiquette informative (logs/observabilité) du worker/de la requête qui
   // détient la réservation — PAS la garantie de sécurité elle-même (voir
   // `reservationToken`). Un worker peut légitimement réutiliser le même
   // identifiant `reservedBy` d'une réservation à l'autre (redémarrage,
   // identifiant statique...) sans que ça ne permette de finaliser une
   // réservation qui ne lui appartient plus.
-  reservedBy String?
+  reservedBy       String?
   // Jeton unique généré à CHAQUE réservation réussie (`crypto.randomUUID`,
   // jamais choisi par l'appelant) — c'est LUI qui protège une finalisation
   // tardive contre une réservation déjà réattribuée, y compris si
@@ -1698,7 +1723,7 @@ model NotificationDelivery {
   // notification-delivery.ts).
   reservationToken String?
   reservedUntil    DateTime?
-  attempts         Int       @default(0)
+  attempts         Int            @default(0)
   lastError        String?
   errorClass       String?
   nextAttemptAt    DateTime?

@@ -8,6 +8,7 @@ import {
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { formatDateTimeFr, toTimeInputValue } from "@/lib/wallclock";
 import type { Session, User } from "@prisma/client";
+import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 
 function absoluteSessionUrl(sessionId: string): string {
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -43,13 +44,13 @@ export async function announceSessionModified(
 
   const message = await pickMessageTemplate("SESSION_MODIFIED", vars);
 
-  const voters = await prisma.user.findMany({
+  const candidates = await prisma.user.findMany({
     where: {
       id: { not: editor.id },
-      silenceReminders: false,
       votes: { some: { proposal: { sessionId: session.id } } },
     },
   });
+  const voters = await filterUsersByNotificationPreference(candidates, "SESSION");
   const mentions = voters.map((u) => `<@${u.discordId}>`);
 
   const embed: DiscordEmbed = {

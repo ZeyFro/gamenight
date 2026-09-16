@@ -8263,8 +8263,22 @@ DATABASE_URL="postgresql://<user>@localhost:5432/gamenight_notif_test" \
   npx prisma migrate deploy
 
 TEST_DATABASE_URL="postgresql://<user>@localhost:5432/gamenight_notif_test" \
-  npx vitest run
+  npm run test:postgres
 ```
+
+`npm run test:postgres` exige `TEST_DATABASE_URL` et lance Vitest avec un
+seul worker de fichier (`--maxWorkers=1`). Cette sérialisation ne retire ni
+ne séquentialise les scénarios de concurrence **à l'intérieur** des tests :
+elle empêche seulement les suites `notification-delivery`,
+`notification-executor` et `notification-preferences` d'exécuter en parallèle
+leurs nettoyages `TRUNCATE` contre les mêmes tables de la base isolée.
+
+La commande générale `TEST_DATABASE_URL=… npm test`, parallèle par défaut,
+n'est pas une commande verte avec les suites actuelles : les `TRUNCATE` de
+fichiers différents peuvent supprimer les événements/livraisons d'une suite
+pendant qu'une autre les vérifie, ce qui produit notamment des violations de
+clé étrangère et des claims manquants. Utiliser la commande sérialisée ci-dessus
+pour toute validation PostgreSQL complète et reproductible.
 
 Sans `TEST_DATABASE_URL`, la suite d'intégration est **explicitement
 SKIPPÉE** (avec un avertissement console) plutôt que silencieusement
@@ -8794,3 +8808,27 @@ prouver qu'elle reste intouchée).
   inchangés (diff vide vérifié). Aucune migration Prisma dans cette PR
   (aucune évolution de schéma nécessaire — `notification-delivery.ts` et
   `discord-rest.ts` ne sont pas modifiés).
+
+## Préférences de notifications par catégorie
+
+`/profil/parametres` expose uniquement les catégories dont tous les chemins
+actuels appliquent le refus : **Soirées** (`SESSION`) et **Roulettes**
+(`ROULETTE`). Un refus retire les mentions Discord et les notifications
+internes personnelles équivalentes ; l'annonce collective continue d'être
+publiée dans son salon. Les tournois, récompenses et récapitulatifs restent
+annoncés comme catégories futures tant que leur intégration n'est pas complète.
+
+`UserNotificationPreference` est la source de vérité lorsqu'une ligne existe.
+En son absence, `User.silenceReminders` reste le repli compatible pour les deux
+catégories qu'il gouvernait historiquement. La migration initialise donc les
+deux lignes avec `enabled = NOT silenceReminders`. Le défaut est activé afin de
+préserver le comportement des comptes qui recevaient déjà ces sollicitations.
+Le réglage `SESSION` maintient le champ legacy synchronisé pendant la
+transition ; `ROULETTE` peut ensuite évoluer indépendamment.
+
+Le filtrage partagé vit dans `src/lib/notification-preferences.ts`. Les futurs
+résolveurs du nouvel exécuteur doivent l'appeler juste avant de résoudre une
+livraison personnelle et retourner `preference_declined` en cas de refus ; ils
+ne doivent jamais convertir ce refus en MP, notification interne ou autre
+fallback. L'exécuteur reste désactivé et aucun événement métier n'est branché
+par ce chantier.

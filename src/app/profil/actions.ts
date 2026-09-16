@@ -15,6 +15,10 @@ import {
   detectBannerImageSignature,
   safelyDeleteOldBannerBlob,
 } from "@/lib/banner-blob";
+import {
+  isAvailableNotificationCategory,
+  setOwnNotificationPreference,
+} from "@/lib/notification-preferences";
 
 /**
  * Couleur perso (PR 4/4, sous-PR 1) — "Ma couleur" sur `/profil/parametres`.
@@ -48,12 +52,50 @@ export async function toggleSilenceReminders() {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "toggleSilenceReminders")) return;
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { silenceReminders: !user.silenceReminders },
-  });
+  const enabled = user.silenceReminders;
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: { silenceReminders: !enabled },
+    }),
+    ...(["SESSION", "ROULETTE"] as const).map((category) =>
+      prisma.userNotificationPreference.upsert({
+        where: { userId_category: { userId: user.id, category } },
+        create: { userId: user.id, category, enabled },
+        update: { enabled },
+      })
+    ),
+  ]);
 
   revalidatePath("/profil");
+}
+
+/**
+ * Enregistre une catégorie pour l'utilisateur de la session uniquement :
+ * aucun userId reçu du navigateur, donc impossible de cibler un tiers.
+ */
+export async function updateNotificationPreferenceAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "updateNotificationPreference")) {
+    redirect("/profil/parametres?notifications=rate_limited");
+  }
+
+  const category = String(formData.get("category") ?? "");
+  const enabledValue = String(formData.get("enabled") ?? "");
+  if (!isAvailableNotificationCategory(category) || !["true", "false"].includes(enabledValue)) {
+    redirect("/profil/parametres?notifications=invalide");
+  }
+
+  try {
+    await setOwnNotificationPreference(user.id, category, enabledValue === "true");
+  } catch (error) {
+    logger.error("notification-preferences", error, { userId: user.id, category });
+    redirect("/profil/parametres?notifications=erreur");
+  }
+
+  revalidatePath("/profil/parametres");
+  redirect("/profil/parametres?notifications=ok");
 }
 
 /**

@@ -10,6 +10,7 @@ import { formatDateTimeFr, toTimeInputValue } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { createNotifications } from "@/lib/notifications";
 import type { Session, User } from "@prisma/client";
+import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 
 function absoluteSessionUrl(sessionId: string): string {
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -55,12 +56,12 @@ export async function announceSessionCreated(
   const message = await pickMessageTemplate("SESSION_CREATED", vars);
 
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
-  const others = await prisma.user.findMany({
+  const candidates = await prisma.user.findMany({
     where: {
       id: { not: creator.id, ...(notifiedUserIds ? { in: notifiedUserIds } : {}) },
-      silenceReminders: false,
     },
   });
+  const others = await filterUsersByNotificationPreference(candidates, "SESSION");
   const mentions = others.map((u) => `<@${u.discordId}>`);
 
   // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
