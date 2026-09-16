@@ -22,7 +22,11 @@ import { logger } from "@/lib/logger";
  * tenté et `insufficient_lease` est renvoyé immédiatement. Sinon, le
  * timeout HTTP (`AbortSignal.timeout`) est borné au budget restant (avec
  * un plafond absolu raisonnable), JAMAIS au-delà — jamais de valeur fixe
- * indépendante du bail.
+ * indépendante du bail. Ce budget couvre explicitement la requête ET la
+ * lecture du corps de réponse (pas seulement l'attente des en-têtes) :
+ * `discordRequest` englobe les deux dans une course contre une minuterie
+ * dérivée du même budget, garantie vraie par construction plutôt que
+ * supposée d'un comportement implicite de `AbortSignal`.
  *
  * Pas de retry ni d'attente longue caché dans ce module : chaque appel
  * renvoie un résultat typé classifiant précisément l'échec
@@ -227,12 +231,12 @@ function classifyForbiddenOrUnauthorized(
   };
 }
 
-function classifyRateLimit(res: Response, body: unknown): DiscordRestFailure {
+function classifyRateLimit(headers: Headers, body: unknown): DiscordRestFailure {
   const bodyRetryAfterSec =
     typeof body === "object" && body !== null && "retry_after" in body
       ? Number((body as Record<string, unknown>).retry_after)
       : undefined;
-  const headerRetryAfterSec = res.headers.get("Retry-After");
+  const headerRetryAfterSec = headers.get("Retry-After");
   const retryAfterSec =
     bodyRetryAfterSec !== undefined && Number.isFinite(bodyRetryAfterSec)
       ? bodyRetryAfterSec
@@ -257,6 +261,22 @@ interface RequestOptions<T> {
   now?: Date;
   isDirectMessage?: boolean;
   parse: (json: unknown) => T | null;
+}
+
+/** Signale que le budget de bail a expiré avant d'obtenir un résultat
+ * exploitable — distingué des erreurs réseau/abort natives pour un
+ * message précis (voir `discordRequest`). */
+class DeadlineExceededError extends Error {
+  constructor() {
+    super("Budget de bail épuisé avant réponse exploitable de Discord.");
+    this.name = "DeadlineExceededError";
+  }
+}
+
+interface RawHttpResult {
+  status: number;
+  headers: Headers;
+  body: unknown;
 }
 
 /**
@@ -288,43 +308,82 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
   }
 
   const timeoutMs = Math.min(remaining, MAX_REQUEST_TIMEOUT_MS);
+  // Défense en profondeur : annule effectivement la requête réseau
+  // sous-jacente (et, en pratique, tout flux de lecture du corps en
+  // cours) quand le délai expire.
+  const abortSignal = AbortSignal.timeout(timeoutMs);
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${opts.path}`, {
+  async function fetchAndReadBody(): Promise<RawHttpResult> {
+    const res = await fetch(`${API_BASE}${opts.path}`, {
       method: opts.method,
       headers: {
         Authorization: `Bot ${token}`,
         "Content-Type": "application/json",
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: abortSignal,
     });
+    const body = await safeReadJson(res);
+    return { status: res.status, headers: res.headers, body };
+  }
+
+  // Le budget doit couvrir la lecture du corps de réponse, pas seulement
+  // l'attente des en-têtes — on ne se repose pas uniquement sur
+  // l'hypothèse (conforme aux specs des runtimes actuels, mais non
+  // vérifiée ici) qu'un AbortSignal annule aussi un flux de lecture en
+  // cours : le fetch ET la lecture du corps sont englobés ENSEMBLE dans
+  // la course ci-dessous contre une minuterie dérivée du même budget, ce
+  // qui rend la garantie vraie par construction plutôt que supposée.
+  const fetchPromise = fetchAndReadBody();
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadlinePromise = new Promise<never>((_, reject) => {
+    deadlineTimer = setTimeout(() => reject(new DeadlineExceededError()), timeoutMs);
+  });
+  // Si la minuterie l'emporte, `fetchPromise` peut encore rejeter plus
+  // tard (abort effectif) — évite un rejet de promesse non géré côté
+  // process, sans jamais influencer le résultat déjà renvoyé.
+  fetchPromise.catch(() => {});
+
+  let raw: RawHttpResult;
+  try {
+    raw = await Promise.race([fetchPromise, deadlinePromise]);
   } catch (error) {
+    if (error instanceof DeadlineExceededError) {
+      return {
+        ok: false,
+        kind: "network_uncertain",
+        message: error.message,
+        retryable: true,
+      };
+    }
     return {
       ok: false,
       kind: "network_uncertain",
       message: describeNetworkError(error),
       retryable: true,
     };
+  } finally {
+    if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
   }
 
-  if (res.status === 429) {
-    return classifyRateLimit(res, await safeReadJson(res));
+  const { status, headers, body } = raw;
+
+  if (status === 429) {
+    return classifyRateLimit(headers, body);
   }
-  if (res.status >= 500) {
+  if (status >= 500) {
     return {
       ok: false,
       kind: "server_error",
-      httpStatus: res.status,
-      message: `Discord a répondu ${res.status} (erreur serveur).`,
+      httpStatus: status,
+      message: `Discord a répondu ${status} (erreur serveur).`,
       retryable: true,
     };
   }
-  if (res.status === 401 || res.status === 403) {
-    return classifyForbiddenOrUnauthorized(res.status, await safeReadJson(res), opts.isDirectMessage);
+  if (status === 401 || status === 403) {
+    return classifyForbiddenOrUnauthorized(status, body, opts.isDirectMessage);
   }
-  if (res.status === 404) {
+  if (status === 404) {
     return {
       ok: false,
       kind: "not_found",
@@ -333,19 +392,17 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
       retryable: false,
     };
   }
-  if (!res.ok) {
-    const body = await safeReadJson(res);
+  if (status < 200 || status >= 300) {
     return {
       ok: false,
       kind: "invalid_request",
-      httpStatus: res.status,
+      httpStatus: status,
       discordCode: extractDiscordCode(body),
-      message: extractDiscordMessage(body) ?? `Discord a répondu ${res.status} (requête invalide).`,
+      message: extractDiscordMessage(body) ?? `Discord a répondu ${status} (requête invalide).`,
       retryable: false,
     };
   }
 
-  const body = await safeReadJson(res);
   if (body === undefined) {
     return {
       ok: false,
@@ -533,10 +590,25 @@ export interface ArchiveThreadInput {
   now?: Date;
 }
 
-/** Archive (et verrouille optionnellement) un fil déjà créé par ce bot —
- * `MANAGE_THREADS` n'est nécessaire que pour archiver un fil créé par
- * quelqu'un d'autre ; un bot qui archive ses propres fils n'en a pas
- * besoin (créateur du fil). */
+/**
+ * Archive (et verrouille optionnellement) un fil.
+ *
+ * Permissions — archivage simple (`locked` omis ou `false`) : un bot qui
+ * a lui-même créé le fil (via `startThreadFromMessage`, seul usage prévu
+ * de cette fonction dans ce module) peut l'archiver SANS `MANAGE_THREADS`.
+ * Cette permission reste nécessaire pour archiver un fil créé par
+ * quelqu'un d'autre.
+ *
+ * Asymétrie à connaître si `locked: true` est demandé : un fil
+ * VERROUILLÉ ne peut être DÉSARCHIVÉ ensuite que par un titulaire de
+ * `MANAGE_THREADS` — même si ce bot en est le créateur (règle documentée
+ * par Discord, pas une particularité de ce client). Verrouiller un fil
+ * créé par ce bot sans qu'il détienne `MANAGE_THREADS` risque donc de le
+ * rendre irréversible pour ce bot seul. Ne jamais accorder
+ * `Administrateur` pour contourner cette limite ; si le verrouillage est
+ * réellement nécessaire, accorder `MANAGE_THREADS` explicitement et de
+ * façon ciblée sur les salons concernés, rien de plus large.
+ */
 export async function archiveThread(input: ArchiveThreadInput): Promise<DiscordRestResult<ThreadInfo>> {
   return discordRequest({
     method: "PATCH",
@@ -566,5 +638,41 @@ export async function openDmChannel(input: OpenDmChannelInput): Promise<DiscordR
     deadline: input.deadline,
     now: input.now,
     parse: parseChannel,
+  });
+}
+
+export interface SendDirectMessageInput extends MessageContentInput {
+  userId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/**
+ * Ouvre le canal de MP puis y envoie le message, en partageant EXACTEMENT
+ * le même `deadline` (et le même `now`, si fourni) entre les deux appels
+ * — jamais de recalcul/réinitialisation du budget entre l'ouverture et
+ * l'envoi. À préférer à un enchaînement manuel `openDmChannel` +
+ * `sendChannelMessage`, où un appelant pourrait par erreur recalculer
+ * `deadline` entre les deux appels et doubler le budget réel accordé à
+ * l'ensemble de l'invitation MP ; cette composition l'empêche
+ * structurellement. Si l'ouverture du canal échoue, l'envoi n'est jamais
+ * tenté (pas de second appel réseau sur un échec déjà classifié).
+ */
+export async function sendDirectMessage(input: SendDirectMessageInput): Promise<DiscordRestResult<SentMessage>> {
+  const channel = await openDmChannel({
+    userId: input.userId,
+    deadline: input.deadline,
+    now: input.now,
+  });
+  if (!channel.ok) return channel;
+
+  return sendChannelMessage({
+    channelId: channel.data.channelId,
+    content: input.content,
+    embeds: input.embeds,
+    allowedMentions: input.allowedMentions,
+    isDirectMessage: true,
+    deadline: input.deadline,
+    now: input.now,
   });
 }

@@ -8404,13 +8404,53 @@ présentée comme résolue par ce module.
 
 **Mentions — contrôle explicite obligatoire** : `allowedMentions` est un
 paramètre REQUIS (pas de valeur implicite) sur tout appel envoyant du
-contenu — `NO_MENTIONS` (= `{parse: []}`) exporté pour supprimer tout ping
-par défaut ; un appelant qui veut mentionner un rôle/utilisateur précis
-doit le lister explicitement.
+contenu — création ET édition partagent la même construction de corps
+(`buildMessageBody`), donc les mentions sont désactivées par défaut dans
+les deux cas, jamais seulement à la création. `NO_MENTIONS`
+(= `{parse: []}`) exporté pour supprimer tout ping par défaut ; un
+appelant qui veut mentionner un rôle/utilisateur précis doit le lister
+explicitement.
+
+**Réponse perdue ou malformée = résultat incertain, jamais un succès ni un
+échec silencieux, jamais de retry auto** : si un create/edit a
+potentiellement été accepté par Discord mais que la réponse est
+illisible/de forme inattendue, ou si `fetch` lui-même rejette (timeout,
+abort, coupure réseau), le résultat renvoyé est `network_uncertain` —
+jamais traité comme un succès (pas d'id exploitable garanti), jamais
+traité comme un échec propre (l'action a pu réussir côté Discord). Le
+client ne boucle jamais lui-même sur cette incertitude : un seul `fetch`
+est tenté, point, c'est à l'appelant (futur exécuteur de livraison) de
+décider s'il retente — testé explicitement (`fetch` appelé exactement une
+fois après un `network_uncertain`).
+
+**Budget de bail = en-têtes ET lecture du corps, pas seulement l'attente
+des en-têtes (vérifié, pas supposé)** : `discordRequest` englobe le
+`fetch` ET la lecture du corps de réponse ensemble dans une course
+(`Promise.race`) contre une minuterie dérivée du même budget — la
+garantie que le budget couvre aussi une lecture de corps qui traînerait
+est donc vraie par construction, pas seulement supposée d'un comportement
+implicite d'`AbortSignal` sur les flux de lecture (comportement conforme
+aux specs des runtimes actuels, mais qu'on ne voulait pas se contenter de
+supposer). Testé avec un corps de réponse qui ne finit jamais de streamer
+(`ReadableStream` sans `close()`) : l'appel renvoie bien `network_uncertain`
+dans le budget imparti au lieu de rester bloqué indéfiniment.
+
+**MP : ouverture + envoi partagent le même `deadline`, jamais réinitialisé**
+— `sendDirectMessage` (nouvelle fonction composée) enchaîne
+`openDmChannel` puis `sendChannelMessage` en propageant EXACTEMENT le même
+`deadline` (et le même `now`, si fourni) aux deux appels, sans jamais le
+recalculer entre les deux — un enchaînement manuel des deux fonctions
+existantes resterait possible mais exposerait l'appelant au risque de
+recalculer `deadline` entre les deux et de doubler le budget réel accordé
+à l'invitation MP ; `sendDirectMessage` élimine ce risque structurellement.
+Si l'ouverture du canal échoue, l'envoi n'est jamais tenté (pas de second
+appel réseau sur un échec déjà classifié) — testé explicitement, ainsi que
+le partage effectif du budget entre les deux appels (même valeur de
+timeout dérivée pour les deux, via `AbortSignal.timeout` espionné).
 
 ### Tests — HTTP entièrement simulé, aucun appel réseau réel
 
-`src/lib/discord-rest.test.ts` (26 tests, `fetch` mocké via
+`src/lib/discord-rest.test.ts` (33 tests, `fetch` mocké via
 `vi.stubGlobal`) : succès + capture des identifiants (message, fil,
 canal de MP), erreurs HTTP (400/404/500) et réponses malformées (corps
 illisible ou de forme inattendue sur un statut 2xx), rate limit avec
@@ -8419,17 +8459,22 @@ budget de bail insuffisant (aucun `fetch` tenté) et plafonnement du
 timeout (`AbortSignal.timeout` espionné pour vérifier la valeur exacte
 transmise), absence de fuite du token (vérifié dans le résultat renvoyé,
 alors que l'en-tête de requête le contient bien), configuration
-manquante, contrôle explicite des mentions, et l'ambiguïté du refus de MP
-(50007 en contexte MP → `dm_unavailable` ; le même code hors contexte MP
-→ classification générique).
+manquante, contrôle explicite des mentions (création ET édition),
+l'ambiguïté du refus de MP (50007 en contexte MP → `dm_unavailable` ; le
+même code hors contexte MP → classification générique), l'absence de
+retry auto après un résultat incertain, la couverture du budget sur la
+lecture du corps (corps qui ne finit jamais de streamer), et le flux MP
+composé (`sendDirectMessage`) — enchaînement, budget partagé non
+réinitialisé, échec précoce sans second appel, propagation de
+l'ambiguïté 50007.
 
 ### Vérification
 
 - `npx tsc --noEmit`, `npx eslint .` : clean.
-- `npx vitest run` avec `TEST_DATABASE_URL` : **296 tests, tout vert**
+- `npx vitest run` avec `TEST_DATABASE_URL` : **303 tests, tout vert**
   (les 18 tests d'intégration Postgres de #95 rejoués à l'identique — non
   modifiés par cette PR — confirment qu'aucune régression n'a été
-  introduite). Sans `TEST_DATABASE_URL` : 278 verts, 18 skippés
+  introduite). Sans `TEST_DATABASE_URL` : 285 verts, 18 skippés
   explicitement.
 - `npx next build` : compile sans erreur, aucune nouvelle route générée.
 - Aucun appel Discord réel à aucun moment. `src/lib/discord.ts` (webhook)
@@ -8438,33 +8483,76 @@ manquante, contrôle explicite des mentions, et l'ambiguïté du refus de MP
 ### Procédure de configuration du bot (à faire manuellement, plus tard)
 
 Étapes pour un serveur Discord de test — **aucune de ces étapes n'a été
-faite par cette PR**, aucun token demandé ici :
+faite par cette PR**, aucun token demandé ici, aucune configuration réelle
+ni aucun envoi réel effectué :
 
-1. **Application** : réutiliser l'application Discord existante de ce
-   projet (celle dont `DISCORD_BOT_TOKEN`/`DISCORD_CLIENT_ID` sont déjà
-   configurés pour l'OAuth de connexion) plutôt que d'en créer une
-   nouvelle — Developer Portal → l'application du projet → onglet "Bot".
-   Si aucun bot n'y est activé, l'activer depuis cet onglet (bouton "Reset
-   Token" génère `DISCORD_BOT_TOKEN`, déjà le nom de variable utilisé par
-   `discord-profile.ts`).
-2. **Permissions minimales, jamais Administrateur** — lors de
-   l'invitation du bot (OAuth2 URL Generator, scope `bot`) : `View
+1. **Application dédiée aux tests, distincte de l'application de
+   production** — correction par rapport à une version précédente de cette
+   documentation, qui recommandait à tort de réutiliser l'application
+   existante. **Le choix du serveur d'invitation ne suffit PAS à isoler
+   test et production** : un jeton de bot donne accès à TOUTES les
+   guildes où ce bot a été ajouté, quel que soit le serveur visé par un
+   appel donné — rien dans l'API Discord ne fait dépendre l'autorisation
+   d'un appel REST du serveur "visé" par un test. La seule isolation
+   fiable est un jeton distinct : créer une seconde application Discord
+   (Developer Portal → "New Application", ex. "GameNight (test)"), activer
+   un bot dessus, générer son propre `DISCORD_BOT_TOKEN` — jamais réutiliser
+   celui de l'application de production pour des essais.
+2. **Variable d'environnement Preview uniquement** : configurer ce second
+   token dans les variables d'environnement Vercel du scope **Preview**
+   exclusivement (jamais Production) — voir la note plus bas sur ce que
+   l'isolation Neon Preview/production ne couvre PAS. Aucune configuration
+   Vercel n'est faite par cette PR ; ceci reste une étape manuelle future.
+3. **Permissions minimales, jamais Administrateur** — lors de
+   l'invitation du bot de test (OAuth2 URL Generator, scope `bot`) : `View
    Channel`, `Send Messages`, `Send Messages in Threads`, `Create Public
-   Threads`, `Embed Links`, `Read Message History`. Rien d'autre — pas
-   `Manage Threads` (le bot n'archive que ses propres fils, dont il est
-   déjà créateur), pas `Administrator`.
-3. **Variables** : `DISCORD_BOT_TOKEN` (déjà dans `.env.example`) —
-   aucune nouvelle variable introduite par cette PR.
-4. **Séparation test/production** : inviter le bot sur un serveur Discord
-   dédié aux tests (pas le serveur réel du groupe) avant tout essai
-   manuel ; le jeton bot reste le même quel que soit le serveur, donc
-   c'est le CHOIX du serveur d'invitation qui garantit l'isolation, pas
-   une variable d'environnement différente.
-5. **Essai manuel à faire plus tard** (pas dans cette PR — aucun appelant
+   Threads`, `Embed Links`, `Read Message History`. Rien d'autre par
+   défaut — voir la section Permissions ci-dessous pour le cas spécifique
+   de l'archivage (`Manage Threads`) et pourquoi ne jamais accorder
+   `Administrator`.
+4. **Serveur ET salons de test, comptes de test explicitement consentants**
+   : inviter le bot de test sur un serveur Discord séparé du serveur réel
+   du groupe, et restreindre tout essai manuel futur aux salons créés pour
+   ces tests. Pour les MP, n'envoyer qu'à des comptes explicitement
+   informés et volontaires pour servir de cible de test — jamais à un
+   membre réel du groupe sans son accord explicite pour ce rôle.
+5. **L'isolation de la base Neon (Preview vs production) ne garantit
+   RIEN sur l'isolation des envois Discord** — ce sont deux mécanismes
+   totalement indépendants. Un déploiement Preview branché sur une base
+   Preview isolée peut très bien, s'il utilise par erreur le token de
+   production, envoyer de vrais messages sur le vrai serveur : ne jamais
+   présenter l'un comme garantissant l'autre. L'isolation des envois
+   Discord ne peut venir que d'un token de bot distinct (étape 1) combiné
+   à des salons/comptes de test dédiés (étape 4).
+6. **Essai manuel à faire plus tard** (pas dans cette PR — aucun appelant
    n'existe encore) : une fois une future PR branchée à une route de test,
-   vérifier dans cet ordre — envoi simple dans un salon, édition de ce
-   message, création d'un fil depuis ce message, envoi dans le fil,
-   archivage du fil, ouverture d'un MP vers un compte de test, envoi puis
-   édition du MP. Confirmer qu'aucune mention involontaire ne part (compte
-   de test dans un rôle mentionnable) avant tout essai sur le vrai
-   serveur.
+   avec le bot de test (étape 1) sur le serveur de test (étape 4)
+   uniquement — vérifier dans cet ordre : envoi simple dans un salon de
+   test, édition de ce message, création d'un fil depuis ce message, envoi
+   dans le fil, archivage du fil (sans `locked: true` dans un premier
+   temps — voir Permissions ci-dessous), ouverture d'un MP vers un compte
+   de test consentant, envoi puis édition du MP. Confirmer qu'aucune
+   mention involontaire ne part avant tout essai, y compris sur le serveur
+   de test.
+
+### Permissions — archivage de fil, y compris l'asymétrie verrouillage
+
+Le bot n'archive dans ce module que des fils qu'il a lui-même créés (via
+`startThreadFromMessage`) — c'est le seul usage prévu d'`archiveThread`
+ici. Dans ce cas, **`Manage Threads` n'est pas nécessaire pour un
+archivage simple** (`locked` omis ou `false`) : un créateur de fil peut
+archiver son propre fil sans cette permission. `Manage Threads` reste
+nécessaire pour archiver un fil créé par quelqu'un d'autre (hors du
+périmètre de ce module).
+
+**Asymétrie vérifiée contre la documentation Discord actuelle** :
+si `locked: true` est utilisé en plus de l'archivage, un fil VERROUILLÉ ne
+peut ensuite être DÉSARCHIVÉ que par quelqu'un détenant `Manage Threads`
+— même si le bot est le créateur du fil. Verrouiller un fil créé par ce
+bot sans qu'il détienne `Manage Threads` risque donc de le rendre
+irréversible pour ce bot seul (une intervention humaine avec les bonnes
+permissions serait alors nécessaire pour le désarchiver). Documenté
+directement dans le code (`archiveThread`, `src/lib/discord-rest.ts`).
+**Jamais `Administrator`** pour contourner cette limite : si le
+verrouillage s'avère réellement nécessaire pour un usage futur, accorder
+`Manage Threads` explicitement et de façon ciblée, rien de plus large.

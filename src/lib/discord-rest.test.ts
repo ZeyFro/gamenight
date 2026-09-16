@@ -5,6 +5,7 @@ import {
   NO_MENTIONS,
   openDmChannel,
   sendChannelMessage,
+  sendDirectMessage,
   sendThreadMessage,
   startThreadFromMessage,
 } from "@/lib/discord-rest";
@@ -340,6 +341,135 @@ describe("discord-rest", () => {
         expect(result.retryable).toBe(true);
       }
     });
+
+    it("un résultat network_uncertain n'entraîne jamais de nouvelle tentative interne (fetch appelé une seule fois)", async () => {
+      fetchMock.mockRejectedValue(new DOMException("The operation was aborted", "TimeoutError"));
+      await sendChannelMessage({
+        channelId: "c1",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      // Le client ne boucle ni ne retente jamais lui-même — c'est à
+      // l'appelant (futur exécuteur de livraison) de décider, jamais à ce
+      // module. Un seul appel `fetch`, quel que soit `retryable`.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("le budget (deadline) englobe aussi la lecture du corps de réponse, pas seulement les en-têtes : une lecture qui ne se résout jamais est bornée par le même délai", async () => {
+      // Simule un corps de réponse qui ne finit jamais de streamer (headers
+      // reçus, mais `res.text()` ne se résout jamais) — sans l'englobement
+      // explicite fetch+lecture dans la course contre le budget, cet appel
+      // resterait bloqué indéfiniment au lieu de renvoyer dans le budget.
+      const hangingBody = new ReadableStream<Uint8Array>({
+        start() {
+          /* jamais de close() ni d'enqueue() : la lecture ne se termine jamais */
+        },
+      });
+      fetchMock.mockResolvedValue(new Response(hangingBody, { status: 200 }));
+
+      // Juste au-dessus de MIN_REQUEST_BUDGET_MS pour que l'appel soit
+      // réellement tenté, tout en gardant le test rapide.
+      const deadline = new Date(NOW.getTime() + 1_100);
+      const result = await sendChannelMessage({
+        channelId: "c1",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline,
+        now: NOW,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe("network_uncertain");
+        expect(result.retryable).toBe(true);
+      }
+    }, 5000);
+  });
+
+  describe("MP composé : ouverture + envoi partagent le même deadline", () => {
+    it("sendDirectMessage enchaîne ouverture puis envoi et renvoie messageId/channelId", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { id: "dmchan1" }))
+        .mockResolvedValueOnce(jsonResponse(200, { id: "msg1", channel_id: "dmchan1" }));
+
+      const result = await sendDirectMessage({
+        userId: "user1",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+
+      expect(result).toEqual({ ok: true, data: { messageId: "msg1", channelId: "dmchan1" } });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [firstUrl] = fetchMock.mock.calls[0];
+      const [secondUrl] = fetchMock.mock.calls[1];
+      expect(String(firstUrl)).toBe("https://discord.com/api/v10/users/@me/channels");
+      expect(String(secondUrl)).toBe("https://discord.com/api/v10/channels/dmchan1/messages");
+    });
+
+    it("les deux appels dérivent le même budget du même deadline (jamais réinitialisé entre ouverture et envoi)", async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+      timeoutSpy.mockClear();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { id: "dmchan1" }))
+        .mockResolvedValueOnce(jsonResponse(200, { id: "msg1", channel_id: "dmchan1" }));
+
+      const deadline = new Date(NOW.getTime() + 7_777);
+      await sendDirectMessage({
+        userId: "user1",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline,
+        now: NOW,
+      });
+
+      expect(timeoutSpy).toHaveBeenCalledTimes(2);
+      // Même `now` explicite passé aux deux appels ⇒ même budget restant
+      // dérivé du même `deadline` pour les deux appels. Une implémentation
+      // qui recalculerait un budget indépendant pour le second appel (au
+      // lieu de propager le même `deadline`) romprait cette égalité.
+      expect(timeoutSpy.mock.calls[0][0]).toBe(timeoutSpy.mock.calls[1][0]);
+      expect(timeoutSpy.mock.calls[0][0]).toBeLessThanOrEqual(7_777);
+    });
+
+    it("si l'ouverture du canal échoue, l'envoi n'est jamais tenté (pas de second appel réseau)", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(404, { code: 10013, message: "Unknown User" }));
+
+      const result = await sendDirectMessage({
+        userId: "gone",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.kind).toBe("not_found");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("propage l'ambiguïté de refus de MP (50007) depuis l'appel d'envoi, avec isDirectMessage forcé automatiquement", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { id: "dmchan1" }))
+        .mockResolvedValueOnce(jsonResponse(403, { code: 50007, message: "Cannot send messages to this user" }));
+
+      const result = await sendDirectMessage({
+        userId: "user1",
+        content: "hi",
+        allowedMentions: NO_MENTIONS,
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe("dm_unavailable");
+        expect(result.message).toMatch(/non déterminable/);
+      }
+    });
   });
 
   describe("refus de MP — ambiguïté assumée", () => {
@@ -410,6 +540,25 @@ describe("discord-rest", () => {
       const [, init] = fetchMock.mock.calls[0];
       const body = JSON.parse(init.body as string);
       expect(body.allowed_mentions).toEqual({ parse: [], roles: undefined, users: ["123"], replied_user: undefined });
+    });
+
+    it("transmet aussi allowed_mentions (désactivées par défaut) lors d'une ÉDITION, pas seulement à la création", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", channel_id: "c1" }));
+      await editChannelMessage({
+        channelId: "c1",
+        messageId: "m1",
+        content: "updated",
+        allowedMentions: NO_MENTIONS,
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      // `allowedMentions` est un champ obligatoire de `MessageContentInput`
+      // (pas de valeur implicite côté client) et `buildMessageBody` est
+      // partagé par l'envoi ET l'édition — jamais de mentions par défaut
+      // sur une édition non plus.
+      expect(body.allowed_mentions).toEqual({ parse: [], roles: undefined, users: undefined, replied_user: undefined });
     });
   });
 
