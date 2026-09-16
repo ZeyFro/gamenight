@@ -8556,3 +8556,241 @@ directement dans le code (`archiveThread`, `src/lib/discord-rest.ts`).
 **Jamais `Administrator`** pour contourner cette limite : si le
 verrouillage s'avère réellement nécessaire pour un usage futur, accorder
 `Manage Threads` explicitement et de façon ciblée, rien de plus large.
+
+## Exécuteur de notifications (PR 3/N) — désactivé par défaut
+
+Troisième PR du chantier notifications — relie enfin les fondations de
+livraison persistées (`src/lib/notification-delivery.ts`, #95) au client
+Discord REST (`src/lib/discord-rest.ts`, #96) via un nouveau module,
+`src/lib/notification-executor.ts`. **Aucune notification métier n'est
+branchée par cette PR** : `src/lib/discord.ts` (webhook) reste l'unique
+chemin actif pour toutes les notifications actuelles, aucun producteur
+d'événement réel n'existe encore, et la route cron dédiée est **strictement
+désactivée par défaut**.
+
+### Ce que cette PR réutilise, sans le réimplémenter
+
+Rien de ce qui suit n'est reconstruit en vérification applicative parallèle
+— tout est délégué aux modules des deux PR précédentes :
+
+- Réservation persistée exclusive par cible, dépendance SEND→EDIT/ARCHIVE,
+  convergence vers l'édition la plus récente, finalisation conditionnée au
+  `reservationToken` : entièrement porté par `claimNextDelivery`/
+  `finalizeDeliverySuccess`/`finalizeDeliveryFailure`
+  (`notification-delivery.ts`).
+- Récupération des réservations expirées : `recoverExpiredReservations`
+  est désormais **appelée à chaque batch** (`runExecutorBatch`) — c'est le
+  balayage périodique que la doc de #95 documentait explicitement comme
+  "absent de cette PR" ; il est enfin branché ici, porté par chaque
+  exécution du cron plutôt qu'un processus séparé.
+- Budget réseau couvrant requête ET lecture de réponse, MP à deadline
+  partagé (ouverture + envoi) : entièrement porté par `discordRequest`/
+  `sendDirectMessage` (`discord-rest.ts`).
+
+### Le cycle d'une livraison (`processNextDelivery`)
+
+Claim atomique (hors de toute portée réseau) → chargement de
+l'événement → résolution du contenu/destination **juste à temps** (jamais
+mise en cache depuis l'enqueue — un résolveur relit l'état métier courant à
+chaque appel) → vérification du budget de bail restant (marge dédiée à la
+finalisation, `MIN_CALL_MARGIN_MS`) → **UN** appel Discord, hors
+transaction SQL → finalisation. Jamais de retry synchrone dans cette
+requête : un échec retryable repasse simplement la livraison à `PENDING`
+avec `nextAttemptAt`, repris par une future exécution du cron.
+
+Une erreur sur une livraison (résolveur non configuré, dépendance pas
+prête, échec Discord) ne fait jamais planter le traitement des autres
+cibles éligibles — chaque livraison est traitée indépendamment,
+`runExecutorBatch` continue toujours vers la suivante.
+
+### Actions Discord représentables (`ResolvedAction`)
+
+Correspondance directe 1:1 avec les fonctions exportées de
+`discord-rest.ts`, sans abstraction supplémentaire : `send_channel_message`,
+`edit_channel_message` (salon ou MP via `isDirectMessage`),
+`send_direct_message` (ouverture + envoi à deadline partagé, via
+`sendDirectMessage`), `create_thread`, `send_thread_message`,
+`archive_thread`. Une opération inconnue n'est PAS représentable — le type
+`ResolvedAction` ferme la liste, un résolveur ne peut rien inventer au-delà.
+
+### Contrat de résolution (`DeliveryResolver`) — aucun producteur réel branché
+
+Un futur résolveur métier reçoit, pour une livraison réservée donnée : la
+livraison elle-même (avec `targetMessage` déjà résolu pour une EDIT/ARCHIVE
+sur la MÊME cible), l'événement source, et l'instant courant. Il répond soit
+`{eligible: true, action}` (avec un `stateVersion` optionnel, typé mais non
+exploité par cette PR — réservé à un futur contrôle de concurrence
+optimiste, aucune logique dessus aujourd'hui), soit `{eligible: false,
+reason}` (`preference_declined`, `expired`, `not_configured`,
+`dependency_not_ready`, `unresolvable`).
+
+**Aucune fonctionnalité métier n'est inventée ici** : pas de session
+instantanée, pas d'interface de préférences. Le résolveur utilisé par la
+route cron en production, tant qu'aucun résolveur réel n'existe,
+est `NOT_CONFIGURED_RESOLVER` — il refuse systématiquement d'envoyer quoi
+que ce soit, jamais de repli implicite vers une autre notification.
+Matérialise directement l'exigence : en l'absence de résolution ou de
+configuration sûre, ne rien envoyer.
+
+Une dépendance métier inter-`targetSlot` (ex. un SEND de création de fil
+qui a besoin du message id d'un SEND d'annonce sur un AUTRE `targetSlot`)
+n'est PAS résolue automatiquement par ce module — `claimNextDelivery` ne
+résout `targetMessage` que pour une EDIT/ARCHIVE sur le MÊME `targetSlot`
+que son SEND. Un futur résolveur métier réel doit chercher lui-même une
+telle référence croisée ; `dependency_not_ready` existe précisément pour ce
+cas (retryable, backoff court, voir plus bas).
+
+### Succès partiels — reprise de la seule étape manquante
+
+Un SEND réussi (ex. l'annonce) et une opération dépendante en échec (ex. la
+création de son fil) sont deux livraisons **distinctes**, sur des
+`targetSlot` différents — c'est la conséquence directe de la conception du
+schéma (#95), pas un mécanisme ajouté par cette PR. Si le SEND réussit puis
+que la création du fil échoue, seule la ligne du fil repasse à `PENDING`
+pour reprise ; l'annonce, déjà `SENT`, n'est jamais reconsidérée par
+`claimNextDelivery`. Testé explicitement (voir plus bas).
+
+### Erreurs et reprises
+
+Le `kind`/`retryable` déjà posé par `discord-rest.ts` est propagé tel quel
+(rien à redécider), sauf `MAX_DELIVERY_ATTEMPTS` (8, borne pas dérivée
+d'une contrainte plateforme précise — choisie pour éviter une notification
+bloquée indéfiniment en re-tentative silencieuse tout en laissant plusieurs
+heures de marge) : au-delà, un échec par ailleurs retryable devient
+terminal (`FAILED`). `rate_limited` respecte exactement le délai indiqué
+par Discord (`retryAfterMs`, dérivé du corps `retry_after` ou de l'en-tête
+`Retry-After`) ; les autres échecs retryable utilisent un backoff
+exponentiel (1 min de base, doublé par tentative, plafonné à 30 min) ; une
+dépendance métier pas prête (`dependency_not_ready`) utilise un backoff
+court dédié (2 min).
+
+**Résultat réseau incertain — distinction création/édition documentée, pas
+résolue** : un `network_uncertain` reste retryable (comme documenté par
+`discord-rest.ts`/`notification-delivery.ts`), mais le risque résiduel
+diffère selon l'opération :
+- **SEND** : Discord a peut-être déjà créé le message avant que la réponse
+  ne se perde — retenter peut produire un second message distinct. Risque
+  accepté, déjà documenté comme limite structurelle dans
+  `notification-delivery.ts` (pas d'exactly-once, pas d'absence absolue de
+  doublon externe promise).
+- **EDIT/ARCHIVE** : retenter est sûr par nature — ré-appliquer le même
+  contenu ou le même état d'archivage ne produit jamais de doublon, au pire
+  un appel réseau redondant.
+
+Jamais de cause précise attribuée à un refus de MP quand Discord lui-même
+ne la distingue pas (hérité tel quel de `discord-rest.ts`, `dm_unavailable`).
+
+### Budget et concurrence
+
+Chaque livraison est réclamée et traitée **une par une**
+(`processNextDelivery` en boucle dans `runExecutorBatch`) — jamais un gros
+lot réservé d'avance, donc aucun bail ne peut expirer "en attendant son
+tour" dans un lot. `runExecutorBatch` s'arrête au premier des trois : plus
+rien à réclamer, `DEFAULT_MAX_DELIVERIES_PER_RUN` (25) atteint, ou
+`DEFAULT_BATCH_BUDGET_MS` (50s, sous le plafond dur de 60s du plan Vercel
+Hobby) épuisé. Aucun appel réseau n'est jamais fait à l'intérieur d'une
+transaction SQL (hérité de `claimNextDelivery`, qui retourne avant tout
+appel Discord).
+
+**Correctif suite à revue ciblée avant validation** : le budget vérifié
+juste avant CHAQUE appel Discord (`hasSufficientLeaseRemaining`) — et donc
+la `deadline` transmise au client — respecte désormais la PLUS PROCHE de
+DEUX échéances, jamais seulement le bail de la réservation. La première
+version ne consultait que `reservedUntil` : une livraison réclamée alors
+que le budget global du batch (`runExecutorBatch`) était presque épuisé
+pouvait engager un appel réseau dont le bail, lui, restait largement
+valide (30s par défaut) — un seul appel aurait alors pu, à lui seul,
+pousser l'exécution bien au-delà de `DEFAULT_BATCH_BUDGET_MS`, vers la
+limite dure de 60s de la plateforme. `runExecutorBatch` transmet
+maintenant sa propre échéance (`batchDeadline`) à `processNextDelivery` à
+CHAQUE appel ; la deadline effective (et donc celle transmise au client
+Discord) est `min(reservedUntil, batchDeadline) - MIN_CALL_MARGIN_MS`,
+jamais `reservedUntil` brut seul — avec un `errorClass` distinct
+(`insufficient_batch_budget` vs `insufficient_lease`) selon laquelle des
+deux échéances est la plus proche. Un appel `processNextDelivery` direct,
+hors batch (`batchDeadline` omis), reste contraint uniquement par le bail
+— comportement inchangé pour cet usage. Testé explicitement (budget de
+batch plus proche que le bail sans jamais tenter d'appel, et propagation
+réelle depuis `runExecutorBatch` vers une livraison déjà réclamée).
+
+Un traitement ayant perdu sa réservation (bail expiré, repris par un
+autre) après un appel Discord RÉUSSI ne réécrit jamais l'état en base et
+ne retente JAMAIS l'envoi (le message a déjà été accepté par Discord) —
+juste loggué, résultat `lost_reservation_after_success`.
+
+### Route cron dédiée — `/api/cron/notification-executor`, désactivée par défaut
+
+Authentification identique aux autres routes cron de ce dépôt
+(`verifyCronRequest` — `CRON_SECRET` absente → 503, en-tête
+absent/incorrect → 401). **Strictement désactivée par défaut** : sans
+`NOTIFICATION_EXECUTOR_ENABLED=true` (exactement cette valeur), la route
+répond `{enabled:false, processed:0}` immédiatement après authentification
+— aucun claim, aucune consommation de tentative, aucun appel Discord. Même
+activée, cette PR ne branche aucun producteur métier réel : le résolveur
+utilisé (`NOT_CONFIGURED_RESOLVER`) refuse systématiquement d'envoyer quoi
+que ce soit — activer la variable aujourd'hui n'a donc aucun effet visible
+au-delà du balayage de récupération des réservations expirées (en pratique
+sans effet, aucune livraison n'existe encore).
+
+Ne fournit AUCUN endpoint permettant d'envoyer un message arbitraire ou de
+choisir librement un destinataire — elle ne fait que réclamer/traiter des
+livraisons déjà persistées par un futur code métier, jamais un paramètre
+venant de la requête. Ne modifie pas `/api/cron/close-sessions` ni aucune
+route existante.
+
+**Rien n'est configuré par cette PR** : aucun cron externe (cron-job.org ou
+autre) n'est mis en place, aucune variable n'est définie sur Vercel.
+Procédure d'activation future (documentée, PAS exécutée) : une fois un
+résolveur métier réel branché dans une PR ultérieure, définir
+`CRON_SECRET` (déjà requis par les autres crons) et
+`NOTIFICATION_EXECUTOR_ENABLED=true` sur Vercel (Production ET/OU Preview
+selon le besoin), puis configurer un cron externe pointant vers
+`/api/cron/notification-executor` avec l'en-tête
+`Authorization: Bearer <CRON_SECRET>` — même mécanique que
+`/api/cron/reminders`.
+
+### Tests — PostgreSQL isolé + Discord HTTP entièrement simulé
+
+`src/lib/notification-executor.integration.test.ts` (24 tests, même
+dérogation Postgres que `notification-delivery.integration.test.ts` +
+`fetch` mocké comme `discord-rest.test.ts`, **aucun appel réseau réel**) :
+cycle complet réservation→appel→finalisation, deux exécuteurs concurrents
+sur la même cible, progression de cibles indépendantes dans un même batch,
+refus d'une finalisation tardive avec un `reservationToken` périmé (sans
+écraser l'état repris), SEND réussi puis création de fil échouée (le SEND
+n'est jamais renvoyé), dépendance EDIT au message initial (`targetMessage`
+résolu automatiquement), édition dépassée (l'ancienne jamais vue par le
+résolveur), résolution non éligible (préférence refusée, événement expiré,
+transport non pris en charge), MP à deadline partagé (mêmes appels
+`AbortSignal.timeout`), rate limit avec `Retry-After` respecté exactement
+(un seul appel réseau, jamais de retry immédiat caché), échec permanent
+sans retry (idem), résultat réseau incertain avec backoff (idem), arrêt
+sur budget de bail insuffisant avant tout appel, arrêt sur budget GLOBAL
+de l'exécuteur insuffisant même quand le bail seul serait large
+(`processNextDelivery` avec `batchDeadline`, ET propagation réelle depuis
+`runExecutorBatch` vers une livraison déjà réclamée), plafond de
+tentatives (bascule exacte retryable → `FAILED` terminal à
+`MAX_DELIVERY_ATTEMPTS`, et toujours retryable juste en dessous), route
+cron désactivée par défaut (aucun claim/tentative/appel — vérifié aussi
+sur les deux cas d'authentification refusée, 401 et 503), route cron
+activée sans résolveur réel (`NOT_CONFIGURED_RESOLVER` refuse tout),
+authentification cron (401/503, chacun avec une livraison enqueuée pour
+prouver qu'elle reste intouchée).
+
+### Vérification
+
+- `npx tsc --noEmit`, `npx eslint .` : clean.
+- `npx vitest run` avec `TEST_DATABASE_URL` : **327 tests, tout vert** (303
+  hérités de #95/#96 rejoués à l'identique — non modifiés par cette PR —
+  confirment l'absence de régression, + 24 nouveaux, dont 4 ajoutés lors
+  de la revue ciblée avant validation). Sans `TEST_DATABASE_URL` : 285
+  verts, 42 skippés explicitement (18 + 24). Suite rejouée 3× de suite
+  sans échec pour écarter tout flake temporel sur le nouveau test de
+  budget global de batch.
+- `npx next build` : compile sans erreur ; nouvelle route
+  `/api/cron/notification-executor` générée, aucune autre route modifiée.
+- Aucun appel Discord réel à aucun moment. `src/lib/discord.ts` (webhook)
+  et tous les crons existants (y compris `/api/cron/close-sessions`)
+  inchangés (diff vide vérifié). Aucune migration Prisma dans cette PR
+  (aucune évolution de schéma nécessaire — `notification-delivery.ts` et
+  `discord-rest.ts` ne sont pas modifiés).
