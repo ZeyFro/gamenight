@@ -8333,3 +8333,138 @@ de ce dépôt — additives uniquement, aucune action manuelle requise sur la
 base, aucun impact sur le comportement observable de l'app (rien n'est
 branché). Les PR suivantes du chantier (client Discord bot, migration des
 préférences, bascule des salons) dépendent de celle-ci.
+
+## Client Discord REST (PR 2/N)
+
+Deuxième PR du chantier notifications — implémente le client Discord REST
+(`src/lib/discord-rest.ts`) qui servira aux futurs salons/fils/MP.
+**Aucun appelant existant ne l'utilise, aucune notification actuelle ne
+change** : `src/lib/discord.ts` (webhook) reste intact et actif, aucune
+action métier ni cron n'est branché à ce nouveau module. Aucune Gateway,
+commande slash ou interaction — uniquement des appels REST sortants,
+compatibles avec l'exécution serverless actuelle (voir l'audit du
+chantier notifications pour le détail de cette distinction).
+
+### Périmètre
+
+`sendChannelMessage`/`editChannelMessage` (salon, fil ou MP — même
+endpoint Discord pour les trois), `startThreadFromMessage`/
+`sendThreadMessage`/`archiveThread`, `openDmChannel`. Réutilise
+`DISCORD_BOT_TOKEN` — déjà présent dans `.env.example` et déjà utilisé par
+`discord-profile.ts` (repli de rafraîchissement de profil) — et la même
+base d'API que ce module déjà en prod, `https://discord.com/api/v10`
+(vérifiée dans le code existant, pas une valeur inventée). Endpoints,
+formats de réponse et codes d'erreur revérifiés contre la documentation
+Discord actuelle au moment de l'écriture (`docs.discord.com/developers`).
+
+### Contrat avec les fondations de livraison (#95)
+
+Aucun import dans le sens `discord-rest.ts` → `notification-delivery.ts`
+— ce module ne connaît rien des réservations. Chaque fonction qui fait un
+appel réseau prend un paramètre `deadline: Date` obligatoire, à la charge
+de l'appelant (futur exécuteur) de dériver de `reservedUntil` (voir
+`hasSufficientLeaseRemaining`, notification-delivery.ts). Avant tout
+`fetch` : si le budget restant (`deadline - now`) est sous 1s, retour
+immédiat `insufficient_lease` SANS aucun appel réseau. Sinon, le timeout
+HTTP (`AbortSignal.timeout`) est borné au budget restant, avec un plafond
+absolu de 10s (protège contre un `deadline` aberrant côté appelant) —
+jamais un timeout fixe indépendant du bail.
+
+**Pas de retry ni d'attente cachée** : chaque appel renvoie un résultat
+typé (`DiscordRestResult<T>`) — `{ok:true, data}` ou `{ok:false, kind,
+retryable, message, ...}` — jamais de boucle interne. C'est au futur
+exécuteur de décider s'il retente, avec quel délai, en fonction de `kind`/
+`retryable`/`retryAfterMs`.
+
+**Classification des échecs** (`DiscordRestErrorKind`) : `not_configured`
+(token absent, jamais tenté), `insufficient_lease` (bail trop court,
+jamais tenté), `invalid_request` (400/payload invalide, non-retryable),
+`auth_or_permission` (401/403 générique, non-retryable), `dm_unavailable`
+(403 spécifique à un envoi de MP — voir ci-dessous), `not_found` (404,
+non-retryable), `rate_limited` (429, retryable, `retryAfterMs` dérivé du
+corps `retry_after` ou de l'en-tête `Retry-After`), `server_error` (5xx,
+retryable), `network_uncertain` (timeout, erreur réseau, ou réponse 2xx
+au corps illisible/de forme inattendue — retryable, mais résultat
+GENUINEMENT incertain, pas un échec confirmé).
+
+**Refus de MP — ambiguïté assumée, pas de fausse certitude** : le code
+d'erreur Discord 50007 ("Cannot send messages to this user") recouvre
+plusieurs causes distinctes (bloqué, MP fermés, a quitté le serveur) sans
+que Discord les distingue dans sa réponse. `dm_unavailable` reflète
+explicitement cette incertitude dans son message plutôt que d'inventer
+une cause précise.
+
+**Succès = réponse exploitable, jamais supposé** : un statut HTTP 2xx dont
+le corps ne peut pas être lu/parsé dans la forme attendue (id de message,
+de fil...) N'EST PAS traité comme un succès — Discord a peut-être accepté
+la requête, mais sans identifiant exploitable ce module renvoie
+`network_uncertain` plutôt que de mentir sur l'issue. Même limite
+"pas d'exactement une fois" que dans notification-delivery.ts, jamais
+présentée comme résolue par ce module.
+
+**Mentions — contrôle explicite obligatoire** : `allowedMentions` est un
+paramètre REQUIS (pas de valeur implicite) sur tout appel envoyant du
+contenu — `NO_MENTIONS` (= `{parse: []}`) exporté pour supprimer tout ping
+par défaut ; un appelant qui veut mentionner un rôle/utilisateur précis
+doit le lister explicitement.
+
+### Tests — HTTP entièrement simulé, aucun appel réseau réel
+
+`src/lib/discord-rest.test.ts` (26 tests, `fetch` mocké via
+`vi.stubGlobal`) : succès + capture des identifiants (message, fil,
+canal de MP), erreurs HTTP (400/404/500) et réponses malformées (corps
+illisible ou de forme inattendue sur un statut 2xx), rate limit avec
+`retry_after` dérivé du corps ET de l'en-tête, timeout/erreur réseau,
+budget de bail insuffisant (aucun `fetch` tenté) et plafonnement du
+timeout (`AbortSignal.timeout` espionné pour vérifier la valeur exacte
+transmise), absence de fuite du token (vérifié dans le résultat renvoyé,
+alors que l'en-tête de requête le contient bien), configuration
+manquante, contrôle explicite des mentions, et l'ambiguïté du refus de MP
+(50007 en contexte MP → `dm_unavailable` ; le même code hors contexte MP
+→ classification générique).
+
+### Vérification
+
+- `npx tsc --noEmit`, `npx eslint .` : clean.
+- `npx vitest run` avec `TEST_DATABASE_URL` : **296 tests, tout vert**
+  (les 18 tests d'intégration Postgres de #95 rejoués à l'identique — non
+  modifiés par cette PR — confirment qu'aucune régression n'a été
+  introduite). Sans `TEST_DATABASE_URL` : 278 verts, 18 skippés
+  explicitement.
+- `npx next build` : compile sans erreur, aucune nouvelle route générée.
+- Aucun appel Discord réel à aucun moment. `src/lib/discord.ts` (webhook)
+  et tous les crons existants inchangés (diff vide vérifié).
+
+### Procédure de configuration du bot (à faire manuellement, plus tard)
+
+Étapes pour un serveur Discord de test — **aucune de ces étapes n'a été
+faite par cette PR**, aucun token demandé ici :
+
+1. **Application** : réutiliser l'application Discord existante de ce
+   projet (celle dont `DISCORD_BOT_TOKEN`/`DISCORD_CLIENT_ID` sont déjà
+   configurés pour l'OAuth de connexion) plutôt que d'en créer une
+   nouvelle — Developer Portal → l'application du projet → onglet "Bot".
+   Si aucun bot n'y est activé, l'activer depuis cet onglet (bouton "Reset
+   Token" génère `DISCORD_BOT_TOKEN`, déjà le nom de variable utilisé par
+   `discord-profile.ts`).
+2. **Permissions minimales, jamais Administrateur** — lors de
+   l'invitation du bot (OAuth2 URL Generator, scope `bot`) : `View
+   Channel`, `Send Messages`, `Send Messages in Threads`, `Create Public
+   Threads`, `Embed Links`, `Read Message History`. Rien d'autre — pas
+   `Manage Threads` (le bot n'archive que ses propres fils, dont il est
+   déjà créateur), pas `Administrator`.
+3. **Variables** : `DISCORD_BOT_TOKEN` (déjà dans `.env.example`) —
+   aucune nouvelle variable introduite par cette PR.
+4. **Séparation test/production** : inviter le bot sur un serveur Discord
+   dédié aux tests (pas le serveur réel du groupe) avant tout essai
+   manuel ; le jeton bot reste le même quel que soit le serveur, donc
+   c'est le CHOIX du serveur d'invitation qui garantit l'isolation, pas
+   une variable d'environnement différente.
+5. **Essai manuel à faire plus tard** (pas dans cette PR — aucun appelant
+   n'existe encore) : une fois une future PR branchée à une route de test,
+   vérifier dans cet ordre — envoi simple dans un salon, édition de ce
+   message, création d'un fil depuis ce message, envoi dans le fil,
+   archivage du fil, ouverture d'un MP vers un compte de test, envoi puis
+   édition du MP. Confirmer qu'aucune mention involontaire ne part (compte
+   de test dans un rôle mentionnable) avant tout essai sur le vrai
+   serveur.
