@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:postgres": "node scripts/test-postgres.mjs",
     "backfill-coop": "node prisma/backfill-coop.mjs",
     "backfill-steam-coop": "node prisma/backfill-steam-coop.mjs",
     "postinstall": "prisma generate"

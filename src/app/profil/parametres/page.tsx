@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
 import { reimportSteamLibrary } from "@/app/actions";
 import { resyncSteamFamilyAction } from "@/app/profil/family-import-actions";
-import { toggleSilenceReminders, toggleSoundEnabled } from "@/app/profil/actions";
+import { toggleSoundEnabled, updateNotificationPreferenceAction } from "@/app/profil/actions";
 import { createTagAction, toggleUserTagAction } from "@/app/tags-actions";
 import { prisma } from "@/lib/prisma";
 import { tagColor } from "@/lib/tags";
@@ -17,6 +17,11 @@ import { FamilyImportForm } from "@/components/FamilyImportForm";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { CursorTrailToggle } from "@/components/CursorTrailToggle";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import {
+  AVAILABLE_NOTIFICATION_CATEGORIES,
+  getUserNotificationPreferences,
+  NOTIFICATION_CATEGORY_DETAILS,
+} from "@/lib/notification-preferences";
 
 /**
  * Onglet "Rappels perso" — en réalité tous les réglages de compte
@@ -79,21 +84,27 @@ export default async function ProfilParametresPage({
     upload?: string;
     family?: string;
     new?: string;
+    notifications?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
   // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
   // ce user, pour afficher les chips "actif"/"inactif".
-  const [allTags, ownUserTags] = await Promise.all([
+  const [allTags, ownUserTags, storedNotificationPreferences] = await Promise.all([
     prisma.tag.findMany({ orderBy: { name: "asc" } }),
     prisma.userTag.findMany({ where: { userId: user.id }, select: { tagId: true } }),
+    prisma.userNotificationPreference.findMany({ where: { userId: user.id } }),
   ]);
+  const notificationPreferences = await getUserNotificationPreferences({
+    silenceReminders: user.silenceReminders,
+    notificationPreferences: storedNotificationPreferences,
+  });
   const ownTagIds = new Set(ownUserTags.map((t) => t.tagId));
 
   return (
@@ -284,17 +295,54 @@ export default async function ProfilParametresPage({
 
       <StaggerItem>
         <Card className="flex flex-col gap-4">
-          <h2 className="font-semibold text-foreground">Rappels Discord</h2>
+          <h2 className="font-semibold text-foreground">Notifications personnelles</h2>
           <p className="text-sm text-muted">
-            {user.silenceReminders
-              ? "Tu n'es plus mentionné dans les rappels de soirée (le message reste posté dans le salon)."
-              : "Tu es mentionné dans les rappels de soirée avant chaque session."}
+            Désactiver une catégorie supprime ses mentions Discord, ses messages privés et ses
+            notifications dans l&apos;application. Les publications collectives restent visibles dans
+            les salons, sans te mentionner.
           </p>
-          <form action={toggleSilenceReminders}>
-            <Button type="submit" variant="secondary" fullWidthOnMobile>
-              {user.silenceReminders ? "🔔 Réactiver les rappels" : "🔕 Couper les rappels"}
-            </Button>
-          </form>
+          {notifications === "ok" && (
+            <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              Préférences enregistrées.
+            </p>
+          )}
+          {notifications && notifications !== "ok" && (
+            <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              {notifications === "rate_limited"
+                ? RATE_LIMIT_MESSAGE
+                : notifications === "invalide"
+                  ? "Réglage invalide. Recharge la page puis réessaie."
+                  : "Impossible d’enregistrer ce réglage. Réessaie dans un instant."}
+            </p>
+          )}
+          <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+            {AVAILABLE_NOTIFICATION_CATEGORIES.map((category) => {
+              const enabled = notificationPreferences[category];
+              const details = NOTIFICATION_CATEGORY_DETAILS[category];
+              return (
+                <div key={category} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{details.label}</p>
+                    <p className="text-sm text-muted">{details.description}</p>
+                    <p className="mt-1 text-xs text-faint">
+                      État enregistré : {enabled ? "activées" : "désactivées"}
+                    </p>
+                  </div>
+                  <form action={updateNotificationPreferenceAction}>
+                    <input type="hidden" name="category" value={category} />
+                    <input type="hidden" name="enabled" value={String(!enabled)} />
+                    <Button type="submit" variant="secondary" size="sm" fullWidthOnMobile aria-label={`${enabled ? "Désactiver" : "Activer"} les notifications personnelles : ${details.label}`}>
+                      {enabled ? "Désactiver" : "Activer"}
+                    </Button>
+                  </form>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-faint">
+            D’autres catégories (tournois, récompenses et récapitulatifs) seront ajoutées lorsque
+            tous leurs chemins d’envoi appliqueront réellement ces préférences.
+          </p>
           <ButtonLink href="/admin?tab=messages" variant="ghost" size="sm">
             Gérer les messages de rappel →
           </ButtonLink>
