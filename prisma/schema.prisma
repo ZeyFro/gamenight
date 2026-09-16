@@ -1523,3 +1523,171 @@ model CronLock {
   lockedAt DateTime?
   token    String?
 }
+
+// Refonte notifications Discord — fondations de livraison (PR 1/N,
+// AUCUN appelant actuel n'écrit ici, voir `src/lib/notification-delivery.ts`
+// pour les garanties exactes et le README pour la procédure de validation).
+// Sépare "ce qui s'est passé" (`NotificationEvent`, une fois par occurrence
+// métier — création de soirée, changement de jeu d'une session instantanée,
+// récap quotidien d'un joueur...) de "où ça part" (`NotificationDelivery`,
+// une ligne par destinataire × canal × opération). Un même événement peut
+// produire plusieurs livraisons indépendantes (ex. éditer l'annonce ET
+// poster dans son fil) qui ne doivent jamais se bloquer l'une l'autre — voir
+// `targetSlot`/`operation` ci-dessous.
+enum NotificationCategory {
+  SESSION
+  TOURNAMENT
+  REWARD
+  ACHIEVEMENT
+  RECAP
+  INSTANT_SESSION
+  ADMIN
+}
+
+// Destination logique d'une livraison, indépendante du transport réellement
+// utilisé (`DeliveryTransport`) — une livraison DISCORD_CHANNEL part en
+// webhook aujourd'hui, en bot demain, sans que cette valeur change.
+enum DeliveryChannel {
+  DISCORD_CHANNEL
+  DISCORD_DM
+  IN_APP
+}
+
+// Transport Discord choisi pour CETTE livraison précise — jamais les deux à
+// la fois pour une même ligne (voir commentaire sur
+// `NotificationDelivery.transport`). Condition nécessaire à la migration
+// progressive webhook → bot décidée pour ce chantier : chaque notification
+// part par un seul chemin, ce qui rend la bascule catégorie par catégorie
+// possible sans double-envoi.
+enum DeliveryTransport {
+  WEBHOOK
+  BOT
+}
+
+// SEND crée un nouveau message. EDIT modifie un message déjà envoyé (même
+// `targetSlot`). ARCHIVE est réservé aux opérations de clôture qui ne sont
+// ni un envoi ni une édition de contenu (ex. verrouillage d'un fil) — non
+// utilisé par cette PR, juste réservé pour ne pas re-migrer l'enum plus
+// tard.
+enum DeliveryOperation {
+  SEND
+  EDIT
+  ARCHIVE
+}
+
+// RESERVED = en cours de traitement par un propriétaire précis
+// (`reservedBy`), borné dans le temps (`reservedUntil`) — voir
+// `notification-delivery.ts` pour le cycle claim/send/finalize complet.
+enum DeliveryStatus {
+  PENDING
+  RESERVED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model NotificationEvent {
+  id String @id @default(cuid())
+
+  category  NotificationCategory
+  // Identifiant libre de type d'événement (ex. "SESSION_CREATED",
+  // "REWARD_DAILY_RECAP", "INSTANT_SESSION_GAME_CHANGED") — pas d'enum : les
+  // types d'événements des futures PR (salons, récaps, sessions instantanées)
+  // ne sont pas tous connus aujourd'hui, et un enum Prisma se migre plus
+  // difficilement qu'une valeur applicative validée côté code.
+  eventType String
+  // Id "libre" de l'entité métier à l'origine de l'événement (sessionId,
+  // tournamentId, userId pour un récap...) — même philosophie que
+  // `Notification.relatedSessionId` : pas de relation Prisma/FK, cet
+  // événement doit rester lisible même si l'entité source est supprimée
+  // depuis.
+  sourceId String
+  // Distingue deux occurrences du même (category, eventType, sourceId) —
+  // ex. la date du jour pour un récap quotidien, ou un compteur de
+  // modification pour une soirée éditée plusieurs fois. Chaîne vide par
+  // défaut quand une seule occurrence a jamais de sens pour ce eventType.
+  occurrence String @default("")
+
+  createdAt DateTime @default(now())
+
+  deliveries NotificationDelivery[]
+
+  // Idempotence de l'événement lui-même : un appelant qui déclenche deux
+  // fois la même occurrence métier (retry applicatif, double clic protégé
+  // par ailleurs...) ne doit jamais créer un second événement — à charge de
+  // l'appelant de gérer un upsert sur cette clé.
+  @@unique([category, eventType, sourceId, occurrence])
+}
+
+model NotificationDelivery {
+  id      String @id @default(cuid())
+  eventId String
+
+  // Compteur global auto-incrémenté par Postgres (SERIAL) — jamais par
+  // l'application. Sert UNIQUEMENT à départager, pour un même
+  // (targetSlot, operation), quelle livraison est la plus récente sans
+  // avoir besoin d'un compteur par cible ni d'un verrou dédié : l'ordre
+  // d'insertion Postgres est atomique et total, contrairement à `createdAt`
+  // qui peut être égal entre deux lignes créées dans la même milliseconde.
+  // `Int` (pas `BigInt`) volontairement : un milliard de livraisons est hors
+  // d'atteinte pour ce volume d'utilisateurs, et ça évite la friction
+  // `bigint` JS (sérialisation JSON, comparaisons) dans tout le code appelant
+  // pour un bénéfice nul ici.
+  sequence Int @default(autoincrement())
+
+  channel   DeliveryChannel
+  // Choisi à la création de la livraison (routage décidé par l'appelant,
+  // pas par ce modèle) — voir enum ci-dessus. Jamais modifié après coup :
+  // une bascule webhook → bot crée de nouvelles livraisons, ne réutilise
+  // pas une ligne existante avec un transport différent.
+  transport DeliveryTransport
+  operation DeliveryOperation @default(SEND)
+
+  // "user:<id>" ou "guild:category:<category>" selon le cas — jamais NULL
+  // (bug corrigé avant toute migration : une colonne nullable à l'intérieur
+  // d'une contrainte unique Postgres ne déduplique rien, NULL ≠ NULL).
+  recipientKey String
+  // Identifie le message Discord ciblé, au sens large, pour la
+  // sérialisation des éditions — ex. "session:<id>:announce",
+  // "session:<id>:thread", "tournament:<id>:announce",
+  // "reward-recap:<userId>:<date>". Deux opérations sur des `targetSlot`
+  // différents (ex. éditer l'annonce ET poster dans son fil) sont des
+  // livraisons indépendantes qui ne se bloquent jamais l'une l'autre — seule
+  // l'exclusivité PAR (targetSlot, operation) est appliquée (voir
+  // `claimNextDelivery` dans notification-delivery.ts).
+  targetSlot String
+
+  status DeliveryStatus @default(PENDING)
+  // Identifiant du worker/de la requête qui détient la réservation en
+  // cours — une finalisation ne peut réussir que si `reservedBy` correspond
+  // encore exactement à l'appelant (voir `finalizeDelivery`).
+  reservedBy    String?
+  reservedUntil DateTime?
+  attempts      Int      @default(0)
+  lastError     String?
+  errorClass    String?
+  nextAttemptAt DateTime?
+
+  discordMessageId String?
+  discordChannelId String?
+  discordThreadId  String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  event NotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // Idempotence de la livraison : ré-enqueue la même intention (même
+  // événement, même destinataire, même canal, même opération, même cible)
+  // ne crée jamais de doublon — à charge de l'appelant d'upserter dessus.
+  @@unique([eventId, channel, recipientKey, operation, targetSlot])
+  // Sert la sélection des candidats PENDING/FAILED dus, par ordre
+  // d'ancienneté.
+  @@index([status, nextAttemptAt])
+  // Sert la vérification d'exclusivité par cible au moment du claim (aucune
+  // autre livraison RESERVED/plus récente sur le même targetSlot+operation)
+  // et le rattrapage des livraisons dépassées par une plus récente.
+  @@index([targetSlot, operation, status, sequence])
+  // Sert le balayage de récupération des réservations expirées.
+  @@index([reservedUntil])
+}

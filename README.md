@@ -8032,3 +8032,203 @@ aucune action manuelle requise sur la base. Après le merge, créer la
 nouvelle entrée cron-job.org ci-dessus pour activer l'import complet en
 rotation (`steam-library-sync` continue de tourner sans interruption avec
 sa config existante).
+
+## Refonte notifications Discord — fondations de livraison (PR 1/N)
+
+Première PR d'un chantier plus large (audit détaillé mené séparément, non
+inclus dans ce dépôt) visant à remplacer le webhook Discord unique actuel
+(`DISCORD_WEBHOOK_URL`, un seul salon, aucun routage, aucune préférence par
+catégorie) par un système à plusieurs salons/fils/DM avec retry et
+édition. Cette PR pose UNIQUEMENT le socle transactionnel de livraison —
+**aucun appelant existant n'est modifié, aucun comportement Discord actuel
+ne change**. Rien n'envoie encore quoi que ce soit via ce nouveau chemin ;
+`postToDiscord`/`Notification` restent le seul mécanisme actif.
+
+Rappels produit retenus pour les PR suivantes (pas encore implémentés
+ici) : `#🎮-soirées` (une annonce + un fil par soirée), `#🏆-tournois`
+(une annonce + un fil par tournoi), `#🎖️-récompenses` (un récapitulatif
+par joueur et par jour, heure de Paris, avec un fil ; succès collectifs et
+bilans mensuels/saisonniers en messages collectifs distincts) ; les
+récompenses personnelles ne basculent jamais en MP ; les invitations de
+session instantanée (lancement/changement de jeu/fin) suivent les règles
+de destinataires déjà validées avec l'utilisateur.
+
+### Modèle de données (`NotificationEvent` / `NotificationDelivery`)
+
+Sépare "ce qui s'est passé" de "où ça part" :
+
+- **`NotificationEvent`** — une ligne par occurrence métier (`category`,
+  `eventType` en chaîne libre, `sourceId`, `occurrence`). Idempotent sur
+  `[category, eventType, sourceId, occurrence]` : redéclencher le même
+  événement ne crée jamais de doublon.
+- **`NotificationDelivery`** — une ligne par destinataire × canal ×
+  opération, rattachée à un événement. Idempotent sur `[eventId, channel,
+  recipientKey, operation, targetSlot]`. Deux opérations différentes sur
+  la même cible (ex. éditer l'annonce ET poster dans son fil) sont deux
+  lignes indépendantes qui ne se bloquent jamais l'une l'autre —
+  seule l'exclusivité PAR `(targetSlot, operation)` est appliquée (voir
+  plus bas). `transport` (`WEBHOOK`/`BOT`) est choisi une fois pour toutes
+  à la création de la ligne : jamais les deux pour une même livraison,
+  condition nécessaire à la bascule progressive webhook → bot prévue dans
+  les PR suivantes.
+
+Voir les commentaires dans `prisma/schema.prisma` pour le détail complet
+de chaque champ (`sequence`, `reservedBy`/`reservedUntil`,
+`nextAttemptAt`, `discordMessageId`/`discordChannelId`/`discordThreadId`,
+etc.).
+
+### Cycle de vie (`src/lib/notification-delivery.ts`)
+
+Un futur exécuteur (absent de cette PR) portera toujours ce cycle dans cet
+ordre :
+
+1. **`enqueueDelivery`** — écrit l'intention en base (idéalement dans la
+   même transaction que la mutation métier), jamais bloquant sur Discord.
+2. **`claimNextDelivery(owner)`** — réserve AU PLUS UNE livraison PENDING
+   due, de façon atomique, et retourne AVANT tout appel réseau. L'appelant
+   doit effectuer l'appel Discord APRÈS ce retour, jamais dans une
+   transaction englobante.
+3. **`finalizeDeliverySuccess`/`finalizeDeliveryFailure(id, owner, …)`** —
+   clôture la livraison, conditionnée au fait que `owner` détient toujours
+   la réservation (sinon renvoie `false` sans rien écraser).
+4. **`recoverExpiredReservations(now)`** — à appeler périodiquement (par
+   un futur sweep, absent de cette PR) : repasse à PENDING les
+   réservations dont le bail a expiré sans finalisation (crash, timeout).
+
+#### Réservation durable (pas juste `FOR UPDATE SKIP LOCKED`)
+
+Une réservation pose un état PERSISTÉ (`status='RESERVED'`, `reservedBy`,
+`reservedUntil`) qui survit à la transaction SQL qui l'a créée —
+contrairement à un simple verrou de ligne tenu en mémoire. L'appel Discord
+se fait donc toujours hors de toute transaction SQL, et la finalisation
+est conditionnée au `reservedBy` (même garde que `releaseCronLock`, voir
+`src/lib/cron-lock.ts`) : si le bail a expiré et qu'un autre propriétaire
+a repris la ligne entre-temps, la finalisation échoue silencieusement
+plutôt que d'écraser un état plus récent.
+
+#### Exclusivité par cible — verrou advisory, pas une simple vérification
+
+Une correction a été explicitement demandée avant l'implémentation : une
+vérification applicative du type "pas de livraison RESERVED sur cette
+cible" (un `SELECT ... WHERE NOT EXISTS`) NE SUFFIT PAS — deux
+transactions concurrentes peuvent toutes deux lire "aucune réservation" au
+même instant, avant que l'une des deux n'ait committé la sienne, et
+réserver chacune une livraison différente pour la même cible. **Ce n'est
+pas théorique** : la première version de `claimNextDelivery` avait
+exactement ce défaut, et le test d'intégration correspondant l'a
+effectivement reproduit avant le correctif (voir commit history — le test
+a d'abord échoué en conditions réelles, confirmant qu'il exerce la vraie
+race et non un artefact).
+
+Le correctif utilise `pg_try_advisory_xact_lock(hashtextextended(targetSlot
+|| ':' || operation, 0))` — un verrou Postgres réel, transactionnel,
+visible immédiatement par toute autre transaction concurrente (pas
+seulement après COMMIT), non bloquant, et relâché automatiquement à la fin
+de la transaction. Au plus une livraison par `(targetSlot, operation)` peut
+donc être "en vol" vers Discord à un instant donné.
+
+Un second piège a été corrigé en cours de route : verrouiller tout un lot
+de candidats d'un coup (`FOR UPDATE SKIP LOCKED LIMIT 20`) fait qu'un seul
+appel concurrent rafle tous les candidats, laissant les appels concurrents
+suivants sans rien à examiner — repéré par le test "N claims concurrents
+sur N cibles indépendantes", qui a d'abord échoué (1 succès sur 8 au lieu
+de 8). Le scan se fait maintenant ligne par ligne (`LIMIT 1`, avec
+exclusion des ids déjà essayés), ce qui restaure le comportement
+file-d'attente standard de `SKIP LOCKED`.
+
+#### Ordre des éditions — convergence vers le dernier état
+
+`sequence` (colonne `SERIAL`, jamais recalculée côté app) donne un ordre
+total et atomique entre livraisons visant la même cible —
+contrairement à `createdAt`, qui peut être égal à la milliseconde.
+`supersedeStaleDeliveries()` abandonne (`SKIPPED`) toute livraison
+PENDING/FAILED dès qu'une livraison plus récente existe pour le même
+`(targetSlot, operation)` — jamais une livraison RESERVED (un envoi en
+cours va toujours au bout). Plusieurs changements rapprochés convergent
+ainsi vers un seul envoi reflétant l'état final, sans message par étape
+intermédiaire.
+
+### Limites assumées (documentées, pas contournées)
+
+- **Pas de garantie exactement-une-fois** entre Postgres et Discord : si
+  la réservation expire ENTRE le moment où Discord a effectivement
+  accepté un message et celui où `finalizeDeliverySuccess` le consigne, un
+  autre propriétaire peut reprendre la livraison et l'envoyer une seconde
+  fois. Risque résiduel accepté, borné par un bail court
+  (`DEFAULT_RESERVATION_LEASE_MS = 30s`, dérivé du plafond dur Vercel
+  Hobby comme `CRON_LOCK_LEASE_MS`).
+- Aucun exécuteur n'existe encore : ces fonctions ne sont appelées par
+  AUCUN code métier ni AUCUNE route dans cette PR. Elles sont testées de
+  façon isolée, pas en conditions de production.
+
+### Tests d'intégration — PostgreSQL isolé (pas de mock Prisma)
+
+Dérogation volontaire à la convention habituelle du dépôt ("pas de mock
+Prisma, tests unitaires sur fonctions pures uniquement") : les garanties
+prouvées ici (réservation atomique, exclusivité par cible, ordre des
+éditions, récupération après crash) sont des propriétés du moteur
+transactionnel Postgres — un mock ne testerait que l'appel de méthodes,
+jamais le comportement réel, ce qui invaliderait la garantie même que ces
+tests doivent établir. `src/lib/notification-delivery.integration.test.ts`
+lance donc de vraies transactions concurrentes (`Promise.all` de plusieurs
+appels à `claimNextDelivery`) contre une base PostgreSQL dédiée.
+
+**Procédure locale** :
+
+```bash
+# Une base PostgreSQL locale, dédiée aux tests — JAMAIS la base de
+# production/Neon.
+createdb gamenight_notif_test
+DATABASE_URL="postgresql://<user>@localhost:5432/gamenight_notif_test" \
+  npx prisma migrate deploy
+
+TEST_DATABASE_URL="postgresql://<user>@localhost:5432/gamenight_notif_test" \
+  npx vitest run
+```
+
+Sans `TEST_DATABASE_URL`, la suite d'intégration est **explicitement
+SKIPPÉE** (avec un avertissement console) plutôt que silencieusement
+absente ou faussement verte — `npx vitest run` reste utilisable sans base
+locale pour le reste de la suite.
+
+### Fichiers ajoutés
+
+- `prisma/schema.prisma`,
+  `prisma/migrations/20260916120000_add_notification_delivery_foundations/`
+  — modèles `NotificationEvent`/`NotificationDelivery` + 5 enums,
+  entièrement additifs.
+- `src/lib/notification-delivery.ts` — `createNotificationEvent`,
+  `enqueueDelivery`, `claimNextDelivery`, `finalizeDeliverySuccess`,
+  `finalizeDeliveryFailure`, `supersedeStaleDeliveries`,
+  `recoverExpiredReservations`.
+- `src/lib/notification-delivery.integration.test.ts` — 16 tests contre
+  Postgres isolé (idempotence, concurrence réelle, exclusivité par cible,
+  finalisation conditionnelle, récupération après expiration, ordre des
+  éditions).
+
+### Vérification
+
+- `npx tsc --noEmit` : clean.
+- `npx eslint` (fichiers modifiés) : clean.
+- `npx vitest run` (avec `TEST_DATABASE_URL` pointée vers une base
+  PostgreSQL locale isolée, PostgreSQL 16) : 263 tests, tout vert — dont
+  les 16 nouveaux tests d'intégration, exécutés 8 fois consécutives sans
+  échec pour écarter un faux positif ponctuel sur les assertions de
+  concurrence. Sans `TEST_DATABASE_URL` : 247 tests verts, 16 skippés
+  explicitement (pas de faux vert).
+- `npx next build` : compile et type-check sans erreur ; aucune nouvelle
+  route générée (rien n'est encore branché).
+- Migration validée par application de tout l'historique
+  (`prisma migrate deploy`) sur la base de test locale — jamais exécutée
+  contre Neon/production. Aucun appel Discord réel, aucune donnée réelle
+  touchée.
+
+### ⚠️ Avant de merger cette PR
+
+La migration `20260916120000_add_notification_delivery_foundations`
+s'applique automatiquement au prochain déploiement (`prisma migrate
+deploy` dans le script `build`), comme toutes les migrations précédentes
+de ce dépôt — additive uniquement, aucune action manuelle requise sur la
+base, aucun impact sur le comportement observable de l'app (rien n'est
+branché). Les PR suivantes du chantier (client Discord bot, migration des
+préférences, bascule des salons) dépendent de celle-ci.
