@@ -8690,13 +8690,33 @@ rien à réclamer, `DEFAULT_MAX_DELIVERIES_PER_RUN` (25) atteint, ou
 `DEFAULT_BATCH_BUDGET_MS` (50s, sous le plafond dur de 60s du plan Vercel
 Hobby) épuisé. Aucun appel réseau n'est jamais fait à l'intérieur d'une
 transaction SQL (hérité de `claimNextDelivery`, qui retourne avant tout
-appel Discord). Le budget de bail restant est vérifié juste avant CHAQUE
-appel Discord (`hasSufficientLeaseRemaining`) ; la `deadline` transmise au
-client Discord est `reservedUntil - MIN_CALL_MARGIN_MS`, jamais
-`reservedUntil` brut. Un traitement ayant perdu sa réservation (bail
-expiré, repris par un autre) après un appel Discord RÉUSSI ne réécrit
-jamais l'état en base et ne retente JAMAIS l'envoi (le message a déjà été
-accepté par Discord) — juste loggué, résultat `lost_reservation_after_success`.
+appel Discord).
+
+**Correctif suite à revue ciblée avant validation** : le budget vérifié
+juste avant CHAQUE appel Discord (`hasSufficientLeaseRemaining`) — et donc
+la `deadline` transmise au client — respecte désormais la PLUS PROCHE de
+DEUX échéances, jamais seulement le bail de la réservation. La première
+version ne consultait que `reservedUntil` : une livraison réclamée alors
+que le budget global du batch (`runExecutorBatch`) était presque épuisé
+pouvait engager un appel réseau dont le bail, lui, restait largement
+valide (30s par défaut) — un seul appel aurait alors pu, à lui seul,
+pousser l'exécution bien au-delà de `DEFAULT_BATCH_BUDGET_MS`, vers la
+limite dure de 60s de la plateforme. `runExecutorBatch` transmet
+maintenant sa propre échéance (`batchDeadline`) à `processNextDelivery` à
+CHAQUE appel ; la deadline effective (et donc celle transmise au client
+Discord) est `min(reservedUntil, batchDeadline) - MIN_CALL_MARGIN_MS`,
+jamais `reservedUntil` brut seul — avec un `errorClass` distinct
+(`insufficient_batch_budget` vs `insufficient_lease`) selon laquelle des
+deux échéances est la plus proche. Un appel `processNextDelivery` direct,
+hors batch (`batchDeadline` omis), reste contraint uniquement par le bail
+— comportement inchangé pour cet usage. Testé explicitement (budget de
+batch plus proche que le bail sans jamais tenter d'appel, et propagation
+réelle depuis `runExecutorBatch` vers une livraison déjà réclamée).
+
+Un traitement ayant perdu sa réservation (bail expiré, repris par un
+autre) après un appel Discord RÉUSSI ne réécrit jamais l'état en base et
+ne retente JAMAIS l'envoi (le message a déjà été accepté par Discord) —
+juste loggué, résultat `lost_reservation_after_success`.
 
 ### Route cron dédiée — `/api/cron/notification-executor`, désactivée par défaut
 
@@ -8731,7 +8751,7 @@ selon le besoin), puis configurer un cron externe pointant vers
 
 ### Tests — PostgreSQL isolé + Discord HTTP entièrement simulé
 
-`src/lib/notification-executor.integration.test.ts` (20 tests, même
+`src/lib/notification-executor.integration.test.ts` (24 tests, même
 dérogation Postgres que `notification-delivery.integration.test.ts` +
 `fetch` mocké comme `discord-rest.test.ts`, **aucun appel réseau réel**) :
 cycle complet réservation→appel→finalisation, deux exécuteurs concurrents
@@ -8742,20 +8762,31 @@ n'est jamais renvoyé), dépendance EDIT au message initial (`targetMessage`
 résolu automatiquement), édition dépassée (l'ancienne jamais vue par le
 résolveur), résolution non éligible (préférence refusée, événement expiré,
 transport non pris en charge), MP à deadline partagé (mêmes appels
-`AbortSignal.timeout`), rate limit avec `Retry-After` respecté exactement,
-échec permanent sans retry, résultat réseau incertain avec backoff, arrêt
-sur budget de bail insuffisant avant tout appel, route cron désactivée par
-défaut (aucun claim/tentative/appel), route cron activée sans résolveur
-réel (`NOT_CONFIGURED_RESOLVER` refuse tout), authentification cron
-(401/503).
+`AbortSignal.timeout`), rate limit avec `Retry-After` respecté exactement
+(un seul appel réseau, jamais de retry immédiat caché), échec permanent
+sans retry (idem), résultat réseau incertain avec backoff (idem), arrêt
+sur budget de bail insuffisant avant tout appel, arrêt sur budget GLOBAL
+de l'exécuteur insuffisant même quand le bail seul serait large
+(`processNextDelivery` avec `batchDeadline`, ET propagation réelle depuis
+`runExecutorBatch` vers une livraison déjà réclamée), plafond de
+tentatives (bascule exacte retryable → `FAILED` terminal à
+`MAX_DELIVERY_ATTEMPTS`, et toujours retryable juste en dessous), route
+cron désactivée par défaut (aucun claim/tentative/appel — vérifié aussi
+sur les deux cas d'authentification refusée, 401 et 503), route cron
+activée sans résolveur réel (`NOT_CONFIGURED_RESOLVER` refuse tout),
+authentification cron (401/503, chacun avec une livraison enqueuée pour
+prouver qu'elle reste intouchée).
 
 ### Vérification
 
 - `npx tsc --noEmit`, `npx eslint .` : clean.
-- `npx vitest run` avec `TEST_DATABASE_URL` : **323 tests, tout vert** (303
+- `npx vitest run` avec `TEST_DATABASE_URL` : **327 tests, tout vert** (303
   hérités de #95/#96 rejoués à l'identique — non modifiés par cette PR —
-  confirment l'absence de régression, + 20 nouveaux). Sans
-  `TEST_DATABASE_URL` : 285 verts, 38 skippés explicitement (18 + 20).
+  confirment l'absence de régression, + 24 nouveaux, dont 4 ajoutés lors
+  de la revue ciblée avant validation). Sans `TEST_DATABASE_URL` : 285
+  verts, 42 skippés explicitement (18 + 24). Suite rejouée 3× de suite
+  sans échec pour écarter tout flake temporel sur le nouveau test de
+  budget global de batch.
 - `npx next build` : compile sans erreur ; nouvelle route
   `/api/cron/notification-executor` générée, aucune autre route modifiée.
 - Aucun appel Discord réel à aucun moment. `src/lib/discord.ts` (webhook)

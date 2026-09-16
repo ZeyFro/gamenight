@@ -437,6 +437,9 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-executor (intégration Postgre
       const now = new Date("2026-01-01T00:00:00.000Z");
       const outcome = await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1", now });
       expect(outcome).toEqual({ deliveryId: delivery.id, outcome: "retrying", errorClass: "discord:rate_limited" });
+      // Aucun retry immédiat caché : un seul appel réseau, la reprise
+      // passe entièrement par `nextAttemptAt`/une future exécution cron.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
       expect(row.status).toBe("PENDING");
@@ -449,19 +452,24 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-executor (intégration Postgre
       fetchMock.mockResolvedValueOnce(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
       const outcome = await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1" });
       expect(outcome).toEqual({ deliveryId: delivery.id, outcome: "failed", errorClass: "discord:auth_or_permission" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
       expect(row.status).toBe("FAILED");
       expect(row.nextAttemptAt).toBeNull();
     });
 
-    it("résultat réseau incertain (fetch rejette) : retryable, backoff appliqué, jamais un succès", async () => {
+    it("résultat réseau incertain (fetch rejette) : retryable, backoff appliqué, jamais un succès, jamais un second appel immédiat", async () => {
       const event = await makeEvent();
       const delivery = await makeDelivery(event.id);
       fetchMock.mockRejectedValueOnce(new DOMException("aborted", "TimeoutError"));
       const now = new Date("2026-01-01T00:00:00.000Z");
       const outcome = await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1", now });
       expect(outcome).toEqual({ deliveryId: delivery.id, outcome: "retrying", errorClass: "discord:network_uncertain" });
+      // Aucun retry immédiat caché : un seul `fetch` malgré l'incertitude
+      // du résultat — la reprise attend nextAttemptAt, jamais tentée dans
+      // la foulée de cette même requête.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
       expect(row.status).toBe("PENDING");
@@ -488,24 +496,136 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-executor (intégration Postgre
       const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
       expect(row.status).toBe("PENDING");
     });
+
+    it("budget GLOBAL de l'exécuteur insuffisant (batchDeadline plus proche que le bail) : aucun fetch tenté, jamais le bail seul consulté", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
+      const now = new Date("2026-01-01T00:00:00.000Z");
+      // Bail large (30s par défaut) largement suffisant à lui seul — mais
+      // le budget du BATCH expire dans 500ms, bien sous MIN_CALL_MARGIN_MS
+      // (5000ms) : c'est cette échéance-là qui doit bloquer l'appel, pas
+      // le bail. Preuve que `processNextDelivery` respecte les DEUX
+      // contraintes, pas seulement `reservedUntil`.
+      const batchDeadline = new Date(now.getTime() + 500);
+      const outcome = await executorLib.processNextDelivery({
+        resolver: sendResolver("chan-1"),
+        owner: "w1",
+        now,
+        batchDeadline,
+      });
+      expect(outcome).toEqual({
+        deliveryId: delivery.id,
+        outcome: "retrying",
+        errorClass: "insufficient_batch_budget",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("PENDING");
+    });
+
+    it("runExecutorBatch propage sa propre échéance à chaque livraison traitée (pas seulement entre deux réclamations)", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
+      // `now` volontairement PAS fixé ici (temps réel des deux côtés,
+      // boucle et `processNextDelivery`) pour éviter de faire courir la
+      // vérification "temps mur écoulé" de la boucle (`Date.now()` réel)
+      // contre une horloge figée dans le passé. Budget de batch choisi
+      // entre deux bornes : assez large pour survivre à l'aller-retour
+      // réel réservation+claim sans faire échouer la vérification
+      // GROSSIÈRE de la boucle elle-même (`Date.now() >= batchDeadlineMs`
+      // avant même de réclamer), mais strictement sous MIN_CALL_MARGIN_MS
+      // (5000ms) pour que le nouveau contrôle FIN, à l'intérieur de
+      // `processNextDelivery` une fois la livraison déjà réclamée,
+      // échoue lui de façon déterministe.
+      const summary = await executorLib.runExecutorBatch({
+        resolver: sendResolver("chan-1"),
+        owner: "batch-tight",
+        batchBudgetMs: 2_000,
+      });
+      expect(summary.processed).toBe(1);
+      expect(summary.retrying).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("PENDING");
+      expect(row.errorClass).toBe("insufficient_batch_budget");
+    });
+  });
+
+  describe("plafond de tentatives", () => {
+    it("au-delà de MAX_DELIVERY_ATTEMPTS, un échec Discord par ailleurs retryable devient FAILED terminal", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
+      // `claimNextDelivery` incrémente `attempts` de 1 à la réservation —
+      // partir de MAX-1 amène `attempts` exactement à MAX après le claim
+      // de ce test, le point de bascule retryable → terminal.
+      await db.notificationDelivery.update({
+        where: { id: delivery.id },
+        data: { attempts: executorLib.MAX_DELIVERY_ATTEMPTS - 1 },
+      });
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
+      const outcome = await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1" });
+      expect(outcome).toEqual({
+        deliveryId: delivery.id,
+        outcome: "failed",
+        errorClass: "discord:server_error:max_attempts_exceeded",
+      });
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("FAILED");
+      expect(row.nextAttemptAt).toBeNull();
+      expect(row.attempts).toBe(executorLib.MAX_DELIVERY_ATTEMPTS);
+    });
+
+    it("juste EN DESSOUS du plafond, le même échec reste retryable (PENDING avec nextAttemptAt)", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
+      await db.notificationDelivery.update({
+        where: { id: delivery.id },
+        data: { attempts: executorLib.MAX_DELIVERY_ATTEMPTS - 2 },
+      });
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
+      const outcome = await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1" });
+      expect(outcome).toEqual({ deliveryId: delivery.id, outcome: "retrying", errorClass: "discord:server_error" });
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("PENDING");
+      expect(row.nextAttemptAt).not.toBeNull();
+    });
   });
 
   describe("route cron — désactivée par défaut, authentification", () => {
-    it("CRON_SECRET absente → 503, aucun appel réseau/claim", async () => {
+    it("CRON_SECRET absente → 503, aucune réservation, aucun appel Discord", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
       vi.stubEnv("CRON_SECRET", "");
       const { GET } = await import("@/app/api/cron/notification-executor/route");
       const res = await GET(new Request("http://localhost/api/cron/notification-executor"));
       expect(res.status).toBe(503);
       expect(fetchMock).not.toHaveBeenCalled();
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("PENDING");
+      expect(row.attempts).toBe(0);
     });
 
-    it("en-tête Authorization incorrect → 401", async () => {
+    it("en-tête Authorization incorrect → 401, aucune réservation, aucun appel Discord", async () => {
+      const event = await makeEvent();
+      const delivery = await makeDelivery(event.id);
       vi.stubEnv("CRON_SECRET", "s3cret");
       const { GET } = await import("@/app/api/cron/notification-executor/route");
       const res = await GET(
         new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer wrong" } })
       );
       expect(res.status).toBe(401);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("PENDING");
+      expect(row.attempts).toBe(0);
     });
 
     it("désactivée par défaut (NOTIFICATION_EXECUTOR_ENABLED absente) : aucune réservation, aucune tentative, aucun appel Discord", async () => {

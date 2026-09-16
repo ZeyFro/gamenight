@@ -414,6 +414,15 @@ export interface ProcessDeliveryOptions {
   owner: string;
   now?: Date;
   leaseMs?: number;
+  /** Budget global restant de l'exécuteur (fin de la fenêtre d'exécution
+   * du batch, ex. `DEFAULT_BATCH_BUDGET_MS` — voir `runExecutorBatch`).
+   * Optionnel : un appel direct à `processNextDelivery` (hors batch, ex.
+   * un exécuteur synchrone) n'est contraint que par le bail de la
+   * réservation. Quand fourni, la deadline transmise au client Discord
+   * respecte la PLUS PROCHE des deux échéances — jamais seulement le
+   * bail — pour qu'un appel réseau ne puisse jamais, à lui seul, pousser
+   * l'exécution du batch au-delà de son budget global. */
+  batchDeadline?: Date;
 }
 
 /**
@@ -435,12 +444,18 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
   if (!claimed) return null;
 
   // Invariant post-claim : une ligne RESERVED a toujours un
-  // reservationToken/reservedUntil (posés par `claimNextDelivery` dans la
-  // même transaction que le passage à RESERVED). Défensif uniquement —
-  // ne devrait jamais se produire ; si ça arrivait quand même, ne jamais
-  // planter tout le batch pour une seule ligne incohérente : on la laisse
-  // telle quelle (elle s'auto-corrigera via `recoverExpiredReservations`
-  // à l'expiration de son bail) et on continue.
+  // reservationToken ET un reservedUntil, posés ENSEMBLE par le même
+  // `update` dans `claimNextDelivery` — jamais l'un sans l'autre avec le
+  // code actuel. Défensif uniquement, ne devrait jamais se produire ; si
+  // ça arrivait quand même, ne jamais planter tout le batch pour une
+  // seule ligne incohérente. Pas de finalisation possible ici sans jeton
+  // valide (le contrat `finalizeDeliveryFailure` l'exige) : la ligne
+  // reste RESERVED, récupérée par `recoverExpiredReservations` au
+  // prochain balayage SI `reservedUntil` est bien posé (le cas réel,
+  // couvert par l'invariant ci-dessus) — un `reservedUntil` réellement
+  // absent échapperait à ce balayage, situation qui ne peut survenir
+  // qu'en cas de corruption externe des données, hors de portée de ce
+  // module.
   if (!claimed.reservationToken || !claimed.reservedUntil) {
     logger.error(
       "notification-executor",
@@ -507,17 +522,29 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
     };
   }
 
-  // Budget vérifié AVANT tout appel réseau — marge dédiée à la
-  // finalisation elle-même (`MIN_CALL_MARGIN_MS`, voir
-  // `notification-delivery.ts`), jamais seulement à l'appel Discord.
-  if (!hasSufficientLeaseRemaining(reservedUntil, now)) {
+  // Budget vérifié AVANT tout appel réseau, contre la PLUS PROCHE des deux
+  // échéances : fin de bail de la réservation, ET fin du budget global de
+  // l'exécuteur (`batchDeadline`, si fourni par `runExecutorBatch`) — un
+  // bail encore largement valide ne doit jamais autoriser un appel réseau
+  // que le budget du batch ne peut plus se permettre. Même fonction de
+  // marge (`hasSufficientLeaseRemaining`/`MIN_CALL_MARGIN_MS`) réutilisée
+  // pour les deux, jamais une vérification parallèle réinventée.
+  const deadlineSource =
+    opts.batchDeadline && opts.batchDeadline.getTime() < reservedUntil.getTime() ? opts.batchDeadline : reservedUntil;
+  const insufficientBudgetKind = deadlineSource === opts.batchDeadline ? "insufficient_batch_budget" : "insufficient_lease";
+
+  if (!hasSufficientLeaseRemaining(deadlineSource, now)) {
     const failure: FinalizeFailureInput =
       claimed.attempts >= MAX_DELIVERY_ATTEMPTS
-        ? { retryable: false, errorClass: "insufficient_lease:max_attempts_exceeded", lastError: "Budget de bail insuffisant avant appel Discord." }
+        ? {
+            retryable: false,
+            errorClass: `${insufficientBudgetKind}:max_attempts_exceeded`,
+            lastError: "Budget insuffisant avant appel Discord (bail ou budget global de l'exécuteur).",
+          }
         : {
             retryable: true,
-            errorClass: "insufficient_lease",
-            lastError: "Budget de bail insuffisant avant appel Discord.",
+            errorClass: insufficientBudgetKind,
+            lastError: "Budget insuffisant avant appel Discord (bail ou budget global de l'exécuteur).",
             nextAttemptAt: new Date(now.getTime() + computeRetryBackoffMs(claimed.attempts)),
           };
     await finalizeDeliveryFailure(claimed.id, reservationToken, failure);
@@ -528,10 +555,10 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
     };
   }
 
-  // Deadline transmise au client Discord = fin de bail MOINS la marge de
-  // finalisation — jamais `reservedUntil` brut (voir le contrat documenté
-  // sur `MIN_CALL_MARGIN_MS`, notification-delivery.ts).
-  const deadline = new Date(reservedUntil.getTime() - MIN_CALL_MARGIN_MS);
+  // Deadline transmise au client Discord = échéance retenue ci-dessus
+  // MOINS la marge de finalisation — jamais l'échéance brute (voir le
+  // contrat documenté sur `MIN_CALL_MARGIN_MS`, notification-delivery.ts).
+  const deadline = new Date(deadlineSource.getTime() - MIN_CALL_MARGIN_MS);
 
   const discordResult = await performDiscordAction(resolution.action, deadline, now);
 
@@ -586,12 +613,22 @@ export interface ExecutorBatchSummary {
  * c'est le balayage périodique documenté comme "absent" dans
  * `notification-delivery.ts` (PR #95) : cette PR le branche enfin, porté
  * par chaque exécution de ce batch plutôt qu'un processus séparé.
+ *
+ * Transmet sa propre échéance (`batchDeadline`) à CHAQUE appel de
+ * `processNextDelivery` — pas seulement la vérification "budget épuisé,
+ * n'en réclame pas d'autre" ci-dessous : une fois une livraison réclamée,
+ * `processNextDelivery` borne lui-même la deadline transmise au client
+ * Discord par le plus proche du bail de la réservation ET de cette
+ * échéance de batch, pour qu'un seul appel réseau ne puisse jamais, à lui
+ * seul, pousser l'exécution au-delà du budget global (voir son
+ * commentaire).
  */
 export async function runExecutorBatch(opts: RunExecutorBatchOptions): Promise<ExecutorBatchSummary> {
   const startedAt = opts.now ?? new Date();
   const maxDeliveries = opts.maxDeliveries ?? DEFAULT_MAX_DELIVERIES_PER_RUN;
   const budgetMs = opts.batchBudgetMs ?? DEFAULT_BATCH_BUDGET_MS;
-  const batchDeadline = startedAt.getTime() + budgetMs;
+  const batchDeadlineMs = startedAt.getTime() + budgetMs;
+  const batchDeadline = new Date(batchDeadlineMs);
 
   const recovered = await recoverExpiredReservations(startedAt);
 
@@ -610,7 +647,7 @@ export async function runExecutorBatch(opts: RunExecutorBatchOptions): Promise<E
       summary.stoppedReason = "max_deliveries_reached";
       break;
     }
-    if (Date.now() >= batchDeadline) {
+    if (Date.now() >= batchDeadlineMs) {
       summary.stoppedReason = "budget_exhausted";
       break;
     }
@@ -619,6 +656,7 @@ export async function runExecutorBatch(opts: RunExecutorBatchOptions): Promise<E
       resolver: opts.resolver,
       owner: opts.owner,
       leaseMs: opts.leaseMs,
+      batchDeadline,
     });
     if (!outcome) {
       summary.stoppedReason = "no_more_deliveries";
