@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import type {
   DeliveryChannel,
@@ -37,16 +38,23 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  *      transaction que la mutation métier si possible (best-effort côté
  *      Discord ne doit jamais dépendre de la réussite du webhook/bot).
  *   2. `claimNextDelivery` — réserve une livraison PENDING due, de façon
- *      atomique, exclusive par (targetSlot, operation). RETOURNE avant tout
- *      appel réseau : aucune transaction SQL n'est jamais tenue ouverte
- *      pendant l'appel Discord qui doit suivre côté appelant.
+ *      atomique, exclusive par `targetSlot` (SEND/EDIT/ARCHIVE confondus).
+ *      Abandonne au passage (SKIPPED) toute édition dépassée et diffère
+ *      toute EDIT/ARCHIVE dont le SEND cible n'est pas encore SENT — les
+ *      DEUX intégrées au chemin normal, jamais un appel séparé à espérer
+ *      qu'un futur exécuteur n'oublie pas. RETOURNE avant tout appel
+ *      réseau : aucune transaction SQL n'est jamais tenue ouverte pendant
+ *      l'appel Discord qui doit suivre côté appelant.
  *   3. L'appelant effectue l'appel HTTP Discord (hors de ce module, hors de
- *      toute transaction).
+ *      toute transaction) — voir `hasSufficientLeaseRemaining` plus bas
+ *      pour le contrat de timeout attendu du futur client.
  *   4. `finalizeDeliverySuccess` / `finalizeDeliveryFailure` — clôture
- *      conditionnée au `reservedBy` : si la réservation a expiré entre
- *      temps (crash, lenteur), la finalisation échoue silencieusement
- *      (retourne `false`) plutôt que d'écraser l'état repris par un autre
- *      propriétaire.
+ *      conditionnée au `reservationToken` obtenu à l'étape 2 (PAS à
+ *      `reservedBy`, voir le commentaire du champ dans le schéma) : si la
+ *      réservation a expiré et a été reprise entre-temps (crash, lenteur),
+ *      la finalisation échoue silencieusement (retourne `false`) plutôt
+ *      que d'écraser l'état repris par un autre propriétaire — même si ce
+ *      nouveau propriétaire réutilise le même `owner`/`reservedBy`.
  *
  * Récupération après interruption : `recoverExpiredReservations` doit être
  * appelée périodiquement (par un futur sweep, absent de cette PR) pour
@@ -61,7 +69,9 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  * expire ENTRE le moment où Discord a effectivement accepté le message et
  * celui où `finalizeDeliverySuccess` tente de le consigner, un autre
  * propriétaire peut reprendre la livraison et l'envoyer une seconde fois.
- * Risque résiduel accepté, borné par un bail court (`DEFAULT_LEASE_MS`).
+ * Risque résiduel accepté, borné par un bail court (`DEFAULT_RESERVATION_LEASE_MS`)
+ * et réduit (jamais éliminé, voir `hasSufficientLeaseRemaining`) par la
+ * discipline de timeout attendue du futur appelant.
  */
 
 // Dérivé du plafond dur d'exécution du plan Vercel Hobby (60s, déjà utilisé
@@ -71,6 +81,37 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 // avant le kill de la plateforme — pas une valeur devinée, même logique de
 // dérivation que `CRON_LOCK_LEASE_MS` dans `src/lib/cron-lock.ts`.
 export const DEFAULT_RESERVATION_LEASE_MS = 30_000;
+
+/**
+ * Contrat pour le futur client Discord (PR suivante, PAS implémentée ici) :
+ * avant d'effectuer l'appel réseau vers Discord, l'appelant DOIT vérifier
+ * le temps restant sur le bail de sa réservation (`reservedUntil - now`) et
+ * n'engager l'appel que s'il en reste plus que `marginMs` — cette marge
+ * couvre le round-trip de finalisation lui-même (`finalizeDeliverySuccess`/
+ * `finalizeDeliveryFailure`), pas seulement l'appel Discord. Le timeout HTTP
+ * du client (`AbortSignal.timeout`) doit lui-même être borné au temps
+ * restant moins cette marge, jamais au-delà — même logique que les 6s de
+ * timeout Steam sous un budget de 45s (`src/lib/steam.ts`).
+ *
+ * Si le temps restant est insuffisant, l'appelant ne doit PAS tenter
+ * l'appel : traiter comme un échec retryable immédiat
+ * (`finalizeDeliveryFailure` avec `retryable: true`) plutôt que de risquer
+ * un appel qui dépasse le bail en cours de route.
+ *
+ * Cette fonction RÉDUIT la fenêtre du risque documenté plus haut, elle ne
+ * L'ÉLIMINE PAS : un appel engagé à temps peut quand même dépasser le bail
+ * si Discord répond lentement (réseau, rate limit) — la limite
+ * "pas d'exactement une fois" reste entière dans ce cas.
+ */
+export const MIN_CALL_MARGIN_MS = 5_000;
+
+export function hasSufficientLeaseRemaining(
+  reservedUntil: Date,
+  now: Date = new Date(),
+  marginMs: number = MIN_CALL_MARGIN_MS
+): boolean {
+  return reservedUntil.getTime() - now.getTime() > marginMs;
+}
 
 export interface CreateEventInput {
   category: NotificationCategory;
@@ -126,6 +167,11 @@ export interface EnqueueDeliveryInput {
   transport: DeliveryTransport;
   operation?: DeliveryOperation;
   recipientKey: string;
+  /** Voir le commentaire du champ dans `prisma/schema.prisma` pour le
+   * format attendu (`<guildId>:<category>:<sourceId>:<rôle>`) — une valeur
+   * = un message Discord physique précis, jamais partagée entre deux
+   * messages distincts (ex. deux rappels différents de la même soirée
+   * doivent avoir des `targetSlot` différents, pas le même). */
   targetSlot: string;
 }
 
@@ -170,11 +216,24 @@ export async function enqueueDelivery(
 /**
  * Abandonne (SKIPPED) toute livraison PENDING ou FAILED dès qu'une livraison
  * plus récente (sequence supérieure, même `targetSlot` + `operation`, pas
- * elle-même SKIPPED) existe — c'est le mécanisme d'"abandon des éditions
- * dépassées" : converger vers le dernier état connu plutôt que d'envoyer une
- * suite de messages intermédiaires périmés. `sequence` est un compteur
- * Postgres global (`SERIAL`), jamais recalculé côté app — ordre total,
- * atomique, sans les égalités possibles d'un `createdAt` à la milliseconde.
+ * elle-même SKIPPED) existe. Comparaison scopée PAR OPÉRATION (contrairement
+ * à l'exclusivité de réservation, scopée par `targetSlot` seul, voir
+ * `claimNextDelivery`) : seules deux lignes de la MÊME opération sont des
+ * "versions successives du même contenu" comparables — un SEND n'est
+ * jamais périmé par une EDIT, ni l'inverse. Deux `targetSlot` différents
+ * (ex. deux rappels distincts de la même soirée) ne sont jamais comparés
+ * entre eux non plus, par construction (`newer."targetSlot" = d."targetSlot"`).
+ *
+ * `sequence` est un compteur Postgres global (`SERIAL`), jamais recalculé
+ * côté app — ordre total, atomique, sans les égalités possibles d'un
+ * `createdAt` à la milliseconde.
+ *
+ * DEVENU UN UTILITAIRE DE MAINTENANCE, PAS UNE CONDITION DE CORRECTION :
+ * `claimNextDelivery` applique désormais cette même règle lui-même, à
+ * chaque candidat examiné, avant de réserver — la correction ne dépend
+ * plus d'un appel séparé à cette fonction. L'appeler périodiquement reste
+ * utile pour nettoyer en lot les lignes périmées qui ne seraient sinon
+ * jamais examinées par un claim (au-delà de `CLAIM_CANDIDATE_SCAN_LIMIT`).
  *
  * Sûr à appeler à tout moment, y compris en concurrence avec un autre appel
  * ou avec `claimNextDelivery` : chaque ligne ne transitionne qu'une fois
@@ -208,108 +267,208 @@ export interface ClaimOptions {
 }
 
 // Nombre de candidats PENDING examinés par un appel de `claimNextDelivery`
-// avant d'abandonner (retour `null`) si tous sont bloqués par le verrou
-// advisory de leur cible — pas une limite de débit, juste un plafond de
-// sécurité pour ne jamais boucler indéfiniment si un lot entier partage des
-// cibles déjà réservées ailleurs.
+// avant d'abandonner (retour `null`) si tous sont bloqués (verrou de cible
+// pris ailleurs, réservation active concurrente, dépendance SEND non
+// remplie...) — pas une limite de débit, juste un plafond de sécurité pour
+// ne jamais boucler indéfiniment.
 const CLAIM_CANDIDATE_SCAN_LIMIT = 20;
 
 interface ClaimCandidateRow {
   id: string;
   targetSlot: string;
   operation: string;
+  sequence: number;
+}
+
+interface TargetMessageRow {
+  discordMessageId: string | null;
+  discordChannelId: string | null;
+  discordThreadId: string | null;
+}
+
+export interface TargetMessageRef {
+  discordMessageId: string;
+  discordChannelId: string | null;
+  discordThreadId: string | null;
+}
+
+export interface ClaimedDelivery extends NotificationDelivery {
+  /** Résolu au moment du claim pour EDIT/ARCHIVE — référence du message
+   * Discord déjà envoyé (SEND au statut SENT pour le même `targetSlot`)
+   * que cette opération doit cibler. Toujours `null` pour un SEND. Jamais
+   * persisté sur la ligne elle-même : dérivé à chaque claim pour éviter
+   * une donnée dupliquée/potentiellement périmée en base. */
+  targetMessage: TargetMessageRef | null;
 }
 
 /**
  * Réserve, de façon atomique, AU PLUS UNE livraison PENDING due.
  *
- * Exclusivité par cible (correction demandée — une simple vérification
- * applicative "pas d'édition plus récente/déjà réservée" NE SUFFIT PAS :
- * deux transactions concurrentes peuvent toutes deux lire "aucune ligne
- * RESERVED" avant que l'une des deux n'ait committé la sienne, et réserver
- * chacune une livraison différente pour la MÊME cible — race vérifiée par
- * le test d'intégration correspondant avant ce correctif). La garantie
- * réelle vient d'un verrou advisory Postgres transactionnel,
- * `pg_try_advisory_xact_lock`, pris sur `hashtextextended(targetSlot ||
- * ':' || operation)` : contrairement à un `SELECT ... WHERE NOT EXISTS`,
- * c'est un verrou tenu par le moteur lui-même, visible immédiatement par
- * toute AUTRE transaction concurrente (pas seulement après COMMIT), non
- * bloquant (`_try_`, renvoie `false` sans attendre si déjà pris ailleurs),
- * et automatiquement relâché à la fin de la transaction — jamais besoin de
- * le libérer explicitement, y compris en cas d'erreur.
+ * Exclusivité par cible — CORRIGÉE (audit avant merge #95) : la version
+ * précédente n'utilisait qu'un verrou advisory Postgres transactionnel
+ * (`pg_try_advisory_xact_lock`), relâché au COMMIT. Ça arbitrait
+ * correctement deux réservations STRICTEMENT SIMULTANÉES (deux
+ * transactions concurrentes ne peuvent jamais réserver la même cible en
+ * même temps), mais ne protégeait PAS deux réservations SÉQUENTIELLES :
+ * une fois la première transaction committée, le verrou est libre, et une
+ * transaction ultérieure pouvait réserver une AUTRE ligne PENDING pour la
+ * MÊME cible sans qu'aucune vérification ne l'en empêche — reproduit à la
+ * main via `psql` avant ce correctif (deux lignes `RESERVED`
+ * simultanément pour le même `targetSlot`, voir le README pour la trace
+ * complète). Corrigé en ajoutant, SOUS le verrou advisory, une vérification
+ * explicite qu'aucune réservation active n'existe déjà pour la cible — le
+ * verrou advisory sert maintenant UNIQUEMENT à sérialiser cette
+ * vérification entre transactions concurrentes (empêcher que deux
+ * transactions la fassent en même temps et concluent toutes deux "libre"),
+ * la garantie d'exclusivité elle-même vient de la vérification, pas du
+ * verrou. Résultat : exclusivité valable entre réservations SIMULTANÉES
+ * ET SÉQUENTIELLES.
+ *
+ * Portée de l'exclusivité — SEND, EDIT et ARCHIVE visant le MÊME
+ * `targetSlot` s'excluent désormais mutuellement (clé du verrou advisory =
+ * `targetSlot` seul, plus `targetSlot:operation` comme avant) : ce sont
+ * trois opérations sur le même message physique. Deux `targetSlot`
+ * différents (ex. annonce et fil d'une même soirée) restent entièrement
+ * indépendants.
+ *
+ * Édition dépassée — intégrée au chemin de réservation lui-même (pas un
+ * appel séparé à `supersedeStaleDeliveries`, voir son commentaire) :
+ * chaque candidat est d'abord vérifié contre une livraison plus récente de
+ * la MÊME opération sur la MÊME cible ; si une existe, ce candidat est
+ * marqué SKIPPED immédiatement et le scan continue sans jamais le réserver.
+ *
+ * Dépendance EDIT/ARCHIVE → SEND — une EDIT ou une ARCHIVE ne devient
+ * réclamable qu'une fois le SEND correspondant (même `targetSlot`) au
+ * statut SENT ; sinon le candidat est différé (laissé PENDING, retenté à
+ * un futur claim), jamais marqué en erreur. Si la dépendance est remplie,
+ * la référence du message ciblé (`discordMessageId`/`discordChannelId`/
+ * `discordThreadId` du SEND) est résolue et renvoyée dans
+ * `targetMessage`, pour que l'appelant n'ait pas à refaire cette requête.
  *
  * Une seule courte transaction SQL (`prisma.$transaction`), UNIQUEMENT des
- * requêtes — aucun appel réseau Discord dedans : elle verrouille jusqu'à
+ * requêtes — aucun appel réseau Discord dedans : elle examine jusqu'à
  * `CLAIM_CANDIDATE_SCAN_LIMIT` candidats PENDING dus (`FOR UPDATE SKIP
  * LOCKED`, donc sans jamais bloquer sur des candidats déjà verrouillés par
- * un AUTRE claim en cours), puis parcourt ces candidats dans l'ordre et
- * réserve le premier dont le verrou advisory de cible est disponible —
- * s'arrête au premier succès. Si tous les candidats examinés sont bloqués
- * (verrou de cible déjà pris ailleurs), renvoie `null` : rien à réserver
- * MAINTENANT, pas une erreur.
+ * un AUTRE claim en cours), s'arrête au premier réservé avec succès.
  *
- * La réservation posée ici (`status`, `reservedBy`, `reservedUntil`) est un
- * état PERSISTÉ sur la ligne, committée à la fin de cette (courte)
- * transaction : elle survit donc à sa clôture, contrairement au verrou
- * advisory lui-même qui, lui, disparaît au commit — c'est voulu, il n'a
- * besoin d'exister que pendant l'arbitrage entre candidats concurrents.
- * L'appelant DOIT effectuer l'appel Discord APRÈS le retour de cette
- * fonction (jamais dans une transaction englobante), puis appeler
- * `finalizeDeliverySuccess`/`finalizeDeliveryFailure` avec le MÊME `owner`.
+ * La réservation posée ici (`status`, `reservedBy`, `reservationToken`,
+ * `reservedUntil`) est un état PERSISTÉ sur la ligne, committé à la fin de
+ * cette (courte) transaction. L'appelant DOIT effectuer l'appel Discord
+ * APRÈS le retour de cette fonction (jamais dans une transaction
+ * englobante — voir `hasSufficientLeaseRemaining` pour le contrat de
+ * timeout attendu), puis appeler `finalizeDeliverySuccess`/
+ * `finalizeDeliveryFailure` avec le `reservationToken` retourné ICI (PAS
+ * `owner`, voir le commentaire du champ dans le schéma).
  */
 export async function claimNextDelivery(
   owner: string,
   opts: ClaimOptions = {}
-): Promise<NotificationDelivery | null> {
+): Promise<ClaimedDelivery | null> {
   const now = opts.now ?? new Date();
   const reservedUntil = new Date(now.getTime() + (opts.leaseMs ?? DEFAULT_RESERVATION_LEASE_MS));
 
   return prisma.$transaction(async (tx) => {
-    // Un candidat à la fois (`LIMIT 1`), jamais un lot verrouillé d'un coup
-    // (bug corrigé avant cette version : verrouiller tout un lot via
-    // `FOR UPDATE SKIP LOCKED LIMIT N` fait qu'UN SEUL appel concurrent
-    // rafle les N lignes, laissant les autres appels concurrents sans
-    // aucun candidat à examiner — repéré par le test d'intégration "N
-    // claims concurrents sur N cibles distinctes"). En reformulant en
-    // scan ligne-par-ligne, chaque transaction concurrente ne verrouille
-    // QUE la ligne qu'elle examine réellement, ce qui restaure le
-    // comportement file-d'attente standard de `SKIP LOCKED` : N appels
-    // concurrents sur N cibles indépendantes obtiennent chacun une ligne
-    // différente dès leur premier essai. Les ids déjà examinés et rejetés
-    // (verrou advisory de cible indisponible) sont exclus des essais
-    // suivants, dans la même transaction.
     const excludedIds: string[] = [];
     for (let attempt = 0; attempt < CLAIM_CANDIDATE_SCAN_LIMIT; attempt++) {
+      // Un candidat à la fois (`LIMIT 1`), jamais un lot verrouillé d'un
+      // coup (bug corrigé avant la version précédente : verrouiller tout
+      // un lot via `FOR UPDATE SKIP LOCKED LIMIT N` fait qu'un seul appel
+      // concurrent rafle les N lignes). Le scan ligne-par-ligne restaure
+      // le comportement file-d'attente standard de `SKIP LOCKED`.
       const [candidate] = await tx.$queryRaw<ClaimCandidateRow[]>`
-        SELECT id, "targetSlot", operation
+        SELECT id, "targetSlot", operation, sequence
         FROM "NotificationDelivery"
         WHERE status = 'PENDING'
           AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
           AND id <> ALL(${excludedIds}::text[])
-        ORDER BY "createdAt" ASC
+        ORDER BY sequence ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       `;
       if (!candidate) return null;
 
-      const lockKey = `${candidate.targetSlot}:${candidate.operation}`;
+      // 1) Édition dépassée — converge vers le dernier état plutôt que
+      // d'envoyer une étape intermédiaire périmée.
+      const [staled] = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "NotificationDelivery"
+        SET status = 'SKIPPED'
+        WHERE id = ${candidate.id}
+          AND EXISTS (
+            SELECT 1 FROM "NotificationDelivery" newer
+            WHERE newer."targetSlot" = ${candidate.targetSlot}
+              AND newer.operation = ${candidate.operation}::"DeliveryOperation"
+              AND newer.sequence > ${candidate.sequence}
+              AND newer.status <> 'SKIPPED'
+          )
+        RETURNING id
+      `;
+      if (staled) {
+        excludedIds.push(candidate.id);
+        continue;
+      }
+
+      // 2) Exclusivité par cible. Le verrou advisory arbitre d'abord les
+      // réservations SIMULTANÉES (une seule transaction concurrente peut
+      // le détenir à la fois pour cette cible) ; la vérification explicite
+      // qui suit, faite SOUS ce verrou, couvre le cas SÉQUENTIEL (voir
+      // commentaire de la fonction).
       const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
-        SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS locked
+        SELECT pg_try_advisory_xact_lock(hashtextextended(${candidate.targetSlot}, 0)) AS locked
       `;
       if (!locked) {
         excludedIds.push(candidate.id);
         continue;
       }
 
-      return tx.notificationDelivery.update({
+      const [{ conflict }] = await tx.$queryRaw<{ conflict: boolean }[]>`
+        SELECT EXISTS (
+          SELECT 1 FROM "NotificationDelivery"
+          WHERE "targetSlot" = ${candidate.targetSlot}
+            AND status = 'RESERVED'
+        ) AS conflict
+      `;
+      if (conflict) {
+        excludedIds.push(candidate.id);
+        continue;
+      }
+
+      // 3) EDIT/ARCHIVE dépendent d'un SEND déjà SENT pour la même cible.
+      let targetMessage: TargetMessageRef | null = null;
+      if (candidate.operation !== "SEND") {
+        const [sent] = await tx.$queryRaw<TargetMessageRow[]>`
+          SELECT "discordMessageId", "discordChannelId", "discordThreadId"
+          FROM "NotificationDelivery"
+          WHERE "targetSlot" = ${candidate.targetSlot}
+            AND operation = 'SEND'
+            AND status = 'SENT'
+          ORDER BY "sentAt" DESC
+          LIMIT 1
+        `;
+        if (!sent || !sent.discordMessageId) {
+          // Dépendance non remplie — PAS une erreur : différé, laissé
+          // PENDING, retenté au prochain claim une fois le SEND terminé.
+          excludedIds.push(candidate.id);
+          continue;
+        }
+        targetMessage = {
+          discordMessageId: sent.discordMessageId,
+          discordChannelId: sent.discordChannelId,
+          discordThreadId: sent.discordThreadId,
+        };
+      }
+
+      const reservationToken = randomUUID();
+      const updated = await tx.notificationDelivery.update({
         where: { id: candidate.id },
         data: {
           status: "RESERVED",
           reservedBy: owner,
+          reservationToken,
           reservedUntil,
           attempts: { increment: 1 },
         },
       });
+      return { ...updated, targetMessage };
     }
 
     return null;
@@ -323,11 +482,17 @@ export interface FinalizeSuccessInput {
 }
 
 /**
- * Clôture une livraison en succès — UNIQUEMENT si `reservedBy` correspond
- * encore exactement à `owner` (même garde que `releaseCronLock`, voir
- * `src/lib/cron-lock.ts`) : si le bail a expiré et qu'une autre exécution a
- * déjà repris la ligne (ou pire, l'a déjà finalisée), cet appel ne touche
- * rien et renvoie `false` plutôt que d'écraser un état plus récent.
+ * Clôture une livraison en succès — UNIQUEMENT si `reservationToken`
+ * correspond encore exactement à celui posé par `claimNextDelivery` (PAS
+ * une comparaison sur `reservedBy` — voir le commentaire du champ dans le
+ * schéma : deux réservations successives de la même ligne peuvent
+ * partager le même `reservedBy` si le worker réutilise un identifiant
+ * statique, mais ont TOUJOURS des `reservationToken` différents, générés
+ * aléatoirement à chaque réservation). Si le bail a expiré et qu'une autre
+ * exécution a déjà repris la ligne (ou pire, l'a déjà finalisée) entre
+ * temps, cet appel ne touche rien et renvoie `false` plutôt que d'écraser
+ * un état plus récent — même si son `reservedBy` est identique à celui du
+ * nouveau propriétaire.
  *
  * `false` en retour n'est pas forcément une erreur applicative — ça signifie
  * que ce propriétaire a perdu sa réservation. L'appelant doit le logguer
@@ -336,15 +501,16 @@ export interface FinalizeSuccessInput {
  */
 export async function finalizeDeliverySuccess(
   id: string,
-  owner: string,
+  reservationToken: string,
   refs: FinalizeSuccessInput = {}
 ): Promise<boolean> {
   const result = await prisma.notificationDelivery.updateMany({
-    where: { id, status: "RESERVED", reservedBy: owner },
+    where: { id, status: "RESERVED", reservationToken },
     data: {
       status: "SENT",
       sentAt: new Date(),
       reservedBy: null,
+      reservationToken: null,
       reservedUntil: null,
       discordMessageId: refs.discordMessageId,
       discordChannelId: refs.discordChannelId,
@@ -352,10 +518,11 @@ export async function finalizeDeliverySuccess(
     },
   });
   if (result.count === 0) {
-    logger.warn("notification-delivery", "Finalisation succès orpheline (réservation déjà reprise ou expirée)", {
-      id,
-      owner,
-    });
+    logger.warn(
+      "notification-delivery",
+      "Finalisation succès orpheline (réservation déjà reprise ou expirée)",
+      { id }
+    );
   }
   return result.count === 1;
 }
@@ -372,7 +539,7 @@ export interface FinalizeFailureInput {
 }
 
 /**
- * Clôture une livraison en échec — même garde `reservedBy` que
+ * Clôture une livraison en échec — même garde `reservationToken` que
  * `finalizeDeliverySuccess`. Un échec retryable repasse la ligne à PENDING
  * (jamais un statut FAILED intermédiaire) avec `nextAttemptAt` : c'est ce
  * qui la rend de nouveau sélectionnable par `claimNextDelivery`, sans état
@@ -380,15 +547,16 @@ export interface FinalizeFailureInput {
  */
 export async function finalizeDeliveryFailure(
   id: string,
-  owner: string,
+  reservationToken: string,
   input: FinalizeFailureInput
 ): Promise<boolean> {
   const result = await prisma.notificationDelivery.updateMany({
-    where: { id, status: "RESERVED", reservedBy: owner },
+    where: { id, status: "RESERVED", reservationToken },
     data: input.retryable
       ? {
           status: "PENDING",
           reservedBy: null,
+          reservationToken: null,
           reservedUntil: null,
           errorClass: input.errorClass,
           lastError: input.lastError,
@@ -397,16 +565,18 @@ export async function finalizeDeliveryFailure(
       : {
           status: "FAILED",
           reservedBy: null,
+          reservationToken: null,
           reservedUntil: null,
           errorClass: input.errorClass,
           lastError: input.lastError,
         },
   });
   if (result.count === 0) {
-    logger.warn("notification-delivery", "Finalisation échec orpheline (réservation déjà reprise ou expirée)", {
-      id,
-      owner,
-    });
+    logger.warn(
+      "notification-delivery",
+      "Finalisation échec orpheline (réservation déjà reprise ou expirée)",
+      { id }
+    );
   }
   return result.count === 1;
 }
@@ -415,15 +585,18 @@ export async function finalizeDeliveryFailure(
  * Repasse à PENDING les livraisons RESERVED dont le bail a expiré sans
  * jamais avoir été finalisées (crash, timeout, exécution tuée par la
  * plateforme) — les rend de nouveau sélectionnables par
- * `claimNextDelivery`. Un simple `updateMany` conditionné suffit ici (pas
- * besoin de `FOR UPDATE SKIP LOCKED` : aucune décision n'est prise à partir
- * d'une lecture préalable, la condition du `WHERE` est directement celle de
- * l'écriture).
+ * `claimNextDelivery`. `reservationToken` est effacé avec le reste de
+ * l'état de réservation : la prochaine réservation en générera un nouveau,
+ * distinct, ce qui est précisément ce qui empêche l'ancien propriétaire de
+ * finaliser à tort la nouvelle réservation (voir `finalizeDeliverySuccess`).
+ * Un simple `updateMany` conditionné suffit ici (pas besoin de `FOR UPDATE
+ * SKIP LOCKED` : aucune décision n'est prise à partir d'une lecture
+ * préalable, la condition du `WHERE` est directement celle de l'écriture).
  */
 export async function recoverExpiredReservations(now: Date = new Date()): Promise<number> {
   const result = await prisma.notificationDelivery.updateMany({
     where: { status: "RESERVED", reservedUntil: { lt: now } },
-    data: { status: "PENDING", reservedBy: null, reservedUntil: null },
+    data: { status: "PENDING", reservedBy: null, reservationToken: null, reservedUntil: null },
   });
   return result.count;
 }

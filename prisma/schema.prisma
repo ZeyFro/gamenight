@@ -1531,9 +1531,11 @@ model CronLock {
 // métier — création de soirée, changement de jeu d'une session instantanée,
 // récap quotidien d'un joueur...) de "où ça part" (`NotificationDelivery`,
 // une ligne par destinataire × canal × opération). Un même événement peut
-// produire plusieurs livraisons indépendantes (ex. éditer l'annonce ET
-// poster dans son fil) qui ne doivent jamais se bloquer l'une l'autre — voir
-// `targetSlot`/`operation` ci-dessous.
+// produire plusieurs livraisons visant des `targetSlot` DIFFÉRENTS (ex.
+// éditer l'annonce ET poster dans son fil) qui ne se bloquent jamais l'une
+// l'autre ; en revanche, toutes les opérations visant le MÊME `targetSlot`
+// (SEND/EDIT/ARCHIVE confondus) s'excluent mutuellement — voir le
+// commentaire sur `targetSlot` ci-dessous.
 enum NotificationCategory {
   SESSION
   TOURNAMENT
@@ -1564,20 +1566,25 @@ enum DeliveryTransport {
   BOT
 }
 
-// SEND crée un nouveau message. EDIT modifie un message déjà envoyé (même
-// `targetSlot`). ARCHIVE est réservé aux opérations de clôture qui ne sont
-// ni un envoi ni une édition de contenu (ex. verrouillage d'un fil) — non
-// utilisé par cette PR, juste réservé pour ne pas re-migrer l'enum plus
-// tard.
+// SEND crée un nouveau message pour un `targetSlot` — exactement une fois
+// par cible (l'appelant ne doit enqueuer qu'un seul SEND par `targetSlot`
+// sur toute sa durée de vie). EDIT modifie le message déjà envoyé pour le
+// MÊME `targetSlot` — ne devient réclamable qu'une fois le SEND
+// correspondant `SENT` (voir `claimNextDelivery`, qui résout et renvoie la
+// référence du message ciblé). ARCHIVE, même dépendance qu'EDIT, réservé
+// aux opérations de clôture qui ne sont ni un envoi ni une édition de
+// contenu (ex. verrouillage d'un fil) — non utilisé par cette PR, juste
+// réservé pour ne pas re-migrer l'enum plus tard.
 enum DeliveryOperation {
   SEND
   EDIT
   ARCHIVE
 }
 
-// RESERVED = en cours de traitement par un propriétaire précis
-// (`reservedBy`), borné dans le temps (`reservedUntil`) — voir
-// `notification-delivery.ts` pour le cycle claim/send/finalize complet.
+// RESERVED = en cours de traitement par un propriétaire précis, identifié
+// par `reservationToken` (PAS par `reservedBy`, voir son commentaire),
+// borné dans le temps (`reservedUntil`) — voir `notification-delivery.ts`
+// pour le cycle claim/send/finalize complet.
 enum DeliveryStatus {
   PENDING
   RESERVED
@@ -1647,26 +1654,54 @@ model NotificationDelivery {
   // (bug corrigé avant toute migration : une colonne nullable à l'intérieur
   // d'une contrainte unique Postgres ne déduplique rien, NULL ≠ NULL).
   recipientKey String
-  // Identifie le message Discord ciblé, au sens large, pour la
-  // sérialisation des éditions — ex. "session:<id>:announce",
-  // "session:<id>:thread", "tournament:<id>:announce",
-  // "reward-recap:<userId>:<date>". Deux opérations sur des `targetSlot`
-  // différents (ex. éditer l'annonce ET poster dans son fil) sont des
-  // livraisons indépendantes qui ne se bloquent jamais l'une l'autre — seule
-  // l'exclusivité PAR (targetSlot, operation) est appliquée (voir
-  // `claimNextDelivery` dans notification-delivery.ts).
+  // Identifie LE message Discord physique ciblé — une valeur = un message
+  // (ou un fil) précis, jamais partagée entre deux messages distincts.
+  // Portée obligatoire du format (pas de FK `Guild` dans cette PR, donc pas
+  // de garantie DB — c'est un contrat applicatif à respecter par tout
+  // appelant) : `<guildId>:<category>:<sourceId>:<rôle>`, où `<rôle>`
+  // distingue les différents messages produits par un même événement/une
+  // même entité source (ex. "announce" vs "thread" pour une soirée,
+  // "reminder-1h" vs "reminder-1d" pour deux rappels DISTINCTS de la même
+  // soirée — jamais le même `targetSlot`, sous peine de les traiter comme
+  // des révisions successives du même message). `<guildId>` (littéral
+  // `"default-guild"` en attendant un vrai modèle `Guild`, PR future)
+  // évite toute collision si plusieurs serveurs Discord existent un jour.
+  // Exemples : "default-guild:SESSION:session123:announce",
+  // "default-guild:SESSION:session123:thread",
+  // "default-guild:SESSION:session123:reminder-1h".
+  //
+  // SEND, EDIT et ARCHIVE visant le MÊME `targetSlot` s'excluent
+  // mutuellement (au plus une livraison RESERVED à la fois par
+  // `targetSlot`, toutes opérations confondues — voir `claimNextDelivery`
+  // dans notification-delivery.ts) : ce sont trois opérations sur le MÊME
+  // message physique, qui ne peuvent pas progresser en parallèle sans
+  // risquer un envoi/une édition concurrente incohérente. Deux
+  // `targetSlot` différents (ex. annonce et fil d'une même soirée) restent
+  // entièrement indépendants et progressent en parallèle.
   targetSlot String
 
   status DeliveryStatus @default(PENDING)
-  // Identifiant du worker/de la requête qui détient la réservation en
-  // cours — une finalisation ne peut réussir que si `reservedBy` correspond
-  // encore exactement à l'appelant (voir `finalizeDelivery`).
-  reservedBy    String?
-  reservedUntil DateTime?
-  attempts      Int      @default(0)
-  lastError     String?
-  errorClass    String?
-  nextAttemptAt DateTime?
+  // Étiquette informative (logs/observabilité) du worker/de la requête qui
+  // détient la réservation — PAS la garantie de sécurité elle-même (voir
+  // `reservationToken`). Un worker peut légitimement réutiliser le même
+  // identifiant `reservedBy` d'une réservation à l'autre (redémarrage,
+  // identifiant statique...) sans que ça ne permette de finaliser une
+  // réservation qui ne lui appartient plus.
+  reservedBy String?
+  // Jeton unique généré à CHAQUE réservation réussie (`crypto.randomUUID`,
+  // jamais choisi par l'appelant) — c'est LUI qui protège une finalisation
+  // tardive contre une réservation déjà réattribuée, y compris si
+  // `reservedBy` est réutilisé à l'identique par un nouveau worker : deux
+  // réservations successives de la même ligne ont TOUJOURS des jetons
+  // différents, donc un finalize avec un jeton périmé ne peut jamais
+  // correspondre à la réservation courante (voir `finalizeDelivery*` dans
+  // notification-delivery.ts).
+  reservationToken String?
+  reservedUntil    DateTime?
+  attempts         Int       @default(0)
+  lastError        String?
+  errorClass       String?
+  nextAttemptAt    DateTime?
 
   discordMessageId String?
   discordChannelId String?
@@ -1685,8 +1720,12 @@ model NotificationDelivery {
   // d'ancienneté.
   @@index([status, nextAttemptAt])
   // Sert la vérification d'exclusivité par cible au moment du claim (aucune
-  // autre livraison RESERVED/plus récente sur le même targetSlot+operation)
-  // et le rattrapage des livraisons dépassées par une plus récente.
+  // autre livraison RESERVED sur le même targetSlot, toutes opérations
+  // confondues) et le lookup du SEND déjà envoyé dont une EDIT/ARCHIVE
+  // dépend.
+  @@index([targetSlot, status])
+  // Sert le rattrapage des livraisons dépassées par une plus récente
+  // (même targetSlot + même operation, voir `claimNextDelivery`).
   @@index([targetSlot, operation, status, sequence])
   // Sert le balayage de récupération des réservations expirées.
   @@index([reservedUntil])

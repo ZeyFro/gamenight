@@ -8063,14 +8063,15 @@ Sépare "ce qui s'est passé" de "où ça part" :
   événement ne crée jamais de doublon.
 - **`NotificationDelivery`** — une ligne par destinataire × canal ×
   opération, rattachée à un événement. Idempotent sur `[eventId, channel,
-  recipientKey, operation, targetSlot]`. Deux opérations différentes sur
-  la même cible (ex. éditer l'annonce ET poster dans son fil) sont deux
-  lignes indépendantes qui ne se bloquent jamais l'une l'autre —
-  seule l'exclusivité PAR `(targetSlot, operation)` est appliquée (voir
-  plus bas). `transport` (`WEBHOOK`/`BOT`) est choisi une fois pour toutes
-  à la création de la ligne : jamais les deux pour une même livraison,
-  condition nécessaire à la bascule progressive webhook → bot prévue dans
-  les PR suivantes.
+  recipientKey, operation, targetSlot]`. Deux livraisons visant des
+  `targetSlot` DIFFÉRENTS (ex. éditer l'annonce ET poster dans son fil)
+  sont indépendantes et ne se bloquent jamais l'une l'autre ; en revanche,
+  SEND/EDIT/ARCHIVE visant le MÊME `targetSlot` s'excluent mutuellement
+  (voir plus bas — portée corrigée après audit, initialement par
+  `(targetSlot, operation)`, maintenant par `targetSlot` seul). `transport`
+  (`WEBHOOK`/`BOT`) est choisi une fois pour toutes à la création de la
+  ligne : jamais les deux pour une même livraison, condition nécessaire à
+  la bascule progressive webhook → bot prévue dans les PR suivantes.
 
 Voir les commentaires dans `prisma/schema.prisma` pour le détail complet
 de chaque champ (`sequence`, `reservedBy`/`reservedUntil`,
@@ -8088,65 +8089,143 @@ ordre :
    due, de façon atomique, et retourne AVANT tout appel réseau. L'appelant
    doit effectuer l'appel Discord APRÈS ce retour, jamais dans une
    transaction englobante.
-3. **`finalizeDeliverySuccess`/`finalizeDeliveryFailure(id, owner, …)`** —
-   clôture la livraison, conditionnée au fait que `owner` détient toujours
-   la réservation (sinon renvoie `false` sans rien écraser).
+3. **`finalizeDeliverySuccess`/`finalizeDeliveryFailure(id, reservationToken, …)`**
+   — clôture la livraison, conditionnée au `reservationToken` retourné par
+   `claimNextDelivery` (PAS à `owner`/`reservedBy`, voir plus bas), sinon
+   renvoie `false` sans rien écraser.
 4. **`recoverExpiredReservations(now)`** — à appeler périodiquement (par
    un futur sweep, absent de cette PR) : repasse à PENDING les
    réservations dont le bail a expiré sans finalisation (crash, timeout).
 
-#### Réservation durable (pas juste `FOR UPDATE SKIP LOCKED`)
+#### Réservation durable — propriétaire ET jeton (corrigé après audit)
 
 Une réservation pose un état PERSISTÉ (`status='RESERVED'`, `reservedBy`,
-`reservedUntil`) qui survit à la transaction SQL qui l'a créée —
-contrairement à un simple verrou de ligne tenu en mémoire. L'appel Discord
-se fait donc toujours hors de toute transaction SQL, et la finalisation
-est conditionnée au `reservedBy` (même garde que `releaseCronLock`, voir
-`src/lib/cron-lock.ts`) : si le bail a expiré et qu'un autre propriétaire
-a repris la ligne entre-temps, la finalisation échoue silencieusement
-plutôt que d'écraser un état plus récent.
+`reservationToken`, `reservedUntil`) qui survit à la transaction SQL qui
+l'a créée — contrairement à un simple verrou de ligne tenu en mémoire.
+L'appel Discord se fait donc toujours hors de toute transaction SQL.
 
-#### Exclusivité par cible — verrou advisory, pas une simple vérification
+**Correction (audit avant merge #95)** : la version initiale conditionnait
+la finalisation sur `reservedBy`, une étiquette libre fournie par
+l'appelant (typiquement un identifiant de worker). Si un worker redémarre
+et réutilise le MÊME identifiant statique, deux réservations successives
+de la même ligne pouvaient partager le même `reservedBy` — un traitement
+obsolète (crash, lenteur) aurait alors pu finaliser à tort une réservation
+plus récente détenue par le "même" worker. Corrigé avec
+`reservationToken` : généré aléatoirement (`crypto.randomUUID`) à CHAQUE
+réservation réussie, jamais choisi par l'appelant. Deux réservations
+successives de la même ligne ont TOUJOURS des jetons différents, donc une
+finalisation tardive avec un jeton périmé ne peut jamais correspondre à la
+réservation courante — testé bout en bout (réservation A → expiration →
+récupération → réservation B avec le MÊME `reservedBy` que A → finalisation
+tardive de A refusée, voir "Tests d'intégration" plus bas). `reservedBy`
+reste une étiquette informative (logs), plus la condition de sécurité.
+
+#### Exclusivité par cible — corrigée après audit (verrou advisory seul insuffisant)
 
 Une correction a été explicitement demandée avant l'implémentation : une
 vérification applicative du type "pas de livraison RESERVED sur cette
 cible" (un `SELECT ... WHERE NOT EXISTS`) NE SUFFIT PAS — deux
 transactions concurrentes peuvent toutes deux lire "aucune réservation" au
 même instant, avant que l'une des deux n'ait committé la sienne, et
-réserver chacune une livraison différente pour la même cible. **Ce n'est
-pas théorique** : la première version de `claimNextDelivery` avait
-exactement ce défaut, et le test d'intégration correspondant l'a
-effectivement reproduit avant le correctif (voir commit history — le test
-a d'abord échoué en conditions réelles, confirmant qu'il exerce la vraie
-race et non un artefact).
+réserver chacune une livraison différente pour la même cible. Corrigé une
+première fois avec un verrou advisory Postgres transactionnel
+(`pg_try_advisory_xact_lock`) — mais **cette première version restait
+insuffisante**, confirmé par une revue avant merge puis reproduit à la
+main via `psql` (deux réservations RESERVED simultanément pour la même
+cible, en rejouant l'algorithme hors du code applicatif) : le verrou
+advisory `_xact_` est relâché au COMMIT, donc il n'arbitre que des
+réservations STRICTEMENT SIMULTANÉES — une fois la première transaction
+committée, rien n'empêchait une transaction SÉQUENTIELLE ultérieure de
+réserver une AUTRE ligne PENDING pour la MÊME cible.
 
-Le correctif utilise `pg_try_advisory_xact_lock(hashtextextended(targetSlot
-|| ':' || operation, 0))` — un verrou Postgres réel, transactionnel,
-visible immédiatement par toute autre transaction concurrente (pas
-seulement après COMMIT), non bloquant, et relâché automatiquement à la fin
-de la transaction. Au plus une livraison par `(targetSlot, operation)` peut
-donc être "en vol" vers Discord à un instant donné.
+**Correctif définitif** : sous le verrou advisory (qui sérialise
+maintenant uniquement l'ARBITRAGE entre transactions concurrentes), une
+vérification SQL explicite confirme qu'aucune réservation active
+(`status='RESERVED'`) n'existe déjà pour la cible avant d'en poser une
+nouvelle. C'est cette vérification, pas le verrou lui-même, qui porte la
+garantie d'exclusivité — valable désormais entre réservations SIMULTANÉES
+ET SÉQUENTIELLES, verrouillé par un test dédié pour chaque cas (voir plus
+bas).
 
-Un second piège a été corrigé en cours de route : verrouiller tout un lot
-de candidats d'un coup (`FOR UPDATE SKIP LOCKED LIMIT 20`) fait qu'un seul
-appel concurrent rafle tous les candidats, laissant les appels concurrents
-suivants sans rien à examiner — repéré par le test "N claims concurrents
-sur N cibles indépendantes", qui a d'abord échoué (1 succès sur 8 au lieu
-de 8). Le scan se fait maintenant ligne par ligne (`LIMIT 1`, avec
-exclusion des ids déjà essayés), ce qui restaure le comportement
-file-d'attente standard de `SKIP LOCKED`.
+**Portée élargie** : la clé du verrou et de la vérification est
+`targetSlot` SEUL (plus `targetSlot:operation` comme dans la version
+précédente) — SEND, EDIT et ARCHIVE visant la MÊME cible s'excluent
+désormais mutuellement, puisque ce sont trois opérations sur le même
+message physique Discord qui ne peuvent pas progresser en parallèle sans
+risquer un envoi/une édition concurrente incohérente. Deux `targetSlot`
+différents restent entièrement indépendants et progressent en parallèle
+(testé explicitement avec deux rappels distincts, jamais confondus).
 
-#### Ordre des éditions — convergence vers le dernier état
+Un second piège, orthogonal, a aussi été corrigé en cours de route :
+verrouiller tout un lot de candidats d'un coup (`FOR UPDATE SKIP LOCKED
+LIMIT 20`) fait qu'un seul appel concurrent rafle tous les candidats,
+laissant les appels concurrents suivants sans rien à examiner — repéré par
+le test "N claims concurrents sur N cibles indépendantes", qui a d'abord
+échoué (1 succès sur 8 au lieu de 8). Le scan se fait maintenant ligne par
+ligne (`LIMIT 1`, avec exclusion des ids déjà essayés), ce qui restaure le
+comportement file-d'attente standard de `SKIP LOCKED`. Un troisième défaut
+lié à l'ordre des candidats (`ORDER BY "createdAt"`, qui peut être à
+égalité entre deux lignes créées dans la même milliseconde sous forte
+cadence de test) a également été corrigé en triant par `sequence` (compteur
+`SERIAL`, ordre total garanti sans égalité possible).
+
+#### Portée de `targetSlot`
+
+Format attendu (contrat applicatif, pas de contrainte DB — pas de modèle
+`Guild` dans cette PR) : `<guildId>:<category>:<sourceId>:<rôle>` — une
+valeur = un message Discord physique précis, jamais partagée entre deux
+messages distincts. Exemples : `default-guild:SESSION:session123:announce`,
+`default-guild:SESSION:session123:thread`,
+`default-guild:SESSION:session123:reminder-1h` (à distinguer de
+`reminder-1d`, un message DIFFÉRENT malgré la même soirée source — jamais
+le même `targetSlot`, sous peine d'être traités comme des révisions
+successives du même message et de se périmer l'un l'autre).
+
+#### Ordre des éditions — intégré au chemin de réservation, plus un appel séparé
+
+**Correction (audit avant merge #95)** : la protection contre les éditions
+dépassées vivait uniquement dans `supersedeStaleDeliveries()`, une
+fonction séparée qu'un futur exécuteur aurait pu oublier d'appeler avant
+chaque claim. Elle est maintenant intégrée directement dans
+`claimNextDelivery` : chaque candidat examiné est d'abord comparé à une
+livraison plus récente de la MÊME opération sur la MÊME cible ; si une
+existe, le candidat est marqué SKIPPED immédiatement et le scan continue
+— la correction ne dépend plus d'un appel externe (testé explicitement
+sans jamais appeler `supersedeStaleDeliveries`). Cette fonction reste
+disponible comme utilitaire de nettoyage périodique (lignes périmées
+au-delà de la fenêtre de scan d'un claim), pas comme condition de
+correction.
 
 `sequence` (colonne `SERIAL`, jamais recalculée côté app) donne un ordre
-total et atomique entre livraisons visant la même cible —
-contrairement à `createdAt`, qui peut être égal à la milliseconde.
-`supersedeStaleDeliveries()` abandonne (`SKIPPED`) toute livraison
-PENDING/FAILED dès qu'une livraison plus récente existe pour le même
-`(targetSlot, operation)` — jamais une livraison RESERVED (un envoi en
-cours va toujours au bout). Plusieurs changements rapprochés convergent
-ainsi vers un seul envoi reflétant l'état final, sans message par étape
-intermédiaire.
+total et atomique entre livraisons visant la même cible ET la même
+opération — comparaison scopée PAR OPÉRATION : un SEND n'est jamais
+périmé par une EDIT, ni l'inverse ; deux `targetSlot` différents (ex. deux
+rappels distincts) ne sont jamais comparés entre eux non plus, testé
+explicitement pour ne jamais en supprimer un à tort.
+
+#### Dépendance EDIT/ARCHIVE → SEND
+
+Une EDIT ou une ARCHIVE ne devient réclamable qu'une fois le SEND
+correspondant (même `targetSlot`) au statut SENT — sinon le candidat est
+différé (laissé PENDING, jamais marqué en erreur), retenté à un futur
+claim. Une fois la dépendance remplie, la référence du message ciblé
+(`discordMessageId`/`discordChannelId`/`discordThreadId` du SEND) est
+résolue et renvoyée dans `targetMessage`, pour que le futur client Discord
+n'ait pas à refaire cette requête.
+
+#### Contrat de timeout pour le futur client HTTP
+
+`hasSufficientLeaseRemaining(reservedUntil, now, marginMs)` (fonction pure,
+testée indépendamment de Postgres) matérialise le contrat attendu du futur
+client Discord (PR suivante, pas implémenté ici) : avant d'engager l'appel
+réseau, vérifier le temps restant sur le bail et n'appeler que s'il en
+reste plus que `MIN_CALL_MARGIN_MS` (5s, marge pour le round-trip de
+finalisation lui-même) ; le timeout HTTP du client doit lui-même être borné
+en conséquence, jamais au-delà. Si le temps restant est insuffisant,
+traiter comme un échec retryable immédiat plutôt que de risquer un appel
+qui dépasse le bail. **Ceci réduit la fenêtre du risque résiduel
+documenté plus bas, ne l'élimine pas** — un appel engagé à temps peut
+quand même dépasser le bail si Discord répond lentement.
 
 ### Limites assumées (documentées, pas contournées)
 
@@ -8156,7 +8235,8 @@ intermédiaire.
   autre propriétaire peut reprendre la livraison et l'envoyer une seconde
   fois. Risque résiduel accepté, borné par un bail court
   (`DEFAULT_RESERVATION_LEASE_MS = 30s`, dérivé du plafond dur Vercel
-  Hobby comme `CRON_LOCK_LEASE_MS`).
+  Hobby comme `CRON_LOCK_LEASE_MS`) et réduit (jamais éliminé) par le
+  contrat de timeout ci-dessus.
 - Aucun exécuteur n'existe encore : ces fonctions ne sont appelées par
   AUCUN code métier ni AUCUNE route dans cette PR. Elles sont testées de
   façon isolée, pas en conditions de production.
@@ -8197,38 +8277,59 @@ locale pour le reste de la suite.
   `prisma/migrations/20260916120000_add_notification_delivery_foundations/`
   — modèles `NotificationEvent`/`NotificationDelivery` + 5 enums,
   entièrement additifs.
+- `prisma/migrations/20260916130000_add_notification_delivery_reservation_token/`
+  (nouvelle migration, additive — la précédente n'a jamais été modifiée) —
+  colonne `reservationToken` + index `[targetSlot, status]` pour
+  l'exclusivité corrigée.
 - `src/lib/notification-delivery.ts` — `createNotificationEvent`,
   `enqueueDelivery`, `claimNextDelivery`, `finalizeDeliverySuccess`,
   `finalizeDeliveryFailure`, `supersedeStaleDeliveries`,
-  `recoverExpiredReservations`.
-- `src/lib/notification-delivery.integration.test.ts` — 16 tests contre
-  Postgres isolé (idempotence, concurrence réelle, exclusivité par cible,
-  finalisation conditionnelle, récupération après expiration, ordre des
-  éditions).
+  `recoverExpiredReservations`, `hasSufficientLeaseRemaining`.
+- `src/lib/notification-delivery.integration.test.ts` — 18 tests contre
+  Postgres isolé (idempotence, exclusivité par cible simultanée ET
+  séquentielle, opérations différentes sur une même cible, concurrence
+  réelle sur N cibles indépendantes, finalisation conditionnelle par
+  jeton, récupération après expiration + finalisation tardive refusée,
+  dépendance EDIT/ARCHIVE → SEND, ordre des éditions intégré au chemin de
+  claim, non-suppression de messages distincts légitimes).
+- `src/lib/notification-delivery.pure.test.ts` (nouveau) — 5 tests de
+  `hasSufficientLeaseRemaining`, fonction pure, tourne dans la suite
+  rapide normale (pas de `TEST_DATABASE_URL` requis).
 
 ### Vérification
 
 - `npx tsc --noEmit` : clean.
 - `npx eslint` (fichiers modifiés) : clean.
 - `npx vitest run` (avec `TEST_DATABASE_URL` pointée vers une base
-  PostgreSQL locale isolée, PostgreSQL 16) : 263 tests, tout vert — dont
-  les 16 nouveaux tests d'intégration, exécutés 8 fois consécutives sans
-  échec pour écarter un faux positif ponctuel sur les assertions de
-  concurrence. Sans `TEST_DATABASE_URL` : 247 tests verts, 16 skippés
-  explicitement (pas de faux vert).
+  PostgreSQL locale isolée, PostgreSQL 16) : **270 tests, tout vert** —
+  dont les 18 tests d'intégration, exécutés 8 fois consécutives sans échec
+  pour écarter un faux positif ponctuel sur les assertions de concurrence.
+  Sans `TEST_DATABASE_URL` : 252 tests verts, 18 skippés explicitement
+  (pas de faux vert).
 - `npx next build` : compile et type-check sans erreur ; aucune nouvelle
   route générée (rien n'est encore branché).
-- Migration validée par application de tout l'historique
-  (`prisma migrate deploy`) sur la base de test locale — jamais exécutée
+- Les deux migrations validées par application de tout l'historique
+  (`prisma migrate deploy`) sur la base de test locale — jamais exécutées
   contre Neon/production. Aucun appel Discord réel, aucune donnée réelle
   touchée.
+- **Les tests d'intégration ont réellement trouvé 3 bugs de concurrence
+  supplémentaires pendant ce correctif** (en plus du défaut d'exclusivité
+  initial), tous corrigés puis reverifiés : le cast implicite manquant sur
+  la comparaison de l'enum `DeliveryOperation` dans une requête `$queryRaw`
+  paramétrée (erreur SQL immédiate, corrigée par un cast explicite), le tri
+  des candidats par `createdAt` au lieu de `sequence` (égalités possibles à
+  la milliseconde sous forte cadence, non-déterministe), et deux tests
+  eux-mêmes mal conçus (deux livraisons de même opération sur une même
+  cible, confondant exclusivité et péremption — corrigés en isolant les
+  scénarios avec des opérations distinctes).
 
 ### ⚠️ Avant de merger cette PR
 
-La migration `20260916120000_add_notification_delivery_foundations`
-s'applique automatiquement au prochain déploiement (`prisma migrate
+Les deux migrations (`20260916120000_add_notification_delivery_foundations`
+et `20260916130000_add_notification_delivery_reservation_token`)
+s'appliquent automatiquement au prochain déploiement (`prisma migrate
 deploy` dans le script `build`), comme toutes les migrations précédentes
-de ce dépôt — additive uniquement, aucune action manuelle requise sur la
+de ce dépôt — additives uniquement, aucune action manuelle requise sur la
 base, aucun impact sur le comportement observable de l'app (rien n'est
 branché). Les PR suivantes du chantier (client Discord bot, migration des
 préférences, bascule des salons) dépendent de celle-ci.
