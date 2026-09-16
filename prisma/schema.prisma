@@ -78,6 +78,30 @@ model User {
   // nouveau jeu ne toucherait aucune de ces dates alors qu'une sync a bien
   // eu lieu).
   steamLastSyncAt       DateTime?
+  // Fix (cron Steam surdimensionné) — `steamLastSyncAt` ci-dessus reste
+  // EXCLUSIVEMENT réservé à une synchronisation COMPLÈTE de la
+  // bibliothèque réussie (`importSteamLibrary`, écrit seulement après la
+  // boucle d'upserts + badges + wishlist, jamais avant — un import
+  // interrompu ne doit jamais se faire passer pour réussi). Ces deux
+  // nouveaux champs sont distincts, pour ne jamais laisser croire que la
+  // bibliothèque a été resynchronisée alors que seule l'activité a été
+  // vérifiée, ni qu'une tentative a réussi alors qu'elle a seulement été
+  // lancée.
+  //
+  // Posé par le cron LÉGER (`refreshSteamActivity`, toutes les ~2 min) —
+  // pour TOUT compte effectivement atteint par ce passage, succès ou
+  // erreur Steam confondus (seul un compte jamais atteint par le lot le
+  // laisse intact) : distingue sans ambiguïté "jamais atteint" de "erreur
+  // Steam sur ce compte".
+  steamActivityCheckedAt   DateTime?
+  // Posé par le cron d'import COMPLET (`steam-library-full-sync`), AVANT
+  // chaque tentative, inconditionnellement — sert uniquement à
+  // l'ordonnancement du round-robin (`orderBy` sur ce champ, pas sur
+  // `steamLastSyncAt`) : si un compte échoue systématiquement pendant
+  // l'import (bibliothèque trop volumineuse, panne persistante), il avance
+  // quand même en fin de file à chaque tentative plutôt que de monopoliser
+  // indéfiniment la première place.
+  steamFullSyncAttemptedAt DateTime?
   // F7 : coupe les pings `@<@discordId>` dans les rappels Discord pour cet
   // utilisateur — le message est quand même posté dans le salon, il n'est
   // simplement pas mentionné.

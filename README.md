@@ -7897,3 +7897,138 @@ variable configurée au moment du déploiement, les nouveaux jetons ne sont
 simplement pas persistés en base tant qu'elle manque (dégradation sûre,
 jamais de jeton en clair écrit) — mais autant l'avoir en place dès le
 départ pour ne rien perdre.
+
+## Fix : cron Steam surdimensionné — activité absente chez les autres potes
+
+Diagnostic remonté après la PR précédente (repli `GetRecentlyPlayedGames`) :
+en Production, le réimport manuel affichait bien l'activité récente d'un
+compte, mais le cron automatique (`steam-library-sync`, toutes les 2 min)
+ne mettait à jour QUE le premier compte traité par
+`prisma.user.findMany` (ordre non garanti) — les autres restaient figés
+d'un passage à l'autre, malgré un cron actif et authentifié.
+
+### Root cause
+
+Cette route appelait `importSteamLibrary` **pour chaque compte lié**,
+séquentiellement : upsert de chaque jeu dans `Game`/`UserGame`, vérif
+badges, vérif wishlist — à CHAQUE passage de 2 min, rien que pour
+rafraîchir un libellé d'activité. Un seul compte avec une grosse
+bibliothèque (badge "Collectionneur, 100+ jeux" confirmé en Prod) pouvait
+à lui seul consommer tout le budget de temps de la route, privant tous
+les comptes suivants de toute mise à jour — de façon déterministe, pas
+flaky, à chaque exécution.
+
+### Fix — séparation léger/complet
+
+- **`steam-library-sync`** (inchangé dans son URL/sa cadence — toujours
+  toutes les 2 min) ne fait plus QUE l'activité : nouvelle fonction
+  `refreshSteamActivity()` (`src/lib/steam.ts`), un seul appel
+  `getOwnedGames` (+ repli `getRecentlyPlayedGames` si besoin), **aucun**
+  upsert `Game`/`UserGame`, **aucun** badge, **aucune** vérification
+  wishlist, une seule écriture `prisma.user.update` par compte.
+  Concurrence réellement bornée à 3 comptes simultanés
+  (`processInBatches`, `src/lib/cron-batch.ts` — jamais un
+  `Promise.allSettled` non borné) + timeout individuel de 6s par appel
+  Steam (`AbortSignal.timeout`) : un compte qui bloque ne peut jamais
+  affecter les autres. `maxDuration = 45` (pire cas calculé : 2 lots
+  successifs de 3 puis 2 comptes × jusqu'à 2 appels Steam séquentiels ×
+  6s = 24s, sous les 30s du déclencheur cron-job.org).
+- **`steam-library-full-sync`** (nouvelle route, nouveau cron à créer,
+  cadence recommandée : toutes les 2h) — import complet inchangé
+  (`importSteamLibrary`, strictement la même fonction), **un seul compte
+  par passage**, en rotation round-robin sur `steamFullSyncAttemptedAt`
+  (ASC, `nulls: "first"`). `maxDuration = 60`.
+
+### Nouveaux champs `User` (migration additive, pas de backfill)
+
+- `steamActivityCheckedAt` — posé par le cron léger à CHAQUE compte
+  effectivement atteint, succès ou erreur Steam confondus (sémantique :
+  "dernière tentative", jamais "dernier succès"). Permet de distinguer un
+  compte jamais atteint par un lot (time-budget épuisé) d'une vraie erreur
+  Steam sur ce compte.
+- `steamFullSyncAttemptedAt` — posé par le cron complet, INCONDITIONNELLEMENT
+  avant chaque tentative (jamais par `importSteamLibrary` elle-même, qui
+  reste décorrélée de toute notion de rotation cron). Sert uniquement à
+  l'ordonnancement du round-robin : un compte qui échoue systématiquement
+  (bibliothèque trop volumineuse, panne persistante) avance quand même en
+  fin de file à chaque tentative plutôt que de monopoliser indéfiniment la
+  première place.
+
+`steamLastSyncAt` (champ existant) reste exclusivement réservé à une
+synchronisation COMPLÈTE **réussie** — `importSteamLibrary` la pose
+désormais en une seule écriture finale, fusionnée avec `steamPublic` et
+l'activité, atteinte seulement après le succès complet des
+upserts/badges/wishlist (jamais avant, contrairement à l'ancien
+comportement) : un import interrompu en cours de route (crash, timeout) ne
+laisse plus `steamLastSyncAt` prétendre à tort à une synchronisation
+réussie.
+
+### Profil devenu privé — activité obsolète
+
+Ni `/potes` ni `/profil` ne filtrent l'affichage sur `steamPublic`
+(vérifié) : sans effacement explicite, un compte passé privé garderait
+indéfiniment affiché son dernier jeu connu. `buildActivityRefreshWrite`
+efface donc explicitement `lastPlayedGame`/`lastPlayedAt` (→ `null`) sur
+la catégorie `private`.
+
+### 5 catégories d'observabilité (résumé PII-free loggé par le cron léger)
+
+`precise` (timestamp exact) / `approximate` (repli, nom seul) / `none`
+(aucune activité récente) / `private` (profil privé) / `error` (Steam
+injoignable/timeout — ne touche jamais l'activité déjà en base). Jamais de
+Steam ID ni de nom réel dans les logs, uniquement des compteurs par
+catégorie.
+
+### Fichiers modifiés/ajoutés
+
+- `prisma/schema.prisma`, `prisma/migrations/20260915150000_add_steam_activity_tracking/`
+  — `User.steamActivityCheckedAt`/`steamFullSyncAttemptedAt`.
+- `src/lib/cron-batch.ts` (nouveau) — `processInBatches`, concurrence
+  bornée générique + `shouldContinue` (filet de budget de temps).
+- `src/lib/cron-batch.test.ts` (nouveau).
+- `src/lib/steam.ts` — `SteamCallOptions`/`signal` sur `getOwnedGames`/
+  `getRecentlyPlayedGames` ; `categorizeActivityOutcome`,
+  `buildActivityRefreshWrite`, `refreshSteamActivity` (fonctions pures +
+  orchestration, sans toucher `computeSteamActivityUpdate` utilisée par
+  `importSteamLibrary`) ; réordonnancement des écritures
+  d'`importSteamLibrary` (écriture finale unique après succès complet).
+- `src/lib/steam-activity.test.ts` — tests des 3 nouvelles fonctions pures
+  + arithmétique figée du pire cas (24s < 30s).
+- `src/app/api/cron/steam-library-sync/route.ts` — réécrite (léger
+  uniquement).
+- `src/app/api/cron/steam-library-full-sync/route.ts` (nouveau).
+
+### Configurer le nouveau cron externe (cron-job.org ou équivalent)
+
+`steam-library-sync` garde exactement la même URL et la même cadence — **rien
+à reconfigurer côté cron-job.org pour cette route**. Seule une nouvelle
+entrée est à créer :
+
+```
+URL     : https://ton-projet.vercel.app/api/cron/steam-library-full-sync
+Méthode : GET
+Header  : Authorization: Bearer <CRON_SECRET>
+Fréquence : toutes les 2h (0 */2 * * *)
+```
+
+### Vérification
+
+- `npx tsc --noEmit` : clean.
+- `npx eslint .` : clean.
+- `npx vitest run` : 247 tests, tout vert (dont les nouveaux tests
+  `cron-batch`/`categorizeActivityOutcome`/`buildActivityRefreshWrite`).
+- `npx next build` : compile, type-check et génère les deux routes cron
+  sans erreur.
+- Aucun appel Steam réel, aucun cron réel, aucune donnée réelle touchée
+  pendant l'implémentation — migration non appliquée à une base réelle,
+  seulement `npx prisma generate` (schema-only).
+
+### ⚠️ Avant de merger cette PR
+
+La migration `20260915150000_add_steam_activity_tracking` s'applique
+automatiquement au prochain déploiement (`prisma migrate deploy` dans le
+script `build`), comme toutes les migrations précédentes de ce dépôt —
+aucune action manuelle requise sur la base. Après le merge, créer la
+nouvelle entrée cron-job.org ci-dessus pour activer l'import complet en
+rotation (`steam-library-sync` continue de tourner sans interruption avec
+sa config existante).
