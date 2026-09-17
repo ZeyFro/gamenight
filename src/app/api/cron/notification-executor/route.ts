@@ -2,7 +2,26 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
-import { NOT_CONFIGURED_RESOLVER, runExecutorBatch } from "@/lib/notification-executor";
+import { NOT_CONFIGURED_RESOLVER, runExecutorBatch, type DeliveryResolver } from "@/lib/notification-executor";
+import { sessionAnnounceResolver } from "@/lib/session-announce";
+
+/**
+ * Dispatche par catégorie d'événement — SESSION vers le résolveur du
+ * chantier annonces bot (`session-announce.ts`), tout le reste (dont
+ * TOURNAMENT, explicitement différé) vers `NOT_CONFIGURED_RESOLVER`, qui
+ * refuse systématiquement. Brancher `sessionAnnounceResolver` ici n'a par
+ * lui-même AUCUN effet tant que `NOTIFICATION_EXECUTOR_ENABLED` et
+ * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` ne sont pas TOUS LES DEUX
+ * activés (deux verrous indépendants, voir `discord-bot-config.ts`) — et
+ * tant qu'aucune livraison SESSION n'existe (rien ne les enqueue encore
+ * dans cette PR).
+ */
+const DISPATCH_RESOLVER: DeliveryResolver = {
+  async resolve(input) {
+    if (input.event.category === "SESSION") return sessionAnnounceResolver.resolve(input);
+    return NOT_CONFIGURED_RESOLVER.resolve(input);
+  },
+};
 
 /**
  * Borne dure de durée d'exécution du plan Vercel Hobby (60s) — même
@@ -19,13 +38,14 @@ export const maxDuration = 60;
  * DÉSACTIVÉE PAR DÉFAUT : sans `NOTIFICATION_EXECUTOR_ENABLED=true`, cette
  * route ne réclame AUCUNE livraison, ne consomme AUCUNE tentative et
  * n'effectue AUCUN appel Discord — elle répond juste `{enabled:false}`
- * après authentification. Même quand activée, AUCUN producteur métier réel
- * n'est branché dans cette PR : le résolveur utilisé
- * (`NOT_CONFIGURED_RESOLVER`) refuse systématiquement d'envoyer quoi que
- * ce soit (voir `src/lib/notification-executor.ts`) — activer cette
- * variable aujourd'hui ne fait donc rien de plus que déclencher le
- * balayage de récupération des réservations expirées, en pratique sans
- * effet tant qu'aucune livraison n'existe (rien ne les enqueue encore).
+ * après authentification. Depuis le chantier annonces Discord bot
+ * (session-announce.ts), un vrai producteur métier EST branché (`DISPATCH_RESOLVER`
+ * ci-dessus, catégorie SESSION) — mais reste sans AUCUN effet tant que
+ * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` n'est pas ÉGALEMENT activé (deux
+ * verrous indépendants) et tant qu'aucune livraison SESSION n'existe
+ * (rien ne les enqueue tant que ce même flag reste désactivé). Toute
+ * autre catégorie (dont TOURNAMENT, différé) continue de retomber sur
+ * `NOT_CONFIGURED_RESOLVER`, qui refuse systématiquement.
  *
  * Authentification identique aux autres routes cron de ce dépôt
  * (`verifyCronRequest` — `CRON_SECRET` absente → 503 route désactivée,
@@ -62,7 +82,7 @@ export async function GET(request: Request) {
   }
 
   const owner = `cron:${randomUUID()}`;
-  const summary = await runExecutorBatch({ resolver: NOT_CONFIGURED_RESOLVER, owner });
+  const summary = await runExecutorBatch({ resolver: DISPATCH_RESOLVER, owner });
 
   logger.info("cron:notification-executor", "Batch terminé.", { ...summary });
   return NextResponse.json({ enabled: true, ...summary });

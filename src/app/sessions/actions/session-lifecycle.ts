@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
+import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { enqueueSessionCreationDeliveries, enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
@@ -72,6 +75,10 @@ export async function createSession(formData: FormData) {
       ).map((u) => u.id)
     : [];
 
+  // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
+  // commentaire du champ dans schema.prisma (chantier annonces bot).
+  const announceViaBot = isSessionAnnounceViaBotEnabled();
+
   const session = await prisma.session.create({
     data: {
       date,
@@ -80,6 +87,7 @@ export async function createSession(formData: FormData) {
       reminderTimings,
       notifiedUserIds,
       createdById: user.id,
+      announceViaBot,
     },
   });
 
@@ -106,7 +114,20 @@ export async function createSession(formData: FormData) {
     }
   }
 
-  const announceResult = await announceSessionCreated(session, user);
+  // Jamais les deux chemins à la fois : une session bot n'appelle jamais
+  // le webhook, une session webhook n'enqueue jamais de livraison bot.
+  const announceResult = announceViaBot
+    ? await enqueueSessionCreationDeliveries(session.id).then(
+        () => ({ ok: true as const }),
+        (error) => {
+          logger.error("session-lifecycle", "Échec de l'enqueue de l'annonce bot à la création.", {
+            sessionId: session.id,
+            error: String(error),
+          });
+          return { ok: false as const, error: "enqueue_failed" };
+        }
+      )
+    : await announceSessionCreated(session, user);
 
   revalidatePath("/sessions");
 
@@ -170,6 +191,9 @@ export async function editSessionAction(formData: FormData) {
   const existing = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!existing || existing.createdById !== user.id) return;
   if (existing.status === "DONE" || existing.status === "CANCELLED") return;
+  // Chemin figé à la création de CETTE session (jamais relu depuis l'env
+  // ici) — voir le commentaire du champ dans schema.prisma.
+  const announceViaBot = existing.announceViaBot;
 
   const schedule = resolveSessionSchedule({
     dateStr,
@@ -194,11 +218,18 @@ export async function editSessionAction(formData: FormData) {
     },
   });
 
-  const announceResult = await announceSessionModified(
-    { id: sessionId, date, votingDeadline },
-    previous,
-    user
-  );
+  const announceResult = announceViaBot
+    ? await enqueueSessionAnnounceUpdate(sessionId).then(
+        () => ({ ok: true as const }),
+        (error) => {
+          logger.error("session-lifecycle", "Échec de l'enqueue de l'édition d'annonce bot.", {
+            sessionId,
+            error: String(error),
+          });
+          return { ok: false as const, error: "enqueue_failed" };
+        }
+      )
+    : await announceSessionModified({ id: sessionId, date, votingDeadline }, previous, user);
 
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");

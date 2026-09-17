@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { announceSessionResult } from "@/lib/discord-announce";
+import { logger } from "@/lib/logger";
+import { enqueueSessionAnnounceUpdate, enqueueSessionResultThreadSummary } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
@@ -32,6 +34,38 @@ export function isVotingOpen(
 export interface CloseSessionResult {
   /** `null` : session clôturée sans tenter d'annonce Discord (0 votant, cf. `closeSession`). */
   discord: PostToDiscordResult | null;
+}
+
+/**
+ * Bascule webhook/bot pour l'ÉDITION de l'annonce à un changement d'état
+ * (clôture, annulation) — décision déjà figée à la création de la session
+ * (`session.announceViaBot`), jamais relue depuis l'env ici. Chemin bot :
+ * EDIT de l'annonce (rendue depuis l'état courant par le résolveur, voir
+ * `session-announce.ts`) + résumé dans le fil UNIQUEMENT s'il y a un
+ * gagnant (une annulation n'a pas de résumé à poster, le fil garde
+ * simplement son historique d'échanges). `discord-announce.ts` (webhook)
+ * reste totalement inchangé pour toute session dont `announceViaBot` est
+ * resté `false`.
+ */
+async function announceClosureResult(
+  sessionId: string,
+  announceViaBot: boolean,
+  session: Pick<Session, "id" | "date" | "notifiedUserIds">,
+  winner: Parameters<typeof announceSessionResult>[1],
+  tie: boolean
+): Promise<PostToDiscordResult> {
+  if (!announceViaBot) return announceSessionResult(session, winner, tie);
+  try {
+    await enqueueSessionAnnounceUpdate(sessionId);
+    if (winner) await enqueueSessionResultThreadSummary(sessionId);
+    return { ok: true };
+  } catch (error) {
+    logger.error("sessions", "Échec de l'enqueue de l'annonce bot à la clôture.", {
+      sessionId,
+      error: String(error),
+    });
+    return { ok: false, error: "enqueue_failed" };
+  }
 }
 
 /**
@@ -115,10 +149,11 @@ export async function closeSession(
     },
   });
   if (!session || session.status !== "VOTING") return null;
+  const announceViaBot = session.announceViaBot;
 
   if (session.proposals.length === 0) {
     if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
-    return { discord: await announceSessionResult(session, null, false) };
+    return { discord: await announceClosureResult(sessionId, announceViaBot, session, null, false) };
   }
 
   const availability = await getProposalAvailability(
@@ -131,7 +166,7 @@ export async function closeSession(
 
   if (jouableProposals.length === 0) {
     if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
-    return { discord: await announceSessionResult(session, null, false) };
+    return { discord: await announceClosureResult(sessionId, announceViaBot, session, null, false) };
   }
 
   const winner = jouableProposals.reduce((best, proposal) =>
@@ -166,7 +201,7 @@ export async function closeSession(
   }
 
   return {
-    discord: await announceSessionResult(session, winner, tie),
+    discord: await announceClosureResult(sessionId, announceViaBot, session, winner, tie),
   };
 }
 
@@ -188,11 +223,31 @@ export async function closeSessionIfDue(sessionId: string): Promise<void> {
   await closeSession(sessionId);
 }
 
+/**
+ * Annulation manuelle (créateur) — historiquement AUCUNE annonce Discord
+ * (contrairement à la clôture F6) : décision produit inchangée, une
+ * annulation manuelle reste silencieuse côté webhook. Chemin bot : seule
+ * exception délibérée — l'annonce principale reste affichée en permanence
+ * dans #🎮-soirées (jamais republiée/supprimée), donc une annulation DOIT
+ * l'éditer pour refléter l'état réel plutôt que de laisser un message
+ * "Soirée" visiblement obsolète au public du salon.
+ */
 export async function cancelSession(sessionId: string): Promise<void> {
-  await prisma.session.update({
+  const session = await prisma.session.update({
     where: { id: sessionId },
     data: { status: "CANCELLED" },
+    select: { announceViaBot: true },
   });
+  if (session.announceViaBot) {
+    try {
+      await enqueueSessionAnnounceUpdate(sessionId);
+    } catch (error) {
+      logger.error("sessions", "Échec de l'enqueue de l'annonce bot à l'annulation manuelle.", {
+        sessionId,
+        error: String(error),
+      });
+    }
+  }
 }
 
 export async function markSessionDone(
@@ -263,7 +318,14 @@ export async function closeOverdueScheduledSessions(): Promise<string[]> {
   return overdue.map((s) => s.id);
 }
 
-/** Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée. */
+/**
+ * Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée —
+ * poste TOUJOURS un nouveau message webhook, jamais une édition. Pas de
+ * sens pour une session `announceViaBot` : ce chemin édite une annonce
+ * persistante unique, jamais n'en republie une nouvelle (voir le
+ * commentaire de fichier de `session-announce.ts`) — refus explicite
+ * plutôt qu'un comportement silencieusement incohérent.
+ */
 export async function resendSessionAnnouncement(
   sessionId: string
 ): Promise<PostToDiscordResult> {
@@ -277,6 +339,7 @@ export async function resendSessionAnnouncement(
     },
   });
   if (!session) return { ok: false, error: "session_introuvable" };
+  if (session.announceViaBot) return { ok: false, error: "non_disponible_pour_les_sessions_bot" };
 
   if (session.status === "CANCELLED") {
     return announceSessionResult(session, null, false);
