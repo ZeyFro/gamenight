@@ -7,7 +7,12 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { createNotifications } from "@/lib/notifications";
 import { getSessionAnnounceConfig } from "@/lib/discord-bot-config";
-import { createNotificationEvent, enqueueDelivery, type ClaimedDelivery } from "@/lib/notification-delivery";
+import {
+  createNotificationEvent,
+  enqueueDelivery,
+  type ClaimedDelivery,
+  type NotificationDb,
+} from "@/lib/notification-delivery";
 import type {
   DeliveryResolver,
   Resolution,
@@ -87,29 +92,51 @@ const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
  * lignes `NotificationDelivery` via l'idempotence déjà garantie par
  * `createNotificationEvent`/`enqueueDelivery` — jamais un second SEND
  * pour la même cible (contrat documenté dans notification-delivery.ts).
+ *
+ * `db` optionnel (défaut : client global) — passer le `tx` d'un
+ * `prisma.$transaction` englobant compose cet enqueue avec la mutation
+ * métier de l'appelant DANS LA MÊME transaction (voir `createSession`,
+ * `session-lifecycle.ts`) : si la transaction échoue/rollback pour
+ * n'importe quelle raison après la création de la session, l'intention de
+ * notification n'existe jamais non plus — jamais une session bot orpheline
+ * qui n'annoncerait jamais rien parce que le process a crashé pile entre
+ * les deux écritures (l'un des deux angles morts identifiés lors de la
+ * revue ciblée de cette PR). Toujours un simple appel Discord HORS de
+ * cette transaction ensuite (aucun appel réseau n'est fait ici, seulement
+ * des écritures — voir le commentaire de fichier de notification-delivery.ts
+ * sur l'interdiction d'appel Discord dans une transaction SQL).
  */
-export async function enqueueSessionCreationDeliveries(sessionId: string): Promise<void> {
-  const event = await createNotificationEvent({
-    category: "SESSION",
-    eventType: "SESSION_CREATED",
-    sourceId: sessionId,
-  });
-  await enqueueDelivery({
-    eventId: event.id,
-    channel: "DISCORD_CHANNEL",
-    transport: "BOT",
-    operation: "SEND",
-    recipientKey: "channel",
-    targetSlot: announceSlot(sessionId),
-  });
-  await enqueueDelivery({
-    eventId: event.id,
-    channel: "DISCORD_CHANNEL",
-    transport: "BOT",
-    operation: "SEND",
-    recipientKey: "channel",
-    targetSlot: threadSlot(sessionId),
-  });
+export async function enqueueSessionCreationDeliveries(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_CREATED",
+      sourceId: sessionId,
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: announceSlot(sessionId),
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadSlot(sessionId),
+    },
+    db
+  );
 }
 
 /**

@@ -9048,3 +9048,74 @@ livraison en attente ; renvoi manuel refusé pour une session bot.
   éligible à être mentionné (le contenu Discord ne portait alors QUE des
   mentions, jamais le texte du rappel lui-même) — les deux corrigés dans
   `session-announce.ts`, couverts par les tests ci-dessus.
+
+### Revue ciblée avant merge — retour arrière et atomicité
+
+Revue demandée sur le comportement de rollback (choix bot/webhook figé par
+soirée vs. livraisons pouvant échouer définitivement si la configuration
+change). Cinq points vérifiés, tous couverts par 7 tests supplémentaires
+dans `session-announce.integration.test.ts` (17 → 24 tests) :
+
+1. **`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` désactivé seul** (config Discord
+   ET `NOTIFICATION_EXECUTOR_ENABLED` intacts) : `sessionAnnounceResolver`
+   ne lit JAMAIS ce flag — seulement `getSessionAnnounceConfig()`
+   (guildId/channelId). Le flag n'est lu qu'UNE fois, à la création d'une
+   session (`isSessionAnnounceViaBotEnabled()` dans `createSession`).
+   Confirmé : ce rollback n'affecte QUE les futures sessions ; une
+   livraison déjà en file pour une session déjà bot continue son cycle
+   normal (SEND, fil, rappels, éditions) jusqu'au bout.
+2. **Trois bascules distinctes, trois comportements différents** :
+   - Flag catégorie seul désactivé → **aucun effet** sur l'existant (voir
+     point 1) — recouvrable trivialement.
+   - `NOTIFICATION_EXECUTOR_ENABLED=false` → la route s'arrête avant même
+     de réclamer une livraison (`{enabled:false, processed:0}`) — **aucune
+     tentative consommée, aucun backoff posé** ; reprise identique en tout
+     point à l'état avant la panne dès la réactivation. Seule bascule des
+     trois qui garantit une reprise "comme si rien ne s'était passé".
+   - `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` retirés PENDANT
+     que l'exécuteur tourne → `not_configured`, classification **terminale**
+     héritée telle quelle de `notification-executor.ts` (#97, jamais
+     réimplémentée) : une livraison surprise en plein traitement à ce
+     moment-là échoue définitivement et ne reprend PAS automatiquement si
+     la config est restaurée plus tard. C'est la SEULE des trois bascules
+     avec une perte réelle, et elle nécessite les DEUX conditions à la fois
+     (exécuteur actif ET config absente) — documenté comme limite assumée,
+     observable via `status`/`errorClass` en base, jamais un secret exposé.
+3. Confirmé : succès partiel (annonce envoyée, fil échoué) ne renvoie
+   jamais l'annonce, et un rappel en attente de fil ne consomme aucun
+   appel réseau tant que la dépendance n'est pas prête (déjà couvert par
+   les tests initiaux de cette PR).
+4. **Préférences relues au moment de l'envoi, pas à l'enqueue** — nouveau
+   test explicite : un utilisateur qui se désabonne de `SESSION` APRÈS
+   qu'une annonce a été mise en file (mais avant que l'exécuteur ne la
+   traite) n'est PAS mentionné. `resolveEligibleMentions`/
+   `filterUsersByNotificationPreference` interrogent la base à chaque
+   résolution (`resolve()`, appelé juste avant l'appel Discord — jamais
+   mis en cache depuis l'enqueue), et `loadSession` recharge elle aussi la
+   session depuis la base à chaque passage.
+5. **Atomicité mutation métier / intention de notification** — défaut
+   confirmé et corrigé : `enqueueSessionCreationDeliveries` était appelée
+   APRÈS `prisma.session.create()`, en dehors de toute transaction ; un
+   crash exactement entre les deux aurait laissé une session
+   `announceViaBot=true` sans jamais aucune `NotificationEvent`/
+   `NotificationDelivery`, jamais annoncée, sans échec observable nulle
+   part. Corrigé pour `createSession` (le cas le plus grave — une session
+   jamais annoncée, contre une annonce simplement en retard pour une
+   édition/clôture) : `createNotificationEvent`/`enqueueDelivery`
+   (`notification-delivery.ts`, #95) acceptent maintenant un client Prisma
+   optionnel (`NotificationDb`, additif — comportement par défaut
+   inchangé), et `createSession` enveloppe la création de la session ET
+   l'enqueue dans un seul `prisma.$transaction` : soit les deux
+   réussissent ensemble, soit aucun des deux n'existe. Portée
+   volontairement limitée à la création (le cas à plus fort impact) —
+   `closeSession`/`cancelSession`/`editSessionAction` gardent le même
+   schéma séquentiel non transactionnel que les effets de bord
+   pré-existants du reste de l'app (XP, badges), une limite plus faible
+   (annonce en retard, jamais silencieusement absente) et hors du
+   périmètre de cette revue ciblée.
+   **Protection contre un rappel obsolète après annulation/clôture** —
+   déjà en place, vérifiée explicitement par un nouveau test : un rappel
+   enqueue AVANT une annulation/clôture mais traité APRÈS échoue en
+   `expired` (terminal, jamais envoyé) — `resolveThreadReminder` relit
+   `session.status` à chaque résolution et refuse tout statut hors
+   `SCHEDULED`/`VOTING`.

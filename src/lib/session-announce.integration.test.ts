@@ -254,6 +254,35 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(reminderOutcome?.outcome).toBe("sent");
         expect(String(fetchMock.mock.calls.at(-1)![0])).toContain("/channels/thread-1/messages");
       });
+
+      it.each([["CANCELLED"], ["DONE"]] as const)(
+        "rappel devenu obsolète après %s : refus définitif (expired), jamais envoyé, jamais retenté",
+        async (status) => {
+          const creator = await makeUser();
+          const session = await makeSession(creator.id, { status: "SCHEDULED" });
+          await announceLib.enqueueSessionCreationDeliveries(session.id);
+          fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+          await processOne();
+          fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+          await processOne();
+
+          await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+          // La session est annulée/clôturée APRÈS l'enqueue du rappel, AVANT
+          // que l'exécuteur ne le traite — simule un rappel qui devient
+          // obsolète pendant la fenêtre d'attente du cron.
+          await db.session.update({ where: { id: session.id }, data: { status } });
+
+          const outcome = await processOne();
+          expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+          expect(fetchMock).toHaveBeenCalledTimes(2); // announce + thread seulement, jamais le rappel
+
+          const row = await db.notificationDelivery.findFirstOrThrow({
+            where: { targetSlot: `default-guild:SESSION:${session.id}:thread-reminder-60` },
+          });
+          expect(row.status).toBe("FAILED");
+          expect(row.nextAttemptAt).toBeNull();
+        }
+      );
     });
 
     describe("éditions concurrentes — convergence vers l'état courant", () => {
@@ -370,6 +399,41 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const [, init] = fetchMock.mock.calls[0];
         const body = JSON.parse(String(init.body));
         expect(body.content).toBeFalsy();
+      });
+
+      it("préférence relue AU MOMENT DE L'ENVOI, jamais à l'enqueue : un refus posé APRÈS la mise en file retire quand même la mention", async () => {
+        // Le contraire (préférence figée à l'enqueue) romprait exactement
+        // la garantie de #98 : un utilisateur pourrait se désinscrire entre
+        // la mise en file d'une annonce/d'un rappel et son traitement réel
+        // par l'exécuteur (qui peut survenir bien plus tard, selon la
+        // cadence du cron) et être mentionné quand même.
+        const creator = await makeUser();
+        const stillEnabled = await makeUser({ discordName: "encore-abonne" });
+        const game = await makeGame(creator.id);
+        const session = await makeSession(creator.id);
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, stillEnabled.id);
+
+        // Enqueue AVANT tout refus — à cet instant, `stillEnabled` est
+        // encore éligible (aucune ligne de préférence, repli legacy actif).
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        // Le refus arrive APRÈS l'enqueue, avant que l'exécuteur ne
+        // traite la livraison — simule un utilisateur qui se désinscrit
+        // pendant la fenêtre d'attente du cron.
+        await db.userNotificationPreference.create({
+          data: { userId: stillEnabled.id, category: "SESSION", enabled: false },
+        });
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(String(init.body));
+        expect(body.content).toBeFalsy();
+        expect(body.allowed_mentions.users).toBeUndefined();
+        expect(await db.notification.count({ where: { relatedSessionId: session.id } })).toBe(0);
       });
     });
 
@@ -510,6 +574,65 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
+    describe("atomicité — mutation métier et intention de notification", () => {
+      it("un échec APRÈS l'enqueue mais AVANT le commit annule la session ET l'enqueue ensemble (même transaction)", async () => {
+        const creator = await makeUser();
+        let sessionId: string | undefined;
+
+        await expect(
+          db.$transaction(async (tx) => {
+            const created = await tx.session.create({
+              data: {
+                date: new Date("2026-10-01T20:00:00.000Z"),
+                votingDeadline: new Date("2026-09-30T20:00:00.000Z"),
+                createdById: creator.id,
+                announceViaBot: true,
+              },
+            });
+            sessionId = created.id;
+            await announceLib.enqueueSessionCreationDeliveries(created.id, tx);
+            // Simule un crash/une erreur inattendue entre l'enqueue et le
+            // commit — reproduit le scénario identifié lors de la revue
+            // ciblée : sans transaction partagée, la session existerait
+            // déjà en base à cet instant (premier `await` déjà validé)
+            // pendant que l'enqueue serait encore en vol.
+            throw new Error("panne simulée avant commit");
+          })
+        ).rejects.toThrow("panne simulée avant commit");
+
+        expect(sessionId).toBeDefined();
+        expect(await db.session.count({ where: { id: sessionId } })).toBe(0);
+        expect(await db.notificationEvent.count({ where: { sourceId: sessionId } })).toBe(0);
+        expect(await db.notificationDelivery.count()).toBe(0);
+      });
+
+      it("succès : session ET intention de notification committées ensemble, immédiatement traitables par l'exécuteur", async () => {
+        const creator = await makeUser();
+
+        const session = await db.$transaction(async (tx) => {
+          const created = await tx.session.create({
+            data: {
+              date: new Date("2026-10-01T20:00:00.000Z"),
+              votingDeadline: new Date("2026-09-30T20:00:00.000Z"),
+              createdById: creator.id,
+              announceViaBot: true,
+            },
+          });
+          await announceLib.enqueueSessionCreationDeliveries(created.id, tx);
+          return created;
+        });
+
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(1);
+        expect(
+          await db.notificationDelivery.count({ where: { targetSlot: { startsWith: `default-guild:SESSION:${session.id}:` } } })
+        ).toBe(2);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+      });
+    });
+
     describe("bascule webhook/bot — figée à la création, jamais relue depuis l'env", () => {
       it("session créée AVANT le switch (announceViaBot=false) : reste sur le chemin webhook même une fois le bot activé", async () => {
         const creator = await makeUser();
@@ -548,6 +671,71 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // n'a pas tourné) — démontre que la bascule ne dépend que de la
         // donnée persistée, pas de l'état actuel de la configuration.
         expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("rollback du SEUL flag catégorie (config + exécuteur intacts) : n'affecte QUE les nouvelles soirées — une livraison déjà en attente se traite normalement jusqu'à SENT", async () => {
+        // Distingue précisément CE rollback (DISCORD_BOT_SESSION_ANNOUNCE_ENABLED
+        // seul) des deux autres testés plus bas : `sessionAnnounceResolver`
+        // (session-announce.ts) ne consulte JAMAIS ce flag catégorie, SEULEMENT
+        // `getSessionAnnounceConfig()` (guildId/channelId) — le flag n'est lu
+        // qu'UNE fois, à la création d'une session (`isSessionAnnounceViaBotEnabled()`
+        // dans createSession), jamais ensuite. Le désactiver ne bloque donc que
+        // les FUTURES sessions (qui recevront `announceViaBot=false`) ; une
+        // livraison déjà en file pour une session déjà bot continue son cycle
+        // normal — SEND, thread, rappels, éditions — tant que la config Discord
+        // et l'exécuteur restent opérationnels.
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true });
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        const announceOutcome = await processOne();
+        expect(announceOutcome?.outcome).toBe("sent");
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        const threadOutcome = await processOne();
+        expect(threadOutcome?.outcome).toBe("sent");
+
+        // Une édition ultérieure (ex. clôture) sur cette même session
+        // continue elle aussi d'utiliser le chemin bot, sans accroc.
+        await db.session.update({ where: { id: session.id }, data: { status: "CANCELLED" } });
+        await announceLib.enqueueSessionAnnounceUpdate(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        const editOutcome = await processOne();
+        expect(editOutcome?.outcome).toBe("sent");
+      });
+
+      it("exécuteur désactivé (NOTIFICATION_EXECUTOR_ENABLED=false) : la livraison reste intouchée (PENDING, 0 tentative), entièrement récupérable dès la réactivation", async () => {
+        // Distinct du cas précédent (flag catégorie) ET du suivant (config
+        // retirée) : ici, RIEN n'est réellement tenté — la route s'arrête
+        // avant même de réclamer quoi que ce soit (voir
+        // `/api/cron/notification-executor/route.ts`), donc aucune tentative
+        // n'est consommée et aucun backoff n'est posé. C'est la SEULE des
+        // trois bascules qui garantit une reprise plus tard identique en
+        // tout point à l'état avant la panne (pas seulement "pas perdu",
+        // littéralement inchangé).
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true });
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        vi.stubEnv("CRON_SECRET", "s3cret");
+        vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
+        const { GET } = await import("@/app/api/cron/notification-executor/route");
+        const res = await GET(
+          new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
+        );
+        const body = await res.json();
+        expect(body).toEqual({ enabled: false, processed: 0 });
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        const row = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:announce` },
+        });
+        expect(row.status).toBe("PENDING");
+        expect(row.attempts).toBe(0);
+        expect(row.nextAttemptAt).toBeNull();
       });
 
       it("rollback AVEC config Discord retirée pendant qu'une livraison bot est encore en attente : échoue en not_configured, observable, jamais un second envoi silencieux", async () => {

@@ -79,16 +79,37 @@ export async function createSession(formData: FormData) {
   // commentaire du champ dans schema.prisma (chantier annonces bot).
   const announceViaBot = isSessionAnnounceViaBotEnabled();
 
-  const session = await prisma.session.create({
-    data: {
-      date,
-      votingDeadline,
-      customReminderMessage,
-      reminderTimings,
-      notifiedUserIds,
-      createdById: user.id,
-      announceViaBot,
-    },
+  // Création de la session ET enqueue de l'intention de notification bot
+  // dans LA MÊME transaction SQL — trouvé lors de la revue ciblée de cette
+  // PR : les deux étaient jusqu'ici deux appels séquentiels distincts,
+  // donc un crash entre les deux (process tué, panne DB momentanée après
+  // le premier `await`) aurait laissé une session `announceViaBot=true`
+  // sans jamais aucune `NotificationEvent`/`NotificationDelivery` créée
+  // pour elle — orpheline, jamais annoncée, sans échec observable nulle
+  // part. Aucun appel Discord n'est fait ici (seulement des écritures,
+  // voir `enqueueSessionCreationDeliveries`) : la transaction reste
+  // courte, cohérente avec l'interdiction d'appel réseau dans une
+  // transaction SQL (notification-delivery.ts). Si l'enqueue échoue,
+  // toute la transaction (y compris la création de la session) est
+  // annulée — préféré à une session silencieusement jamais annoncée :
+  // l'échec redevient visible (l'action lève, la création peut être
+  // retentée), au lieu de réussir à moitié sans trace.
+  const session = await prisma.$transaction(async (tx) => {
+    const created = await tx.session.create({
+      data: {
+        date,
+        votingDeadline,
+        customReminderMessage,
+        reminderTimings,
+        notifiedUserIds,
+        createdById: user.id,
+        announceViaBot,
+      },
+    });
+    if (announceViaBot) {
+      await enqueueSessionCreationDeliveries(created.id, tx);
+    }
+    return created;
   });
 
   const xpResult = await awardXp(
@@ -116,17 +137,11 @@ export async function createSession(formData: FormData) {
 
   // Jamais les deux chemins à la fois : une session bot n'appelle jamais
   // le webhook, une session webhook n'enqueue jamais de livraison bot.
+  // Côté bot, l'enqueue a déjà réussi de façon atomique avec la création
+  // de la session ci-dessus (sinon la transaction entière aurait déjà levé
+  // et cette ligne ne serait jamais atteinte) — rien de plus à tenter ici.
   const announceResult = announceViaBot
-    ? await enqueueSessionCreationDeliveries(session.id).then(
-        () => ({ ok: true as const }),
-        (error) => {
-          logger.error("session-lifecycle", "Échec de l'enqueue de l'annonce bot à la création.", {
-            sessionId: session.id,
-            error: String(error),
-          });
-          return { ok: false as const, error: "enqueue_failed" };
-        }
-      )
+    ? { ok: true as const }
     : await announceSessionCreated(session, user);
 
   revalidatePath("/sessions");

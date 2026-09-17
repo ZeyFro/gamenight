@@ -113,6 +113,25 @@ export function hasSufficientLeaseRemaining(
   return reservedUntil.getTime() - now.getTime() > marginMs;
 }
 
+/**
+ * Client accepté par `createNotificationEvent`/`enqueueDelivery` — soit le
+ * client global `prisma` (comportement historique, inchangé si l'appelant
+ * ne passe rien), soit un client de transaction (`tx`, voir
+ * `prisma.$transaction`), pour que l'appelant puisse enfin enregistrer
+ * l'intention de notification DANS LA MÊME transaction SQL que sa
+ * mutation métier — documenté comme l'intention depuis #95 (voir le
+ * commentaire de fichier plus haut, "dans la même transaction que la
+ * mutation métier si possible") mais jamais rendu possible jusqu'ici : les
+ * deux fonctions utilisaient inconditionnellement le client global, quel
+ * que soit l'appelant, empêchant structurellement cette composition.
+ * Volontairement un `Pick` structurel (pas `PrismaClient` ni
+ * `Prisma.TransactionClient` explicitement) : les deux types exposent la
+ * même forme pour `notificationEvent`/`notificationDelivery`, donc les
+ * deux sont assignables ici sans dépendre d'un type interne Prisma fragile
+ * d'une version à l'autre.
+ */
+export type NotificationDb = Pick<typeof prisma, "notificationEvent" | "notificationDelivery">;
+
 export interface CreateEventInput {
   category: NotificationCategory;
   eventType: string;
@@ -128,13 +147,21 @@ export interface CreateEventInput {
  * (`isUniqueConstraintViolation`, voir `src/lib/xp-actions.ts`) : on tente
  * la création, une violation de contrainte unique signifie juste que
  * l'événement existe déjà, auquel cas on le relit.
+ *
+ * `db` optionnel (défaut : client global) — voir `NotificationDb`. Passer
+ * un `tx` compose cette écriture avec la mutation métier de l'appelant
+ * dans la MÊME transaction ; la logique de retry idempotent ci-dessous
+ * reste valide à l'identique dans les deux cas (une violation de
+ * contrainte unique DANS une transaction se comporte comme hors
+ * transaction pour ce genre de retry en lecture seule).
  */
 export async function createNotificationEvent(
-  input: CreateEventInput
+  input: CreateEventInput,
+  db: NotificationDb = prisma
 ): Promise<NotificationEvent> {
   const occurrence = input.occurrence ?? "";
   try {
-    return await prisma.notificationEvent.create({
+    return await db.notificationEvent.create({
       data: {
         category: input.category,
         eventType: input.eventType,
@@ -144,7 +171,7 @@ export async function createNotificationEvent(
     });
   } catch (error) {
     if (!isUniqueConstraintViolation(error)) throw error;
-    const existing = await prisma.notificationEvent.findUnique({
+    const existing = await db.notificationEvent.findUnique({
       where: {
         category_eventType_sourceId_occurrence: {
           category: input.category,
@@ -179,13 +206,17 @@ export interface EnqueueDeliveryInput {
  * Idempotent sur `[eventId, channel, recipientKey, operation, targetSlot]` —
  * même philosophie que `createNotificationEvent` ci-dessus : ré-enqueue la
  * même intention ne crée jamais de doublon.
+ *
+ * `db` optionnel (défaut : client global) — voir `NotificationDb`, même
+ * contrat que `createNotificationEvent`.
  */
 export async function enqueueDelivery(
-  input: EnqueueDeliveryInput
+  input: EnqueueDeliveryInput,
+  db: NotificationDb = prisma
 ): Promise<NotificationDelivery> {
   const operation = input.operation ?? "SEND";
   try {
-    return await prisma.notificationDelivery.create({
+    return await db.notificationDelivery.create({
       data: {
         eventId: input.eventId,
         channel: input.channel,
@@ -197,7 +228,7 @@ export async function enqueueDelivery(
     });
   } catch (error) {
     if (!isUniqueConstraintViolation(error)) throw error;
-    const existing = await prisma.notificationDelivery.findUnique({
+    const existing = await db.notificationDelivery.findUnique({
       where: {
         eventId_channel_recipientKey_operation_targetSlot: {
           eventId: input.eventId,
