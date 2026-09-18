@@ -633,6 +633,139 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
+    describe("atomicité — modification, annulation, clôture (revue ciblée #99, suite)", () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it("modification (updateSessionSchedule) : un échec d'enqueue annule aussi la mise à jour du créneau", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, {
+          announceViaBot: true,
+          date: new Date("2026-10-01T20:00:00.000Z"),
+        });
+        vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne enqueue"));
+
+        await expect(
+          sessionsLib.updateSessionSchedule(
+            session.id,
+            { date: new Date("2026-10-05T20:00:00.000Z"), votingDeadline: null },
+            true
+          )
+        ).rejects.toThrow("panne enqueue");
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        // Le créneau n'a PAS bougé — la mutation a été annulée avec l'enqueue.
+        expect(stored.date.toISOString()).toBe(new Date("2026-10-01T20:00:00.000Z").toISOString());
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
+      });
+
+      it("annulation (cancelSession) : un échec d'enqueue annule aussi le passage à CANCELLED", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true, status: "VOTING" });
+        vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne enqueue"));
+
+        await expect(sessionsLib.cancelSession(session.id)).rejects.toThrow("panne enqueue");
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("VOTING");
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
+      });
+
+      it("clôture avec gagnant décidé (closeSession) : un échec d'enqueue annule aussi le passage à SCHEDULED", async () => {
+        const creator = await makeUser();
+        const voter = await makeUser();
+        // minPlayers: 1 — un seul voteur dispo-possesseur suffit à rendre
+        // la proposition jouable (le repli par défaut de
+        // `getProposalAvailability` est 2 si non renseigné).
+        const game = await db.game.create({
+          data: { name: uniq("game"), source: "MANUAL", addedById: creator.id, minPlayers: 1 },
+        });
+        const session = await makeSession(creator.id, { announceViaBot: true, status: "VOTING" });
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, voter.id);
+        await db.userGame.create({ data: { userId: voter.id, gameId: game.id, owned: true } });
+        // Rend le voteur "disponible" à la date de la session (sinon
+        // aucune proposition n'est jouable et la clôture prendrait la
+        // branche "annulée" au lieu de la branche "gagnant décidé" testée
+        // ici) — override sans horaire = disponible toute la journée.
+        await db.availabilityOverride.create({
+          data: { userId: voter.id, date: new Date("2026-10-01"), available: true },
+        });
+
+        vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne enqueue"));
+
+        await expect(sessionsLib.closeSession(session.id)).rejects.toThrow("panne enqueue");
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        // La clôture n'a PAS eu lieu — toujours VOTING, jamais SCHEDULED,
+        // jamais decidedGameId posé, exactement comme si `closeSession`
+        // n'avait jamais été appelée.
+        expect(stored.status).toBe("VOTING");
+        expect(stored.decidedGameId).toBeNull();
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
+      });
+
+      it("clôture sans proposition jouable (closeAsCancelled) : un échec d'enqueue annule aussi le passage à CANCELLED", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true, status: "VOTING" });
+        // Aucune proposition — branche "proposals.length === 0".
+        vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne enqueue"));
+
+        await expect(sessionsLib.closeSession(session.id)).rejects.toThrow("panne enqueue");
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("VOTING");
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
+      });
+
+      it("répétition après échec : ré-appeler la même opération après une panne résolue ne crée jamais de livraison en double", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true, status: "VOTING" });
+
+        vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne transitoire"));
+        await expect(sessionsLib.cancelSession(session.id)).rejects.toThrow("panne transitoire");
+
+        // Rien n'a été créé (rollback) — un appelant qui retente après la
+        // panne (ex. l'utilisateur reclique) doit retrouver un état propre,
+        // jamais une livraison fantôme de la tentative échouée.
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
+
+        // La panne est résolue (spy restauré) — nouvelle tentative, cette
+        // fois sans injection d'échec.
+        vi.restoreAllMocks();
+        await sessionsLib.cancelSession(session.id);
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("CANCELLED");
+        // UNE seule EDIT enqueue-ée au total — la tentative annulée n'a
+        // laissé aucune trace, la tentative réussie n'en a créé qu'une.
+        const deliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:announce`, operation: "EDIT" },
+        });
+        expect(deliveries).toHaveLength(1);
+      });
+
+      it("répétition de l'enqueue de création (occurrence fixe) : deux appels identiques ne créent jamais de livraison en double", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: true });
+
+        // Simule un retry applicatif (ex. deux clics, ou une reprise après
+        // un crash situé APRÈS le commit mais avant que l'appelant ne le
+        // sache) — l'idempotence vient de l'occurrence FIXE (#95), pas
+        // d'une protection ajoutée ici.
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(1);
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: { startsWith: `default-guild:SESSION:${session.id}:` } },
+          })
+        ).toBe(2);
+      });
+    });
+
     describe("bascule webhook/bot — figée à la création, jamais relue depuis l'env", () => {
       it("session créée AVANT le switch (announceViaBot=false) : reste sur le chemin webhook même une fois le bot activé", async () => {
         const creator = await makeUser();

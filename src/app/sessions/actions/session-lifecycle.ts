@@ -3,14 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
-import { enqueueSessionCreationDeliveries, enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
+import { enqueueSessionCreationDeliveries } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
@@ -18,6 +17,7 @@ import {
   closeSession,
   markSessionDone,
   resendSessionAnnouncement,
+  updateSessionSchedule,
 } from "@/lib/sessions";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
@@ -224,26 +224,20 @@ export async function editSessionAction(formData: FormData) {
 
   const previous = { date: existing.date, votingDeadline: existing.votingDeadline };
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: {
-      date,
-      votingDeadline,
-      ...(existing.decidedTime ? { decidedTime: date } : {}),
-    },
-  });
+  // Mutation ET enqueue bot dans LA MÊME transaction — voir
+  // `updateSessionSchedule` (sessions.ts, mutualisé, testé directement).
+  // Le chemin webhook (`announceSessionModified`) reste HORS transaction,
+  // inchangé — un appel réseau ne doit jamais être tenu dans une
+  // transaction SQL, et son propre best-effort existant n'a pas à changer
+  // ici.
+  await updateSessionSchedule(
+    sessionId,
+    { date, votingDeadline, ...(existing.decidedTime ? { decidedTime: date } : {}) },
+    announceViaBot
+  );
 
   const announceResult = announceViaBot
-    ? await enqueueSessionAnnounceUpdate(sessionId).then(
-        () => ({ ok: true as const }),
-        (error) => {
-          logger.error("session-lifecycle", "Échec de l'enqueue de l'édition d'annonce bot.", {
-            sessionId,
-            error: String(error),
-          });
-          return { ok: false as const, error: "enqueue_failed" };
-        }
-      )
+    ? { ok: true as const }
     : await announceSessionModified({ id: sessionId, date, votingDeadline }, previous, user);
 
   revalidatePath(`/sessions/${sessionId}`);

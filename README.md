@@ -9081,6 +9081,18 @@ dans `session-announce.integration.test.ts` (17 → 24 tests) :
      avec une perte réelle, et elle nécessite les DEUX conditions à la fois
      (exécuteur actif ET config absente) — documenté comme limite assumée,
      observable via `status`/`errorClass` en base, jamais un secret exposé.
+
+   **Procédure opérationnelle pour éviter cette perte** (rollback ou
+   rotation de la configuration Discord) : **1)** désactiver
+   `NOTIFICATION_EXECUTOR_ENABLED` en premier et attendre la fin de
+   l'exécution en cours (aucune livraison n'est alors en plein traitement,
+   voir point 2 ci-dessus — la reprise est garantie identique) ; **2)**
+   modifier `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` ; **3)**
+   avant de réactiver `NOTIFICATION_EXECUTOR_ENABLED`, vérifier que la
+   configuration Discord est de nouveau complète et correcte, PUIS
+   réactiver. Respectée, cette procédure élimine la fenêtre `not_configured`
+   décrite au point 2 — elle ne peut apparaître QUE si la config est
+   retirée pendant que l'exécuteur tourne encore.
 3. Confirmé : succès partiel (annonce envoyée, fil échoué) ne renvoie
    jamais l'annonce, et un rappel en attente de fil ne consomme aucun
    appel réseau tant que la dépendance n'est pas prête (déjà couvert par
@@ -9094,28 +9106,53 @@ dans `session-announce.integration.test.ts` (17 → 24 tests) :
    mis en cache depuis l'enqueue), et `loadSession` recharge elle aussi la
    session depuis la base à chaque passage.
 5. **Atomicité mutation métier / intention de notification** — défaut
-   confirmé et corrigé : `enqueueSessionCreationDeliveries` était appelée
-   APRÈS `prisma.session.create()`, en dehors de toute transaction ; un
-   crash exactement entre les deux aurait laissé une session
-   `announceViaBot=true` sans jamais aucune `NotificationEvent`/
-   `NotificationDelivery`, jamais annoncée, sans échec observable nulle
-   part. Corrigé pour `createSession` (le cas le plus grave — une session
-   jamais annoncée, contre une annonce simplement en retard pour une
-   édition/clôture) : `createNotificationEvent`/`enqueueDelivery`
-   (`notification-delivery.ts`, #95) acceptent maintenant un client Prisma
-   optionnel (`NotificationDb`, additif — comportement par défaut
-   inchangé), et `createSession` enveloppe la création de la session ET
-   l'enqueue dans un seul `prisma.$transaction` : soit les deux
-   réussissent ensemble, soit aucun des deux n'existe. Portée
-   volontairement limitée à la création (le cas à plus fort impact) —
-   `closeSession`/`cancelSession`/`editSessionAction` gardent le même
-   schéma séquentiel non transactionnel que les effets de bord
-   pré-existants du reste de l'app (XP, badges), une limite plus faible
-   (annonce en retard, jamais silencieusement absente) et hors du
-   périmètre de cette revue ciblée.
+   confirmé et corrigé, PUIS étendu à tous les points d'entrée d'une
+   session bot (suite à la revue de ce round) : `createNotificationEvent`/
+   `enqueueDelivery` (`notification-delivery.ts`, #95) acceptent un client
+   Prisma optionnel (`NotificationDb`, additif — comportement par défaut
+   inchangé), et les quatre points où une session bot mute ET notifie
+   enveloppent désormais les deux dans un seul `prisma.$transaction` :
+   - **Création** (`createSession`) — déjà en place au round précédent.
+   - **Modification** (`updateSessionSchedule`, `sessions.ts`, appelée par
+     `editSessionAction`) — mutualisée dans une fonction dédiée et
+     directement testable plutôt que dupliquée dans l'action.
+   - **Annulation** (`cancelSession`).
+   - **Clôture** (`claimSessionCloseWithAnnounce`, remplace l'ancien
+     `claimSessionClose` non transactionnel) — couvre les deux branches
+     avec annonce (annulée sans proposition jouable, décidée avec
+     gagnant). La branche silencieuse "0 votant" (`discord: null`,
+     jamais d'annonce ni webhook ni bot) garde un simple `updateMany` :
+     rien à coupler, aucune intention de notification n'existe pour ce
+     cas.
+   Dans les quatre cas, un échec d'enqueue fait échouer/rollback la
+   transaction ENTIÈRE : la mutation métier concernée (créneau, statut
+   `CANCELLED`, statut `SCHEDULED`) n'est jamais persistée sans son
+   intention de notification, et réciproquement. Le webhook (chemin
+   non-bot) et les effets de bord XP/badges restent HORS de ces
+   transactions, inchangés : le webhook parce qu'un appel réseau ne doit
+   jamais être tenu dans une transaction SQL, XP/badges parce qu'ils
+   suivent le même schéma séquentiel pré-existant ailleurs dans l'app
+   (non modifié, non déplacé) — seule la paire mutation+intention-de-
+   notification devait devenir atomique, pas la totalité de la fonction.
+   Idempotence vérifiée par test : ré-enqueue de la création après une
+   panne résolue (occurrence FIXE, #95) comme après un rollback de
+   transaction (occurrence perdue avec la mutation annulée) ne crée
+   jamais de livraison en double.
    **Protection contre un rappel obsolète après annulation/clôture** —
    déjà en place, vérifiée explicitement par un nouveau test : un rappel
    enqueue AVANT une annulation/clôture mais traité APRÈS échoue en
    `expired` (terminal, jamais envoyé) — `resolveThreadReminder` relit
    `session.status` à chaque résolution et refuse tout statut hors
    `SCHEDULED`/`VOTING`.
+
+**Suite de la revue (ce round)** : 6 tests supplémentaires
+(`session-announce.integration.test.ts`, 24 → 31 tests) — un échec
+d'enqueue injecté (`vi.spyOn` sur `enqueueSessionAnnounceUpdate`) annule
+la mutation associée pour la modification, l'annulation, et les deux
+branches de clôture avec annonce ; une répétition après une panne résolue
+ne laisse aucune trace de la tentative annulée et ne crée qu'une seule
+livraison pour la tentative réussie ; deux enqueue de création identiques
+(occurrence fixe) ne créent jamais de doublon. `npm run test:postgres` :
+**372/372 verts** (366 hérités + 6 nouveaux). `tsc`/`eslint` clean sur
+tout le dépôt. `next build` sans migration distante : OK. Toujours aucune
+activation, aucun appel Discord réel, aucune surveillance récurrente.

@@ -149,47 +149,76 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
  * survit" déjà garantie par `claimNextDelivery` (voir #95). Ne rend
  * jamais elle-même le contenu : le résolveur relit l'état actuel de la
  * session au moment du traitement (voir `resolveAnnounceRendering`).
+ *
+ * `db` optionnel (défaut : client global) — même contrat que
+ * `enqueueSessionCreationDeliveries` : passer le `tx` d'un
+ * `prisma.$transaction` englobant compose cette EDIT avec la mutation
+ * métier de l'appelant (édition, annulation, clôture) DANS LA MÊME
+ * transaction (voir `editSessionAction`/`cancelSession`/`closeSession`).
+ * Idempotence NON compromise par un retry applicatif malgré l'occurrence
+ * aléatoire : si la transaction rollback, cet appel n'a jamais commité
+ * non plus — un nouvel essai de l'appelant tire une nouvelle occurrence
+ * pour une mutation qui, elle aussi, n'a jamais eu lieu ; aucune livraison
+ * fantôme ne peut donc apparaître pour une mutation qui n'a pas eu lieu.
  */
-export async function enqueueSessionAnnounceUpdate(sessionId: string): Promise<void> {
-  const event = await createNotificationEvent({
-    category: "SESSION",
-    eventType: "SESSION_MODIFIED",
-    sourceId: sessionId,
-    occurrence: randomUUID(),
-  });
-  await enqueueDelivery({
-    eventId: event.id,
-    channel: "DISCORD_CHANNEL",
-    transport: "BOT",
-    operation: "EDIT",
-    recipientKey: "channel",
-    targetSlot: announceSlot(sessionId),
-  });
+export async function enqueueSessionAnnounceUpdate(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_MODIFIED",
+      sourceId: sessionId,
+      occurrence: randomUUID(),
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "EDIT",
+      recipientKey: "channel",
+      targetSlot: announceSlot(sessionId),
+    },
+    db
+  );
 }
 
-/** SEND une fois (occurrence fixe, même raisonnement que la création) —
+/**
+ * SEND une fois (occurrence fixe, même raisonnement que la création) —
  * résumé posté dans le fil à la clôture, EN PLUS de l'EDIT de l'annonce
- * (`enqueueSessionAnnounceUpdate`, à appeler séparément par l'appelant). */
-export async function enqueueSessionResultThreadSummary(sessionId: string): Promise<void> {
-  const event = await createNotificationEvent({
-    category: "SESSION",
-    eventType: "SESSION_RESULT",
-    sourceId: sessionId,
-  });
-  await enqueueDelivery({
-    eventId: event.id,
-    channel: "DISCORD_CHANNEL",
-    transport: "BOT",
-    operation: "SEND",
-    recipientKey: "channel",
-    targetSlot: threadSummarySlot(sessionId),
-  });
+ * (`enqueueSessionAnnounceUpdate`, à appeler séparément par l'appelant).
+ *
+ * `db` optionnel — même contrat que ci-dessus.
+ */
+export async function enqueueSessionResultThreadSummary(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_RESULT",
+      sourceId: sessionId,
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadSummarySlot(sessionId),
+    },
+    db
+  );
 }
 
 /** SEND une fois par palier de rappel (occurrence = le palier lui-même,
  * fixe par nature) — un appel répété pour le MÊME palier déjà dû est
  * sans effet (idempotent), sûr à rappeler depuis le cron à chaque
- * passage tant que le palier reste dû. */
+ * passage tant que le palier reste dû. Pas de paramètre `db` : appelée
+ * depuis le cron rappels, jamais couplée à une mutation métier atomique
+ * (aucune mutation métier n'accompagne un rappel — voir le README). */
 export async function enqueueSessionReminderDelivery(sessionId: string, minutes: number): Promise<void> {
   const event = await createNotificationEvent({
     category: "SESSION",
