@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
+import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { wallClockNow } from "@/lib/wallclock";
@@ -145,17 +146,33 @@ export async function GET(request: Request) {
 
       for (const minutes of timingsDue) {
         try {
-          const result = await sendSessionReminder(session, minutes);
-          outcomes.push({ minutes, ok: result.ok });
-          if (result.ok) {
+          // Chemin bot (chantier annonces Discord/fils) : n'ENVOIE rien
+          // ici — enqueue une livraison `thread-reminder-<minutes>`
+          // (occurrence FIXE = `minutes`, donc un appel répété pour le
+          // même timing ne duplique jamais la ligne). `ok` ici signifie
+          // "enqueue réussi", pas "posté dans le fil" — la livraison
+          // réelle (et ses propres tentatives/backoff si le fil n'existe
+          // pas encore) reste entièrement de la responsabilité de
+          // l'exécuteur (`session-announce.ts`/`notification-executor.ts`),
+          // jamais réessayée par ce cron une fois enqueue confirmé.
+          const ok = session.announceViaBot
+            ? await enqueueSessionReminderDelivery(session.id, minutes).then(
+                () => true,
+                (error) => {
+                  logger.error(
+                    "cron:reminders",
+                    `Échec enqueue rappel bot ${minutes}min pour la session ${session.id}: ${String(error)}`,
+                    { sessionId: session.id, minutes }
+                  );
+                  return false;
+                }
+              )
+            : (await sendSessionReminder(session, minutes)).ok;
+          outcomes.push({ minutes, ok });
+          if (ok) {
             sent.push(`${session.id}:${minutes}min`);
           } else {
             failed.push(`${session.id}:${minutes}min`);
-            logger.error(
-              "cron:reminders",
-              `Échec rappel ${minutes}min pour la session ${session.id}: ${result.error}`,
-              { sessionId: session.id, minutes }
-            );
           }
         } catch (error) {
           // Une exception inattendue sur UN rappel (ex. base de données

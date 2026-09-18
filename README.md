@@ -8832,3 +8832,327 @@ livraison personnelle et retourner `preference_declined` en cas de refus ; ils
 ne doivent jamais convertir ce refus en MP, notification interne ou autre
 fallback. L'exécuteur reste désactivé et aucun événement métier n'est branché
 par ce chantier.
+
+## Chantier annonces Discord bot — salons et fils par soirée
+
+Relie enfin les fondations de livraison (#95), le client REST (#96),
+l'exécuteur (#97) et les préférences par catégorie (#98) à un premier vrai
+producteur métier : les annonces de **soirées** dans `#🎮-soirées`, une
+annonce principale + un fil par soirée. **TOURNOIS explicitement différé à
+une prochaine PR** — aucun code tournoi dans celle-ci ; toute catégorie
+autre que `SESSION` continue de retomber sur `NOT_CONFIGURED_RESOLVER`
+(voir `src/app/api/cron/notification-executor/route.ts`).
+
+### Ce qui est livré
+
+- `src/lib/discord-bot-config.ts` — configuration serveur (jamais un
+  formulaire utilisateur) : `DISCORD_BOT_GUILD_ID`,
+  `DISCORD_BOT_SESSION_CHANNEL_ID`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`.
+- `Session.announceViaBot` (migration additive) — décision webhook/bot
+  figée **une seule fois, à la création de chaque session**, jamais relue
+  depuis l'environnement ensuite. Garantit qu'une session ne peut jamais
+  utiliser les deux chemins à la fois, et que les sessions créées avant un
+  bascule ou après un rollback gardent leur comportement d'origine.
+- `src/lib/session-announce.ts` — quatre fonctions d'enqueue
+  (`enqueueSessionCreationDeliveries`, `enqueueSessionAnnounceUpdate`,
+  `enqueueSessionResultThreadSummary`, `enqueueSessionReminderDelivery`)
+  appelées depuis `session-lifecycle.ts`/`sessions.ts`/le cron rappels
+  UNIQUEMENT quand `announceViaBot` est vrai — sinon le chemin webhook
+  existant (`discord-announce.ts`/`discord-session-created.ts`/
+  `discord-session-modified.ts`) reste strictement inchangé et actif.
+- `sessionAnnounceResolver` — premier vrai `DeliveryResolver` métier,
+  branché dans `/api/cron/notification-executor` (dispatché par
+  `category === "SESSION"`), rendant chaque message depuis l'état COURANT
+  de la session en base, jamais un texte figé à l'enqueue.
+
+### Organisation des cibles (`targetSlot`)
+
+Quatre rôles, quatre lignes `NotificationDelivery` indépendantes par
+soirée (`default-guild:SESSION:<sessionId>:<rôle>`) :
+
+- `announce` — SEND une fois à la création, puis une EDIT à chaque
+  changement d'état (modification de créneau, clôture, annulation) —
+  jamais republiée, jamais une nouvelle édition n'écrase un état plus
+  récent (convergence garantie par `claimNextDelivery`, #95).
+- `thread` — SEND une fois, crée le fil à partir du message d'annonce ;
+  dépend explicitement que `announce` soit `SENT` (résolu manuellement, la
+  dépendance porte sur un AUTRE `targetSlot`).
+- `thread-reminder-<minutes>` — SEND, un par palier de rappel dû, posté
+  DANS le fil ; dépend que `thread` soit `SENT`. Une dépendance non prête
+  ne consomme jamais un cycle "épuisé" : elle repasse `PENDING` avec un
+  backoff court dédié (2 min), pas le backoff générique des échecs réseau.
+- `thread-summary` — SEND, résumé posté DANS le fil à la clôture ; même
+  dépendance sur `thread`.
+
+### Préférences et destinataires
+
+Réutilise telle quelle la résolution centrale de #98
+(`filterUsersByNotificationPreference`, catégorie `SESSION`) : un refus
+retire la mention Discord et la notification interne équivalente pour ce
+seul utilisateur, jamais l'annonce collective (elle part toujours, même si
+tout le monde a refusé). La sélection de destinataires du créateur
+(`notifiedUserIds`) et le filtre de préférence sont tous deux des filtres
+de RETRAIT uniquement, jamais additifs — leur ordre de composition ne
+change donc jamais le résultat, et la sélection du créateur ne peut jamais
+réintégrer un refus. Exactement les mêmes destinataires alimentent la
+mention Discord ET la notification interne (`createNotifications`), jamais
+un ensemble différent. Aucune duplication : une session `announceViaBot`
+n'appelle jamais les fonctions webhook, dont les propres notifications
+internes ne s'exécutent donc jamais pour elle.
+
+### Comportements explicitement définis
+
+- **Sessions créées avant le switch** : `announceViaBot=false` figé à leur
+  création, elles continuent d'utiliser le webhook existant indéfiniment,
+  même une fois le bot activé.
+- **Sessions créées après le switch** : `announceViaBot=true` figé à leur
+  création, elles restent sur le chemin bot même après un rollback de
+  `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`.
+- **Rollback avec une livraison bot déjà en attente** : limite assumée —
+  si la configuration Discord (`DISCORD_BOT_GUILD_ID`/
+  `DISCORD_BOT_SESSION_CHANNEL_ID`) est retirée pendant qu'une livraison
+  bot patiente encore, elle échoue en `resolver:not_configured`,
+  **terminal** (comportement hérité de `notification-executor.ts`, jamais
+  réimplémenté ici) — elle ne reprendra PAS automatiquement si la
+  configuration est restaurée plus tard. Observable via `status`/
+  `errorClass` en base, jamais un secret exposé ; aucun repli automatique
+  vers le webhook n'est jamais tenté.
+- **Message supprimé manuellement côté Discord** : une EDIT qui reçoit un
+  404 échoue en `discord:not_found`, terminal — jamais de republication
+  automatique d'un nouveau message (l'ID du message ciblé serait de toute
+  façon inconnu pour la suite).
+- **Renvoi manuel (bonus F6)** : `resendSessionAnnouncement` refuse
+  explicitement (`non_disponible_pour_les_sessions_bot`) pour une session
+  `announceViaBot` — ce bouton poste toujours un NOUVEAU message webhook,
+  un concept qui ne s'applique pas au chemin bot (annonce persistante
+  unique, éditée, jamais republiée).
+- **Fil auto-archivé + rappel** : cette PR conserve l'auto-archivage natif
+  Discord (aucune opération ARCHIVE utilisée). D'après la documentation
+  Discord (Threads), envoyer un message dans un fil archivé-mais-non-
+  verrouillé le désarchive automatiquement — comme ce chantier ne
+  verrouille jamais un fil de soirée, un rappel envoyé après
+  auto-archivage réactive le fil sans action supplémentaire.
+- **`allowed_mentions`** : contrôlé explicitement sur chaque création ET
+  édition (`parse: []` + liste explicite des `users` éligibles) — jamais
+  de mention implicite, jamais `@everyone`/`@here`.
+
+### Variables à configurer plus tard (aucune définie par cette PR)
+
+```
+DISCORD_BOT_GUILD_ID=                      # ID du serveur Discord
+DISCORD_BOT_SESSION_CHANNEL_ID=            # ID du salon #🎮-soirées
+DISCORD_BOT_SESSION_ANNOUNCE_ENABLED=      # "true" exactement pour activer
+```
+
+Voir aussi `NOTIFICATION_EXECUTOR_ENABLED` (#97) — verrou **entièrement
+indépendant**, requis EN PLUS pour qu'une livraison SESSION parte
+réellement.
+
+### Permissions Discord minimales du bot (jamais Administrateur)
+
+Sur le salon `#🎮-soirées` uniquement : **Voir le salon**, **Envoyer des
+messages**, **Intégrer des liens** (embeds), **Créer des fils publics**,
+**Envoyer des messages dans les fils**. Aucune permission `Gérer les
+salons`/`Gérer les fils` n'est nécessaire dans cette PR — aucune opération
+ARCHIVE n'est utilisée (voir plus haut). Ne jamais accorder
+`Administrateur` : chaque permission listée ici est ciblée sur ce seul
+salon.
+
+### Procédure de test manuel (bot et serveur Discord séparés)
+
+1. Créer un **serveur Discord de test** dédié (jamais le serveur réel du
+   groupe) et un **bot Discord séparé** (Developer Portal → New
+   Application → Bot), invité sur ce serveur de test avec les permissions
+   ci-dessus, jamais Administrateur.
+2. Configurer `DISCORD_BOT_TOKEN` (déjà utilisé par #96),
+   `DISCORD_BOT_GUILD_ID` (serveur de test) et
+   `DISCORD_BOT_SESSION_CHANNEL_ID` (salon de test) sur un environnement
+   Preview Vercel dédié — jamais Production.
+3. Activer `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED=true` ET
+   `NOTIFICATION_EXECUTOR_ENABLED=true` sur ce même environnement
+   Preview uniquement.
+4. Configurer un cron externe temporaire pointant vers
+   `/api/cron/notification-executor` sur cet environnement Preview,
+   jamais Production.
+5. Créer une soirée de test, vérifier : l'annonce apparaît, le fil se
+   crée, un rappel programmé apparaît dans le fil, une modification de
+   créneau édite l'annonce existante, une clôture édite l'annonce et
+   poste un résumé dans le fil.
+6. Désactiver les deux variables à la fin du test — ne jamais laisser cet
+   environnement Preview actif sans supervision.
+
+### Activation progressive et rollback (production, non exécutés par cette PR)
+
+1. Configurer `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` sur
+   Vercel Production, sans activer `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`
+   — aucun effet, sessions existantes et nouvelles restent sur le
+   webhook.
+2. Activer `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED=true` — SEULES les
+   nouvelles sessions créées à partir de ce moment passent sur le chemin
+   bot ; les sessions déjà en cours (`VOTING`/`SCHEDULED`) restent sur le
+   webhook jusqu'à leur clôture.
+3. Activer `NOTIFICATION_EXECUTOR_ENABLED=true` (si pas déjà fait) pour
+   que les livraisons enqueue-ées soient réellement traitées.
+4. **Rollback** : désactiver `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` —
+   aucune NOUVELLE session ne passe plus sur le bot ; les sessions déjà
+   `announceViaBot=true` en base continuent de l'être jusqu'à leur
+   clôture (limite documentée plus haut si leur config Discord est
+   retirée en même temps).
+
+### Tests — PostgreSQL isolé + Discord HTTP entièrement simulé
+
+`src/lib/session-announce.integration.test.ts` (18 tests, même dérogation
+Postgres que les suites #95/#97 + `fetch` mocké, **aucun appel réseau
+réel**) : annonce puis création de fil (parcours nominal) ; annonce
+réussie/fil échoué, reprise sans réannoncer (le SEND initial n'est jamais
+revu) ; rappel en attente de fil sans épuiser les tentatives (backoff
+court dédié, jamais le backoff générique) puis devenant éligible une fois
+le fil créé ; éditions concurrentes convergeant vers l'état COURANT de la
+session (jamais un texte figé à l'enqueue) ; préférence refusée (aucune
+sollicitation personnelle, annonce collective conservée, y compris quand
+TOUT LE MONDE refuse, et que la sélection du créateur ne peut jamais
+réintégrer un refus) ; configuration absente (`not_configured` terminal,
+aucun appel Discord) ; dispatch réel de la route cron par catégorie
+(SESSION → ce résolveur, TOURNAMENT/différé → toujours
+`NOT_CONFIGURED_RESOLVER`) ; permission refusée (403, terminal) ; message
+supprimé manuellement (404 sur une EDIT, terminal, observable, jamais
+republié) ; résultat réseau incertain (retryable, un seul appel tenté) ;
+bascule webhook/bot figée à la création (session avant le switch reste
+webhook même une fois le bot activé ; session après le switch reste bot
+même après un rollback) ; rollback avec config retirée pendant une
+livraison en attente ; renvoi manuel refusé pour une session bot.
+
+### Vérification
+
+- `npx tsc --noEmit`, `npx eslint .` : clean sur tout le dépôt.
+- `npm run test:postgres` avec `TEST_DATABASE_URL` : **359 tests, tout
+  vert** (341 hérités des chantiers précédents, non modifiés par cette
+  PR, rejoués à l'identique pour confirmer l'absence de régression, + 18
+  nouveaux). Sans `TEST_DATABASE_URL` : suite d'intégration explicitement
+  SKIPPÉE (pas de faux vert), reste distinguée clairement dans la sortie
+  Vitest.
+- `npx next build` (sans migration distante) : compile sans erreur,
+  nouvelle route existante `/api/cron/notification-executor` mise à jour
+  (dispatch par catégorie), aucune autre route modifiée. Migration
+  `20260917090000_add_session_announce_via_bot` (additive uniquement,
+  `ALTER TABLE ... ADD COLUMN ... DEFAULT false`) testée sur la base
+  Postgres isolée locale, jamais appliquée à Neon par cette PR/ce build.
+- Aucun appel Discord réel à aucun moment. Aucune variable définie sur
+  Vercel/Neon/cron-job.org par cette PR. `NOTIFICATION_EXECUTOR_ENABLED`
+  et `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` restent tous deux désactivés
+  par défaut — deux verrous indépendants, aucun effet tant que les DEUX
+  ne sont pas activés ensemble.
+- **Bug trouvé et corrigé pendant l'écriture des tests** : le SEND initial
+  de l'annonce n'incluait pas l'embed (seule l'EDIT le faisait), et le
+  rappel dans le fil ne portait aucun texte visible quand personne n'était
+  éligible à être mentionné (le contenu Discord ne portait alors QUE des
+  mentions, jamais le texte du rappel lui-même) — les deux corrigés dans
+  `session-announce.ts`, couverts par les tests ci-dessus.
+
+### Revue ciblée avant merge — retour arrière et atomicité
+
+Revue demandée sur le comportement de rollback (choix bot/webhook figé par
+soirée vs. livraisons pouvant échouer définitivement si la configuration
+change). Cinq points vérifiés, tous couverts par 7 tests supplémentaires
+dans `session-announce.integration.test.ts` (17 → 24 tests) :
+
+1. **`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` désactivé seul** (config Discord
+   ET `NOTIFICATION_EXECUTOR_ENABLED` intacts) : `sessionAnnounceResolver`
+   ne lit JAMAIS ce flag — seulement `getSessionAnnounceConfig()`
+   (guildId/channelId). Le flag n'est lu qu'UNE fois, à la création d'une
+   session (`isSessionAnnounceViaBotEnabled()` dans `createSession`).
+   Confirmé : ce rollback n'affecte QUE les futures sessions ; une
+   livraison déjà en file pour une session déjà bot continue son cycle
+   normal (SEND, fil, rappels, éditions) jusqu'au bout.
+2. **Trois bascules distinctes, trois comportements différents** :
+   - Flag catégorie seul désactivé → **aucun effet** sur l'existant (voir
+     point 1) — recouvrable trivialement.
+   - `NOTIFICATION_EXECUTOR_ENABLED=false` → la route s'arrête avant même
+     de réclamer une livraison (`{enabled:false, processed:0}`) — **aucune
+     tentative consommée, aucun backoff posé** ; reprise identique en tout
+     point à l'état avant la panne dès la réactivation. Seule bascule des
+     trois qui garantit une reprise "comme si rien ne s'était passé".
+   - `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` retirés PENDANT
+     que l'exécuteur tourne → `not_configured`, classification **terminale**
+     héritée telle quelle de `notification-executor.ts` (#97, jamais
+     réimplémentée) : une livraison surprise en plein traitement à ce
+     moment-là échoue définitivement et ne reprend PAS automatiquement si
+     la config est restaurée plus tard. C'est la SEULE des trois bascules
+     avec une perte réelle, et elle nécessite les DEUX conditions à la fois
+     (exécuteur actif ET config absente) — documenté comme limite assumée,
+     observable via `status`/`errorClass` en base, jamais un secret exposé.
+
+   **Procédure opérationnelle pour éviter cette perte** (rollback ou
+   rotation de la configuration Discord) : **1)** désactiver
+   `NOTIFICATION_EXECUTOR_ENABLED` en premier et attendre la fin de
+   l'exécution en cours (aucune livraison n'est alors en plein traitement,
+   voir point 2 ci-dessus — la reprise est garantie identique) ; **2)**
+   modifier `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` ; **3)**
+   avant de réactiver `NOTIFICATION_EXECUTOR_ENABLED`, vérifier que la
+   configuration Discord est de nouveau complète et correcte, PUIS
+   réactiver. Respectée, cette procédure élimine la fenêtre `not_configured`
+   décrite au point 2 — elle ne peut apparaître QUE si la config est
+   retirée pendant que l'exécuteur tourne encore.
+3. Confirmé : succès partiel (annonce envoyée, fil échoué) ne renvoie
+   jamais l'annonce, et un rappel en attente de fil ne consomme aucun
+   appel réseau tant que la dépendance n'est pas prête (déjà couvert par
+   les tests initiaux de cette PR).
+4. **Préférences relues au moment de l'envoi, pas à l'enqueue** — nouveau
+   test explicite : un utilisateur qui se désabonne de `SESSION` APRÈS
+   qu'une annonce a été mise en file (mais avant que l'exécuteur ne la
+   traite) n'est PAS mentionné. `resolveEligibleMentions`/
+   `filterUsersByNotificationPreference` interrogent la base à chaque
+   résolution (`resolve()`, appelé juste avant l'appel Discord — jamais
+   mis en cache depuis l'enqueue), et `loadSession` recharge elle aussi la
+   session depuis la base à chaque passage.
+5. **Atomicité mutation métier / intention de notification** — défaut
+   confirmé et corrigé, PUIS étendu à tous les points d'entrée d'une
+   session bot (suite à la revue de ce round) : `createNotificationEvent`/
+   `enqueueDelivery` (`notification-delivery.ts`, #95) acceptent un client
+   Prisma optionnel (`NotificationDb`, additif — comportement par défaut
+   inchangé), et les quatre points où une session bot mute ET notifie
+   enveloppent désormais les deux dans un seul `prisma.$transaction` :
+   - **Création** (`createSession`) — déjà en place au round précédent.
+   - **Modification** (`updateSessionSchedule`, `sessions.ts`, appelée par
+     `editSessionAction`) — mutualisée dans une fonction dédiée et
+     directement testable plutôt que dupliquée dans l'action.
+   - **Annulation** (`cancelSession`).
+   - **Clôture** (`claimSessionCloseWithAnnounce`, remplace l'ancien
+     `claimSessionClose` non transactionnel) — couvre les deux branches
+     avec annonce (annulée sans proposition jouable, décidée avec
+     gagnant). La branche silencieuse "0 votant" (`discord: null`,
+     jamais d'annonce ni webhook ni bot) garde un simple `updateMany` :
+     rien à coupler, aucune intention de notification n'existe pour ce
+     cas.
+   Dans les quatre cas, un échec d'enqueue fait échouer/rollback la
+   transaction ENTIÈRE : la mutation métier concernée (créneau, statut
+   `CANCELLED`, statut `SCHEDULED`) n'est jamais persistée sans son
+   intention de notification, et réciproquement. Le webhook (chemin
+   non-bot) et les effets de bord XP/badges restent HORS de ces
+   transactions, inchangés : le webhook parce qu'un appel réseau ne doit
+   jamais être tenu dans une transaction SQL, XP/badges parce qu'ils
+   suivent le même schéma séquentiel pré-existant ailleurs dans l'app
+   (non modifié, non déplacé) — seule la paire mutation+intention-de-
+   notification devait devenir atomique, pas la totalité de la fonction.
+   Idempotence vérifiée par test : ré-enqueue de la création après une
+   panne résolue (occurrence FIXE, #95) comme après un rollback de
+   transaction (occurrence perdue avec la mutation annulée) ne crée
+   jamais de livraison en double.
+   **Protection contre un rappel obsolète après annulation/clôture** —
+   déjà en place, vérifiée explicitement par un nouveau test : un rappel
+   enqueue AVANT une annulation/clôture mais traité APRÈS échoue en
+   `expired` (terminal, jamais envoyé) — `resolveThreadReminder` relit
+   `session.status` à chaque résolution et refuse tout statut hors
+   `SCHEDULED`/`VOTING`.
+
+**Suite de la revue (ce round)** : 6 tests supplémentaires
+(`session-announce.integration.test.ts`, 24 → 31 tests) — un échec
+d'enqueue injecté (`vi.spyOn` sur `enqueueSessionAnnounceUpdate`) annule
+la mutation associée pour la modification, l'annulation, et les deux
+branches de clôture avec annonce ; une répétition après une panne résolue
+ne laisse aucune trace de la tentative annulée et ne crée qu'une seule
+livraison pour la tentative réussie ; deux enqueue de création identiques
+(occurrence fixe) ne créent jamais de doublon. `npm run test:postgres` :
+**372/372 verts** (366 hérités + 6 nouveaux). `tsc`/`eslint` clean sur
+tout le dépôt. `next build` sans migration distante : OK. Toujours aucune
+activation, aucun appel Discord réel, aucune surveillance récurrente.

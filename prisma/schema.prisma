@@ -515,6 +515,25 @@ model Session {
   // `createdViaRoulette = true`, mêmes cards que `/sessions`).
   createdViaRoulette Boolean @default(false)
 
+  // Chantier annonces Discord bot (salons/fils, après #95/#96/#97/#98) —
+  // décision figée UNE SEULE FOIS, à la création de cette session précise,
+  // selon la valeur de `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` À CE
+  // MOMENT-LÀ (voir `src/lib/discord-bot-config.ts`) : `false` = chemin
+  // webhook existant (`discord-announce.ts`/`discord-session-created.ts`/
+  // `discord-session-modified.ts`, inchangés), `true` = chemin bot exclusif
+  // (`src/lib/session-announce.ts`), JAMAIS les deux à la fois pour une
+  // même session. Volontairement PAS relu depuis la variable d'env à
+  // chaque action ultérieure (modification, clôture, rappel) : la variable
+  // globale peut changer entre-temps (activation, puis retour arrière) sans
+  // que ça ne doive faire basculer une session déjà annoncée d'un canal à
+  // l'autre — une session dont l'annonce existe déjà sur un canal donné ne
+  // peut être éditée que sur CE MÊME canal, sous peine d'éditer un message
+  // qui n'existe pas là où on le cherche. `@default(false)` : toute session
+  // créée avant cette colonne (et donc avant tout chemin bot) reste
+  // silencieusement sur le webhook, comportement historique inchangé, sans
+  // backfill nécessaire.
+  announceViaBot Boolean @default(false)
+
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]

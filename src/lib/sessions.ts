@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { announceSessionResult } from "@/lib/discord-announce";
+import { enqueueSessionAnnounceUpdate, enqueueSessionResultThreadSummary } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
@@ -29,45 +30,82 @@ export function isVotingOpen(
   );
 }
 
+/**
+ * Modifie le créneau d'une session ET enqueue son édition d'annonce bot
+ * DANS LA MÊME transaction SQL (revue ciblée de #99, même raisonnement
+ * que `cancelSession`/`closeSession` plus bas) — mutualisé avec
+ * `editSessionAction` (session-lifecycle.ts, qui reste seule responsable
+ * de la validation/autorisation/redirection) pour que cette partie
+ * atomique mutation+notification soit un morceau de code UNIQUE,
+ * directement testable, plutôt que dupliquée entre les deux fichiers. Un
+ * crash entre les deux écritures laisserait sinon le créneau mis à jour
+ * en base sans jamais éditer l'annonce Discord, qui resterait affichée
+ * avec l'ANCIEN créneau indéfiniment, en silence.
+ */
+export async function updateSessionSchedule(
+  sessionId: string,
+  data: { date: Date; votingDeadline: Date | null; decidedTime?: Date },
+  announceViaBot: boolean
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.session.update({ where: { id: sessionId }, data });
+    if (announceViaBot) {
+      await enqueueSessionAnnounceUpdate(sessionId, tx);
+    }
+  });
+}
+
 export interface CloseSessionResult {
   /** `null` : session clôturée sans tenter d'annonce Discord (0 votant, cf. `closeSession`). */
   discord: PostToDiscordResult | null;
 }
 
 /**
- * Réclame atomiquement le droit de clôturer une session : un seul
- * `updateMany` conditionné sur `status: "VOTING"`, dont Postgres garantit
- * l'exécution atomique. Si deux appels concurrents à `closeSession` (deux
- * pages chargées en même temps, ou le cron `/api/cron/close-sessions` qui
- * chevauche un déclenchement paresseux `closeSessionIfDue`) tentent de
- * clôturer la même session, un seul verra `count === 1` — l'autre trouve
- * déjà `status !== "VOTING"` (l'update du premier a déjà committé) et
- * doit abandonner sans poster une deuxième annonce Discord.
+ * Réclame ATOMIQUEMENT le droit de clôturer une session ET enqueue son
+ * intention de notification bot DANS LA MÊME transaction SQL (revue
+ * ciblée de #99, suite à `createSession`/`editSessionAction`) : un seul
+ * `updateMany` conditionné sur `status: "VOTING"` (Postgres garantit son
+ * atomicité), suivi de l'enqueue SI cette session est passée sur le
+ * chemin bot — les deux commitent ensemble ou rollback ensemble. Un
+ * crash entre les deux aurait sinon laissé une clôture déjà actée en
+ * base sans jamais éditer l'annonce Discord, qui resterait affichée avec
+ * l'ANCIEN état (toujours "en cours de vote") indéfiniment, en silence.
  *
- * Root cause du bug remonté en prod (embed "Joueurs"/"Qui vient"
- * incohérent) : `closeSessionIfDue` est appelée sans garde-fou de
- * concurrence depuis `/`, `/sessions` et `/sessions/[id]`, à chaque
- * chargement de page, par n'importe qui. Dès qu'une session devient due
- * pendant que plusieurs personnes ont l'app ouverte (typiquement l'heure
- * pile d'une soirée), plusieurs exécutions de `closeSession` peuvent
- * partir en parallèle avant qu'aucune n'ait eu le temps d'écrire le
- * nouveau statut — chacune poste alors sa propre annonce Discord, deux
- * messages quasi identiques adjacents dans le salon (pas un seul embed
- * intérieurement incohérent : `winner.votes.length` et les mentions de
- * "Qui vient" viennent tous les deux de la même liste `winner.votes`,
- * donc ne peuvent jamais diverger AU SEIN d'un même message — vérifié en
- * relisant `announceSessionResult`). Ce garde-fou élimine la possibilité
- * même d'une double annonce, quelle que soit la source du déclenchement.
+ * Concurrence — même garde-fou que l'ancien `claimSessionClose` (root
+ * cause du bug prod "Joueurs"/"Qui vient" incohérent, cf. historique de ce
+ * fichier) : si deux appels concurrents à `closeSession` (deux pages
+ * chargées en même temps, ou le cron `/api/cron/close-sessions` qui
+ * chevauche un déclenchement paresseux `closeSessionIfDue`) tentent de
+ * clôturer la même session, un seul verra `claimed: true` — l'autre
+ * trouve déjà `status !== "VOTING"` et abandonne sans poster une deuxième
+ * annonce Discord (ni enqueue une deuxième livraison bot).
+ *
+ * `winner` détermine, EN PLUS de l'EDIT de l'annonce, si un résumé de
+ * résultat est aussi enqueue dans le fil (jamais pour une annulation).
+ * Aucun appel Discord ici (webhook OU bot) — seulement des écritures :
+ * le webhook reste appelé par l'appelant, HORS de cette transaction, et
+ * le chemin bot ne fait jamais qu'enqueue une intention, jamais un appel
+ * réseau (voir le commentaire de fichier de `notification-delivery.ts`
+ * sur l'interdiction d'appel Discord dans une transaction SQL).
  */
-async function claimSessionClose(
+async function claimSessionCloseWithAnnounce(
   sessionId: string,
-  data: { status: "CANCELLED" } | { status: "SCHEDULED"; decidedGameId: string; decidedTime: Date }
+  announceViaBot: boolean,
+  data: { status: "CANCELLED" } | { status: "SCHEDULED"; decidedGameId: string; decidedTime: Date },
+  winner: Parameters<typeof announceSessionResult>[1]
 ): Promise<boolean> {
-  const result = await prisma.session.updateMany({
-    where: { id: sessionId, status: "VOTING" },
-    data,
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.session.updateMany({
+      where: { id: sessionId, status: "VOTING" },
+      data,
+    });
+    if (result.count !== 1) return false;
+    if (announceViaBot) {
+      await enqueueSessionAnnounceUpdate(sessionId, tx);
+      if (winner) await enqueueSessionResultThreadSummary(sessionId, tx);
+    }
+    return true;
   });
-  return result.count === 1;
 }
 
 /**
@@ -87,10 +125,10 @@ async function claimSessionClose(
  * `decidedGameId` du schéma et avec le roadmap v2 (§7), qui traite la
  * file de jeux multiples comme un sujet à part entière.
  *
- * Idempotent/concurrence-safe : voir `claimSessionClose`. Un appel qui
- * perd la course renvoie `null`, exactement comme si la session n'était
- * déjà plus `VOTING` au tout début de la fonction — même contrat pour
- * l'appelant (`closeSessionIfDue`, le nouveau cron, ou la clôture
+ * Idempotent/concurrence-safe : voir `claimSessionCloseWithAnnounce`. Un
+ * appel qui perd la course renvoie `null`, exactement comme si la session
+ * n'était déjà plus `VOTING` au tout début de la fonction — même contrat
+ * pour l'appelant (`closeSessionIfDue`, le nouveau cron, ou la clôture
  * manuelle créateur) dans les deux cas.
  *
  * Cas "0 votant" (bug remonté en prod, cycle de vie des soirées) : si
@@ -100,7 +138,9 @@ async function claimSessionClose(
  * annonce Discord (décision produit : pas de bruit dans le salon pour une
  * clôture qui ne reflète l'intérêt de personne). `discord: null` dans le
  * résultat distingue ce cas du "aucune proposition jouable", qui reste
- * annoncé ("❌ Soirée annulée").
+ * annoncé ("❌ Soirée annulée"). Sans annonce, RIEN à enqueue non plus —
+ * ce seul cas garde un simple claim atomique, sans transaction couplée à
+ * une notification (il n'y en a aucune ici, webhook ou bot).
  */
 export async function closeSession(
   sessionId: string
@@ -115,10 +155,10 @@ export async function closeSession(
     },
   });
   if (!session || session.status !== "VOTING") return null;
+  const announceViaBot = session.announceViaBot;
 
   if (session.proposals.length === 0) {
-    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
-    return { discord: await announceSessionResult(session, null, false) };
+    return closeAsCancelled(sessionId, announceViaBot, session);
   }
 
   const availability = await getProposalAvailability(
@@ -130,8 +170,7 @@ export async function closeSession(
   );
 
   if (jouableProposals.length === 0) {
-    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
-    return { discord: await announceSessionResult(session, null, false) };
+    return closeAsCancelled(sessionId, announceViaBot, session);
   }
 
   const winner = jouableProposals.reduce((best, proposal) =>
@@ -139,7 +178,11 @@ export async function closeSession(
   );
 
   if (winner.votes.length === 0) {
-    if (!(await claimSessionClose(sessionId, { status: "CANCELLED" }))) return null;
+    const result = await prisma.session.updateMany({
+      where: { id: sessionId, status: "VOTING" },
+      data: { status: "CANCELLED" },
+    });
+    if (result.count !== 1) return null;
     return { discord: null };
   }
 
@@ -147,11 +190,14 @@ export async function closeSession(
     jouableProposals.filter((p) => p.votes.length === winner.votes.length)
       .length > 1;
 
-  const claimed = await claimSessionClose(sessionId, {
-    status: "SCHEDULED",
-    decidedGameId: winner.gameId,
-    decidedTime: session.date,
-  });
+  // Réclame la clôture ET enqueue son intention de notification bot
+  // ENSEMBLE (revue ciblée de #99) — voir `claimSessionCloseWithAnnounce`.
+  const claimed = await claimSessionCloseWithAnnounce(
+    sessionId,
+    announceViaBot,
+    { status: "SCHEDULED", decidedGameId: winner.gameId, decidedTime: session.date },
+    winner
+  );
   if (!claimed) return null;
 
   // XP participation (Axe 1) — même définition de "présent" que celle
@@ -159,15 +205,35 @@ export async function closeSession(
   // ont voté pour la proposition gagnante. sourceId = session.id, un seul
   // crédit par session même si `closeSession` est rappelé (ne devrait pas
   // arriver, la session n'est plus VOTING après ce point, mais la
-  // contrainte unique d'`awardXp` protège de toute façon).
+  // contrainte unique d'`awardXp` protège de toute façon). Volontairement
+  // HORS de la transaction ci-dessus (revue ciblée de #99) : XP/badges
+  // gardent le même schéma séquentiel non transactionnel qu'ailleurs dans
+  // l'app, jamais déplacés dans la transaction de clôture/notification —
+  // seule la clôture ET l'intention de notification bot doivent être
+  // atomiques ensemble, pas ces effets de bord indépendants.
   for (const vote of winner.votes) {
     await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
     await checkSessionsParticipatedBadges(vote.userId);
   }
 
-  return {
-    discord: await announceSessionResult(session, winner, tie),
-  };
+  const discord = announceViaBot
+    ? { ok: true as const }
+    : await announceSessionResult(session, winner, tie);
+  return { discord };
+}
+
+/** Annulation partagée par les deux branches "aucune proposition
+ * jouable" de `closeSession` — claim + enqueue bot atomiques, webhook
+ * hors transaction (voir `claimSessionCloseWithAnnounce`). */
+async function closeAsCancelled(
+  sessionId: string,
+  announceViaBot: boolean,
+  session: Pick<Session, "id" | "date" | "notifiedUserIds">
+): Promise<CloseSessionResult | null> {
+  const claimed = await claimSessionCloseWithAnnounce(sessionId, announceViaBot, { status: "CANCELLED" }, null);
+  if (!claimed) return null;
+  const discord = announceViaBot ? { ok: true as const } : await announceSessionResult(session, null, false);
+  return { discord };
 }
 
 /**
@@ -188,10 +254,30 @@ export async function closeSessionIfDue(sessionId: string): Promise<void> {
   await closeSession(sessionId);
 }
 
+/**
+ * Annulation manuelle (créateur) — historiquement AUCUNE annonce Discord
+ * (contrairement à la clôture F6) : décision produit inchangée, une
+ * annulation manuelle reste silencieuse côté webhook. Chemin bot : seule
+ * exception délibérée — l'annonce principale reste affichée en permanence
+ * dans #🎮-soirées (jamais republiée/supprimée), donc une annulation DOIT
+ * l'éditer pour refléter l'état réel plutôt que de laisser un message
+ * "Soirée" visiblement obsolète au public du salon.
+ */
 export async function cancelSession(sessionId: string): Promise<void> {
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { status: "CANCELLED" },
+  // Mutation ET enqueue bot dans LA MÊME transaction — même raisonnement
+  // que `createSession`/`editSessionAction`/`closeSession` (revue ciblée
+  // de #99) : un crash entre les deux laisserait la session annulée en
+  // base sans jamais éditer l'annonce Discord, qui resterait affichée
+  // "en cours de vote" indéfiniment, en silence.
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.session.update({
+      where: { id: sessionId },
+      data: { status: "CANCELLED" },
+      select: { announceViaBot: true },
+    });
+    if (updated.announceViaBot) {
+      await enqueueSessionAnnounceUpdate(sessionId, tx);
+    }
   });
 }
 
@@ -263,7 +349,14 @@ export async function closeOverdueScheduledSessions(): Promise<string[]> {
   return overdue.map((s) => s.id);
 }
 
-/** Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée. */
+/**
+ * Bonus F6 : renvoyer l'annonce Discord d'une session déjà clôturée —
+ * poste TOUJOURS un nouveau message webhook, jamais une édition. Pas de
+ * sens pour une session `announceViaBot` : ce chemin édite une annonce
+ * persistante unique, jamais n'en republie une nouvelle (voir le
+ * commentaire de fichier de `session-announce.ts`) — refus explicite
+ * plutôt qu'un comportement silencieusement incohérent.
+ */
 export async function resendSessionAnnouncement(
   sessionId: string
 ): Promise<PostToDiscordResult> {
@@ -277,6 +370,7 @@ export async function resendSessionAnnouncement(
     },
   });
   if (!session) return { ok: false, error: "session_introuvable" };
+  if (session.announceViaBot) return { ok: false, error: "non_disponible_pour_les_sessions_bot" };
 
   if (session.status === "CANCELLED") {
     return announceSessionResult(session, null, false);

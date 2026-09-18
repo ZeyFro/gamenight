@@ -8,6 +8,8 @@ import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
+import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { enqueueSessionCreationDeliveries } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
@@ -15,6 +17,7 @@ import {
   closeSession,
   markSessionDone,
   resendSessionAnnouncement,
+  updateSessionSchedule,
 } from "@/lib/sessions";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
@@ -72,15 +75,41 @@ export async function createSession(formData: FormData) {
       ).map((u) => u.id)
     : [];
 
-  const session = await prisma.session.create({
-    data: {
-      date,
-      votingDeadline,
-      customReminderMessage,
-      reminderTimings,
-      notifiedUserIds,
-      createdById: user.id,
-    },
+  // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
+  // commentaire du champ dans schema.prisma (chantier annonces bot).
+  const announceViaBot = isSessionAnnounceViaBotEnabled();
+
+  // Création de la session ET enqueue de l'intention de notification bot
+  // dans LA MÊME transaction SQL — trouvé lors de la revue ciblée de cette
+  // PR : les deux étaient jusqu'ici deux appels séquentiels distincts,
+  // donc un crash entre les deux (process tué, panne DB momentanée après
+  // le premier `await`) aurait laissé une session `announceViaBot=true`
+  // sans jamais aucune `NotificationEvent`/`NotificationDelivery` créée
+  // pour elle — orpheline, jamais annoncée, sans échec observable nulle
+  // part. Aucun appel Discord n'est fait ici (seulement des écritures,
+  // voir `enqueueSessionCreationDeliveries`) : la transaction reste
+  // courte, cohérente avec l'interdiction d'appel réseau dans une
+  // transaction SQL (notification-delivery.ts). Si l'enqueue échoue,
+  // toute la transaction (y compris la création de la session) est
+  // annulée — préféré à une session silencieusement jamais annoncée :
+  // l'échec redevient visible (l'action lève, la création peut être
+  // retentée), au lieu de réussir à moitié sans trace.
+  const session = await prisma.$transaction(async (tx) => {
+    const created = await tx.session.create({
+      data: {
+        date,
+        votingDeadline,
+        customReminderMessage,
+        reminderTimings,
+        notifiedUserIds,
+        createdById: user.id,
+        announceViaBot,
+      },
+    });
+    if (announceViaBot) {
+      await enqueueSessionCreationDeliveries(created.id, tx);
+    }
+    return created;
   });
 
   const xpResult = await awardXp(
@@ -106,7 +135,14 @@ export async function createSession(formData: FormData) {
     }
   }
 
-  const announceResult = await announceSessionCreated(session, user);
+  // Jamais les deux chemins à la fois : une session bot n'appelle jamais
+  // le webhook, une session webhook n'enqueue jamais de livraison bot.
+  // Côté bot, l'enqueue a déjà réussi de façon atomique avec la création
+  // de la session ci-dessus (sinon la transaction entière aurait déjà levé
+  // et cette ligne ne serait jamais atteinte) — rien de plus à tenter ici.
+  const announceResult = announceViaBot
+    ? { ok: true as const }
+    : await announceSessionCreated(session, user);
 
   revalidatePath("/sessions");
 
@@ -170,6 +206,9 @@ export async function editSessionAction(formData: FormData) {
   const existing = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!existing || existing.createdById !== user.id) return;
   if (existing.status === "DONE" || existing.status === "CANCELLED") return;
+  // Chemin figé à la création de CETTE session (jamais relu depuis l'env
+  // ici) — voir le commentaire du champ dans schema.prisma.
+  const announceViaBot = existing.announceViaBot;
 
   const schedule = resolveSessionSchedule({
     dateStr,
@@ -185,20 +224,21 @@ export async function editSessionAction(formData: FormData) {
 
   const previous = { date: existing.date, votingDeadline: existing.votingDeadline };
 
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: {
-      date,
-      votingDeadline,
-      ...(existing.decidedTime ? { decidedTime: date } : {}),
-    },
-  });
-
-  const announceResult = await announceSessionModified(
-    { id: sessionId, date, votingDeadline },
-    previous,
-    user
+  // Mutation ET enqueue bot dans LA MÊME transaction — voir
+  // `updateSessionSchedule` (sessions.ts, mutualisé, testé directement).
+  // Le chemin webhook (`announceSessionModified`) reste HORS transaction,
+  // inchangé — un appel réseau ne doit jamais être tenu dans une
+  // transaction SQL, et son propre best-effort existant n'a pas à changer
+  // ici.
+  await updateSessionSchedule(
+    sessionId,
+    { date, votingDeadline, ...(existing.decidedTime ? { decidedTime: date } : {}) },
+    announceViaBot
   );
+
+  const announceResult = announceViaBot
+    ? { ok: true as const }
+    : await announceSessionModified({ id: sessionId, date, votingDeadline }, previous, user);
 
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
