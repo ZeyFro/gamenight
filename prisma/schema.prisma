@@ -1391,6 +1391,19 @@ model Tournament {
   champion     User?                   @relation("TournamentChampion", fields: [championId], references: [id])
   participants TournamentParticipant[]
   matches      TournamentMatch[]
+
+  // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
+  // — même contrat que `Session.announceViaBot` (voir son commentaire pour
+  // le raisonnement complet) : décision figée UNE SEULE FOIS, à la création
+  // de CE tournoi précis, selon `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` à
+  // ce moment-là (`src/lib/discord-bot-config.ts`). `false` = chemin webhook
+  // existant (`postToDiscord` dans `createTournamentAction`/
+  // `announceTournamentFinalization`, inchangés), `true` = chemin bot
+  // exclusif (`src/lib/tournament-announce.ts`), jamais les deux. Jamais
+  // relu depuis la variable d'env après la création — un tournoi déjà
+  // annoncé sur un canal donné reste sur CE canal. `@default(false)` : tout
+  // tournoi créé avant cette colonne reste silencieusement sur le webhook.
+  announceViaBot Boolean @default(false)
 }
 
 // `seed` : ordre de tirage aléatoire au lancement du tournoi (pas de

@@ -45,3 +45,31 @@ export function getSessionAnnounceConfig(): SessionAnnounceConfig | null {
 export function isSessionAnnounceViaBotEnabled(): boolean {
   return process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED === "true" && getSessionAnnounceConfig() !== null;
 }
+
+/**
+ * Chantier annonces Discord tournois (#🏆-tournois, fil dédié par tournoi)
+ * — même contrat que `SessionAnnounceConfig`/`getSessionAnnounceConfig`
+ * ci-dessus, salon dédié distinct (`DISCORD_BOT_TOURNAMENT_CHANNEL_ID`),
+ * même `DISCORD_BOT_GUILD_ID` partagé (un seul serveur Discord pour toute
+ * l'app, cf. spec). Activation par catégorie séparée
+ * (`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`) — indépendante de
+ * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` : activer l'une n'active jamais
+ * l'autre.
+ */
+export interface TournamentAnnounceConfig {
+  guildId: string;
+  channelId: string;
+}
+
+export function getTournamentAnnounceConfig(): TournamentAnnounceConfig | null {
+  const guildId = process.env.DISCORD_BOT_GUILD_ID?.trim();
+  const channelId = process.env.DISCORD_BOT_TOURNAMENT_CHANNEL_ID?.trim();
+  if (!guildId || !channelId) return null;
+  return { guildId, channelId };
+}
+
+export function isTournamentAnnounceViaBotEnabled(): boolean {
+  return (
+    process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && getTournamentAnnounceConfig() !== null
+  );
+}

@@ -9,6 +9,8 @@ import { generateBracket, declareWinner, buildBracketInTransaction } from "@/lib
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
+import { isTournamentAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { enqueueTournamentCreationDeliveries } from "@/lib/tournament-announce";
 import { logger } from "@/lib/logger";
 import {
   createTournamentSchema,
@@ -55,34 +57,56 @@ export async function createTournamentAction(formData: FormData) {
   const game = await prisma.game.findUnique({ where: { id: gameId }, select: { name: true } });
   if (!game) redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
 
-  const tournament = await prisma.tournament.create({
-    data: { name, gameId, maxPlayers, createdById: user.id },
-  });
+  // Chantier annonces tournois (étend #99) — figé UNE SEULE FOIS ici,
+  // jamais relu depuis l'env ensuite (voir le commentaire du champ dans
+  // schema.prisma). Création du tournoi ET enqueue de l'intention de
+  // notification bot dans LA MÊME transaction SQL (même raisonnement que
+  // `createSession`, session-lifecycle.ts, revue ciblée #99) : un crash
+  // entre les deux laisserait sinon un tournoi `announceViaBot=true`
+  // orphelin, jamais annoncé, sans échec observable nulle part. Aucun
+  // appel Discord dans cette transaction (seulement des écritures).
+  const announceViaBot = isTournamentAnnounceViaBotEnabled();
 
-  const tournamentUrl = resolveAbsoluteUrl(`/tournois/${tournament.id}`, {
-    VERCEL_ENV: process.env.VERCEL_ENV,
-    VERCEL_URL: process.env.VERCEL_URL,
-    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
-  });
-  if (!tournamentUrl) {
-    logger.warn(
-      "tournaments",
-      "URL absolue indisponible (dev local ou variables Vercel absentes) — lien omis de l'annonce Discord.",
-      { tournamentId: tournament.id }
-    );
-  }
-
-  const result = await postToDiscord({
-    title: `🏆 Tournoi ${name} sur ${game.name} — inscriptions ouvertes !`,
-    description: tournamentUrl
-      ? `${maxPlayers} places disponibles. Inscris-toi ici : ${tournamentUrl}`
-      : `${maxPlayers} places disponibles. Inscris-toi sur l'app !`,
-    color: ACCENT_COLOR,
-  });
-  if (!result.ok) {
-    logger.warn("tournaments", "Notif Discord création tournoi non envoyée.", {
-      tournamentId: tournament.id,
+  const tournament = await prisma.$transaction(async (tx) => {
+    const created = await tx.tournament.create({
+      data: { name, gameId, maxPlayers, createdById: user.id, announceViaBot },
     });
+    if (announceViaBot) {
+      await enqueueTournamentCreationDeliveries(created.id, tx);
+    }
+    return created;
+  });
+
+  // Webhook existant — UNIQUEMENT pour un tournoi resté sur ce chemin
+  // (`announceViaBot=false`) : un tournoi bot a déjà enqueue son SEND ci-
+  // dessus, jamais les deux transports à la fois (voir le commentaire de
+  // fichier de `tournament-announce.ts`).
+  if (!announceViaBot) {
+    const tournamentUrl = resolveAbsoluteUrl(`/tournois/${tournament.id}`, {
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      VERCEL_URL: process.env.VERCEL_URL,
+      VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    });
+    if (!tournamentUrl) {
+      logger.warn(
+        "tournaments",
+        "URL absolue indisponible (dev local ou variables Vercel absentes) — lien omis de l'annonce Discord.",
+        { tournamentId: tournament.id }
+      );
+    }
+
+    const result = await postToDiscord({
+      title: `🏆 Tournoi ${name} sur ${game.name} — inscriptions ouvertes !`,
+      description: tournamentUrl
+        ? `${maxPlayers} places disponibles. Inscris-toi ici : ${tournamentUrl}`
+        : `${maxPlayers} places disponibles. Inscris-toi sur l'app !`,
+      color: ACCENT_COLOR,
+    });
+    if (!result.ok) {
+      logger.warn("tournaments", "Notif Discord création tournoi non envoyée.", {
+        tournamentId: tournament.id,
+      });
+    }
   }
 
   revalidatePath("/tournois");

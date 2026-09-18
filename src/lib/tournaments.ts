@@ -6,6 +6,10 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
+import {
+  enqueueTournamentAnnounceUpdate,
+  enqueueTournamentResultThreadSummary,
+} from "@/lib/tournament-announce";
 
 /**
  * Sprint 5 (FEATURE 1, Tournois Bracket) — taille de bracket réelle pour
@@ -83,13 +87,24 @@ async function advanceWinner(
   round: number,
   position: number,
   winnerId: string,
-  totalRounds: number
+  totalRounds: number,
+  announceViaBot: boolean
 ): Promise<{ tournamentFinalized: boolean }> {
   if (round >= totalRounds) {
     await tx.tournament.update({
       where: { id: tournamentId },
       data: { status: "DONE", championId: winnerId },
     });
+    // Chantier annonces tournois (étend #99) — enqueue DANS CETTE MÊME
+    // TRANSACTION (même raisonnement que `claimSessionCloseWithAnnounce`,
+    // src/lib/sessions.ts) : un crash entre l'écriture `status: DONE` et
+    // l'enqueue laisserait sinon un tournoi clôturé en base sans jamais
+    // éditer son annonce, restée affichée "en cours" indéfiniment. Aucun
+    // appel Discord ici (uniquement des écritures).
+    if (announceViaBot) {
+      await enqueueTournamentAnnounceUpdate(tournamentId, tx);
+      await enqueueTournamentResultThreadSummary(tournamentId, tx);
+    }
     return { tournamentFinalized: true };
   }
 
@@ -106,6 +121,7 @@ interface LockedTournamentRow {
   id: string;
   status: string;
   maxPlayers: number;
+  announceViaBot: boolean;
 }
 
 /**
@@ -145,7 +161,7 @@ export async function buildBracketInTransaction(
   tournamentId: string
 ): Promise<void> {
   const locked = await tx.$queryRaw<LockedTournamentRow[]>`
-    SELECT id, status, "maxPlayers" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    SELECT id, status, "maxPlayers", "announceViaBot" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
   `;
   const tournament = locked[0];
   if (!tournament || tournament.status !== "REGISTRATION") return;
@@ -178,6 +194,18 @@ export async function buildBracketInTransaction(
   }
 
   await tx.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
+  // Chantier annonces tournois (étend #99) — enqueue l'EDIT de l'annonce
+  // (inscriptions fermées, bracket lancé) DANS CETTE MÊME TRANSACTION,
+  // atteint aussi bien par un lancement automatique (dernière place prise,
+  // `registerForTournamentAction`) que par un lancement anticipé manuel
+  // (`launchTournamentAction` → `generateBracket`) : les deux appellent
+  // cette même fonction, jamais de logique dupliquée entre les deux
+  // chemins. Un crash entre le `status: IN_PROGRESS` ci-dessus et
+  // l'enqueue laisserait sinon un bracket déjà lancé en base sans jamais
+  // éditer l'annonce, restée affichée "inscriptions ouvertes" indéfiniment.
+  if (tournament.announceViaBot) {
+    await enqueueTournamentAnnounceUpdate(tournamentId, tx);
+  }
 
   await Promise.all(
     shuffled.map((p, i) => tx.tournamentParticipant.update({ where: { id: p.id }, data: { seed: i + 1 } }))
@@ -217,7 +245,7 @@ export async function buildBracketInTransaction(
     // `tournamentFinalized` volontairement ignoré : structurellement
     // inatteignable ici (totalRounds vaut toujours 2 ou 3, donc round 1
     // < totalRounds systématiquement — voir docstring ci-dessus).
-    await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds);
+    await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds, tournament.announceViaBot);
   }
 }
 
@@ -333,7 +361,8 @@ export async function declareWinner(
       match.round,
       match.position,
       winnerId,
-      totalRounds
+      totalRounds,
+      match.tournament.announceViaBot
     );
     tournamentFinalized = result.tournamentFinalized;
   });
@@ -413,15 +442,23 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
       await checkTournamentBadges(p.userId);
     }
 
-    const champion = await prisma.user.findUnique({ where: { id: championId } });
-    if (champion) {
-      const result = await postToDiscord({
-        title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
-        description: `Sur ${tournament.game.name} — GG à tous les participants !`,
-        color: ACCENT_COLOR,
-      });
-      if (!result.ok) {
-        logger.warn("tournaments", "Notif Discord fin de tournoi non envoyée.", { tournamentId });
+    // Chantier annonces tournois (étend #99) — transport figé À LA
+    // CRÉATION du tournoi (`tournament.announceViaBot`), jamais relu ici :
+    // un tournoi bot a DÉJÀ enqueue son EDIT d'annonce + son résumé de fil
+    // DANS la transaction de `declareWinner` (voir `advanceWinner`) —
+    // rappeler le webhook ici enverrait un SECOND message pour la même
+    // clôture, jamais les deux transports à la fois pour un même tournoi.
+    if (!tournament.announceViaBot) {
+      const champion = await prisma.user.findUnique({ where: { id: championId } });
+      if (champion) {
+        const result = await postToDiscord({
+          title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
+          description: `Sur ${tournament.game.name} — GG à tous les participants !`,
+          color: ACCENT_COLOR,
+        });
+        if (!result.ok) {
+          logger.warn("tournaments", "Notif Discord fin de tournoi non envoyée.", { tournamentId });
+        }
       }
     }
   } catch (error) {
