@@ -9,7 +9,7 @@ import { generateBracket, declareWinner, buildBracketInTransaction } from "@/lib
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
-import { isTournamentAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
 import { enqueueTournamentCreationDeliveries } from "@/lib/tournament-announce";
 import { logger } from "@/lib/logger";
 import {
@@ -59,17 +59,37 @@ export async function createTournamentAction(formData: FormData) {
 
   // Chantier annonces tournois (étend #99) — figé UNE SEULE FOIS ici,
   // jamais relu depuis l'env ensuite (voir le commentaire du champ dans
-  // schema.prisma). Création du tournoi ET enqueue de l'intention de
-  // notification bot dans LA MÊME transaction SQL (même raisonnement que
-  // `createSession`, session-lifecycle.ts, revue ciblée #99) : un crash
-  // entre les deux laisserait sinon un tournoi `announceViaBot=true`
-  // orphelin, jamais annoncé, sans échec observable nulle part. Aucun
-  // appel Discord dans cette transaction (seulement des écritures).
-  const announceViaBot = isTournamentAnnounceViaBotEnabled();
+  // schema.prisma). Revue ciblée avant merge #100 : la DESTINATION
+  // (guildId/channelId) est figée EN MÊME TEMPS que `announceViaBot`, pas
+  // seulement le booléen — une seule lecture de `getTournamentAnnounceConfig()`
+  // ici, jamais deux lectures séparées qui pourraient voir des valeurs
+  // différentes si la config change entre les deux. Le résolveur
+  // (`tournamentAnnounceResolver`) n'utilisera plus jamais l'env pour la
+  // destination d'un tournoi bot après ce point — voir son commentaire de
+  // fichier. Création du tournoi ET enqueue de l'intention de notification
+  // bot dans LA MÊME transaction SQL (même raisonnement que `createSession`,
+  // session-lifecycle.ts, revue ciblée #99) : un crash entre les deux
+  // laisserait sinon un tournoi `announceViaBot=true` orphelin, jamais
+  // annoncé, sans échec observable nulle part. Aucun appel Discord dans
+  // cette transaction (seulement des écritures, ni la lecture de config
+  // ci-dessus — une variable d'env — ni la vérification réseau du salon,
+  // qui n'a lieu que plus tard, au premier SEND réel, voir
+  // `tournament-announce.ts`).
+  const tournamentAnnounceConfig = getTournamentAnnounceConfig();
+  const announceViaBot =
+    process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && tournamentAnnounceConfig !== null;
 
   const tournament = await prisma.$transaction(async (tx) => {
     const created = await tx.tournament.create({
-      data: { name, gameId, maxPlayers, createdById: user.id, announceViaBot },
+      data: {
+        name,
+        gameId,
+        maxPlayers,
+        createdById: user.id,
+        announceViaBot,
+        discordGuildId: announceViaBot ? tournamentAnnounceConfig!.guildId : null,
+        discordChannelId: announceViaBot ? tournamentAnnounceConfig!.channelId : null,
+      },
     });
     if (announceViaBot) {
       await enqueueTournamentCreationDeliveries(created.id, tx);

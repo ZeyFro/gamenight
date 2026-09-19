@@ -7,6 +7,16 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * réelles Tournament/TournamentParticipant/TournamentMatch/User) ET HTTP
  * Discord entièrement simulé (`fetch` mocké, JAMAIS d'appel réseau réel).
  *
+ * Revue ciblée avant merge #100 (contrôle de destination) — le tout
+ * premier SEND d'une annonce passe désormais par `send_channel_message_verified`
+ * (`sendChannelMessageVerified`, discord-rest.ts) : un `GET /channels/{id}`
+ * PUIS un `POST .../messages`, jamais l'inverse, jamais le POST si le GET
+ * échoue ou révèle un salon inattendu — voir `mockChannelOk`/`mockSendOk`
+ * ci-dessous, utilisés PARTOUT où cette suite simule un premier SEND
+ * réussi. Les éditions et le fil qui suivent n'en ont PLUS besoin (ils
+ * ciblent directement la référence du message réellement créé) — un seul
+ * `POST`/`PATCH` suffit à les simuler, comme avant cette revue.
+ *
  * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert).
  */
@@ -25,7 +35,8 @@ if (!TEST_DATABASE_URL) {
   console.warn(
     "[tournament-announce.integration.test] TEST_DATABASE_URL absente — " +
       "suite SKIPPÉE. Les scénarios bout en bout (annonce → fil, lancement, " +
-      "clôture, atomicité, rollback) ne sont PAS validés par cette exécution."
+      "clôture, atomicité, rollback, contrôle de destination) ne sont PAS " +
+      "validés par cette exécution."
   );
 }
 
@@ -99,8 +110,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
         announceViaBot: boolean;
         maxPlayers: number;
         championId: string | null;
+        discordGuildId: string | null;
+        discordChannelId: string | null;
       }> = {}
     ) {
+      const announceViaBot = overrides.announceViaBot ?? true;
       return db.tournament.create({
         data: {
           name: uniq("tournoi"),
@@ -108,8 +122,14 @@ describe.skipIf(!TEST_DATABASE_URL)(
           createdById: creatorId,
           status: overrides.status ?? "REGISTRATION",
           maxPlayers: overrides.maxPlayers ?? 4,
-          announceViaBot: overrides.announceViaBot ?? true,
+          announceViaBot,
           championId: overrides.championId ?? null,
+          // Même contrat que `createTournamentAction` : destination figée
+          // EN MÊME TEMPS que le booléen, jamais l'un sans l'autre pour un
+          // tournoi bot — voir le commentaire du champ, schema.prisma.
+          discordGuildId: "discordGuildId" in overrides ? overrides.discordGuildId : announceViaBot ? "guild-1" : null,
+          discordChannelId:
+            "discordChannelId" in overrides ? overrides.discordChannelId : announceViaBot ? "chan-tournois" : null,
         },
       });
     }
@@ -156,31 +176,53 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     }
 
+    /** Simule un `GET /channels/{id}` réussi — salon texte (`type: 0`)
+     * appartenant à `guildId` (par défaut celui stubbé dans `beforeEach`). */
+    function mockChannelOk(channelId: string, guildId = "guild-1", type = 0) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: channelId, type, guild_id: guildId }));
+    }
+
+    /** Simule un `POST .../messages` réussi. */
+    function mockSendOk(channelId: string, messageId = "msg-announce") {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: messageId, channel_id: channelId }));
+    }
+
+    /** Enchaîne les deux mocks ci-dessus — raccourci pour le cas nominal
+     * "premier SEND réussi" utilisé par la majorité des tests. */
+    function mockVerifiedSendOk(channelId: string, guildId = "guild-1", messageId = "msg-announce") {
+      mockChannelOk(channelId, guildId);
+      mockSendOk(channelId, messageId);
+    }
+
     describe("parcours nominal — création → fil, lancement, clôture + résumé", () => {
-      it("création : SEND annonce puis SEND fil, référençant le message d'annonce", async () => {
+      it("création : GET de vérification + SEND annonce, puis SEND fil, référençant le message d'annonce", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id);
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         const announceOutcome = await processOne();
         expect(announceOutcome?.outcome).toBe("sent");
+        expect(String(fetchMock.mock.calls[0][0])).toContain("/channels/chan-tournois");
+        expect(fetchMock.mock.calls[0][1]?.method ?? "GET").toBe("GET");
+        expect(String(fetchMock.mock.calls[1][0])).toContain("/channels/chan-tournois/messages");
+        expect(fetchMock.mock.calls[1][1]?.method).toBe("POST");
 
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         const threadOutcome = await processOne();
         expect(threadOutcome?.outcome).toBe("sent");
 
-        expect(String(fetchMock.mock.calls[1][0])).toContain(
+        expect(String(fetchMock.mock.calls[2][0])).toContain(
           "/channels/chan-tournois/messages/msg-announce/threads"
         );
-        const [, announceInit] = fetchMock.mock.calls[0];
+        const [, announceInit] = fetchMock.mock.calls[1];
         const announceBody = JSON.parse(String(announceInit.body));
         expect(announceBody.embeds[0].title).toContain("inscriptions ouvertes");
         expect(announceBody.allowed_mentions).toEqual({ parse: [] });
       });
 
-      it("lancement (bracket construit) : EDIT de l'annonce reflète l'état « en cours »", async () => {
+      it("lancement (bracket construit) : EDIT de l'annonce reflète l'état « en cours », aucun GET (référence déjà confirmée)", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
@@ -188,7 +230,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           await makeParticipant(tournament.id, (await makeUser()).id);
         }
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         await processOne();
@@ -198,9 +240,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const stored = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
         expect(stored.status).toBe("IN_PROGRESS");
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        const callsBeforeEdit = fetchMock.mock.calls.length;
+        mockSendOk("chan-tournois"); // EDIT — un seul appel, pas de GET
         const editOutcome = await processOne();
         expect(editOutcome?.outcome).toBe("sent");
+        expect(fetchMock.mock.calls.length).toBe(callsBeforeEdit + 1);
         const [, editInit] = fetchMock.mock.calls.at(-1)!;
         const editBody = JSON.parse(String(editInit.body));
         expect(editBody.embeds[0].title).toContain("en cours");
@@ -216,19 +260,19 @@ describe.skipIf(!TEST_DATABASE_URL)(
         for (const p of players) await makeParticipant(tournament.id, p.id);
 
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         await processOne();
 
         await launchBracket(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockSendOk("chan-tournois");
         await processOne(); // EDIT lancement
 
         const result = await finalizeTournament(tournament.id, creator.id);
         expect(result.tournamentDone).toBe(true);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockSendOk("chan-tournois");
         const closureEdit = await processOne();
         expect(closureEdit?.outcome).toBe("sent");
         const [, closureInit] = fetchMock.mock.calls.at(-1)!;
@@ -259,7 +303,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 
         const t0 = new Date("2026-01-01T00:00:00.000Z");
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne(t0);
 
         fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
@@ -271,7 +315,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const resumedThread = await processOne(muchLater);
         expect(resumedThread?.outcome).toBe("sent");
 
-        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock).toHaveBeenCalledTimes(4); // GET + SEND annonce, échec fil, reprise fil
         const announceRow = await db.notificationDelivery.findFirstOrThrow({
           where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce` },
         });
@@ -299,34 +343,56 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
-    describe("erreurs Discord — permission refusée, message supprimé, réseau incertain", () => {
-      it("permission refusée (403) sur le SEND initial : FAILED terminal, jamais réessayé", async () => {
+    describe("contrôle de destination — vérification AVANT tout premier envoi", () => {
+      it("salon appartenant à un autre serveur : aucun POST, échec terminal observable", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
-        const tournament = await makeTournament(creator.id, game.id);
+        const tournament = await makeTournament(creator.id, game.id, { discordGuildId: "guild-1" });
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
+        // Le salon existe (GET réussi) mais appartient à un AUTRE serveur
+        // que celui persisté pour ce tournoi (`guild-1`).
+        mockChannelOk("chan-tournois", "guild-INTRUS");
         const outcome = await processOne();
-        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:auth_or_permission" });
+
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:destination_mismatch" });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // seul le GET, jamais de POST
+        expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") !== "POST")).toBe(true);
 
         const row = await db.notificationDelivery.findFirstOrThrow({
           where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce` },
         });
         expect(row.status).toBe("FAILED");
-        expect(row.nextAttemptAt).toBeNull();
+        expect(row.discordMessageId).toBeNull();
       });
 
-      it("réseau incertain (fetch rejette) sur le SEND initial : retryable, jamais de repli vers le webhook", async () => {
+      it("type de salon incompatible (vocal) avec le parcours annonce+fil : aucun POST", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id);
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 
+        // Bon serveur, mais type 2 = salon vocal — ne supporte pas
+        // `POST .../threads` (voir THREAD_CAPABLE_CHANNEL_TYPES).
+        mockChannelOk("chan-tournois", "guild-1", 2);
+        const outcome = await processOne();
+
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:destination_mismatch" });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("échec/timeout de la vérification (GET) : aucun envoi tenté, retryable", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        // Le GET lui-même échoue (réseau/timeout) — jamais de tentative de
+        // POST tant que la destination n'a pas pu être confirmée.
         fetchMock.mockRejectedValueOnce(new DOMException("aborted", "TimeoutError"));
         const outcome = await processOne();
         expect(outcome).toMatchObject({ outcome: "retrying", errorClass: "discord:network_uncertain" });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1); // le GET seul, jamais de POST
 
         const row = await db.notificationDelivery.findFirstOrThrow({
           where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce` },
@@ -334,13 +400,61 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(row.status).toBe("PENDING");
       });
 
+      it("changement de configuration AVANT le premier SEND : la destination persistée à la création est utilisée, jamais la nouvelle config", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        // Destination persistée à la création (simule `createTournamentAction`
+        // ayant lu `chan-tournois` à ce moment-là).
+        const tournament = await makeTournament(creator.id, game.id, { discordChannelId: "chan-tournois" });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        // Un administrateur change le salon configuré AVANT que l'exécuteur
+        // ne traite ce SEND, toujours en attente.
+        vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "chan-tournois-NOUVEAU");
+
+        mockVerifiedSendOk("chan-tournois"); // toujours l'ANCIEN salon persisté
+        const outcome = await processOne();
+
+        expect(outcome?.outcome).toBe("sent");
+        expect(String(fetchMock.mock.calls[0][0])).toContain("/channels/chan-tournois");
+        expect(String(fetchMock.mock.calls[0][0])).not.toContain("chan-tournois-NOUVEAU");
+        expect(String(fetchMock.mock.calls[1][0])).toContain("/channels/chan-tournois/messages");
+      });
+
+      it("changement de configuration APRÈS création de l'annonce : l'édition cible le salon RÉEL de l'annonce, jamais la nouvelle config", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockVerifiedSendOk("chan-tournois");
+        await processOne(); // SEND annonce réussi dans chan-tournois
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne(); // SEND fil
+
+        await launchBracket(tournament.id);
+
+        // Configuration changée APRÈS que l'annonce existe réellement.
+        vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "chan-tournois-NOUVEAU");
+
+        mockSendOk("chan-tournois"); // PATCH attendu vers l'ANCIEN salon, pas le nouveau
+        const editOutcome = await processOne();
+        expect(editOutcome?.outcome).toBe("sent");
+        const lastCall = fetchMock.mock.calls.at(-1)!;
+        expect(String(lastCall[0])).toContain("/channels/chan-tournois/messages/msg-announce");
+        expect(String(lastCall[0])).not.toContain("chan-tournois-NOUVEAU");
+      });
+    });
+
+    describe("erreurs Discord — message supprimé, réseau incertain", () => {
       it("message d'annonce supprimé manuellement (404 sur l'EDIT) : FAILED terminal, jamais republié", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
         for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         await processOne();
@@ -370,7 +484,15 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await expect(
           db.$transaction(async (tx) => {
             const created = await tx.tournament.create({
-              data: { name: uniq("tournoi"), gameId: game.id, createdById: creator.id, maxPlayers: 4, announceViaBot: true },
+              data: {
+                name: uniq("tournoi"),
+                gameId: game.id,
+                createdById: creator.id,
+                maxPlayers: 4,
+                announceViaBot: true,
+                discordGuildId: "guild-1",
+                discordChannelId: "chan-tournois",
+              },
             });
             tournamentId = created.id;
             await announceLib.enqueueTournamentCreationDeliveries(created.id, tx);
@@ -422,9 +544,6 @@ describe.skipIf(!TEST_DATABASE_URL)(
         ).rejects.toThrow("panne enqueue");
 
         const stored = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
-        // La clôture n'a PAS eu lieu — toujours IN_PROGRESS, jamais championId
-        // posé, exactement comme si `declareWinner` n'avait jamais été appelée
-        // sur ce match (le match final lui-même n'a pas non plus été tranché).
         expect(stored.status).toBe("IN_PROGRESS");
         expect(stored.championId).toBeNull();
         const finalAfter = await db.tournamentMatch.findUniqueOrThrow({ where: { id: final.id } });
@@ -462,9 +581,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const second = await tournamentsLib.declareWinner(match.id, winnerId, creator.id);
         expect(second.ok).toBe(false);
 
-        // Un seul enqueue au total pour ce tournoi jusqu'ici (le lancement,
-        // pas la finale — round 1 n'est jamais la finale sur un bracket à 4).
-        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MODIFIED" } })).toBe(1);
+        expect(
+          await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MODIFIED" } })
+        ).toBe(1);
       });
     });
 
@@ -529,7 +648,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(row.attempts).toBe(0);
       });
 
-      it("route cron — catégorie TOURNAMENT désormais dispatchée vers le vrai résolveur du chantier", async () => {
+      it("route cron — catégorie TOURNAMENT dispatchée vers le vrai résolveur du chantier (GET + SEND + SEND fil)", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id);
@@ -537,7 +656,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         vi.stubEnv("CRON_SECRET", "s3cret");
         vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
 
         const { GET } = await import("@/app/api/cron/notification-executor/route");
@@ -547,31 +666,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const body = await res.json();
         expect(body.sent).toBe(2);
         expect(body.failed).toBe(0);
-      });
-
-      it("changement de destination (canal) entre le SEND et une EDIT : jamais de mélange silencieux, échec explicite", async () => {
-        // Même limite héritée de #99 (sessions) — pas de guildId/channelId
-        // persistés sur la livraison, la config est relue en direct à
-        // chaque résolution : un changement de canal entre-temps fait
-        // échouer l'EDIT explicitement (message introuvable dans le NOUVEAU
-        // canal) plutôt que de l'éditer silencieusement au mauvais endroit.
-        const creator = await makeUser();
-        const game = await makeGame(creator.id);
-        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
-        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
-        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
-        await processOne();
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
-        await processOne();
-
-        await launchBracket(tournament.id);
-
-        vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "chan-tournois-v2");
-        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Message" }));
-        const editOutcome = await processOne();
-        expect(editOutcome).toMatchObject({ outcome: "failed", errorClass: "discord:not_found" });
-        expect(String(fetchMock.mock.calls.at(-1)![0])).toContain("/channels/chan-tournois-v2/messages/msg-announce");
+        expect(fetchMock).toHaveBeenCalledTimes(3); // GET + POST annonce + POST fil
       });
     });
 
@@ -587,11 +682,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // l'exécuteur ne traite le SEND initial de l'annonce.
         await db.tournament.update({ where: { id: tournament.id }, data: { status: "IN_PROGRESS" } });
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.embeds[0].title).toContain("en cours");
         expect(body.embeds[0].title).not.toContain("inscriptions ouvertes");
@@ -603,21 +698,18 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
         for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         await processOne();
 
-        // Deux éditions enqueue-ées à la suite, SANS traiter la première —
-        // simule un lancement suivi très vite d'une clôture (bracket à 4,
-        // finale résolue immédiatement après le round 1 côté données).
         await db.tournament.update({ where: { id: tournament.id }, data: { status: "IN_PROGRESS" } });
         await announceLib.enqueueTournamentAnnounceUpdate(tournament.id);
         const champion = await makeUser({ discordName: "champion" });
         await db.tournament.update({ where: { id: tournament.id }, data: { status: "DONE", championId: champion.id } });
         await announceLib.enqueueTournamentAnnounceUpdate(tournament.id);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockSendOk("chan-tournois");
         const editOutcome = await processOne();
         expect(editOutcome?.outcome).toBe("sent");
         const [, editInit] = fetchMock.mock.calls.at(-1)!;
@@ -645,10 +737,10 @@ describe.skipIf(!TEST_DATABASE_URL)(
         for (let i = 0; i < 3; i++) await makeParticipant(tournament.id, (await makeUser()).id);
 
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" }));
+        mockVerifiedSendOk("chan-tournois");
         await processOne();
 
-        const [, sendInit] = fetchMock.mock.calls[0];
+        const [, sendInit] = fetchMock.mock.calls[1];
         const sendBody = JSON.parse(String(sendInit.body));
         expect(sendBody.allowed_mentions).toEqual({ parse: [] });
         expect(sendBody.content).toBeUndefined();

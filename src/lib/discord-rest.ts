@@ -67,7 +67,13 @@ export type DiscordRestErrorKind =
   | "not_found"
   | "rate_limited"
   | "server_error"
-  | "network_uncertain";
+  | "network_uncertain"
+  /** Un salon existe (GET réussi) mais n'appartient pas au serveur
+   * configuré, ou son type ne supporte pas le parcours annonce+fil (voir
+   * `verifyChannelDestination`) — jamais une réponse HTTP d'erreur de
+   * Discord, une conclusion tirée d'une réponse 2xx exploitée. Toujours
+   * non-retryable : un problème de configuration, jamais transitoire. */
+  | "destination_mismatch";
 
 export interface DiscordRestFailure {
   ok: false;
@@ -446,6 +452,32 @@ function parseChannel(json: unknown): DmChannel | null {
   return { channelId: result.data.id };
 }
 
+const channelInfoResponseSchema = z.object({
+  id: z.string(),
+  type: z.number(),
+  // Absent pour un canal de MP (pas de guilde) — jamais le cas pour les
+  // salons de guilde ciblés par `verifyChannelDestination`, mais le champ
+  // reste optionnel côté schéma pour ne pas dépendre d'une garantie de
+  // l'API non documentée comme contractuelle.
+  guild_id: z.string().optional(),
+});
+
+export interface ChannelInfo {
+  channelId: string;
+  /** Type de salon Discord brut (0 = texte de guilde, 5 = annonces, 2 =
+   * vocal, 4 = catégorie, 15 = forum...) — voir `THREAD_CAPABLE_CHANNEL_TYPES`
+   * pour les seuls types compatibles avec le parcours annonce+fil de ce
+   * chantier. */
+  type: number;
+  guildId: string | null;
+}
+
+function parseChannelInfo(json: unknown): ChannelInfo | null {
+  const result = channelInfoResponseSchema.safeParse(json);
+  if (!result.success) return null;
+  return { channelId: result.data.id, type: result.data.type, guildId: result.data.guild_id ?? null };
+}
+
 // Discord limite le nom d'un fil à 100 caractères — tronqué défensivement
 // (avec avertissement) plutôt que de dépenser un appel pour un 400
 // évitable.
@@ -503,6 +535,143 @@ export async function sendChannelMessage(input: SendMessageInput): Promise<Disco
     now: input.now,
     isDirectMessage: input.isDirectMessage,
     parse: parseMessage,
+  });
+}
+
+export interface GetChannelInput {
+  channelId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/** `GET /channels/{id}` — lecture seule, mêmes garanties de budget/timeout
+ * que tout autre appel de ce module (voir le commentaire de fichier).
+ * Utilisée par `verifyChannelDestination` pour confirmer qu'un salon
+ * appartient bien au serveur attendu AVANT tout envoi — jamais un appel
+ * "gratuit" hors du budget de la livraison qui l'utilise. */
+export async function getChannel(input: GetChannelInput): Promise<DiscordRestResult<ChannelInfo>> {
+  return discordRequest({
+    method: "GET",
+    path: `/channels/${input.channelId}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseChannelInfo,
+  });
+}
+
+/** Types de salon Discord acceptant `POST .../messages/{id}/threads`
+ * (création de fil public à partir d'un message) — texte de guilde (0) et
+ * annonces (5). Voir la doc Discord des types de channel ; tout autre
+ * type (vocal, catégorie, forum, DM...) ne supporte pas le parcours
+ * annonce+fil de ce chantier. */
+export const THREAD_CAPABLE_CHANNEL_TYPES: ReadonlySet<number> = new Set([0, 5]);
+
+export interface VerifyChannelDestinationInput {
+  channelId: string;
+  guildId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+export interface VerifiedChannel {
+  channelId: string;
+}
+
+/**
+ * Vérifie, via un `GET` réel (jamais une simple validation de format
+ * d'id), qu'un salon appartient bien au serveur `guildId` configuré ET
+ * que son type supporte le parcours annonce+fil — AVANT tout envoi.
+ * Trois issues distinctes, toutes observables :
+ *   - le `GET` échoue (permission, salon supprimé, réseau incertain,
+ *     rate limit...) → renvoie CETTE MÊME `DiscordRestFailure`, avec sa
+ *     classification `retryable` déjà correcte (héritée telle quelle de
+ *     `discordRequest`, jamais réévaluée ici) ;
+ *   - le `GET` réussit mais `guild_id` ne correspond pas → `destination_mismatch`,
+ *     non-retryable (le salon existe, mais n'est pas dans le bon
+ *     serveur — retenter avec la même configuration ne change rien) ;
+ *   - le `GET` réussit mais le type de salon ne supporte pas les fils →
+ *     `destination_mismatch`, non-retryable, même raisonnement.
+ * Consomme le même budget réseau que n'importe quel autre appel de ce
+ * client (un seul `deadline` partagé avec l'appelant, voir
+ * `sendChannelMessageVerified` pour la composition avec l'envoi).
+ */
+export async function verifyChannelDestination(
+  input: VerifyChannelDestinationInput
+): Promise<DiscordRestResult<VerifiedChannel>> {
+  const result = await getChannel({ channelId: input.channelId, deadline: input.deadline, now: input.now });
+  if (!result.ok) return result;
+
+  if (result.data.guildId !== input.guildId) {
+    return {
+      ok: false,
+      kind: "destination_mismatch",
+      message: "Le salon configuré n'appartient pas au serveur Discord configuré.",
+      retryable: false,
+    };
+  }
+  if (!THREAD_CAPABLE_CHANNEL_TYPES.has(result.data.type)) {
+    return {
+      ok: false,
+      kind: "destination_mismatch",
+      message: `Type de salon Discord (${result.data.type}) incompatible avec le parcours annonce+fil.`,
+      retryable: false,
+    };
+  }
+  return { ok: true, data: { channelId: result.data.channelId } };
+}
+
+export interface SendChannelMessageVerifiedInput extends MessageContentInput {
+  channelId: string;
+  guildId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/**
+ * Vérifie la destination (`verifyChannelDestination`) PUIS envoie —
+ * JAMAIS de `POST` si la vérification échoue, quelle qu'en soit la
+ * raison (mauvais serveur, mauvais type, échec/timeout du `GET` lui-même)
+ * : aucun message n'est composé ni tenté tant que le salon n'est pas
+ * confirmé. Même `deadline`/`now` partagés entre les deux appels, jamais
+ * recalculés entre-temps (même garantie de composition que
+ * `sendDirectMessage`, qui partage son budget entre ouverture de MP et
+ * envoi).
+ *
+ * Réservée au TOUT PREMIER envoi d'une annonce (voir
+ * `tournament-announce.ts`) — une fois la destination confirmée et le
+ * message envoyé, les éditions/messages de fil ultérieurs ciblent
+ * directement la référence du message RÉELLEMENT créé (channelId/messageId
+ * persistés depuis la réponse Discord de ce premier envoi), sans jamais
+ * revérifier : ils ne peuvent physiquement pas dériver vers un autre
+ * salon, l'id du message cible appartient définitivement au salon où il a
+ * été créé.
+ */
+export async function sendChannelMessageVerified(
+  input: SendChannelMessageVerifiedInput
+): Promise<DiscordRestResult<SentMessage>> {
+  if (!hasContent(input)) {
+    return {
+      ok: false,
+      kind: "invalid_request",
+      message: "Aucun contenu ni embed fourni — rien à envoyer.",
+      retryable: false,
+    };
+  }
+  const verified = await verifyChannelDestination({
+    channelId: input.channelId,
+    guildId: input.guildId,
+    deadline: input.deadline,
+    now: input.now,
+  });
+  if (!verified.ok) return verified;
+
+  return sendChannelMessage({
+    channelId: verified.data.channelId,
+    content: input.content,
+    embeds: input.embeds,
+    allowedMentions: input.allowedMentions,
+    deadline: input.deadline,
+    now: input.now,
   });
 }
 

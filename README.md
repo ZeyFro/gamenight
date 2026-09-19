@@ -9233,18 +9233,20 @@ des deux n'est activé par cette PR. `getTournamentAnnounceConfig()`
 jamais une valeur partielle exploitable, relue à chaque appel (pas de
 cache module-level).
 
-**Limite assumée, héritée à l'identique de #99, non résolue par cette
-PR** : la vérification "ce salon appartient bien à ce serveur" reste une
-simple vérification de PRÉSENCE de la paire `guildId`/`channelId` — ce
-dépôt ne fait, ni pour les soirées ni pour les tournois, aucun appel
-Discord de type "GET /channels/{id}" pour confirmer que `channelId`
-appartient réellement à `guildId` avant le premier envoi. Ce n'est PAS
-présenté comme une preuve d'appartenance — un format d'ID valide seul ne
-prouve rien, et ce module ne le prétend pas. La protection réelle contre
-un mélange de destination vient d'ailleurs (voir section suivante) : un
-message envoyé au mauvais salon/serveur échouerait de toute façon côté
-Discord (permission refusée ou salon introuvable), classé terminal,
-jamais silencieux.
+**Corrigé lors de la revue ciblée avant merge (voir section dédiée
+ci-dessous, "Revue ciblée avant merge — contrôle de destination")** : la
+version initiale de cette PR ne faisait qu'une vérification de PRÉSENCE
+de la paire `guildId`/`channelId`, sans confirmer que `channelId`
+appartient réellement à `guildId`. Corrigé : le tout premier SEND d'un
+tournoi vérifie désormais via un VRAI appel Discord
+(`GET /channels/{id}`) que le salon appartient au bon serveur ET que son
+type supporte le parcours annonce+fil, AVANT tout envoi — voir
+`verifyChannelDestination`/`sendChannelMessageVerified`
+(`src/lib/discord-rest.ts`). Cette vérification n'est PAS refaite pour
+chaque EDIT/fil ultérieur (inutile : ils ciblent la référence du message
+déjà confirmé, voir plus bas) — cette limite reste donc partagée avec les
+soirées (#99) pour LEURS propres éditions, chantier non retouché ici (pas
+de refonte générale des soirées demandée).
 
 ### Transport figé à la création — jamais deux annonces pour un même tournoi
 
@@ -9264,14 +9266,21 @@ relu depuis l'env ensuite. Garanties vérifiées par test
   (webhook) est explicitement SKIPPÉE pour un tournoi `announceViaBot=true`
   (l'EDIT + le résumé de fil bot ont déjà été enqueue dans la transaction
   de `declareWinner`).
-- **Changement de destination sans mélange** — même limite structurelle
-  qu'observée pour les soirées (#99) : aucun `guildId`/`channelId` n'est
-  persisté sur la livraison elle-même, la config est relue en direct à
-  chaque résolution. Un changement de `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`
-  entre le SEND initial et une EDIT ultérieure fait échouer l'EDIT
-  EXPLICITEMENT (le `messageId` de l'ancien SEND n'existe pas dans le
-  NOUVEAU salon → 404 côté Discord → `FAILED` terminal, observable) —
-  jamais une édition silencieuse au mauvais endroit. Testé explicitement.
+- **Changement de destination sans mélange, y compris avant le tout
+  premier SEND** — corrigé lors de la revue ciblée (voir section dédiée
+  ci-dessous) : `Tournament.discordGuildId`/`discordChannelId`
+  (migration additive `20260919090000_add_tournament_discord_destination`)
+  persistent la destination EN MÊME TEMPS que `announceViaBot`, à la
+  création. Le résolveur n'utilise plus JAMAIS `getTournamentAnnounceConfig()`
+  comme source de destination (seulement comme porte d'activation globale
+  de la catégorie) — un changement de `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`
+  n'a donc plus AUCUN effet sur un tournoi déjà créé, même avant son tout
+  premier SEND. Les EDIT/fil qui suivent ciblent ensuite la référence du
+  message RÉELLEMENT créé (`discordChannelId` persisté sur la livraison
+  SEND finalisée), jamais la config ni la colonne du tournoi à nouveau —
+  élimine structurellement le mélange, plutôt que de compter sur un 404 de
+  Discord comme filet de sécurité. Testé explicitement pour les deux
+  fenêtres (changement avant le premier SEND, changement après).
 
 ### Atomicité mutation métier / intention de notification
 
@@ -9317,35 +9326,41 @@ identiques (occurrence FIXE) ne créent jamais de livraison en double ;
 répéter `declareWinner` sur un match déjà tranché renvoie `ok: false` sans
 toucher à la notification déjà enqueue pour ce tournoi.
 
-### Tests (`tournament-announce.integration.test.ts`, 22 tests)
+### Tests (`tournament-announce.integration.test.ts`, 24 tests)
 
 Même philosophie que la suite soirées : PostgreSQL isolé (`TEST_DATABASE_URL`)
 + `fetch` entièrement simulé. Couvre : parcours nominal (création → fil,
 lancement, clôture + résumé, sans aucun XP/badge ré-attribué par ce
 module) ; succès partiel (annonce envoyée, fil échoué, reprise ciblée) ;
 dépendance de fil jamais épuisée (`dependency_not_ready`, aucun appel
-réseau tant que non résolue) ; erreurs Discord (403 terminal, 404 sur EDIT
-terminal, réseau incertain retryable sans repli webhook) ; atomicité
-(création/lancement/clôture, rollback complet sur échec d'enqueue,
-répétition sans doublon) ; transport figé (avant/après switch, config
-absente, exécuteur désactivé, dispatch réel par la route cron, changement
-de destination sans mélange) ; péremption (SEND traité après progression
-du tournoi rend l'état réel, éditions successives convergent vers la plus
+réseau tant que non résolue) ; **contrôle de destination** (salon d'un
+autre serveur → aucun POST, type de salon incompatible → aucun POST,
+échec/timeout de la vérification → aucun envoi, changement de config
+avant le premier SEND, changement de config après création de l'annonce —
+voir section dédiée ci-dessous) ; erreurs Discord (404 sur EDIT terminal,
+jamais republié) ; atomicité (création/lancement/clôture, rollback
+complet sur échec d'enqueue, répétition sans doublon) ; transport figé
+(avant/après switch, config absente, exécuteur désactivé, dispatch réel
+par la route cron) ; péremption (SEND traité après progression du
+tournoi rend l'état réel, éditions successives convergent vers la plus
 récente) ; aucune mention (même avec un nom d'utilisateur ressemblant à
 une syntaxe de mention Discord).
 
-`npm run test:postgres` : **394/394 verts** (372 hérités de tous les
+`npm run test:postgres` : **396/396 verts** (372 hérités de tous les
 chantiers précédents, non modifiés par cette PR sauf un commentaire de
-test corrigé pour rester exact — voir note ci-dessous —, + 22 nouveaux).
-Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE (98 tests
+test corrigé pour rester exact — voir note ci-dessous —, + 24 nouveaux).
+Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE (100 tests
 d'intégration au total, répartis sur les deux chantiers), reste
 distinguée clairement dans la sortie Vitest. `npx tsc --noEmit`/`npx eslint .` :
 clean sur tout le dépôt. `npx next build` (sans migration distante) :
 compile sans erreur, toutes les routes existantes inchangées hors
 `/api/cron/notification-executor` (dispatch étendu à `TOURNAMENT`).
-Migration `20260918100000_add_tournament_announce_via_bot` (additive
-uniquement, `ALTER TABLE ... ADD COLUMN ... DEFAULT false`) testée sur la
-base Postgres isolée locale, jamais appliquée à Neon par cette PR.
+Les deux migrations (`20260918100000_add_tournament_announce_via_bot`,
+`20260919090000_add_tournament_discord_destination`, additives
+uniquement) sont testées sur la base Postgres isolée locale, jamais
+appliquées à Neon par cette PR — la migration déjà appliquée en Preview
+(`20260918100000_...`) n'a pas été modifiée, la seconde est un fichier
+séparé.
 
 **Note de précision** : un test existant de `session-announce.integration.test.ts`
 ("catégorie autre que SESSION... toujours NOT_CONFIGURED_RESOLVER")
@@ -9357,6 +9372,80 @@ jamais `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`), mais son intitulé/commentaire
 a été corrigé pour ne plus affirmer que TOURNAMENT n'est "jamais" le
 chantier annonces — c'est désormais le cas, simplement sans configuration
 de salon dans CE test précis.
+
+### Revue ciblée avant merge #100 — contrôle de destination
+
+Revue demandée avant le merge de #100 : vérifier uniquement la présence
+de `guildId`/`channelId` ne garantissait pas que le salon configuré
+appartienne réellement au serveur prévu, et le 404 attendu sur une EDIT
+après changement de configuration ne couvrait pas un premier SEND vers un
+mauvais salon. Trois corrections, chacune testée explicitement :
+
+1. **Vérification réseau réelle avant le tout premier envoi** —
+   `verifyChannelDestination`/`sendChannelMessageVerified`
+   (`src/lib/discord-rest.ts`, nouveau) : un `GET /channels/{id}` PUIS,
+   seulement si le salon appartient au `guildId` attendu ET que son type
+   (`THREAD_CAPABLE_CHANNEL_TYPES` = texte de guilde ou annonces, les
+   seuls supportant `POST .../threads`) permet le parcours annonce+fil,
+   le `POST` d'envoi. Aucun POST si le GET échoue, si le salon appartient
+   à un autre serveur, ou si son type est incompatible — nouveau kind
+   `destination_mismatch` (non-retryable) pour les deux derniers cas,
+   distingué des échecs réseau (`network_uncertain`, retryable). Même
+   budget réseau que tout autre appel de ce client (`deadline`/`now`
+   partagés entre le GET et le POST, jamais recalculés entre les deux —
+   même garantie de composition que `sendDirectMessage`). Nouveau kind
+   `ResolvedAction`, `send_channel_message_verified`
+   (`notification-executor.ts`), réservé au tout premier SEND d'une
+   annonce de tournoi — jamais utilisé pour une EDIT ni un fil, qui
+   n'ont pas besoin d'être revérifiés (voir point 3).
+2. **Destination persistée, stable dès la création, avant même le
+   premier SEND** — `Tournament.discordGuildId`/`discordChannelId`
+   (migration additive `20260919090000_add_tournament_discord_destination`,
+   colonnes nullables) : figées EN MÊME TEMPS que `announceViaBot` dans
+   `createTournamentAction`, une seule lecture de
+   `getTournamentAnnounceConfig()` pour les trois valeurs ensemble
+   (jamais deux lectures séparées qui pourraient voir des valeurs
+   différentes). Le résolveur (`tournamentAnnounceResolver`) n'utilise
+   plus JAMAIS la config live comme source de destination — seulement
+   comme porte d'activation globale de la catégorie
+   (`not_configured` si retirée). Un changement de
+   `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` n'a donc plus AUCUN effet sur un
+   tournoi déjà créé, même si son annonce n'a pas encore été envoyée au
+   moment du changement — testé explicitement.
+3. **Éditions et fil référencent le message RÉELLEMENT créé** — corrigé :
+   `resolveAnnounceDelivery` (branche EDIT) et `resolveThreadCreation`
+   utilisaient jusqu'ici le `channelId` de la config (live), PAS le
+   `discordChannelId` persisté sur la livraison SEND finalisée
+   (`findSentDelivery`), alors même que cette référence était déjà lue
+   pour le `messageId`. Corrigé : les deux utilisent désormais
+   `sent.discordChannelId` — un changement de configuration survenu
+   APRÈS le premier SEND ne peut donc plus jamais faire cibler une EDIT
+   ou une création de fil vers un salon différent de celui où l'annonce
+   existe réellement, testé explicitement (avant, ce cas produisait un
+   404 "accidentellement correct" ; désormais, la référence exacte est
+   utilisée directement, sans dépendre d'un rejet Discord comme filet de
+   sécurité).
+
+**Portée** : ces trois corrections sont propres au chantier tournois — le
+client REST (`discord-rest.ts`) et l'exécuteur (`notification-executor.ts`)
+sont étendus (nouveau kind d'action, nouvelle fonction de vérification),
+jamais réécrits, et `session-announce.ts` (soirées, #99) n'est PAS
+retouché : aucune refonte générale des soirées n'a été demandée ni faite,
+elles gardent leur limite déjà documentée (vérification de présence
+uniquement pour LEUR propre premier SEND). Rien n'empêche une future PR
+de leur appliquer le même mécanisme si nécessaire.
+
+**Tests ajoutés** (`tournament-announce.integration.test.ts`) : salon
+appartenant à un autre serveur (aucun POST, `destination_mismatch`) ;
+type de salon incompatible — vocal (aucun POST, même kind) ; échec/timeout
+du GET de vérification (aucun POST, `network_uncertain` retryable) ;
+changement de configuration AVANT le premier SEND (la destination
+persistée à la création est utilisée, jamais la nouvelle config) ;
+changement de configuration APRÈS création de l'annonce (l'édition cible
+le salon réel de l'annonce, jamais la nouvelle config). Les tests
+préexistants du parcours nominal ont été mis à jour pour simuler le GET
+de vérification en plus du POST sur le tout premier SEND (`mockChannelOk`/
+`mockSendOk`/`mockVerifiedSendOk`, helpers ajoutés dans la suite).
 
 ### Événements couverts vs explicitement hors périmètre
 

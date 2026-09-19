@@ -31,7 +31,31 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  *
  * Organisation : une annonce principale ET un fil par tournoi, sur le SEUL
  * salon configuré (`DISCORD_BOT_TOURNAMENT_CHANNEL_ID`, jamais une
- * destination choisie par un formulaire). Trois rôles de `targetSlot`,
+ * destination choisie par un formulaire).
+ *
+ * Revue ciblée avant merge #100 — contrôle de destination : la
+ * configuration live (`getTournamentAnnounceConfig()`) n'est plus JAMAIS
+ * utilisée comme destination d'un envoi — seulement comme porte
+ * d'activation globale de la catégorie (`not_configured` si absente).
+ * La destination RÉELLE d'un tournoi donné vient de
+ * `Tournament.discordGuildId`/`discordChannelId`, figée UNE SEULE FOIS à
+ * sa création (voir le commentaire du champ, schema.prisma) — un
+ * changement de `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` après coup, même
+ * AVANT le tout premier SEND d'un tournoi déjà créé, n'a donc plus aucun
+ * effet sur lui. Avant le tout premier SEND (et seulement lui — jamais
+ * pour une EDIT ni un fil, voir plus bas), cette destination persistée
+ * est vérifiée via un VRAI appel Discord (`sendChannelMessageVerified`,
+ * discord-rest.ts) : le salon doit appartenir au `guildId` persisté ET
+ * son type doit supporter le parcours annonce+fil — sinon AUCUN envoi
+ * n'est tenté. Les éditions et le fil qui suivent ne redemandent JAMAIS
+ * la config (live ou persistée) : ils utilisent la référence du message
+ * RÉELLEMENT créé (`discordChannelId`/`discordMessageId` persistés sur la
+ * livraison SEND finalisée, lus via `findSentDelivery`) — un changement
+ * de salon survenu APRÈS le premier SEND ne peut donc jamais recombiner
+ * une ancienne annonce avec un nouveau salon : le message édité/le fil
+ * créé cible toujours exactement le salon où l'annonce existe réellement.
+ *
+ * Trois rôles de `targetSlot`,
  * chacun une ligne `NotificationDelivery` distincte (voir
  * `notification-delivery.ts`) :
  *   - `announce` — SEND une fois à la création (inscriptions ouvertes),
@@ -309,8 +333,12 @@ async function findSentDelivery(targetSlot: string) {
  */
 export const tournamentAnnounceResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
-    const config = getTournamentAnnounceConfig();
-    if (!config) return { eligible: false, reason: "not_configured" };
+    // Porte d'activation GLOBALE de la catégorie uniquement — jamais la
+    // source de la destination d'un envoi précis (voir le commentaire de
+    // fichier). Si retirée pendant qu'un tournoi bot a des livraisons en
+    // attente, celles-ci échouent en `not_configured` (même limite
+    // assumée/documentée que pour les soirées, #99).
+    if (!getTournamentAnnounceConfig()) return { eligible: false, reason: "not_configured" };
 
     const tournamentId = event.sourceId;
     const tournament = await loadTournament(tournamentId);
@@ -319,10 +347,10 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     const role = delivery.targetSlot.split(":").slice(3).join(":");
 
     if (role === "announce") {
-      return resolveAnnounceDelivery(delivery, tournament, config.channelId);
+      return resolveAnnounceDelivery(delivery, tournament);
     }
     if (role === "thread") {
-      return resolveThreadCreation(tournamentId, config.channelId);
+      return resolveThreadCreation(tournamentId);
     }
     if (role === "thread-summary") {
       return resolveThreadSummary(tournamentId, tournament);
@@ -337,40 +365,65 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
 
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
-  tournament: TournamentWithMatches,
-  channelId: string
+  tournament: TournamentWithMatches
 ): Promise<Resolution> {
   const rendering = resolveTournamentAnnounceRendering(tournament);
 
   if (delivery.operation === "SEND") {
+    // Destination PERSISTÉE (figée à la création, voir le commentaire de
+    // fichier), jamais la config live — et jamais null pour un tournoi
+    // `announceViaBot: true` (les deux colonnes sont posées ENSEMBLE avec
+    // le booléen, voir `createTournamentAction`). Défensif : un état
+    // incohérent (ne devrait jamais se produire) refuse plutôt que
+    // d'envoyer vers une destination vide.
+    if (!tournament.discordGuildId || !tournament.discordChannelId) {
+      logger.error(
+        "tournament-announce",
+        "Tournoi announceViaBot sans destination persistée — incohérence défensive.",
+        { tournamentId: tournament.id }
+      );
+      return { eligible: false, reason: "not_configured" };
+    }
     const action: ResolvedAction = {
-      kind: "send_channel_message",
-      channelId,
+      kind: "send_channel_message_verified",
+      channelId: tournament.discordChannelId,
+      guildId: tournament.discordGuildId,
       message: buildMessageContent(rendering.embed),
     };
     return { eligible: true, action };
   }
 
-  // EDIT — nécessite le messageId déjà posté par le SEND initial.
+  // EDIT — nécessite la référence (messageId ET channelId) du message
+  // RÉELLEMENT posté par le SEND initial, jamais la destination persistée
+  // sur le tournoi ni la config live : c'est cette référence, et elle
+  // seule, qui garantit qu'une EDIT ne peut jamais recombiner l'ancienne
+  // annonce avec un salon différent (voir le commentaire de fichier).
   const sent = await findSentDelivery(announceSlot(tournament.id));
-  if (!sent?.discordMessageId) return { eligible: false, reason: "dependency_not_ready" };
+  if (!sent?.discordMessageId || !sent.discordChannelId) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
 
   const action: ResolvedAction = {
     kind: "edit_channel_message",
-    channelId,
+    channelId: sent.discordChannelId,
     messageId: sent.discordMessageId,
     message: buildMessageContent(rendering.embed),
   };
   return { eligible: true, action };
 }
 
-async function resolveThreadCreation(tournamentId: string, channelId: string): Promise<Resolution> {
+async function resolveThreadCreation(tournamentId: string): Promise<Resolution> {
+  // Même garantie que l'EDIT ci-dessus : le fil est créé DANS le salon où
+  // l'annonce a RÉELLEMENT été postée (référence persistée sur la
+  // livraison SEND finalisée), jamais depuis une config relue.
   const sent = await findSentDelivery(announceSlot(tournamentId));
-  if (!sent?.discordMessageId) return { eligible: false, reason: "dependency_not_ready" };
+  if (!sent?.discordMessageId || !sent.discordChannelId) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
 
   const action: ResolvedAction = {
     kind: "create_thread",
-    channelId,
+    channelId: sent.discordChannelId,
     messageId: sent.discordMessageId,
     name: `Tournoi — ${tournamentId.slice(0, 8)}`,
   };

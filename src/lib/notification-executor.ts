@@ -16,6 +16,7 @@ import {
   archiveThread,
   editChannelMessage,
   sendChannelMessage,
+  sendChannelMessageVerified,
   sendDirectMessage,
   sendThreadMessage,
   startThreadFromMessage,
@@ -118,6 +119,20 @@ export interface ResolvedMessageContent {
  */
 export type ResolvedAction =
   | { kind: "send_channel_message"; channelId: string; message: ResolvedMessageContent }
+  | {
+      /** Vérifie via un GET réel que `channelId` appartient à `guildId`
+       * ET que son type supporte le parcours annonce+fil AVANT le POST
+       * (`sendChannelMessageVerified`, discord-rest.ts) — jamais de
+       * message envoyé si la vérification échoue. Réservée au tout
+       * premier SEND d'une annonce (chantier tournois) ; les éditions et
+       * messages de fil qui suivent ciblent directement la référence du
+       * message réellement créé, jamais revérifiée (voir le commentaire
+       * de `sendChannelMessageVerified`). */
+      kind: "send_channel_message_verified";
+      channelId: string;
+      guildId: string;
+      message: ResolvedMessageContent;
+    }
   | {
       kind: "edit_channel_message";
       channelId: string;
@@ -308,6 +323,21 @@ export async function performDiscordAction(
     case "send_channel_message": {
       const result = await sendChannelMessage({
         channelId: action.channelId,
+        content: action.message.content,
+        embeds: action.message.embeds,
+        allowedMentions: action.message.allowedMentions,
+        deadline,
+        now,
+      });
+      return mapDiscordResult(result, (data) => ({
+        discordMessageId: data.messageId,
+        discordChannelId: data.channelId,
+      }));
+    }
+    case "send_channel_message_verified": {
+      const result = await sendChannelMessageVerified({
+        channelId: action.channelId,
+        guildId: action.guildId,
         content: action.message.content,
         embeds: action.message.embeds,
         allowedMentions: action.message.allowedMentions,

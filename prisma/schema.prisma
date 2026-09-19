@@ -1404,6 +1404,26 @@ model Tournament {
   // annoncé sur un canal donné reste sur CE canal. `@default(false)` : tout
   // tournoi créé avant cette colonne reste silencieusement sur le webhook.
   announceViaBot Boolean @default(false)
+
+  // Revue ciblée avant merge #100 — destination Discord figée UNE SEULE
+  // FOIS, en même temps que `announceViaBot`, à la création de CE tournoi
+  // précis (jamais relue depuis l'env ensuite, y compris avant le tout
+  // premier SEND) : `null`/`null` pour un tournoi webhook, sinon la copie
+  // EXACTE de `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_TOURNAMENT_CHANNEL_ID`
+  // lue au moment de la création. Le résolveur (`tournament-announce.ts`)
+  // utilise TOUJOURS ces colonnes pour le premier SEND (vérifié via un GET
+  // réel avant tout envoi, voir `verifyChannelDestination`/
+  // `sendChannelMessageVerified`, discord-rest.ts) — jamais
+  // `getTournamentAnnounceConfig()` pour la destination elle-même
+  // (seulement pour la porte d'activation globale de la catégorie). Les
+  // éditions/messages de fil qui suivent utilisent ensuite la référence du
+  // message RÉELLEMENT créé (persistée sur la livraison via
+  // `discordChannelId`), jamais ces colonnes ni l'env à nouveau — élimine
+  // structurellement tout mélange entre une ancienne annonce et un nouveau
+  // salon, y compris un changement de configuration survenu avant le tout
+  // premier envoi.
+  discordGuildId   String?
+  discordChannelId String?
 }
 
 // `seed` : ordre de tirage aléatoire au lancement du tournoi (pas de
