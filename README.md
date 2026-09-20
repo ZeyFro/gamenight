@@ -9253,8 +9253,10 @@ de refonte générale des soirées demandée).
 `Tournament.announceViaBot` (migration additive
 `20260918100000_add_tournament_announce_via_bot`, `DEFAULT false`) fige
 EXACTEMENT le même contrat que `Session.announceViaBot` : décidé une
-seule fois par `isTournamentAnnounceViaBotEnabled()` à la création, jamais
-relu depuis l'env ensuite. Garanties vérifiées par test
+seule fois dans `createTournamentAction` (`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED
+=== "true"` ET configuration de salon complète, lues ensemble avec la
+destination — voir la section "contrôle de destination" ci-dessous),
+jamais relu depuis l'env ensuite. Garanties vérifiées par test
 (`tournament-announce.integration.test.ts`) :
 - Un tournoi créé AVANT le switch reste sur webhook même après activation
   du flag — `announceViaBot=false` ne consulte jamais `getTournamentAnnounceConfig()`
@@ -9262,6 +9264,20 @@ relu depuis l'env ensuite. Garanties vérifiées par test
 - Un tournoi créé APRÈS le switch reste sur bot même après un rollback du
   flag — la décision ne dépend que de la colonne persistée, jamais de
   l'état courant de l'env.
+- **Précision demandée avant merge #100** : `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`
+  détermine UNIQUEMENT le transport des NOUVEAUX tournois, lu une seule
+  fois à la création — `tournamentAnnounceResolver` ne le consulte JAMAIS
+  (sa seule porte est `getTournamentAnnounceConfig()`, la présence de
+  `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_TOURNAMENT_CHANNEL_ID`, jamais ce
+  flag). Désactiver ce flag APRÈS la création d'un tournoi
+  `announceViaBot=true` n'empêche donc ni son premier SEND encore en
+  attente, ni son fil, ni ses éditions (lancement, clôture), ni son
+  résumé final — tant que l'exécuteur (`NOTIFICATION_EXECUTOR_ENABLED`)
+  reste actif et que la configuration de salon reste présente. Vérifié
+  par un test dédié qui traite RÉELLEMENT les 4 rôles de livraison via la
+  vraie route cron, flag catégorie désactivé du début à la fin (voir
+  `tournament-announce.integration.test.ts`, describe "transport figé à
+  la création").
 - Jamais les deux transports pour la même clôture : `announceTournamentFinalization`
   (webhook) est explicitement SKIPPÉE pour un tournoi `announceViaBot=true`
   (l'EDIT + le résumé de fil bot ont déjà été enqueue dans la transaction
@@ -9326,7 +9342,7 @@ identiques (occurrence FIXE) ne créent jamais de livraison en double ;
 répéter `declareWinner` sur un match déjà tranché renvoie `ok: false` sans
 toucher à la notification déjà enqueue pour ce tournoi.
 
-### Tests (`tournament-announce.integration.test.ts`, 24 tests)
+### Tests (`tournament-announce.integration.test.ts`, 25 tests)
 
 Même philosophie que la suite soirées : PostgreSQL isolé (`TEST_DATABASE_URL`)
 + `fetch` entièrement simulé. Couvre : parcours nominal (création → fil,
@@ -9341,15 +9357,17 @@ voir section dédiée ci-dessous) ; erreurs Discord (404 sur EDIT terminal,
 jamais republié) ; atomicité (création/lancement/clôture, rollback
 complet sur échec d'enqueue, répétition sans doublon) ; transport figé
 (avant/après switch, config absente, exécuteur désactivé, dispatch réel
-par la route cron) ; péremption (SEND traité après progression du
-tournoi rend l'état réel, éditions successives convergent vers la plus
-récente) ; aucune mention (même avec un nom d'utilisateur ressemblant à
-une syntaxe de mention Discord).
+par la route cron, **flag catégorie désactivé après création sans effet
+sur les 4 rôles de livraison d'un tournoi déjà bot** — voir ci-dessus) ;
+péremption (SEND traité après progression du tournoi rend l'état réel,
+éditions successives convergent vers la plus récente) ; aucune mention
+(même avec un nom d'utilisateur ressemblant à une syntaxe de mention
+Discord).
 
-`npm run test:postgres` : **396/396 verts** (372 hérités de tous les
+`npm run test:postgres` : **397/397 verts** (372 hérités de tous les
 chantiers précédents, non modifiés par cette PR sauf un commentaire de
-test corrigé pour rester exact — voir note ci-dessous —, + 24 nouveaux).
-Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE (100 tests
+test corrigé pour rester exact — voir note ci-dessous —, + 25 nouveaux).
+Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE (101 tests
 d'intégration au total, répartis sur les deux chantiers), reste
 distinguée clairement dans la sortie Vitest. `npx tsc --noEmit`/`npx eslint .` :
 clean sur tout le dépôt. `npx next build` (sans migration distante) :

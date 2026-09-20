@@ -614,6 +614,66 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(fetchMock).not.toHaveBeenCalled();
       });
 
+      it("flag catégorie désactivé APRÈS création : n'empêche ni le premier SEND en attente, ni le fil, ni les éditions, ni le résumé final — tant que l'exécuteur et la config de salon restent actifs", async () => {
+        // Complète le test précédent (qui ne prouve que l'enqueue, jamais
+        // le traitement réel) : `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`
+        // ne détermine QUE le transport des NOUVEAUX tournois, lu une
+        // seule fois dans `createTournamentAction` — `tournamentAnnounceResolver`
+        // ne le consulte JAMAIS (voir son commentaire de fichier, section
+        // "Porte d'activation GLOBALE de la catégorie") : sa seule porte
+        // est `getTournamentAnnounceConfig()` (présence de `DISCORD_BOT_GUILD_ID`/
+        // `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`), jamais ce flag. Ce test
+        // traite RÉELLEMENT les 4 rôles de livraison (SEND annonce, SEND
+        // fil, EDIT lancement, EDIT clôture + SEND résumé) via la VRAIE
+        // route cron (`NOTIFICATION_EXECUTOR_ENABLED=true`), avec le flag
+        // catégorie explicitement désactivé du début à la fin — un
+        // tournoi déjà `announceViaBot=true` utilise sa décision et sa
+        // destination persistées, jamais ce flag.
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: true, maxPlayers: 4 });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        vi.stubEnv("DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "false");
+        vi.stubEnv("CRON_SECRET", "s3cret");
+        vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
+        const { GET } = await import("@/app/api/cron/notification-executor/route");
+        const runCron = () =>
+          GET(new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } }));
+
+        // 1) SEND annonce (avec vérification GET) + SEND fil — encore en
+        // attente depuis AVANT la désactivation du flag.
+        mockVerifiedSendOk("chan-tournois");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        const afterCreation = await runCron();
+        expect((await afterCreation.json()).sent).toBe(2);
+
+        // 2) Lancement du bracket → EDIT de l'annonce ("en cours").
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        const afterLaunch = await runCron();
+        expect((await afterLaunch.json()).sent).toBe(1);
+
+        // 3) Clôture → EDIT de l'annonce ("terminé") + SEND du résumé de fil.
+        const result = await finalizeTournament(tournament.id, creator.id);
+        expect(result.tournamentDone).toBe(true);
+        mockSendOk("chan-tournois"); // EDIT clôture
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-summary", channel_id: "thread-1" })); // SEND résumé
+        const afterClosure = await runCron();
+        const closureBody = await afterClosure.json();
+        expect(closureBody.sent).toBe(2);
+        expect(closureBody.failed).toBe(0);
+
+        // Toutes les livraisons de ce tournoi ont bien atteint SENT malgré
+        // le flag désactivé tout du long.
+        const deliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: { startsWith: `default-guild:TOURNAMENT:${tournament.id}:` } },
+        });
+        expect(deliveries.every((d) => d.status === "SENT" || d.status === "SKIPPED")).toBe(true);
+        expect(deliveries.filter((d) => d.status === "SENT")).toHaveLength(5); // announce SEND, thread SEND, announce EDIT×2, thread-summary SEND
+      });
+
       it("configuration absente (canal tournois non renseigné) : not_configured terminal, aucun appel Discord", async () => {
         vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "");
         const creator = await makeUser();
