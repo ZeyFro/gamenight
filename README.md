@@ -9156,3 +9156,357 @@ livraison pour la tentative réussie ; deux enqueue de création identiques
 **372/372 verts** (366 hérités + 6 nouveaux). `tsc`/`eslint` clean sur
 tout le dépôt. `next build` sans migration distante : OK. Toujours aucune
 activation, aucun appel Discord réel, aucune surveillance récurrente.
+
+## Chantier annonces Discord tournois — salon #🏆-tournois et fil par tournoi
+
+Étend le chantier ci-dessus (#95/#96/#97/#98/#99, tous fusionnés) à la
+catégorie `TOURNAMENT`, sans en dupliquer aucun mécanisme : mêmes
+fondations de livraison, même client REST, même exécuteur, même principe
+"transport figé par entité à la création". `#🎮-soirées` (chemin ci-dessus)
+reste totalement inchangé. `#🎖️-récompenses` reste un chantier futur,
+explicitement hors de cette PR (aucune notion de récompense/XP touchée
+ici).
+
+### Inventaire des chemins métier réels (avant implémentation)
+
+| Événement métier | Comportement actuel (avant cette PR) | Comportement Discord retenu | Fichier |
+|---|---|---|---|
+| Création (`createTournamentAction`) | Webhook `postToDiscord` : "inscriptions ouvertes" + lien | `announceViaBot=true` : SEND annonce + SEND création de fil (dans la même transaction que `tournament.create`) ; sinon webhook inchangé | `src/app/tournois/actions.ts` |
+| Inscription/désinscription (`register`/`unregisterFromTournamentAction`) | Aucune notification (webhook ou interne) | Aucune nouvelle notification — respecte explicitement "pas de message par inscription/désinscription" (spec) | `src/app/tournois/actions.ts` |
+| Lancement du bracket, places pleines OU anticipé (`buildBracketInTransaction`, appelée par `registerForTournamentAction` et par `generateBracket`/`launchTournamentAction`) | Aucune notification (jamais eu de notif de lancement) | `announceViaBot=true` : EDIT de l'annonce ("en cours", places, rounds), enqueue DANS la même transaction que `status: IN_PROGRESS` | `src/lib/tournaments.ts` |
+| Match résolu (`declareWinner`, hors finale) | Aucune notification par match (jamais eu, et explicitement exclu par la spec : "pas d'annonce par match/score") | Inchangé — aucune notification par match, ni webhook ni bot | `src/lib/tournaments.ts` |
+| Clôture / finale (`declareWinner` → `tournamentFinalized`, effets dans `announceTournamentFinalization`) | Webhook `postToDiscord` : "X remporte le tournoi" + XP (1er/2e/demi-finalistes) + badges | `announceViaBot=true` : EDIT annonce ("terminé", champion) + SEND résumé de fil (champion/finaliste/demi-finalistes), enqueue DANS la même transaction que `status: DONE`/`championId` ; webhook explicitement SKIPPÉ pour un tournoi bot (jamais les deux). XP/badges **inchangés, mêmes règles, jamais dupliqués, jamais déplacés** dans cette PR | `src/lib/tournaments.ts` |
+| Annulation | **N'existe pas** : `TournamentStatus` n'a que `REGISTRATION`/`IN_PROGRESS`/`DONE`, aucune fonction `cancelTournament`, aucun statut `CANCELLED` | Non implémenté — aucune règle de tournoi inventée par cette PR (spec : "pas de nouvelle règle de tournoi") | — |
+| Suppression | **N'existe pas** (aucune fonction `deleteTournament`) | Non implémenté, même raison | — |
+| Correction de résultat après clôture | **N'existe pas** : `declareWinner` réclame `completedAt: null`, un match déjà tranché ne peut plus être rejoué | Non implémenté, même raison | — |
+| Cron dédié aux tournois | **N'existe pas** — aucun cron de tournoi (contrairement aux rappels de soirée, F7) | Rien à ajouter : pas de notion de rappel de tournoi dans le produit actuel | — |
+
+### Organisation des livraisons (`src/lib/tournament-announce.ts`)
+
+Trois `targetSlot` par tournoi (`default-guild:TOURNAMENT:<id>:<rôle>`),
+même contrat que les soirées :
+- **`announce`** — SEND à la création ("inscriptions ouvertes"), EDIT au
+  lancement du bracket ("en cours") et à la clôture ("terminé"). Rendue
+  depuis l'état COURANT du tournoi en base à chaque traitement (jamais un
+  texte figé à l'enqueue) — une annonce en retard après que le tournoi a
+  déjà progressé rend l'état RÉEL, jamais une fausse invitation à
+  s'inscrire pour un tournoi déjà lancé/terminé.
+- **`thread`** — SEND une fois, crée le fil à partir du message
+  d'annonce ; dépend explicitement que `announce` soit `SENT`.
+- **`thread-summary`** — SEND à la clôture, résumé (champion, finaliste,
+  demi-finalistes, tous en texte brut, jamais mentionnés) posté dans le
+  fil ; dépend que `thread` soit `SENT`.
+
+Pas de rôle "rappel" (contrairement aux soirées, F7) : aucune notion de
+rappel n'existe pour les tournois dans le produit actuel, non inventée
+ici.
+
+### Aucune mention, jamais de sollicitation personnelle nouvelle
+
+Conformément à la spec (§5) : `allowedMentions` vaut explicitement
+`{ parse: [] }` (aucun `users`, aucun `roles`) sur TOUS les messages de ce
+module — SEND et EDIT, sans exception. Les noms de participants
+apparaissent en texte brut (`champion.discordName`, etc.), jamais sous
+forme `<@id>`. Aucune notification interne (`createNotifications`)
+n'est écrite par ce module : le chemin webhook actuel n'en écrivait déjà
+aucune pour les tournois (vérifié : ni `tournaments.ts` ni
+`src/app/tournois/actions.ts` n'importent `createNotifications`), donc
+rien n'est retiré ni ajouté silencieusement. `SESSION`/`ROULETTE`
+(`UserNotificationCategory`, #98) ne sont ni réutilisées ni étendues pour
+simuler une préférence `TOURNAMENT` — aucune n'existe, aucune n'est
+introduite par cette PR.
+
+### Configuration (variables ajoutées)
+
+```
+DISCORD_BOT_GUILD_ID=              # partagé avec le chantier soirées
+DISCORD_BOT_TOURNAMENT_CHANNEL_ID= # ID du salon #🏆-tournois
+DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED= # "true" exact pour activer, sinon legacy webhook
+```
+
+Deux verrous indépendants, comme pour les soirées : `NOTIFICATION_EXECUTOR_ENABLED`
+ET `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` doivent être activés
+ENSEMBLE pour qu'une annonce/fil de tournoi bot parte réellement — aucun
+des deux n'est activé par cette PR. `getTournamentAnnounceConfig()`
+(`src/lib/discord-bot-config.ts`) applique EXACTEMENT le même contrat que
+`getSessionAnnounceConfig()` : `null` si `guildId`/`channelId` absents,
+jamais une valeur partielle exploitable, relue à chaque appel (pas de
+cache module-level).
+
+**Corrigé lors de la revue ciblée avant merge (voir section dédiée
+ci-dessous, "Revue ciblée avant merge — contrôle de destination")** : la
+version initiale de cette PR ne faisait qu'une vérification de PRÉSENCE
+de la paire `guildId`/`channelId`, sans confirmer que `channelId`
+appartient réellement à `guildId`. Corrigé : le tout premier SEND d'un
+tournoi vérifie désormais via un VRAI appel Discord
+(`GET /channels/{id}`) que le salon appartient au bon serveur ET que son
+type supporte le parcours annonce+fil, AVANT tout envoi — voir
+`verifyChannelDestination`/`sendChannelMessageVerified`
+(`src/lib/discord-rest.ts`). Cette vérification n'est PAS refaite pour
+chaque EDIT/fil ultérieur (inutile : ils ciblent la référence du message
+déjà confirmé, voir plus bas) — cette limite reste donc partagée avec les
+soirées (#99) pour LEURS propres éditions, chantier non retouché ici (pas
+de refonte générale des soirées demandée).
+
+### Transport figé à la création — jamais deux annonces pour un même tournoi
+
+`Tournament.announceViaBot` (migration additive
+`20260918100000_add_tournament_announce_via_bot`, `DEFAULT false`) fige
+EXACTEMENT le même contrat que `Session.announceViaBot` : décidé une
+seule fois dans `createTournamentAction` (`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED
+=== "true"` ET configuration de salon complète, lues ensemble avec la
+destination — voir la section "contrôle de destination" ci-dessous),
+jamais relu depuis l'env ensuite. Garanties vérifiées par test
+(`tournament-announce.integration.test.ts`) :
+- Un tournoi créé AVANT le switch reste sur webhook même après activation
+  du flag — `announceViaBot=false` ne consulte jamais `getTournamentAnnounceConfig()`
+  ni n'enqueue quoi que ce soit.
+- Un tournoi créé APRÈS le switch reste sur bot même après un rollback du
+  flag — la décision ne dépend que de la colonne persistée, jamais de
+  l'état courant de l'env.
+- **Précision demandée avant merge #100** : `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`
+  détermine UNIQUEMENT le transport des NOUVEAUX tournois, lu une seule
+  fois à la création — `tournamentAnnounceResolver` ne le consulte JAMAIS
+  (sa seule porte est `getTournamentAnnounceConfig()`, la présence de
+  `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_TOURNAMENT_CHANNEL_ID`, jamais ce
+  flag). Désactiver ce flag APRÈS la création d'un tournoi
+  `announceViaBot=true` n'empêche donc ni son premier SEND encore en
+  attente, ni son fil, ni ses éditions (lancement, clôture), ni son
+  résumé final — tant que l'exécuteur (`NOTIFICATION_EXECUTOR_ENABLED`)
+  reste actif et que la configuration de salon reste présente. Vérifié
+  par un test dédié qui traite RÉELLEMENT les 4 rôles de livraison via la
+  vraie route cron, flag catégorie désactivé du début à la fin (voir
+  `tournament-announce.integration.test.ts`, describe "transport figé à
+  la création").
+- Jamais les deux transports pour la même clôture : `announceTournamentFinalization`
+  (webhook) est explicitement SKIPPÉE pour un tournoi `announceViaBot=true`
+  (l'EDIT + le résumé de fil bot ont déjà été enqueue dans la transaction
+  de `declareWinner`).
+- **Changement de destination sans mélange, y compris avant le tout
+  premier SEND** — corrigé lors de la revue ciblée (voir section dédiée
+  ci-dessous) : `Tournament.discordGuildId`/`discordChannelId`
+  (migration additive `20260919090000_add_tournament_discord_destination`)
+  persistent la destination EN MÊME TEMPS que `announceViaBot`, à la
+  création. Le résolveur n'utilise plus JAMAIS `getTournamentAnnounceConfig()`
+  comme source de destination (seulement comme porte d'activation globale
+  de la catégorie) — un changement de `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`
+  n'a donc plus AUCUN effet sur un tournoi déjà créé, même avant son tout
+  premier SEND. Les EDIT/fil qui suivent ciblent ensuite la référence du
+  message RÉELLEMENT créé (`discordChannelId` persisté sur la livraison
+  SEND finalisée), jamais la config ni la colonne du tournoi à nouveau —
+  élimine structurellement le mélange, plutôt que de compter sur un 404 de
+  Discord comme filet de sécurité. Testé explicitement pour les deux
+  fenêtres (changement avant le premier SEND, changement après).
+
+### Atomicité mutation métier / intention de notification
+
+Même pattern que la revue ciblée de #99 (client Prisma transactionnel
+`NotificationDb`, `notification-delivery.ts`) — appliqué à TOUS les points
+d'entrée d'un tournoi bot qui mutent ET notifient, pas seulement la
+création :
+- **Création** (`createTournamentAction`) — `tournament.create` +
+  `enqueueTournamentCreationDeliveries` dans le même `prisma.$transaction`.
+- **Lancement du bracket** (`buildBracketInTransaction`) — l'EDIT
+  ("en cours") est enqueue DANS la transaction qui pose `status: IN_PROGRESS`,
+  au même niveau que la génération des matchs elle-même. Atteint aussi
+  bien par un lancement automatique (dernière place prise, dans la
+  transaction de `registerForTournamentAction`) que par un lancement
+  anticipé manuel (`launchTournamentAction` → `generateBracket`, sa PROPRE
+  transaction) — les deux appellent cette même fonction, aucune logique
+  dupliquée entre les deux chemins.
+- **Clôture** (`advanceWinner`, appelée par `declareWinner`) — l'EDIT
+  ("terminé") ET le résumé de fil sont enqueue DANS la transaction qui
+  pose `status: DONE`/`championId`.
+
+Dans les trois cas, un échec d'enqueue fait échouer/rollback la
+transaction ENTIÈRE : la mutation métier concernée (création du tournoi,
+passage `IN_PROGRESS` + génération du bracket, passage `DONE` + résolution
+du dernier match) n'est jamais persistée sans son intention de
+notification, et réciproquement — testé explicitement par injection de
+panne (`vi.spyOn` sur `enqueueTournamentAnnounceUpdate`) pour les trois
+chemins. XP/badges (`awardXp`, `checkTournamentBadges`, dans
+`announceTournamentFinalization`) restent **entièrement inchangés, mêmes
+règles, hors de toute transaction de notification** — best-effort après
+commit, exactement comme avant cette PR ; cette PR n'en modifie ni ne
+duplique aucun.
+
+**Pourquoi pas les autres chemins listés dans l'inventaire ?** Annulation,
+suppression et correction de résultat n'existent PAS dans le produit
+actuel (voir le tableau d'inventaire ci-dessus) — il n'y a donc aucune
+mutation à coupler pour ces chemins, pas une garantie d'atomicité
+manquante : les qualifier de "hors périmètre" serait inexact, ils sont
+simplement absents du code réel que cette PR inspecte et étend.
+
+Idempotence vérifiée par test : deux `enqueueTournamentCreationDeliveries`
+identiques (occurrence FIXE) ne créent jamais de livraison en double ;
+répéter `declareWinner` sur un match déjà tranché renvoie `ok: false` sans
+toucher à la notification déjà enqueue pour ce tournoi.
+
+### Tests (`tournament-announce.integration.test.ts`, 25 tests)
+
+Même philosophie que la suite soirées : PostgreSQL isolé (`TEST_DATABASE_URL`)
++ `fetch` entièrement simulé. Couvre : parcours nominal (création → fil,
+lancement, clôture + résumé, sans aucun XP/badge ré-attribué par ce
+module) ; succès partiel (annonce envoyée, fil échoué, reprise ciblée) ;
+dépendance de fil jamais épuisée (`dependency_not_ready`, aucun appel
+réseau tant que non résolue) ; **contrôle de destination** (salon d'un
+autre serveur → aucun POST, type de salon incompatible → aucun POST,
+échec/timeout de la vérification → aucun envoi, changement de config
+avant le premier SEND, changement de config après création de l'annonce —
+voir section dédiée ci-dessous) ; erreurs Discord (404 sur EDIT terminal,
+jamais republié) ; atomicité (création/lancement/clôture, rollback
+complet sur échec d'enqueue, répétition sans doublon) ; transport figé
+(avant/après switch, config absente, exécuteur désactivé, dispatch réel
+par la route cron, **flag catégorie désactivé après création sans effet
+sur les 4 rôles de livraison d'un tournoi déjà bot** — voir ci-dessus) ;
+péremption (SEND traité après progression du tournoi rend l'état réel,
+éditions successives convergent vers la plus récente) ; aucune mention
+(même avec un nom d'utilisateur ressemblant à une syntaxe de mention
+Discord).
+
+`npm run test:postgres` : **397/397 verts** (372 hérités de tous les
+chantiers précédents, non modifiés par cette PR sauf un commentaire de
+test corrigé pour rester exact — voir note ci-dessous —, + 25 nouveaux).
+Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE (101 tests
+d'intégration au total, répartis sur les deux chantiers), reste
+distinguée clairement dans la sortie Vitest. `npx tsc --noEmit`/`npx eslint .` :
+clean sur tout le dépôt. `npx next build` (sans migration distante) :
+compile sans erreur, toutes les routes existantes inchangées hors
+`/api/cron/notification-executor` (dispatch étendu à `TOURNAMENT`).
+Les deux migrations (`20260918100000_add_tournament_announce_via_bot`,
+`20260919090000_add_tournament_discord_destination`, additives
+uniquement) sont testées sur la base Postgres isolée locale, jamais
+appliquées à Neon par cette PR — la migration déjà appliquée en Preview
+(`20260918100000_...`) n'a pas été modifiée, la seconde est un fichier
+séparé.
+
+**Note de précision** : un test existant de `session-announce.integration.test.ts`
+("catégorie autre que SESSION... toujours NOT_CONFIGURED_RESOLVER")
+affirmait que TOURNAMENT retombait systématiquement sur
+`NOT_CONFIGURED_RESOLVER` — devenu inexact depuis que cette PR branche
+`tournamentAnnounceResolver` dans la route cron. Le RÉSULTAT du test reste
+identique (`resolver:not_configured`, car ce test précis ne configure
+jamais `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`), mais son intitulé/commentaire
+a été corrigé pour ne plus affirmer que TOURNAMENT n'est "jamais" le
+chantier annonces — c'est désormais le cas, simplement sans configuration
+de salon dans CE test précis.
+
+### Revue ciblée avant merge #100 — contrôle de destination
+
+Revue demandée avant le merge de #100 : vérifier uniquement la présence
+de `guildId`/`channelId` ne garantissait pas que le salon configuré
+appartienne réellement au serveur prévu, et le 404 attendu sur une EDIT
+après changement de configuration ne couvrait pas un premier SEND vers un
+mauvais salon. Trois corrections, chacune testée explicitement :
+
+1. **Vérification réseau réelle avant le tout premier envoi** —
+   `verifyChannelDestination`/`sendChannelMessageVerified`
+   (`src/lib/discord-rest.ts`, nouveau) : un `GET /channels/{id}` PUIS,
+   seulement si le salon appartient au `guildId` attendu ET que son type
+   (`THREAD_CAPABLE_CHANNEL_TYPES` = texte de guilde ou annonces, les
+   seuls supportant `POST .../threads`) permet le parcours annonce+fil,
+   le `POST` d'envoi. Aucun POST si le GET échoue, si le salon appartient
+   à un autre serveur, ou si son type est incompatible — nouveau kind
+   `destination_mismatch` (non-retryable) pour les deux derniers cas,
+   distingué des échecs réseau (`network_uncertain`, retryable). Même
+   budget réseau que tout autre appel de ce client (`deadline`/`now`
+   partagés entre le GET et le POST, jamais recalculés entre les deux —
+   même garantie de composition que `sendDirectMessage`). Nouveau kind
+   `ResolvedAction`, `send_channel_message_verified`
+   (`notification-executor.ts`), réservé au tout premier SEND d'une
+   annonce de tournoi — jamais utilisé pour une EDIT ni un fil, qui
+   n'ont pas besoin d'être revérifiés (voir point 3).
+2. **Destination persistée, stable dès la création, avant même le
+   premier SEND** — `Tournament.discordGuildId`/`discordChannelId`
+   (migration additive `20260919090000_add_tournament_discord_destination`,
+   colonnes nullables) : figées EN MÊME TEMPS que `announceViaBot` dans
+   `createTournamentAction`, une seule lecture de
+   `getTournamentAnnounceConfig()` pour les trois valeurs ensemble
+   (jamais deux lectures séparées qui pourraient voir des valeurs
+   différentes). Le résolveur (`tournamentAnnounceResolver`) n'utilise
+   plus JAMAIS la config live comme source de destination — seulement
+   comme porte d'activation globale de la catégorie
+   (`not_configured` si retirée). Un changement de
+   `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` n'a donc plus AUCUN effet sur un
+   tournoi déjà créé, même si son annonce n'a pas encore été envoyée au
+   moment du changement — testé explicitement.
+3. **Éditions et fil référencent le message RÉELLEMENT créé** — corrigé :
+   `resolveAnnounceDelivery` (branche EDIT) et `resolveThreadCreation`
+   utilisaient jusqu'ici le `channelId` de la config (live), PAS le
+   `discordChannelId` persisté sur la livraison SEND finalisée
+   (`findSentDelivery`), alors même que cette référence était déjà lue
+   pour le `messageId`. Corrigé : les deux utilisent désormais
+   `sent.discordChannelId` — un changement de configuration survenu
+   APRÈS le premier SEND ne peut donc plus jamais faire cibler une EDIT
+   ou une création de fil vers un salon différent de celui où l'annonce
+   existe réellement, testé explicitement (avant, ce cas produisait un
+   404 "accidentellement correct" ; désormais, la référence exacte est
+   utilisée directement, sans dépendre d'un rejet Discord comme filet de
+   sécurité).
+
+**Portée** : ces trois corrections sont propres au chantier tournois — le
+client REST (`discord-rest.ts`) et l'exécuteur (`notification-executor.ts`)
+sont étendus (nouveau kind d'action, nouvelle fonction de vérification),
+jamais réécrits, et `session-announce.ts` (soirées, #99) n'est PAS
+retouché : aucune refonte générale des soirées n'a été demandée ni faite,
+elles gardent leur limite déjà documentée (vérification de présence
+uniquement pour LEUR propre premier SEND). Rien n'empêche une future PR
+de leur appliquer le même mécanisme si nécessaire.
+
+**Tests ajoutés** (`tournament-announce.integration.test.ts`) : salon
+appartenant à un autre serveur (aucun POST, `destination_mismatch`) ;
+type de salon incompatible — vocal (aucun POST, même kind) ; échec/timeout
+du GET de vérification (aucun POST, `network_uncertain` retryable) ;
+changement de configuration AVANT le premier SEND (la destination
+persistée à la création est utilisée, jamais la nouvelle config) ;
+changement de configuration APRÈS création de l'annonce (l'édition cible
+le salon réel de l'annonce, jamais la nouvelle config). Les tests
+préexistants du parcours nominal ont été mis à jour pour simuler le GET
+de vérification en plus du POST sur le tout premier SEND (`mockChannelOk`/
+`mockSendOk`/`mockVerifiedSendOk`, helpers ajoutés dans la suite).
+
+### Événements couverts vs explicitement hors périmètre
+
+**Couverts** : création (annonce + fil), lancement du bracket (EDIT
+annonce), clôture/finale (EDIT annonce + résumé de fil).
+
+**Explicitement hors périmètre de cette PR** (aucun n'existe dans le
+produit actuel, aucun n'est inventé ici) : annulation de tournoi,
+suppression de tournoi, correction de résultat après clôture, notification
+par match individuel (exclue par la spec elle-même), rappels de tournoi,
+mentions/pings personnels, nouvelles préférences de notification,
+attribution XP/badge liée à Discord (XP/badges restent gérés exactement
+comme avant, par le code métier existant, jamais par ce module),
+multi-serveur, boutons/interactions Discord, commandes slash.
+
+### Comportement des tournois pré-existants
+
+Tout tournoi créé avant cette migration a `announceViaBot=false` par
+défaut de colonne — reste indéfiniment sur le chemin webhook existant,
+sans aucune action de backfill nécessaire, exactement comme pour les
+soirées pré-#99.
+
+### Procédure de validation manuelle future (préparée, non exécutée)
+
+Identique dans l'esprit à celle des soirées (#99) : une application/bot
+Discord séparée dédiée aux tests, un token scopé Preview uniquement, un
+serveur/salon de test dédiés (jamais `#🏆-tournois` réel), une base Preview
+isolée de Production, aucune destination de production utilisée en test.
+
+### Procédure de retour arrière (préparée, non exécutée)
+
+1. Désactiver `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` si nécessaire — 
+   n'affecte que les FUTURS tournois (même garantie que pour les soirées,
+   voir section "Transport figé" ci-dessus).
+2. Pour retirer/changer `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_TOURNAMENT_CHANNEL_ID` :
+   d'abord désactiver `NOTIFICATION_EXECUTOR_ENABLED` et attendre la fin
+   de l'exécution en cours — variable partagée avec le chantier soirées,
+   la désactiver arrête TOUTE catégorie, pas seulement TOURNAMENT.
+3. Vérifier qu'aucun appel Discord n'est plus en vol (pas de réservation
+   `RESERVED` active pour `TOURNAMENT` — `SELECT` sur `NotificationDelivery`).
+   Un changement de variable n'interrompt jamais un appel HTTP déjà engagé.
+4. Modifier la configuration.
+5. Vérifier sa cohérence AVANT de réactiver `NOTIFICATION_EXECUTOR_ENABLED`.
+
+Non exécutée par cette PR — instructions seules, comme pour le chantier
+soirées.

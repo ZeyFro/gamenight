@@ -4,21 +4,25 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { NOT_CONFIGURED_RESOLVER, runExecutorBatch, type DeliveryResolver } from "@/lib/notification-executor";
 import { sessionAnnounceResolver } from "@/lib/session-announce";
+import { tournamentAnnounceResolver } from "@/lib/tournament-announce";
 
 /**
  * Dispatche par catégorie d'événement — SESSION vers le résolveur du
- * chantier annonces bot (`session-announce.ts`), tout le reste (dont
- * TOURNAMENT, explicitement différé) vers `NOT_CONFIGURED_RESOLVER`, qui
- * refuse systématiquement. Brancher `sessionAnnounceResolver` ici n'a par
- * lui-même AUCUN effet tant que `NOTIFICATION_EXECUTOR_ENABLED` et
- * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` ne sont pas TOUS LES DEUX
- * activés (deux verrous indépendants, voir `discord-bot-config.ts`) — et
- * tant qu'aucune livraison SESSION n'existe (rien ne les enqueue encore
- * dans cette PR).
+ * chantier annonces bot (`session-announce.ts`), TOURNAMENT vers celui du
+ * chantier annonces tournois (`tournament-announce.ts`), tout le reste
+ * vers `NOT_CONFIGURED_RESOLVER`, qui refuse systématiquement. Brancher
+ * ces deux résolveurs ici n'a par lui-même AUCUN effet tant que
+ * `NOTIFICATION_EXECUTOR_ENABLED` et le flag catégorie correspondant
+ * (`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`/`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`)
+ * ne sont pas TOUS LES DEUX activés (deux verrous indépendants PAR
+ * CATÉGORIE, voir `discord-bot-config.ts`) — et tant qu'aucune livraison
+ * de cette catégorie n'existe (rien ne les enqueue tant que le flag
+ * catégorie reste désactivé).
  */
 const DISPATCH_RESOLVER: DeliveryResolver = {
   async resolve(input) {
     if (input.event.category === "SESSION") return sessionAnnounceResolver.resolve(input);
+    if (input.event.category === "TOURNAMENT") return tournamentAnnounceResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
   },
 };
@@ -41,11 +45,12 @@ export const maxDuration = 60;
  * après authentification. Depuis le chantier annonces Discord bot
  * (session-announce.ts), un vrai producteur métier EST branché (`DISPATCH_RESOLVER`
  * ci-dessus, catégorie SESSION) — mais reste sans AUCUN effet tant que
- * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` n'est pas ÉGALEMENT activé (deux
- * verrous indépendants) et tant qu'aucune livraison SESSION n'existe
- * (rien ne les enqueue tant que ce même flag reste désactivé). Toute
- * autre catégorie (dont TOURNAMENT, différé) continue de retomber sur
- * `NOT_CONFIGURED_RESOLVER`, qui refuse systématiquement.
+ * `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`/`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`
+ * n'est pas ÉGALEMENT activé pour sa catégorie (verrous indépendants PAR
+ * CATÉGORIE) et tant qu'aucune livraison de cette catégorie n'existe
+ * (rien ne les enqueue tant que le flag catégorie reste désactivé). Toute
+ * autre catégorie continue de retomber sur `NOT_CONFIGURED_RESOLVER`, qui
+ * refuse systématiquement.
  *
  * Authentification identique aux autres routes cron de ce dépôt
  * (`verifyCronRequest` — `CRON_SECRET` absente → 503 route désactivée,

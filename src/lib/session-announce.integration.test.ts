@@ -477,7 +477,15 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(fetchMock).toHaveBeenCalledTimes(2);
       });
 
-      it("catégorie autre que SESSION (ex. TOURNAMENT, différé à une prochaine PR) : toujours NOT_CONFIGURED_RESOLVER, jamais le chantier annonces", async () => {
+      it("catégorie TOURNAMENT sans configuration de salon dédiée : not_configured, jamais un appel Discord (résolveur du chantier tournois désormais branché, voir tournament-announce.integration.test.ts pour son propre chemin nominal)", async () => {
+        // Depuis le chantier annonces tournois (étend #99), TOURNAMENT est
+        // dispatché vers `tournamentAnnounceResolver` (tournament-announce.ts),
+        // PLUS `NOT_CONFIGURED_RESOLVER` — cette suite ne stubbe cependant
+        // aucune configuration `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`, donc le
+        // résultat final reste identique (`resolver:not_configured`) : ce
+        // test vérifie seulement la non-régression de ce cas précis pour
+        // SESSION, pas le chemin nominal TOURNAMENT (couvert par sa propre
+        // suite dédiée).
         const deliveryLib = await import("./notification-delivery");
         const event = await deliveryLib.createNotificationEvent({
           category: "TOURNAMENT",
