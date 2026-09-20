@@ -9510,3 +9510,129 @@ isolée de Production, aucune destination de production utilisée en test.
 
 Non exécutée par cette PR — instructions seules, comme pour le chantier
 soirées.
+
+## Correctif production — sessions Roulette n'honoraient jamais le chemin bot
+
+Bug remonté en production après activation de
+`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED=true` (variables `DISCORD_BOT_GUILD_ID`/
+`DISCORD_BOT_SESSION_CHANNEL_ID`/`DISCORD_BOT_TOKEN` présentes, redéploiement
+effectué) : les deux dernières soirées créées avaient `announceViaBot=false`
+en base et avaient chacune produit une annonce webhook avec un lien
+distinct.
+
+### Diagnostic
+
+**Chemin normal (`createSession`, `src/app/sessions/actions/session-lifecycle.ts`)** —
+vérifié ligne par ligne, **aucun défaut trouvé** : `isSessionAnnounceViaBotEnabled()`
+(`src/lib/discord-bot-config.ts`) vaut `process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED
+=== "true" && getSessionAnnounceConfig() !== null`, et `getSessionAnnounceConfig()`
+exige `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID` non vides —
+toutes deux lues à chaque appel (pas de cache), toutes deux correctes. La
+condition EST correctement évaluée pour une session créée via ce chemin.
+
+**Preuve du chemin réel emprunté** — recherche de tous les sites créant une
+`Session` en base (`grep session\.create`) : **deux autres call sites
+existaient**, tous deux hors du chemin `createSession`/`isSessionAnnounceViaBotEnabled()` :
+- `spinRoulette` (`src/lib/roulette.ts`) — tirage roulette asynchrone,
+  déclenché par le cron `/api/cron/close-sessions` (`processOpenRoulettes`)
+  ou paresseusement au chargement de `/roulette/[id]`.
+- `createSessionFromRouletteAction` (`src/app/roulette/actions.ts`) —
+  roulette instantanée, déclenchée par un clic utilisateur sur `/roulette`.
+
+Les deux créaient la `Session` par un `prisma.session.create` NU, sans
+jamais poser le champ `announceViaBot` ni consulter
+`isSessionAnnounceViaBotEnabled()` — la colonne retombait donc TOUJOURS sur
+son défaut de schéma (`false`), quelle que soit la configuration du
+chantier bot, et les deux appelaient ensuite INCONDITIONNELLEMENT leur
+propre fonction webhook (`announceRouletteResult`/`announceSessionResult`,
+`postToDiscord` → `DISCORD_WEBHOOK_URL`, jamais `DISCORD_BOT_*`). Ceci
+explique exactement les symptômes observés :
+- `announceViaBot=false` malgré la catégorie activée — ces deux chemins ne
+  lisent jamais cette configuration.
+- Deux annonces avec des liens Discord distincts — `postToDiscord` fait un
+  `POST` webhook qui crée TOUJOURS un nouveau message avec son propre lien,
+  comportement du webhook depuis l'origine, pas une anomalie du chantier
+  bot.
+- Le cron `/api/cron/notification-executor` répond 200 et ne loggue que
+  « Handler appelé » — cohérent : sans le correctif, ces sessions
+  n'enqueuent JAMAIS la moindre `NotificationDelivery`, donc rien à traiter
+  pour ce cron ; ses logs sont sans rapport avec le défaut.
+
+**Les deux créations à 3,5 secondes d'écart** — examinées séparément, sans
+supposer un double clic : le code révèle DEUX déclencheurs distincts et
+indépendants pour une création de session Roulette (le cron
+`processOpenRoulettes` ET le déclenchement paresseux `spinRouletteIfDue` au
+chargement d'une page `/roulette/[id]`, qui peuvent se chevaucher — protégé
+contre un double tirage de la MÊME roulette par `claimRouletteSpin`, mais
+rien n'empêche DEUX roulettes différentes, ou une roulette async et une
+roulette instantanée, d'aboutir à deux créations de session rapprochées
+dans le temps). **Non vérifié directement en base de production** (aucun
+accès à la base Neon de production dans cette session) : l'hypothèse la
+plus probante au vu du code est que les deux sessions concernées ont
+`createdViaRoulette=true` — vérifiable par l'utilisateur via l'onglet
+"Historique" de `/roulette` (liste les sessions `createdViaRoulette: true`,
+`src/app/roulette/page.tsx`) ou une requête directe sur la base de
+production, aucune des deux non exécutée ici.
+
+### Logs ciblés ajoutés (aucune valeur secrète)
+
+- `src/lib/sessions.ts`, nouvelle fonction `createRouletteResultSession` :
+  `logger.info("sessions", "Décision de transport à la création (session
+  issue d'une roulette).", { announceViaBot })` — un seul booléen, avant
+  toute écriture.
+- `src/lib/roulette.ts`, fin de `spinRoulette` : le log existant porte
+  désormais aussi `{ announceViaBot }`.
+
+### Correctif
+
+Nouvelle fonction partagée `createRouletteResultSession` (`src/lib/sessions.ts`) —
+même contrat que `createSession`/`updateSessionSchedule` : lit
+`isSessionAnnounceViaBotEnabled()` UNE fois, crée la `Session` (avec
+`announceViaBot` correctement posé) ET enqueue
+`enqueueSessionCreationDeliveries` dans LA MÊME transaction SQL si le bot
+est activé — aucun appel Discord dans la transaction. `spinRoulette` et
+`createSessionFromRouletteAction` appellent désormais cette fonction
+PARTAGÉE au lieu de dupliquer chacun un `prisma.session.create` incomplet,
+et sautent leur propre appel webhook quand `announceViaBot` est vrai
+(jamais les deux transports à la fois, même garde que `createSession`).
+
+**Défaut connexe découvert en corrigeant celui-ci** (conséquence directe,
+pas un sujet séparé mis de côté) : le résolveur bot
+(`resolveAnnounceDelivery`, `src/lib/session-announce.ts`) supposait
+jusqu'ici que le tout premier SEND concernait TOUJOURS une session encore
+`VOTING` (seule vraie pour `createSession`, seul appelant connu à
+l'écriture de #99) — type et titre de la notification interne étaient
+donc figés en dur (`SESSION_CREATED` / "📣 Nouvelle soirée"), alors que
+l'embed Discord, lui, était déjà correctement dérivé de l'état courant. Une
+session Roulette est créée DIRECTEMENT `SCHEDULED` avec un jeu déjà décidé :
+son premier SEND aurait affiché un embed Discord correct ("🎮 Soirée
+validée : [Jeu]") accompagné d'une notification interne incohérente.
+Corrigé via `resolveSendNotificationMeta`, qui dérive désormais type et
+titre de l'état courant pour le SEND — sans changer le texte du cas
+`VOTING` (comportement historique de `createSession` inchangé à
+l'identique).
+
+### Tests ajoutés
+
+`session-announce.integration.test.ts`, describe "sessions Roulette —
+honorent enfin announceViaBot" (2 tests) :
+- bot activé : `spinRoulette` enqueue une livraison bot (jamais le
+  webhook), et le SEND traité rend l'état "validée" avec le bon
+  type/titre de notification interne (`SESSION_RESULT`, jamais "Nouvelle
+  soirée").
+- bot désactivé (non-régression) : comportement historique inchangé —
+  webhook appelé, `announceViaBot=false` persisté, aucune livraison bot
+  enqueue.
+
+### Vérification
+
+- `npx tsc --noEmit` / `npx eslint .` : clean sur tout le dépôt.
+- `npm run test:postgres` : **399/399 verts** (397 hérités + 2 nouveaux).
+- Sans `TEST_DATABASE_URL` : suite explicitement SKIPPÉE, distinguée dans
+  la sortie Vitest.
+- `npx next build` : compile sans erreur.
+- Aucune session existante n'a été modifiée (`announceViaBot` NON forcé
+  rétroactivement sur les deux sessions déjà en base — hors périmètre,
+  décision produit à prendre séparément si un rattrapage est souhaité).
+- Aucune annonce Discord réelle envoyée, aucune configuration distante
+  modifiée.

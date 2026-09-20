@@ -44,6 +44,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
     let announceLib: typeof import("./session-announce");
     let executorLib: typeof import("./notification-executor");
     let sessionsLib: typeof import("./sessions");
+    let rouletteLib: typeof import("./roulette");
     let fetchMock: ReturnType<typeof vi.fn>;
 
     beforeAll(async () => {
@@ -52,6 +53,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
       announceLib = await import("./session-announce");
       executorLib = await import("./notification-executor");
       sessionsLib = await import("./sessions");
+      rouletteLib = await import("./roulette");
     });
 
     afterAll(async () => {
@@ -65,7 +67,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
       // développement/production. Aucune autre suite ne s'exécute en
       // parallèle (`--maxWorkers=1`, voir scripts/test-postgres.mjs).
       await db.$executeRawUnsafe(
-        `TRUNCATE "NotificationDelivery", "NotificationEvent", "Vote", "Proposal", "Session", "UserNotificationPreference", "Game", "User" CASCADE`
+        `TRUNCATE "NotificationDelivery", "NotificationEvent", "RouletteEntry", "Roulette", "Vote", "Proposal", "Session", "UserNotificationPreference", "Game", "User" CASCADE`
       );
       fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
@@ -130,6 +132,24 @@ describe.skipIf(!TEST_DATABASE_URL)(
           notifiedUserIds: overrides.notifiedUserIds ?? undefined,
         },
       });
+    }
+
+    /** Roulette async avec ses `RouletteEntry` déjà posées (une par
+     * participant) — `spinRoulette` n'exige que `status: "OPEN"`, la
+     * deadline n'est vérifiée que par `spinRouletteIfDue` (jamais appelé
+     * ici, on invoque directement `spinRoulette`). */
+    async function makeRoulette(creatorId: string, entries: { userId: string; gameId: string }[]) {
+      const roulette = await db.roulette.create({
+        data: {
+          createdById: creatorId,
+          scheduledAt: new Date("2026-10-01T20:00:00.000Z"),
+          deadline: new Date("2026-09-30T20:00:00.000Z"),
+        },
+      });
+      await db.rouletteEntry.createMany({
+        data: entries.map((e) => ({ rouletteId: roulette.id, userId: e.userId, gameId: e.gameId })),
+      });
+      return roulette;
     }
 
     async function propose(sessionId: string, gameId: string, proposedById: string) {
@@ -906,6 +926,78 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const result = await sessionsLib.resendSessionAnnouncement(session.id);
         expect(result).toEqual({ ok: false, error: "non_disponible_pour_les_sessions_bot" });
         expect(fetchMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("sessions Roulette — honorent enfin announceViaBot (bug remonté en production)", () => {
+      it("bot activé : spinRoulette enqueue une livraison bot, n'appelle JAMAIS le webhook, et le SEND rend l'état déjà décidé avec la bonne notification interne", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser({ discordName: "p1" });
+        const p2 = await makeUser({ discordName: "p2" });
+        const game = await makeGame(creator.id);
+        const roulette = await makeRoulette(creator.id, [
+          { userId: p1.id, gameId: game.id },
+          { userId: p2.id, gameId: game.id },
+        ]);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+        await rouletteLib.spinRoulette(roulette.id);
+
+        // Aucun appel réseau à la création — ni webhook (announceViaBot
+        // vrai, jamais appelé), ni bot (l'enqueue ne fait qu'écrire, voir
+        // le commentaire de fichier de notification-delivery.ts).
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        const stored = await db.session.findFirstOrThrow({ where: { createdViaRoulette: true } });
+        expect(stored.announceViaBot).toBe(true);
+        expect(stored.status).toBe("SCHEDULED");
+        expect(stored.decidedGameId).toBe(game.id);
+        expect(
+          await db.notificationEvent.count({ where: { sourceId: stored.id, eventType: "SESSION_CREATED" } })
+        ).toBe(1);
+
+        // Traite le SEND réel — doit rendre l'état "validée" (pas
+        // "nouvelle soirée à voter", cette session n'a jamais été VOTING)
+        // ET la notification interne assortie doit porter le bon
+        // type/titre (bug corrigé : `resolveSendNotificationMeta`).
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "chan-sessions" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(String(init.body));
+        expect(body.embeds[0].title).toContain(`Soirée validée : ${game.name}`);
+
+        const notifications = await db.notification.findMany({ where: { relatedSessionId: stored.id } });
+        expect(notifications.length).toBeGreaterThan(0);
+        expect(notifications.every((n) => n.type === "SESSION_RESULT")).toBe(true);
+        expect(notifications.some((n) => n.title.includes("Nouvelle soirée"))).toBe(false);
+      });
+
+      it("bot désactivé (regression) : spinRoulette garde le comportement historique — webhook appelé, aucune livraison bot", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const game = await makeGame(creator.id);
+        const roulette = await makeRoulette(creator.id, [
+          { userId: p1.id, gameId: game.id },
+          { userId: p2.id, gameId: game.id },
+        ]);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
+        // Stub LOCALE au webhook (jamais stubbée globalement dans cette
+        // suite, voir le commentaire de `beforeEach`) — nécessaire ici
+        // pour prouver un VRAI appel réseau webhook plutôt que le simple
+        // repli silencieux "not_configured" de `postToDiscord` sans lui.
+        vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/test/token");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+
+        await rouletteLib.spinRoulette(roulette.id);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1); // le webhook, jamais le bot
+        const stored = await db.session.findFirstOrThrow({ where: { createdViaRoulette: true } });
+        expect(stored.announceViaBot).toBe(false);
+        expect(await db.notificationEvent.count({ where: { sourceId: stored.id } })).toBe(0);
       });
     });
   }

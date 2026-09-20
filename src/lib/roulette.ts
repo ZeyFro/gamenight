@@ -5,6 +5,7 @@ import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { announceRouletteCancelled, announceRouletteReminder, announceRouletteResult } from "@/lib/discord-roulette";
+import { createRouletteResultSession } from "@/lib/sessions";
 import { logger } from "@/lib/logger";
 import type { Roulette } from "@prisma/client";
 
@@ -61,16 +62,12 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
 
   const winnerEntry = roulette.entries[Math.floor(Math.random() * roulette.entries.length)];
 
-  const session = await prisma.session.create({
-    data: {
-      date: roulette.scheduledAt,
-      status: "SCHEDULED",
-      decidedGameId: winnerEntry.gameId,
-      decidedTime: roulette.scheduledAt,
-      createdById: roulette.createdById,
-      createdViaRoulette: true,
-      notifiedUserIds: participantIds,
-    },
+  const { session, announceViaBot } = await createRouletteResultSession({
+    date: roulette.scheduledAt,
+    decidedGameId: winnerEntry.gameId,
+    decidedTime: roulette.scheduledAt,
+    createdById: roulette.createdById,
+    notifiedUserIds: participantIds,
   });
 
   const proposal = await prisma.proposal.create({
@@ -88,19 +85,25 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
   await awardXp(roulette.createdById, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
   await checkSessionsCreatedBadges(roulette.createdById);
 
-  const game = await prisma.game.findUnique({
-    where: { id: winnerEntry.gameId },
-    select: { name: true, coverUrl: true },
-  });
-  await announceRouletteResult(
-    roulette,
-    game?.name ?? "?",
-    game?.coverUrl ?? null,
-    participantIds,
-    session.id
-  );
+  // Jamais les deux transports à la fois — voir `createRouletteResultSession`
+  // (l'enqueue bot a déjà réussi, atomiquement avec la création de la
+  // session, si `announceViaBot` est vrai) et le commentaire de fichier de
+  // `session-lifecycle.ts` (même garde pour `createSession`).
+  if (!announceViaBot) {
+    const game = await prisma.game.findUnique({
+      where: { id: winnerEntry.gameId },
+      select: { name: true, coverUrl: true },
+    });
+    await announceRouletteResult(
+      roulette,
+      game?.name ?? "?",
+      game?.coverUrl ?? null,
+      participantIds,
+      session.id
+    );
+  }
 
-  logger.info("roulette", `Roulette ${rouletteId} tirée — jeu gagnant ${winnerEntry.gameId}.`);
+  logger.info("roulette", `Roulette ${rouletteId} tirée — jeu gagnant ${winnerEntry.gameId}.`, { announceViaBot });
 }
 
 /** Déclenchement paresseux (chargement de page) — même contrat que `closeSessionIfDue`. */

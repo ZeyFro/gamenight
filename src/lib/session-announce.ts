@@ -446,6 +446,35 @@ export const sessionAnnounceResolver: DeliveryResolver = {
   },
 };
 
+/**
+ * Bug remonté (production, sessions Roulette) — le SEND initial supposait
+ * jusqu'ici TOUJOURS une session encore `VOTING` (seule invariante vraie
+ * pour `createSession`, seul appelant connu à l'écriture de #99) : type et
+ * titre de notification interne figés en dur ("SESSION_CREATED"/"📣
+ * Nouvelle soirée"), alors que l'EMBED Discord, lui, était déjà
+ * correctement dérivé de l'état courant (`resolveAnnounceRendering`).
+ * Une session Roulette (`createRouletteResultSession`, src/lib/sessions.ts)
+ * est créée DIRECTEMENT `SCHEDULED` avec un jeu déjà décidé — son tout
+ * premier SEND affichait donc un embed Discord correct ("🎮 Soirée
+ * validée : [Jeu]") accompagné d'une notification interne incohérente
+ * ("📣 Nouvelle soirée" / type `SESSION_CREATED`). Corrigé : dérivé de
+ * l'état courant, comme l'EDIT le fait déjà plus bas — sans changer le
+ * texte pour le cas `VOTING` (seul cas rencontré par `createSession`,
+ * comportement historique préservé à l'identique).
+ */
+function resolveSendNotificationMeta(
+  session: SessionWithVotes,
+  rendering: AnnounceRendering
+): { notifType: "SESSION_CREATED" | "SESSION_RESULT"; notifTitle: string } {
+  if (session.status === "SCHEDULED" || session.status === "DONE") {
+    return { notifType: "SESSION_RESULT", notifTitle: rendering.embed.title ?? "🎮 Soirée validée" };
+  }
+  // VOTING — seul cas atteint par `createSession` (comportement historique
+  // inchangé). `CANCELLED` n'est jamais atteignable ici : aucune session
+  // n'est jamais créée déjà annulée.
+  return { notifType: "SESSION_CREATED", notifTitle: "📣 Nouvelle soirée" };
+}
+
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
   session: SessionWithVotes,
@@ -454,11 +483,12 @@ async function resolveAnnounceDelivery(
   const rendering = resolveAnnounceRendering(session);
 
   if (delivery.operation === "SEND") {
+    const { notifType, notifTitle } = resolveSendNotificationMeta(session, rendering);
     const message = await buildMessageContent(
       session,
       rendering.candidateMentions,
-      "SESSION_CREATED",
-      "📣 Nouvelle soirée",
+      notifType,
+      notifTitle,
       formatDateTimeFr(session.date)
     );
     const action: ResolvedAction = {

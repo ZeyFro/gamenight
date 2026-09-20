@@ -2,14 +2,70 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { announceSessionResult } from "@/lib/discord-announce";
-import { enqueueSessionAnnounceUpdate, enqueueSessionResultThreadSummary } from "@/lib/session-announce";
+import {
+  enqueueSessionAnnounceUpdate,
+  enqueueSessionCreationDeliveries,
+  enqueueSessionResultThreadSummary,
+} from "@/lib/session-announce";
+import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
+import { logger } from "@/lib/logger";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Session, User } from "@prisma/client";
+
+/**
+ * Bug remonté (production, après activation de `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`)
+ * — crée une session DÉJÀ DÉCIDÉE (jeu et créneau connus d'avance, jamais
+ * de phase VOTING) et enqueue son intention de notification bot DANS LA
+ * MÊME transaction SQL, exactement le même contrat que `createSession`
+ * (session-lifecycle.ts) et `updateSessionSchedule` ci-dessus. Chemin
+ * PARTAGÉ par les deux créations Roulette (instantanée,
+ * `createSessionFromRouletteAction` dans src/app/roulette/actions.ts, et
+ * asynchrone, `spinRoulette` dans src/lib/roulette.ts) — jusqu'ici, ces
+ * DEUX call sites créaient la session par un `prisma.session.create` NU,
+ * sans jamais lire `isSessionAnnounceViaBotEnabled()` ni poser
+ * `announceViaBot` : la colonne retombait donc TOUJOURS sur son défaut de
+ * schéma (`false`), quelle que soit la configuration du chantier bot, et
+ * les deux appelants continuaient d'appeler INCONDITIONNELLEMENT le
+ * webhook legacy (`announceRouletteResult`/`announceSessionResult`) —
+ * jamais les deux transports à la fois pour une session normale, mais ICI
+ * le webhook partait TOUJOURS, même bot activé. Extrait en un seul
+ * morceau de code testable plutôt que dupliqué (même raisonnement que
+ * `updateSessionSchedule`) : les deux appelants restent seuls responsables
+ * de LEURS propres données (jeu gagnant, participants) et de LEUR propre
+ * annonce webhook (contenu différent entre les deux, `Proposal`/`Vote` du
+ * jeu gagnant toujours créés par l'appelant, hors de cette transaction —
+ * même effet de bord secondaire non-critique que `createSession` pour son
+ * `preselectedGameId`).
+ */
+export async function createRouletteResultSession(data: {
+  date: Date;
+  decidedGameId: string;
+  decidedTime: Date;
+  createdById: string;
+  notifiedUserIds: string[];
+}): Promise<{ session: Session; announceViaBot: boolean }> {
+  const announceViaBot = isSessionAnnounceViaBotEnabled();
+  logger.info("sessions", "Décision de transport à la création (session issue d'une roulette).", {
+    announceViaBot,
+  });
+
+  const session = await prisma.$transaction(async (tx) => {
+    const created = await tx.session.create({
+      data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot },
+    });
+    if (announceViaBot) {
+      await enqueueSessionCreationDeliveries(created.id, tx);
+    }
+    return created;
+  });
+
+  return { session, announceViaBot };
+}
 
 /**
  * Le vote ferme à `votingDeadline` si elle est définie, sinon à l'heure de
