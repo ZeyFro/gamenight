@@ -315,6 +315,89 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
         expect(statuses.get(inv.id)).toBe("failed");
       });
+
+      it("EDIT sur une annonce/un fil legacy (SENT avant #102, salon PUBLIC direct, jamais un fil) : aucune écriture Discord, refus terminal immédiat", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+
+        // Reproduit littéralement l'état d'une soirée créée AVANT #102
+        // (ancienne architecture, code qui n'existe plus) : "announce"
+        // envoyée DIRECTEMENT dans le salon PUBLIC (`send_channel_message`,
+        // jamais un fil — `discordThreadId` reste NULL sur cette ligne),
+        // puis "thread" créé DEPUIS ce message (`create_thread`, fil
+        // PUBLIC standard, jamais `invitable`/type 12). Construit
+        // directement en base — jamais via `enqueueSessionCreationDeliveries`,
+        // qui ne produit plus que la nouvelle forme (fil privé créé en
+        // premier, sans dépendre d'une annonce).
+        const deliveryLib = await import("./notification-delivery");
+        const event = await deliveryLib.createNotificationEvent({
+          category: "SESSION",
+          eventType: "SESSION_CREATED",
+          sourceId: session.id,
+        });
+        const announceDelivery = await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:announce`,
+        });
+        await db.notificationDelivery.update({
+          where: { id: announceDelivery.id },
+          data: {
+            status: "SENT",
+            discordChannelId: "chan-sessions", // salon PUBLIC, jamais un fil
+            discordMessageId: "old-public-announce-msg",
+            discordThreadId: null,
+            sentAt: new Date(),
+          },
+        });
+        const threadDelivery = await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:thread`,
+        });
+        await db.notificationDelivery.update({
+          where: { id: threadDelivery.id },
+          data: {
+            status: "SENT",
+            discordThreadId: "old-public-thread", // fil PUBLIC (type 11), jamais 12
+            sentAt: new Date(),
+          },
+        });
+
+        // La soirée change d'état APRÈS la mise à jour (correctif "revue
+        // ciblée" de ce chantier) — déclenche une EDIT, exactement le
+        // scénario signalé : une ancienne annonce ET un ancien fil publics
+        // déjà SENT avant #102, puis une EDIT traitée après le correctif.
+        await db.session.update({ where: { id: session.id }, data: { status: "CANCELLED" } });
+        await announceLib.enqueueSessionAnnounceUpdate(session.id);
+
+        const outcome = await processOne();
+
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:unresolvable" });
+        // La preuve centrale : AUCUNE écriture Discord n'est tentée — ni
+        // sur l'ancien salon public, ni sur l'ancien fil public, ni
+        // ailleurs. Zéro appel réseau, pas seulement un appel refusé après
+        // une vérification.
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        const row = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:announce`, operation: "EDIT" },
+        });
+        // Terminal IMMÉDIATEMENT — jamais `dependency_not_ready` retenté
+        // en boucle (jusqu'à MAX_DELIVERY_ATTEMPTS) avant d'échouer pour
+        // rien : l'absence de `discordThreadId` sur une ligne "announce"
+        // legacy est un fait STRUCTUREL et PERMANENT, jamais une question
+        // de timing qui se résoudrait au prochain passage du cron.
+        expect(row.status).toBe("FAILED");
+        expect(row.errorClass).toBe("resolver:unresolvable");
+        expect(row.attempts).toBe(1);
+      });
     });
 
     describe("succès partiel — fil créé, première annonce échouée", () => {
@@ -1466,6 +1549,55 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(statuses.get(invPending.id)).toBe("pending"); // jamais enqueue
         expect(statuses.get(invSynced.id)).toBe("synced");
         expect(statuses.get(invFailed.id)).toBe("failed");
+      });
+
+      it("réessai manuel après un échec (bouton 'Réessayer') : relit le statut ACTUEL de l'invitation, jamais l'intention figée au moment de l'échec initial", async () => {
+        // Reproduit exactement `retrySessionInviteSyncAction`
+        // (src/app/sessions/actions/invites.ts) : un simple ré-appel à
+        // `enqueueSessionInviteSync`, sans passer le statut — c'est au
+        // RÉSOLVEUR de le relire au traitement, jamais à l'appelant de le
+        // figer. Ce test le prouve pour le cas précis du bouton "Réessayer" :
+        // ajout ACTIVE → échec Discord (403) → invitation révoquée ENTRE
+        // l'échec et le réessai → le réessai doit résoudre vers un
+        // RETRAIT (DELETE), jamais rejouer l'ajout (PUT) périmé qui
+        // rétablirait un accès Discord déjà coupé côté site.
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "reessai-apres-echec" });
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
+        const firstOutcome = await processOne();
+        expect(firstOutcome).toMatchObject({ outcome: "failed" });
+
+        let statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("failed");
+
+        // L'invitation change d'état PENDANT que le créateur regarde
+        // l'échec sur /sessions/[id]/invites, AVANT qu'il ne clique sur
+        // "Réessayer" (ex. il retire finalement cet invité au lieu de
+        // relancer l'ajout).
+        await access.revokeSessionInvite(session.id, guest.id, creator.id);
+
+        // Le réessai manuel — même appel, exactement ce que fait
+        // `retrySessionInviteSyncAction`, sans jamais lire ni transmettre
+        // le statut lui-même.
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const retryOutcome = await processOne();
+
+        expect(retryOutcome?.outcome).toBe("sent");
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        // DELETE (retrait), jamais PUT (ajout) — la CONSÉQUENCE du
+        // changement d'état intervenu entre l'échec et le réessai, jamais
+        // l'intention d'origine rejouée à l'identique.
+        expect(init.method).toBe("DELETE");
+
+        statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("synced");
       });
     });
 

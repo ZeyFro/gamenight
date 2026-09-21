@@ -686,16 +686,40 @@ async function resolveAnnounceDelivery(
   // DANS le fil, donc `discordThreadId` sur cette même ligne SENT sert de
   // `channelId` pour l'édition — un fil est un salon côté API Discord,
   // voir le commentaire de fichier de discord-rest.ts). Jamais revérifié
-  // ICI (pas de `edit_channel_message_verified`) : le SEND initial qui a
-  // produit ce `discordThreadId`/`discordMessageId` SENT est nécessairement
-  // passé par `send_thread_message_verified`, qui a déjà confirmé un fil
-  // PRIVÉ à ce moment-là. L'API Discord n'expose aucun moyen de convertir
-  // un fil existant entre PUBLIC et PRIVÉ après sa création (`type` n'est
-  // pas parmi les champs modifiables d'un fil) — cette garantie tient
-  // donc dans la durée sans nouvelle vérification.
+  // ICI (pas de `edit_channel_message_verified`) — MAIS PAS pour la
+  // raison qu'une version antérieure de ce commentaire affirmait à tort
+  // (« le SEND initial est nécessairement passé par
+  // send_thread_message_verified ») : c'est faux pour une soirée créée
+  // AVANT #102, dont l'annonce a été envoyée via `send_channel_message`
+  // (salon PUBLIC direct, jamais un fil). La vraie garantie est
+  // STRUCTURELLE, pas temporelle : `discordThreadId` sur la ligne
+  // `announce` ne peut être posé QUE par un envoi DANS un fil
+  // (`send_thread_message`/`send_thread_message_verified`) — jamais par
+  // le chemin legacy `send_channel_message`, qui ne pose que
+  // `discordChannelId`. Une soirée pré-#102 (ancienne architecture, où
+  // `thread` était créé DEPUIS le message d'annonce, dépendance inversée
+  // par rapport à aujourd'hui) a donc TOUJOURS sa ligne `announce` sans
+  // `discordThreadId`, quel que soit le code déployé au moment du
+  // traitement — ce champ n'est écrit qu'au moment du SEND réel, jamais
+  // rétroactivement. Un ancien fil PUBLIC ne peut donc jamais être ciblé
+  // par cette EDIT ; voir le test dédié "protection contre un ancien fil
+  // PUBLIC référencé en base — EDIT sur une annonce/un fil legacy".
   const sentAnnounce = await findSentDelivery(announceSlot(session.id));
-  if (!sentAnnounce?.discordMessageId || !sentAnnounce.discordThreadId) {
+  if (!sentAnnounce?.discordMessageId) {
+    // SEND pas encore traité — dépendance réellement susceptible de se
+    // résoudre plus tard (le cron n'est pas encore passé dessus),
+    // retenté normalement.
     return { eligible: false, reason: "dependency_not_ready" };
+  }
+  if (!sentAnnounce.discordThreadId) {
+    // Ligne "announce" legacy (envoyée AVANT #102, salon PUBLIC direct,
+    // jamais un fil) — fait STRUCTUREL et PERMANENT, jamais une question
+    // de timing : ce champ ne sera jamais rempli rétroactivement. Refus
+    // IMMÉDIAT et définitif (`unresolvable`, jamais `dependency_not_ready`)
+    // — jamais un salon public édité avec du contenu de soirée, jamais de
+    // tentatives inutiles avant un échec terminal qui finirait par
+    // arriver de toute façon.
+    return { eligible: false, reason: "unresolvable" };
   }
 
   const notifType = session.status === "SCHEDULED" || session.status === "DONE" ? "SESSION_RESULT" : "SESSION_CREATED";

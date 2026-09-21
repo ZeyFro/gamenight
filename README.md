@@ -9993,25 +9993,46 @@ si son `type` n'est pas `12` (fil privé) — même principe que
 pour les annonces de tournoi (#100). Trois nouvelles fonctions
 "vérifiées" (`sendThreadMessageVerified`/`addThreadMemberVerified`/
 `removeThreadMemberVerified`) remplacent leurs équivalents non vérifiés
-pour TOUT chemin session qui lit un fil déjà existant : le SEND et l'EDIT
-de l'annonce (`send_thread_message_verified`), le résumé de fin de
-soirée, les rappels, et l'ajout/retrait de membre par invite-sync.
+pour TOUT chemin session qui lit un fil déjà existant : le SEND de
+l'annonce (`send_thread_message_verified`), le résumé de fin de soirée,
+les rappels, et l'ajout/retrait de membre par invite-sync.
 
-**Seule la création initiale du fil (`thread` SEND, `startPrivateThread`)
-et l'EDIT de l'annonce restent SANS cette vérification supplémentaire** :
-la création ne lit aucune référence stockée (elle en produit une, fraîche,
-qu'elle vient de créer elle-même) ; l'EDIT ne peut agir que sur un
-`discordMessageId`/`discordThreadId` produit par un SEND déjà vérifié —
-et l'API Discord n'expose aucun moyen de convertir un fil existant entre
-PUBLIC et PRIVÉ après sa création (`type` n'est pas un champ modifiable
-d'un fil), donc cette garantie tient dans la durée sans re-vérification.
+**Seules la création initiale du fil (`thread` SEND, `startPrivateThread`)
+et l'EDIT de l'annonce (`edit_channel_message`) restent SANS cette
+vérification GET supplémentaire — pour deux raisons DIFFÉRENTES, jamais
+la même** (une version antérieure de cette section et du commentaire de
+code affirmait à tort que l'EDIT était sûr "parce que son SEND était déjà
+vérifié" — faux pour une soirée pré-#102, corrigé ci-dessous) :
+- la création ne lit aucune référence stockée (elle en produit une,
+  fraîche, qu'elle vient de créer elle-même) ;
+- l'EDIT ne lit jamais `discordThreadId` sur la ligne `thread` (déjà
+  protégée par sa propre dépendance), mais sur la ligne **`announce`** —
+  et ce champ précis n'est JAMAIS peuplé pour une soirée créée avant
+  #102 : son ancienne architecture (`thread` créé DEPUIS le message
+  d'annonce, dépendance inversée par rapport à aujourd'hui) postait
+  l'annonce directement dans le salon PUBLIC via `send_channel_message`,
+  qui ne pose que `discordChannelId` — jamais `discordThreadId`. Ce champ
+  n'est écrit qu'au moment du SEND réel, jamais rétroactivement, donc une
+  ligne `announce` legacy ne le porte JAMAIS, quel que soit le code
+  déployé au moment où l'EDIT est traitée. La garantie est donc
+  STRUCTURELLE (une propriété permanente des données), pas temporelle
+  (jamais "le SEND qui l'a produit était déjà vérifié"). `resolveAnnounceDelivery`
+  distingue explicitement les deux refus : `dependency_not_ready`
+  (retryable) si le SEND n'a simplement pas encore eu lieu, `unresolvable`
+  (terminal IMMÉDIAT, jamais des tentatives inutiles avant l'échec) si la
+  ligne `announce` est de cette forme legacy.
 
 Prouvé par un nouveau describe dédié dans
 `session-announce.integration.test.ts` ("protection contre un ancien fil
 PUBLIC référencé en base") : SEND annonce/thread-summary/invite-sync vers
 un fil dont la vérification révèle un `type` ≠ 12 → échec terminal
 observable (`discord:destination_mismatch`), AUCUN POST/PUT/DELETE tenté,
-statut Discord affiché comme `"failed"` (jamais silencieusement ignoré).
+statut Discord affiché comme `"failed"` (jamais silencieusement ignoré) ;
+et un test dédié à l'EDIT reconstruisant littéralement l'état d'une
+soirée pré-#102 (annonce SENT avec `discordChannelId` mais sans
+`discordThreadId`, fil SENT référençant un ancien fil PUBLIC) puis
+déclenchant une EDIT — `resolver:unresolvable`, **zéro appel réseau
+Discord tenté**, pas même une vérification refusée.
 
 ### 6. Transition et retour arrière — chemin webhook legacy, préférences
 
@@ -10175,8 +10196,8 @@ consulté.
 
 ### 11. Tests
 
-**460/460 verts** avec `TEST_DATABASE_URL` (`npm run test:postgres`) ;
-321/460 verts, 139 explicitement skippés sans elle (`npx vitest run`,
+**462/462 verts** avec `TEST_DATABASE_URL` (`npm run test:postgres`) ;
+321/462 verts, 141 explicitement skippés sans elle (`npx vitest run`,
 pas de faux vert). `npx tsc --noEmit` / `npx eslint .` clean sur tout le
 dépôt. `npx next build` compile sans erreur (route
 `/sessions/[id]/invites` bien générée).
@@ -10186,15 +10207,19 @@ Nouveaux fichiers de test :
   — créateur/invité/non-invité/id forgé, idempotence invite/revoke,
   révocation concurrente, filtre restrictif uniquement, migration legacy
   (SQL réel exécuté).
-- `src/lib/session-announce.integration.test.ts` (47 tests, dont ~30
-  réécrits pour la nouvelle architecture fil-privé-avant-annonce, +17
+- `src/lib/session-announce.integration.test.ts` (49 tests, dont ~30
+  réécrits pour la nouvelle architecture fil-privé-avant-annonce, +19
   nouveaux) — fil privé (type 12, invitable false), annonce postée dans
   le fil, invite-sync (ajout/retrait/course/répétition/suivi d'état),
   révocation coupant les mentions déjà enqueue-ées, et (revue ciblée) le
   describe "protection contre un ancien fil PUBLIC référencé en base"
-  (3 tests : SEND annonce/thread-summary/invite-sync refusés sans écrire
+  (5 tests : SEND annonce/thread-summary/invite-sync refusés sans écrire
   quoi que ce soit dès que la vérification Discord détecte un fil qui
-  n'est plus PRIVÉ).
+  n'est plus PRIVÉ ; une EDIT sur une annonce/un fil legacy reconstruits
+  littéralement en base — `resolver:unresolvable`, zéro appel réseau
+  Discord tenté ; le réessai manuel d'invite-sync après un échec relit le
+  statut ACTUEL de l'invitation, jamais l'intention figée au moment de
+  l'échec initial).
 - `src/app/sessions/actions/session-lifecycle.integration.test.ts` (3
   tests, Postgres réel) — `createSession` persiste des invitations
   exactes.
