@@ -10,6 +10,7 @@ import {
   getWinningProposalParticipants,
 } from "@/lib/superlative-voting";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { canAccessSession } from "@/lib/session-access";
 import { superlativeVoteEntrySchema } from "@/lib/validations";
 
 /**
@@ -41,6 +42,7 @@ export async function submitSuperlativeVotesAction(formData: FormData) {
   });
   if (!session || session.status !== "DONE" || !session.decidedGameId) return;
   if (session.superlativeVotingClosed) return;
+  if (!(await canAccessSession(user.id, sessionId))) return;
 
   const participants = await getWinningProposalParticipants(
     sessionId,

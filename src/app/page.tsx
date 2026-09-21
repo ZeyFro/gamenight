@@ -14,6 +14,7 @@ import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
+import { accessibleSessionWhere } from "@/lib/session-access";
 import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -165,7 +166,10 @@ export default async function Home({
     activeDebtorIds,
   ] = await Promise.all([
     prisma.session.findFirst({
-      where: { status: { in: ["VOTING", "SCHEDULED"] } },
+      // Confidentialité des soirées — "Prochaine soirée" ne doit jamais
+      // révéler une soirée privée à laquelle l'utilisateur n'est ni
+      // créateur ni invité (voir src/lib/session-access.ts).
+      where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleSessionWhere(user.id) },
       orderBy: { date: "asc" },
       include: {
         decidedGame: { select: { name: true, coverUrl: true } },
@@ -178,9 +182,9 @@ export default async function Home({
         },
       },
     }),
-    getRecentActivity(3),
+    getRecentActivity(user.id, 3),
     getGroupStats(),
-    getWeekAvailability(),
+    getWeekAvailability(user.id),
     getScoreboard("global"),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),

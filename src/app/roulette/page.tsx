@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { toDateInputValue, wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { accessibleSessionWhere } from "@/lib/session-access";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
@@ -83,11 +84,11 @@ export default async function RoulettePage({
               ]}
             />
 
-            {activeTab === "en-cours" && <EnCoursTab />}
+            {activeTab === "en-cours" && <EnCoursTab userId={user.id} />}
             {activeTab === "creer" && (
               <CreerTab userId={user.id} defaultDate={defaultDate} defaultTime={defaultTime} />
             )}
-            {activeTab === "historique" && <HistoriqueTab />}
+            {activeTab === "historique" && <HistoriqueTab userId={user.id} />}
           </>
         )}
       </div>
@@ -95,19 +96,35 @@ export default async function RoulettePage({
   );
 }
 
-/** Onglet "En cours" — cartes des roulettes async `OPEN`, jamais les jeux proposés (surprise), juste qui a proposé. */
-async function EnCoursTab() {
-  const openRoulettes = await prisma.roulette.findMany({
+/**
+ * Onglet "En cours" — cartes des roulettes async `OPEN`, jamais les jeux
+ * proposés (surprise), juste qui a proposé.
+ *
+ * Confidentialité — une roulette n'a pas de table d'invitation dédiée
+ * (`SessionInvite` couvre les `Session`, pas les `Roulette` elles-mêmes,
+ * qui n'EN DEVIENNENT une qu'au tirage) : `notifiedUserIds`, seule
+ * intention d'invitation existante ici (déjà la source du chemin webhook,
+ * `discord-roulette.ts`), sert donc aussi de liste d'accès. Filtré en
+ * mémoire après un fetch complet (échelle "groupe d'amis", même
+ * philosophie assumée que `calendar.ts`) plutôt qu'une requête JSON
+ * `array_contains` fragile sur `notifiedUserIds`.
+ */
+async function EnCoursTab({ userId }: { userId: string }) {
+  const allOpenRoulettes = await prisma.roulette.findMany({
     where: { status: "OPEN" },
     orderBy: { deadline: "asc" },
     select: {
       id: true,
+      createdById: true,
       scheduledAt: true,
       deadline: true,
       notifiedUserIds: true,
       entries: { select: { userId: true } },
     },
   });
+  const openRoulettes = allOpenRoulettes.filter(
+    (r) => r.createdById === userId || (resolveNotifiedUserIds(r.notifiedUserIds) ?? []).includes(userId)
+  );
 
   const allInvitedIds = [
     ...new Set(openRoulettes.flatMap((r) => resolveNotifiedUserIds(r.notifiedUserIds) ?? [])),
@@ -248,10 +265,19 @@ async function CreerTab({
   );
 }
 
-/** Historique — sessions créées via la roue (mode instant OU async, les deux posent `createdViaRoulette: true`). */
-async function HistoriqueTab() {
+/**
+ * Historique — sessions créées via la roue (mode instant OU async, les
+ * deux posent `createdViaRoulette: true`). Confidentialité des soirées —
+ * restreint aux sessions visibles par ce viewer (`accessibleSessionWhere`,
+ * même contrôle d'accès que `/sessions`) : une soirée issue d'une roulette
+ * reste une `Session` normale, ses invitations réelles vivent dans
+ * `SessionInvite` (posées par `createRouletteResultSession`, voir
+ * src/lib/sessions.ts), jamais dans `Roulette.notifiedUserIds` une fois le
+ * tirage effectué.
+ */
+async function HistoriqueTab({ userId }: { userId: string }) {
   const history = await prisma.session.findMany({
-    where: { createdViaRoulette: true },
+    where: { createdViaRoulette: true, ...accessibleSessionWhere(userId) },
     orderBy: { date: "desc" },
     include: { decidedGame: { select: { name: true, coverUrl: true } } },
   });

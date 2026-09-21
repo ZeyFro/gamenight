@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate } from "@/lib/wallclock";
 import { addDays, findBestSlot, type BestSlot, type HourSlot } from "@/lib/calendar-dates";
+import { accessibleSessionWhere } from "@/lib/session-access";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -99,6 +100,14 @@ function toCalendarSession(
 export async function getCalendarData(
   rangeStart: Date,
   rangeEndExclusive: Date,
+  /** Confidentialité des soirées — soirées affichées sur le calendrier
+   * (cards avec jeu/votants) restreintes à celles visibles par ce viewer
+   * (créateur ou invité actif, voir src/lib/session-access.ts). La grille
+   * de disponibilité elle-même (heures/users dispos) n'est PAS concernée
+   * (aucune donnée de soirée, juste des créneaux personnels), mais ce
+   * paramètre reste obligatoire pour qu'aucun appelant n'oublie de le
+   * fournir. */
+  viewerId: string,
   /** Filtre "potes affichés" (panneau collectif) — `undefined` = tout le monde. */
   visibleUserIds?: string[]
 ): Promise<CalendarData> {
@@ -112,7 +121,7 @@ export async function getCalendarData(
       where: { date: { gte: rangeStart, lt: rangeEndExclusive } },
     }),
     prisma.session.findMany({
-      where: { date: { gte: rangeStart, lt: rangeEndExclusive } },
+      where: { date: { gte: rangeStart, lt: rangeEndExclusive }, ...accessibleSessionWhere(viewerId) },
       include: {
         proposals: {
           select: {

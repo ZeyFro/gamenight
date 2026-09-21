@@ -8,6 +8,7 @@ import {
   enqueueSessionResultThreadSummary,
 } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { inviteToSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
@@ -58,6 +59,13 @@ export async function createRouletteResultSession(data: {
     const created = await tx.session.create({
       data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot },
     });
+    // Confidentialité des soirées — mêmes garanties que `createSession`
+    // (session-lifecycle.ts) : `SessionInvite` posée pour EXACTEMENT
+    // `data.notifiedUserIds` (les participants réels de la roulette),
+    // DANS LA MÊME transaction que la création de la session.
+    for (const guestId of data.notifiedUserIds) {
+      await inviteToSession(created.id, data.createdById, guestId, tx);
+    }
     if (announceViaBot) {
       await enqueueSessionCreationDeliveries(created.id, tx);
     }
@@ -284,7 +292,7 @@ export async function closeSession(
 async function closeAsCancelled(
   sessionId: string,
   announceViaBot: boolean,
-  session: Pick<Session, "id" | "date" | "notifiedUserIds">
+  session: Pick<Session, "id" | "createdById" | "date" | "notifiedUserIds">
 ): Promise<CloseSessionResult | null> {
   const claimed = await claimSessionCloseWithAnnounce(sessionId, announceViaBot, { status: "CANCELLED" }, null);
   if (!claimed) return null;

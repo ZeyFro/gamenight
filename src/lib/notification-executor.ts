@@ -13,12 +13,15 @@ import {
   type FinalizeSuccessInput,
 } from "@/lib/notification-delivery";
 import {
+  addThreadMember,
   archiveThread,
   editChannelMessage,
+  removeThreadMember,
   sendChannelMessage,
   sendChannelMessageVerified,
   sendDirectMessage,
   sendThreadMessage,
+  startPrivateThread,
   startThreadFromMessage,
   type AllowedMentions,
   type DiscordRestEmbed,
@@ -149,7 +152,19 @@ export type ResolvedAction =
       autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
     }
   | { kind: "send_thread_message"; threadId: string; message: ResolvedMessageContent }
-  | { kind: "archive_thread"; threadId: string; locked?: boolean };
+  | { kind: "archive_thread"; threadId: string; locked?: boolean }
+  | {
+      /** Chantier confidentialité des soirées — fil PRIVÉ (`type: 12`),
+       * jamais rattaché à un message (`startPrivateThread`,
+       * discord-rest.ts) : aucune information de soirée ne transite par
+       * le salon public parent. */
+      kind: "create_private_thread";
+      channelId: string;
+      name: string;
+      autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+    }
+  | { kind: "add_thread_member"; threadId: string; discordUserId: string }
+  | { kind: "remove_thread_member"; threadId: string; discordUserId: string };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
  * traitement (retryable ou terminal). `dependency_not_ready` est la SEULE
@@ -424,6 +439,48 @@ export async function performDiscordAction(
         discordThreadId: data.threadId,
         discordChannelId: data.parentId ?? undefined,
       }));
+    }
+    case "create_private_thread": {
+      const result = await startPrivateThread({
+        channelId: action.channelId,
+        name: action.name,
+        autoArchiveDuration: action.autoArchiveDuration,
+        deadline,
+        now,
+      });
+      return mapDiscordResult(result, (data) => ({
+        discordThreadId: data.threadId,
+        discordChannelId: data.parentId ?? undefined,
+      }));
+    }
+    case "add_thread_member": {
+      const result = await addThreadMember({
+        threadId: action.threadId,
+        discordUserId: action.discordUserId,
+        deadline,
+        now,
+      });
+      return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "remove_thread_member": {
+      const result = await removeThreadMember({
+        threadId: action.threadId,
+        discordUserId: action.discordUserId,
+        deadline,
+        now,
+      });
+      // Un `404` ("déjà absent du fil") atteint exactement l'état cible
+      // d'un retrait — traité comme un succès ICI (jamais dans
+      // discord-rest.ts, qui reste honnête sur la réponse HTTP brute, voir
+      // son commentaire) : sans cette équivalence, une invitation révoquée
+      // pour quelqu'un jamais réellement ajouté (échec transitoire du
+      // premier ajout, ou double révocation) resterait éternellement en
+      // échec `FAILED`/retenue en `retrying`, alors que le but — cette
+      // personne absente du fil — est déjà atteint.
+      if (!result.ok && result.kind === "not_found") {
+        return { ok: true, data: { discordThreadId: action.threadId } };
+      }
+      return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
     }
   }
 }

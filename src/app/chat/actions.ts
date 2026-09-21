@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
 import { getChatMessages, type ChatMessageDTO } from "@/lib/chat";
+import { canAccessSession } from "@/lib/session-access";
 
 /** Même contrat que `ToggleVoteResult` — la bulle affichée en optimiste (ChatMessages) doit pouvoir se retirer si l'envoi échoue. */
 export interface SendChatMessageResult {
@@ -24,6 +25,14 @@ export async function getChatMessagesAction(
 ): Promise<ChatMessageDTO[] | null> {
   const user = await getCurrentUser();
   if (!user) return null;
+  // Confidentialité des soirées — canal `sessionId` non nul : réservé au
+  // créateur et aux invités actifs (le canal global, `sessionId: null`,
+  // reste ouvert à tous, inchangé). Vérifié à CHAQUE appel : ce composant
+  // interroge cette action toutes les 10s en polling direct, jamais
+  // seulement au chargement de la page qui l'héberge — une révocation en
+  // cours de soirée doit couper l'accès au chat dès le prochain polling,
+  // pas seulement au prochain chargement de page.
+  if (sessionId && !(await canAccessSession(user.id, sessionId))) return null;
   return getChatMessages(sessionId);
 }
 
@@ -46,10 +55,7 @@ export async function sendChatMessageAction(formData: FormData): Promise<SendCha
   if (!input.success) return { ok: false };
 
   const sessionId = input.data.sessionId || null;
-  if (sessionId) {
-    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true } });
-    if (!session) return { ok: false };
-  }
+  if (sessionId && !(await canAccessSession(user.id, sessionId))) return { ok: false };
 
   await prisma.chatMessage.create({
     data: { userId: user.id, sessionId, content: input.data.content },
@@ -74,8 +80,9 @@ export async function toggleReactionAction(formData: FormData) {
   if (!input.success) return;
   const { messageId, emoji } = input.data;
 
-  const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: { id: true } });
+  const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: { id: true, sessionId: true } });
   if (!message) return;
+  if (message.sessionId && !(await canAccessSession(user.id, message.sessionId))) return;
 
   const existing = await prisma.chatReaction.findUnique({
     where: { messageId_userId: { messageId, userId: user.id } },

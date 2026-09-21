@@ -37,6 +37,11 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+/** Réponse Discord `204 No Content` réelle (`PUT`/`DELETE .../thread-members/{id}`) — aucun corps. */
+function emptyResponse(status: number): Response {
+  return new Response(null, { status });
+}
+
 describe.skipIf(!TEST_DATABASE_URL)(
   "session-announce (intégration Postgres isolée + Discord HTTP simulé)",
   () => {
@@ -45,6 +50,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
     let executorLib: typeof import("./notification-executor");
     let sessionsLib: typeof import("./sessions");
     let rouletteLib: typeof import("./roulette");
+    let access: typeof import("./session-access");
     let fetchMock: ReturnType<typeof vi.fn>;
 
     beforeAll(async () => {
@@ -54,6 +60,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
       executorLib = await import("./notification-executor");
       sessionsLib = await import("./sessions");
       rouletteLib = await import("./roulette");
+      access = await import("./session-access");
     });
 
     afterAll(async () => {
@@ -67,7 +74,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
       // développement/production. Aucune autre suite ne s'exécute en
       // parallèle (`--maxWorkers=1`, voir scripts/test-postgres.mjs).
       await db.$executeRawUnsafe(
-        `TRUNCATE "NotificationDelivery", "NotificationEvent", "RouletteEntry", "Roulette", "Vote", "Proposal", "Session", "UserNotificationPreference", "Game", "User" CASCADE`
+        `TRUNCATE "NotificationDelivery", "NotificationEvent", "SessionInvite", "RouletteEntry", "Roulette", "Vote", "Proposal", "Session", "UserNotificationPreference", "Game", "User" CASCADE`
       );
       fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
@@ -160,6 +167,17 @@ describe.skipIf(!TEST_DATABASE_URL)(
       return db.vote.create({ data: { proposalId, userId } });
     }
 
+    /** Chantier confidentialité des soirées — `resolveEligibleMentions`
+     * restreint désormais AUSSI aux invités `SessionInvite` `ACTIVE` (en
+     * plus de `notifiedUserIds` et de la préférence). Les sessions créées
+     * directement via `makeSession` (contournant `createSession`, qui
+     * pose ces lignes atomiquement) n'en ont aucune par défaut — ce
+     * helper les pose explicitement là où un test a besoin qu'un
+     * candidat reste éligible aux mentions/notifications. */
+    async function invite(sessionId: string, userId: string, invitedById: string) {
+      return db.sessionInvite.create({ data: { sessionId, userId, invitedById, status: "ACTIVE" } });
+    }
+
     /** Traite UNE livraison due, avec le vrai résolveur SESSION du chantier. */
     async function processOne(now?: Date) {
       return executorLib.processNextDelivery({
@@ -169,25 +187,37 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     }
 
-    describe("annonce puis création de fil (parcours nominal)", () => {
-      it("SEND annonce réussi, puis SEND fil réussi référençant le message d'annonce", async () => {
+    describe("fil privé puis annonce postée dedans (parcours nominal, confidentialité des soirées)", () => {
+      it("SEND fil PRIVÉ réussi (aucune dépendance), puis SEND annonce POSTÉE DANS LE FIL — jamais dans le salon public", async () => {
         const creator = await makeUser({ discordName: "createur" });
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
-        const announceOutcome = await processOne();
-        expect(announceOutcome?.outcome).toBe("sent");
 
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         const threadOutcome = await processOne();
         expect(threadOutcome?.outcome).toBe("sent");
 
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const announceOutcome = await processOne();
+        expect(announceOutcome?.outcome).toBe("sent");
+
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        const [, threadInit] = fetchMock.mock.calls[1];
-        const threadBody = JSON.parse(String(threadInit.body));
-        expect(String(fetchMock.mock.calls[1][0])).toContain("/channels/chan-sessions/messages/msg-announce/threads");
-        expect(threadBody.name).toContain(session.id.slice(0, 8));
+
+        // Création du fil — PRIVÉ (type 12), jamais rattaché à un message,
+        // `invitable: false` (un simple invité ne peut jamais y ajouter
+        // quelqu'un d'autre depuis Discord).
+        const [threadUrl, threadInit] = fetchMock.mock.calls[0];
+        expect(String(threadUrl)).toBe("https://discord.com/api/v10/channels/chan-sessions/threads");
+        const threadReqBody = JSON.parse(String(threadInit.body));
+        expect(threadReqBody.type).toBe(12);
+        expect(threadReqBody.invitable).toBe(false);
+        expect(threadReqBody.name).toContain(session.id.slice(0, 8));
+
+        // L'annonce est postée DANS LE FIL (thread-1), jamais dans le
+        // salon public (chan-sessions) : aucune information de soirée ne
+        // transite jamais par un message visible du salon parent.
+        const [announceUrl] = fetchMock.mock.calls[1];
+        expect(String(announceUrl)).toBe("https://discord.com/api/v10/channels/thread-1/messages");
 
         const threadRow = await db.notificationDelivery.findFirstOrThrow({
           where: { targetSlot: `default-guild:SESSION:${session.id}:thread` },
@@ -196,39 +226,36 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
-    describe("succès partiel — annonce réussie, création de fil échouée", () => {
-      it("l'annonce n'est jamais renvoyée, seule la reprise du fil est retentée", async () => {
+    describe("succès partiel — fil créé, première annonce échouée", () => {
+      it("le fil n'est jamais recréé, seule la reprise de l'annonce est retentée", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
 
         const t0 = new Date("2026-01-01T00:00:00.000Z");
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         await processOne(t0);
 
         fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
-        const failedThread = await processOne(t0);
-        expect(failedThread?.outcome).toBe("retrying");
+        const failedAnnounce = await processOne(t0);
+        expect(failedAnnounce?.outcome).toBe("retrying");
 
-        // Reprise : seule la livraison "thread" (toujours PENDING) doit
-        // être reprise — l'annonce reste SENT, jamais un second appel pour
-        // elle (aucun `fetch` vers /messages en POST une 2e fois). Il faut
-        // dépasser le backoff (nextAttemptAt) pour que `claimNextDelivery`
-        // la considère à nouveau due — une reprise immédiate ne trouverait
-        // rien, exactement comme documenté par l'exécuteur (#97).
+        // Reprise : seule la livraison "announce" (toujours PENDING) doit
+        // être reprise — le fil reste SENT, jamais un second appel pour lui
+        // (aucun `POST .../threads` une 2e fois). Il faut dépasser le
+        // backoff (nextAttemptAt) pour que `claimNextDelivery` la
+        // considère à nouveau due.
         const muchLater = new Date(t0.getTime() + 5 * 60_000);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
-        const resumedThread = await processOne(muchLater);
-        expect(resumedThread?.outcome).toBe("sent");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const resumedAnnounce = await processOne(muchLater);
+        expect(resumedAnnounce?.outcome).toBe("sent");
 
         expect(fetchMock).toHaveBeenCalledTimes(3);
-        const postCalls = fetchMock.mock.calls.filter(([, init]) => init.method === "POST" && String(init.body).length > 0 === true);
-        const announceRow = await db.notificationDelivery.findFirstOrThrow({
-          where: { targetSlot: `default-guild:SESSION:${session.id}:announce` },
+        const threadRow = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread` },
         });
-        expect(announceRow.status).toBe("SENT");
-        expect(announceRow.discordMessageId).toBe("msg-announce");
-        void postCalls;
+        expect(threadRow.status).toBe("SENT");
+        expect(threadRow.discordThreadId).toBe("thread-1");
       });
     });
 
@@ -261,9 +288,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await processOne(t0); // dependency_not_ready — le fil n'existe pas encore
 
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
-        await processOne(t0);
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(t0);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne(t0);
 
         // Au-delà du backoff de dépendance (2 min, DEPENDENCY_RETRY_BACKOFF_MS)
@@ -281,9 +308,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
           const creator = await makeUser();
           const session = await makeSession(creator.id, { status: "SCHEDULED" });
           await announceLib.enqueueSessionCreationDeliveries(session.id);
-          fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
-          await processOne();
           fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+          await processOne();
+          fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
           await processOne();
 
           await announceLib.enqueueSessionReminderDelivery(session.id, 60);
@@ -312,9 +339,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
           date: new Date("2026-10-01T20:00:00.000Z"),
         });
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
-        await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne();
 
         // Deux éditions successives (ex. deux modifications de créneau) —
@@ -325,17 +352,20 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await db.session.update({ where: { id: session.id }, data: { date: new Date("2026-10-03T20:00:00.000Z") } });
         await announceLib.enqueueSessionAnnounceUpdate(session.id);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const editOutcome = await processOne();
         expect(editOutcome?.outcome).toBe("sent");
 
-        const [, editInit] = fetchMock.mock.calls.at(-1)!;
+        const [editUrl, editInit] = fetchMock.mock.calls.at(-1)!;
         const editBody = JSON.parse(String(editInit.body));
         // Rendu depuis l'état COURANT en base (3 octobre), jamais depuis
         // le premier texte enqueue (2 octobre) : la description de
         // l'embed contient la date la plus récente.
         expect(editBody.embeds[0].description).toContain("3 octobre");
         expect(editBody.embeds[0].description).not.toContain("2 octobre");
+        // L'édition cible le message DANS LE FIL (thread-1), jamais le
+        // salon public.
+        expect(String(editUrl)).toContain("/channels/thread-1/messages/");
 
         // Plus rien à traiter : la 1ère édition (dépassée) a été SKIPPED
         // par `claimNextDelivery`, jamais vue par le résolveur.
@@ -360,16 +390,20 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const proposal = await propose(session.id, game.id, creator.id);
         await vote(proposal.id, declined.id);
         await vote(proposal.id, accepted.id);
+        await invite(session.id, declined.id, creator.id);
+        await invite(session.id, accepted.id, creator.id);
         await db.userNotificationPreference.create({
           data: { userId: declined.id, category: "SESSION", enabled: false },
         });
 
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.content).toContain(`<@${accepted.discordId}>`);
         expect(body.content).not.toContain(`<@${declined.discordId}>`);
@@ -386,16 +420,19 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const session = await makeSession(creator.id);
         const proposal = await propose(session.id, game.id, creator.id);
         await vote(proposal.id, declined.id);
+        await invite(session.id, declined.id, creator.id);
         await db.userNotificationPreference.create({
           data: { userId: declined.id, category: "SESSION", enabled: false },
         });
 
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.content).toBeFalsy();
         expect(await db.notification.count({ where: { relatedSessionId: session.id } })).toBe(0);
@@ -408,15 +445,18 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const session = await makeSession(creator.id, { notifiedUserIds: [declined.id] });
         const proposal = await propose(session.id, game.id, creator.id);
         await vote(proposal.id, declined.id);
+        await invite(session.id, declined.id, creator.id);
         await db.userNotificationPreference.create({
           data: { userId: declined.id, category: "SESSION", enabled: false },
         });
 
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne();
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.content).toBeFalsy();
       });
@@ -433,6 +473,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const session = await makeSession(creator.id);
         const proposal = await propose(session.id, game.id, creator.id);
         await vote(proposal.id, stillEnabled.id);
+        await invite(session.id, stillEnabled.id, creator.id);
 
         // Enqueue AVANT tout refus — à cet instant, `stillEnabled` est
         // encore éligible (aucune ligne de préférence, repli legacy actif).
@@ -445,11 +486,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
           data: { userId: stillEnabled.id, category: "SESSION", enabled: false },
         });
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.content).toBeFalsy();
         expect(body.allowed_mentions.users).toBeUndefined();
@@ -467,7 +510,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const outcome = await processOne();
         expect(outcome).toEqual({
           deliveryId: (await db.notificationDelivery.findFirstOrThrow({
-            where: { targetSlot: `default-guild:SESSION:${session.id}:announce` },
+            where: { targetSlot: `default-guild:SESSION:${session.id}:thread` },
           })).id,
           outcome: "failed",
           errorClass: "resolver:not_configured",
@@ -484,8 +527,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         vi.stubEnv("CRON_SECRET", "s3cret");
         vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
 
         const { GET } = await import("@/app/api/cron/notification-executor/route");
         const res = await GET(
@@ -539,7 +582,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
     });
 
     describe("erreurs Discord — permission refusée, message supprimé, réseau incertain", () => {
-      it("permission refusée (403) sur le SEND initial : FAILED terminal, jamais réessayé", async () => {
+      it("permission refusée (403) sur le SEND initial (création du fil) : FAILED terminal, jamais réessayé", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
@@ -549,7 +592,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:auth_or_permission" });
 
         const row = await db.notificationDelivery.findFirstOrThrow({
-          where: { targetSlot: `default-guild:SESSION:${session.id}:announce` },
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread` },
         });
         expect(row.status).toBe("FAILED");
         expect(row.nextAttemptAt).toBeNull();
@@ -559,12 +602,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const creator = await makeUser();
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         await processOne();
-        // La livraison "thread" enqueue-ée par `enqueueSessionCreationDeliveries`
+        // La livraison "announce" enqueue-ée par `enqueueSessionCreationDeliveries`
         // reste sinon due elle aussi — la traiter d'abord isole l'EDIT
         // ci-dessous comme SEULE livraison encore en attente.
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne();
 
         await db.session.update({ where: { id: session.id }, data: { date: new Date("2026-10-05T20:00:00.000Z") } });
@@ -585,7 +628,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(fetchMock).toHaveBeenCalledTimes(3);
       });
 
-      it("résultat réseau incertain (fetch rejette) sur le SEND initial : retryable, un seul appel tenté", async () => {
+      it("résultat réseau incertain (fetch rejette) sur le SEND initial (création du fil) : retryable, un seul appel tenté", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
@@ -596,7 +639,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(fetchMock).toHaveBeenCalledTimes(1);
 
         const row = await db.notificationDelivery.findFirstOrThrow({
-          where: { targetSlot: `default-guild:SESSION:${session.id}:announce` },
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread` },
         });
         expect(row.status).toBe("PENDING");
       });
@@ -655,7 +698,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           await db.notificationDelivery.count({ where: { targetSlot: { startsWith: `default-guild:SESSION:${session.id}:` } } })
         ).toBe(2);
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
       });
@@ -851,19 +894,19 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
-        const announceOutcome = await processOne();
-        expect(announceOutcome?.outcome).toBe("sent");
-
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         const threadOutcome = await processOne();
         expect(threadOutcome?.outcome).toBe("sent");
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const announceOutcome = await processOne();
+        expect(announceOutcome?.outcome).toBe("sent");
 
         // Une édition ultérieure (ex. clôture) sur cette même session
         // continue elle aussi d'utiliser le chemin bot, sans accroc.
         await db.session.update({ where: { id: session.id }, data: { status: "CANCELLED" } });
         await announceLib.enqueueSessionAnnounceUpdate(session.id);
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const editOutcome = await processOne();
         expect(editOutcome?.outcome).toBe("sent");
       });
@@ -956,15 +999,18 @@ describe.skipIf(!TEST_DATABASE_URL)(
           await db.notificationEvent.count({ where: { sourceId: stored.id, eventType: "SESSION_CREATED" } })
         ).toBe(1);
 
-        // Traite le SEND réel — doit rendre l'état "validée" (pas
-        // "nouvelle soirée à voter", cette session n'a jamais été VOTING)
-        // ET la notification interne assortie doit porter le bon
-        // type/titre (bug corrigé : `resolveSendNotificationMeta`).
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "chan-sessions" }));
+        // Fil privé créé en premier (aucune dépendance), puis l'annonce
+        // POSTÉE DEDANS — doit rendre l'état "validée" (pas "nouvelle
+        // soirée à voter", cette session n'a jamais été VOTING) ET la
+        // notification interne assortie doit porter le bon type/titre
+        // (bug corrigé : `resolveSendNotificationMeta`).
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "thread-1" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.embeds[0].title).toContain(`Soirée validée : ${game.name}`);
 
@@ -974,7 +1020,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(notifications.some((n) => n.title.includes("Nouvelle soirée"))).toBe(false);
       });
 
-      it("bot désactivé (regression) : spinRoulette garde le comportement historique — webhook appelé, aucune livraison bot", async () => {
+      it("bot désactivé : confidentialité des soirées — plus AUCUN appel Discord public, même webhook configuré (jamais de repli public)", async () => {
+        // Chantier confidentialité des soirées — ce test vérifiait
+        // auparavant que le webhook legacy PARTAIT bien (comportement
+        // historique). Ce chemin n'a plus aucun mécanisme privé
+        // équivalent au fil bot : `announceRouletteResult` est désormais
+        // un no-op réseau PERMANENT (voir discord-roulette.ts), quelle
+        // que soit la configuration du webhook — jamais un repli public.
         const creator = await makeUser();
         const p1 = await makeUser();
         const p2 = await makeUser();
@@ -985,19 +1037,22 @@ describe.skipIf(!TEST_DATABASE_URL)(
         ]);
 
         vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
-        // Stub LOCALE au webhook (jamais stubbée globalement dans cette
-        // suite, voir le commentaire de `beforeEach`) — nécessaire ici
-        // pour prouver un VRAI appel réseau webhook plutôt que le simple
-        // repli silencieux "not_configured" de `postToDiscord` sans lui.
+        // Webhook PLEINEMENT configuré — et pourtant aucun appel réseau ne
+        // doit en résulter (voir le commentaire ci-dessus).
         vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/test/token");
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
 
         await rouletteLib.spinRoulette(roulette.id);
 
-        expect(fetchMock).toHaveBeenCalledTimes(1); // le webhook, jamais le bot
+        expect(fetchMock).not.toHaveBeenCalled();
         const stored = await db.session.findFirstOrThrow({ where: { createdViaRoulette: true } });
         expect(stored.announceViaBot).toBe(false);
         expect(await db.notificationEvent.count({ where: { sourceId: stored.id } })).toBe(0);
+
+        // Les notifications INTERNES restent écrites (invités actifs
+        // uniquement) — seule la publication PUBLIQUE est supprimée.
+        const notifications = await db.notification.findMany({ where: { relatedSessionId: stored.id } });
+        expect(notifications).toHaveLength(2);
+        expect(notifications.map((n) => n.userId).sort()).toEqual([p1.id, p2.id].sort());
       });
 
       it("catégorie de préférence ROULETTE honorée au traitement réel du SEND différé — jamais SESSION", async () => {
@@ -1043,11 +1098,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // de notification a été posée à l'enqueue. Le SEND réel, traité
         // ici, doit relire la préférence à CE moment (potentiellement bien
         // plus tard que l'enqueue, selon la cadence du cron).
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "chan-sessions" }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "thread-1" }));
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[0];
+        const [, init] = fetchMock.mock.calls[1];
         const body = JSON.parse(String(init.body));
         expect(body.content).not.toContain(`<@${roulettePrefOff.discordId}>`);
         expect(body.content).toContain(`<@${sessionPrefOff.discordId}>`);
@@ -1129,6 +1186,204 @@ describe.skipIf(!TEST_DATABASE_URL)(
         });
         expect(rouletteRows.every((r) => r.status === "DONE")).toBe(true);
         expect(new Set(rouletteRows.map((r) => r.resultSessionId))).toEqual(new Set(sessions.map((s) => s.id)));
+      });
+    });
+
+    describe("invite-sync — synchronise le fil privé avec les invitations (chantier confidentialité)", () => {
+      /** Amène une session au point où son fil privé existe déjà ET son
+       * annonce initiale est déjà postée — état préalable de tous les
+       * tests de ce bloc (sans consommer aussi la livraison "announce",
+       * elle resterait PENDING et serait réclamée EN PREMIER par le tout
+       * prochain `processOne()`, avant l'invite-sync qu'on veut isoler). */
+      async function createSessionWithThread(creator: { id: string }) {
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        return session;
+      }
+
+      it("dépend du fil — enqueue AVANT que le fil n'existe : dependency_not_ready, aucun appel Discord tenté", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser();
+        const session = await makeSession(creator.id);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "retrying", errorClass: "resolver:dependency_not_ready" });
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("invitation ACTIVE : add_thread_member (PUT) appelé avec le discordId de l'invité, idempotent par construction Discord", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-actif" });
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        expect(fetchMock).toHaveBeenCalledTimes(3); // thread + announce (setup) + ce PUT
+        const [url, init] = fetchMock.mock.calls.at(-1)!;
+        expect(String(url)).toBe(`https://discord.com/api/v10/channels/thread-1/thread-members/${guest.discordId}`);
+        expect(init.method).toBe("PUT");
+
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("synced");
+      });
+
+      it("invitation REVOKED : remove_thread_member (DELETE) appelé — un 404 (déjà absent du fil) est traité comme un SUCCÈS, jamais un échec", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-retire" });
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+        await access.revokeSessionInvite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Member" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [url, init] = fetchMock.mock.calls.at(-1)!;
+        expect(String(url)).toBe(`https://discord.com/api/v10/channels/thread-1/thread-members/${guest.discordId}`);
+        expect(init.method).toBe("DELETE");
+      });
+
+      it("COURSE — révocation survenue APRÈS l'enqueue d'un ajout mais AVANT son traitement : résout vers un RETRAIT, jamais un ajout périmé qui rétablirait un accès déjà coupé", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "course-revocation" });
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        // L'ajout est enqueue pendant que l'invitation est encore ACTIVE...
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        // ...mais elle est révoquée AVANT que l'exécuteur ne traite cette
+        // livraison (simule un retrait cliqué juste après l'invitation,
+        // avant le prochain passage du cron).
+        await access.revokeSessionInvite(session.id, guest.id, creator.id);
+
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        // Le résolveur a relu le statut ACTUEL (REVOKED) au traitement,
+        // jamais l'intention figée à l'enqueue — DELETE, jamais PUT.
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        expect(init.method).toBe("DELETE");
+      });
+
+      it("RÉPÉTITION — deux enqueues successifs pour la même invitation (invite puis revoke rapprochés) : seul le plus récent est traité, convergence identique à l'EDIT d'annonce", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser();
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id); // occurrence 1 (ACTIVE)
+        await access.revokeSessionInvite(session.id, guest.id, creator.id);
+        await announceLib.enqueueSessionInviteSync(inv.id); // occurrence 2 (REVOKED)
+
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        expect(init.method).toBe("DELETE"); // le plus récent (revoke), jamais l'ajout périmé
+
+        // Plus rien à traiter pour cette invitation — la 1ère occurrence a
+        // été SKIPPED par `claimNextDelivery`, jamais vue par le résolveur.
+        const second = await processOne();
+        expect(second).toBeNull();
+      });
+
+      it("répétition d'un RETRAIT (double clic) : idempotent, jamais de second appel réseau inutile au-delà de la convergence normale", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser();
+        const session = await createSessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+        await access.revokeSessionInvite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const first = await processOne();
+        expect(first?.outcome).toBe("sent");
+
+        // Un second retrait n'a plus d'effet côté `revokeSessionInvite`
+        // (déjà REVOKED) — mais rien n'empêche un appelant de rappeler
+        // `enqueueSessionInviteSync` par erreur (ex. double clic avant la
+        // première réponse) : traité normalement, sans jamais planter ni
+        // dupliquer l'état.
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Member" }));
+        const second = await processOne();
+        expect(second?.outcome).toBe("sent");
+      });
+
+      it("suivi d'état pour l'interface de gestion — 'pending' avant traitement, 'synced' après succès, 'failed' après un échec Discord classifié", async () => {
+        const creator = await makeUser();
+        const guestPending = await makeUser();
+        const guestSynced = await makeUser();
+        const guestFailed = await makeUser();
+        const session = await createSessionWithThread(creator);
+        const invPending = await invite(session.id, guestPending.id, creator.id);
+        const invSynced = await invite(session.id, guestSynced.id, creator.id);
+        const invFailed = await invite(session.id, guestFailed.id, creator.id);
+
+        await announceLib.enqueueSessionInviteSync(invSynced.id);
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne();
+
+        await announceLib.enqueueSessionInviteSync(invFailed.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
+        await processOne();
+
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [
+          invPending.id,
+          invSynced.id,
+          invFailed.id,
+        ]);
+        expect(statuses.get(invPending.id)).toBe("pending"); // jamais enqueue
+        expect(statuses.get(invSynced.id)).toBe("synced");
+        expect(statuses.get(invFailed.id)).toBe("failed");
+      });
+    });
+
+    describe("mentions/notifications bot — coupées par une révocation, même déjà enqueue-ées (chantier confidentialité)", () => {
+      it("un invité RÉVOQUÉ après l'enqueue mais AVANT le traitement du SEND n'est ni mentionné ni notifié — même garantie que les préférences", async () => {
+        const creator = await makeUser();
+        const revokedGuest = await makeUser({ discordName: "revoque-avant-envoi" });
+        const stillActive = await makeUser({ discordName: "toujours-invite" });
+        const game = await makeGame(creator.id);
+        const session = await makeSession(creator.id);
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, revokedGuest.id);
+        await vote(proposal.id, stillActive.id);
+        await invite(session.id, revokedGuest.id, creator.id);
+        await invite(session.id, stillActive.id, creator.id);
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        // Révoqué APRÈS l'enqueue de la création, AVANT que l'exécuteur ne
+        // traite le SEND — simule un retrait décidé pendant la fenêtre
+        // d'attente du cron.
+        await access.revokeSessionInvite(session.id, revokedGuest.id, creator.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[1];
+        const body = JSON.parse(String(init.body));
+        expect(body.content).not.toContain(`<@${revokedGuest.discordId}>`);
+        expect(body.content).toContain(`<@${stillActive.discordId}>`);
+
+        const notifications = await db.notification.findMany({ where: { relatedSessionId: session.id } });
+        expect(notifications.map((n) => n.userId)).toEqual([stillActive.id]);
       });
     });
   }

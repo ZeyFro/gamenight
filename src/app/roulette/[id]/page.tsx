@@ -56,6 +56,14 @@ export default async function RouletteDetailPage({
   const proposalOpen = isRouletteProposalOpen(roulette);
   const invitedIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
 
+  // Confidentialité — une roulette n'a pas encore de table d'invitation
+  // dédiée (voir le commentaire de `EnCoursTab`, /roulette/page.tsx) :
+  // accès réservé au créateur et aux ids listés dans `notifiedUserIds`.
+  // `notFound()` plutôt qu'un message explicite, même raisonnement que
+  // `/sessions/[id]` — jamais confirmer l'existence d'une roulette à un
+  // non-invité.
+  if (!isCreator && !invitedIds.includes(user.id)) notFound();
+
   const [invited, myEntries] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: invitedIds } },

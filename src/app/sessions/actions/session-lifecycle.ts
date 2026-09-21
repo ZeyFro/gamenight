@@ -9,6 +9,7 @@ import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { isRealDiscordFailure } from "@/lib/discord";
 import { enqueueSessionCreationDeliveries } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
@@ -22,6 +23,7 @@ import {
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
+import { inviteToSession } from "@/lib/session-access";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   createSessionSchema,
@@ -106,6 +108,17 @@ export async function createSession(formData: FormData) {
         announceViaBot,
       },
     });
+    // Confidentialité des soirées — `SessionInvite` posée pour EXACTEMENT
+    // les personnes sélectionnées (`notifiedUserIds`, déjà validées contre
+    // de vrais users ci-dessus), jamais plus/moins, DANS LA MÊME
+    // transaction que la création de la session : un crash entre les deux
+    // laisserait sinon une session sans le moindre invité accessible,
+    // visible du seul créateur en silence. Créateur jamais inclus ici
+    // (`inviteToSession` l'exclut lui-même), il garde accès via
+    // `createdById`.
+    for (const guestId of notifiedUserIds) {
+      await inviteToSession(created.id, user.id, guestId, tx);
+    }
     if (announceViaBot) {
       await enqueueSessionCreationDeliveries(created.id, tx);
     }
@@ -148,7 +161,7 @@ export async function createSession(formData: FormData) {
 
   const params = new URLSearchParams();
   if (deadlineAdjusted) params.set("deadline", "ajustee");
-  if (!announceResult.ok) params.set("discord", "echec");
+  if (isRealDiscordFailure(announceResult)) params.set("discord", "echec");
   // Confettis (Sprint 2 PR-B, U9) — badge prioritaire sur level up si les
   // deux se produisent au même moment (plus rare, mérite plus l'attention).
   if (badgeUnlocked) params.set("celebrate", "badge");
@@ -245,7 +258,7 @@ export async function editSessionAction(formData: FormData) {
 
   const params = new URLSearchParams();
   if (deadlineAdjusted) params.set("deadline", "ajustee");
-  if (!announceResult.ok) params.set("discord", "echec");
+  if (isRealDiscordFailure(announceResult)) params.set("discord", "echec");
   const query = params.toString();
   redirect(`/sessions/${sessionId}${query ? `?${query}` : ""}`);
 }
@@ -273,7 +286,7 @@ export async function closeSessionAction(formData: FormData) {
 
   // `result.discord === null` : clôture silencieuse (0 votant, cf.
   // `closeSession`) — pas un échec d'envoi, rien à signaler.
-  if (result?.discord && !result.discord.ok) {
+  if (result?.discord && isRealDiscordFailure(result.discord)) {
     redirect(`/sessions/${sessionId}?discord=echec`);
   }
 }
@@ -300,7 +313,8 @@ export async function resendDiscordAction(formData: FormData) {
   if (session.createdById !== user.id && !(await requireAdmin())) return;
 
   const result = await resendSessionAnnouncement(sessionId);
-  redirect(`/sessions/${sessionId}?discord=${result.ok ? "envoye" : "echec"}`);
+  const status = result.ok ? "envoye" : isRealDiscordFailure(result) ? "echec" : "desactive";
+  redirect(`/sessions/${sessionId}?discord=${status}`);
 }
 
 export async function cancelSessionAction(formData: FormData) {

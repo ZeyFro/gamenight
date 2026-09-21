@@ -54,6 +54,7 @@ export default async function CalendrierPage({
   const data = await getCalendarData(
     rangeStart,
     rangeEndExclusive,
+    user.id,
     mode === "collectif" && visibleUserIds ? visibleUserIds : undefined
   );
 

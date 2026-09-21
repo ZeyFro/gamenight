@@ -161,6 +161,13 @@ model User {
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
 
+  // Confidentialité des soirées — voir `SessionInvite` plus bas. Trois
+  // relations distinctes vers `User` (invité, invitant, révocateur),
+  // jamais confondues.
+  sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
+  sessionInvitesRevoked  SessionInvite[] @relation("SessionInviteRevokedBy")
+
   // Audit trail (PR 5/9 du chantier XP, à la demande de l'utilisateur —
   // craint qu'un pote modifie un superlatif de façon abusive pour se
   // farmer de l'XP). Pas de blocage, juste une trace de qui a touché quoi
@@ -548,12 +555,71 @@ model Session {
   // Sprint 5 (Chat in-app) — canal dédié à cette soirée (`ChatMessage.sessionId`).
   chatMessages      ChatMessage[]
 
+  // Chantier confidentialité — source de vérité des invitations (voir
+  // `SessionInvite` plus bas). `onDelete: Cascade` : supprimer la session
+  // supprime ses invitations avec elle, jamais l'inverse.
+  invites SessionInvite[]
+
   // Infra (Sprint 5 suite, I4) — `/sessions`, la Home et les crons
   // filtrent quasi systématiquement par `status` puis trient par `date`
   // (prochaine soirée VOTING/SCHEDULED, sessions VOTING dues pour la
   // clôture...) ; seul modèle "chaud" de l'app qui n'avait encore aucun
   // index.
   @@index([status, date])
+}
+
+// Chantier confidentialité des soirées — remplace l'ancien choix
+// d'annonces collectives : seuls le créateur et les invités actifs
+// peuvent désormais consulter/agir sur une soirée, sur le site ET sur
+// Discord (voir `src/lib/session-access.ts`, source de vérité unique du
+// contrôle d'accès serveur). Table de relation dédiée plutôt qu'une
+// réutilisation de `Session.notifiedUserIds` (qui reste un simple filtre
+// de mentions Discord, jamais une liste d'accès — voir son commentaire) :
+// une invitation a besoin d'un historique (qui a invité qui, quand),
+// d'une révocation traçable et réversible (réinviter recrée juste une
+// ligne, jamais un simple booléen écrasé), et de survivre à la
+// suppression d'un ancien invité sans effacer ses contributions passées
+// (`Vote`/`Proposal`/`ChatMessage` déjà écrits restent intacts — seul
+// l'ACCÈS futur est coupé).
+//
+// `status: REVOKED` PLUTÔT qu'une suppression de ligne — le retrait d'un
+// invité doit rester observable (`revokedAt`/`revokedById` posés). Une
+// seule ligne par (session, personne) POUR TOUJOURS (`@@unique` ci-dessous,
+// sans distinction de statut) : réinviter quelqu'un après un retrait
+// RÉUTILISE la même ligne (repasse `ACTIVE`, `revokedAt`/`revokedById`
+// remis à `null`, `invitedById` mis à jour sur le réinvitant) plutôt que
+// d'en créer une seconde — un seul cycle actif observable à la fois,
+// jamais deux lignes concurrentes pour le même couple session/personne
+// (voir `inviteToSession`/`revokeSessionInvite`, src/lib/session-access.ts).
+model SessionInvite {
+  id          String              @id @default(cuid())
+  sessionId   String
+  userId      String
+  invitedById String
+  status      SessionInviteStatus @default(ACTIVE)
+  createdAt   DateTime            @default(now())
+  revokedAt   DateTime?
+  revokedById String?
+
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User    @relation("SessionInviteUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("SessionInviteInvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
+  revokedBy User?   @relation("SessionInviteRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  // Une seule ligne par (session, personne) à la fois — réinviter après un
+  // retrait est bloqué par cette contrainte tant que l'ancienne ligne
+  // reste ACTIVE (impossible : le retrait la passe REVOKED avant toute
+  // réinvitation, voir `revokeSessionInvite`/`inviteToSession` dans
+  // session-access.ts), donc jamais deux lignes concurrentes pour le
+  // même couple.
+  @@unique([sessionId, userId])
+  @@index([sessionId, status])
+  @@index([userId, status])
+}
+
+enum SessionInviteStatus {
+  ACTIVE
+  REVOKED
 }
 
 // Sprint 4 (FEATURE 1, Pronostics) — avant une soirée SCHEDULED, chaque
