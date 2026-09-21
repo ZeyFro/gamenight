@@ -675,7 +675,7 @@ async function resolveAnnounceDelivery(
       formatDateTimeFr(session.date)
     );
     const action: ResolvedAction = {
-      kind: "send_thread_message",
+      kind: "send_thread_message_verified",
       threadId: thread.discordThreadId,
       message: { ...message, embeds: [rendering.embed] },
     };
@@ -685,10 +685,41 @@ async function resolveAnnounceDelivery(
   // EDIT — nécessite le messageId déjà posté par le SEND initial (posté
   // DANS le fil, donc `discordThreadId` sur cette même ligne SENT sert de
   // `channelId` pour l'édition — un fil est un salon côté API Discord,
-  // voir le commentaire de fichier de discord-rest.ts).
+  // voir le commentaire de fichier de discord-rest.ts). Jamais revérifié
+  // ICI (pas de `edit_channel_message_verified`) — MAIS PAS pour la
+  // raison qu'une version antérieure de ce commentaire affirmait à tort
+  // (« le SEND initial est nécessairement passé par
+  // send_thread_message_verified ») : c'est faux pour une soirée créée
+  // AVANT #102, dont l'annonce a été envoyée via `send_channel_message`
+  // (salon PUBLIC direct, jamais un fil). La vraie garantie est
+  // STRUCTURELLE, pas temporelle : `discordThreadId` sur la ligne
+  // `announce` ne peut être posé QUE par un envoi DANS un fil
+  // (`send_thread_message`/`send_thread_message_verified`) — jamais par
+  // le chemin legacy `send_channel_message`, qui ne pose que
+  // `discordChannelId`. Une soirée pré-#102 (ancienne architecture, où
+  // `thread` était créé DEPUIS le message d'annonce, dépendance inversée
+  // par rapport à aujourd'hui) a donc TOUJOURS sa ligne `announce` sans
+  // `discordThreadId`, quel que soit le code déployé au moment du
+  // traitement — ce champ n'est écrit qu'au moment du SEND réel, jamais
+  // rétroactivement. Un ancien fil PUBLIC ne peut donc jamais être ciblé
+  // par cette EDIT ; voir le test dédié "protection contre un ancien fil
+  // PUBLIC référencé en base — EDIT sur une annonce/un fil legacy".
   const sentAnnounce = await findSentDelivery(announceSlot(session.id));
-  if (!sentAnnounce?.discordMessageId || !sentAnnounce.discordThreadId) {
+  if (!sentAnnounce?.discordMessageId) {
+    // SEND pas encore traité — dépendance réellement susceptible de se
+    // résoudre plus tard (le cron n'est pas encore passé dessus),
+    // retenté normalement.
     return { eligible: false, reason: "dependency_not_ready" };
+  }
+  if (!sentAnnounce.discordThreadId) {
+    // Ligne "announce" legacy (envoyée AVANT #102, salon PUBLIC direct,
+    // jamais un fil) — fait STRUCTUREL et PERMANENT, jamais une question
+    // de timing : ce champ ne sera jamais rempli rétroactivement. Refus
+    // IMMÉDIAT et définitif (`unresolvable`, jamais `dependency_not_ready`)
+    // — jamais un salon public édité avec du contenu de soirée, jamais de
+    // tentatives inutiles avant un échec terminal qui finirait par
+    // arriver de toute façon.
+    return { eligible: false, reason: "unresolvable" };
   }
 
   const notifType = session.status === "SCHEDULED" || session.status === "DONE" ? "SESSION_RESULT" : "SESSION_CREATED";
@@ -749,8 +780,8 @@ async function resolveInviteSync(sessionId: string, inviteId: string): Promise<R
 
   const action: ResolvedAction =
     invite.status === "ACTIVE"
-      ? { kind: "add_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
-      : { kind: "remove_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
+      ? { kind: "add_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
+      : { kind: "remove_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
   return { eligible: true, action };
 }
 
@@ -767,7 +798,7 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
     formatDateTimeFr(session.date)
   );
   const action: ResolvedAction = {
-    kind: "send_thread_message",
+    kind: "send_thread_message_verified",
     threadId: thread.discordThreadId,
     message: { ...message, embeds: [rendering.embed] },
   };
@@ -800,6 +831,6 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
     reminderTitle
   );
-  const action: ResolvedAction = { kind: "send_thread_message", threadId: thread.discordThreadId, message };
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };
 }

@@ -10,12 +10,27 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
-import { addSessionInviteAction, revokeSessionInviteAction } from "../../actions/invites";
+import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSyncAction } from "../../actions/invites";
 
 const SYNC_LABELS: Record<string, { text: string; tone: "accent" | "warning" | "neutral" }> = {
   synced: { text: "✓ Synchronisé sur Discord", tone: "accent" },
   pending: { text: "⏳ Synchronisation Discord en attente (prochain passage du cron)", tone: "neutral" },
-  failed: { text: "⚠️ Échec de synchronisation Discord — accès applicatif déjà à jour, réessai automatique", tone: "warning" },
+  failed: { text: "⚠️ Échec de synchronisation Discord — accès applicatif déjà à jour, réessai manuel possible", tone: "warning" },
+};
+
+/**
+ * Libellés dédiés au retrait — jamais les mêmes textes que `SYNC_LABELS`
+ * (pensés pour un AJOUT) : ici "synced" signifie "retiré du fil Discord",
+ * "failed" signifie que le retrait Discord a ÉCHOUÉ — le créateur ne doit
+ * JAMAIS lire "accès coupé" tant que ce retrait n'est pas confirmé par
+ * Discord (voir revue ciblée, chantier confidentialité des soirées) : sans
+ * ce libellé distinct, un échec de retrait resterait invisible et
+ * l'invité pourrait conserver un accès Discord que le créateur croit coupé.
+ */
+const REVOKE_SYNC_LABELS: Record<string, { text: string; tone: "accent" | "warning" | "neutral" }> = {
+  synced: { text: "✓ Retiré du fil Discord", tone: "accent" },
+  pending: { text: "⏳ Retrait Discord en attente (accès Discord pas encore coupé)", tone: "neutral" },
+  failed: { text: "⚠️ Le retrait Discord a échoué — cette personne peut encore avoir accès au fil Discord", tone: "warning" },
 };
 
 /**
@@ -116,13 +131,24 @@ export default async function SessionInvitesPage({
                     )}
                   </div>
                 </div>
-                <form action={revokeSessionInviteAction}>
-                  <input type="hidden" name="sessionId" value={sessionId} />
-                  <input type="hidden" name="guestUserId" value={invite.userId} />
-                  <Button type="submit" variant="destructive" size="sm">
-                    Retirer
-                  </Button>
-                </form>
+                <div className="flex shrink-0 items-center gap-2">
+                  {sync === "failed" && (
+                    <form action={retrySessionInviteSyncAction}>
+                      <input type="hidden" name="sessionId" value={sessionId} />
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <Button type="submit" variant="secondary" size="sm">
+                        Réessayer
+                      </Button>
+                    </form>
+                  )}
+                  <form action={revokeSessionInviteAction}>
+                    <input type="hidden" name="sessionId" value={sessionId} />
+                    <input type="hidden" name="guestUserId" value={invite.userId} />
+                    <Button type="submit" variant="destructive" size="sm">
+                      Retirer
+                    </Button>
+                  </form>
+                </div>
               </li>
             );
           })}
@@ -158,14 +184,36 @@ export default async function SessionInvitesPage({
       {revokedInvites.length > 0 && (
         <Card className="flex flex-col gap-3">
           <h2 className="font-semibold text-foreground">Historique des retraits</h2>
-          <ul className="flex flex-col gap-1 text-sm text-muted">
-            {revokedInvites.map((invite) => (
-              <li key={invite.id}>
-                {invite.user.discordName} — retiré
-                {invite.revokedAt ? ` le ${formatDateTimeFr(invite.revokedAt)}` : ""}. Ses messages et votes
-                déjà envoyés restent visibles aux autres invités.
-              </li>
-            ))}
+          <ul className="flex flex-col gap-3">
+            {revokedInvites.map((invite) => {
+              const sync = session.announceViaBot ? syncStatuses.get(invite.id) : undefined;
+              const syncLabel = sync ? REVOKE_SYNC_LABELS[sync] : null;
+              return (
+                <li key={invite.id} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 text-sm text-muted">
+                    <p>
+                      {invite.user.discordName} — retiré
+                      {invite.revokedAt ? ` le ${formatDateTimeFr(invite.revokedAt)}` : ""}. Ses messages et votes
+                      déjà envoyés restent visibles aux autres invités.
+                    </p>
+                    {syncLabel && (
+                      <p className={`mt-0.5 text-xs ${syncLabel.tone === "warning" ? "text-warning" : syncLabel.tone === "accent" ? "text-accent" : "text-muted"}`}>
+                        {syncLabel.text}
+                      </p>
+                    )}
+                  </div>
+                  {sync === "failed" && (
+                    <form action={retrySessionInviteSyncAction} className="shrink-0">
+                      <input type="hidden" name="sessionId" value={sessionId} />
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <Button type="submit" variant="secondary" size="sm">
+                        Réessayer
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </Card>
       )}
