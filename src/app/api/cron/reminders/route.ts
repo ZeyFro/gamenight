@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
+import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
 import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -167,7 +168,20 @@ export async function GET(request: Request) {
                   return false;
                 }
               )
-            : (await sendSessionReminder(session, minutes)).ok;
+            : await sendSessionReminder(session, minutes).then((result) => {
+                // Chantier confidentialité des soirées — ce chemin webhook
+                // ne poste plus JAMAIS dans Discord (voir le commentaire de
+                // `WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY`, src/lib/discord.ts).
+                // Traité comme "traité avec succès" pour `remindersSent` :
+                // un échec RÉEL (webhook down) était auparavant réessayé au
+                // prochain passage (15 min), ce qui a du sens — mais ce
+                // résultat-ci ne changera JAMAIS d'issue en retentant, le
+                // retenter indéfiniment ne ferait que ré-écrire les mêmes
+                // notifications internes toutes les 15 min jusqu'à la
+                // session, sans jamais aboutir à un vrai envoi.
+                if (!result.ok && result.error === WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY) return true;
+                return result.ok;
+              });
           outcomes.push({ minutes, ok });
           if (ok) {
             sent.push(`${session.id}:${minutes}min`);

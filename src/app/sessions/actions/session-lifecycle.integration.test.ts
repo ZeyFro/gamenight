@@ -1,0 +1,162 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * Chantier confidentialité des soirées — preuve d'intégration Postgres
+ * réelle que `createSession` (chemin de création CLASSIQUE, par
+ * opposition aux deux chemins roulette déjà couverts par
+ * session-announce.integration.test.ts) persiste des `SessionInvite`
+ * EXACTS pour la sélection du créateur, ATOMIQUEMENT avec la session —
+ * jamais une liste vide transformée en "tout le monde", jamais un invité
+ * de plus ou de moins que ce qui a été explicitement coché au formulaire.
+ *
+ * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * SKIPPÉE si absente.
+ */
+
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+
+const { redirectMock } = vi.hoisted(() => ({
+  redirectMock: vi.fn((location: string) => {
+    throw new Error(`REDIRECT:${location}`);
+  }),
+}));
+
+vi.mock("next/navigation", () => ({ redirect: redirectMock }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
+vi.mock("@/lib/prisma", async () => {
+  const { PrismaClient } = await import("@prisma/client");
+  if (!TEST_DATABASE_URL) {
+    return { prisma: {} as unknown };
+  }
+  return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) };
+});
+
+if (!TEST_DATABASE_URL) {
+  console.warn(
+    "[session-lifecycle.integration.test] TEST_DATABASE_URL absente — suite SKIPPÉE. " +
+      "La preuve que createSession persiste des SessionInvite exacts n'est PAS validée."
+  );
+}
+
+describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (intégration Postgres isolée)", () => {
+  let db: import("@prisma/client").PrismaClient;
+  let currentUserMock: ReturnType<typeof vi.fn>;
+  let createSession: typeof import("./session-lifecycle").createSession;
+
+  beforeAll(async () => {
+    const prismaModule = await import("@/lib/prisma");
+    db = prismaModule.prisma as unknown as import("@prisma/client").PrismaClient;
+
+    currentUserMock = vi.fn();
+    vi.doMock("@/lib/current-user", () => ({ getCurrentUser: currentUserMock }));
+
+    ({ createSession } = await import("./session-lifecycle"));
+  });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await db.$executeRawUnsafe(
+      `TRUNCATE "NotificationDelivery", "NotificationEvent", "SessionInvite", "Vote", "Proposal", "Session", "XpEvent", "User" CASCADE`
+    );
+    vi.clearAllMocks();
+    redirectMock.mockImplementation((location: string) => {
+      throw new Error(`REDIRECT:${location}`);
+    });
+  });
+
+  let counter = 0;
+  function uniq(label: string): string {
+    counter += 1;
+    return `${label}-${counter}`;
+  }
+
+  async function makeUser() {
+    const id = uniq("user");
+    return db.user.create({ data: { discordId: id, discordName: id } });
+  }
+
+  function formData(fields: Record<string, string | string[]>): FormData {
+    const fd = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        for (const v of value) fd.append(key, v);
+      } else {
+        fd.set(key, value);
+      }
+    }
+    return fd;
+  }
+
+  it("persiste EXACTEMENT les potes cochés — jamais plus, jamais moins, jamais 'tout le monde'", async () => {
+    const creator = await makeUser();
+    const invitedA = await makeUser();
+    const invitedB = await makeUser();
+    const notInvited = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+
+    await expect(
+      createSession(
+        formData({
+          date: "2026-11-01",
+          time: "20:00",
+          notifyUserId: [invitedA.id, invitedB.id],
+        })
+      )
+    ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+    const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+    const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+    expect(invites.map((i) => i.userId).sort()).toEqual([invitedA.id, invitedB.id].sort());
+    expect(invites.every((i) => i.status === "ACTIVE")).toBe(true);
+    expect(invites.every((i) => i.invitedById === creator.id)).toBe(true);
+    expect(invites.map((i) => i.userId)).not.toContain(notInvited.id);
+    expect(invites.map((i) => i.userId)).not.toContain(creator.id);
+
+    // Le créateur a accès sans ligne dédiée, `notInvited` n'en a aucune.
+    const access = await import("@/lib/session-access");
+    expect(await access.canAccessSession(creator.id, session.id)).toBe(true);
+    expect(await access.canAccessSession(invitedA.id, session.id)).toBe(true);
+    expect(await access.canAccessSession(notInvited.id, session.id)).toBe(false);
+  });
+
+  it("aucun pote coché — la session reste accessible au SEUL créateur, jamais un repli vers 'tout le monde'", async () => {
+    const creator = await makeUser();
+    const someoneElse = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+
+    await expect(
+      createSession(formData({ date: "2026-11-01", time: "20:00" }))
+    ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+    const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+    expect(await db.sessionInvite.count({ where: { sessionId: session.id } })).toBe(0);
+
+    const access = await import("@/lib/session-access");
+    expect(await access.canAccessSession(creator.id, session.id)).toBe(true);
+    expect(await access.canAccessSession(someoneElse.id, session.id)).toBe(false);
+  });
+
+  it("un id de pote forgé/inexistant dans la sélection est silencieusement ignoré — jamais une ligne SessionInvite orpheline", async () => {
+    const creator = await makeUser();
+    const real = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+
+    await expect(
+      createSession(
+        formData({
+          date: "2026-11-01",
+          time: "20:00",
+          notifyUserId: [real.id, "id-invente-qui-nexiste-pas"],
+        })
+      )
+    ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+    const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+    const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+    expect(invites.map((i) => i.userId)).toEqual([real.id]);
+  });
+});

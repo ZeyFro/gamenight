@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCalendarData } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getWeekStart } from "@/lib/calendar-dates";
 import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
+import { accessibleSessionWhere } from "@/lib/session-access";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -33,11 +34,20 @@ export interface ActivityItem {
  * `session.date` (pas de colonne "marquée DONE le") : cohérent, une
  * session DONE a par construction déjà eu lieu (clôture manuelle ou
  * automatique 6h après le début, cf. PR fix cycle de vie).
+ *
+ * Confidentialité des soirées — SEULE la ligne "Soirée jouée" (qui expose
+ * un nom de jeu et un créateur précis, donc le contenu réel d'une soirée)
+ * est restreinte aux soirées visibles par `viewerId`
+ * (`accessibleSessionWhere`, src/lib/session-access.ts). Les 3 autres
+ * types (badges, superlatifs, niveaux) restent un flux global inchangé :
+ * ce sont des accomplissements personnels affichés partout ailleurs dans
+ * l'app (profil, classement), pas le contenu d'une soirée précise —
+ * périmètre volontairement limité, documenté comme tel dans le README.
  */
-export async function getRecentActivity(limit = 5): Promise<ActivityItem[]> {
+export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
-      where: { status: "DONE" },
+      where: { status: "DONE", ...accessibleSessionWhere(viewerId) },
       orderBy: { date: "desc" },
       take: limit,
       select: {
@@ -242,10 +252,10 @@ const EVENING_HOUR = 20;
  * renvoie vers `/calendrier?date=...`, qui reste consultable même pour
  * une date passée.
  */
-export async function getWeekAvailability(): Promise<WeekAvailabilityDay[]> {
+export async function getWeekAvailability(viewerId: string): Promise<WeekAvailabilityDay[]> {
   const weekStart = getWeekStart(todayDateOnly());
   const weekEndExclusive = addDays(weekStart, 7);
-  const data = await getCalendarData(weekStart, weekEndExclusive);
+  const data = await getCalendarData(weekStart, weekEndExclusive, viewerId);
   const totalUsers = data.users.length;
 
   const days = data.days.map((day) => {

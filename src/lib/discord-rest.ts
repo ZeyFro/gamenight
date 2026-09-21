@@ -266,6 +266,12 @@ interface RequestOptions<T> {
   deadline: Date;
   now?: Date;
   isDirectMessage?: boolean;
+  /** `true` pour un endpoint dont le SUCCÈS attendu est un `204` sans
+   * corps (ex. `PUT`/`DELETE .../thread-members/{id}`) — sans ce drapeau,
+   * un corps vide sur un statut 2xx est traité comme `network_uncertain`
+   * (voir plus bas) : un succès Discord réellement sans contenu ne doit
+   * jamais être confondu avec une réponse illisible. */
+  allowEmptyBody?: boolean;
   parse: (json: unknown) => T | null;
 }
 
@@ -410,6 +416,10 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
   }
 
   if (body === undefined) {
+    if (opts.allowEmptyBody) {
+      const parsedEmpty = opts.parse(undefined);
+      if (parsedEmpty !== null) return { ok: true, data: parsedEmpty };
+    }
     return {
       ok: false,
       kind: "network_uncertain",
@@ -843,5 +853,111 @@ export async function sendDirectMessage(input: SendDirectMessageInput): Promise<
     isDirectMessage: true,
     deadline: input.deadline,
     now: input.now,
+  });
+}
+
+/**
+ * Chantier confidentialité des soirées — fils PRIVÉS (`GUILD_PRIVATE_THREAD`,
+ * type `12`). Faits vérifiés auprès de la documentation officielle
+ * (docs.discord.com/developers/topics/threads et .../resources/channel ;
+ * `discord.com`/`docs.discord.com`/`support.discord.com` étant bloqués en
+ * sortie réseau dans CETTE session, vérifiés via une copie brute
+ * `raw.githubusercontent.com/discord/discord-api-docs` du même contenu
+ * source, jamais depuis la mémoire d'entraînement seule) :
+ *   - Un fil privé n'existe QUE sous un salon parent `GUILD_TEXT` (jamais
+ *     `GUILD_ANNOUNCEMENT`), requiert la permission bot
+ *     `CREATE_PRIVATE_THREADS` sur ce salon.
+ *   - `POST /channels/{channel.id}/threads` SANS `message_id` crée un fil
+ *     jamais rattaché à un message existant — aucune information de
+ *     soirée ne transite donc jamais par un message visible du salon
+ *     public, contrairement à l'ancien `startThreadFromMessage`.
+ *   - `invitable` (uniquement significatif pour un fil privé) : `false`
+ *     signifie que SEUL le créateur du fil (ce bot) et les titulaires
+ *     Discord de `MANAGE_THREADS` peuvent y ajouter des membres — un
+ *     simple invité ne peut donc jamais élargir l'accès depuis Discord
+ *     lui-même. Posé à `false` par défaut ici (jamais laissé au défaut
+ *     Discord, qui est `true`).
+ *   - Limite documentée, honnête, PAS contournable depuis ce client : un
+ *     titulaire Discord de `MANAGE_THREADS` (admin/modérateur du serveur)
+ *     voit et accède TOUJOURS à un fil privé, quelle que soit la liste de
+ *     membres gérée applicativement — voir le README.
+ */
+export interface StartPrivateThreadInput {
+  channelId: string;
+  name: string;
+  /** `false` par défaut — voir le commentaire de fonction. */
+  invitable?: boolean;
+  autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+  deadline: Date;
+  now?: Date;
+}
+
+export async function startPrivateThread(input: StartPrivateThreadInput): Promise<DiscordRestResult<ThreadInfo>> {
+  return discordRequest({
+    method: "POST",
+    path: `/channels/${input.channelId}/threads`,
+    body: {
+      name: normalizeThreadName(input.name),
+      type: 12,
+      invitable: input.invitable ?? false,
+      auto_archive_duration: input.autoArchiveDuration ?? 10080,
+    },
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseThread,
+  });
+}
+
+/** Résultat vide (204) — les deux opérations de membership ci-dessous ne
+ * renvoient rien d'exploitable au-delà du succès lui-même. */
+export type ThreadMemberOpResult = Record<string, never>;
+
+function parseEmptySuccess(): ThreadMemberOpResult {
+  return {};
+}
+
+export interface ThreadMemberInput {
+  threadId: string;
+  /** Id Discord (snowflake) de l'utilisateur, PAS l'id interne GameNight. */
+  discordUserId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/**
+ * `PUT /channels/{channel.id}/thread-members/{user.id}` — idempotent par
+ * nature côté Discord : `204` que le membre ait déjà été présent ou non,
+ * jamais d'erreur pour un ajout répété. Requiert que ce bot puisse
+ * envoyer des messages dans le fil (`SEND_MESSAGES_IN_THREADS`).
+ */
+export async function addThreadMember(input: ThreadMemberInput): Promise<DiscordRestResult<ThreadMemberOpResult>> {
+  return discordRequest({
+    method: "PUT",
+    path: `/channels/${input.threadId}/thread-members/${input.discordUserId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: parseEmptySuccess,
+  });
+}
+
+/**
+ * `DELETE /channels/{channel.id}/thread-members/{user.id}` — sur un fil
+ * PRIVÉ créé par CE bot, le statut de créateur suffit (pas besoin de
+ * `MANAGE_THREADS` guilde-wide, voir le commentaire de fonction
+ * ci-dessus). Un `404` ("déjà absent du fil") N'EST PAS reclassé en
+ * succès ICI — ce client reste honnête sur ce que Discord a répondu ; le
+ * résolveur appelant (`resolveInviteSync`, session-announce.ts) décide
+ * lui-même que ce cas atteint l'état cible visé (retrait), voir son
+ * commentaire.
+ */
+export async function removeThreadMember(input: ThreadMemberInput): Promise<DiscordRestResult<ThreadMemberOpResult>> {
+  return discordRequest({
+    method: "DELETE",
+    path: `/channels/${input.threadId}/thread-members/${input.discordUserId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: parseEmptySuccess,
   });
 }

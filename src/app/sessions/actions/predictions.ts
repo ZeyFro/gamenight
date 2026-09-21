@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { submitPronostic, getPronosticEligibleUsers } from "@/lib/pronostics";
 import { placeBet } from "@/lib/xp-bets";
+import { canAccessSession } from "@/lib/session-access";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { pronosticSchema, xpBetSchema } from "@/lib/validations";
 import type { ToggleVoteResult } from "./proposals-votes";
@@ -43,6 +44,11 @@ export async function submitPronosticAction(formData: FormData): Promise<ToggleV
     select: { status: true, decidedGameId: true },
   });
   if (!session || session.status !== "SCHEDULED" || !session.decidedGameId) return { ok: true };
+  // Confidentialité des soirées — défense en profondeur, en plus du
+  // filtre "a voté le jeu gagnant" ci-dessous (déjà indirectement protégé
+  // une fois le vote lui-même gated, mais vérifié explicitement ici plutôt
+  // que de dépendre d'une chaîne indirecte).
+  if (!(await canAccessSession(user.id, sessionId))) return { ok: true };
 
   const eligible = await getPronosticEligibleUsers(sessionId, session.decidedGameId);
   const eligibleIds = new Set(eligible.map((u) => u.id));
@@ -78,6 +84,7 @@ export async function placeBetAction(formData: FormData) {
     select: { status: true, decidedGameId: true },
   });
   if (!session || session.status !== "SCHEDULED" || !session.decidedGameId) return;
+  if (!(await canAccessSession(user.id, sessionId))) return;
 
   const eligible = await getPronosticEligibleUsers(sessionId, session.decidedGameId);
   const eligibleIds = new Set(eligible.map((u) => u.id));

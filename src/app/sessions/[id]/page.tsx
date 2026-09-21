@@ -16,6 +16,7 @@ import {
 } from "@/lib/superlative-voting";
 import { getPronosticEligibleUsers } from "@/lib/pronostics";
 import { getChatMessages } from "@/lib/chat";
+import { getSessionAccessRole } from "@/lib/session-access";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -53,6 +54,14 @@ const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent
     tone: "warning",
   },
   envoye: { text: "Message envoyé dans Discord.", tone: "accent" },
+  // Chantier confidentialité des soirées — renvoi manuel refusé
+  // explicitement : ce salon Discord est public, aucun mécanisme privé
+  // n'existe pour ce chemin (voir WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY,
+  // src/lib/discord.ts).
+  desactive: {
+    text: "Renvoi désactivé — ce salon Discord est public, la confidentialité des soirées empêche d'y republier quoi que ce soit.",
+    tone: "warning",
+  },
 };
 
 export default async function SessionDetailPage({
@@ -86,6 +95,13 @@ export default async function SessionDetailPage({
     },
   });
   if (!session) notFound();
+
+  // Confidentialité des soirées — indiscernable d'une soirée inexistante
+  // pour un utilisateur non autorisé (même `notFound()`, jamais un message
+  // "tu n'es pas invité" qui confirmerait son existence). Voir
+  // src/lib/session-access.ts, source de vérité unique.
+  const accessRole = await getSessionAccessRole(user.id, session.id);
+  if (!accessRole) notFound();
 
   // Badge "🏆 Vote les superlatifs !" — même définition de participant que
   // partout ailleurs dans le chantier (users ayant voté pour la
@@ -233,7 +249,7 @@ export default async function SessionDetailPage({
   // (`closeSessionIfDue`, appelée juste au-dessus) reste ouverte à tous :
   // elle se déclenche à la lecture, sans bouton, donc sans notion de "qui
   // clique".
-  const isCreator = session.createdById === user.id;
+  const isCreator = accessRole === "creator";
   // Modifier n'a de sens que pour une soirée pas encore figée — pas pour
   // une session DONE (déjà jouée) ou CANCELLED (rien à reprogrammer).
   const canEdit = session.status === "VOTING" || session.status === "SCHEDULED";
@@ -588,6 +604,9 @@ export default async function SessionDetailPage({
           <span className="text-xs text-muted">
             Tu as créé cette soirée —
           </span>
+          <ButtonLink href={`/sessions/${session.id}/invites`} variant="secondary" size="sm">
+            👥 Gérer les invités
+          </ButtonLink>
           <DeleteSessionDialog sessionId={session.id} />
         </div>
       )}

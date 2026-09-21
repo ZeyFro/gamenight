@@ -1,6 +1,12 @@
 import { TabLink } from "@/components/ui/TabLink";
 
-export type AdminTabKey = "messages" | "superlatifs" | "badges" | "jeux-stats" | "reglages";
+export type AdminTabKey =
+  | "messages"
+  | "superlatifs"
+  | "badges"
+  | "jeux-stats"
+  | "reglages"
+  | "confidentialite";
 
 export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "messages",
@@ -8,6 +14,7 @@ export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "badges",
   "jeux-stats",
   "reglages",
+  "confidentialite",
 ];
 
 const TABS: { key: AdminTabKey; label: string }[] = [
@@ -16,6 +23,7 @@ const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "badges", label: "Badges" },
   { key: "jeux-stats", label: "Jeux-stats" },
   { key: "reglages", label: "Réglages" },
+  { key: "confidentialite", label: "Confidentialité" },
 ];
 
 /**

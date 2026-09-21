@@ -4,6 +4,7 @@ import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
+import { accessibleSessionWhere } from "@/lib/session-access";
 import {
   finalizeSuperlativeVotingIfDue,
   getPendingSuperlativeVoteSessionIds,
@@ -192,7 +193,11 @@ export default async function SessionsPage({
     dueSuperlativeVotings.map((s) => finalizeSuperlativeVotingIfDue(s.id))
   );
 
+  // Confidentialité des soirées — seules les soirées créées par l'utilisateur
+  // ou auxquelles il est activement invité apparaissent ici (voir
+  // src/lib/session-access.ts, source de vérité unique du contrôle d'accès).
   const sessions = await prisma.session.findMany({
+    where: accessibleSessionWhere(user.id),
     include: {
       decidedGame: true,
       _count: { select: { proposals: true } },

@@ -15,9 +15,11 @@ import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { announceSessionResult } from "@/lib/discord-announce";
+import { isRealDiscordFailure, type PostToDiscordResult } from "@/lib/discord";
 import { announceRouletteCreated } from "@/lib/discord-roulette";
 import { isRouletteProposalOpen, spinRoulette } from "@/lib/roulette";
 import { createRouletteResultSession } from "@/lib/sessions";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 
 /**
  * Créer la soirée depuis le résultat de la roue (Sprint 3, /roulette).
@@ -100,7 +102,7 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   // Jamais les deux transports à la fois — voir `createRouletteResultSession`
   // (l'enqueue bot a déjà réussi, atomiquement avec la création de la
   // session, si `announceViaBot` est vrai).
-  let announceResult: { ok: boolean } = { ok: true };
+  let announceResult: PostToDiscordResult = { ok: true };
   if (!announceViaBot) {
     const winner = await prisma.proposal.findUniqueOrThrow({
       where: { id: proposal.id },
@@ -113,7 +115,7 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   revalidatePath("/roulette");
 
   const params = new URLSearchParams();
-  if (!announceResult.ok) params.set("discord", "echec");
+  if (isRealDiscordFailure(announceResult)) params.set("discord", "echec");
   if (badgeUnlocked) params.set("celebrate", "badge");
   else if (xpResult.leveledUp) params.set("celebrate", "levelup");
   const query = params.toString();
@@ -196,9 +198,14 @@ export async function submitRouletteEntriesAction(formData: FormData) {
 
   const roulette = await prisma.roulette.findUnique({
     where: { id: rouletteId },
-    select: { status: true, deadline: true },
+    select: { status: true, deadline: true, createdById: true, notifiedUserIds: true },
   });
   if (!roulette || !isRouletteProposalOpen(roulette)) return;
+  // Confidentialité — seuls le créateur et les invités (`notifiedUserIds`)
+  // peuvent proposer des jeux sur cette roulette, jamais un pote non
+  // invité qui aurait deviné/reçu l'id.
+  const invitedIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
+  if (roulette.createdById !== user.id && !invitedIds.includes(user.id)) return;
 
   const games = await prisma.game.findMany({
     where: { id: { in: gameIds } },

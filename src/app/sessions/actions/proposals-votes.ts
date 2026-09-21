@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { isVotingOpen } from "@/lib/sessions";
+import { canAccessSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkVotesCastBadges } from "@/lib/badges";
@@ -32,6 +33,12 @@ export async function proposeGame(formData: FormData) {
     select: { status: true, date: true, votingDeadline: true },
   });
   if (!session || !isVotingOpen(session)) return;
+  // Confidentialité des soirées — proposer un jeu est réservé au créateur
+  // et aux invités actifs, jamais à un pote non invité (id de session
+  // valide mais forgé). Vérifié APRÈS le chargement ci-dessus (même
+  // `sessionId` déjà validé), jamais avant une lecture qui exposerait la
+  // moindre donnée à un non-autorisé.
+  if (!(await canAccessSession(user.id, sessionId))) return;
 
   try {
     await prisma.proposal.create({
@@ -84,6 +91,9 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
   });
   if (!proposal || !isVotingOpen(proposal.session)) return { ok: true };
   const sessionId = proposal.sessionId;
+  // Confidentialité des soirées — voter est réservé au créateur et aux
+  // invités actifs de la session propriétaire de cette proposition.
+  if (!(await canAccessSession(user.id, sessionId))) return { ok: true };
 
   const existing = await prisma.vote.findUnique({
     where: { proposalId_userId: { proposalId, userId: user.id } },
@@ -133,6 +143,7 @@ export async function withdrawProposalAction(formData: FormData) {
     select: { status: true, date: true, votingDeadline: true },
   });
   if (!session || !isVotingOpen(session)) return;
+  if (!(await canAccessSession(user.id, sessionId))) return;
 
   const proposal = await prisma.proposal.findUnique({
     where: { id: proposalId },

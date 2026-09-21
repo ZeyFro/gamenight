@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
 import { getSessionAnnounceConfig } from "@/lib/discord-bot-config";
 import {
@@ -24,36 +25,69 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
 
 /**
  * Chantier annonces Discord bot — SESSION uniquement dans cette PR
- * (TOURNAMENT explicitement différé, voir README). Relie enfin les
- * fondations de livraison (#95), le client REST (#96) et l'exécuteur
- * (#97) à un vrai événement métier, pour la toute première fois — jusqu'ici
- * `NOT_CONFIGURED_RESOLVER` refusait systématiquement. `discord-announce.ts`/
- * `discord-session-created.ts`/`discord-session-modified.ts` (webhook)
- * restent TOTALEMENT inchangés et actifs pour toute session dont
- * `announceViaBot` est resté `false` — voir le commentaire du champ dans
- * schema.prisma pour la règle de bascule.
+ * (TOURNAMENT explicitement différé, voir README). Relie les fondations
+ * de livraison (#95), le client REST (#96) et l'exécuteur (#97) à un vrai
+ * événement métier. `discord-announce.ts`/`discord-session-created.ts`/
+ * `discord-session-modified.ts` (webhook legacy) restent inchangés en
+ * CODE, mais voir le chantier confidentialité ci-dessous pour leur
+ * comportement RÉEL désormais.
  *
- * Organisation : une annonce principale ET un fil par soirée, sur le
- * SEUL salon configuré (`DISCORD_BOT_SESSION_CHANNEL_ID`, jamais une
- * destination choisie par un formulaire). Quatre rôles de `targetSlot`,
- * chacun une ligne `NotificationDelivery` distincte, qui progressent
- * indépendamment (voir `notification-delivery.ts`) :
- *   - `announce` — SEND une fois à la création, puis une EDIT à chaque
+ * CHANTIER CONFIDENTIALITÉ DES SOIRÉES — remplace l'ancien choix
+ * d'annonces collectives : une soirée n'appartient plus qu'à son créateur
+ * et ses invités actifs (`SessionInvite`, voir src/lib/session-access.ts),
+ * sur le site ET sur Discord. Deux conséquences structurelles sur ce
+ * module :
+ *   - `thread` n'est plus un fil PUBLIC créé à partir d'un message posté
+ *     dans le salon #🎮-soirées — c'est désormais un fil PRIVÉ
+ *     (`GUILD_PRIVATE_THREAD`, `startPrivateThread`, discord-rest.ts),
+ *     créé SANS message source, donc SANS jamais rien poster dans le
+ *     salon public. `announce` (le contenu) est donc maintenant posté
+ *     DANS ce fil, jamais dans le salon — la dépendance s'est INVERSÉE
+ *     par rapport à l'organisation d'origine (`announce` dépend
+ *     maintenant de `thread`, plus l'inverse).
+ *   - Un cinquième rôle, `invite:<inviteId>` (un par ligne `SessionInvite`),
+ *     synchronise l'appartenance au fil privé avec l'invitation
+ *     applicative — ajoute ou retire le membre Discord correspondant
+ *     selon le statut ACTUEL de l'invitation au moment du TRAITEMENT
+ *     (jamais depuis un instantané pris à l'enqueue), voir
+ *     `resolveInviteSync`.
+ *
+ * `isSessionAnnounceViaBotEnabled()` continue de gouverner UNIQUEMENT le
+ * TRANSPORT à la création (bot vs webhook, figé sur `announceViaBot`,
+ * jamais relu ensuite — voir schema.prisma). Le chemin webhook
+ * (`announceViaBot: false`) n'a en revanche plus AUCUN moyen privé
+ * d'annoncer une soirée : voir `discord-announce.ts`/
+ * `discord-session-created.ts`/`discord-session-modified.ts`, dont les
+ * appels réels sont désormais des no-op documentés côté appelants
+ * (`sessions.ts`/`session-lifecycle.ts`/`roulette.ts`) plutôt que de
+ * publier la moindre donnée de soirée dans un salon public. Voir le
+ * README ("Transition et retour arrière") pour le détail de cette
+ * bascule et ses limites assumées.
+ *
+ * Organisation : un SEUL fil privé par soirée, sur le salon PARENT
+ * configuré (`DISCORD_BOT_SESSION_CHANNEL_ID`, jamais une destination
+ * choisie par un formulaire — le salon lui-même reste public, seul le fil
+ * qui y est créé est privé). Cinq rôles de `targetSlot`, chacun une ligne
+ * `NotificationDelivery` distincte, qui progressent indépendamment (voir
+ * `notification-delivery.ts`) :
+ *   - `thread` — SEND une fois, crée le fil privé (aucune dépendance).
+ *   - `announce` — SEND une fois le fil créé, puis une EDIT à chaque
  *     changement d'état ultérieur (modification de créneau, clôture,
- *     annulation) — TOUJOURS rendue depuis l'état COURANT de la session
- *     en base au moment où l'EDIT est réellement traitée, jamais depuis
- *     un texte figé à l'enqueue : une EDIT plus ancienne ne peut donc
- *     jamais écraser un état plus récent (convergence déjà garantie par
- *     `claimNextDelivery`, jamais réimplémentée ici).
- *   - `thread` — SEND une fois, crée le fil à partir du message
- *     d'annonce ; dépend explicitement que `announce` soit `SENT`
- *     (résolu ici, PAS automatiquement par `claimNextDelivery`, qui ne
- *     résout que les dépendances SUR LE MÊME targetSlot).
+ *     annulation), POSTÉ DANS LE FIL — TOUJOURS rendu depuis l'état
+ *     COURANT de la session en base au moment où l'EDIT est réellement
+ *     traitée, jamais depuis un texte figé à l'enqueue : une EDIT plus
+ *     ancienne ne peut donc jamais écraser un état plus récent
+ *     (convergence déjà garantie par `claimNextDelivery`, jamais
+ *     réimplémentée ici). Dépend que `thread` soit `SENT` (résolu ici,
+ *     PAS automatiquement par `claimNextDelivery`, qui ne résout que les
+ *     dépendances SUR LE MÊME targetSlot).
  *   - `thread-reminder-<minutes>` — SEND, un par palier de rappel dû,
- *     posté DANS le fil ; dépend que `thread` soit `SENT` (même
- *     mécanisme de dépendance manuelle).
+ *     posté DANS le fil ; dépend que `thread` soit `SENT`.
  *   - `thread-summary` — SEND, résumé posté DANS le fil à la clôture ;
  *     même dépendance sur `thread`.
+ *   - `invite:<inviteId>` — SEND (occurrence aléatoire, une par
+ *     changement de statut de l'invitation), ajoute/retire le membre
+ *     Discord correspondant ; dépend aussi que `thread` soit `SENT`.
  *
  * Aucune notification interne (`createNotifications`) en doublon de
  * celles déjà écrites par le chemin webhook : une session `announceViaBot`
@@ -77,6 +111,9 @@ function threadReminderSlot(sessionId: string, minutes: number): string {
 }
 function threadSummarySlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-summary`;
+}
+function inviteSlot(sessionId: string, inviteId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:invite:${inviteId}`;
 }
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
@@ -115,6 +152,14 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
     },
     db
   );
+  // `thread` enqueue AVANT `announce` — reflète la dépendance réelle
+  // (`announce` dépend de `thread`, voir le commentaire de fichier) : la
+  // livraison la plus ancienne éligible est réclamée en premier
+  // (`claimNextDelivery`), donc le passage naturel du cron traite `thread`
+  // avant `announce` sans détour par `dependency_not_ready` — jamais un
+  // ORDRE garanti par ce module (l'exécuteur ne suppose jamais un ordre
+  // d'enqueue, voir notification-executor.ts), juste l'ordre le plus
+  // efficace pour le cas courant.
   await enqueueDelivery(
     {
       eventId: event.id,
@@ -122,7 +167,7 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
       transport: "BOT",
       operation: "SEND",
       recipientKey: "channel",
-      targetSlot: announceSlot(sessionId),
+      targetSlot: threadSlot(sessionId),
     },
     db
   );
@@ -133,7 +178,7 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
       transport: "BOT",
       operation: "SEND",
       recipientKey: "channel",
-      targetSlot: threadSlot(sessionId),
+      targetSlot: announceSlot(sessionId),
     },
     db
   );
@@ -236,6 +281,108 @@ export async function enqueueSessionReminderDelivery(sessionId: string, minutes:
   });
 }
 
+/**
+ * Chantier confidentialité des soirées — synchronise l'appartenance au
+ * fil privé pour UNE invitation (`src/app/sessions/actions/invites.ts`,
+ * appelée à chaque invitation/révocation). Occurrence ALÉATOIRE, même
+ * targetSlot à chaque appel (dérivé de `inviteId`, stable pour toute la
+ * vie de cette ligne `SessionInvite`) — même raisonnement que
+ * `enqueueSessionAnnounceUpdate` : un appel répété (double clic, ou
+ * invite→revoke→invite rapprochés) crée une NOUVELLE ligne
+ * `NotificationDelivery`, dont seule la plus récente survit
+ * (`claimNextDelivery`, convergence "seule la plus récente survit" par
+ * `[targetSlot, operation]`) — jamais une ancienne intention périmée
+ * traitée après une plus récente. `operation: "SEND"` (jamais "EDIT")
+ * pour CHAQUE appel : l'action réelle (ajout ou retrait) n'est décidée
+ * qu'au TRAITEMENT, en relisant le statut actuel de l'invitation
+ * (`resolveInviteSync`), jamais depuis l'occurrence de l'enqueue
+ * elle-même — c'est ce qui garantit qu'une révocation survenue APRÈS
+ * l'enqueue d'un ajout (mais avant son traitement) résout quand même vers
+ * un retrait.
+ *
+ * `db` optionnel — même contrat que les enqueue ci-dessus (composable
+ * avec la transaction de `inviteToSession`/`revokeSessionInvite` par
+ * l'appelant si besoin, quoique non utilisé ainsi actuellement : les
+ * actions serveur appellent cette fonction APRÈS la mutation, jamais dans
+ * la même transaction — un échec d'enqueue ici ne doit jamais annuler une
+ * invitation/révocation déjà actée côté accès applicatif, qui est la
+ * garantie prioritaire ; la synchronisation Discord reste rattrapable au
+ * prochain appel, l'accès applicatif ne l'est pas).
+ */
+export async function enqueueSessionInviteSync(inviteId: string, db?: NotificationDb): Promise<void> {
+  // Lecture toujours via le client global, jamais `db` (typé `NotificationDb`,
+  // volontairement restreint à `notificationEvent`/`notificationDelivery` —
+  // voir son commentaire dans notification-delivery.ts) : cette lecture
+  // n'a de toute façon pas besoin de cohérence transactionnelle avec
+  // l'écriture appelante (voir le commentaire de fonction ci-dessus, sur
+  // pourquoi cette fonction n'est jamais appelée DANS la même transaction
+  // que la mutation de l'invitation).
+  const invite = await prisma.sessionInvite.findUnique({
+    where: { id: inviteId },
+    select: { sessionId: true },
+  });
+  if (!invite) return;
+
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_INVITE_SYNC",
+      sourceId: invite.sessionId,
+      occurrence: randomUUID(),
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: `user:${inviteId}`,
+      targetSlot: inviteSlot(invite.sessionId, inviteId),
+    },
+    db
+  );
+}
+
+/**
+ * État de synchronisation Discord de chaque invitation — pour
+ * l'interface de gestion (`/sessions/[id]/invites`), jamais présentée
+ * comme instantanée : lit la DERNIÈRE livraison connue (par `sequence`,
+ * en ignorant `SKIPPED` — une intention périmée par une plus récente,
+ * jamais l'état réel visé) sur le `targetSlot` de chaque invitation.
+ * `"pending"` par défaut (aucune livraison connue, ou encore PENDING/
+ * RESERVED/RETRYING) — jamais `"synced"` par optimisme.
+ */
+export async function getSessionInviteSyncStatuses(
+  sessionId: string,
+  inviteIds: string[]
+): Promise<Map<string, "synced" | "pending" | "failed">> {
+  const result = new Map<string, "synced" | "pending" | "failed">();
+  if (inviteIds.length === 0) return result;
+
+  const targetSlots = inviteIds.map((id) => inviteSlot(sessionId, id));
+  const deliveries = await prisma.notificationDelivery.findMany({
+    where: { targetSlot: { in: targetSlots }, operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { targetSlot: true, status: true },
+  });
+
+  const latestBySlot = new Map<string, "synced" | "pending" | "failed">();
+  for (const delivery of deliveries) {
+    if (latestBySlot.has(delivery.targetSlot) || delivery.status === "SKIPPED") continue;
+    latestBySlot.set(
+      delivery.targetSlot,
+      delivery.status === "SENT" ? "synced" : delivery.status === "FAILED" ? "failed" : "pending"
+    );
+  }
+
+  for (const inviteId of inviteIds) {
+    result.set(inviteId, latestBySlot.get(inviteSlot(sessionId, inviteId)) ?? "pending");
+  }
+  return result;
+}
+
 /* -------------------------------------------------------------------- */
 /* Résolution — appelée par l'exécuteur (#97), jamais directement        */
 /* -------------------------------------------------------------------- */
@@ -279,15 +426,26 @@ function absoluteSessionUrl(sessionId: string): string {
  * donc elle aussi correctement réévaluée à l'envoi réel, y compris pour un
  * SEND/EDIT différé traité bien après l'enqueue — même garantie que le
  * reste de ce résolveur (voir le commentaire de fichier).
+ *
+ * Chantier confidentialité des soirées — troisième filtre RESTRICTIF
+ * ajouté : `filterByActiveSessionInvite` (src/lib/session-access.ts)
+ * retire quiconque n'a plus d'invitation `ACTIVE` sur cette soirée. Un
+ * retrait d'invité doit couper toute NOUVELLE mention/notification, même
+ * pour une livraison déjà enqueue avant le retrait — relu ici depuis la
+ * base à CHAQUE appel, jamais mis en cache, exactement comme les deux
+ * autres filtres.
  */
-async function resolveEligibleMentions<T extends { id: string; discordId: string; silenceReminders: boolean }>(
-  session: Pick<Session, "notifiedUserIds" | "createdViaRoulette">,
+async function resolveEligibleMentions<
+  T extends { id: string; discordId: string; silenceReminders: boolean },
+>(
+  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette">,
   candidates: T[]
 ): Promise<T[]> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
+  const invited = await filterByActiveSessionInvite(session.id, session.createdById, restricted);
   const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
-  return filterUsersByNotificationPreference(restricted, category);
+  return filterUsersByNotificationPreference(invited, category);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
@@ -421,11 +579,12 @@ async function findSentDelivery(targetSlot: string) {
 
 /**
  * Résolveur SESSION — dispatché par le rôle terminal du `targetSlot`
- * (`announce`/`thread`/`thread-reminder-<n>`/`thread-summary`). Chaque
- * dépendance inter-`targetSlot` (fil ⇐ annonce ; rappel/résumé ⇐ fil)
- * est vérifiée ICI, explicitement — `claimNextDelivery` ne la résout
- * jamais automatiquement pour des cibles DIFFÉRENTES (voir le
- * commentaire de fichier de `notification-executor.ts`).
+ * (`thread`/`announce`/`thread-reminder-<n>`/`thread-summary`/
+ * `invite:<inviteId>`). Chaque dépendance inter-`targetSlot` (tout
+ * dépend de `thread`, voir le commentaire de fichier) est vérifiée ICI,
+ * explicitement — `claimNextDelivery` ne la résout jamais automatiquement
+ * pour des cibles DIFFÉRENTES (voir le commentaire de fichier de
+ * `notification-executor.ts`).
  */
 export const sessionAnnounceResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
@@ -438,11 +597,11 @@ export const sessionAnnounceResolver: DeliveryResolver = {
 
     const role = delivery.targetSlot.split(":").slice(3).join(":");
 
-    if (role === "announce") {
-      return resolveAnnounceDelivery(delivery, session, config.channelId);
-    }
     if (role === "thread") {
       return resolveThreadCreation(sessionId, config.channelId);
+    }
+    if (role === "announce") {
+      return resolveAnnounceDelivery(delivery, session);
     }
     if (role === "thread-summary") {
       return resolveThreadSummary(sessionId, session);
@@ -451,6 +610,10 @@ export const sessionAnnounceResolver: DeliveryResolver = {
       const minutes = Number(role.slice("thread-reminder-".length));
       if (!Number.isFinite(minutes)) return { eligible: false, reason: "unresolvable" };
       return resolveThreadReminder(sessionId, session, minutes);
+    }
+    if (role.startsWith("invite:")) {
+      const inviteId = role.slice("invite:".length);
+      return resolveInviteSync(sessionId, inviteId);
     }
 
     logger.error("session-announce", `targetSlot de rôle inconnu : ${delivery.targetSlot}`, { sessionId });
@@ -487,11 +650,19 @@ function resolveSendNotificationMeta(
   return { notifType: "SESSION_CREATED", notifTitle: "📣 Nouvelle soirée" };
 }
 
+/**
+ * Contenu de la soirée — POSTÉ DANS LE FIL PRIVÉ, jamais dans le salon
+ * parent (chantier confidentialité). Dépend désormais de `thread` (SEND
+ * ET EDIT), dépendance INVERSÉE par rapport à l'organisation d'origine
+ * (où `thread` dépendait de `announce`) — voir le commentaire de fichier.
+ */
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
-  session: SessionWithVotes,
-  channelId: string
+  session: SessionWithVotes
 ): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(session.id));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+
   const rendering = resolveAnnounceRendering(session);
 
   if (delivery.operation === "SEND") {
@@ -504,16 +675,21 @@ async function resolveAnnounceDelivery(
       formatDateTimeFr(session.date)
     );
     const action: ResolvedAction = {
-      kind: "send_channel_message",
-      channelId,
+      kind: "send_thread_message",
+      threadId: thread.discordThreadId,
       message: { ...message, embeds: [rendering.embed] },
     };
     return { eligible: true, action };
   }
 
-  // EDIT — nécessite le messageId déjà posté par le SEND initial.
-  const sent = await findSentDelivery(announceSlot(session.id));
-  if (!sent?.discordMessageId) return { eligible: false, reason: "dependency_not_ready" };
+  // EDIT — nécessite le messageId déjà posté par le SEND initial (posté
+  // DANS le fil, donc `discordThreadId` sur cette même ligne SENT sert de
+  // `channelId` pour l'édition — un fil est un salon côté API Discord,
+  // voir le commentaire de fichier de discord-rest.ts).
+  const sentAnnounce = await findSentDelivery(announceSlot(session.id));
+  if (!sentAnnounce?.discordMessageId || !sentAnnounce.discordThreadId) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
 
   const notifType = session.status === "SCHEDULED" || session.status === "DONE" ? "SESSION_RESULT" : "SESSION_CREATED";
   const notifTitle = session.status === "CANCELLED" ? "❌ Soirée annulée" : rendering.embed.title ?? "📣 Soirée";
@@ -526,23 +702,55 @@ async function resolveAnnounceDelivery(
   );
   const action: ResolvedAction = {
     kind: "edit_channel_message",
-    channelId,
-    messageId: sent.discordMessageId,
+    channelId: sentAnnounce.discordThreadId,
+    messageId: sentAnnounce.discordMessageId,
     message: { ...message, embeds: [rendering.embed] },
   };
   return { eligible: true, action };
 }
 
+/**
+ * Crée le fil PRIVÉ lui-même — AUCUNE dépendance (c'est désormais le tout
+ * premier appel Discord de la soirée, voir le commentaire de fichier).
+ * Nom du fil délibérément non descriptif (juste les 8 premiers
+ * caractères de l'id) — même choix que l'ancien fil public, mais ici
+ * particulièrement important : un titre de fil reste visible dans les
+ * outils de modération/l'API même pour un fil privé, jamais d'y faire
+ * apparaître une date ou un nom de jeu.
+ */
 async function resolveThreadCreation(sessionId: string, channelId: string): Promise<Resolution> {
-  const sent = await findSentDelivery(announceSlot(sessionId));
-  if (!sent?.discordMessageId) return { eligible: false, reason: "dependency_not_ready" };
-
   const action: ResolvedAction = {
-    kind: "create_thread",
+    kind: "create_private_thread",
     channelId,
-    messageId: sent.discordMessageId,
     name: `Soirée — ${sessionId.slice(0, 8)}`,
   };
+  return { eligible: true, action };
+}
+
+/**
+ * Synchronisation d'appartenance au fil privé pour UNE invitation —
+ * relit son statut ACTUEL à CHAQUE traitement (jamais depuis un
+ * instantané pris à l'enqueue) : une invitation révoquée APRÈS l'enqueue
+ * de cette synchronisation mais AVANT son traitement résout quand même
+ * vers un retrait, jamais un ajout périmé qui rétablirait un accès déjà
+ * coupé côté application. Dépend de `thread` (a besoin du fil créé).
+ * `expired` (définitif, jamais retenté) si l'invitation elle-même a
+ * disparu (session supprimée entre-temps, cascade sur `SessionInvite`).
+ */
+async function resolveInviteSync(sessionId: string, inviteId: string): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(sessionId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+
+  const invite = await prisma.sessionInvite.findUnique({
+    where: { id: inviteId },
+    select: { status: true, user: { select: { discordId: true } } },
+  });
+  if (!invite) return { eligible: false, reason: "expired" };
+
+  const action: ResolvedAction =
+    invite.status === "ACTIVE"
+      ? { kind: "add_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
+      : { kind: "remove_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
   return { eligible: true, action };
 }
 

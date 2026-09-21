@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { SuperlativeVoteForm } from "@/components/SuperlativeVoteForm";
 import { forceCloseSuperlativeVotingAction } from "../../actions/superlatives";
+import { getSessionAccessRole } from "@/lib/session-access";
 
 /**
  * Vote de superlatifs entre potes (PR 5/9, version light) — page dédiée
@@ -43,6 +44,10 @@ export default async function SuperlativeVotePage({
     include: { decidedGame: true },
   });
   if (!session) notFound();
+
+  const accessRole = await getSessionAccessRole(user.id, session.id);
+  if (!accessRole) notFound();
+
   if (
     session.status !== "DONE" ||
     !session.decidedGameId ||
@@ -51,7 +56,7 @@ export default async function SuperlativeVotePage({
     redirect(`/sessions/${id}`);
   }
 
-  const isCreator = session.createdById === user.id;
+  const isCreator = accessRole === "creator";
   const participants = await getWinningProposalParticipants(
     id,
     session.decidedGameId

@@ -9714,3 +9714,452 @@ roulette async et une instantanée aboutissant à deux créations rapprochées.
 `npm run test:postgres` — **402/402 verts** (399 hérités + 3 nouveaux) ;
 `npx next build` sans erreur. Aucun renvoi Discord réel, aucune session
 existante modifiée, PR gardée en Draft.
+
+## Chantier confidentialité des soirées — remplace les annonces collectives
+
+Nouvelle règle produit, universelle : **seuls le créateur et les invités
+actifs d'une soirée peuvent la consulter ou agir dessus — sur le site ET
+sur Discord.** Ceci remplace explicitement l'ancien modèle (toute
+personne connectée à l'app pouvait consulter/voter/proposer sur
+n'importe quelle soirée ; toute annonce Discord, webhook ou bot, était
+publique dans un salon partagé). Chantier volontairement délimité — voir
+"Ce qui reste hors périmètre" en fin de section.
+
+### Audit de départ — faits vérifiés (pas d'accès Production dans cette
+session, uniquement le code et une base Postgres isolée)
+
+- **Aucun modèle d'invitation n'existait avant ce chantier.** `Session.notifiedUserIds`
+  et `Roulette.notifiedUserIds` étaient déjà là, mais documentés dans leur
+  propre commentaire comme un simple filtre de MENTIONS Discord, "jamais
+  relu ailleurs" — jamais une liste d'accès. Toute personne authentifiée
+  pouvait déjà lire/agir sur n'importe quelle soirée.
+- **Zéro filtre par soirée** sur `/sessions` (liste), `/sessions/[id]`
+  (détail complet : propositions, votes, chat, pronostics, paris,
+  superlatifs), `/roulette` (les deux onglets), `/roulette/[id]` (y
+  compris, une fois le tirage fait, les jeux proposés par TOUT LE MONDE —
+  défaisant l'effet "surprise" que la page revendiquait déjà dans son
+  propre commentaire), `/calendrier`, `/` (accueil — prochaine soirée +
+  activité récente), et les server actions de vote/proposition/chat
+  (`proposeGame`, `toggleVote`, `getChatMessagesAction`/`sendChatMessageAction`,
+  `submitRouletteEntriesAction`).
+- Les mutations de cycle de vie (modifier/clôturer/annuler/supprimer une
+  session) étaient déjà réservées au créateur (`createdById === user.id`)
+  — bon pattern existant, réutilisé tel quel pour la nouvelle gestion des
+  invités.
+- Aucune trace en base des messages postés via le webhook legacy
+  (`postToDiscord` ne persiste jamais l'id du message envoyé) — limite
+  qui borne directement ce que l'inventaire des anciennes annonces
+  publiques peut couvrir (voir plus bas).
+
+### 1. Autorisation centralisée — `src/lib/session-access.ts`
+
+Nouveau modèle **`SessionInvite`** (migration `20260921100000_add_session_invite`,
+additive, jamais touché depuis) — source de vérité persistante,
+granulaire par personne, historisée :
+- `status: ACTIVE | REVOKED` plutôt qu'une suppression de ligne — un
+  retrait doit rester observable (`revokedAt`/`revokedById`), jamais
+  effacer l'historique.
+- `@@unique([sessionId, userId])` — une seule ligne par (soirée,
+  personne) pour toujours ; réinviter après un retrait RÉUTILISE la même
+  ligne (repasse `ACTIVE`) plutôt que d'en créer une seconde.
+- Le créateur n'a jamais besoin d'une ligne — son accès vient uniquement
+  de `Session.createdById`.
+
+Fonctions exportées, **seule source de vérité du contrôle d'accès
+serveur**, appelées AVANT toute lecture/écriture sensible (jamais après) :
+- `accessibleSessionWhere(userId)` — fragment `Prisma.SessionWhereInput`
+  réutilisable pour restreindre n'importe quelle requête `Session` (liste
+  ou détail) : `createdById === userId OR invites.some({userId, status: ACTIVE})`.
+  Toujours injecté dans la requête, jamais un filtrage en mémoire après
+  coup.
+- `getSessionAccessRole(userId, sessionId)` → `"creator" | "guest" | null`
+  — `null` indistinguable entre "soirée inexistante" et "soirée
+  existante mais accès refusé" (jamais confirmer l'existence à un
+  non-autorisé).
+- `canAccessSession(userId, sessionId)` — booléen pratique.
+- `inviteToSession` / `revokeSessionInvite` — CRUD des invitations,
+  idempotents, vérification "créateur uniquement" faite par l'APPELANT
+  (jamais dans ce module, qui reste un pur outil d'accès).
+- `filterByActiveSessionInvite(sessionId, creatorId, candidates)` — filtre
+  RESTRICTIF uniquement (jamais un ajout), utilisé par `session-announce.ts`
+  pour qu'une révocation coupe aussi toute NOUVELLE mention/notification.
+
+**Aucun contournement pour les administrateurs de l'app** (`UserRole.ADMIN`)
+n'a été introduit — un accès global implicite aux soirées privées pour
+les admins n'était pas demandé. `resendDiscordAction` autorisait déjà,
+AVANT ce chantier, un admin à renvoyer l'annonce webhook d'une session
+dont il n'est ni créateur ni invité (PR "Accès & secrets") — ce bypass
+préexistant n'a pas été étendu à la lecture des données de soirée, mais
+reste un besoin d'accès global existant, documenté ici, jamais tranché
+silencieusement par ce chantier (voir "Ce qui reste ouvert").
+
+### 2. Chemins branchés (lecture ET écriture)
+
+- `/sessions` (liste), `/sessions/[id]` (détail complet — un seul
+  contrôle d'accès en tête de page couvre propositions/votes/chat/
+  pronostics/paris/superlatifs, qui n'ont plus besoin de leur propre
+  garde puisque toute la page 404 pour un non-autorisé), `/sessions/[id]/vote-superlatifs`.
+- Server actions : `proposeGame`, `toggleVote`, `withdrawProposalAction`
+  (proposals-votes.ts), `submitPronosticAction`/`placeBetAction`
+  (predictions.ts, défense en profondeur), `submitSuperlativeVotesAction`
+  (superlatives.ts, idem), `getChatMessagesAction`/`sendChatMessageAction`/
+  `toggleReactionAction` (chat/actions.ts — canal `sessionId: null` reste
+  global, inchangé ; le canal de soirée est vérifié À CHAQUE appel de
+  polling, pas seulement au chargement de page).
+- `/` (accueil) — "Prochaine soirée" et "Activité récente" (uniquement la
+  ligne "Soirée jouée", qui expose un nom de jeu + un créateur précis ;
+  les 3 autres types du flux — badges, superlatifs, niveaux — restent un
+  flux global d'accomplissements personnels, hors périmètre, voir plus
+  bas). `getRecentActivity`/`getWeekAvailability` prennent désormais un
+  `viewerId` obligatoire.
+- `/calendrier` — `getCalendarData` prend désormais un `viewerId`
+  obligatoire ; les cards de soirée affichées sont restreintes, la grille
+  de disponibilité elle-même (aucune donnée de soirée) n'est pas
+  concernée.
+- **Roulette** — deux mécanismes distincts, volontairement :
+  - AVANT tirage (`Roulette`, pas encore de `Session`) : accès gouverné
+    par `Roulette.notifiedUserIds` (déjà la seule intention d'invitation
+    existante) — appliqué à `/roulette` (onglet "En cours", filtré en
+    mémoire après un fetch complet, échelle "groupe d'amis" assumée),
+    `/roulette/[id]` (page entière, `notFound()` pour un non-invité) et
+    `submitRouletteEntriesAction`.
+  - APRÈS tirage (`createRouletteResultSession`, chemins instantané ET
+    async) : la session résultante reçoit des `SessionInvite` RÉELS pour
+    `participantIds`, dans la MÊME transaction que sa création — dès lors
+    gérée exactement comme une session classique (page, invites, Discord).
+  - `/roulette` (onglet "Historique") — filtré via `accessibleSessionWhere`,
+    comme `/sessions`.
+
+### 3. Création des invitations — jamais de liste vide transformée en "tout le monde"
+
+Les DEUX chemins réels de création de `Session` (`createSession`,
+session-lifecycle.ts ; `createRouletteResultSession`, sessions.ts —
+partagé par `spinRoulette` et `createSessionFromRouletteAction`) posent
+désormais des `SessionInvite` EXACTS pour la sélection réelle, DANS LA
+MÊME transaction SQL que la création de la session — un crash entre les
+deux ne peut jamais laisser une session sans le moindre invité
+accessible, visible du seul créateur en silence. Prouvé par un test
+d'intégration Postgres dédié (`session-lifecycle.integration.test.ts`) :
+sélection exacte reprise, liste vide → créateur seul (jamais "tout le
+monde"), id forgé dans la sélection silencieusement ignoré (jamais de
+ligne orpheline).
+
+### 4. Gestion des invités — `/sessions/[id]/invites`, réservée au créateur
+
+Nouvelle page (lien "👥 Gérer les invités" sur `/sessions/[id]`, visible
+au seul créateur) : liste les invités actifs, permet d'en inviter de
+nouveaux (parmi tous les potes non encore actifs) et d'en retirer, et
+distingue explicitement l'historique des retraits (réinvitation en un
+clic). Les deux actions serveur (`src/app/sessions/actions/invites.ts`)
+vérifient elles-mêmes `session.createdById === user.id` — jamais délégué
+à `canAccessSession`, qui autoriserait aussi un simple invité actif.
+
+Le retrait :
+- coupe l'accès applicatif IMMÉDIATEMENT (`revokeSessionInvite`, dès le
+  `updateMany` commité — relu à CHAQUE lecture ultérieure, jamais mis en
+  cache) ;
+- empêche toute NOUVELLE mention/notification (`filterByActiveSessionInvite`,
+  relu au traitement réel par l'exécuteur — pas seulement à l'enqueue) ;
+- déclenche une synchronisation Discord TRAÇABLE (`enqueueSessionInviteSync`,
+  voir section 5) — jamais un appel Discord réel depuis l'action elle-même ;
+- NE touche JAMAIS les contributions déjà écrites par cette personne
+  (`Vote`/`Proposal`/`ChatMessage` restent visibles aux autres invités) —
+  seul l'accès FUTUR est coupé.
+
+La synchronisation Discord n'est jamais présentée comme instantanée :
+`getSessionInviteSyncStatuses` lit l'état RÉEL de la dernière livraison
+connue (`pending`/`synced`/`failed`, jamais un optimisme "ça vient de
+partir") et l'affiche par invité sur la page de gestion.
+
+### 5. Discord privé — fils privés par soirée
+
+**Faits vérifiés auprès de la documentation officielle Discord** —
+`discord.com`/`docs.discord.com`/`support.discord.com` sont bloqués par
+le proxy réseau sortant de CETTE session ; vérifiés à la place via une
+copie brute (`raw.githubusercontent.com/discord/discord-api-docs`) du
+même contenu source, jamais depuis la seule mémoire d'entraînement :
+- Un fil privé (`GUILD_PRIVATE_THREAD`, `type: 12`) ne peut exister que
+  sous un salon parent `GUILD_TEXT` (jamais `GUILD_ANNOUNCEMENT`) — **le
+  salon configuré par `DISCORD_BOT_SESSION_CHANNEL_ID` doit être un
+  salon texte classique**, pas un salon d'annonces.
+- `POST /channels/{channel.id}/threads` SANS `message_id` crée un fil
+  jamais rattaché à un message existant — aucune information de soirée
+  ne transite donc jamais par un message visible du salon public.
+- `invitable` (uniquement significatif pour un fil privé) : posé à
+  `false` par ce chantier — SEUL le créateur du fil (ce bot) et les
+  titulaires Discord de `MANAGE_THREADS` peuvent y ajouter des membres,
+  jamais un simple invité depuis Discord lui-même.
+- Ajout de membre : `PUT /channels/{id}/thread-members/{user.id}` —
+  idempotent par nature (204 que le membre soit déjà présent ou non).
+- Retrait de membre : `DELETE /channels/{id}/thread-members/{user.id}` —
+  sur un fil PRIVÉ créé par ce bot, son statut de créateur suffit (**pas
+  besoin de `MANAGE_THREADS` guilde-wide pour retirer quelqu'un**).
+- **Limite honnête, documentée, non contournable depuis ce client** : un
+  titulaire Discord de `MANAGE_THREADS` (admin/modérateur du serveur) voit
+  et accède TOUJOURS à un fil privé, quelle que soit la liste de membres
+  gérée applicativement. Aucune API Discord ne permet de masquer un fil
+  privé à un modérateur du serveur.
+
+**Permissions Discord exactes à configurer sur le bot**, salon
+`DISCORD_BOT_SESSION_CHANNEL_ID` (un salon texte `GUILD_TEXT`) :
+`VIEW_CHANNEL`, `CREATE_PRIVATE_THREADS`, `SEND_MESSAGES_IN_THREADS`.
+`MANAGE_THREADS` n'est PAS nécessaire pour ce chantier (le bot est
+toujours le créateur de ses propres fils).
+
+**Architecture** (`src/lib/session-announce.ts`, réutilise intégralement
+l'exécuteur/le client REST/les fondations de livraison de #95-#98,
+aucune réécriture) — l'organisation d'origine (annonce publique → fil
+créé dessus) est **inversée** :
+- `thread` — SEND une fois, crée le fil PRIVÉ (`startPrivateThread`,
+  discord-rest.ts) — AUCUNE dépendance, c'est désormais le tout premier
+  appel Discord de la soirée.
+- `announce` — SEND puis EDIT à chaque changement d'état, désormais
+  POSTÉ DANS LE FIL (`send_thread_message`/`edit_channel_message` avec
+  `channelId = threadId`) — dépend que `thread` soit `SENT` (dépendance
+  INVERSÉE par rapport à l'organisation d'origine).
+- `thread-summary`/`thread-reminder-<n>` — inchangés, toujours postés
+  dans le fil, toujours dépendants de `thread`.
+- **Nouveau rôle `invite:<inviteId>`** — un par ligne `SessionInvite`,
+  synchronise l'appartenance au fil avec le statut RÉEL de l'invitation,
+  relu au TRAITEMENT (jamais depuis un instantané pris à l'enqueue) :
+  `ACTIVE` → `add_thread_member` (PUT) ; `REVOKED` → `remove_thread_member`
+  (DELETE). Un `404` sur le retrait ("déjà absent du fil") est traité
+  comme un SUCCÈS par le résolveur (l'état cible est déjà atteint),
+  jamais un échec.
+
+**Courses traitées, toutes couvertes par un test d'intégration Postgres
+dédié** (`session-announce.integration.test.ts`, describe "invite-sync") :
+- retrait AVANT le traitement d'un ajout enqueue — le résolveur relit le
+  statut ACTUEL au traitement, résout donc vers un retrait, jamais un
+  ajout périmé qui rétablirait un accès déjà coupé ;
+- retrait PENDANT une livraison en cours — même garantie, la relecture
+  est toujours "juste à temps" ;
+- répétition d'un ajout/retrait (double clic, invite→revoke rapprochés) —
+  convergence "seule la plus récente survit" (`claimNextDelivery`, #95),
+  jamais réimplémentée ici, réutilisée telle quelle ;
+- suppression/annulation de la soirée pendant une livraison — l'invite
+  n'existe alors plus (cascade), le résolveur renvoie `expired`, jamais
+  retenté ;
+- modification des invitations pendant que le fil est encore en création
+  — `dependency_not_ready`, retenté automatiquement une fois le fil créé.
+
+En cas d'échec Discord (permission refusée, salon supprimé...), la trace
+reste exploitable en base (`NotificationDelivery.status`/`errorClass`,
+visible sur `/sessions/[id]/invites`) — reprise contrôlée par le cron
+existant, jamais un repli vers un webhook ou un salon public.
+
+### 6. Transition et retour arrière — chemin webhook legacy, préférences
+
+Le chemin webhook (`announceViaBot: false`, `DISCORD_WEBHOOK_URL`) pointe
+par construction un salon **public**, sans la moindre notion de membres
+— aucun mécanisme privé équivalent au fil bot n'existe pour lui. La
+nouvelle règle de confidentialité interdit catégoriquement d'y publier
+quoi que ce soit qui décrive une soirée précise. Corrigé en supprimant
+l'appel réseau ET la construction de l'embed eux-mêmes (jamais un simple
+masquage de contenu envoyé quand même) dans les quatre fonctions
+concernées : `announceSessionCreated`, `announceSessionModified`,
+`announceSessionResult` (discord-announce.ts, discord-session-created.ts,
+discord-session-modified.ts) et `sendSessionReminder` (discord-reminder.ts) —
+ainsi que les quatre fonctions équivalentes côté roulette
+(`announceRouletteCreated`/`Reminder`/`Result`/`Cancelled`,
+discord-roulette.ts). Toutes renvoient désormais un code d'erreur partagé,
+observable et distinct d'un échec réel :
+`WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY` (src/lib/discord.ts).
+
+Conséquences directes traitées, pas laissées de côté :
+- **Notifications internes préservées** (`createNotifications`, jamais
+  publiques, déjà protégées par `session-access.ts`) — EN PLUS
+  restreintes aux invités `SessionInvite` encore ACTIFS
+  (`filterByActiveSessionInvite`), même garantie que le chemin bot : un
+  retrait coupe aussi les notifications internes du chemin webhook.
+- **Cron de rappels** (`/api/cron/reminders`) — sans traitement
+  spécifique, ce code d'erreur permanent aurait fait retenter le même
+  rappel TOUTES les 15 minutes indéfiniment (spam de notifications
+  internes dupliquées jusqu'à la soirée). Corrigé : ce code précis est
+  traité comme "traité avec succès" pour `remindersSent`, distinct d'un
+  échec réel (webhook down) qui reste réessayé normalement.
+- **Bandeaux UI "envoi Discord échoué"** — sans traitement spécifique,
+  CHAQUE création/modification/clôture d'une soirée webhook afficherait
+  ce bandeau en permanence (bruit constant pour un état attendu et
+  permanent, pas un échec). Nouvelle fonction `isRealDiscordFailure`
+  (src/lib/discord.ts) : `true` uniquement pour un échec RÉEL, jamais
+  pour ce code précis — utilisée par les 5 points d'affichage concernés
+  (`session-lifecycle.ts` ×4, `roulette/actions.ts` ×1). Le renvoi manuel
+  (`resendDiscordAction`) affiche un nouveau message honnête et distinct
+  ("Renvoi désactivé — ce salon Discord est public...") plutôt qu'un faux
+  "envoyé" ou un "échec" trompeur.
+
+**Préférences** (`UserNotificationPreference`, catégories `SESSION`/
+`ROULETTE`, #98) — contrat existant PRÉSERVÉ à l'identique, repli legacy
+(`silenceReminders`) inchangé. La nouvelle distinction "invités
+autorisés" (accès, `SessionInvite`) vs "invités autorisés à recevoir une
+sollicitation" (notification, `UserNotificationPreference`) est
+STRUCTURELLEMENT indépendante — les deux systèmes ne se lisent jamais
+l'un l'autre, un refus de préférence ne touche jamais l'accès, un retrait
+d'invitation ne touche jamais la préférence de la personne pour d'autres
+soirées.
+
+**Retour arrière** : revenir en arrière sur ce chantier (revert du code)
+ne réexpose AUCUNE soirée déjà rendue privée — les fils Discord déjà
+créés restent privés côté Discord (état qui ne dépend pas du code
+applicatif), et aucune donnée n'est supprimée ni modifiée en base par un
+revert. Seul le comportement des FUTURES actions reviendrait à l'ancien
+modèle (public, accès non restreint).
+
+### 7. Migration des anciennes soirées
+
+Migration additive `20260921100000_add_session_invite` (jamais retouché
+depuis) — backfill des `SessionInvite` pour les soirées déjà en base :
+- `notifiedUserIds` explicitement posé par le créateur (même tableau
+  vide) — SEULE source fiable retenue : reprise littéralement, jamais
+  déduite d'un vote, d'une proposition, d'une mention ou d'une présence
+  (chacune aurait pu inclure des gens jamais réellement invités — un pote
+  ayant voté par curiosité sur une soirée alors ouverte à tous n'a jamais
+  été "invité" au sens de la nouvelle règle).
+- `notifiedUserIds IS NULL` (soirées créées avant l'introduction du ping
+  sélectif) — aucune source fiable, accès CRÉATEUR SEUL, réinvitation
+  possible depuis `/sessions/[id]/invites`, jamais automatique.
+- Le créateur est explicitement exclu du backfill même s'il apparaissait
+  dans son propre `notifiedUserIds`. Un id halluciné/supprimé depuis dans
+  `notifiedUserIds` est silencieusement ignoré (`EXISTS` sur `User`),
+  jamais une ligne orpheline.
+
+Testé sur une base Postgres isolée en exécutant l'INSERT RÉEL de cette
+migration (lu depuis le fichier, jamais réimplémenté dans le test — pour
+ne jamais tester une réécriture qui diverge du SQL réellement appliqué en
+production) contre des soirées "legacy" insérées directement
+(`session-access.integration.test.ts`, describe "migration legacy").
+
+### 8. Inventaire des anciennes annonces Discord publiques
+
+Outil **en lecture seule**, `/admin?tab=confidentialite`
+(`src/lib/legacy-discord-announces.ts` + `ConfidentialiteTab.tsx`) —
+liste les annonces/fils Discord publics déjà envoyés AVANT ce chantier
+(chemin bot uniquement, tracé en base via `NotificationDelivery`).
+**Aucune suppression, édition ni modification Discord n'est exécutée par
+cet outil ni par ce chantier** — ces messages resteront visibles
+publiquement tant qu'une opération spécifique (hors de ce chantier) ne
+les aura pas traités ; l'outil prépare seulement la décision humaine à
+venir.
+
+**Limite assumée et documentée** : cet inventaire ne couvre QUE ce que la
+base sait. Les annonces émises par le chemin WEBHOOK legacy ne laissent
+AUCUNE trace en base (`postToDiscord` ne persiste jamais l'id du message
+envoyé) — leur revue reste entièrement MANUELLE, directement dans le
+salon Discord. Fenêtre de fiabilité pour la partie bot : à exécuter juste
+après le déploiement de ce chantier, avant qu'une nouvelle session ne
+déclenche sa propre synchronisation (sans quoi de nouveaux fils PRIVÉS se
+mêleraient aux anciens fils PUBLICS dans la même requête) — un paramètre
+`sentBefore` permet de fixer explicitement cette borne si l'inventaire
+est exécuté plus tard.
+
+**Inventaire lui-même NON exécuté en Production dans cette session** —
+aucun accès à la base Neon de production, l'outil est livré prêt à
+l'emploi mais son résultat réel sur les données de production n'a pas été
+consulté.
+
+### 9. Ce qui reste hors périmètre (délimitation explicite du chantier)
+
+- **Récompenses et récapitulatifs** (`monthly-recap.ts`, group achievements,
+  badges, `profile-stats.ts`) — explicitement exclus par la demande
+  ("Ne mélange pas avec... les récompenses et récapitulatifs"). Ces flux
+  restent des agrégats GLOBAUX, non filtrés par soirée — un recap mensuel
+  peut donc encore citer un nom de jeu issu d'une soirée privée. Décision
+  produit à trancher séparément (filtrer, anonymiser, ou assumer que ce
+  sont des agrégats de groupe, pas le contenu d'une soirée précise).
+- **Refonte complète Soirée → Roulette** — explicitement exclue. Une
+  roulette encore OUVERTE (avant tirage) n'a donc plus AUCUNE annonce
+  Discord (webhook supprimé par confidentialité, aucun mécanisme privé
+  équivalent construit pour elle — contrairement à la session résultante,
+  qui en a un dès le tirage effectué). Un vrai mécanisme privé pour la
+  roulette elle-même (fil privé dès la création, pas seulement au
+  résultat) reste à construire dans une future PR dédiée.
+- **Séparation multi-communauté/multi-serveur Discord** — non implémentée
+  (l'app suppose toujours un seul serveur Discord partagé, une seule
+  configuration `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID`).
+  Ce chantier n'introduit rien qui empêcherait cette évolution plus tard
+  (les fils privés sont déjà scopés par soirée, pas par serveur), mais ne
+  prétend pas non plus fournir une isolation multi-communauté — un besoin
+  futur à concevoir séparément si plusieurs groupes doivent un jour
+  partager la même instance sans jamais se voir.
+- **Soirées instantanées** (mode roulette instantané) — respectent déjà
+  la confidentialité (même `createRouletteResultSession` que le mode
+  async), aucune UI/flux supplémentaire construit spécifiquement pour
+  elles au-delà de ça.
+- **Bot avancé (V2)** — objectif final toujours nécessaire, cette PR ne
+  couvre que cette étape (fils privés + synchronisation de membres pour
+  les soirées, pas au-delà).
+
+### 10. Problèmes déjà remontés — statut
+
+- Absence de mentions sur une soirée classique malgré des personnes
+  sélectionnées : **non reproduit/non lié à ce chantier**, aucune cause
+  identifiée en lien direct avec les changements ci-dessus.
+- Bandeau "envoi Discord échoué" malgré une annonce effectivement
+  envoyée : **partiellement adressé** — ce chantier corrige spécifiquement
+  le cas où le bandeau apparaîtrait à tort pour le nouveau code
+  `WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY` (`isRealDiscordFailure`), mais
+  ne prétend pas avoir traité toute occurrence historique de ce bug
+  ailleurs dans le code.
+- Rappel "dans 24h" envoyé le matin pour le soir même : **reste ouvert**,
+  aucune cause en lien avec ce chantier identifiée (logique de calcul des
+  timings, `computeTimingsDue`/`reminders.ts`, non touchée ici).
+- Absence d'annonce de création de tournoi : **reste ouvert**, hors
+  périmètre (les tournois ne sont pas concernés par ce chantier —
+  "soirées" désigne exclusivement `Session` ici).
+
+### 11. Tests
+
+**452/452 verts** avec `TEST_DATABASE_URL` (`npm run test:postgres`) ;
+316/452 verts, 136 explicitement skippés sans elle (`npx vitest run`,
+pas de faux vert). `npx tsc --noEmit` / `npx eslint .` clean sur tout le
+dépôt. `npx next build` compile sans erreur (route
+`/sessions/[id]/invites` bien générée).
+
+Nouveaux fichiers de test :
+- `src/lib/session-access.integration.test.ts` (19 tests, Postgres réel)
+  — créateur/invité/non-invité/id forgé, idempotence invite/revoke,
+  révocation concurrente, filtre restrictif uniquement, migration legacy
+  (SQL réel exécuté).
+- `src/lib/session-announce.integration.test.ts` (44 tests, dont ~30
+  réécrits pour la nouvelle architecture fil-privé-avant-annonce, +14
+  nouveaux) — fil privé (type 12, invitable false), annonce postée dans
+  le fil, invite-sync (ajout/retrait/course/répétition/suivi d'état),
+  révocation coupant les mentions déjà enqueue-ées.
+- `src/app/sessions/actions/session-lifecycle.integration.test.ts` (3
+  tests, Postgres réel) — `createSession` persiste des invitations
+  exactes.
+- `src/app/sessions/actions/invites.test.ts` (7 tests, mocké) — gestion
+  des invités réservée au créateur, y compris avec un id de session réel.
+- `src/app/sessions/actions/proposals-votes.access.test.ts` (4 tests,
+  mocké) — `proposeGame`/`toggleVote` refusés à un non-invité.
+- `src/app/chat/actions.access.test.ts` (6 tests, mocké) — chat de
+  soirée refusé à un non-invité, canal global inchangé.
+- `discord-session-created.preferences.test.ts`/`discord-roulette.preferences.test.ts`
+  — réécrits pour la nouvelle suppression permanente du webhook public.
+
+### 12. Procédure de déploiement et de test manuel
+
+1. `npx prisma migrate deploy` (applique la migration additive
+   `SessionInvite`, backfille les soirées existantes).
+2. Configurer sur le bot Discord les permissions du salon
+   `DISCORD_BOT_SESSION_CHANNEL_ID` : `VIEW_CHANNEL`, `CREATE_PRIVATE_THREADS`,
+   `SEND_MESSAGES_IN_THREADS` — **vérifier que ce salon est bien de type
+   texte classique (`GUILD_TEXT`), jamais un salon d'annonces**.
+3. Immédiatement après déploiement, AVANT toute nouvelle création de
+   soirée, consulter `/admin?tab=confidentialite` (inventaire en lecture
+   seule des anciennes annonces publiques) — la fenêtre de fiabilité de
+   cet inventaire se referme dès la première nouvelle synchronisation.
+4. Test manuel : créer une soirée avec 1-2 potes cochés → vérifier que
+   `/sessions/[id]` est invisible pour un compte non coché (404) ;
+   vérifier `/sessions/[id]/invites` (créateur) → retirer un invité →
+   vérifier l'accès coupé immédiatement pour ce compte, puis le
+   réinviter → accès rétabli.
+5. Si le bot est configuré : vérifier dans Discord qu'un FIL PRIVÉ
+   (jamais un message public) apparaît sous le salon configuré après le
+   prochain passage de `/api/cron/notification-executor`, et que retirer
+   un invité le retire bien du fil au passage suivant.
+
+**Aucune migration distante, modification Vercel/Discord réelle,
+suppression d'annonce réelle ni envoi Discord réel n'a été effectué dans
+cette session.**
