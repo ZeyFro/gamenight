@@ -87,3 +87,42 @@ export async function revokeSessionInviteAction(formData: FormData) {
 
   revalidatePath(`/sessions/${sessionId}/invites`);
 }
+
+/**
+ * Réessaie manuellement la synchronisation Discord d'une invitation dont
+ * le dernier statut connu est "failed" — seul recours du créateur quand
+ * un ajout/retrait Discord a échoué définitivement (permission refusée,
+ * fil supprimé, etc.) : sans ce bouton, un retrait resté en échec ne
+ * serait plus jamais repris automatiquement (aucun cron ne retente une
+ * livraison FAILED terminale), alors que l'accès applicatif, lui, est
+ * déjà coupé — l'écart entre "coupé côté site" et "toujours membre du fil
+ * Discord" resterait invisible et permanent.
+ *
+ * Ré-enqueue simplement une nouvelle synchronisation (même mécanique
+ * qu'`addSessionInviteAction`/`revokeSessionInviteAction`) : le résolveur
+ * relit le statut ACTUEL de l'invitation au traitement, donc retente
+ * toujours la bonne opération (ajout ou retrait), jamais celle figée au
+ * moment de l'échec initial.
+ */
+export async function retrySessionInviteSyncAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "retrySessionInviteSync")) return;
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const inviteId = String(formData.get("inviteId") ?? "");
+  if (!sessionId || !inviteId) return;
+
+  const session = await assertOwnsSession(sessionId, user.id);
+  if (!session || !session.announceViaBot) return;
+
+  const invite = await prisma.sessionInvite.findUnique({
+    where: { id: inviteId },
+    select: { sessionId: true },
+  });
+  if (!invite || invite.sessionId !== sessionId) return;
+
+  await enqueueSessionInviteSync(inviteId);
+
+  revalidatePath(`/sessions/${sessionId}/invites`);
+}

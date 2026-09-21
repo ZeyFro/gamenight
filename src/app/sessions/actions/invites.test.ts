@@ -37,7 +37,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/session-access", () => ({ inviteToSession, revokeSessionInvite }));
 vi.mock("@/lib/session-announce", () => ({ enqueueSessionInviteSync }));
 
-import { addSessionInviteAction, revokeSessionInviteAction } from "./invites";
+import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSyncAction } from "./invites";
 
 /**
  * Chantier confidentialité des soirées — "seul le créateur gère les
@@ -126,5 +126,73 @@ describe("addSessionInviteAction / revokeSessionInviteAction — réservées au 
     await revokeSessionInviteAction(formData("session-1", "guest-deja-retire"));
 
     expect(enqueueSessionInviteSync).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Chantier confidentialité des soirées, revue ciblée (Q3 — honnêteté de
+ * l'échec de synchronisation) : sans ce bouton, une synchronisation
+ * Discord tombée en FAILED terminal (aucun cron ne la retente jamais,
+ * voir notification-executor.ts) resterait bloquée pour toujours — un
+ * ajout jamais posé, ou pire, un retrait jamais confirmé alors que
+ * l'accès applicatif est déjà coupé. Mêmes garanties d'autorisation que
+ * les deux actions ci-dessus (réservée au créateur).
+ */
+describe("retrySessionInviteSyncAction — réessai manuel réservé au créateur", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    checkRateLimit.mockReturnValue(true);
+  });
+
+  function retryFormData(sessionId: string, inviteId: string): FormData {
+    const fd = new FormData();
+    fd.set("sessionId", sessionId);
+    fd.set("inviteId", inviteId);
+    return fd;
+  }
+
+  it("refuse sans session utilisateur", async () => {
+    getCurrentUser.mockResolvedValue(null);
+    await expect(retrySessionInviteSyncAction(retryFormData("s1", "inv1"))).rejects.toThrow("REDIRECT:/");
+    expect(enqueueSessionInviteSync).not.toHaveBeenCalled();
+  });
+
+  it("un non-créateur (session forgée/inexistante) ne peut réessayer aucune synchronisation", async () => {
+    getCurrentUser.mockResolvedValue({ id: "pas-le-createur" });
+    sessionFindUnique.mockResolvedValue(null);
+
+    await retrySessionInviteSyncAction(retryFormData("session-forgee", "inv1"));
+
+    expect(enqueueSessionInviteSync).not.toHaveBeenCalled();
+  });
+
+  it("session restée sur le chemin webhook (announceViaBot=false) : rien à synchroniser, aucun enqueue", async () => {
+    getCurrentUser.mockResolvedValue({ id: "createur" });
+    sessionFindUnique.mockResolvedValue({ createdById: "createur", announceViaBot: false });
+
+    await retrySessionInviteSyncAction(retryFormData("session-1", "inv1"));
+
+    expect(enqueueSessionInviteSync).not.toHaveBeenCalled();
+  });
+
+  it("une invitation forgée/appartenant à une AUTRE session est refusée, même avec le bon sessionId créateur", async () => {
+    getCurrentUser.mockResolvedValue({ id: "createur" });
+    sessionFindUnique.mockResolvedValue({ createdById: "createur", announceViaBot: true });
+    sessionInviteFindUnique.mockResolvedValue({ sessionId: "une-autre-session" });
+
+    await retrySessionInviteSyncAction(retryFormData("session-1", "inv-dune-autre-session"));
+
+    expect(enqueueSessionInviteSync).not.toHaveBeenCalled();
+  });
+
+  it("le créateur peut réessayer — ré-enqueue une synchronisation pour l'invitation, qu'elle soit ACTIVE ou REVOKED (le résolveur relit le statut courant)", async () => {
+    getCurrentUser.mockResolvedValue({ id: "createur" });
+    sessionFindUnique.mockResolvedValue({ createdById: "createur", announceViaBot: true });
+    sessionInviteFindUnique.mockResolvedValue({ sessionId: "session-1" });
+
+    await retrySessionInviteSyncAction(retryFormData("session-1", "invite-en-echec"));
+
+    expect(enqueueSessionInviteSync).toHaveBeenCalledWith("invite-en-echec");
+    expect(revalidatePath).toHaveBeenCalledWith("/sessions/session-1/invites");
   });
 });

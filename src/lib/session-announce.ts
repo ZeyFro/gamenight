@@ -675,7 +675,7 @@ async function resolveAnnounceDelivery(
       formatDateTimeFr(session.date)
     );
     const action: ResolvedAction = {
-      kind: "send_thread_message",
+      kind: "send_thread_message_verified",
       threadId: thread.discordThreadId,
       message: { ...message, embeds: [rendering.embed] },
     };
@@ -685,7 +685,14 @@ async function resolveAnnounceDelivery(
   // EDIT — nécessite le messageId déjà posté par le SEND initial (posté
   // DANS le fil, donc `discordThreadId` sur cette même ligne SENT sert de
   // `channelId` pour l'édition — un fil est un salon côté API Discord,
-  // voir le commentaire de fichier de discord-rest.ts).
+  // voir le commentaire de fichier de discord-rest.ts). Jamais revérifié
+  // ICI (pas de `edit_channel_message_verified`) : le SEND initial qui a
+  // produit ce `discordThreadId`/`discordMessageId` SENT est nécessairement
+  // passé par `send_thread_message_verified`, qui a déjà confirmé un fil
+  // PRIVÉ à ce moment-là. L'API Discord n'expose aucun moyen de convertir
+  // un fil existant entre PUBLIC et PRIVÉ après sa création (`type` n'est
+  // pas parmi les champs modifiables d'un fil) — cette garantie tient
+  // donc dans la durée sans nouvelle vérification.
   const sentAnnounce = await findSentDelivery(announceSlot(session.id));
   if (!sentAnnounce?.discordMessageId || !sentAnnounce.discordThreadId) {
     return { eligible: false, reason: "dependency_not_ready" };
@@ -749,8 +756,8 @@ async function resolveInviteSync(sessionId: string, inviteId: string): Promise<R
 
   const action: ResolvedAction =
     invite.status === "ACTIVE"
-      ? { kind: "add_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
-      : { kind: "remove_thread_member", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
+      ? { kind: "add_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
+      : { kind: "remove_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
   return { eligible: true, action };
 }
 
@@ -767,7 +774,7 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
     formatDateTimeFr(session.date)
   );
   const action: ResolvedAction = {
-    kind: "send_thread_message",
+    kind: "send_thread_message_verified",
     threadId: thread.discordThreadId,
     message: { ...message, embeds: [rendering.embed] },
   };
@@ -800,6 +807,6 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
     reminderTitle
   );
-  const action: ResolvedAction = { kind: "send_thread_message", threadId: thread.discordThreadId, message };
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };
 }

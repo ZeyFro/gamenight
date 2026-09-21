@@ -13,14 +13,15 @@ import {
   type FinalizeSuccessInput,
 } from "@/lib/notification-delivery";
 import {
-  addThreadMember,
+  addThreadMemberVerified,
   archiveThread,
   editChannelMessage,
-  removeThreadMember,
+  removeThreadMemberVerified,
   sendChannelMessage,
   sendChannelMessageVerified,
   sendDirectMessage,
   sendThreadMessage,
+  sendThreadMessageVerified,
   startPrivateThread,
   startThreadFromMessage,
   type AllowedMentions,
@@ -163,8 +164,21 @@ export type ResolvedAction =
       name: string;
       autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
     }
-  | { kind: "add_thread_member"; threadId: string; discordUserId: string }
-  | { kind: "remove_thread_member"; threadId: string; discordUserId: string };
+  | {
+      /** Comme `send_thread_message`, mais revérifie via un `GET` réel
+       * (`verifyThreadIsPrivate`, discord-rest.ts) que le fil référencé
+       * est bien PRIVÉ avant tout envoi — un `threadId` lu en base peut,
+       * pour une soirée créée avant ce chantier, pointer vers l'ANCIEN
+       * fil PUBLIC (jamais recréé, l'enqueue de `thread` est à occurrence
+       * fixe). Réservée à toute publication dans un fil dont la
+       * référence vient d'une lecture en base, jamais nécessaire pour un
+       * fil qu'on vient de créer dans le même appel. */
+      kind: "send_thread_message_verified";
+      threadId: string;
+      message: ResolvedMessageContent;
+    }
+  | { kind: "add_thread_member_verified"; threadId: string; discordUserId: string }
+  | { kind: "remove_thread_member_verified"; threadId: string; discordUserId: string };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
  * traitement (retryable ou terminal). `dependency_not_ready` est la SEULE
@@ -453,8 +467,24 @@ export async function performDiscordAction(
         discordChannelId: data.parentId ?? undefined,
       }));
     }
-    case "add_thread_member": {
-      const result = await addThreadMember({
+    case "send_thread_message_verified": {
+      // Un fil est un salon côté API Discord (voir discord-rest.ts) : le
+      // `channelId` renvoyé par ce SEND correspond au `threadId` lui-même.
+      const result = await sendThreadMessageVerified({
+        threadId: action.threadId,
+        content: action.message.content,
+        embeds: action.message.embeds,
+        allowedMentions: action.message.allowedMentions,
+        deadline,
+        now,
+      });
+      return mapDiscordResult(result, (data) => ({
+        discordMessageId: data.messageId,
+        discordThreadId: data.channelId,
+      }));
+    }
+    case "add_thread_member_verified": {
+      const result = await addThreadMemberVerified({
         threadId: action.threadId,
         discordUserId: action.discordUserId,
         deadline,
@@ -462,21 +492,23 @@ export async function performDiscordAction(
       });
       return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
     }
-    case "remove_thread_member": {
-      const result = await removeThreadMember({
+    case "remove_thread_member_verified": {
+      const result = await removeThreadMemberVerified({
         threadId: action.threadId,
         discordUserId: action.discordUserId,
         deadline,
         now,
       });
-      // Un `404` ("déjà absent du fil") atteint exactement l'état cible
-      // d'un retrait — traité comme un succès ICI (jamais dans
-      // discord-rest.ts, qui reste honnête sur la réponse HTTP brute, voir
-      // son commentaire) : sans cette équivalence, une invitation révoquée
-      // pour quelqu'un jamais réellement ajouté (échec transitoire du
-      // premier ajout, ou double révocation) resterait éternellement en
-      // échec `FAILED`/retenue en `retrying`, alors que le but — cette
-      // personne absente du fil — est déjà atteint.
+      // Un `404` ("déjà absent du fil", OU le fil référencé n'existe plus
+      // du tout — la vérification elle-même 404) atteint exactement
+      // l'état cible d'un retrait — traité comme un succès ICI (jamais
+      // dans discord-rest.ts, qui reste honnête sur la réponse HTTP
+      // brute, voir son commentaire) : sans cette équivalence, une
+      // invitation révoquée pour quelqu'un jamais réellement ajouté
+      // (échec transitoire du premier ajout, ou double révocation)
+      // resterait éternellement en échec `FAILED`/retenue en `retrying`,
+      // alors que le but — cette personne absente du fil — est déjà
+      // atteint.
       if (!result.ok && result.kind === "not_found") {
         return { ok: true, data: { discordThreadId: action.threadId } };
       }

@@ -576,6 +576,9 @@ export async function getChannel(input: GetChannelInput): Promise<DiscordRestRes
  * annonce+fil de ce chantier. */
 export const THREAD_CAPABLE_CHANNEL_TYPES: ReadonlySet<number> = new Set([0, 5]);
 
+/** Type de salon Discord `GUILD_PRIVATE_THREAD` — voir `verifyThreadIsPrivate`. */
+export const PRIVATE_THREAD_TYPE = 12;
+
 export interface VerifyChannelDestinationInput {
   channelId: string;
   guildId: string;
@@ -898,7 +901,7 @@ export async function startPrivateThread(input: StartPrivateThreadInput): Promis
     path: `/channels/${input.channelId}/threads`,
     body: {
       name: normalizeThreadName(input.name),
-      type: 12,
+      type: PRIVATE_THREAD_TYPE,
       invitable: input.invitable ?? false,
       auto_archive_duration: input.autoArchiveDuration ?? 10080,
     },
@@ -906,6 +909,40 @@ export async function startPrivateThread(input: StartPrivateThreadInput): Promis
     now: input.now,
     parse: parseThread,
   });
+}
+
+/**
+ * Chantier confidentialité des soirées — un `NotificationDelivery` "thread"
+ * déjà `SENT` peut, pour une soirée créée AVANT ce chantier, référencer
+ * l'ANCIEN fil PUBLIC (créé par `startThreadFromMessage`, jamais retiré
+ * ni recréé — l'enqueue de `thread` est à occurrence FIXE, jamais
+ * rejouée). Rien dans la base ne distingue de façon fiable "ce fil a été
+ * créé avant ou après ce chantier" (pas de nouvelle colonne ajoutée pour
+ * ça). Plutôt qu'une heuristique de date fragile, CE client revérifie
+ * TOUJOURS, via un `GET` réel, que le fil référencé est bien PRIVÉ
+ * (`type: 12`, GUILD_PRIVATE_THREAD) avant d'y poster quoi que ce soit
+ * ou d'y gérer des membres — jamais une confiance implicite dans une
+ * référence stockée. Surcoût accepté (un `GET` de plus par opération,
+ * même pour un fil dont on sait par construction qu'il est déjà privé) :
+ * la sûreté prime sur l'économie d'un appel réseau pour une app à
+ * cadence d'usage faible (groupe d'amis). Même philosophie que
+ * `verifyChannelDestination` ci-dessus, appliquée ici aux fils.
+ */
+export async function verifyThreadIsPrivate(
+  input: { threadId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<{ threadId: string }>> {
+  const result = await getChannel({ channelId: input.threadId, deadline: input.deadline, now: input.now });
+  if (!result.ok) return result;
+
+  if (result.data.type !== PRIVATE_THREAD_TYPE) {
+    return {
+      ok: false,
+      kind: "destination_mismatch",
+      message: `Fil Discord référencé de type ${result.data.type} — pas un fil PRIVÉ (12), refus de publier ou de gérer ses membres.`,
+      retryable: false,
+    };
+  }
+  return { ok: true, data: { threadId: result.data.channelId } };
 }
 
 /** Résultat vide (204) — les deux opérations de membership ci-dessous ne
@@ -960,4 +997,60 @@ export async function removeThreadMember(input: ThreadMemberInput): Promise<Disc
     allowEmptyBody: true,
     parse: parseEmptySuccess,
   });
+}
+
+export interface SendThreadMessageVerifiedInput extends MessageContentInput {
+  threadId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/**
+ * `verifyThreadIsPrivate` PUIS envoi — voir son commentaire : le fil
+ * référencé par une ligne `NotificationDelivery` "thread" `SENT` peut,
+ * pour une soirée créée avant ce chantier, être l'ANCIEN fil PUBLIC.
+ * JAMAIS de `POST` si la vérification échoue, quelle qu'en soit la
+ * raison. Réservée à toute publication dans un fil dont la référence
+ * vient d'une lecture en base (annonce, résumé, rappel) — jamais
+ * nécessaire pour un fil qu'on vient tout juste de créer soi-même dans le
+ * même appel (aucun cas de ce genre dans ce module).
+ */
+export async function sendThreadMessageVerified(
+  input: SendThreadMessageVerifiedInput
+): Promise<DiscordRestResult<SentMessage>> {
+  if (!hasContent(input)) {
+    return {
+      ok: false,
+      kind: "invalid_request",
+      message: "Aucun contenu ni embed fourni — rien à envoyer.",
+      retryable: false,
+    };
+  }
+  const verified = await verifyThreadIsPrivate({ threadId: input.threadId, deadline: input.deadline, now: input.now });
+  if (!verified.ok) return verified;
+
+  return sendThreadMessage({
+    threadId: verified.data.threadId,
+    content: input.content,
+    embeds: input.embeds,
+    allowedMentions: input.allowedMentions,
+    deadline: input.deadline,
+    now: input.now,
+  });
+}
+
+/** `verifyThreadIsPrivate` PUIS ajout — même raisonnement que
+ * `sendThreadMessageVerified` ci-dessus, appliqué à la synchronisation de
+ * membres (`resolveInviteSync`, session-announce.ts). */
+export async function addThreadMemberVerified(input: ThreadMemberInput): Promise<DiscordRestResult<ThreadMemberOpResult>> {
+  const verified = await verifyThreadIsPrivate({ threadId: input.threadId, deadline: input.deadline, now: input.now });
+  if (!verified.ok) return verified;
+  return addThreadMember({ ...input, threadId: verified.data.threadId });
+}
+
+/** `verifyThreadIsPrivate` PUIS retrait — même raisonnement. */
+export async function removeThreadMemberVerified(input: ThreadMemberInput): Promise<DiscordRestResult<ThreadMemberOpResult>> {
+  const verified = await verifyThreadIsPrivate({ threadId: input.threadId, deadline: input.deadline, now: input.now });
+  if (!verified.ok) return verified;
+  return removeThreadMember({ ...input, threadId: verified.data.threadId });
 }

@@ -9869,7 +9869,31 @@ Le retrait :
 La synchronisation Discord n'est jamais présentée comme instantanée :
 `getSessionInviteSyncStatuses` lit l'état RÉEL de la dernière livraison
 connue (`pending`/`synced`/`failed`, jamais un optimisme "ça vient de
-partir") et l'affiche par invité sur la page de gestion.
+partir") et l'affiche par invité sur la page de gestion — **pour les
+invités actifs ET pour l'historique des retraits** (revue ciblée : un
+statut affiché seulement côté "actifs" aurait pu laisser croire qu'un
+retrait Discord ayant échoué avait quand même réussi, puisque rien ne
+l'aurait jamais signalé). Les libellés du retrait sont volontairement
+distincts de ceux de l'ajout (`REVOKE_SYNC_LABELS` vs `SYNC_LABELS`,
+`src/app/sessions/[id]/invites/page.tsx`) : **l'accès Discord n'est
+jamais annoncé comme coupé avant confirmation** — `"pending"` affiche
+explicitement "accès Discord pas encore coupé", `"failed"` affiche
+explicitement "cette personne peut encore avoir accès au fil Discord".
+
+Un échec de synchronisation (ajout ou retrait) est **terminal** — aucun
+cron ne le retente jamais automatiquement (`NotificationDelivery.status
+= "FAILED"`, hors du balayage PENDING/RETRYING). Sans recours, un tel
+échec resterait bloqué indéfiniment. Nouveau bouton "Réessayer",
+affiché pour toute invitation (active OU révoquée) dont le dernier
+statut connu est `"failed"`, qui ré-enqueue une synchronisation
+(`retrySessionInviteSyncAction` → `enqueueSessionInviteSync`, même
+mécanisme et mêmes garanties d'idempotence/convergence que les actions
+inviter/retirer — le résolveur relit le statut ACTUEL de l'invitation au
+traitement, retente donc toujours la bonne opération). Testé par
+`invites.test.ts` : refusé sans session utilisateur, refusé à un
+non-créateur, no-op si la session est restée sur le chemin webhook,
+refusé pour une invitation appartenant à une autre soirée (id forgé), et
+ré-enqueue bien pour le créateur légitime.
 
 ### 5. Discord privé — fils privés par soirée
 
@@ -9947,6 +9971,47 @@ En cas d'échec Discord (permission refusée, salon supprimé...), la trace
 reste exploitable en base (`NotificationDelivery.status`/`errorClass`,
 visible sur `/sessions/[id]/invites`) — reprise contrôlée par le cron
 existant, jamais un repli vers un webhook ou un salon public.
+
+**Protection contre un ancien fil PUBLIC référencé en base (revue ciblée)** —
+la ligne `NotificationDelivery` "thread" `SENT` d'une soirée est produite
+UNE SEULE FOIS, à sa création (occurrence fixe, jamais ré-enqueue-ée,
+voir #95). Pour une soirée créée AVANT le déploiement de ce chantier,
+cette ligne référence encore l'ANCIEN fil **PUBLIC** — et rien dans la
+base ne distingue cette situation d'un fil privé légitime : `announce`
+(SEND et EDIT), `thread-summary`, `thread-reminder-<n>` et `invite:<id>`
+lisent tous ce même `discordThreadId` stocké pour y écrire. Sans
+protection, un déploiement de ce chantier aurait pu faire écrire du
+contenu de soirée PRIVÉ (annonce, rappel, résumé, appartenance au fil)
+dans un fil resté PUBLIC.
+
+Corrigé par une vérification Discord réelle (GET) immédiatement avant
+CHAQUE écriture qui s'appuie sur un `discordThreadId` lu en base —
+`verifyThreadIsPrivate` (`src/lib/discord-rest.ts`) relit le salon
+(`GET /channels/{id}`) et refuse (`destination_mismatch`, non-retryable)
+si son `type` n'est pas `12` (fil privé) — même principe que
+`verifyChannelDestination`/`sendChannelMessageVerified`, déjà utilisé
+pour les annonces de tournoi (#100). Trois nouvelles fonctions
+"vérifiées" (`sendThreadMessageVerified`/`addThreadMemberVerified`/
+`removeThreadMemberVerified`) remplacent leurs équivalents non vérifiés
+pour TOUT chemin session qui lit un fil déjà existant : le SEND et l'EDIT
+de l'annonce (`send_thread_message_verified`), le résumé de fin de
+soirée, les rappels, et l'ajout/retrait de membre par invite-sync.
+
+**Seule la création initiale du fil (`thread` SEND, `startPrivateThread`)
+et l'EDIT de l'annonce restent SANS cette vérification supplémentaire** :
+la création ne lit aucune référence stockée (elle en produit une, fraîche,
+qu'elle vient de créer elle-même) ; l'EDIT ne peut agir que sur un
+`discordMessageId`/`discordThreadId` produit par un SEND déjà vérifié —
+et l'API Discord n'expose aucun moyen de convertir un fil existant entre
+PUBLIC et PRIVÉ après sa création (`type` n'est pas un champ modifiable
+d'un fil), donc cette garantie tient dans la durée sans re-vérification.
+
+Prouvé par un nouveau describe dédié dans
+`session-announce.integration.test.ts` ("protection contre un ancien fil
+PUBLIC référencé en base") : SEND annonce/thread-summary/invite-sync vers
+un fil dont la vérification révèle un `type` ≠ 12 → échec terminal
+observable (`discord:destination_mismatch`), AUCUN POST/PUT/DELETE tenté,
+statut Discord affiché comme `"failed"` (jamais silencieusement ignoré).
 
 ### 6. Transition et retour arrière — chemin webhook legacy, préférences
 
@@ -10110,8 +10175,8 @@ consulté.
 
 ### 11. Tests
 
-**452/452 verts** avec `TEST_DATABASE_URL` (`npm run test:postgres`) ;
-316/452 verts, 136 explicitement skippés sans elle (`npx vitest run`,
+**460/460 verts** avec `TEST_DATABASE_URL` (`npm run test:postgres`) ;
+321/460 verts, 139 explicitement skippés sans elle (`npx vitest run`,
 pas de faux vert). `npx tsc --noEmit` / `npx eslint .` clean sur tout le
 dépôt. `npx next build` compile sans erreur (route
 `/sessions/[id]/invites` bien générée).
@@ -10121,16 +10186,22 @@ Nouveaux fichiers de test :
   — créateur/invité/non-invité/id forgé, idempotence invite/revoke,
   révocation concurrente, filtre restrictif uniquement, migration legacy
   (SQL réel exécuté).
-- `src/lib/session-announce.integration.test.ts` (44 tests, dont ~30
-  réécrits pour la nouvelle architecture fil-privé-avant-annonce, +14
+- `src/lib/session-announce.integration.test.ts` (47 tests, dont ~30
+  réécrits pour la nouvelle architecture fil-privé-avant-annonce, +17
   nouveaux) — fil privé (type 12, invitable false), annonce postée dans
   le fil, invite-sync (ajout/retrait/course/répétition/suivi d'état),
-  révocation coupant les mentions déjà enqueue-ées.
+  révocation coupant les mentions déjà enqueue-ées, et (revue ciblée) le
+  describe "protection contre un ancien fil PUBLIC référencé en base"
+  (3 tests : SEND annonce/thread-summary/invite-sync refusés sans écrire
+  quoi que ce soit dès que la vérification Discord détecte un fil qui
+  n'est plus PRIVÉ).
 - `src/app/sessions/actions/session-lifecycle.integration.test.ts` (3
   tests, Postgres réel) — `createSession` persiste des invitations
   exactes.
-- `src/app/sessions/actions/invites.test.ts` (7 tests, mocké) — gestion
-  des invités réservée au créateur, y compris avec un id de session réel.
+- `src/app/sessions/actions/invites.test.ts` (12 tests, mocké) — gestion
+  des invités réservée au créateur, y compris avec un id de session réel,
+  + (revue ciblée) `retrySessionInviteSyncAction` (5 tests) : réservé au
+  créateur, no-op sans bot, refusé pour une invitation d'une autre soirée.
 - `src/app/sessions/actions/proposals-votes.access.test.ts` (4 tests,
   mocké) — `proposeGame`/`toggleVote` refusés à un non-invité.
 - `src/app/chat/actions.access.test.ts` (6 tests, mocké) — chat de
