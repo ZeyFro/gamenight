@@ -17,6 +17,7 @@ import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { announceSessionResult } from "@/lib/discord-announce";
 import { announceRouletteCreated } from "@/lib/discord-roulette";
 import { isRouletteProposalOpen, spinRoulette } from "@/lib/roulette";
+import { createRouletteResultSession } from "@/lib/sessions";
 
 /**
  * Créer la soirée depuis le résultat de la roue (Sprint 3, /roulette).
@@ -35,6 +36,12 @@ import { isRouletteProposalOpen, spinRoulette } from "@/lib/roulette";
  * `announceSessionCreated` ("📣 Nouvelle soirée" invite à voter) — un
  * jeu déjà décidé par la roue n'a rien à faire voter, "soirée validée"
  * est le message qui correspond réellement à ce qui vient de se passer.
+ * UNIQUEMENT pour un tournoi/une session restée sur le webhook
+ * (`announceViaBot: false`) — bug remonté en production : cette création
+ * ignorait jusqu'ici TOTALEMENT `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`,
+ * appelait donc TOUJOURS ce webhook même la catégorie bot activée. Corrigé
+ * via `createRouletteResultSession` (src/lib/sessions.ts), chemin partagé
+ * avec `spinRoulette` (mode async).
  */
 export async function createSessionFromRouletteAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -67,16 +74,12 @@ export async function createSessionFromRouletteAction(formData: FormData) {
 
   const date = parseDateAndTime(dateStr, timeStr);
 
-  const session = await prisma.session.create({
-    data: {
-      date,
-      status: "SCHEDULED",
-      decidedGameId: gameId,
-      decidedTime: date,
-      createdById: user.id,
-      createdViaRoulette: true,
-      notifiedUserIds: finalParticipantIds,
-    },
+  const { session, announceViaBot } = await createRouletteResultSession({
+    date,
+    decidedGameId: gameId,
+    decidedTime: date,
+    createdById: user.id,
+    notifiedUserIds: finalParticipantIds,
   });
 
   const proposal = await prisma.proposal.create({
@@ -94,11 +97,17 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   );
   const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
 
-  const winner = await prisma.proposal.findUniqueOrThrow({
-    where: { id: proposal.id },
-    include: { game: true, votes: { include: { user: true } } },
-  });
-  const announceResult = await announceSessionResult(session, winner, false);
+  // Jamais les deux transports à la fois — voir `createRouletteResultSession`
+  // (l'enqueue bot a déjà réussi, atomiquement avec la création de la
+  // session, si `announceViaBot` est vrai).
+  let announceResult: { ok: boolean } = { ok: true };
+  if (!announceViaBot) {
+    const winner = await prisma.proposal.findUniqueOrThrow({
+      where: { id: proposal.id },
+      include: { game: true, votes: { include: { user: true } } },
+    });
+    announceResult = await announceSessionResult(session, winner, false);
+  }
 
   revalidatePath("/sessions");
   revalidatePath("/roulette");

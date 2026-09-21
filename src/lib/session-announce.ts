@@ -263,19 +263,31 @@ function absoluteSessionUrl(sessionId: string): string {
 
 /**
  * Restreint une liste de candidats à la sélection `notifiedUserIds` du
- * créateur PUIS à leur préférence SESSION (#98) — dans cet ordre, mais
+ * créateur PUIS à leur préférence personnelle (#98) — dans cet ordre, mais
  * l'ordre n'a pas d'incidence : les deux filtres ne font que RETIRER des
  * destinataires (intersection), jamais en ajouter. Un refus de
  * préférence n'est donc jamais contournable en sélectionnant malgré tout
  * ce destinataire à la création — l'intersection l'exclut de toute façon.
+ *
+ * Bug remonté en revue (production, sessions Roulette) — catégorie de
+ * préférence figée en dur sur `"SESSION"`, alors qu'une session
+ * `createdViaRoulette` (`createRouletteResultSession`, src/lib/sessions.ts)
+ * doit honorer la préférence `"ROULETTE"`, exactement comme le fait déjà
+ * le chemin webhook équivalent (`announceRouletteResult`,
+ * discord-roulette.ts). Session relue depuis l'état COURANT à CHAQUE appel
+ * (`loadSession`, jamais mise en cache) : cette sélection de catégorie est
+ * donc elle aussi correctement réévaluée à l'envoi réel, y compris pour un
+ * SEND/EDIT différé traité bien après l'enqueue — même garantie que le
+ * reste de ce résolveur (voir le commentaire de fichier).
  */
 async function resolveEligibleMentions<T extends { id: string; discordId: string; silenceReminders: boolean }>(
-  session: Pick<Session, "notifiedUserIds">,
+  session: Pick<Session, "notifiedUserIds" | "createdViaRoulette">,
   candidates: T[]
 ): Promise<T[]> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
-  return filterUsersByNotificationPreference(restricted, "SESSION");
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  return filterUsersByNotificationPreference(restricted, category);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
@@ -446,6 +458,35 @@ export const sessionAnnounceResolver: DeliveryResolver = {
   },
 };
 
+/**
+ * Bug remonté (production, sessions Roulette) — le SEND initial supposait
+ * jusqu'ici TOUJOURS une session encore `VOTING` (seule invariante vraie
+ * pour `createSession`, seul appelant connu à l'écriture de #99) : type et
+ * titre de notification interne figés en dur ("SESSION_CREATED"/"📣
+ * Nouvelle soirée"), alors que l'EMBED Discord, lui, était déjà
+ * correctement dérivé de l'état courant (`resolveAnnounceRendering`).
+ * Une session Roulette (`createRouletteResultSession`, src/lib/sessions.ts)
+ * est créée DIRECTEMENT `SCHEDULED` avec un jeu déjà décidé — son tout
+ * premier SEND affichait donc un embed Discord correct ("🎮 Soirée
+ * validée : [Jeu]") accompagné d'une notification interne incohérente
+ * ("📣 Nouvelle soirée" / type `SESSION_CREATED`). Corrigé : dérivé de
+ * l'état courant, comme l'EDIT le fait déjà plus bas — sans changer le
+ * texte pour le cas `VOTING` (seul cas rencontré par `createSession`,
+ * comportement historique préservé à l'identique).
+ */
+function resolveSendNotificationMeta(
+  session: SessionWithVotes,
+  rendering: AnnounceRendering
+): { notifType: "SESSION_CREATED" | "SESSION_RESULT"; notifTitle: string } {
+  if (session.status === "SCHEDULED" || session.status === "DONE") {
+    return { notifType: "SESSION_RESULT", notifTitle: rendering.embed.title ?? "🎮 Soirée validée" };
+  }
+  // VOTING — seul cas atteint par `createSession` (comportement historique
+  // inchangé). `CANCELLED` n'est jamais atteignable ici : aucune session
+  // n'est jamais créée déjà annulée.
+  return { notifType: "SESSION_CREATED", notifTitle: "📣 Nouvelle soirée" };
+}
+
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
   session: SessionWithVotes,
@@ -454,11 +495,12 @@ async function resolveAnnounceDelivery(
   const rendering = resolveAnnounceRendering(session);
 
   if (delivery.operation === "SEND") {
+    const { notifType, notifTitle } = resolveSendNotificationMeta(session, rendering);
     const message = await buildMessageContent(
       session,
       rendering.candidateMentions,
-      "SESSION_CREATED",
-      "📣 Nouvelle soirée",
+      notifType,
+      notifTitle,
       formatDateTimeFr(session.date)
     );
     const action: ResolvedAction = {
