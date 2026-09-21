@@ -999,6 +999,137 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(stored.announceViaBot).toBe(false);
         expect(await db.notificationEvent.count({ where: { sourceId: stored.id } })).toBe(0);
       });
+
+      it("catégorie de préférence ROULETTE honorée au traitement réel du SEND différé — jamais SESSION", async () => {
+        // Revue ciblée de cette PR : `resolveEligibleMentions` (session-announce.ts)
+        // filtrait jusqu'ici TOUJOURS via la catégorie "SESSION", y compris
+        // pour une session `createdViaRoulette` — alors que le chemin webhook
+        // équivalent (`announceRouletteResult`, discord-roulette.ts) filtre
+        // bien via "ROULETTE". Les deux utilisateurs ci-dessous ont des
+        // préférences SESSION/ROULETTE délibérément OPPOSÉES : seule la
+        // bonne catégorie, relue au moment du SEND réel (pas à l'enqueue),
+        // peut produire le résultat attendu.
+        const creator = await makeUser();
+        const roulettePrefOff = await makeUser({ discordName: "roulette-off" });
+        const sessionPrefOff = await makeUser({ discordName: "session-off" });
+        const game = await makeGame(creator.id);
+        const roulette = await makeRoulette(creator.id, [
+          { userId: roulettePrefOff.id, gameId: game.id },
+          { userId: sessionPrefOff.id, gameId: game.id },
+        ]);
+
+        // Refuse ROULETTE mais accepte SESSION — resterait mentionné si le
+        // résolveur utilisait encore (à tort) la catégorie SESSION.
+        await db.userNotificationPreference.create({
+          data: { userId: roulettePrefOff.id, category: "ROULETTE", enabled: false },
+        });
+        await db.userNotificationPreference.create({
+          data: { userId: roulettePrefOff.id, category: "SESSION", enabled: true },
+        });
+        // Refuse SESSION mais accepte ROULETTE — serait exclu à tort si le
+        // résolveur utilisait (à tort) la catégorie SESSION.
+        await db.userNotificationPreference.create({
+          data: { userId: sessionPrefOff.id, category: "SESSION", enabled: false },
+        });
+        await db.userNotificationPreference.create({
+          data: { userId: sessionPrefOff.id, category: "ROULETTE", enabled: true },
+        });
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+        await rouletteLib.spinRoulette(roulette.id);
+        const stored = await db.session.findFirstOrThrow({ where: { createdViaRoulette: true } });
+
+        // Aucune mention n'existe encore à cet instant — seule l'intention
+        // de notification a été posée à l'enqueue. Le SEND réel, traité
+        // ici, doit relire la préférence à CE moment (potentiellement bien
+        // plus tard que l'enqueue, selon la cadence du cron).
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "chan-sessions" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(String(init.body));
+        expect(body.content).not.toContain(`<@${roulettePrefOff.discordId}>`);
+        expect(body.content).toContain(`<@${sessionPrefOff.discordId}>`);
+
+        const notifiedUserIds = (
+          await db.notification.findMany({ where: { relatedSessionId: stored.id } })
+        ).map((n) => n.userId);
+        expect(notifiedUserIds).not.toContain(roulettePrefOff.id);
+        expect(notifiedUserIds).toContain(sessionPrefOff.id);
+      });
+    });
+
+    describe("sessions Roulette — protection contre un double déclenchement concurrent du même tirage", () => {
+      it("deux appels concurrents de spinRoulette sur LA MÊME roulette (cron vs chargement de page paresseux) ne créent qu'une seule session et un seul ensemble de notifications", async () => {
+        // Reproduit le scénario identifié lors de la revue ciblée de cette
+        // PR : le cron (`processOpenRoulettes` → `spinRouletteIfDue`) et un
+        // chargement de page ouvert au même instant (`spinRouletteIfDue`
+        // depuis /roulette/[id]) peuvent tous deux appeler `spinRoulette`
+        // pour LA MÊME roulette. La protection vient de `claimRouletteSpin`
+        // (updateMany conditionné sur status: "OPEN", même mécanique que
+        // `claimSessionClose`) — ce test la met réellement à l'épreuve
+        // contre Postgres, jamais seulement contre un mock.
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const game = await makeGame(creator.id);
+        const roulette = await makeRoulette(creator.id, [
+          { userId: p1.id, gameId: game.id },
+          { userId: p2.id, gameId: game.id },
+        ]);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+
+        await Promise.all([rouletteLib.spinRoulette(roulette.id), rouletteLib.spinRoulette(roulette.id)]);
+
+        const sessions = await db.session.findMany({ where: { createdViaRoulette: true } });
+        expect(sessions).toHaveLength(1);
+        expect(await db.notificationEvent.count({ where: { sourceId: sessions[0].id } })).toBe(1);
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: { startsWith: `default-guild:SESSION:${sessions[0].id}:` } },
+          })
+        ).toBe(2);
+
+        const rouletteRow = await db.roulette.findUniqueOrThrow({ where: { id: roulette.id } });
+        expect(rouletteRow.status).toBe("DONE");
+        expect(rouletteRow.resultSessionId).toBe(sessions[0].id);
+
+        // Aucun appel Discord réel tenté par l'un ou l'autre appel — seul
+        // un enqueue (écriture base) a eu lieu, l'exécuteur n'a pas tourné.
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("deux roulettes DISTINCTES tirées en même temps restent toutes deux traitées — la protection ne bloque jamais deux créations volontairement distinctes", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const p3 = await makeUser();
+        const p4 = await makeUser();
+        const game = await makeGame(creator.id);
+        const rouletteA = await makeRoulette(creator.id, [
+          { userId: p1.id, gameId: game.id },
+          { userId: p2.id, gameId: game.id },
+        ]);
+        const rouletteB = await makeRoulette(creator.id, [
+          { userId: p3.id, gameId: game.id },
+          { userId: p4.id, gameId: game.id },
+        ]);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+
+        await Promise.all([rouletteLib.spinRoulette(rouletteA.id), rouletteLib.spinRoulette(rouletteB.id)]);
+
+        const sessions = await db.session.findMany({ where: { createdViaRoulette: true } });
+        expect(sessions).toHaveLength(2);
+
+        const rouletteRows = await db.roulette.findMany({
+          where: { id: { in: [rouletteA.id, rouletteB.id] } },
+        });
+        expect(rouletteRows.every((r) => r.status === "DONE")).toBe(true);
+        expect(new Set(rouletteRows.map((r) => r.resultSessionId))).toEqual(new Set(sessions.map((s) => s.id)));
+      });
     });
   }
 );

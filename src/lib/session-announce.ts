@@ -263,19 +263,31 @@ function absoluteSessionUrl(sessionId: string): string {
 
 /**
  * Restreint une liste de candidats à la sélection `notifiedUserIds` du
- * créateur PUIS à leur préférence SESSION (#98) — dans cet ordre, mais
+ * créateur PUIS à leur préférence personnelle (#98) — dans cet ordre, mais
  * l'ordre n'a pas d'incidence : les deux filtres ne font que RETIRER des
  * destinataires (intersection), jamais en ajouter. Un refus de
  * préférence n'est donc jamais contournable en sélectionnant malgré tout
  * ce destinataire à la création — l'intersection l'exclut de toute façon.
+ *
+ * Bug remonté en revue (production, sessions Roulette) — catégorie de
+ * préférence figée en dur sur `"SESSION"`, alors qu'une session
+ * `createdViaRoulette` (`createRouletteResultSession`, src/lib/sessions.ts)
+ * doit honorer la préférence `"ROULETTE"`, exactement comme le fait déjà
+ * le chemin webhook équivalent (`announceRouletteResult`,
+ * discord-roulette.ts). Session relue depuis l'état COURANT à CHAQUE appel
+ * (`loadSession`, jamais mise en cache) : cette sélection de catégorie est
+ * donc elle aussi correctement réévaluée à l'envoi réel, y compris pour un
+ * SEND/EDIT différé traité bien après l'enqueue — même garantie que le
+ * reste de ce résolveur (voir le commentaire de fichier).
  */
 async function resolveEligibleMentions<T extends { id: string; discordId: string; silenceReminders: boolean }>(
-  session: Pick<Session, "notifiedUserIds">,
+  session: Pick<Session, "notifiedUserIds" | "createdViaRoulette">,
   candidates: T[]
 ): Promise<T[]> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
-  return filterUsersByNotificationPreference(restricted, "SESSION");
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  return filterUsersByNotificationPreference(restricted, category);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {

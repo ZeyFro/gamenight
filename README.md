@@ -9636,3 +9636,81 @@ honorent enfin announceViaBot" (2 tests) :
   décision produit à prendre séparément si un rattrapage est souhaité).
 - Aucune annonce Discord réelle envoyée, aucune configuration distante
   modifiée.
+
+### Revue complémentaire — catégorie de préférence et double tirage concurrent
+
+Deux points vérifiés en complément avant de sortir cette PR du mode Draft.
+
+**1. Chemins roulette → helper partagé, et catégorie de préférence.**
+`spinRoulette` (`src/lib/roulette.ts`) et `createSessionFromRouletteAction`
+(`src/app/roulette/actions.ts`) appellent tous les deux réellement
+`createRouletteResultSession` (relu ligne à ligne sur l'état actuel des deux
+fichiers, pas seulement supposé) — confirmé, aucun défaut sur ce point.
+
+En revanche, un second défaut connexe a été trouvé et corrigé :
+`resolveEligibleMentions` (`src/lib/session-announce.ts`), qui filtre les
+destinataires des mentions/notifications internes du chemin BOT, filtrait
+TOUJOURS via la catégorie de préférence `"SESSION"` — y compris pour une
+session `createdViaRoulette=true`, alors que le chemin webhook équivalent
+(`announceRouletteResult`, `discord-roulette.ts`) filtre bien via
+`"ROULETTE"` (catégorie déjà existante, `UserNotificationCategory`, #98 —
+rien inventé ici). Une personne ayant désactivé les notifications Roulette
+mais gardé les Soirées activées aurait donc continué d'être mentionnée sur
+un résultat de roulette passé par le chemin bot ; à l'inverse, quelqu'un
+ayant désactivé les Soirées mais gardé les Roulettes activées aurait été
+exclu à tort. Corrigé : `resolveEligibleMentions` choisit désormais
+`"ROULETTE"` si `session.createdViaRoulette`, sinon `"SESSION"` (comportement
+historique inchangé pour toute session non-Roulette).
+
+Ce filtre est résolu par `sessionAnnounceResolver`, appelé PAR L'EXÉCUTEUR
+au traitement réel de la livraison (jamais à l'enqueue, jamais mis en
+cache) — la préférence est donc bien relue à l'envoi effectif, y compris
+pour un SEND différé traité longtemps après l'enqueue, même garantie déjà
+établie pour la catégorie SESSION (#98/#99). Les deux `NotificationEvent
+.category` restés en dur sur `"SESSION"` dans `enqueueSessionCreationDeliveries`
+et consorts ne sont PAS le même concept : c'est la catégorie de routage
+interne de l'événement (`NotificationCategory` — SESSION/TOURNAMENT/…,
+distingue quel résolveur traite l'événement), pas la préférence utilisateur
+(`UserNotificationCategory` — SESSION/ROULETTE) ; une session Roulette
+reste un `Session` et relève donc bien du résolveur SESSION, ce n'était pas
+un défaut.
+
+**2. Protection contre un double tirage concurrent de la MÊME roulette.**
+Le cron (`processOpenRoulettes` → `spinRouletteIfDue`) et un chargement de
+page paresseux (`spinRouletteIfDue` sur `/roulette/[id]`) peuvent tous deux
+appeler `spinRoulette` pour la même roulette au même instant.
+`claimRouletteSpin` (déjà en place, même mécanique que `claimSessionClose` :
+un seul `updateMany` conditionné sur `status: "OPEN"`, atomique côté
+Postgres) protégeait déjà contre ce cas par construction, mais n'était
+jusqu'ici vérifié par AUCUN test de concurrence réelle. Un test l'a
+maintenant mis à l'épreuve contre un vrai moteur Postgres
+(`Promise.all` de deux appels concurrents à `spinRoulette` sur le même id,
+même dérogation "pas de mock" déjà en place pour ces garanties) : **la
+garantie tient sans aucun correctif** — une seule session, un seul
+`NotificationEvent`, un seul jeu de `NotificationDelivery` créés, quel que
+soit l'ordre d'arrivée des deux appels. Un second test complémentaire
+confirme que cette protection ne bloque jamais deux créations
+volontairement distinctes : deux roulettes DIFFÉRENTES tirées en même temps
+sont toutes deux traitées normalement, chacune avec sa propre session.
+
+**Origine des deux sessions Production espacées de 3,5 secondes** — reste
+une hypothèse non confirmée (aucun accès à la base de production dans
+cette session, voir plus haut) ; ce point de revue ne change rien à ce
+statut : la protection anti-double-tirage vérifiée ici concerne la MÊME
+roulette, elle n'exclut donc toujours pas deux roulettes distinctes ou une
+roulette async et une instantanée aboutissant à deux créations rapprochées.
+
+**Tests ajoutés** (`session-announce.integration.test.ts`, mêmes describe
+"sessions Roulette…") :
+- catégorie ROULETTE honorée au SEND différé — deux comptes aux
+  préférences SESSION/ROULETTE délibérément opposées, seule la bonne
+  catégorie relue à l'envoi réel peut produire le résultat attendu.
+- double tirage concurrent de la même roulette — une seule session, un
+  seul événement, aucune livraison en double.
+- deux roulettes distinctes tirées en même temps — toutes deux traitées,
+  aucun blocage croisé.
+
+**Vérification** : `npx tsc --noEmit` / `npx eslint .` clean ;
+`npm run test:postgres` — **402/402 verts** (399 hérités + 3 nouveaux) ;
+`npx next build` sans erreur. Aucun renvoi Discord réel, aucune session
+existante modifiée, PR gardée en Draft.
