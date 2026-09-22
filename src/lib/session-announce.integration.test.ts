@@ -1731,6 +1731,133 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
+    describe("resyncSessionThreadMembers — réparation groupée pour une soirée créée AVANT les correctifs creator-member/invite-sync-à-la-création", () => {
+      /** Reproduit EXACTEMENT l'état laissé par le code D'AVANT les deux
+       * correctifs : fil + annonce déjà SENT (le fil existe bien côté
+       * Discord), mais AUCUNE livraison `creator-member` ni `invite:<id>`
+       * n'a jamais été enqueue-ée — jamais `enqueueSessionCreationDeliveries`
+       * (qui, depuis le correctif, enqueue AUSSI `creator-member`), pour
+       * ne PAS reproduire le comportement corrigé par erreur. */
+      async function createLegacySessionWithThread(creator: { id: string }) {
+        const session = await makeSession(creator.id);
+        const deliveryLib = await import("./notification-delivery");
+        const event = await deliveryLib.createNotificationEvent({
+          category: "SESSION",
+          eventType: "SESSION_CREATED",
+          sourceId: session.id,
+        });
+        await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:thread`,
+        });
+        await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:announce`,
+        });
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        return session;
+      }
+
+      it("statuts affichés AVANT réparation : ni le créateur ni l'invité actif ne sont jamais 'failed' — 'syncing'/'pending' indéfiniment, sans le moindre bouton 'Réessayer' individuel visible (bug démontré, pas supposé)", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-legacy" });
+        const session = await createLegacySessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        expect(await announceLib.getSessionThreadReadiness(session.id)).toBe("syncing");
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("pending");
+      });
+
+      it("resyncSessionThreadMembers ajoute le créateur ET l'invité actif, sans jamais recréer le fil ni renvoyer l'annonce", async () => {
+        const creator = await makeUser({ discordName: "createur-legacy" });
+        const guest = await makeUser({ discordName: "invite-legacy" });
+        const session = await createLegacySessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        fetchMock.mockClear();
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        // Deux nouvelles livraisons (creator-member + invite:<id>), toutes
+        // deux dépendantes du fil déjà SENT — traitées normalement.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const first = await processOne();
+        expect(first?.outcome).toBe("sent");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const second = await processOne();
+        expect(second?.outcome).toBe("sent");
+        expect(await processOne()).toBeNull();
+
+        // Aucun appel de création de fil ni d'envoi d'annonce — seulement
+        // des GET de vérification + PUT d'ajout de membre (4 appels : 2
+        // paires verify+PUT, jamais un POST vers /threads ou /messages).
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") !== "POST")).toBe(true);
+        const putUrls = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT").map(([url]) => String(url));
+        expect(putUrls).toContain(`https://discord.com/api/v10/channels/thread-1/thread-members/${creator.discordId}`);
+        expect(putUrls).toContain(`https://discord.com/api/v10/channels/thread-1/thread-members/${guest.discordId}`);
+
+        expect(await announceLib.getSessionThreadReadiness(session.id)).toBe("ready");
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("synced");
+      });
+
+      it("ne touche JAMAIS un invité RÉVOQUÉ — aucune livraison enqueue-ée pour lui, aucun risque de rétablir un accès coupé", async () => {
+        const creator = await makeUser();
+        const activeGuest = await makeUser({ discordName: "actif" });
+        const revokedGuest = await makeUser({ discordName: "revoque" });
+        const session = await createLegacySessionWithThread(creator);
+        const activeInv = await invite(session.id, activeGuest.id, creator.id);
+        const revokedInv = await invite(session.id, revokedGuest.id, creator.id);
+        await access.revokeSessionInvite(session.id, revokedGuest.id, creator.id);
+
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        const deliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: { in: [
+            `default-guild:SESSION:${session.id}:invite:${activeInv.id}`,
+            `default-guild:SESSION:${session.id}:invite:${revokedInv.id}`,
+          ] } },
+        });
+        expect(deliveries.map((d) => d.targetSlot)).toEqual([
+          `default-guild:SESSION:${session.id}:invite:${activeInv.id}`,
+        ]);
+      });
+
+      it("un appel répété (double clic sur 'Resynchroniser') n'a jamais d'effet en double — convergence 'la plus récente survit', déjà garantie par claimNextDelivery", async () => {
+        const creator = await makeUser();
+        const session = await createLegacySessionWithThread(creator);
+
+        await announceLib.resyncSessionThreadMembers(session.id);
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        // La ligne la plus ancienne des deux appels a été SKIPPED au
+        // passage — plus rien d'autre à traiter pour ce créateur.
+        expect(await processOne()).toBeNull();
+
+        const putCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+        expect(putCalls).toHaveLength(1);
+      });
+    });
+
     describe("mentions/notifications bot — coupées par une révocation, même déjà enqueue-ées (chantier confidentialité)", () => {
       it("un invité RÉVOQUÉ après l'enqueue mais AVANT le traitement du SEND n'est ni mentionné ni notifié — même garantie que les préférences", async () => {
         const creator = await makeUser();

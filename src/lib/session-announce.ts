@@ -547,6 +547,50 @@ export async function getSessionThreadReadiness(sessionId: string): Promise<Sess
   return "syncing";
 }
 
+/**
+ * Bug remonté en revue (complément au diagnostic `creator-member`/
+ * `enqueueSessionInviteSyncForNewInvite` ci-dessus) — pour une soirée
+ * créée AVANT ces deux correctifs, ni le créateur ni les invités choisis
+ * au formulaire n'ont la moindre ligne `NotificationDelivery` : jamais
+ * enqueue-ée la première fois, donc rien à retenter automatiquement, et
+ * le statut affiché (`getSessionThreadReadiness`/`getSessionInviteSyncStatuses`)
+ * reste indéfiniment `"syncing"`/`"pending"` — un état qui laisse croire
+ * qu'un passage cron suffira, alors qu'AUCUNE livraison n'existe pour
+ * qu'un cron ait quoi que ce soit à traiter. Le réessai par invitation
+ * (`retrySessionInviteSyncAction`) et par créateur
+ * (`retrySessionCreatorThreadSyncAction`) n'apparaissent QUE sur un
+ * statut `"failed"` — jamais atteint ici, donc jamais visibles pour ce
+ * cas précis.
+ *
+ * Resynchronisation manuelle GROUPÉE, réservée au créateur
+ * (`resyncSessionThreadMembersAction`, invites.ts, vérifie déjà
+ * `assertOwnsSession`) : re-enqueue l'ajout du créateur ET la
+ * synchronisation de CHAQUE invitation ACTIVE relue À CET INSTANT — ne
+ * touche JAMAIS une invitation révoquée (aucun risque de rétablir un
+ * accès coupé), ne recrée JAMAIS le fil (dépend toujours de `thread`
+ * SENT, comme toute opération de ce module) et ne renvoie AUCUNE
+ * annonce. Aucun contrôle de confidentialité court-circuité : chaque
+ * livraison enqueue-ée ici relit le statut RÉEL de l'invitation/l'accès
+ * au traitement effectif, exactement comme un enqueue individuel
+ * (`resolveInviteSync`/`resolveCreatorThreadMembership`) — une
+ * invitation révoquée entre cet appel et le traitement réel résout quand
+ * même vers un retrait, jamais un ajout périmé. Sans effet sur les
+ * personnes déjà membres (le PUT `add_thread_member` est idempotent par
+ * construction Discord, déjà documenté ailleurs dans ce module) : un
+ * appel répété ne fait jamais de mal, seulement du travail redondant.
+ */
+export async function resyncSessionThreadMembers(sessionId: string): Promise<void> {
+  await enqueueSessionCreatorThreadMembership(sessionId);
+
+  const activeInvites = await prisma.sessionInvite.findMany({
+    where: { sessionId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  for (const invite of activeInvites) {
+    await enqueueSessionInviteSync(invite.id);
+  }
+}
+
 /* -------------------------------------------------------------------- */
 /* Résolution — appelée par l'exécuteur (#97), jamais directement        */
 /* -------------------------------------------------------------------- */

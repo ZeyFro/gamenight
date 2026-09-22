@@ -15,6 +15,7 @@ import {
   revokeSessionInviteAction,
   retrySessionInviteSyncAction,
   retrySessionCreatorThreadSyncAction,
+  resyncSessionThreadMembersAction,
 } from "../../actions/invites";
 
 /**
@@ -110,6 +111,20 @@ export default async function SessionInvitesPage({
 
   const botConfigured = isSessionAnnounceViaBotEnabled();
 
+  // Bug remonté en revue — une soirée créée AVANT les correctifs
+  // creator-member/enqueueSessionInviteSyncForNewInvite n'a la moindre
+  // livraison enqueue-ée ni pour le créateur ni pour ses invités : le
+  // statut affiché reste indéfiniment "en cours de synchronisation" sans
+  // qu'aucun cron n'ait jamais rien à traiter, et les boutons "Réessayer"
+  // individuels n'apparaissent que sur un échec explicite — jamais
+  // atteint dans ce cas précis. Le bouton groupé ci-dessous reste offert
+  // tant que TOUT n'est pas confirmé synchronisé — sans risque pour une
+  // personne déjà membre (voir `resyncSessionThreadMembers`).
+  const needsThreadResync =
+    session.announceViaBot &&
+    (creatorThreadReadiness !== "ready" ||
+      activeInvites.some((i) => syncStatuses.get(i.id) !== "synced"));
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
@@ -158,6 +173,25 @@ export default async function SessionInvitesPage({
               </Button>
             </form>
           )}
+        </Card>
+      )}
+
+      {needsThreadResync && (
+        <Card className="flex flex-col gap-2">
+          <h2 className="font-semibold text-foreground">Réparer l&apos;accès au fil Discord</h2>
+          <p className="text-sm text-muted">
+            Toi et/ou certains invités actifs n&apos;êtes pas encore confirmés membres du
+            fil privé. Si l&apos;attente se prolonge (soirée créée avant un correctif
+            récent, jamais rattrapée automatiquement), relance une synchronisation
+            manuelle — elle ne recrée jamais le fil, ne renvoie aucune annonce, et reste
+            sans effet pour qui est déjà membre.
+          </p>
+          <form action={resyncSessionThreadMembersAction}>
+            <input type="hidden" name="sessionId" value={sessionId} />
+            <Button type="submit" variant="secondary" size="sm">
+              Resynchroniser le fil
+            </Button>
+          </form>
         </Card>
       )}
 
