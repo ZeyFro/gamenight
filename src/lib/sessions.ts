@@ -16,6 +16,7 @@ import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { logger } from "@/lib/logger";
+import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Session, User } from "@prisma/client";
 
@@ -84,6 +85,38 @@ export async function createRouletteResultSession(data: {
   });
 
   return { session, announceViaBot };
+}
+
+/**
+ * Cycle de vie de l'historique (V2, bug remonté en test réel) — masque de
+ * la LISTE `/sessions` (onglet historique) et `/roulette` (onglet
+ * historique), jamais de la base ni du contrôle d'accès (voir
+ * `history-visibility.ts`). Une soirée `VOTING`/`SCHEDULED` (encore
+ * active) reste TOUJOURS visible, quel que soit son âge — seules `DONE`/
+ * `CANCELLED` peuvent sortir de la liste, et seulement après la fenêtre.
+ *
+ * Point de départ RÉEL utilisé : `date` (le créneau de la soirée),
+ * repli PRUDENT documenté faute de colonne dédiée `closedAt`/`cancelledAt`
+ * sur `Session` (contrairement à `Tournament.cancelledAt`, voir
+ * `tournaments.ts`) — jamais `updatedAt` (proscrit explicitement : une
+ * simple modification tardive, sans rapport avec la fin réelle, ferait
+ * réapparaître ou disparaître une soirée à tort), jamais une date
+ * inventée. Pour `DONE`, `date` est le créneau RÉELLEMENT joué (la
+ * soirée a eu lieu à cette date) — fidèle. Pour `CANCELLED`, `date` est
+ * le créneau qui AURAIT eu lieu, pas l'instant de l'annulation elle-même
+ * (qui peut être bien plus tôt) — la fenêtre démarre donc plus TARD que
+ * l'annulation réelle, jamais plus tôt : direction prudente délibérée
+ * (ne masque jamais trop tôt, au pire un peu trop tard), au prix d'une
+ * précision imparfaite pour les annulations très en amont — limite
+ * assumée, documentée ici plutôt que résolue en ajoutant une colonne
+ * hors du périmètre de ce correctif.
+ */
+export function isSessionVisibleInHistory(
+  session: Pick<Session, "status" | "date">,
+  now: Date = wallClockNow()
+): boolean {
+  if (session.status !== "DONE" && session.status !== "CANCELLED") return true;
+  return isWithinHistoryWindow(session.date, now);
 }
 
 /**

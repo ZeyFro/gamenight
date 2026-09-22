@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { toDateInputValue, wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { accessibleSessionWhere } from "@/lib/session-access";
+import { isSessionVisibleInHistory } from "@/lib/sessions";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
@@ -276,11 +277,16 @@ async function CreerTab({
  * tirage effectué.
  */
 async function HistoriqueTab({ userId }: { userId: string }) {
-  const history = await prisma.session.findMany({
+  const historyAll = await prisma.session.findMany({
     where: { createdViaRoulette: true, ...accessibleSessionWhere(userId) },
     orderBy: { date: "desc" },
     include: { decidedGame: { select: { name: true, coverUrl: true } } },
   });
+
+  // Cycle de vie de l'historique (V2, bug remonté en test réel) — même
+  // fenêtre de 7 jours que `/sessions`, jamais appliquée à une soirée
+  // encore active (voir `isSessionVisibleInHistory`, sessions.ts).
+  const history = historyAll.filter((s) => isSessionVisibleInHistory(s));
 
   if (history.length === 0) {
     return <EmptyState icon="📜" title="Aucune roulette lancée pour l'instant." />;

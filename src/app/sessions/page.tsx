@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { closeSessionIfDue } from "@/lib/sessions";
+import { closeSessionIfDue, isSessionVisibleInHistory } from "@/lib/sessions";
 import { accessibleSessionWhere } from "@/lib/session-access";
 import {
   finalizeSuperlativeVotingIfDue,
@@ -222,7 +222,18 @@ export default async function SessionsPage({
   const upcoming = sessions
     .filter((s) => s.status === "VOTING" || s.status === "SCHEDULED")
     .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const pastAll = sessions.filter((s) => s.status === "DONE" || s.status === "CANCELLED");
+  // Cycle de vie de l'historique (V2, bug remonté en test réel) — une
+  // soirée terminée/annulée depuis plus de 7 jours sort de CETTE LISTE
+  // (jamais de la base ni de l'accès direct par id, voir
+  // `isSessionVisibleInHistory`, sessions.ts). `pastAll` sert aussi à
+  // `getPendingSuperlativeVoteSessionIds` ci-dessous : les votes de
+  // récompenses restent calculés sur TOUTES les soirées `DONE` visibles
+  // ici (une soirée qui sort de l'historique n'a plus de fenêtre de vote
+  // ouverte de toute façon, `superlativeVotingDeadline` étant posée à
+  // +24h de la clôture — bien avant tout retrait à 7 jours).
+  const pastAll = sessions.filter(
+    (s) => (s.status === "DONE" || s.status === "CANCELLED") && isSessionVisibleInHistory(s)
+  );
   const pastDisplayed = showCancelled ? pastAll : pastAll.filter((s) => s.status !== "CANCELLED");
 
   const pendingSuperlativeVotes = await getPendingSuperlativeVoteSessionIds(

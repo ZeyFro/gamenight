@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { isTournamentVisibleInHistory } from "@/lib/tournaments";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -42,15 +43,23 @@ export default async function TournoisPage({
     annules: "CANCELLED",
   };
 
-  const tournaments = await prisma.tournament.findMany({
+  const tournamentsAll = await prisma.tournament.findMany({
     where: { status: statusForTab[activeTab] },
     orderBy: { createdAt: "desc" },
     include: {
       game: { select: { name: true, coverUrl: true } },
       champion: { select: { discordName: true, discordAvatar: true } },
       participants: { select: { userId: true } },
+      matches: { select: { completedAt: true } },
     },
   });
+
+  // Cycle de vie de l'historique (V2, bug remonté en test réel) — un
+  // tournoi "Terminé"/"Annulé" depuis plus de 7 jours sort de CETTE
+  // LISTE (jamais de la base, jamais du lien direct par id — voir
+  // `isTournamentVisibleInHistory`, tournaments.ts). N'affecte jamais
+  // "En cours"/"À venir" (toujours vrai pour ces statuts).
+  const tournaments = tournamentsAll.filter((t) => isTournamentVisibleInHistory(t));
 
   return (
     <PullToRefresh>
