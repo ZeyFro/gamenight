@@ -1196,6 +1196,54 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(JSON.parse(String(closeInit.body)).archived).toBe(true);
       });
 
+      /**
+       * Demande explicite (revue V2) — ne pas affirmer qu'une course est
+       * résolue sans un test reproduisant RÉELLEMENT l'entrelacement (pas
+       * seulement l'ordre séquentiel "avant"/"après" déjà couvert
+       * ci-dessus). Simule le délai d'un vrai POST Discord en exécutant
+       * `deleteTournament` DEPUIS L'INTÉRIEUR du mock réseau du SEND —
+       * celui-ci a déjà tout résolu (contenu, destination) avant cet
+       * appel, exactement comme le ferait un vrai aller-retour réseau
+       * pendant lequel une suppression concurrente (double onglet, requête
+       * indépendante) peut commettre.
+       */
+      it("suppression PENDANT l'appel réseau du tout premier SEND (annonce) déjà en vol — l'annonce part quand même, mais rien n'est jamais enqueue-é pour l'éditer/fermer : limite de cohérence assumée et démontrée, pas silencieusement résolue", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockChannelOk("chan-tournois");
+        fetchMock.mockImplementationOnce(async () => {
+          const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+          expect(result.ok).toBe(true);
+          return jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" });
+        });
+
+        const outcome = await processOne();
+        // Le SEND, déjà engagé AVANT la suppression, se termine
+        // normalement — l'annonce EXISTE bien côté Discord.
+        expect(outcome?.outcome).toBe("sent");
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+
+        // `deleteTournament` a vérifié `isTournamentAnnounceSent` AVANT que
+        // ce SEND ne commette son statut SENT — il n'a donc rien enqueue-é
+        // à éditer/fermer. La livraison `thread` restée PENDING (dépendait
+        // de l'annonce) devient réclamable maintenant qu'elle est SENT —
+        // mais se refuse elle-même (`expired`, tournoi disparu) : AUCUN
+        // fil n'est donc jamais créé, ce qui évite au moins un fil
+        // orphelin en plus de l'annonce.
+        const threadOutcome = await processOne();
+        expect(threadOutcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+
+        // Plus rien à traiter ensuite. L'annonce publique, elle, reste
+        // visible TELLE QUELLE (jamais éditée en "supprimé") pour un
+        // tournoi qui n'existe plus en base, jusqu'à intervention
+        // manuelle — limite honnêtement constatée, hors du périmètre de
+        // ce ticket (navigation après suppression), pas prétendue résolue.
+        expect(await processOne()).toBeNull();
+      });
+
       it("un non-créateur ne peut jamais supprimer, même avec un id de tournoi réel et valide", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);

@@ -1,10 +1,12 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
-import { deleteTournamentAction } from "@/app/tournois/actions";
+import { deleteTournamentAction, type DeleteTournamentActionState } from "@/app/tournois/actions";
+
+const INITIAL_STATE: DeleteTournamentActionState = { error: null };
 
 /**
  * Suppression définitive d'un tournoi NON démarré, réservée au créateur
@@ -12,9 +14,19 @@ import { deleteTournamentAction } from "@/app/tournois/actions";
  * garde server-side dans `deleteTournament`, src/lib/tournaments.ts, reste
  * la vraie protection). Confirmation explicite obligatoire avant d'envoyer
  * le formulaire réel — même pattern que `DeleteSessionDialog`.
+ *
+ * Bug remonté en test réel (aucune redirection après suppression, page
+ * incohérente, F5 nécessaire) — `useActionState` remplace le
+ * `<form action={fn}>` brut d'origine : `pending` désactive le bouton dès
+ * le premier clic (jamais de double soumission possible, jamais deux
+ * résolutions concurrentes de la même transition), et une erreur RÉELLE
+ * (tournoi déjà lancé entre-temps, etc.) s'affiche au lieu de ne rien
+ * faire silencieusement. Le succès continue de passer par `redirect()`
+ * côté serveur (voir `deleteTournamentAction`) — jamais intercepté ici.
  */
 export function DeleteTournamentDialog({ tournamentId }: { tournamentId: string }) {
   const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState(deleteTournamentAction, INITIAL_STATE);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -41,16 +53,22 @@ export function DeleteTournamentDialog({ tournamentId }: { tournamentId: string 
               &laquo;&nbsp;supprimé&nbsp;&raquo; et le fil associé sera fermé.
             </Dialog.Description>
 
+            {state.error && (
+              <p className="mt-3 rounded-lg bg-red-500/10 p-2 text-sm text-red-400" role="alert">
+                {state.error}
+              </p>
+            )}
+
             <div className="mt-4 flex gap-3">
               <Dialog.Close asChild>
-                <Button type="button" variant="secondary" className="flex-1">
+                <Button type="button" variant="secondary" className="flex-1" disabled={pending}>
                   Annuler
                 </Button>
               </Dialog.Close>
-              <form action={deleteTournamentAction} className="flex-1">
+              <form action={formAction} className="flex-1">
                 <input type="hidden" name="tournamentId" value={tournamentId} />
-                <Button type="submit" variant="destructive" className="w-full">
-                  Oui, supprimer
+                <Button type="submit" variant="destructive" className="w-full" disabled={pending}>
+                  {pending ? "Suppression…" : "Oui, supprimer"}
                 </Button>
               </form>
             </div>

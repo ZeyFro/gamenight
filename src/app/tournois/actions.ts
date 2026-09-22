@@ -362,24 +362,63 @@ export async function cancelTournamentAction(formData: FormData) {
 }
 
 /**
+ * Bug remonté en test réel — aucune redirection après suppression, page
+ * incohérente, F5 nécessaire. `redirect()` (jamais entouré d'un
+ * try/catch ici, ni côté `DeleteTournamentDialog`) fonctionnait déjà
+ * correctement pour un SEUL clic : le vrai coupable était côté client —
+ * aucune protection contre un double clic sur "Oui, supprimer" (aucun
+ * état pending, bouton jamais désactivé). Un second clic pendant que le
+ * premier est encore en vol relance cette même action ; le second appel
+ * trouve alors le tournoi déjà supprimé (`deleteTournament` retourne
+ * `{ ok: false }`, la ligne "course perdue" de sa transaction — voir
+ * son commentaire dans tournaments.ts) et se termine SANS `redirect()`.
+ * Deux résolutions concurrentes d'une même transition React (l'une avec
+ * navigation, l'autre sans) pouvaient laisser le client dans un état
+ * incohérent. Corrigé À LA SOURCE côté `DeleteTournamentDialog`
+ * (`useActionState`, bouton désactivé tant que `pending`) — cette action
+ * expose maintenant aussi un état d'erreur lisible (ex. tournoi déjà
+ * lancé entre l'ouverture du dialogue et la confirmation) au lieu de ne
+ * rien faire silencieusement.
+ */
+export type DeleteTournamentActionState = { error: string | null };
+
+const DELETE_TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
+  not_found: "Ce tournoi n'existe plus.",
+  not_creator: "Seul le créateur du tournoi peut le supprimer.",
+  not_registration:
+    "Ce tournoi a déjà démarré (ou a été supprimé) entre l'ouverture de cette fenêtre et ta confirmation — impossible de le supprimer maintenant.",
+};
+
+/**
  * Suppression (V2) — réservée au créateur, un tournoi NON démarré
  * uniquement (voir `deleteTournament`, src/lib/tournaments.ts, pour le
  * contrôle d'autorisation serveur, la protection contre la course avec un
  * lancement concurrent, et le traitement Discord de l'annonce déjà
  * postée le cas échéant). Confirmation explicite gérée côté UI
  * (`DeleteTournamentDialog`) avant que ce formulaire ne soit soumis.
+ *
+ * Signature `(prevState, formData)` — compatible `useActionState`
+ * (`DeleteTournamentDialog`), qui en tire à la fois l'état pending (pour
+ * désactiver le bouton pendant l'appel, voir le commentaire ci-dessus) et
+ * un message d'erreur affichable sans jamais avoir à parser une
+ * redirection manquante côté client.
  */
-export async function deleteTournamentAction(formData: FormData) {
+export async function deleteTournamentAction(
+  _prevState: DeleteTournamentActionState,
+  formData: FormData
+): Promise<DeleteTournamentActionState> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (!checkRateLimit(user.id, "deleteTournament")) return;
+  if (!checkRateLimit(user.id, "deleteTournament")) return { error: null };
 
   const input = idSchema.safeParse(String(formData.get("tournamentId") ?? ""));
-  if (!input.success) return;
+  if (!input.success) return { error: null };
   const tournamentId = input.data;
 
   const result = await deleteTournament(tournamentId, user.id);
-  if (!result.ok) return;
+  if (!result.ok) {
+    return { error: DELETE_TOURNAMENT_ERROR_MESSAGES[result.reason ?? ""] ?? "Suppression impossible pour le moment." };
+  }
 
   revalidatePath("/tournois");
   redirect("/tournois");
