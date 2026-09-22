@@ -689,6 +689,23 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
       // par `finalizeDeliverySuccess` lui-même.
       return { deliveryId: claimed.id, outcome: "lost_reservation_after_success" };
     }
+    // Instrumentation ciblée (V2, revue du délai constaté en production sur
+    // un premier SEND de tournoi ~2 minutes après sa création) — mesure le
+    // délai RÉEL enqueue→envoi pour CHAQUE livraison qui aboutit, sans
+    // supposer où il vient (cadence du cron externe, dépendance entre
+    // cibles, budget de batch...). `claimed.createdAt` est posé à l'écriture
+    // de la ligne (juste après la mutation métier qui l'a enqueue-ée,
+    // souvent DANS la même transaction), donc `now - createdAt` couvre tout
+    // le chemin réel création → claim → envoi, pas seulement le dernier
+    // appel réseau. Seuls des identifiants déjà loggués ailleurs dans ce
+    // module (`targetSlot`) et des nombres — jamais un contenu de message
+    // ni une donnée personnelle.
+    logger.info("notification-executor", "Livraison envoyée.", {
+      targetSlot: claimed.targetSlot,
+      operation: claimed.operation,
+      attempts: claimed.attempts,
+      delayMs: now.getTime() - claimed.createdAt.getTime(),
+    });
     return { deliveryId: claimed.id, outcome: "sent" };
   }
 

@@ -106,12 +106,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
       creatorId: string,
       gameId: string,
       overrides: Partial<{
-        status: "REGISTRATION" | "IN_PROGRESS" | "DONE";
+        status: "REGISTRATION" | "IN_PROGRESS" | "DONE" | "CANCELLED";
         announceViaBot: boolean;
         maxPlayers: number;
         championId: string | null;
         discordGuildId: string | null;
         discordChannelId: string | null;
+        notifiedUserIds: string[] | null;
       }> = {}
     ) {
       const announceViaBot = overrides.announceViaBot ?? true;
@@ -130,6 +131,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           discordGuildId: "discordGuildId" in overrides ? overrides.discordGuildId : announceViaBot ? "guild-1" : null,
           discordChannelId:
             "discordChannelId" in overrides ? overrides.discordChannelId : announceViaBot ? "chan-tournois" : null,
+          notifiedUserIds: overrides.notifiedUserIds ?? undefined,
         },
       });
     }
@@ -808,6 +810,477 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // message (l'annonce n'affiche pas les noms individuels des
         // inscrits) — mais même s'il apparaissait, `allowed_mentions: {parse: []}`
         // empêcherait Discord de le résoudre en mention réelle.
+      });
+    });
+
+    describe("V2 — notifications maîtrisées (mentions à la création)", () => {
+      it("SEND initial : mentionne les destinataires sélectionnés, ids dédupliqués, allowed_mentions.users explicite", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const guestA = await makeUser({ discordName: "guestA" });
+        const guestB = await makeUser({ discordName: "guestB" });
+        const notInvited = await makeUser({ discordName: "pasPrevenu" });
+        const tournament = await makeTournament(creator.id, game.id, {
+          notifiedUserIds: [guestA.id, guestB.id, guestA.id], // doublon volontaire
+        });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockVerifiedSendOk("chan-tournois");
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, sendInit] = fetchMock.mock.calls[1];
+        const sendBody = JSON.parse(String(sendInit.body));
+        expect(sendBody.content).toContain(`<@${guestA.discordId}>`);
+        expect(sendBody.content).toContain(`<@${guestB.discordId}>`);
+        expect(sendBody.content).not.toContain(notInvited.discordId);
+        // Dédupliqué — une seule occurrence de guestA malgré le doublon en base.
+        expect(sendBody.content.split(`<@${guestA.discordId}>`)).toHaveLength(2);
+        // Liste EXPLICITE, jamais `parse: ["users"]` ni @everyone/@here/rôle.
+        expect(sendBody.allowed_mentions).toEqual({
+          parse: [],
+          users: expect.arrayContaining([guestA.discordId, guestB.discordId]),
+        });
+        expect(sendBody.allowed_mentions.users).toHaveLength(2);
+      });
+
+      it("créateur jamais dans la sélection, aucun destinataire sélectionné : aucune mention, content vide", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { notifiedUserIds: [] });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+
+        const [, sendInit] = fetchMock.mock.calls[1];
+        const sendBody = JSON.parse(String(sendInit.body));
+        expect(sendBody.content).toBeFalsy();
+        expect(sendBody.allowed_mentions).toEqual({ parse: [] });
+      });
+
+      it("opt-out TOURNAMENT posé APRÈS l'enqueue mais AVANT le traitement retire quand même la mention (relu au SEND réel, jamais à l'enqueue)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const guest = await makeUser({ discordName: "seDesinscritEntreTemps" });
+        const tournament = await makeTournament(creator.id, game.id, { notifiedUserIds: [guest.id] });
+
+        // Enqueue AVANT tout refus — encore éligible à cet instant (aucune
+        // ligne de préférence, repli legacy actif).
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        // Le refus arrive APRÈS l'enqueue, avant que l'exécuteur ne traite
+        // le SEND — simule un opt-out pendant la fenêtre d'attente du cron.
+        await db.userNotificationPreference.create({
+          data: { userId: guest.id, category: "TOURNAMENT", enabled: false },
+        });
+
+        mockVerifiedSendOk("chan-tournois");
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, sendInit] = fetchMock.mock.calls[1];
+        const sendBody = JSON.parse(String(sendInit.body));
+        expect(sendBody.content).toBeFalsy();
+        expect(sendBody.allowed_mentions.users).toBeUndefined();
+      });
+
+      it("un compte ayant demandé le silence global (silenceReminders) n'est jamais mentionné, même sélectionné explicitement (jamais de réactivation silencieuse)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const silent = await db.user.create({
+          data: { discordId: uniq("silent"), discordName: "silencieux", silenceReminders: true },
+        });
+        const tournament = await makeTournament(creator.id, game.id, { notifiedUserIds: [silent.id] });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+
+        const [, sendInit] = fetchMock.mock.calls[1];
+        const sendBody = JSON.parse(String(sendInit.body));
+        expect(sendBody.content).toBeFalsy();
+      });
+
+      it("EDIT (lancement du bracket) ne mentionne JAMAIS, même avec des destinataires sélectionnés à la création — jamais un reping sur une mise à jour", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const guest = await makeUser({ discordName: "prevenuUneFoisSeulement" });
+        const tournament = await makeTournament(creator.id, game.id, {
+          maxPlayers: 4,
+          notifiedUserIds: [guest.id],
+        });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        const editOutcome = await processOne();
+        expect(editOutcome?.outcome).toBe("sent");
+
+        const [, editInit] = fetchMock.mock.calls.at(-1)!;
+        const editBody = JSON.parse(String(editInit.body));
+        expect(editBody.content).toBeUndefined();
+        expect(editBody.allowed_mentions).toEqual({ parse: [] });
+      });
+
+      it("réessai après un échec transitoire du SEND initial ne mentionne pas deux fois (une seule occurrence dans le contenu finalement envoyé)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const guest = await makeUser({ discordName: "prevenuUneSeuleFois" });
+        const tournament = await makeTournament(creator.id, game.id, { notifiedUserIds: [guest.id] });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        const t0 = new Date("2026-01-01T00:00:00.000Z");
+        mockChannelOk("chan-tournois");
+        fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
+        const failedOutcome = await processOne(t0);
+        expect(failedOutcome?.outcome).toBe("retrying");
+
+        const later = new Date(t0.getTime() + 60_000);
+        mockVerifiedSendOk("chan-tournois");
+        const outcome = await processOne(later);
+        expect(outcome?.outcome).toBe("sent");
+
+        // Une seule livraison SENT au final (jamais republiée une fois
+        // envoyée) — son contenu porte la mention une seule fois.
+        const [, sendInit] = fetchMock.mock.calls.at(-1)!;
+        const sendBody = JSON.parse(String(sendInit.body));
+        expect(sendBody.content).toBe(`<@${guest.discordId}>`);
+
+        const deliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce`, operation: "SEND" },
+        });
+        expect(deliveries).toHaveLength(1);
+        expect(deliveries[0].status).toBe("SENT");
+      });
+    });
+
+    describe("V2 — annulation d'un tournoi démarré (matchs/résultats conservés)", () => {
+      async function makeStartedTournament(creator: { id: string }, game: { id: string }) {
+        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        await processOne(); // EDIT lancement
+        return tournament;
+      }
+
+      it("annulation : statut CANCELLED + cancelledAt posés, matchs et participants intégralement conservés", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeStartedTournament(creator, game);
+        const matchesBefore = await db.tournamentMatch.count({ where: { tournamentId: tournament.id } });
+        const participantsBefore = await db.tournamentParticipant.count({ where: { tournamentId: tournament.id } });
+
+        const result = await tournamentsLib.cancelTournament(tournament.id, creator.id);
+        expect(result.ok).toBe(true);
+
+        const stored = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
+        expect(stored.status).toBe("CANCELLED");
+        expect(stored.cancelledAt).not.toBeNull();
+        expect(await db.tournamentMatch.count({ where: { tournamentId: tournament.id } })).toBe(matchesBefore);
+        expect(await db.tournamentParticipant.count({ where: { tournamentId: tournament.id } })).toBe(
+          participantsBefore
+        );
+      });
+
+      it("un non-créateur ne peut jamais annuler, même avec un id de tournoi réel et valide", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeStartedTournament(creator, game);
+        const intruder = await makeUser();
+
+        const result = await tournamentsLib.cancelTournament(tournament.id, intruder.id);
+        expect(result).toEqual({ ok: false, reason: "not_creator" });
+
+        const stored = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
+        expect(stored.status).toBe("IN_PROGRESS");
+      });
+
+      it("annulation impossible sur un tournoi encore en REGISTRATION (se supprime) ou déjà DONE (historique conservé)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const registering = await makeTournament(creator.id, game.id, { announceViaBot: false });
+        const resultReg = await tournamentsLib.cancelTournament(registering.id, creator.id);
+        expect(resultReg).toEqual({ ok: false, reason: "not_in_progress" });
+
+        const done = await makeTournament(creator.id, game.id, {
+          status: "DONE",
+          announceViaBot: false,
+          championId: creator.id,
+        });
+        const resultDone = await tournamentsLib.cancelTournament(done.id, creator.id);
+        expect(resultDone).toEqual({ ok: false, reason: "not_in_progress" });
+      });
+
+      it("EDIT « annulé » posté sur l'annonce existante + fil archivé, aucune mention", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeStartedTournament(creator, game);
+
+        const result = await tournamentsLib.cancelTournament(tournament.id, creator.id);
+        expect(result.ok).toBe(true);
+
+        mockSendOk("chan-tournois");
+        const editOutcome = await processOne();
+        expect(editOutcome?.outcome).toBe("sent");
+        const [, editInit] = fetchMock.mock.calls.at(-1)!;
+        const editBody = JSON.parse(String(editInit.body));
+        expect(editBody.embeds[0].title).toContain("annulé");
+        expect(editBody.content).toBeUndefined();
+        expect(editBody.allowed_mentions).toEqual({ parse: [] });
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", archived: true }));
+        const closeOutcome = await processOne();
+        expect(closeOutcome?.outcome).toBe("sent");
+        const [closeUrl, closeInit] = fetchMock.mock.calls.at(-1)!;
+        expect(String(closeUrl)).toContain("/channels/thread-1");
+        expect(closeInit.method).toBe("PATCH");
+        const closeBody = JSON.parse(String(closeInit.body));
+        expect(closeBody.archived).toBe(true);
+      });
+
+      it("un tournoi déjà CANCELLED refuse toute déclaration de vainqueur, même pour un match jamais encore joué (garde déjà existante de declareWinner, étendue à CANCELLED)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4, announceViaBot: false });
+        const players = [];
+        for (let i = 0; i < 4; i++) players.push(await makeUser());
+        for (const p of players) await makeParticipant(tournament.id, p.id);
+        await launchBracket(tournament.id);
+
+        const cancelResult = await tournamentsLib.cancelTournament(tournament.id, creator.id);
+        expect(cancelResult.ok).toBe(true);
+
+        const round1 = await db.tournamentMatch.findMany({ where: { tournamentId: tournament.id, round: 1 } });
+        for (const m of round1) {
+          const winnerId = m.player1Id ?? m.player2Id;
+          if (!winnerId) continue;
+          const result = await tournamentsLib.declareWinner(m.id, winnerId, creator.id);
+          expect(result).toEqual({ ok: false, tournamentDone: false });
+        }
+        // Aucun match n'a bougé — jamais un résultat inventé après coup pour
+        // un tournoi qui n'accepte plus de progression. 4 joueurs → 2 matchs
+        // au round 1 (bracket à 4 places, aucun bye).
+        const stillUndecided = await db.tournamentMatch.count({
+          where: { tournamentId: tournament.id, round: 1, winnerId: null },
+        });
+        expect(stillUndecided).toBe(2);
+      });
+
+      it("course RÉELLE annulation vs clôture du dernier match (Promise.all) : l'état final reste cohérent, jamais DONE avec un match non tranché ni CANCELLED avec un champion posé", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4, announceViaBot: false });
+        const players = [];
+        for (let i = 0; i < 4; i++) players.push(await makeUser());
+        for (const p of players) await makeParticipant(tournament.id, p.id);
+        await launchBracket(tournament.id);
+
+        // Round 1 résolu normalement (hors course) — seul le DERNIER match
+        // (la finale) reste en jeu au moment de la course.
+        const round1 = await db.tournamentMatch.findMany({ where: { tournamentId: tournament.id, round: 1 } });
+        for (const m of round1) {
+          const winnerId = m.player1Id ?? m.player2Id;
+          if (winnerId) await tournamentsLib.declareWinner(m.id, winnerId, creator.id);
+        }
+        const final = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 2 } });
+        const championId = final.player1Id ?? final.player2Id!;
+
+        // Le créateur clique "Annuler" au MÊME instant qu'un joueur déclare
+        // le vainqueur de la finale — même style de test que "deux appels
+        // concurrents de spinRoulette" (chantier confidentialité) : jamais
+        // d'hypothèse sur lequel des deux gagne la course, seulement que
+        // l'état final reste cohérent, quel que soit l'ordre réel choisi
+        // par Postgres.
+        const [cancelResult, declareResult] = await Promise.all([
+          tournamentsLib.cancelTournament(tournament.id, creator.id),
+          tournamentsLib.declareWinner(final.id, championId, creator.id),
+        ]);
+
+        const storedTournament = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
+        const storedFinal = await db.tournamentMatch.findUniqueOrThrow({ where: { id: final.id } });
+
+        if (declareResult.ok && declareResult.tournamentDone) {
+          // La clôture a gagné — jamais annulé après coup.
+          expect(cancelResult.ok).toBe(false);
+          expect(storedTournament.status).toBe("DONE");
+          expect(storedTournament.championId).toBe(championId);
+        } else {
+          // L'annulation a gagné (ou est arrivée avant la clôture) — jamais
+          // DONE, jamais de champion posé. Le match peut avoir été tranché
+          // (déclaré avant que la finalisation n'échoue) ou non selon
+          // l'ordre exact — dans tous les cas jamais de corruption.
+          expect(storedTournament.status).toBe("CANCELLED");
+          expect(storedTournament.championId).toBeNull();
+          if (declareResult.ok) {
+            expect(storedFinal.winnerId).toBe(championId);
+          }
+        }
+      });
+    });
+
+    describe("V2 — suppression d'un tournoi non démarré", () => {
+      it("suppression AVANT tout envoi Discord (announceViaBot=false) : ligne supprimée, aucun appel réseau", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false });
+
+        const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+        expect(result.ok).toBe(true);
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("suppression AVANT que l'annonce (bot) n'ait été envoyée : ligne supprimée immédiatement, rien à éditer — le SEND encore PENDING se refuse lui-même (expired) au traitement, jamais une invitation tardive", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id); // announceViaBot true par défaut
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+        expect(result.ok).toBe(true);
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+
+        // La livraison SEND, restée PENDING, est traitée APRÈS la
+        // suppression (simule un cron en retard) — doit se refuser
+        // définitivement, jamais publier une annonce pour un tournoi qui
+        // n'existe plus.
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("suppression APRÈS que l'annonce ait déjà été envoyée : EDIT générique « supprimé » + fermeture du fil, fonctionnent SANS que la ligne Tournament existe encore", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+
+        const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+        expect(result.ok).toBe(true);
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+
+        mockSendOk("chan-tournois");
+        const editOutcome = await processOne();
+        expect(editOutcome?.outcome).toBe("sent");
+        const [, editInit] = fetchMock.mock.calls.at(-1)!;
+        const editBody = JSON.parse(String(editInit.body));
+        expect(editBody.embeds[0].title).toContain("supprimé");
+        expect(editBody.content).toBeUndefined();
+        expect(editBody.allowed_mentions).toEqual({ parse: [] });
+        // Rendu générique — aucun nom de tournoi/jeu (la ligne n'existe
+        // plus, rien à relire).
+        expect(editBody.embeds[0].description).not.toContain(tournament.name);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", archived: true }));
+        const closeOutcome = await processOne();
+        expect(closeOutcome?.outcome).toBe("sent");
+        const [, closeInit] = fetchMock.mock.calls.at(-1)!;
+        expect(closeInit.method).toBe("PATCH");
+        expect(JSON.parse(String(closeInit.body)).archived).toBe(true);
+      });
+
+      it("un non-créateur ne peut jamais supprimer, même avec un id de tournoi réel et valide", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false });
+        const intruder = await makeUser();
+
+        const result = await tournamentsLib.deleteTournament(tournament.id, intruder.id);
+        expect(result).toEqual({ ok: false, reason: "not_creator" });
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).not.toBeNull();
+      });
+
+      it("suppression impossible sur un tournoi déjà démarré (s'annule) ou terminé (historique conservé)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const inProgress = await makeTournament(creator.id, game.id, { status: "IN_PROGRESS", announceViaBot: false });
+        const result = await tournamentsLib.deleteTournament(inProgress.id, creator.id);
+        expect(result).toEqual({ ok: false, reason: "not_registration" });
+        expect(await db.tournament.findUnique({ where: { id: inProgress.id } })).not.toBeNull();
+      });
+
+      it("course suppression concurrente (double clic) : un seul appel supprime réellement, le second est un no-op propre", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false });
+
+        const [first, second] = await Promise.all([
+          tournamentsLib.deleteTournament(tournament.id, creator.id),
+          tournamentsLib.deleteTournament(tournament.id, creator.id),
+        ]);
+        const oks = [first.ok, second.ok].filter(Boolean);
+        expect(oks).toHaveLength(1);
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+      });
+    });
+
+    describe("V2 — état d'envoi fidèle pour le créateur (jamais un faux bandeau d'échec)", () => {
+      it("avant tout traitement : announce et thread tous deux 'pending', jamais 'failed'", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        const status = await announceLib.getTournamentAnnounceStatus(tournament.id);
+        expect(status).toEqual({ announce: "pending", thread: "pending" });
+      });
+
+      it("annonce envoyée, fil encore en attente : les deux étaps distinguées correctement", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+
+        const status = await announceLib.getTournamentAnnounceStatus(tournament.id);
+        expect(status).toEqual({ announce: "sent", thread: "pending" });
+      });
+
+      it("annonce ET fil envoyés : les deux 'sent'", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+
+        const status = await announceLib.getTournamentAnnounceStatus(tournament.id);
+        expect(status).toEqual({ announce: "sent", thread: "sent" });
+      });
+
+      it("échec Discord classifié (403) sur le SEND : announce 'failed', jamais confondu avec un simple envoi différé", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockChannelOk("chan-tournois");
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed" });
+
+        const status = await announceLib.getTournamentAnnounceStatus(tournament.id);
+        expect(status.announce).toBe("failed");
       });
     });
   }

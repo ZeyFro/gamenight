@@ -41,11 +41,23 @@ export function TournamentBracket({
   totalRounds,
   currentUserId,
   isCreator,
+  interactive = true,
 }: {
   matches: BracketMatch[];
   totalRounds: number;
   currentUserId: string;
   isCreator: boolean;
+  /** V2 (annulation) — `false` pour un tournoi CANCELLED : matchs et
+   * résultats déjà enregistrés restent affichés, mais plus aucun match
+   * (même pas encore joué) ne peut être tranché — le tournoi est arrêté,
+   * jamais une reprise possible. Sans ce garde, un match encore jouable
+   * afficherait quand même ses boutons "X gagne" à ses deux joueurs
+   * (`canDeclare` se base sur leur identité, pas sur `isCreator` seul) —
+   * `declareWinnerAction` les refuserait bien côté serveur
+   * (`match.tournament.status !== "IN_PROGRESS"`), mais jamais un bouton
+   * mort affiché à tort. Par défaut `true` (comportement inchangé pour
+   * IN_PROGRESS/DONE). */
+  interactive?: boolean;
 }) {
   const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.position}`, m]));
 
@@ -59,6 +71,7 @@ export function TournamentBracket({
           totalRounds={totalRounds}
           currentUserId={currentUserId}
           isCreator={isCreator}
+          interactive={interactive}
         />
       </div>
     </div>
@@ -72,6 +85,7 @@ function BracketNode({
   totalRounds,
   currentUserId,
   isCreator,
+  interactive,
 }: {
   matchesByKey: Map<string, BracketMatch>;
   round: number;
@@ -79,12 +93,13 @@ function BracketNode({
   totalRounds: number;
   currentUserId: string;
   isCreator: boolean;
+  interactive: boolean;
 }) {
   const match = matchesByKey.get(`${round}:${position}`);
   if (!match) return null;
 
   const canDeclare =
-    isCreator || match.player1?.id === currentUserId || match.player2?.id === currentUserId;
+    interactive && (isCreator || match.player1?.id === currentUserId || match.player2?.id === currentUserId);
 
   const box = (
     <div className="flex flex-col gap-1.5">
@@ -108,6 +123,7 @@ function BracketNode({
             totalRounds={totalRounds}
             currentUserId={currentUserId}
             isCreator={isCreator}
+            interactive={interactive}
           />
         </ConnectorSlot>
         <ConnectorSlot>
@@ -118,6 +134,7 @@ function BracketNode({
             totalRounds={totalRounds}
             currentUserId={currentUserId}
             isCreator={isCreator}
+            interactive={interactive}
           />
         </ConnectorSlot>
       </div>

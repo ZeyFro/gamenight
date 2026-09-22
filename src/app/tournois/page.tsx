@@ -14,6 +14,7 @@ const TABS = [
   { key: "en-cours", label: "En cours" },
   { key: "a-venir", label: "À venir" },
   { key: "termines", label: "Terminés" },
+  { key: "annules", label: "Annulés" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -34,10 +35,11 @@ export default async function TournoisPage({
   const { tab } = await searchParams;
   const activeTab: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "en-cours";
 
-  const statusForTab: Record<TabKey, "IN_PROGRESS" | "REGISTRATION" | "DONE"> = {
+  const statusForTab: Record<TabKey, "IN_PROGRESS" | "REGISTRATION" | "DONE" | "CANCELLED"> = {
     "en-cours": "IN_PROGRESS",
     "a-venir": "REGISTRATION",
     termines: "DONE",
+    annules: "CANCELLED",
   };
 
   const tournaments = await prisma.tournament.findMany({

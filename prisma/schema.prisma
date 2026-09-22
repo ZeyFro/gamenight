@@ -1435,6 +1435,14 @@ enum TournamentStatus {
   REGISTRATION
   IN_PROGRESS
   DONE
+  // V2 — tournoi DÉMARRÉ (IN_PROGRESS) interrompu par son créateur : les
+  // matchs/résultats déjà enregistrés restent intacts (aucune donnée
+  // supprimée), seule la progression s'arrête. Jamais atteignable depuis
+  // DONE (un tournoi terminé garde son historique, non annulable) ; un
+  // tournoi encore en REGISTRATION se SUPPRIME au lieu de passer par cet
+  // état (rien à préserver avant le premier match) — voir
+  // `cancelTournament`/`deleteTournament`, src/lib/tournaments.ts.
+  CANCELLED
 }
 
 model Tournament {
@@ -1490,6 +1498,26 @@ model Tournament {
   // premier envoi.
   discordGuildId   String?
   discordChannelId String?
+
+  // V2 (notifications maîtrisées + annulation/suppression) — ping sélectif
+  // à la création : liste des ids de potes à MENTIONNER dans l'annonce
+  // Discord, jamais une liste d'accès ni des participants automatiquement
+  // inscrits (un tournoi reste consultable/inscriptible par tout le monde,
+  // selon les règles d'accès actuelles — aucun lien avec la confidentialité
+  // des soirées, volontairement non transposée ici). Même contrat EXACT que
+  // `Session.notifiedUserIds` (voir son commentaire pour le raisonnement
+  // complet sur `Json?` vs `String[]?`, et le sens de `null` vs tableau
+  // vide) : `null` pour tout tournoi créé avant cette colonne (comportement
+  // préservé, jamais de mentions), un tableau JSON (même vide) est une
+  // sélection explicite respectée littéralement.
+  notifiedUserIds Json?
+
+  // Annulation/suppression (V2) — posé par `cancelTournament`
+  // (src/lib/tournaments.ts) en même temps que `status: CANCELLED`, pour
+  // affichage ("annulé le ..."). `null` tant que le tournoi n'a jamais été
+  // annulé ; jamais réutilisé pour autre chose (une suppression d'un
+  // tournoi non démarré retire la ligne elle-même, aucun statut à marquer).
+  cancelledAt DateTime?
 }
 
 // `seed` : ordre de tirage aléatoire au lancement du tournoi (pas de
@@ -1676,6 +1704,16 @@ enum NotificationCategory {
 enum UserNotificationCategory {
   SESSION
   ROULETTE
+  // V2 (tournois) — gouverne les mentions Discord de création de tournoi
+  // ET les futures sollicitations personnelles liées aux tournois. Aucune
+  // ligne `UserNotificationPreference` n'existait pour cette catégorie
+  // avant son introduction (elle n'existait tout simplement pas) — voir la
+  // migration `20260922090000_add_tournament_notifications` pour le
+  // backfill explicite (`enabled = NOT silenceReminders`, même règle que
+  // SESSION/ROULETTE à leur propre introduction) : un compte ayant déjà
+  // demandé le silence global ne reçoit jamais une réactivation silencieuse
+  // pour cette nouvelle catégorie.
+  TOURNAMENT
 }
 
 model UserNotificationPreference {

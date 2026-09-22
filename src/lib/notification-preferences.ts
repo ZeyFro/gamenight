@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { UserNotificationCategory } from "@prisma/client";
 
 /** Réglages proposés uniquement parce que tous leurs chemins actuels les respectent. */
-export const AVAILABLE_NOTIFICATION_CATEGORIES = ["SESSION", "ROULETTE"] as const satisfies readonly UserNotificationCategory[];
+export const AVAILABLE_NOTIFICATION_CATEGORIES = ["SESSION", "ROULETTE", "TOURNAMENT"] as const satisfies readonly UserNotificationCategory[];
 
 export type AvailableNotificationCategory = (typeof AVAILABLE_NOTIFICATION_CATEGORIES)[number];
 
@@ -17,6 +17,10 @@ export const NOTIFICATION_CATEGORY_DETAILS: Record<
   ROULETTE: {
     label: "Roulettes",
     description: "Invitations, rappels et résultats des roulettes du gambling.",
+  },
+  TOURNAMENT: {
+    label: "Tournois",
+    description: "Mention à l'ouverture des inscriptions d'un tournoi, si le créateur t'a sélectionné.",
   },
 };
 

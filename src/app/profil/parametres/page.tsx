@@ -340,7 +340,7 @@ export default async function ProfilParametresPage({
             })}
           </div>
           <p className="text-xs text-faint">
-            D’autres catégories (tournois, récompenses et récapitulatifs) seront ajoutées lorsque
+            D’autres catégories (récompenses et récapitulatifs) seront ajoutées lorsque
             tous leurs chemins d’envoi appliqueront réellement ces préférences.
           </p>
           <ButtonLink href="/admin?tab=messages" variant="ghost" size="sm">
