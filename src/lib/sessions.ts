@@ -18,7 +18,7 @@ import { checkGroupAchievements } from "@/lib/group-achievements";
 import { logger } from "@/lib/logger";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
-import type { Game, GroupAchievement, Session, User } from "@prisma/client";
+import type { Game, GroupAchievement, Session, SessionStatus, User } from "@prisma/client";
 
 /**
  * Bug remonté (production, après activation de `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`)
@@ -342,6 +342,154 @@ async function closeAsCancelled(
   if (!claimed) return null;
   const discord = announceViaBot ? { ok: true as const } : await announceSessionResult(session, null, false);
   return { discord };
+}
+
+export type DrawSessionGameOutcome =
+  | { kind: "not_found" }
+  | { kind: "not_creator" }
+  | { kind: "not_voting"; status: SessionStatus; decidedGameId: string | null }
+  | { kind: "no_eligible_game" }
+  | { kind: "drawn"; winnerGameId: string; candidateGameIds: string[] };
+
+/**
+ * V2 — tirage au sort d'un jeu RATTACHÉ à une soirée déjà créée
+ * (`VOTING`), en remplacement du parcours cassé "soirée → roulette" (qui
+ * renvoyait vers le formulaire générique de création d'une roulette,
+ * obligeant à ressaisir la date et resélectionner les invités, au risque
+ * de créer une DEUXIÈME soirée). Ne crée JAMAIS de nouvelle `Session` :
+ * transforme la MÊME ligne, exactement comme `closeSession` (même
+ * id/URL, mêmes invitations/historique, mêmes propositions/votes/chat
+ * déjà écrits, mêmes références Discord).
+ *
+ * Différence avec `closeSession` : le gagnant n'est PAS le plus voté
+ * parmi les propositions jouables, mais tiré UNIFORMÉMENT au hasard
+ * parmi elles — le reste (état "jouable", claim atomique, enqueue
+ * Discord, XP) réutilise EXACTEMENT les mêmes briques
+ * (`getProposalAvailability`, `enqueueSessionAnnounceUpdate`,
+ * `enqueueSessionResultThreadSummary`, `awardXp`/
+ * `checkSessionsParticipatedBadges`) plutôt que d'en récrire une version
+ * parallèle incomplète.
+ *
+ * Éligibilité — RÉUTILISE `getProposalAvailability` (même fonction que
+ * `closeSession`, déjà affichée sur `/sessions/[id]` sous la forme du
+ * badge "JOUABLE"/"PAS ASSEZ DE JOUEURS") : un jeu est éligible s'il a
+ * assez de PROPRIÉTAIRES DISPONIBLES à la date de la soirée (possession
+ * ET disponibilité réelle, jamais "tous les invités supposés présents"
+ * ni un simple compte d'invitations). Ceci est DÉLIBÉRÉMENT indépendant
+ * de :
+ *   - qui est INVITÉ à la soirée (`SessionInvite`) — l'éligibilité d'un
+ *     jeu ne dépend jamais de la liste d'invités, seulement de qui le
+ *     possède et est dispo, exactement comme pour un vote classique ;
+ *   - qui a VOTÉ pour la proposition — un jeu jouable peut être tiré
+ *     même sans le moindre vote (contrairement à `closeSession`, dont
+ *     le "0 votant" annule la soirée : ce garde-fou n'a de sens QUE pour
+ *     un classement par votes, pas pour un tirage aléatoire).
+ *
+ * Résultat SERVEUR uniquement — cette fonction ne prend AUCUNE
+ * préférence de jeu en entrée, jamais un `gameId` fourni par l'appelant :
+ * le résultat n'existe qu'après avoir été calculé ET commité ici.
+ * L'animation côté client (voir `DrawSessionGameDialog`) ne fait
+ * qu'illustrer un résultat déjà décidé, jamais l'inverse.
+ *
+ * Concurrence — même verrou que `closeSession` (`updateMany` conditionné
+ * sur `status: "VOTING"`) : double clic, deux onglets, clôture manuelle
+ * ou automatique concurrente ne peuvent JAMAIS committer deux fois — un
+ * seul appel gagne, les autres trouvent `status !== "VOTING"` et
+ * renvoient l'état ACTUEL plutôt que d'écraser quoi que ce soit. Vérifie
+ * EN PLUS, DANS LA MÊME TRANSACTION que le claim, que la proposition
+ * tirée existe TOUJOURS (protection contre un retrait de proposition
+ * survenu entre le calcul du tirage et son commit — jamais démontré
+ * ailleurs dans ce fichier, ajouté spécifiquement ici car ce tirage,
+ * contrairement à `closeSession`, peut committer un gagnant qui n'a
+ * reçu AUCUN vote, donc sans le signal "quelqu'un tient à ce jeu" que
+ * fournirait un vote existant).
+ *
+ * `createdViaRoulette` n'est JAMAIS modifié ici — ce champ décrit
+ * l'ORIGINE de création de la soirée (formulaire classique vs résultat
+ * de roue), jamais son mode de décision du jeu ; une soirée créée
+ * classiquement dont le jeu est ensuite tiré au sort reste une soirée
+ * créée classiquement. Conséquence directe : `resolveEligibleMentions`
+ * (session-announce.ts) continue de lire la catégorie de préférence
+ * "SESSION", jamais "ROULETTE", pour les mentions de l'annonce éditée —
+ * aucune bascule de catégorie de notification à gérer ici.
+ */
+export async function drawSessionGame(
+  sessionId: string,
+  actorId: string
+): Promise<DrawSessionGameOutcome> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      proposals: {
+        include: { game: true, votes: { include: { user: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  if (!session) return { kind: "not_found" };
+  if (session.createdById !== actorId) return { kind: "not_creator" };
+  if (session.status !== "VOTING") {
+    return { kind: "not_voting", status: session.status, decidedGameId: session.decidedGameId };
+  }
+
+  const availability = await getProposalAvailability(
+    session.date,
+    session.proposals.map((p) => p.game)
+  );
+  const jouableProposals = session.proposals.filter((p) => availability.get(p.gameId)?.jouable);
+  if (jouableProposals.length === 0) return { kind: "no_eligible_game" };
+
+  const winner = jouableProposals[Math.floor(Math.random() * jouableProposals.length)];
+  const candidateGameIds = jouableProposals.map((p) => p.gameId);
+  const announceViaBot = session.announceViaBot;
+
+  const committed = await prisma.$transaction(async (tx) => {
+    // Protection contre un retrait de proposition survenu APRÈS le
+    // tirage ci-dessus mais AVANT ce commit (voir le commentaire de
+    // fonction) — jamais un jeu retiré entre-temps annoncé comme retenu.
+    const stillProposed = await tx.proposal.findUnique({
+      where: { sessionId_gameId: { sessionId, gameId: winner.gameId } },
+      select: { id: true },
+    });
+    if (!stillProposed) return false;
+
+    const claim = await tx.session.updateMany({
+      where: { id: sessionId, status: "VOTING" },
+      data: { status: "SCHEDULED", decidedGameId: winner.gameId, decidedTime: session.date },
+    });
+    if (claim.count !== 1) return false;
+
+    if (announceViaBot) {
+      await enqueueSessionAnnounceUpdate(sessionId, tx);
+      await enqueueSessionResultThreadSummary(sessionId, tx);
+    }
+    return true;
+  });
+
+  if (!committed) {
+    const fresh = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { status: true, decidedGameId: true },
+    });
+    // Ligne disparue entre-temps (suppression concurrente) — traité
+    // comme "plus rien à décider ici", jamais une erreur non gérée.
+    if (!fresh) return { kind: "not_found" };
+    return { kind: "not_voting", status: fresh.status, decidedGameId: fresh.decidedGameId };
+  }
+
+  // XP participation — même définition que `closeSession` : les VRAIS
+  // votants de la proposition retenue, jamais fabriqués (contrairement à
+  // `spinRoulette`/`createSessionFromRouletteAction`, qui créent des
+  // votes synthétiques pour une proposition qui n'existait pas avant —
+  // ici la proposition et ses votes réels existaient déjà). Peut être
+  // une liste vide (jeu tiré sans le moindre vote) — aucun XP à
+  // attribuer dans ce cas, jamais une erreur.
+  for (const vote of winner.votes) {
+    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+    await checkSessionsParticipatedBadges(vote.userId);
+  }
+
+  return { kind: "drawn", winnerGameId: winner.gameId, candidateGameIds };
 }
 
 /**
