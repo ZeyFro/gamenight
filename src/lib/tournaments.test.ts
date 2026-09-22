@@ -4,6 +4,7 @@ import {
   totalRoundsFor,
   computeMatchLoser,
   computeNextSlot,
+  isTournamentVisibleInHistory,
 } from "@/lib/tournaments";
 
 describe("bracketSizeFor (Sprint 5, Tournois Bracket)", () => {
@@ -35,6 +36,84 @@ describe("computeMatchLoser (PR Atomicité saisons + tournois)", () => {
 
   it("renvoie null si l'autre slot est vide (bye)", () => {
     expect(computeMatchLoser("p1", "p1", null)).toBeNull();
+  });
+});
+
+/**
+ * Cycle de vie de l'historique (V2, bug remonté en test réel). `now`
+ * passé explicitement (pas de fake timers ici, cette fonction accepte
+ * déjà `now` en paramètre).
+ */
+describe("isTournamentVisibleInHistory", () => {
+  const now = new Date("2026-09-22T10:00:00Z");
+
+  it("un tournoi encore actif (REGISTRATION/IN_PROGRESS) reste TOUJOURS visible, quel que soit son âge", () => {
+    expect(
+      isTournamentVisibleInHistory(
+        { status: "REGISTRATION", cancelledAt: null, matches: [] },
+        now
+      )
+    ).toBe(true);
+    expect(
+      isTournamentVisibleInHistory(
+        { status: "IN_PROGRESS", cancelledAt: null, matches: [] },
+        now
+      )
+    ).toBe(true);
+  });
+
+  it("CANCELLED récent (cancelledAt d'hier) : encore visible", () => {
+    expect(
+      isTournamentVisibleInHistory(
+        { status: "CANCELLED", cancelledAt: new Date("2026-09-21T20:00:00Z"), matches: [] },
+        now
+      )
+    ).toBe(true);
+  });
+
+  it("CANCELLED ancien (cancelledAt il y a plus de 7 jours) : sort de l'historique", () => {
+    expect(
+      isTournamentVisibleInHistory(
+        { status: "CANCELLED", cancelledAt: new Date("2026-09-01T20:00:00Z"), matches: [] },
+        now
+      )
+    ).toBe(false);
+  });
+
+  it("CANCELLED sans cancelledAt (ligne historique incohérente) : repli prudent, jamais masqué", () => {
+    expect(
+      isTournamentVisibleInHistory({ status: "CANCELLED", cancelledAt: null, matches: [] }, now)
+    ).toBe(true);
+  });
+
+  it("DONE : dérive la fin réelle du plus RÉCENT completedAt parmi tous les matchs (la finale), jamais createdAt ni une date inventée", () => {
+    const matches = [
+      { completedAt: new Date("2026-09-10T20:00:00Z") }, // round 1
+      { completedAt: new Date("2026-09-15T20:00:00Z") }, // finale, la plus récente
+    ];
+    // La finale (15 septembre) est dans la fenêtre de 7 jours depuis le 22.
+    expect(isTournamentVisibleInHistory({ status: "DONE", cancelledAt: null, matches }, now)).toBe(
+      true
+    );
+  });
+
+  it("DONE ancien (finale il y a plus de 7 jours) : sort de l'historique", () => {
+    const matches = [{ completedAt: new Date("2026-09-01T20:00:00Z") }];
+    expect(isTournamentVisibleInHistory({ status: "DONE", cancelledAt: null, matches }, now)).toBe(
+      false
+    );
+  });
+
+  it("DONE sans le moindre completedAt (ligne historique incohérente) : repli prudent, jamais masqué", () => {
+    expect(
+      isTournamentVisibleInHistory({ status: "DONE", cancelledAt: null, matches: [] }, now)
+    ).toBe(true);
+    expect(
+      isTournamentVisibleInHistory(
+        { status: "DONE", cancelledAt: null, matches: [{ completedAt: null }] },
+        now
+      )
+    ).toBe(true);
   });
 });
 

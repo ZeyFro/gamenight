@@ -301,6 +301,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member (bug remonté en test réel, voir le commentaire de fichier)
 
         const inv = await invite(session.id, guest.id, creator.id);
         await announceLib.enqueueSessionInviteSync(inv.id);
@@ -308,9 +311,15 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const outcome = await processOne();
 
         expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:destination_mismatch" });
-        expect(fetchMock.mock.calls.every(([, init]) => !["PUT", "DELETE"].includes(init?.method ?? "GET"))).toBe(
-          true
-        );
+        // Seul le GET de vérification a été tenté POUR CET invite-sync —
+        // jamais le PUT qui l'aurait suivi si le fil était resté PRIVÉ.
+        // (Le PUT du setup creator-member ci-dessus est un appel légitime
+        // et distinct, pas celui qu'on vérifie ici.)
+        expect(fetchMock).toHaveBeenCalledTimes(6); // thread + verify + announce + verify + PUT (creator-member) + ce GET
+        const [lastUrl, lastInit] = fetchMock.mock.calls.at(-1)!;
+        expect(String(lastUrl)).toBe("https://discord.com/api/v10/channels/thread-1");
+        expect(lastInit?.method ?? "GET").not.toBe("PUT");
+        expect(lastInit?.method ?? "GET").not.toBe("DELETE");
 
         const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
         expect(statuses.get(inv.id)).toBe("failed");
@@ -492,6 +501,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
           fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
           fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
           await processOne();
+          fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+          fetchMock.mockResolvedValueOnce(emptyResponse(204));
+          await processOne(); // creator-member
 
           await announceLib.enqueueSessionReminderDelivery(session.id, 60);
           // La session est annulée/clôturée APRÈS l'enqueue du rappel, AVANT
@@ -501,7 +513,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
           const outcome = await processOne();
           expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
-          expect(fetchMock).toHaveBeenCalledTimes(3); // thread + verify + announce seulement, jamais le rappel
+          expect(fetchMock).toHaveBeenCalledTimes(5); // thread + verify + announce + verify + PUT (creator-member), jamais le rappel
 
           const row = await db.notificationDelivery.findFirstOrThrow({
             where: { targetSlot: `default-guild:SESSION:${session.id}:thread-reminder-60` },
@@ -523,6 +535,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        // Consomme la livraison creator-member (bug remonté en test réel,
+        // voir le commentaire de fichier) avant de poursuivre — sans quoi
+        // le prochain processOne() la réclamerait à la place de l'EDIT visée.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
         await processOne();
 
         // Deux éditions successives (ex. deux modifications de créneau) —
@@ -621,6 +639,51 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(await db.notification.count({ where: { relatedSessionId: session.id } })).toBe(0);
       });
 
+      /**
+       * Complément au diagnostic (test réel, fils "4 autres fils actifs"
+       * avec seulement l'avatar du bot) — vérifie explicitement que
+       * `resolveInviteSync` (le SEUL code qui ajoute/retire un membre du
+       * fil privé) ne consulte JAMAIS `UserNotificationPreference` ni
+       * `silenceReminders` : contrairement à `resolveEligibleMentions`
+       * (mentions/notifications internes, filtré par préférence ci-dessus),
+       * l'accès au fil se décide UNIQUEMENT sur `SessionInvite.status`. Un
+       * invité ayant désactivé les pings SESSION doit donc rester membre du
+       * fil — l'accès et la préférence de notification sont deux axes
+       * indépendants, jamais couplés.
+       */
+      it("un invité ayant désactivé les pings SESSION conserve son accès au fil — add_thread_member (PUT) appelé quand même", async () => {
+        const creator = await makeUser();
+        const silent = await makeUser({ discordName: "invite-silencieux" });
+        const session = await makeSession(creator.id);
+        await db.userNotificationPreference.create({
+          data: { userId: silent.id, category: "SESSION", enabled: false },
+        });
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member
+
+        const inv = await invite(session.id, silent.id, creator.id);
+        await announceLib.enqueueSessionInviteSync(inv.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+
+        expect(outcome?.outcome).toBe("sent");
+        const [url, init] = fetchMock.mock.calls.at(-1)!;
+        expect(String(url)).toBe(`https://discord.com/api/v10/channels/thread-1/thread-members/${silent.discordId}`);
+        expect(init.method).toBe("PUT");
+
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("synced");
+      });
+
       it("la sélection du créateur ne peut jamais réintégrer un refus (le filtre ne retire jamais que des destinataires)", async () => {
         const creator = await makeUser();
         const declined = await makeUser();
@@ -715,15 +778,19 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        // creator-member (bug remonté en test réel, voir le commentaire de
+        // fichier) — la même passe cron l'enqueue-traite aussi, verify + PUT.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
 
         const { GET } = await import("@/app/api/cron/notification-executor/route");
         const res = await GET(
           new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
         );
         const body = await res.json();
-        expect(body.sent).toBe(2);
+        expect(body.sent).toBe(3);
         expect(body.failed).toBe(0);
-        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock).toHaveBeenCalledTimes(5);
       });
 
       it("catégorie TOURNAMENT sans configuration de salon dédiée : not_configured, jamais un appel Discord (résolveur du chantier tournois désormais branché, voir tournament-announce.integration.test.ts pour son propre chemin nominal)", async () => {
@@ -796,6 +863,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         await processOne();
+        // creator-member (bug remonté en test réel, voir le commentaire de
+        // fichier) — la traiter isole aussi l'EDIT comme SEULE livraison
+        // encore en attente ensuite.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne();
 
         await db.session.update({ where: { id: session.id }, data: { date: new Date("2026-10-05T20:00:00.000Z") } });
         await announceLib.enqueueSessionAnnounceUpdate(session.id);
@@ -814,7 +887,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // jamais de republication automatique d'un nouveau message.
         expect(row.status).toBe("FAILED");
         expect(row.errorClass).toBe("discord:not_found");
-        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock).toHaveBeenCalledTimes(6);
       });
 
       it("résultat réseau incertain (fetch rejette) sur le SEND initial (création du fil) : retryable, un seul appel tenté", async () => {
@@ -882,10 +955,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
           return created;
         });
 
-        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(1);
+        // 2 events : SESSION_CREATED (thread + announce) et
+        // SESSION_CREATOR_MEMBER (bug remonté en test réel, voir le
+        // commentaire de fichier — événement séparé, occurrence propre).
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(2);
         expect(
           await db.notificationDelivery.count({ where: { targetSlot: { startsWith: `default-guild:SESSION:${session.id}:` } } })
-        ).toBe(2);
+        ).toBe(3);
 
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
         const outcome = await processOne();
@@ -1006,23 +1082,58 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(deliveries).toHaveLength(1);
       });
 
-      it("répétition de l'enqueue de création (occurrence fixe) : deux appels identiques ne créent jamais de livraison en double", async () => {
+      it("répétition de l'enqueue de création : thread/announce (occurrence fixe) ne dupliquent jamais, creator-member (occurrence volontairement aléatoire, retry) crée une nouvelle ligne à chaque fois sans jamais dupliquer l'EFFET (convergence)", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id, { announceViaBot: true });
 
         // Simule un retry applicatif (ex. deux clics, ou une reprise après
         // un crash situé APRÈS le commit mais avant que l'appelant ne le
-        // sache) — l'idempotence vient de l'occurrence FIXE (#95), pas
-        // d'une protection ajoutée ici.
+        // sache) — l'idempotence de thread/announce vient de l'occurrence
+        // FIXE (#95). `creator-member`, lui, est délibérément à occurrence
+        // ALÉATOIRE (voir `enqueueSessionCreatorThreadMembership`, même
+        // raisonnement que `enqueueSessionInviteSync` — permettre un
+        // réessai manuel) : un appel répété y crée une NOUVELLE ligne à
+        // chaque fois, jamais un doublon d'EFFET (convergence "la plus
+        // récente survit", déjà garantie par `claimNextDelivery`, #95).
         await announceLib.enqueueSessionCreationDeliveries(session.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
 
-        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(1);
+        // 1 event SESSION_CREATED (dédupliqué, thread+announce) + 2 events
+        // SESSION_CREATOR_MEMBER (un par appel, jamais dédupliqués).
+        expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(3);
         expect(
           await db.notificationDelivery.count({
             where: { targetSlot: { startsWith: `default-guild:SESSION:${session.id}:` } },
           })
-        ).toBe(2);
+        ).toBe(4); // thread + announce (dédupliqués) + 2x creator-member
+
+        // Le traitement réel ne produit jamais deux PUT — la convergence
+        // (`claimNextDelivery`, #95) abandonne (SKIPPED) la plus ancienne
+        // des deux lignes creator-member dès qu'elle est scannée, avant
+        // tout appel réseau pour elle.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const creatorMemberOutcome = await processOne();
+        expect(creatorMemberOutcome?.outcome).toBe("sent");
+        // Plus rien à traiter — la ligne creator-member la plus ancienne a
+        // été SKIPPED au passage, jamais réclamée pour un second PUT.
+        expect(await processOne()).toBeNull();
+
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: `default-guild:SESSION:${session.id}:creator-member`, status: "SKIPPED" },
+          })
+        ).toBe(1);
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: `default-guild:SESSION:${session.id}:creator-member`, status: "SENT" },
+          })
+        ).toBe(1);
       });
     });
 
@@ -1091,6 +1202,14 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
         const announceOutcome = await processOne();
         expect(announceOutcome?.outcome).toBe("sent");
+
+        // creator-member (bug remonté en test réel, voir le commentaire de
+        // fichier) — continue lui aussi son cycle normal malgré le rollback
+        // du flag catégorie, et doit être consommé avant l'EDIT ci-dessous.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const creatorMemberOutcome = await processOne();
+        expect(creatorMemberOutcome?.outcome).toBe("sent");
 
         // Une édition ultérieure (ex. clôture) sur cette même session
         // continue elle aussi d'utiliser le chemin bot, sans accroc.
@@ -1334,12 +1453,17 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         const sessions = await db.session.findMany({ where: { createdViaRoulette: true } });
         expect(sessions).toHaveLength(1);
-        expect(await db.notificationEvent.count({ where: { sourceId: sessions[0].id } })).toBe(1);
+        // 1 event SESSION_CREATED (thread+announce) + 1 SESSION_CREATOR_MEMBER
+        // + 1 SESSION_INVITE_SYNC par participant (p1, p2 — bug remonté en
+        // test réel, voir le commentaire de fichier : un participant
+        // Roulette est désormais synchronisé vers le fil dès la création,
+        // jamais seulement après un réinvite manuel).
+        expect(await db.notificationEvent.count({ where: { sourceId: sessions[0].id } })).toBe(4);
         expect(
           await db.notificationDelivery.count({
             where: { targetSlot: { startsWith: `default-guild:SESSION:${sessions[0].id}:` } },
           })
-        ).toBe(2);
+        ).toBe(5); // thread + announce + creator-member + 2x invite-sync
 
         const rouletteRow = await db.roulette.findUniqueOrThrow({ where: { id: roulette.id } });
         expect(rouletteRow.status).toBe("DONE");
@@ -1382,11 +1506,14 @@ describe.skipIf(!TEST_DATABASE_URL)(
     });
 
     describe("invite-sync — synchronise le fil privé avec les invitations (chantier confidentialité)", () => {
-      /** Amène une session au point où son fil privé existe déjà ET son
-       * annonce initiale est déjà postée — état préalable de tous les
-       * tests de ce bloc (sans consommer aussi la livraison "announce",
-       * elle resterait PENDING et serait réclamée EN PREMIER par le tout
-       * prochain `processOne()`, avant l'invite-sync qu'on veut isoler). */
+      /** Amène une session au point où son fil privé existe déjà, son
+       * annonce initiale est déjà postée, ET le créateur est déjà ajouté
+       * comme membre du fil (`creator-member`, bug remonté en test réel —
+       * voir le commentaire de fichier) — état préalable de tous les
+       * tests de ce bloc (sans consommer aussi "announce"/"creator-member",
+       * l'une d'elles resterait PENDING et serait réclamée EN PREMIER par
+       * le tout prochain `processOne()`, avant l'invite-sync qu'on veut
+       * isoler). */
       async function createSessionWithThread(creator: { id: string }) {
         const session = await makeSession(creator.id);
         await announceLib.enqueueSessionCreationDeliveries(session.id);
@@ -1394,6 +1521,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
         await processOne();
         return session;
       }
@@ -1422,7 +1552,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
 
-        expect(fetchMock).toHaveBeenCalledTimes(5); // thread + verify + announce (setup) + verify + ce PUT
+        expect(fetchMock).toHaveBeenCalledTimes(7); // thread + verify + announce + verify + creator-member PUT (setup) + verify + ce PUT
         const [url, init] = fetchMock.mock.calls.at(-1)!;
         expect(String(url)).toBe(`https://discord.com/api/v10/channels/thread-1/thread-members/${guest.discordId}`);
         expect(init.method).toBe("PUT");
@@ -1598,6 +1728,133 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
         expect(statuses.get(inv.id)).toBe("synced");
+      });
+    });
+
+    describe("resyncSessionThreadMembers — réparation groupée pour une soirée créée AVANT les correctifs creator-member/invite-sync-à-la-création", () => {
+      /** Reproduit EXACTEMENT l'état laissé par le code D'AVANT les deux
+       * correctifs : fil + annonce déjà SENT (le fil existe bien côté
+       * Discord), mais AUCUNE livraison `creator-member` ni `invite:<id>`
+       * n'a jamais été enqueue-ée — jamais `enqueueSessionCreationDeliveries`
+       * (qui, depuis le correctif, enqueue AUSSI `creator-member`), pour
+       * ne PAS reproduire le comportement corrigé par erreur. */
+      async function createLegacySessionWithThread(creator: { id: string }) {
+        const session = await makeSession(creator.id);
+        const deliveryLib = await import("./notification-delivery");
+        const event = await deliveryLib.createNotificationEvent({
+          category: "SESSION",
+          eventType: "SESSION_CREATED",
+          sourceId: session.id,
+        });
+        await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:thread`,
+        });
+        await deliveryLib.enqueueDelivery({
+          eventId: event.id,
+          channel: "DISCORD_CHANNEL",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: "channel",
+          targetSlot: `default-guild:SESSION:${session.id}:announce`,
+        });
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        return session;
+      }
+
+      it("statuts affichés AVANT réparation : ni le créateur ni l'invité actif ne sont jamais 'failed' — 'syncing'/'pending' indéfiniment, sans le moindre bouton 'Réessayer' individuel visible (bug démontré, pas supposé)", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-legacy" });
+        const session = await createLegacySessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        expect(await announceLib.getSessionThreadReadiness(session.id)).toBe("syncing");
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("pending");
+      });
+
+      it("resyncSessionThreadMembers ajoute le créateur ET l'invité actif, sans jamais recréer le fil ni renvoyer l'annonce", async () => {
+        const creator = await makeUser({ discordName: "createur-legacy" });
+        const guest = await makeUser({ discordName: "invite-legacy" });
+        const session = await createLegacySessionWithThread(creator);
+        const inv = await invite(session.id, guest.id, creator.id);
+
+        fetchMock.mockClear();
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        // Deux nouvelles livraisons (creator-member + invite:<id>), toutes
+        // deux dépendantes du fil déjà SENT — traitées normalement.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const first = await processOne();
+        expect(first?.outcome).toBe("sent");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const second = await processOne();
+        expect(second?.outcome).toBe("sent");
+        expect(await processOne()).toBeNull();
+
+        // Aucun appel de création de fil ni d'envoi d'annonce — seulement
+        // des GET de vérification + PUT d'ajout de membre (4 appels : 2
+        // paires verify+PUT, jamais un POST vers /threads ou /messages).
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") !== "POST")).toBe(true);
+        const putUrls = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT").map(([url]) => String(url));
+        expect(putUrls).toContain(`https://discord.com/api/v10/channels/thread-1/thread-members/${creator.discordId}`);
+        expect(putUrls).toContain(`https://discord.com/api/v10/channels/thread-1/thread-members/${guest.discordId}`);
+
+        expect(await announceLib.getSessionThreadReadiness(session.id)).toBe("ready");
+        const statuses = await announceLib.getSessionInviteSyncStatuses(session.id, [inv.id]);
+        expect(statuses.get(inv.id)).toBe("synced");
+      });
+
+      it("ne touche JAMAIS un invité RÉVOQUÉ — aucune livraison enqueue-ée pour lui, aucun risque de rétablir un accès coupé", async () => {
+        const creator = await makeUser();
+        const activeGuest = await makeUser({ discordName: "actif" });
+        const revokedGuest = await makeUser({ discordName: "revoque" });
+        const session = await createLegacySessionWithThread(creator);
+        const activeInv = await invite(session.id, activeGuest.id, creator.id);
+        const revokedInv = await invite(session.id, revokedGuest.id, creator.id);
+        await access.revokeSessionInvite(session.id, revokedGuest.id, creator.id);
+
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        const deliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: { in: [
+            `default-guild:SESSION:${session.id}:invite:${activeInv.id}`,
+            `default-guild:SESSION:${session.id}:invite:${revokedInv.id}`,
+          ] } },
+        });
+        expect(deliveries.map((d) => d.targetSlot)).toEqual([
+          `default-guild:SESSION:${session.id}:invite:${activeInv.id}`,
+        ]);
+      });
+
+      it("un appel répété (double clic sur 'Resynchroniser') n'a jamais d'effet en double — convergence 'la plus récente survit', déjà garantie par claimNextDelivery", async () => {
+        const creator = await makeUser();
+        const session = await createLegacySessionWithThread(creator);
+
+        await announceLib.resyncSessionThreadMembers(session.id);
+        await announceLib.resyncSessionThreadMembers(session.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        // La ligne la plus ancienne des deux appels a été SKIPPED au
+        // passage — plus rien d'autre à traiter pour ce créateur.
+        expect(await processOne()).toBeNull();
+
+        const putCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+        expect(putCalls).toHaveLength(1);
       });
     });
 

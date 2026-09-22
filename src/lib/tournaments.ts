@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type TournamentStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
@@ -6,12 +6,61 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
+import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import {
   enqueueTournamentAnnounceUpdate,
   enqueueTournamentResultThreadSummary,
   enqueueTournamentThreadClose,
   isTournamentAnnounceSent,
 } from "@/lib/tournament-announce";
+
+/**
+ * Cycle de vie de l'historique (V2, bug remonté en test réel) — même
+ * garanties que `isSessionVisibleInHistory` (sessions.ts, voir son
+ * commentaire pour le raisonnement complet) : masque la LISTE `/tournois`
+ * (onglets "Terminés"/"Annulés"), jamais la base ni le contrôle d'accès.
+ * Un tournoi `REGISTRATION`/`IN_PROGRESS` (encore actif) reste TOUJOURS
+ * visible, quel que soit son âge.
+ *
+ * Point de départ RÉEL, PLUS PRÉCIS que pour une soirée puisque le modèle
+ * porte de vraies colonnes pour les deux cas :
+ *   - `CANCELLED` → `cancelledAt`, posé par `cancelTournament` en même
+ *     temps que le statut — toujours fiable pour tout tournoi annulé par
+ *     ce chemin (le seul existant).
+ *   - `DONE` → l'instant RÉEL de fin, dérivé du dernier
+ *     `TournamentMatch.completedAt` connu (posé par `declareWinner` sur
+ *     CHAQUE match tranché, y compris — nécessairement — la finale qui
+ *     fait passer le tournoi à `DONE`) : le plus RÉCENT `completedAt`
+ *     parmi tous les matchs d'un tournoi `DONE` est structurellement
+ *     celui de sa finale, jamais une date inventée ni `updatedAt`.
+ *   - Repli PRUDENT si aucun `completedAt` n'est trouvé pour un tournoi
+ *     `DONE` (ne devrait jamais arriver par ce chemin, gardé pour
+ *     d'éventuelles lignes historiques incohérentes) : jamais masqué —
+ *     mieux vaut un tournoi visible trop longtemps qu'un tournoi terminé
+ *     disparu sans qu'on puisse dater sa fin.
+ */
+export function isTournamentVisibleInHistory(
+  tournament: {
+    status: TournamentStatus;
+    cancelledAt: Date | null;
+    matches: { completedAt: Date | null }[];
+  },
+  now: Date = wallClockNow()
+): boolean {
+  if (tournament.status === "CANCELLED") {
+    if (!tournament.cancelledAt) return true; // repli prudent — jamais masqué sans horodatage fiable
+    return isWithinHistoryWindow(tournament.cancelledAt, now);
+  }
+  if (tournament.status === "DONE") {
+    const completedTimestamps = tournament.matches
+      .map((m) => m.completedAt)
+      .filter((d): d is Date => d !== null);
+    if (completedTimestamps.length === 0) return true; // repli prudent
+    const latestCompletion = new Date(Math.max(...completedTimestamps.map((d) => d.getTime())));
+    return isWithinHistoryWindow(latestCompletion, now);
+  }
+  return true; // REGISTRATION/IN_PROGRESS — jamais masqué, quel que soit l'âge
+}
 
 /**
  * Sprint 5 (FEATURE 1, Tournois Bracket) — taille de bracket réelle pour

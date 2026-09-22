@@ -1196,6 +1196,54 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(JSON.parse(String(closeInit.body)).archived).toBe(true);
       });
 
+      /**
+       * Demande explicite (revue V2) — ne pas affirmer qu'une course est
+       * résolue sans un test reproduisant RÉELLEMENT l'entrelacement (pas
+       * seulement l'ordre séquentiel "avant"/"après" déjà couvert
+       * ci-dessus). Simule le délai d'un vrai POST Discord en exécutant
+       * `deleteTournament` DEPUIS L'INTÉRIEUR du mock réseau du SEND —
+       * celui-ci a déjà tout résolu (contenu, destination) avant cet
+       * appel, exactement comme le ferait un vrai aller-retour réseau
+       * pendant lequel une suppression concurrente (double onglet, requête
+       * indépendante) peut commettre.
+       */
+      it("suppression PENDANT l'appel réseau du tout premier SEND (annonce) déjà en vol — l'annonce part quand même, mais rien n'est jamais enqueue-é pour l'éditer/fermer : limite de cohérence assumée et démontrée, pas silencieusement résolue", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+
+        mockChannelOk("chan-tournois");
+        fetchMock.mockImplementationOnce(async () => {
+          const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+          expect(result.ok).toBe(true);
+          return jsonResponse(200, { id: "msg-announce", channel_id: "chan-tournois" });
+        });
+
+        const outcome = await processOne();
+        // Le SEND, déjà engagé AVANT la suppression, se termine
+        // normalement — l'annonce EXISTE bien côté Discord.
+        expect(outcome?.outcome).toBe("sent");
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+
+        // `deleteTournament` a vérifié `isTournamentAnnounceSent` AVANT que
+        // ce SEND ne commette son statut SENT — il n'a donc rien enqueue-é
+        // à éditer/fermer. La livraison `thread` restée PENDING (dépendait
+        // de l'annonce) devient réclamable maintenant qu'elle est SENT —
+        // mais se refuse elle-même (`expired`, tournoi disparu) : AUCUN
+        // fil n'est donc jamais créé, ce qui évite au moins un fil
+        // orphelin en plus de l'annonce.
+        const threadOutcome = await processOne();
+        expect(threadOutcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+
+        // Plus rien à traiter ensuite. L'annonce publique, elle, reste
+        // visible TELLE QUELLE (jamais éditée en "supprimé") pour un
+        // tournoi qui n'existe plus en base, jusqu'à intervention
+        // manuelle — limite honnêtement constatée, hors du périmètre de
+        // ce ticket (navigation après suppression), pas prétendue résolue.
+        expect(await processOne()).toBeNull();
+      });
+
       it("un non-créateur ne peut jamais supprimer, même avec un id de tournoi réel et valide", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
@@ -1281,6 +1329,149 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         const status = await announceLib.getTournamentAnnounceStatus(tournament.id);
         expect(status.announce).toBe("failed");
+      });
+    });
+
+    /**
+     * Précision demandée (revue V2) sur `isTournamentVisibleInHistory`
+     * (tournaments.ts) — vérifie contre de VRAIES lignes Postgres,
+     * récupérées EXACTEMENT comme `/tournois/page.tsx` le fait
+     * (`include: { matches: { select: { completedAt: true } } }`),
+     * jamais seulement la fonction pure isolée (déjà couverte par
+     * tournaments.test.ts) : le calcul réel dépend de données relationnelles
+     * (`TournamentMatch`) que seule une vraie requête peut prouver fidèles.
+     */
+    describe("V2 — historique : calcul RÉEL appliqué aux tournois terminés (matchs inclus, comme /tournois)", () => {
+      /** Relit un tournoi EXACTEMENT comme `/tournois/page.tsx`. */
+      async function fetchForHistory(tournamentId: string) {
+        return db.tournament.findUniqueOrThrow({
+          where: { id: tournamentId },
+          include: { matches: { select: { completedAt: true } } },
+        });
+      }
+
+      it("DONE, finale jouée il y a plus de 7 jours : sort de l'historique — la date dérive du VRAI dernier TournamentMatch.completedAt, jamais createdAt ni une date inventée", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const p3 = await makeUser();
+        const p4 = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false, maxPlayers: 4 });
+        for (const p of [p1, p2, p3, p4]) await makeParticipant(tournament.id, p.id);
+        await launchBracket(tournament.id);
+        await finalizeTournament(tournament.id, creator.id);
+
+        // Rejoue le VRAI scénario "terminé il y a plus d'une semaine" —
+        // recule tous les `completedAt` réellement posés par `declareWinner`,
+        // jamais un horodatage inventé pour le test.
+        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+        await db.tournamentMatch.updateMany({
+          where: { tournamentId: tournament.id },
+          data: { completedAt: eightDaysAgo },
+        });
+
+        const fetched = await fetchForHistory(tournament.id);
+        expect(fetched.status).toBe("DONE");
+        expect(fetched.matches.length).toBeGreaterThan(0);
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetched)).toBe(false);
+      });
+
+      it("DONE, finale jouée il y a moins de 7 jours : encore visible", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const p3 = await makeUser();
+        const p4 = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false, maxPlayers: 4 });
+        for (const p of [p1, p2, p3, p4]) await makeParticipant(tournament.id, p.id);
+        await launchBracket(tournament.id);
+        await finalizeTournament(tournament.id, creator.id);
+
+        const fetched = await fetchForHistory(tournament.id);
+        expect(fetched.status).toBe("DONE");
+        // `completedAt` posé À L'INSTANT par `declareWinner` ci-dessus,
+        // jamais modifié — largement dans la fenêtre de 7 jours.
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetched)).toBe(true);
+      });
+
+      it("DONE SANS LE MOINDRE MATCH (ligne incomplète/historique, ex. tournoi importé ou corrompu) : repli prudent, JAMAIS masqué, même très ancien — precise le comportement demandé explicitement", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        // Créé directement `DONE`, sans jamais passer par generateBracket/
+        // declareWinner — aucun TournamentMatch n'existe pour ce tournoi,
+        // reproduit une ligne historique incomplète (ex. donnée migrée
+        // avant l'existence des matchs, ou un statut pris en défaut).
+        const tournament = await makeTournament(creator.id, game.id, {
+          announceViaBot: false,
+          status: "DONE",
+        });
+        // `createdAt` très ancien — si le calcul se rabattait par erreur
+        // sur `createdAt` (proscrit), ce tournoi disparaîtrait à tort.
+        await db.tournament.update({
+          where: { id: tournament.id },
+          data: { createdAt: new Date("2020-01-01T00:00:00.000Z") },
+        });
+
+        const fetched = await fetchForHistory(tournament.id);
+        expect(fetched.matches).toHaveLength(0);
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetched)).toBe(true);
+      });
+
+      it("CANCELLED sans cancelledAt (ligne legacy antérieure à la colonne, ou incomplète) : repli prudent, JAMAIS masqué", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, {
+          announceViaBot: false,
+          status: "CANCELLED",
+        });
+        // `cancelledAt` reste `null` — jamais posé ici (contrairement à
+        // `cancelTournament`, jamais appelé par ce test) : reproduit une
+        // ligne où l'annulation n'a laissé aucun horodatage fiable.
+        expect(tournament.cancelledAt).toBeNull();
+
+        const fetched = await fetchForHistory(tournament.id);
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetched)).toBe(true);
+      });
+
+      it("aucun événement encore ACTIF ne disparaît jamais après sept jours — IN_PROGRESS avec des matchs déjà joués il y a longtemps, REGISTRATION créé il y a longtemps", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const p3 = await makeUser();
+        const p4 = await makeUser();
+        const game = await makeGame(creator.id);
+
+        // IN_PROGRESS — le premier round a déjà été joué il y a longtemps
+        // (matchs avec `completedAt` ancien), mais le tournoi N'EST PAS
+        // terminé (round 2 encore à jouer) : ne doit dépendre d'AUCUN
+        // `completedAt`, seulement du statut.
+        const inProgress = await makeTournament(creator.id, game.id, { announceViaBot: false, maxPlayers: 4 });
+        for (const p of [p1, p2, p3, p4]) await makeParticipant(inProgress.id, p.id);
+        await launchBracket(inProgress.id);
+        const round1 = await db.tournamentMatch.findMany({ where: { tournamentId: inProgress.id, round: 1 } });
+        for (const m of round1) {
+          const winnerId = m.player1Id ?? m.player2Id;
+          if (winnerId) await tournamentsLib.declareWinner(m.id, winnerId, creator.id);
+        }
+        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+        await db.tournamentMatch.updateMany({
+          where: { tournamentId: inProgress.id, completedAt: { not: null } },
+          data: { completedAt: eightDaysAgo },
+        });
+        const fetchedInProgress = await fetchForHistory(inProgress.id);
+        expect(fetchedInProgress.status).toBe("IN_PROGRESS");
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetchedInProgress)).toBe(true);
+
+        // REGISTRATION — créé il y a longtemps, jamais lancé.
+        const registration = await makeTournament(creator.id, game.id, { announceViaBot: false });
+        await db.tournament.update({
+          where: { id: registration.id },
+          data: { createdAt: new Date("2020-01-01T00:00:00.000Z") },
+        });
+        const fetchedRegistration = await fetchForHistory(registration.id);
+        expect(tournamentsLib.isTournamentVisibleInHistory(fetchedRegistration)).toBe(true);
       });
     });
   }

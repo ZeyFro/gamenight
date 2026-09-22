@@ -10585,3 +10585,232 @@ conformément à la demande.
 **Aucun envoi Discord réel, aucune modification de données de
 production, aucune migration distante, aucun merge ni changement de
 configuration externe n'a été effectué dans cette session.**
+
+## Correctifs V2 remontés en test réel — accès au fil Discord, suppression de tournoi, roue instantanée, historique à 7 jours
+
+Cinq problèmes remontés lors de tests réels (pas d'audit théorique) sur
+la base de `main` (#104 fusionnée, confirmé par `git log` avant de
+démarrer) : le créateur d'une soirée classique n'accédait pas au fil
+Discord malgré un fil créé ; la suppression d'un tournoi laissait la
+page bloquée ; les libellés de la roue instantanée étaient illisibles ;
+l'historique gardait des soirées/tournois vieux de plusieurs semaines ;
+et les notifications de tournois, présentées jusqu'ici comme non
+fonctionnelles, sont maintenant confirmées opérationnelles par le
+testeur. Chaque section ci-dessous distingue la cause DÉMONTRÉE (lecture
+de code + test reproduisant le bug) de ce qui reste une hypothèse.
+
+### 1. Accès au fil Discord — créateur ET invités jamais ajoutés à la création
+
+**Cause 1 (créateur)** — `resolveInviteSync` (session-announce.ts), seul
+code ajoutant un membre au fil privé, ne lit QUE les lignes
+`SessionInvite`. Or `inviteToSession` exclut structurellement le
+créateur de sa propre sélection (il a accès via `createdById`, jamais
+via une invitation) : le créateur n'a donc JAMAIS de `SessionInvite`, et
+n'était donc JAMAIS ajouté au fil. Il pouvait néanmoins le VOIR listé
+("Plus de fils actifs") si son compte Discord détenait par ailleurs
+`MANAGE_THREADS` sur le serveur — simple effet de bord des permissions
+de modération, jamais une garantie applicative, ce qui explique le
+symptôme "je vois le fil mais je n'y accède pas normalement".
+
+**Cause 2 (invités), trouvée en creusant un second signalement** (fils
+sans le moindre membre autre que le bot malgré des invités
+sélectionnés) : `createSession` (classique) ET `createRouletteResultSession`
+(roulette) posent bien une ligne `SessionInvite` par invité choisi au
+formulaire de création, mais n'enqueue-aient JAMAIS la synchronisation
+Discord correspondante (`enqueueSessionInviteSync`) — seul le bouton
+"inviter" MANUEL de la page `/sessions/[id]/invites` le faisait. Un
+invité choisi À LA CRÉATION n'était donc jamais ajouté au fil tant que
+le créateur ne le réinvitait pas explicitement ensuite. Ce bug touche
+LES DEUX parcours de création également — la roulette n'était pas
+épargnée, contrairement à l'hypothèse initiale (un créateur qui participe
+à sa propre roulette a bien un `SessionInvite`, mais son ajout au fil
+souffrait du même défaut d'enqueue que n'importe quel autre invité).
+
+**Vérifié, jamais supposé** : `resolveInviteSync` ne consulte JAMAIS
+`UserNotificationPreference` ni `silenceReminders` — seul
+`resolveEligibleMentions` (mentions/notifications internes) les
+consulte, un chemin de code entièrement séparé. Accès au fil et
+préférence de ping sont donc déjà indépendants ; un test dédié le
+démontre explicitement plutôt que de le supposer.
+
+**Corrigé** : nouveau rôle `creator-member` (SEND, ajoute le créateur dès
+que `thread` est `SENT`, jamais retiré ensuite — l'accès du créateur
+n'est jamais révocable) ; `createSession`/`createRouletteResultSession`
+enqueue-ent désormais l'invite-sync de CHAQUE invité créé, dans la même
+transaction que la mutation métier (même garantie d'atomicité que le
+reste du module). État honnête exposé au créateur sur
+`/sessions/[id]/invites` (préparation / synchronisation en cours / prêt /
+échec, avec réessai manuel pour les soirées créées avant ce correctif).
+Aucun envoi Discord direct hors file transactionnelle n'a été ajouté.
+
+**Délai de ~2 minutes constaté** — même conclusion que pour les
+tournois (#104) : aucune attente artificielle identifiée dans ce code
+pour `thread`/`announce`/`creator-member`/`invite:*` (aucune dépendance
+autre que `thread` → `announce`, résolue dans le même passage cron si le
+budget le permet). La cadence réelle du cron externe (Vercel, hors de ce
+dépôt) reste la seule cause plausible non exclue — jamais affirmée
+faute de données de production.
+
+**Tests** : `session-announce.integration.test.ts` (50 tests, dont un
+nouveau couvrant explicitement l'invité silencieux) et
+`session-lifecycle.integration.test.ts` (2 nouveaux, Postgres isolé)
+prouvant l'enqueue d'une livraison `invite:<id>` par invité choisi à la
+création, jamais un doublon, jamais rien pour une création sans invité.
+
+### 2. Suppression de tournoi — page bloquée après suppression
+
+**Cause démontrée** : `deleteTournamentAction` redirige déjà
+correctement pour un SEUL clic (`redirect()` jamais entouré d'un
+try/catch). Le vrai coupable était `DeleteTournamentDialog`, sans
+AUCUNE protection contre un double clic sur "Oui, supprimer" (bouton
+jamais désactivé) : un second clic pendant que le premier est en vol
+relance l'action, qui trouve alors le tournoi déjà supprimé
+(`deleteTournament` retourne `{ ok: false }`, la ligne "course perdue"
+de sa transaction) et se termine SANS `redirect()` — deux résolutions
+concurrentes d'une même transition React (l'une avec navigation, l'autre
+sans) pouvant laisser le client dans un état incohérent, nécessitant un
+F5.
+
+**Corrigé** : `useActionState` remplace le `<form action={fn}>` brut —
+bouton désactivé tant que `pending` (double soumission structurellement
+impossible), et une erreur RÉELLE (tournoi déjà lancé entre l'ouverture
+du dialogue et la confirmation, etc.) s'affiche maintenant au lieu de ne
+rien faire silencieusement.
+
+**Limite de cohérence base/Discord démontrée, pas prétendue résolue** :
+un test d'intégration reproduit RÉELLEMENT (pas seulement dans l'ordre
+séquentiel avant/après, déjà couvert par #104) la suppression PENDANT
+que le SEND de l'annonce est en vol côté réseau, en exécutant
+`deleteTournament` DEPUIS L'INTÉRIEUR du mock réseau du SEND. Résultat
+observé : l'annonce part quand même (déjà engagée avant la suppression),
+le fil dépendant s'auto-annule proprement (`expired`, déjà garanti),
+mais RIEN n'enqueue jamais l'édition "supprimé" de l'annonce déjà
+publiée — elle reste visible telle quelle pour un tournoi qui n'existe
+plus en base, jusqu'à intervention manuelle. Corriger cette fenêtre
+précise demanderait une revérification de l'existence du tournoi au
+moment du commit du SEND, hors du périmètre de ce correctif (qui porte
+sur la navigation après suppression) — documenté honnêtement plutôt que
+"résolu" sans preuve.
+
+**Tests** : `actions.cancel-delete.test.ts` (2 nouveaux : message
+d'erreur lisible, repli générique sans raison) et
+`tournament-announce.integration.test.ts` (1 nouveau, l'entrelacement
+ci-dessus).
+
+### 3. Roue instantanée — libellés mal orientés et chevauchants
+
+**Trois causes démontrées** (vérification VISUELLE via Playwright,
+Chromium pré-installé, sur une reproduction fidèle de la même logique
+CSS/JS — jamais dans l'app réelle elle-même, l'authentification Discord
+OAuth étant hors de portée de cet environnement) :
+
+1. Décalage de rotation de 90° — chaque libellé était positionné avec un
+   `left` (pointant par défaut vers l'est/3h) puis pivoté de l'angle du
+   secteur en convention `conic-gradient` (0° = nord/midi), sans jamais
+   corriger cet écart de repère.
+2. Trouvé à la vérification visuelle, invisible en relisant seulement le
+   code : même corrigé, la moitié gauche du disque restait tête en bas
+   (une rotation de plus de 90° retourne le texte à l'écran) — +180°
+   supplémentaire pour cette moitié, avec ancrage inversé.
+3. Positionnement en pixels bruts (`sizePx / 2 - 30`) sur un conteneur
+   qui ne s'adaptait jamais à un rendu redimensionné en CSS pur —
+   remplacé par un conteneur responsive (`aspect-square` + `max-width`)
+   et des libellés en pourcentage, avec police et rayon de départ
+   adaptés au nombre de secteurs pour éviter le chevauchement près du
+   centre quand le groupe est nombreux.
+
+Une légende accessible (texte complet, jamais seulement une info-bulle
+au survol — inutilisable au tactile) liste désormais chaque jeu avec sa
+pastille de couleur. La sélection aléatoire (`computeWinningRotation`)
+n'est pas touchée — la correction est purement visuelle, vérifiée à
+2/4/8/16 secteurs, titres longs, et un viewport mobile étroit.
+
+**Tests** : `RouletteWheelDisplay.test.ts` (12 tests, géométrie pure).
+
+### 4. Historique — soirées/tournois terminés depuis 7 jours
+
+Nouvelle fenêtre partagée (`history-visibility.ts`, 7 jours) masquant
+UNIQUEMENT la liste affichée (`/sessions`, `/roulette` onglet
+historique, `/tournois` onglets Terminés/Annulés) — jamais la base
+(statistiques/XP/récompenses/résultats intacts), jamais l'accès direct
+par id. Point de départ dérivé des champs RÉELS du modèle : `date` pour
+les soirées (repli prudent faute de colonne dédiée — toujours postérieur
+ou égal à la fin/annulation réelle, donc jamais masqué trop tôt),
+`Tournament.cancelledAt` pour les annulations, le plus récent
+`TournamentMatch.completedAt` (celui de la finale) pour les tournois
+terminés. Repli prudent (jamais masqué) si aucun horodatage fiable
+n'est trouvé — jamais une date inventée, jamais `updatedAt`.
+
+**Audit fermeture/archivage Discord** (distinct de ce retrait
+d'historique) : les tournois ferment déjà leur fil sur annulation et
+suppression (jamais sur une fin normale — délibéré, discussion
+post-tournoi). Les soirées n'ont AUCUN mécanisme de fermeture de fil, y
+compris à la suppression — déjà documenté comme un choix volontaire
+("suppression = ménage silencieux, jamais un événement Discord") : fils
+privés, votes de superlatifs et échanges post-soirée justifient de ne
+jamais les fermer automatiquement. Aucun oubli démontré nécessitant une
+correction.
+
+**Tests** : `history-visibility.test.ts`, plus les cas ajoutés à
+`sessions.test.ts`/`tournaments.test.ts` (frontière exacte à 7 jours,
+soirée/tournoi du 21 septembre encore visible le 22, repli prudent sans
+horodatage fiable).
+
+### 5. Notifications de tournois — correction des affirmations obsolètes
+
+Les derniers tests réels confirment : sélection des destinataires
+fonctionnelle, annonce reçue, mentions reçues, délai observé d'environ
+une minute. Les sections ci-dessus (#104) documentant "l'état d'envoi
+fidèle"/les mentions/l'absence d'inscription automatique et l'absence de
+reping restent EXACTES et ne sont pas modifiées — seule l'AFFIRMATION
+selon laquelle les tournois n'enverraient aucune notification (obsolète,
+vraie uniquement avant #100/#104) ne doit plus être comprise comme
+l'état actuel : la génération de notifications de tournois EST
+fonctionnelle, confirmée en conditions réelles.
+
+Concernant le délai d'~1 minute : en relisant `notification-executor.ts`
+et `tournament-announce.ts`, aucune attente artificielle n'existe dans
+ce code pour le SEND d'une annonce (`announce` n'a aucune dépendance,
+immédiatement réclamable dès l'enqueue ; `thread` dépend de `announce`
+mais est résolu dans le même passage cron si le budget le permet —
+largement suffisant à l'échelle de ce groupe). L'instrumentation
+`delayMs` déjà ajoutée par #104 (log structuré à chaque livraison
+aboutie, capturé par Vercel Logs) reste le seul moyen de confirmer la
+cause exacte — non consultée ici, cette session n'ayant accès à aucune
+donnée de production. La cadence réelle du cron externe (configurée
+côté Vercel, hors de ce dépôt) est l'hypothèse la plus plausible non
+exclue, jamais affirmée comme prouvée. **Aucun cron ni configuration
+Vercel n'a été modifié dans cette session.**
+
+### Vérifications
+
+`npm run test:postgres` : tous les tests passent (527, aucune
+régression). `npx tsc --noEmit`/`npx eslint .` : clean sur tout le
+dépôt. Vérification VISUELLE de la roue via Playwright (voir section 3)
+— seule vérification "interface" possible dans cet environnement,
+l'app réelle exigeant une authentification Discord OAuth hors de portée
+ici ; limite assumée et documentée plutôt que contournée.
+
+### Procédure de validation manuelle (préparée, non exécutée)
+
+1. Créer une soirée classique avec 1-2 invités → vérifier que le
+   créateur ET les invités accèdent au fil privé une fois synchronisés
+   (voir l'état affiché sur `/sessions/[id]/invites`).
+2. Créer une soirée via la roulette avec plusieurs participants → même
+   vérification.
+3. Retirer un invité qui a désactivé ses notifications SESSION →
+   vérifier qu'il perd l'accès malgré ses préférences (accès ≠ ping).
+4. Créer un tournoi non démarré, le supprimer en double-cliquant vite
+   sur "Oui, supprimer" → vérifier une redirection propre vers
+   `/tournois`, jamais de page bloquée.
+5. Lancer une roulette instantanée à 2, 8 puis 16 jeux → vérifier que
+   tous les libellés sont lisibles, dans leur secteur, jamais tête en
+   bas ni chevauchants.
+6. Vérifier qu'une soirée/un tournoi terminé il y a plus d'une semaine
+   n'apparaît plus dans l'historique, mais reste accessible par son lien
+   direct et compte toujours dans les statistiques/XP.
+
+**Aucun envoi Discord réel, aucune modification de données de
+production, aucune migration distante, aucune suppression d'ancienne
+annonce, aucun merge ni changement de configuration externe n'a été
+effectué dans cette session.**

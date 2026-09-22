@@ -91,7 +91,7 @@ describe("cancelTournamentAction / deleteTournamentAction", () => {
 
   it("deleteTournamentAction : refuse sans session utilisateur", async () => {
     getCurrentUser.mockResolvedValue(null);
-    await expect(deleteTournamentAction(formData("t1"))).rejects.toThrow("REDIRECT:/");
+    await expect(deleteTournamentAction({ error: null }, formData("t1"))).rejects.toThrow("REDIRECT:/");
     expect(deleteTournament).not.toHaveBeenCalled();
   });
 
@@ -99,16 +99,29 @@ describe("cancelTournamentAction / deleteTournamentAction", () => {
     getCurrentUser.mockResolvedValue({ id: "createur-1" });
     deleteTournament.mockResolvedValue({ ok: true });
 
-    await expect(deleteTournamentAction(formData("tournoi-1"))).rejects.toThrow("REDIRECT:/tournois");
+    await expect(deleteTournamentAction({ error: null }, formData("tournoi-1"))).rejects.toThrow(
+      "REDIRECT:/tournois"
+    );
     expect(deleteTournament).toHaveBeenCalledWith("tournoi-1", "createur-1");
   });
 
-  it("deleteTournamentAction : échec — jamais de redirection (le créateur reste sur la page pour voir pourquoi)", async () => {
+  it("deleteTournamentAction : échec — jamais de redirection, un message d'erreur COMPRÉHENSIBLE est renvoyé au lieu de rien faire silencieusement", async () => {
     getCurrentUser.mockResolvedValue({ id: "pas-le-createur" });
     deleteTournament.mockResolvedValue({ ok: false, reason: "not_creator" });
 
-    await deleteTournamentAction(formData("tournoi-1"));
+    const state = await deleteTournamentAction({ error: null }, formData("tournoi-1"));
 
     expect(redirect).not.toHaveBeenCalled();
+    expect(state.error).toBe("Seul le créateur du tournoi peut le supprimer.");
+  });
+
+  it("deleteTournamentAction : échec sans raison (course perdue dans la transaction) — message générique, jamais un crash", async () => {
+    getCurrentUser.mockResolvedValue({ id: "createur-1" });
+    deleteTournament.mockResolvedValue({ ok: false });
+
+    const state = await deleteTournamentAction({ error: null }, formData("tournoi-1"));
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(state.error).toBeTruthy();
   });
 });
