@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
 import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import {
   createNotificationEvent,
   enqueueDelivery,
@@ -55,35 +57,50 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  * une ancienne annonce avec un nouveau salon : le message édité/le fil
  * créé cible toujours exactement le salon où l'annonce existe réellement.
  *
- * Trois rôles de `targetSlot`,
+ * Quatre rôles de `targetSlot`,
  * chacun une ligne `NotificationDelivery` distincte (voir
  * `notification-delivery.ts`) :
  *   - `announce` — SEND une fois à la création (inscriptions ouvertes),
  *     puis une EDIT à chaque changement d'état ultérieur pertinent
- *     (lancement du bracket, clôture) — TOUJOURS rendue depuis l'état
- *     COURANT du tournoi en base au moment où l'EDIT est réellement
- *     traitée, jamais depuis un texte figé à l'enqueue (même garantie que
- *     `session-announce.ts`, voir son commentaire de fichier).
+ *     (lancement du bracket, clôture, annulation, suppression) — TOUJOURS
+ *     rendue depuis l'état COURANT du tournoi en base au moment où la
+ *     livraison est réellement traitée, jamais depuis un texte figé à
+ *     l'enqueue (même garantie que `session-announce.ts`, voir son
+ *     commentaire de fichier).
  *   - `thread` — SEND une fois, crée le fil à partir du message d'annonce ;
  *     dépend explicitement que `announce` soit `SENT` (résolu ici, PAS
  *     automatiquement par `claimNextDelivery`, qui ne résout que les
  *     dépendances SUR LE MÊME `targetSlot`).
  *   - `thread-summary` — SEND, résumé (champion/finaliste/demi-finalistes)
  *     posté DANS le fil à la clôture ; dépend que `thread` soit `SENT`.
+ *   - `thread-close` — SEND (occurrence fixe, V2 annulation/suppression),
+ *     archive le fil sur annulation/suppression — voir `resolveThreadClose`
+ *     ci-dessous pour pourquoi ce rôle ne dépend JAMAIS de l'état du
+ *     tournoi lui-même (contrairement aux trois autres), seulement de la
+ *     référence du fil déjà persistée.
  *
  * Pas de rappels (contrairement aux soirées, F7) — aucune notion de
  * rappel n'existe pour les tournois dans le produit actuel, hors périmètre
- * de cette PR (aucune règle de tournoi inventée). Pas de mentions
- * personnelles non plus (spec §5) : ce module ne mentionne JAMAIS
- * personne, `allowedMentions` explicitement vide (`parse: []`, aucun
- * `users`/`roles`) sur TOUS les messages envoyés/édités ici — les noms de
- * participants apparaissent en texte brut uniquement (jamais `<@id>`).
- * Aucune notification interne (`createNotifications`) : le chemin webhook
- * actuel n'en écrit aucune pour les tournois (vérifié, `tournaments.ts`/
- * `src/app/tournois/actions.ts` n'importent pas `createNotifications`),
- * donc ce module n'en invente pas non plus — jamais une sollicitation
- * personnelle nouvelle (spec §5, interdiction explicite de simuler une
- * préférence TOURNAMENT en réutilisant SESSION/ROULETTE).
+ * de ce chantier (aucune règle de tournoi inventée au-delà de ce qui est
+ * demandé).
+ *
+ * **Mentions (V2, notifications maîtrisées)** — LE SEUL message qui
+ * mentionne jamais quelqu'un est le SEND initial de `announce` (ouverture
+ * des inscriptions), et UNIQUEMENT les destinataires explicitement
+ * sélectionnés par le créateur au formulaire (`Tournament.notifiedUserIds`,
+ * même contrat que `Session.notifiedUserIds`) ET encore éligibles à ce
+ * moment-là (préférence `TOURNAMENT` relue au traitement RÉEL, jamais à
+ * l'enqueue — voir `resolveEligibleTournamentMentions`). TOUTES les autres
+ * livraisons (EDIT de l'annonce — lancement/clôture/annulation/suppression
+ * —, résumé de fil, fermeture de fil) restent `allowedMentions: {parse:
+ * []}` STRICT, sans exception : ne jamais re-solliciter personne pour une
+ * mise à jour, une inscription, une désinscription ou un compteur — les
+ * noms de participants continuent d'apparaître en texte brut uniquement
+ * dans ces messages-là (jamais `<@id>`). Aucune notification interne
+ * (`createNotifications`) n'est écrite par ce module, avant comme
+ * maintenant : seule la mention Discord elle-même est ajoutée par ce
+ * chantier, jamais une notification bell interne (hors périmètre explicite
+ * de la demande).
  */
 
 const GUILD_SLOT_PREFIX = "default-guild";
@@ -96,6 +113,9 @@ function threadSlot(tournamentId: string): string {
 }
 function threadSummarySlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-summary`;
+}
+function threadCloseSlot(tournamentId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-close`;
 }
 
 /** Jamais de mention sur ce chantier — aucun `users`/`roles`, voir le
@@ -222,6 +242,91 @@ export async function enqueueTournamentResultThreadSummary(
   );
 }
 
+/**
+ * SEND une fois (occurrence fixe, V2 annulation/suppression) — ferme
+ * (archive) le fil du tournoi. Appelée par `cancelTournament`/
+ * `deleteTournament` (src/lib/tournaments.ts), TOUJOURS accompagnée d'un
+ * `enqueueTournamentAnnounceUpdate` dans la même transaction (l'annonce et
+ * le fil sont deux messages distincts, deux livraisons indépendantes,
+ * même découpage que partout ailleurs dans ce module) — jamais appelée
+ * seule.
+ *
+ * Occurrence FIXE (jamais aléatoire) : un tournoi n'est annulé/supprimé
+ * qu'UNE SEULE FOIS (transition d'état à sens unique, réclamée par
+ * `updateMany`/verrou `FOR UPDATE`, voir `tournaments.ts`) — un appel
+ * répété par retry applicatif doit retomber sur la MÊME livraison, jamais
+ * en créer une seconde.
+ *
+ * `db` optionnel — même contrat que ci-dessus.
+ */
+export async function enqueueTournamentThreadClose(
+  tournamentId: string,
+  db?: NotificationDb
+): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_REMOVED", sourceId: tournamentId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadCloseSlot(tournamentId),
+    },
+    db
+  );
+}
+
+/**
+ * Utilisé par `deleteTournament` (tournaments.ts) pour décider, AVANT de
+ * supprimer la ligne `Tournament`, si son annonce a RÉELLEMENT déjà été
+ * postée — seul ce cas nécessite d'éditer le message existant ("supprimé")
+ * et de fermer le fil avant de perdre toute trace du tournoi ; si rien n'a
+ * encore été envoyé, la suppression seule suffit (voir le commentaire de
+ * `resolveAnnounceDelivery` : un SEND encore PENDING se refuse lui-même,
+ * `expired`, dès qu'il constate que le tournoi a disparu).
+ */
+export async function isTournamentAnnounceSent(tournamentId: string, db: NotificationDb = prisma): Promise<boolean> {
+  const sent = await db.notificationDelivery.findFirst({
+    where: { targetSlot: announceSlot(tournamentId), operation: "SEND", status: "SENT" },
+    select: { id: true },
+  });
+  return sent !== null;
+}
+
+/**
+ * État d'envoi de l'annonce/du fil d'un tournoi — pour l'affichage créateur
+ * (`/tournois/[id]`), jamais présenté comme instantané : lit l'état RÉEL
+ * de la dernière livraison SEND connue sur chaque rôle (`pending` par
+ * défaut — aucune livraison connue, ou encore PENDING/RESERVED/RETRYING —
+ * jamais `"sent"` par optimisme, et jamais `"failed"` pour un simple envoi
+ * différé qui n'a pas encore eu lieu).
+ */
+export interface TournamentAnnounceStatus {
+  announce: "pending" | "sent" | "failed";
+  thread: "pending" | "sent" | "failed";
+}
+
+export async function getTournamentAnnounceStatus(tournamentId: string): Promise<TournamentAnnounceStatus> {
+  const slots = [announceSlot(tournamentId), threadSlot(tournamentId)];
+  const rows = await prisma.notificationDelivery.findMany({
+    where: { targetSlot: { in: slots }, operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { targetSlot: true, status: true },
+  });
+  function statusFor(slot: string): "pending" | "sent" | "failed" {
+    const row = rows.find((r) => r.targetSlot === slot);
+    if (!row) return "pending";
+    if (row.status === "SENT") return "sent";
+    if (row.status === "FAILED") return "failed";
+    return "pending";
+  }
+  return { announce: statusFor(slots[0]), thread: statusFor(slots[1]) };
+}
+
 /* -------------------------------------------------------------------- */
 /* Résolution — appelée par l'exécuteur (#97), jamais directement        */
 /* -------------------------------------------------------------------- */
@@ -247,20 +352,51 @@ function absoluteTournamentUrl(tournamentId: string): string {
 
 interface AnnounceRendering {
   embed: DiscordRestEmbed;
+  /** Potes à mentionner dans le CONTENU du message (hors embed) — non
+   * `null` UNIQUEMENT pour le tout premier SEND (ouverture des
+   * inscriptions), toujours `null` pour toute EDIT (relancement, clôture,
+   * annulation, suppression) ou pour le rendu "générique" d'un tournoi
+   * supprimé — voir `resolveAnnounceDelivery`. */
+  candidateMentionIds: string[] | null;
 }
 
 /**
  * Rend l'annonce depuis l'état ACTUEL du tournoi, pour le SEND initial ET
  * pour toute EDIT ultérieure — jamais depuis un texte figé au moment de
  * l'enqueue (même garantie que `resolveAnnounceRendering`,
- * session-announce.ts). Couvre les 3 états observables du modèle
- * (`TournamentStatus` n'a pas d'état `CANCELLED` — aucune annulation de
- * tournoi n'existe dans le produit actuel, voir le commentaire de fichier
- * : REGISTRATION (inscriptions ouvertes), IN_PROGRESS (bracket lancé),
- * DONE (champion connu).
+ * session-announce.ts). Couvre les 4 états observables du modèle
+ * (REGISTRATION, IN_PROGRESS, DONE, CANCELLED — V2), PLUS le cas où le
+ * tournoi a été SUPPRIMÉ (ligne disparue, `tournament === null`) : ce
+ * dernier cas est le SEUL de tout ce module qui rend un contenu générique,
+ * indépendant de toute donnée du tournoi (par nécessité — la ligne n'existe
+ * plus au moment où cette EDIT est réellement traitée, voir le commentaire
+ * de `resolveAnnounceDelivery` et de `deleteTournament`, tournaments.ts).
  */
-function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches): AnnounceRendering {
+function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches | null): AnnounceRendering {
+  if (!tournament) {
+    return {
+      embed: {
+        title: "🏆 Tournoi supprimé",
+        description: "Ce tournoi a été supprimé par son créateur.",
+        color: 0xef4444,
+      },
+      candidateMentionIds: null,
+    };
+  }
+
   const url = absoluteTournamentUrl(tournament.id);
+
+  if (tournament.status === "CANCELLED") {
+    return {
+      embed: {
+        title: `🏆 Tournoi ${tournament.name} — annulé`,
+        description: `Sur ${tournament.game.name} — annulé par son créateur. Les matchs déjà joués restent visibles.`,
+        color: 0xef4444,
+        fields: [{ name: "Détails", value: url }],
+      },
+      candidateMentionIds: null,
+    };
+  }
 
   if (tournament.status === "DONE") {
     return {
@@ -273,6 +409,7 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches): 
           { name: "Lien", value: url },
         ],
       },
+      candidateMentionIds: null,
     };
   }
 
@@ -289,10 +426,16 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches): 
           { name: "Lien", value: url },
         ],
       },
+      candidateMentionIds: null,
     };
   }
 
-  // REGISTRATION — création, ou inscriptions toujours ouvertes.
+  // REGISTRATION — création, ou inscriptions toujours ouvertes. Seul état
+  // qui mentionne jamais quelqu'un (SEND initial uniquement — voir
+  // `resolveAnnounceDelivery`, une EDIT ultérieure repasse ici tant que le
+  // tournoi reste en REGISTRATION, ex. correction rare, mais ne mentionne
+  // jamais elle non plus : c'est `resolveAnnounceDelivery`, pas cette
+  // fonction, qui décide QUAND ce champ est effectivement utilisé).
   return {
     embed: {
       title: `🏆 Tournoi ${tournament.name} — inscriptions ouvertes`,
@@ -307,14 +450,55 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches): 
         { name: "Lien", value: url },
       ],
     },
+    candidateMentionIds: resolveNotifiedUserIds(tournament.notifiedUserIds),
   };
 }
 
-/** Contenu commun aux 3 rôles — jamais de mention, jamais de texte visible
- * hors embed (chaque rôle porte toute son information dans l'embed,
- * contrairement au rappel de soirée qui n'a pas d'équivalent ici). */
-function buildMessageContent(embed: DiscordRestEmbed): ResolvedMessageContent {
-  return { embeds: [embed], allowedMentions: NO_MENTIONS };
+/**
+ * Potes réellement mentionnés au SEND initial — croise la sélection du
+ * créateur (`candidateMentionIds`, déjà une liste d'ids VALIDÉS contre de
+ * vrais users par `createTournamentAction`, jamais relus ici) avec la
+ * préférence `TOURNAMENT` relue au traitement RÉEL (jamais à l'enqueue,
+ * même garantie que #98/#99) : un opt-out posé APRÈS l'enqueue mais AVANT
+ * le SEND retire quand même la mention. `null` (aucune restriction —
+ * tournoi créé avant cette colonne) traité comme "personne à mentionner",
+ * jamais "tout le monde" : contrairement aux soirées, il n'existe aucune
+ * notion de "liste de potes du groupe" à consulter par défaut ici, seule
+ * la sélection explicite du créateur compte.
+ */
+async function resolveEligibleTournamentMentions(
+  candidateMentionIds: string[]
+): Promise<{ id: string; discordId: string; silenceReminders: boolean }[]> {
+  if (candidateMentionIds.length === 0) return [];
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: candidateMentionIds } },
+    select: { id: true, discordId: true, silenceReminders: true },
+  });
+  return filterUsersByNotificationPreference(candidates, "TOURNAMENT");
+}
+
+function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
+  return { text: users.map((u) => `<@${u.discordId}>`).join(" "), userIds: users.map((u) => u.discordId) };
+}
+
+/** Contenu commun à la plupart des rôles — jamais de mention (embed
+ * uniquement) SAUF pour le SEND initial de `announce`, seul appelant à
+ * fournir `mentionedUsers` non vide (voir `resolveAnnounceDelivery`). */
+function buildMessageContent(embed: DiscordRestEmbed, mentionedUsers: { discordId: string }[] = []): ResolvedMessageContent {
+  if (mentionedUsers.length === 0) {
+    return { embeds: [embed], allowedMentions: NO_MENTIONS };
+  }
+  const { text, userIds } = mentionContent(mentionedUsers);
+  return {
+    content: text,
+    embeds: [embed],
+    // Liste EXPLICITE d'ids (`users`), jamais `parse: ["users"]` — exclut
+    // structurellement tout autre `<@id>` qui apparaîtrait par accident
+    // dans le texte (ex. un nom de tournoi ressemblant à une mention) :
+    // seuls CES ids précis peuvent notifier, jamais `@everyone`/`@here`/un
+    // rôle (`NO_MENTIONS`/`parse: []` de base, jamais élargi).
+    allowedMentions: { ...NO_MENTIONS, users: userIds },
+  };
 }
 
 async function findSentDelivery(targetSlot: string) {
@@ -326,10 +510,17 @@ async function findSentDelivery(targetSlot: string) {
 
 /**
  * Résolveur TOURNAMENT — dispatché par le rôle terminal du `targetSlot`
- * (`announce`/`thread`/`thread-summary`), même structure que
- * `sessionAnnounceResolver` (chaque dépendance inter-`targetSlot` est
+ * (`announce`/`thread`/`thread-summary`/`thread-close`), même structure
+ * que `sessionAnnounceResolver` (chaque dépendance inter-`targetSlot` est
  * vérifiée ICI explicitement, `claimNextDelivery` ne la résout jamais
  * automatiquement pour des cibles DIFFÉRENTES).
+ *
+ * `thread-close` est traité AVANT le chargement du tournoi, et l'EDIT de
+ * `announce` tolère explicitement un tournoi introuvable (ligne
+ * supprimée) — les DEUX seuls cas de ce résolveur qui n'exigent PAS que
+ * le tournoi existe encore, voir `resolveThreadClose`/
+ * `resolveAnnounceDelivery` pour le raisonnement complet (V2, annulation/
+ * suppression).
  */
 export const tournamentAnnounceResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
@@ -341,16 +532,34 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     if (!getTournamentAnnounceConfig()) return { eligible: false, reason: "not_configured" };
 
     const tournamentId = event.sourceId;
-    const tournament = await loadTournament(tournamentId);
-    if (!tournament) return { eligible: false, reason: "expired" };
-
     const role = delivery.targetSlot.split(":").slice(3).join(":");
 
-    if (role === "announce") {
-      return resolveAnnounceDelivery(delivery, tournament);
+    if (role === "thread-close") {
+      return resolveThreadClose(tournamentId);
     }
+
+    const tournament = await loadTournament(tournamentId);
+
+    if (role === "announce") {
+      if (!tournament) {
+        // Tournoi supprimé entre l'enqueue et le traitement — un SEND n'a
+        // plus rien à annoncer (`expired`, jamais une invitation tardive à
+        // rejoindre un tournoi qui n'existe plus). Une EDIT, en revanche,
+        // doit encore pouvoir dire "supprimé" sur le message déjà publié
+        // (voir `deleteTournament`, tournaments.ts, et le rendu générique
+        // de `resolveTournamentAnnounceRendering`) — c'est le SEUL rôle de
+        // ce module qui continue d'être traité après la disparition du
+        // tournoi.
+        if (delivery.operation !== "EDIT") return { eligible: false, reason: "expired" };
+        return resolveAnnounceDelivery(delivery, tournamentId, null);
+      }
+      return resolveAnnounceDelivery(delivery, tournamentId, tournament);
+    }
+
+    if (!tournament) return { eligible: false, reason: "expired" };
+
     if (role === "thread") {
-      return resolveThreadCreation(tournamentId);
+      return resolveThreadCreation(tournamentId, tournament);
     }
     if (role === "thread-summary") {
       return resolveThreadSummary(tournamentId, tournament);
@@ -365,11 +574,28 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
 
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
-  tournament: TournamentWithMatches
+  tournamentId: string,
+  tournament: TournamentWithMatches | null
 ): Promise<Resolution> {
   const rendering = resolveTournamentAnnounceRendering(tournament);
 
   if (delivery.operation === "SEND") {
+    // Structurellement non-null ici : le dispatcher refuse déjà tout SEND
+    // sans tournoi (`expired`) avant d'appeler cette fonction — garde
+    // défensive uniquement.
+    if (!tournament) return { eligible: false, reason: "expired" };
+
+    if (tournament.status === "CANCELLED") {
+      // Annulé avant même le tout premier envoi (course créateur —
+      // possible seulement pour un tournoi passé directement de
+      // REGISTRATION à... non, `cancelTournament` exige IN_PROGRESS ; ce
+      // cas ne devrait donc jamais survenir en pratique pour un SEND
+      // encore PENDING, gardé en défense structurelle si l'invariant
+      // changeait un jour) : jamais une invitation tardive à rejoindre un
+      // tournoi qui n'accepte plus d'inscriptions.
+      return { eligible: false, reason: "expired" };
+    }
+
     // Destination PERSISTÉE (figée à la création, voir le commentaire de
     // fichier), jamais la config live — et jamais null pour un tournoi
     // `announceViaBot: true` (les deux colonnes sont posées ENSEMBLE avec
@@ -384,11 +610,19 @@ async function resolveAnnounceDelivery(
       );
       return { eligible: false, reason: "not_configured" };
     }
+
+    // Mentions (V2) — UNIQUEMENT sur ce tout premier SEND, jamais sur une
+    // EDIT. Relit la préférence TOURNAMENT MAINTENANT (traitement réel),
+    // jamais un instantané figé à l'enqueue.
+    const mentioned = rendering.candidateMentionIds
+      ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds)
+      : [];
+
     const action: ResolvedAction = {
       kind: "send_channel_message_verified",
       channelId: tournament.discordChannelId,
       guildId: tournament.discordGuildId,
-      message: buildMessageContent(rendering.embed),
+      message: buildMessageContent(rendering.embed, mentioned),
     };
     return { eligible: true, action };
   }
@@ -398,7 +632,11 @@ async function resolveAnnounceDelivery(
   // sur le tournoi ni la config live : c'est cette référence, et elle
   // seule, qui garantit qu'une EDIT ne peut jamais recombiner l'ancienne
   // annonce avec un salon différent (voir le commentaire de fichier).
-  const sent = await findSentDelivery(announceSlot(tournament.id));
+  // Fonctionne À L'IDENTIQUE que le tournoi existe encore ou non
+  // (`tournamentId` passé explicitement, jamais dérivé de `tournament`,
+  // qui peut être `null` ici — voir le dispatcher) : `announceSlot` ne
+  // dépend que de l'id, jamais d'une lecture de la ligne `Tournament`.
+  const sent = await findSentDelivery(announceSlot(tournamentId));
   if (!sent?.discordMessageId || !sent.discordChannelId) {
     return { eligible: false, reason: "dependency_not_ready" };
   }
@@ -412,7 +650,16 @@ async function resolveAnnounceDelivery(
   return { eligible: true, action };
 }
 
-async function resolveThreadCreation(tournamentId: string): Promise<Resolution> {
+async function resolveThreadCreation(tournamentId: string, tournament: TournamentWithMatches): Promise<Resolution> {
+  if (tournament.status === "CANCELLED") {
+    // Même raisonnement que le SEND de l'annonce ci-dessus (garde
+    // structurelle, ne devrait pas survenir en pratique pour un `thread`
+    // encore PENDING vu que `cancelTournament` exige IN_PROGRESS, donc
+    // `announce` déjà SENT depuis longtemps) : jamais de fil créé pour un
+    // tournoi qui n'existe plus vraiment.
+    return { eligible: false, reason: "expired" };
+  }
+
   // Même garantie que l'EDIT ci-dessus : le fil est créé DANS le salon où
   // l'annonce a RÉELLEMENT été postée (référence persistée sur la
   // livraison SEND finalisée), jamais depuis une config relue.
@@ -428,6 +675,41 @@ async function resolveThreadCreation(tournamentId: string): Promise<Resolution> 
     name: `Tournoi — ${tournamentId.slice(0, 8)}`,
   };
   return { eligible: true, action };
+}
+
+/**
+ * Ferme (archive) le fil — V2 annulation/suppression. Ne dépend QUE de la
+ * référence du fil déjà persistée (`thread` SENT), JAMAIS de l'état actuel
+ * du tournoi : contrairement à `announce`/`thread`/`thread-summary`, cette
+ * livraison doit continuer à fonctionner même après la SUPPRESSION du
+ * tournoi (ligne disparue) — sa seule mission est de fermer un fil
+ * Discord qui existe peut-être encore, indépendamment de ce qu'il reste
+ * en base de l'entité qui l'a créé.
+ *
+ * Relit l'état ACTUEL (jamais figé) de la livraison "thread" elle-même
+ * pour décider : SENT → archive le fil réel ; encore PENDING/RESERVED →
+ * pas encore tranché, attend (`dependency_not_ready`, le fil pourrait
+ * encore se créer OU se refuser juste après, selon l'état du tournoi
+ * relu PAR CETTE livraison-là au moment où elle sera traitée) ; FAILED/
+ * SKIPPED/jamais enqueue → le fil ne sera jamais créé, rien à fermer
+ * (`expired`, définitif).
+ */
+async function resolveThreadClose(tournamentId: string): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(tournamentId));
+  if (thread?.discordThreadId) {
+    const action: ResolvedAction = { kind: "archive_thread", threadId: thread.discordThreadId, locked: false };
+    return { eligible: true, action };
+  }
+
+  const threadSend = await prisma.notificationDelivery.findFirst({
+    where: { targetSlot: threadSlot(tournamentId), operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { status: true },
+  });
+  if (threadSend && (threadSend.status === "PENDING" || threadSend.status === "RESERVED")) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+  return { eligible: false, reason: "expired" };
 }
 
 async function resolveThreadSummary(

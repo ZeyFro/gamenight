@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { LocalGameOption } from "@/lib/game-search";
+import { NotifyRecipientsField, type NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { TournamentGameField, type SelectedGame } from "./TournamentGameField";
 import { createTournamentAction } from "@/app/tournois/actions";
 
@@ -15,8 +16,24 @@ import { createTournamentAction } from "@/app/tournois/actions";
  * + PR lien Discord) n'est PAS modifiée : elle reçoit toujours un `gameId`
  * dans `formData`, exactement comme avec l'ancien `<select>` — seule la
  * façon de le renseigner change.
+ *
+ * V2 (notifications maîtrisées) — `NotifyRecipientsField` (déjà utilisé
+ * pour les soirées/roulettes) réutilisé tel quel pour choisir qui
+ * mentionner Discord à l'ouverture des inscriptions : ces potes ne sont NI
+ * inscrits automatiquement NI seuls autorisés à voir/rejoindre le tournoi
+ * (contrairement aux soirées, un tournoi reste ouvert à tous selon les
+ * règles d'accès actuelles) — uniquement une liste de personnes à
+ * prévenir. Aucune pré-sélection par défaut n'est modifiée par ce champ :
+ * `NotifyRecipientsField` coche déjà tout le monde par défaut, décocher
+ * reste l'action volontaire.
  */
-export function TournamentCreateForm({ localGames }: { localGames: LocalGameOption[] }) {
+export function TournamentCreateForm({
+  localGames,
+  potes,
+}: {
+  localGames: LocalGameOption[];
+  potes: NotifyRecipientCandidate[];
+}) {
   const [selected, setSelected] = useState<SelectedGame | null>(null);
 
   return (
@@ -58,6 +75,18 @@ export function TournamentCreateForm({ localGames }: { localGames: LocalGameOpti
           ))}
         </div>
       </div>
+
+      {potes.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3">
+          <NotifyRecipientsField potes={potes} label="Qui prévenir de l'ouverture des inscriptions ?" />
+          <p className="text-xs text-faint">
+            Les potes cochés reçoivent une mention Discord dans l&apos;annonce du tournoi (si le
+            bot Discord est configuré) — ils ne sont ni inscrits automatiquement, ni seuls
+            autorisés à voir ou rejoindre le tournoi : n&apos;importe qui peut consulter et
+            s&apos;inscrire tant que les places sont ouvertes.
+          </p>
+        </div>
+      )}
 
       <Button type="submit" variant="primary" fullWidthOnMobile disabled={!selected}>
         Créer le tournoi 🏆

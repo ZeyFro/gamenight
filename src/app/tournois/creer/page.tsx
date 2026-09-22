@@ -5,6 +5,7 @@ import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { Card } from "@/components/ui/Card";
 import { TournamentCreateForm } from "@/components/tournois/TournamentCreateForm";
+import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
@@ -31,6 +32,18 @@ export default async function CreerTournoiPage({
     orderBy: { name: "asc" },
   });
 
+  // V2 (notifications maîtrisées) — potes pouvant être mentionnés à
+  // l'ouverture des inscriptions, même source que `NotifyRecipientsField`
+  // pour les soirées (`/sessions`). Pas de regroupement par tag ici
+  // (`tagIds: []`) : non demandé pour les tournois, `NotifyRecipientsField`
+  // masque déjà les chips de tag quand la liste est vide.
+  const potesRaw = await prisma.user.findMany({
+    where: { id: { not: user.id } },
+    select: { id: true, discordName: true, discordAvatar: true, color: true },
+    orderBy: { discordName: "asc" },
+  });
+  const potes: NotifyRecipientCandidate[] = potesRaw.map((p) => ({ ...p, tagIds: [] }));
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🏆 Créer un tournoi</h1>
@@ -40,7 +53,7 @@ export default async function CreerTournoiPage({
       )}
 
       <Card>
-        <TournamentCreateForm localGames={games} />
+        <TournamentCreateForm localGames={games} potes={potes} />
       </Card>
     </div>
   );

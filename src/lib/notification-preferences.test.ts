@@ -55,7 +55,10 @@ describe("notification-preferences", () => {
   it("valide uniquement les catégories réellement opérationnelles", () => {
     expect(isAvailableNotificationCategory("SESSION")).toBe(true);
     expect(isAvailableNotificationCategory("ROULETTE")).toBe(true);
-    expect(isAvailableNotificationCategory("TOURNAMENT")).toBe(false);
+    // V2 (tournois) — mentions désormais réellement appliquées par
+    // tournament-announce.ts (SEND initial), donc proposée comme les deux
+    // autres depuis ce chantier.
+    expect(isAvailableNotificationCategory("TOURNAMENT")).toBe(true);
     expect(isAvailableNotificationCategory("__proto__")).toBe(false);
   });
 
@@ -96,5 +99,20 @@ describe("notification-preferences", () => {
     await setOwnNotificationPreference("session-user", "ROULETTE", true);
     expect(upsert).toHaveBeenCalledOnce();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("V2 — rend les tournois indépendants sans modifier silenceReminders (même traitement que ROULETTE)", async () => {
+    await setOwnNotificationPreference("session-user", "TOURNAMENT", false);
+    expect(upsert).toHaveBeenCalledWith({
+      where: { userId_category: { userId: "session-user", category: "TOURNAMENT" } },
+      create: { userId: "session-user", category: "TOURNAMENT", enabled: false },
+      update: { enabled: false },
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("V2 — sans ligne catégorielle TOURNAMENT, conserve exactement silenceReminders (même repli que SESSION/ROULETTE)", () => {
+    expect(isPersonalNotificationEnabled({ silenceReminders: true }, "TOURNAMENT")).toBe(false);
+    expect(isPersonalNotificationEnabled({ silenceReminders: false }, "TOURNAMENT")).toBe(true);
   });
 });

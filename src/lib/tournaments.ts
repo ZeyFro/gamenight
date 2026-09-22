@@ -9,6 +9,8 @@ import { logger } from "@/lib/logger";
 import {
   enqueueTournamentAnnounceUpdate,
   enqueueTournamentResultThreadSummary,
+  enqueueTournamentThreadClose,
+  isTournamentAnnounceSent,
 } from "@/lib/tournament-announce";
 
 /**
@@ -91,10 +93,21 @@ async function advanceWinner(
   announceViaBot: boolean
 ): Promise<{ tournamentFinalized: boolean }> {
   if (round >= totalRounds) {
-    await tx.tournament.update({
-      where: { id: tournamentId },
+    // Revue ciblée V2 (courses annulation/clôture) — CONDITIONNÉ sur
+    // `status: "IN_PROGRESS"` (`updateMany`, même claim que
+    // `cancelTournament`), jamais un `update` inconditionnel : sans ce
+    // garde, une annulation (`cancelTournament`) commitée exactement entre
+    // le claim du dernier match (juste au-dessus, DANS cette même
+    // transaction) et cette écriture serait silencieusement écrasée —
+    // le tournoi redeviendrait DONE malgré l'annulation. Le match reste
+    // tranché dans tous les cas (déjà committé, résultat jamais perdu),
+    // seule la transition `DONE` (et ses effets : annonce/résumé/XP/
+    // badges) est retenue si l'annulation n'a pas gagné la course.
+    const claim = await tx.tournament.updateMany({
+      where: { id: tournamentId, status: "IN_PROGRESS" },
       data: { status: "DONE", championId: winnerId },
     });
+    if (claim.count !== 1) return { tournamentFinalized: false };
     // Chantier annonces tournois (étend #99) — enqueue DANS CETTE MÊME
     // TRANSACTION (même raisonnement que `claimSessionCloseWithAnnounce`,
     // src/lib/sessions.ts) : un crash entre l'écriture `status: DONE` et
@@ -464,4 +477,122 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
   } catch (error) {
     logger.error("tournaments", error, { tournamentId, championId, effect: "finalization" });
   }
+}
+
+export interface CancelTournamentResult {
+  ok: boolean;
+  reason?: "not_found" | "not_creator" | "not_in_progress";
+}
+
+/**
+ * Annulation (V2) — réservée à un tournoi DÉMARRÉ (`IN_PROGRESS`, jamais
+ * `REGISTRATION` — voir `deleteTournament` pour ce cas — ni `DONE`, dont
+ * l'historique n'est jamais annulable a posteriori). Préserve
+ * INTÉGRALEMENT `TournamentMatch`/`TournamentParticipant` : seule la
+ * progression s'arrête (`status: CANCELLED`), aucune donnée retirée.
+ * Aucun bypass administrateur implicite : seul `createdById === actorUserId`
+ * autorise l'appel, vérifié ici, jamais délégué.
+ *
+ * Réclamée par `updateMany` conditionné sur `status: IN_PROGRESS` (même
+ * pattern que `claimSessionClose`/`declareWinner`) : un double clic ou une
+ * course avec la résolution du dernier match (`declareWinner` faisant
+ * passer le tournoi à `DONE` au même instant) ne peut jamais aboutir aux
+ * deux — l'un des deux appels trouve `count !== 1` et s'arrête sans rien
+ * avoir touché.
+ *
+ * Effets Discord (EDIT "annulé" + fermeture du fil) enqueue-és DANS LA
+ * MÊME TRANSACTION que le claim — même raisonnement que partout ailleurs
+ * dans ce fichier (`buildBracketInTransaction`/`advanceWinner`) : un crash
+ * entre les deux ne laisse jamais un tournoi annulé en base sans que son
+ * annonce ne soit jamais mise à jour.
+ */
+export async function cancelTournament(tournamentId: string, actorUserId: string): Promise<CancelTournamentResult> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { createdById: true, status: true, announceViaBot: true },
+  });
+  if (!tournament) return { ok: false, reason: "not_found" };
+  if (tournament.createdById !== actorUserId) return { ok: false, reason: "not_creator" };
+  if (tournament.status !== "IN_PROGRESS") return { ok: false, reason: "not_in_progress" };
+
+  let claimed = false;
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.tournament.updateMany({
+      where: { id: tournamentId, status: "IN_PROGRESS" },
+      data: { status: "CANCELLED", cancelledAt: wallClockNow() },
+    });
+    if (claim.count !== 1) return; // course perdue — déjà DONE ou déjà annulé entre-temps
+
+    claimed = true;
+    if (tournament.announceViaBot) {
+      await enqueueTournamentAnnounceUpdate(tournamentId, tx);
+      await enqueueTournamentThreadClose(tournamentId, tx);
+    }
+  });
+
+  return { ok: claimed };
+}
+
+export interface DeleteTournamentResult {
+  ok: boolean;
+  reason?: "not_found" | "not_creator" | "not_registration";
+}
+
+/**
+ * Suppression (V2) — réservée à un tournoi NON démarré (`REGISTRATION`
+ * strictement — un tournoi `IN_PROGRESS` ou `DONE` s'annule ou se
+ * conserve, ne se supprime jamais, voir `cancelTournament`). Rien à
+ * préserver dans ce statut (`TournamentMatch` n'existe pas encore) :
+ * suppression RÉELLE de la ligne (cascade `TournamentParticipant`, voir
+ * `onDelete: Cascade` du modèle) — pas de statut "supprimé" à conserver.
+ * Aucun bypass administrateur implicite, même garantie que
+ * `cancelTournament`.
+ *
+ * Verrouille D'ABORD la ligne `Tournament` (`SELECT ... FOR UPDATE`, même
+ * verrou que `buildBracketInTransaction`/`registerForTournamentAction`/
+ * `unregisterFromTournamentAction`) avant de relire `status` et de
+ * supprimer — Postgres sérialise avec un lancement anticipé concurrent
+ * (`launchTournamentAction`) ou une inscription qui remplirait la
+ * dernière place au même instant, aucune fenêtre ne subsiste.
+ *
+ * Cas particulier traité explicitement (revue ciblée V2) — si l'annonce a
+ * DÉJÀ été postée sur Discord (`isTournamentAnnounceSent`), l'éditer pour
+ * dire "supprimé" et fermer le fil AVANT de perdre toute trace du tournoi
+ * est OBLIGATOIRE (sans quoi le lien d'inscription resterait affiché,
+ * pointant vers une page qui n'existe plus) — ces deux livraisons
+ * (`enqueueTournamentAnnounceUpdate`/`enqueueTournamentThreadClose`) sont
+ * enqueue-ées DANS LA MÊME TRANSACTION que la suppression elle-même.
+ * Si l'annonce n'a jamais été envoyée (encore `PENDING`, ou pas de
+ * `announceViaBot`), rien à enqueue-er : le SEND encore en attente se
+ * refuse déjà lui-même (`expired`) dès qu'il constate, au traitement réel,
+ * que le tournoi a disparu — voir `resolveAnnounceDelivery`,
+ * tournament-announce.ts.
+ */
+export async function deleteTournament(tournamentId: string, actorUserId: string): Promise<DeleteTournamentResult> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { createdById: true, status: true, announceViaBot: true },
+  });
+  if (!tournament) return { ok: false, reason: "not_found" };
+  if (tournament.createdById !== actorUserId) return { ok: false, reason: "not_creator" };
+  if (tournament.status !== "REGISTRATION") return { ok: false, reason: "not_registration" };
+
+  let deleted = false;
+  await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
+      SELECT id, status FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    `;
+    const current = locked[0];
+    if (!current || current.status !== "REGISTRATION") return; // course perdue — déjà lancé entre-temps
+
+    if (tournament.announceViaBot && (await isTournamentAnnounceSent(tournamentId, tx))) {
+      await enqueueTournamentAnnounceUpdate(tournamentId, tx);
+      await enqueueTournamentThreadClose(tournamentId, tx);
+    }
+
+    await tx.tournament.delete({ where: { id: tournamentId } });
+    deleted = true;
+  });
+
+  return { ok: deleted };
 }

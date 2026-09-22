@@ -10259,3 +10259,329 @@ Nouveaux fichiers de test :
 **Aucune migration distante, modification Vercel/Discord réelle,
 suppression d'annonce réelle ni envoi Discord réel n'a été effectué dans
 cette session.**
+
+## V2 — parcours tournois : notifications maîtrisées, annulation/suppression, délai d'envoi
+
+Étend le chantier annonces Discord tournois (section "Chantier annonces
+Discord tournois" ci-dessus, #100) sans en dupliquer aucun mécanisme —
+mêmes fondations de livraison, même client REST, même exécuteur, même
+principe "transport figé par entité à la création". **Confidentialité des
+soirées (section dédiée ci-dessus) explicitement NON transposée aux
+tournois** : un tournoi reste consultable et inscriptible par tout le
+monde selon les règles d'accès actuelles de l'application — ce chantier
+n'introduit aucune notion d'accès restreint pour les tournois.
+
+### Faits constatés en production — clarifiés avant toute correction
+
+- **L'annonce de création arrive bien** dans `#🏆-tournois`, avec un fil
+  Discord — confirmé par lecture du code existant (#100) : aucune
+  absence totale d'annonce, aucun blocage d'accès au salon/fil constaté
+  ni plausible dans le code (aucune vérification de permission
+  restrictive n'existe côté application).
+- **L'annonce ne mentionnait personne** — confirmé : `allowedMentions`
+  était `{parse: []}` STRICT sur tous les messages de ce module, par
+  choix explicite de la version initiale (#100). Corrigé ci-dessous
+  (partie 1).
+- **Délai d'environ deux minutes constaté avant une annonce** — voir
+  partie 3 : aucune preuve trouvée d'un délai artificiel introduit par ce
+  code pour le SEND de l'annonce elle-même (aucune dépendance,
+  immédiatement réclamable dès l'enqueue). La seule explication plausible
+  identifiée est la CADENCE du cron externe qui appelle
+  `/api/cron/notification-executor` — configuration qui vit HORS de ce
+  dépôt (jamais un cron Vercel natif ici, voir la section "Exécuteur de
+  notifications" ci-dessus) et donc hors de la visibilité de cette
+  session. Non promis "instantané" : instrumentation ajoutée pour mesurer
+  ce délai en production, jamais une affirmation non vérifiée.
+- **Absence de parcours de suppression pour un tournoi de test** —
+  confirmé : `cancelTournament`/`deleteTournament` n'existaient pas avant
+  ce chantier. Corrigé (partie 2).
+
+### 1. Notifications maîtrisées à la création
+
+**`Tournament.notifiedUserIds`** (migration additive
+`20260922090000_add_tournament_v2`, `Json?`) — même contrat EXACT que
+`Session.notifiedUserIds` : `null` = comportement préservé (aucune
+mention) pour tout tournoi créé avant cette colonne, un tableau (même
+vide) est une sélection explicite du créateur respectée littéralement.
+**Jamais une liste d'accès ni des participants inscrits automatiquement**
+— purement une liste de personnes à MENTIONNER dans le premier message.
+`TournamentCreateForm` réutilise tel quel `NotifyRecipientsField` (déjà
+utilisé par les soirées/roulettes) : "Tout sélectionner/désélectionner"
+déjà fourni par ce composant partagé, plus un texte explicatif dédié
+précisant que la sélection déclenche une mention Discord et n'affecte ni
+l'accès ni l'inscription.
+
+**Mentions au SEND initial uniquement** — `resolveEligibleTournamentMentions`
+(tournament-announce.ts) relit la préférence `TOURNAMENT`
+(`UserNotificationPreference`, voir ci-dessous) **au traitement RÉEL**,
+jamais à l'enqueue : un opt-out posé après l'enqueue mais avant le
+passage du cron retire quand même la mention (testé). Liste EXPLICITE
+`allowed_mentions.users` (jamais `parse: ["users"]`), dédupliquée
+(`Set` implicite via le filtrage Prisma `id: {in: [...]}`, testé avec un
+id en double dans la sélection), jamais `@everyone`/`@here`/un rôle.
+Aucune limite de taille ajoutée (comme pour `Session.notifiedUserIds`,
+jamais plafonné) — sans objet à l'échelle de ce groupe de potes (très
+en-dessous des 100 mentions maximum de Discord).
+
+**TOUTES les autres livraisons restent `allowed_mentions: {parse: []}`
+STRICT, sans exception** : EDIT de l'annonce (lancement, clôture,
+annulation, suppression), résumé de fil, fermeture de fil — jamais un
+reping sur une mise à jour, une inscription, une désinscription ou un
+compteur (aucune de ces actions n'enqueue quoi que ce soit qui mentionne,
+inchangé).
+
+**Nouvelle catégorie `TOURNAMENT`** (`UserNotificationCategory`, migration
+`20260922090001_backfill_tournament_notification_preferences`,
+séparée de l'ajout d'enum car PostgreSQL interdit d'utiliser une valeur
+tout juste ajoutée par `ADD VALUE` dans la MÊME transaction) — n'existait
+tout simplement pas avant ce chantier (aucune préférence tournoi
+n'existait à réutiliser/simuler). Backfill EXPLICITE, même règle que
+SESSION/ROULETTE à leur introduction (`20260916140000_add_user_notification_preferences`) :
+`enabled = NOT "silenceReminders"` pour chaque compte existant — un
+utilisateur ayant déjà demandé le silence global ne reçoit JAMAIS une
+réactivation silencieuse pour cette nouvelle catégorie. `/profil/parametres`
+l'affiche automatiquement (boucle générique sur
+`AVAILABLE_NOTIFICATION_CATEGORIES`, aucune modification de page
+nécessaire au-delà d'ajouter la catégorie à cette liste).
+
+**Absence de compte Discord liée à rien** — structurellement impossible
+dans cette app (authentification exclusivement Discord, `User.discordId`
+non-nullable) ; garanti malgré tout par construction : la création d'un
+tournoi ne dépend d'AUCUN état lié aux mentions (`createTournamentAction`
+persiste `notifiedUserIds` sans jamais bloquer sur la résolution des
+mentions elles-mêmes, qui n'a lieu que plus tard, au traitement réel du
+SEND). Accès, inscription et notification restent trois préoccupations
+strictement séparées dans le code : aucune fonction ne consulte
+`notifiedUserIds` pour décider qui peut voir/rejoindre un tournoi.
+
+### 2. Annulation et suppression
+
+**Nouveau statut `CANCELLED`** (`TournamentStatus`, migration additive) —
+un tournoi DÉMARRÉ (`IN_PROGRESS`) interrompu par son créateur :
+`cancelTournament` (src/lib/tournaments.ts) préserve INTÉGRALEMENT
+`TournamentMatch`/`TournamentParticipant` (aucune donnée retirée), pose
+`cancelledAt` pour affichage. Un tournoi `REGISTRATION` (non démarré) se
+**supprime** au lieu de s'annuler (`deleteTournament`, suppression réelle
+de la ligne — rien à préserver, aucun match n'existe encore à ce stade) ;
+un tournoi `DONE` ne peut ni s'annuler ni se supprimer (aucun chemin
+ajouté pour ces deux statuts, jamais une suppression destructive de
+l'historique/des récompenses). Aucun bypass administrateur implicite :
+seul `createdById === actorUserId` autorise l'appel dans les deux
+fonctions, vérifié serveur, jamais délégué à l'UI (les boutons ne sont
+même rendus que côté créateur, mais c'est la garde serveur qui protège
+réellement).
+
+**Confirmation explicite côté UI** — `CancelTournamentDialog`/
+`DeleteTournamentDialog` (`src/components/tournois/`), même pattern
+Radix Dialog que `DeleteSessionDialog` : un clic ouvre une boîte de
+dialogue qui explique la conséquence exacte (annulation : matchs
+conservés ; suppression : définitive), le formulaire réel n'est soumis
+qu'après un second clic explicite.
+
+**Effets Discord, testés pour les DEUX transitions** :
+- **Annulation** — `enqueueTournamentAnnounceUpdate` (EDIT existante,
+  réutilisée telle quelle) rend désormais un état `CANCELLED` ("annulé
+  par son créateur", plus de lien d'inscription — le champ "Détails"
+  reste neutre, jamais présenté comme une inscription encore possible) ;
+  nouveau rôle `thread-close` (SEND occurrence fixe) ferme
+  (`archive_thread`, déjà présent dans l'exécuteur depuis #97 mais jamais
+  câblé jusqu'ici) le fil associé. Enqueue-és DANS LA MÊME TRANSACTION que
+  `status: CANCELLED` (même garantie d'atomicité que le reste du module).
+- **Suppression AVANT tout envoi** — rien à enqueue-r : un SEND encore
+  `PENDING` (annonce ou fil) se refuse LUI-MÊME (`expired`, jamais un
+  envoi tardif) dès qu'il constate, au traitement réel, que la ligne
+  `Tournament` a disparu — jamais une invitation à rejoindre un tournoi
+  qui n'existe plus.
+- **Suppression APRÈS que l'annonce ait déjà été postée** — cas
+  particulier traité explicitement : `isTournamentAnnounceSent` vérifie
+  AVANT de supprimer si l'annonce est `SENT` ; si oui, l'EDIT "supprimé" +
+  la fermeture du fil sont enqueue-ées DANS LA MÊME TRANSACTION que la
+  suppression de la ligne. Ce rendu "supprimé" est **entièrement
+  générique** (`resolveTournamentAnnounceRendering(null)`) — il ne dépend
+  d'AUCUNE donnée du tournoi (la ligne n'existe déjà plus au moment où
+  cette EDIT est réellement traitée, potentiellement bien après la
+  suppression selon la cadence du cron) : seul cas de tout ce module où
+  le contenu n'est pas rendu depuis l'état courant en base, par nécessité
+  structurelle plutôt que par choix.
+- **`resolveThreadClose`** (nouveau) ne dépend JAMAIS de l'état du
+  tournoi — seulement de la référence du fil déjà persistée (`thread`
+  SENT) — pour continuer à fonctionner même après une suppression (ligne
+  disparue). Relit l'état RÉEL de la livraison `thread` elle-même pour
+  décider (`SENT` → archive ; encore PENDING/RESERVED → attend ; jamais
+  envoyé/FAILED → rien à fermer, `expired`).
+
+**Courses vérifiées** (revue ciblée, testées explicitement) :
+- **Annulation vs clôture du dernier match** — `advanceWinner`
+  (src/lib/tournaments.ts) posait jusqu'ici `status: DONE` via un
+  `update` INCONDITIONNEL : une annulation commitée exactement entre le
+  claim du dernier match et cette écriture aurait été silencieusement
+  écrasée (le tournoi redeviendrait `DONE` malgré l'annulation). Corrigé :
+  `updateMany` conditionné sur `status: "IN_PROGRESS"` (même garantie que
+  `cancelTournament`) — le match reste tranché dans tous les cas (déjà
+  committé), seule la transition `DONE` (et ses effets : annonce, résumé
+  de fil, XP, badges) est retenue si l'annulation n'a pas gagné la
+  course. Testé avec une VRAIE concurrence (`Promise.all`, même style que
+  "deux appels concurrents de spinRoulette" du chantier confidentialité)
+  sur le dernier match : l'état final reste cohérent quel que soit l'ordre
+  réel choisi par Postgres, jamais `DONE` avec un match non tranché ni
+  `CANCELLED` avec un champion posé.
+- **Suppression concurrente (double clic)** — verrou `SELECT ... FOR
+  UPDATE` sur la ligne `Tournament` (même verrou que
+  `buildBracketInTransaction`/`registerForTournamentAction`/
+  `unregisterFromTournamentAction`) : un seul appel supprime réellement,
+  l'autre trouve la ligne disparue et s'arrête proprement. Testé.
+- **Suppression vs lancement anticipé/inscription concurrente** — même
+  verrou partagé, sérialise automatiquement avec les trois autres
+  fonctions qui le prennent déjà.
+- **Livraison différée qui ressusciterait un tournoi supprimé** — testé
+  explicitement : une livraison `announce` SEND restée `PENDING`, traitée
+  APRÈS la suppression (cron en retard), se refuse (`resolver:expired`),
+  zéro appel réseau.
+
+**Jamais un envoi Discord "exactement une fois" garanti** — ce chantier
+ne change rien à cette limite déjà assumée par toute la base de livraison
+(#95) : les garanties sont "au plus une fois par occurrence idempotente"
+et "convergence vers l'état le plus récent", jamais un "exactly-once"
+distribué classique (hors de portée sans un vrai protocole
+transactionnel avec Discord, qui n'existe pas).
+
+### 3. Délai d'envoi et état fidèle
+
+**Chemin retracé** : création (`createTournamentAction`, transaction SQL
+avec `enqueueTournamentCreationDeliveries`) → enqueue (écriture seule,
+`NotificationDelivery.nextAttemptAt` reste `NULL`, donc immédiatement
+réclamable) → claim (`claimNextDelivery`, `runExecutorBatch` boucle sur
+TOUTES les livraisons dues d'un même passage, jusqu'à
+`DEFAULT_MAX_DELIVERIES_PER_RUN` = 25 ou `DEFAULT_BATCH_BUDGET_MS` = 50s)
+→ envoi (`send_channel_message_verified`) → création du fil (`thread`,
+dépend que `announce` soit `SENT`, résolu DANS LE MÊME passage si le
+budget le permet — ce qui est le cas à l'échelle de ce groupe, largement
+sous les 25 livraisons/50s).
+
+**Aucune attente artificielle identifiée dans ce code pour le SEND de
+l'annonce** : contrairement à `thread`/`thread-summary`/`thread-close`
+(qui dépendent explicitement d'une autre livraison, avec un backoff de
+2 minutes — `DEPENDENCY_RETRY_BACKOFF_MS`, notification-executor.ts —
+s'ils sont réclamés avant que leur dépendance ne soit `SENT`), `announce`
+n'a AUCUNE dépendance et est immédiatement réclamable dès son enqueue.
+**Coïncidence notée, non retenue comme preuve** : ce backoff de 2 minutes
+existe dans le code (pour `thread`, pas `announce`), ce qui correspond
+numériquement au délai remonté — mais rien n'indique que c'est le `thread`
+qui a mis 2 minutes plutôt que l'`announce` elle-même (le rapport ne
+distingue pas les deux messages). Sans mesure réelle, aucune conclusion
+tirée sur la cause exacte.
+
+**Instrumentation ajoutée** (`notification-executor.ts`,
+`processNextDelivery`) — un log structuré (`logger.info`, niveau déjà
+utilisé dans tout le dépôt, capturé nativement par Vercel Logs) à CHAQUE
+livraison qui aboutit, pour N'IMPORTE QUELLE catégorie (SESSION,
+ROULETTE, TOURNAMENT) : `targetSlot`, `operation`, `attempts`, et
+`delayMs` = temps RÉEL entre la création de la ligne
+(`NotificationDelivery.createdAt`, posée au moment de l'enqueue, souvent
+dans la même transaction que la mutation métier) et son envoi effectif —
+couvre tout le chemin réel (enqueue → claim → envoi), pas seulement le
+dernier appel réseau. Aucun secret, aucune donnée personnelle : seuls des
+identifiants déjà loggués ailleurs dans ce module et des nombres.
+Permet, une fois déployé, de confirmer ou d'infirmer précisément la
+cause du délai constaté en production (cadence du cron externe vs. un
+vrai problème de code) — jamais affirmé par cette PR faute de preuve.
+
+**État d'envoi fidèle** — `getTournamentAnnounceStatus` (nouveau,
+tournament-announce.ts) : lit l'état RÉEL de la dernière livraison SEND
+connue pour `announce` ET `thread` séparément (`pending`/`sent`/`failed`,
+jamais `failed` pour un simple envoi différé qui n'a pas encore eu lieu
+— seul un `NotificationDelivery.status === "FAILED"` explicite produit
+`"failed"`). Affiché sur `/tournois/[id]` (créateur uniquement, tournoi
+`announceViaBot`) : deux lignes distinctes ("Annonce" / "Fil"), jamais
+confondues — un message envoyé pendant que le fil est encore en attente
+s'affiche correctement comme tel (testé).
+
+**Rien de modifié côté cron/Vercel** — aucun fichier de configuration
+cron, aucune variable d'environnement Vercel, aucune modification de
+`/api/cron/notification-executor` au-delà de ce qui existait déjà
+(dispatch déjà branché sur `TOURNAMENT` depuis #100, non retouché).
+
+### Migrations (additives, testées sur Postgres isolé local)
+
+- `20260922090000_add_tournament_v2` — `TournamentStatus.CANCELLED`,
+  `Tournament.notifiedUserIds` (`Json?`), `Tournament.cancelledAt`
+  (`DateTime?`), `UserNotificationCategory.TOURNAMENT`.
+- `20260922090001_backfill_tournament_notification_preferences` —
+  backfill explicite `UserNotificationPreference` pour `TOURNAMENT`
+  (`enabled = NOT "silenceReminders"`), séparée de la précédente pour la
+  raison PostgreSQL expliquée plus haut.
+
+Aucune migration appliquée à Neon/Production dans cette session — testées
+uniquement contre la base Postgres isolée locale utilisée par
+`npm run test:postgres`.
+
+### Tests
+
+`src/lib/tournament-announce.integration.test.ts` passe de 25 à 47 tests
+(22 nouveaux, PostgreSQL isolé + Discord HTTP entièrement simulé, même
+suite que #100) : mentions (sélection exacte, dédupliquées, préférence
+respectée y compris opt-out posé après l'enqueue, silence global jamais
+réactivé, jamais de reping sur EDIT/réessai), annulation (statut +
+horodatage, matchs/participants conservés, non-créateur refusé,
+statuts REGISTRATION/DONE refusés, EDIT "annulé" + fermeture de fil,
+garde `declareWinner` déjà existante étendue à CANCELLED, VRAIE course
+`Promise.all` sur le dernier match), suppression (avant tout envoi —
+zéro appel réseau —, avant que l'annonce n'ait été traitée — SEND en
+attente se refuse lui-même —, après un envoi déjà réussi — EDIT
+générique + fermeture de fil fonctionnant sans la ligne Tournament —,
+non-créateur refusé, statuts IN_PROGRESS refusé, course de suppression
+concurrente), état d'envoi (`pending`/`sent`/`sent+pending`/`failed`,
+jamais un faux `failed`).
+
+`src/app/tournois/actions.cancel-delete.test.ts` (7 tests, mocké) —
+autorisation et transmission fidèle des deux nouvelles actions serveur
+(session requise, id validé, acteur authentifié jamais substitué).
+
+`src/lib/notification-preferences.test.ts` — `TOURNAMENT` déplacée de
+"non disponible" à "disponible" (le chemin d'envoi l'applique désormais
+réellement), + 2 tests dédiés (indépendance vis-à-vis de
+`silenceReminders` comme ROULETTE, repli identique en l'absence de
+ligne).
+
+`npm run test:postgres` : **493/493 verts** (462 hérités inchangés + 31
+nouveaux). Sans `TEST_DATABASE_URL` : suite skippée proprement (330
+verts, 163 explicitement skippés, pas de faux vert). `npx tsc --noEmit`/
+`npx eslint .` : clean sur tout le dépôt. `npx next build` : compile sans
+erreur, toutes les routes existantes inchangées (`/tournois`,
+`/tournois/[id]`, `/tournois/creer` toujours générées).
+
+Vérification manuelle en direct (navigateur) **non exécutée** dans cette
+session — l'app exige une authentification Discord OAuth réelle,
+indisponible dans cet environnement sans compte Discord ; la procédure
+de vérification manuelle ci-dessous est préparée mais pas exécutée,
+même limite assumée que les chantiers précédents pour tout parcours
+nécessitant une session Discord authentifiée.
+
+### Procédure de validation manuelle (préparée, non exécutée)
+
+1. `npx prisma migrate deploy` (applique les deux migrations additives).
+2. Créer un tournoi en cochant 1-2 potes dans "Qui prévenir ?" → vérifier
+   que la création réussit même sans bot configuré, et que le tournoi
+   reste accessible/inscriptible par un compte NON sélectionné.
+3. Si le bot est configuré (`DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED=true`) :
+   vérifier que l'annonce mentionne bien les potes sélectionnés (et
+   seulement eux), avec leurs pseudos Discord cliquables.
+4. Sur `/tournois/[id]` (créateur), vérifier l'état "Annonce"/"Fil"
+   (en attente → envoyée), puis lancer le tournoi et vérifier l'EDIT
+   ("en cours", sans nouvelle mention).
+5. Annuler un tournoi démarré → vérifier les matchs déjà joués restent
+   visibles, l'annonce Discord affiche "annulé", le fil est archivé.
+6. Créer un second tournoi (non démarré), le supprimer → vérifier sa
+   disparition de `/tournois`, et si son annonce avait déjà été postée,
+   qu'elle affiche bien "supprimé" sans lien cassé.
+
+### Ce qui reste hors périmètre (V2, suite)
+
+Refonte Soirée → Roulette, multi-serveur Discord, et les autres
+fonctions du "bot avancé" (boutons/interactions, commandes slash)
+restent les étapes suivantes de la V2, non abordées par ce chantier —
+conformément à la demande.
+
+**Aucun envoi Discord réel, aucune modification de données de
+production, aucune migration distante, aucun merge ni changement de
+configuration externe n'a été effectué dans cette session.**

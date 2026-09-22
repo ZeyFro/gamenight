@@ -2,12 +2,16 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { totalRoundsFor, bracketSizeFor } from "@/lib/tournaments";
+import { getTournamentAnnounceStatus } from "@/lib/tournament-announce";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { TournamentBracket } from "@/components/tournaments/TournamentBracket";
+import { CancelTournamentDialog } from "@/components/tournois/CancelTournamentDialog";
+import { DeleteTournamentDialog } from "@/components/tournois/DeleteTournamentDialog";
 import {
   registerForTournamentAction,
   unregisterFromTournamentAction,
@@ -16,6 +20,18 @@ import {
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
+};
+
+const ANNOUNCE_STATUS_LABELS: Record<"pending" | "sent" | "failed", { text: string; tone: "accent" | "warning" | "neutral" }> = {
+  pending: { text: "⏳ En attente d'envoi", tone: "neutral" },
+  sent: { text: "✓ Annonce envoyée", tone: "accent" },
+  failed: { text: "⚠️ Échec d'envoi", tone: "warning" },
+};
+
+const THREAD_STATUS_LABELS: Record<"pending" | "sent" | "failed", { text: string; tone: "accent" | "warning" | "neutral" }> = {
+  pending: { text: "⏳ Fil en attente de création", tone: "neutral" },
+  sent: { text: "✓ Fil créé", tone: "accent" },
+  failed: { text: "⚠️ Échec de création du fil", tone: "warning" },
 };
 
 /**
@@ -61,6 +77,14 @@ export default async function TournoiDetailPage({
   const isRegistered = tournament.participants.some((p) => p.userId === user.id);
   const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
 
+  // V2 (délai/état d'envoi) — statut RÉEL de l'annonce/du fil, jamais
+  // présenté comme instantané (voir `getTournamentAnnounceStatus`,
+  // tournament-announce.ts) : réservé au créateur, et seulement pour un
+  // tournoi resté sur le chemin bot (rien à afficher pour le webhook, qui
+  // ne trace aucun état de livraison).
+  const announceStatus =
+    isCreator && tournament.announceViaBot ? await getTournamentAnnounceStatus(tournament.id) : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
@@ -72,6 +96,40 @@ export default async function TournoiDetailPage({
 
       {errorMessage && (
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p>
+      )}
+
+      {announceStatus && (
+        <Card className="flex flex-col gap-2 text-sm">
+          <p className="font-medium text-foreground">Annonce Discord</p>
+          <p className={announceStatus.announce === "failed" ? "text-warning" : announceStatus.announce === "sent" ? "text-accent" : "text-muted"}>
+            {ANNOUNCE_STATUS_LABELS[announceStatus.announce].text}
+          </p>
+          <p className={announceStatus.thread === "failed" ? "text-warning" : announceStatus.thread === "sent" ? "text-accent" : "text-muted"}>
+            {THREAD_STATUS_LABELS[announceStatus.thread].text}
+          </p>
+        </Card>
+      )}
+
+      {tournament.status === "CANCELLED" && (
+        <Card className="flex flex-col gap-1 border-destructive/30 bg-destructive/10">
+          <p className="font-medium text-destructive">❌ Tournoi annulé</p>
+          {tournament.cancelledAt && (
+            <p className="text-sm text-muted">Annulé le {formatDateTimeFr(tournament.cancelledAt)}.</p>
+          )}
+          <p className="text-sm text-muted">
+            Les matchs et résultats déjà enregistrés restent visibles ci-dessous.
+          </p>
+        </Card>
+      )}
+
+      {isCreator && (tournament.status === "REGISTRATION" || tournament.status === "IN_PROGRESS") && (
+        <div className="flex justify-end">
+          {tournament.status === "REGISTRATION" ? (
+            <DeleteTournamentDialog tournamentId={tournament.id} />
+          ) : (
+            <CancelTournamentDialog tournamentId={tournament.id} />
+          )}
+        </div>
       )}
 
       {tournament.status === "DONE" && tournament.champion && (
@@ -144,12 +202,15 @@ export default async function TournoiDetailPage({
         </Card>
       )}
 
-      {(tournament.status === "IN_PROGRESS" || tournament.status === "DONE") && (
+      {(tournament.status === "IN_PROGRESS" ||
+        tournament.status === "DONE" ||
+        tournament.status === "CANCELLED") && (
         <TournamentBracket
           matches={tournament.matches}
           totalRounds={totalRounds}
           currentUserId={user.id}
           isCreator={isCreator}
+          interactive={tournament.status === "IN_PROGRESS"}
         />
       )}
     </div>

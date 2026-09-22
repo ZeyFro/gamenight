@@ -5,12 +5,19 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { generateBracket, declareWinner, buildBracketInTransaction } from "@/lib/tournaments";
+import {
+  generateBracket,
+  declareWinner,
+  buildBracketInTransaction,
+  cancelTournament,
+  deleteTournament,
+} from "@/lib/tournaments";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
 import { enqueueTournamentCreationDeliveries } from "@/lib/tournament-announce";
+import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import {
   createTournamentSchema,
@@ -57,6 +64,25 @@ export async function createTournamentAction(formData: FormData) {
   const game = await prisma.game.findUnique({ where: { id: gameId }, select: { name: true } });
   if (!game) redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
 
+  // V2 (notifications maîtrisées) — sélection du créateur pour la mention
+  // Discord à l'ouverture des inscriptions, JAMAIS une liste d'accès ni
+  // des participants automatiquement inscrits (même garde que
+  // `createSession`, session-lifecycle.ts : ne garde que des ids qui
+  // correspondent réellement à un user existant, filtre silencieusement le
+  // reste plutôt que de faire échouer toute la création). Persistée que le
+  // tournoi soit `announceViaBot` ou non (cohérent avec `Session.notifiedUserIds`) —
+  // seul le chemin bot la lit réellement (le webhook existant, sans
+  // notion de mention Discord, ne la consulte jamais).
+  const notifyUserIds = parseNotifyRecipientsFromFormData(formData);
+  const notifiedUserIds = notifyUserIds.length
+    ? (
+        await prisma.user.findMany({
+          where: { id: { in: notifyUserIds } },
+          select: { id: true },
+        })
+      ).map((u) => u.id)
+    : [];
+
   // Chantier annonces tournois (étend #99) — figé UNE SEULE FOIS ici,
   // jamais relu depuis l'env ensuite (voir le commentaire du champ dans
   // schema.prisma). Revue ciblée avant merge #100 : la DESTINATION
@@ -89,6 +115,7 @@ export async function createTournamentAction(formData: FormData) {
         announceViaBot,
         discordGuildId: announceViaBot ? tournamentAnnounceConfig!.guildId : null,
         discordChannelId: announceViaBot ? tournamentAnnounceConfig!.channelId : null,
+        notifiedUserIds,
       },
     });
     if (announceViaBot) {
@@ -308,4 +335,52 @@ export async function declareWinnerAction(formData: FormData) {
     revalidatePath("/tournois");
     revalidatePath("/");
   }
+}
+
+/**
+ * Annulation (V2) — réservée au créateur, un tournoi DÉMARRÉ uniquement
+ * (voir `cancelTournament`, src/lib/tournaments.ts, pour le contrôle
+ * d'autorisation serveur ET la protection contre la course avec la
+ * clôture du dernier match). Préserve intégralement matchs/résultats déjà
+ * enregistrés — jamais une suppression.
+ */
+export async function cancelTournamentAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "cancelTournament")) return;
+
+  const input = idSchema.safeParse(String(formData.get("tournamentId") ?? ""));
+  if (!input.success) return;
+  const tournamentId = input.data;
+
+  const result = await cancelTournament(tournamentId, user.id);
+  if (!result.ok) return;
+
+  revalidatePath(`/tournois/${tournamentId}`);
+  revalidatePath("/tournois");
+  revalidatePath("/");
+}
+
+/**
+ * Suppression (V2) — réservée au créateur, un tournoi NON démarré
+ * uniquement (voir `deleteTournament`, src/lib/tournaments.ts, pour le
+ * contrôle d'autorisation serveur, la protection contre la course avec un
+ * lancement concurrent, et le traitement Discord de l'annonce déjà
+ * postée le cas échéant). Confirmation explicite gérée côté UI
+ * (`DeleteTournamentDialog`) avant que ce formulaire ne soit soumis.
+ */
+export async function deleteTournamentAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "deleteTournament")) return;
+
+  const input = idSchema.safeParse(String(formData.get("tournamentId") ?? ""));
+  if (!input.success) return;
+  const tournamentId = input.data;
+
+  const result = await deleteTournament(tournamentId, user.id);
+  if (!result.ok) return;
+
+  revalidatePath("/tournois");
+  redirect("/tournois");
 }
