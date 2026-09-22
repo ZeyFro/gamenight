@@ -51,6 +51,22 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  *     selon le statut ACTUEL de l'invitation au moment du TRAITEMENT
  *     (jamais depuis un instantané pris à l'enqueue), voir
  *     `resolveInviteSync`.
+ *   - **Correction (revue ciblée, bug remonté en test réel) — sixième
+ *     rôle, `creator-member`** : le CRÉATEUR d'une soirée n'a jamais de
+ *     ligne `SessionInvite` (`inviteToSession` l'exclut lui-même de sa
+ *     propre sélection — il a accès via `createdById`, jamais via une
+ *     invitation) et n'était donc JAMAIS ajouté comme membre du fil
+ *     PRIVÉ : seul `resolveInviteSync` (ci-dessus) ajoutait des membres,
+ *     exclusivement à partir de `SessionInvite`. Le créateur pouvait voir
+ *     le fil listé (ex. "Plus de fils actifs", si son compte Discord
+ *     détient par ailleurs `MANAGE_THREADS` sur le serveur — un simple
+ *     effet de bord de permissions de modération, jamais une garantie
+ *     applicative) sans jamais y être RÉELLEMENT membre. `creator-member`
+ *     (SEND, occurrence fixe à la création — voir
+ *     `enqueueSessionCreatorThreadMembership`) ajoute explicitement le
+ *     créateur, une seule fois, dès que `thread` est `SENT` — jamais
+ *     retiré ensuite (contrairement à un invité, l'accès du créateur
+ *     n'est jamais révocable).
  *
  * `isSessionAnnounceViaBotEnabled()` continue de gouverner UNIQUEMENT le
  * TRANSPORT à la création (bot vs webhook, figé sur `announceViaBot`,
@@ -114,6 +130,9 @@ function threadSummarySlot(sessionId: string): string {
 }
 function inviteSlot(sessionId: string, inviteId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:invite:${inviteId}`;
+}
+function creatorMemberSlot(sessionId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:creator-member`;
 }
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
@@ -179,6 +198,56 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
       operation: "SEND",
       recipientKey: "channel",
       targetSlot: announceSlot(sessionId),
+    },
+    db
+  );
+  // Correction (revue ciblée) — le créateur n'a jamais de `SessionInvite`,
+  // donc jamais ajouté au fil par `resolveInviteSync` seul (voir le
+  // commentaire de fichier). Enqueue-é DANS LA MÊME TRANSACTION que le
+  // reste (même garantie d'atomicité) pour TOUTE nouvelle soirée bot,
+  // classique ou roulette (un seul appelant, `enqueueSessionCreationDeliveries`,
+  // commun aux deux chemins).
+  await enqueueSessionCreatorThreadMembership(sessionId, db);
+}
+
+/**
+ * Ajoute le CRÉATEUR comme membre du fil privé — jamais retiré ensuite
+ * (contrairement à un invité via `SessionInvite`/`resolveInviteSync`) :
+ * l'accès du créateur n'est jamais révocable, voir `session-access.ts`.
+ *
+ * Occurrence ALÉATOIRE (comme `enqueueSessionInviteSync`, jamais fixe
+ * comme `enqueueSessionCreationDeliveries`) : appelée automatiquement une
+ * fois à la création (bundlée ci-dessus), mais aussi rappelable
+ * MANUELLEMENT (réessai créateur depuis `/sessions/[id]/invites`, voir
+ * `retrySessionCreatorThreadSyncAction`) pour deux cas que l'occurrence
+ * fixe ne couvrirait pas : une soirée créée AVANT ce correctif (jamais
+ * enqueue-ée la première fois, aucune ligne `NotificationDelivery` à
+ * retenter) et une synchronisation `FAILED` (terminale, jamais retentée
+ * automatiquement par le cron — voir notification-executor.ts). Un
+ * appel répété crée une NOUVELLE ligne à chaque fois ; seule la plus
+ * récente survit (convergence `[targetSlot, operation]`,
+ * `claimNextDelivery`, #95) — jamais un doublon d'ajout traité en double.
+ *
+ * `db` optionnel — même contrat que les autres enqueue de ce module.
+ */
+export async function enqueueSessionCreatorThreadMembership(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_CREATOR_MEMBER",
+      sourceId: sessionId,
+      occurrence: randomUUID(),
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "creator",
+      targetSlot: creatorMemberSlot(sessionId),
     },
     db
   );
@@ -316,18 +385,63 @@ export async function enqueueSessionInviteSync(inviteId: string, db?: Notificati
   // n'a de toute façon pas besoin de cohérence transactionnelle avec
   // l'écriture appelante (voir le commentaire de fonction ci-dessus, sur
   // pourquoi cette fonction n'est jamais appelée DANS la même transaction
-  // que la mutation de l'invitation).
+  // que la mutation de l'invitation) — SAUF `enqueueSessionInviteSyncForNewInvite`
+  // ci-dessous, qui contourne délibérément cette lecture pour le cas où elle
+  // serait invalide (voir son commentaire).
   const invite = await prisma.sessionInvite.findUnique({
     where: { id: inviteId },
     select: { sessionId: true },
   });
   if (!invite) return;
 
+  await enqueueInviteSyncDelivery(invite.sessionId, inviteId, db);
+}
+
+/**
+ * Bug remonté (test réel, complément au diagnostic `creator-member`
+ * ci-dessus) — les invités sélectionnés SUR LE FORMULAIRE DE CRÉATION
+ * (`notifiedUserIds`, classique ET roulette : `createSession` dans
+ * session-lifecycle.ts, `createRouletteResultSession` dans sessions.ts)
+ * obtenaient bien une ligne `SessionInvite` (accès applicatif correct dès
+ * la création), mais AUCUNE synchronisation Discord n'était jamais
+ * enqueue-ée pour eux : seul `addSessionInviteAction` (bouton "inviter" de
+ * la page `/sessions/[id]/invites`, ajout APRÈS création) appelait
+ * `enqueueSessionInviteSync`. Un invité sélectionné à la création n'était
+ * donc JAMAIS ajouté comme membre du fil privé par ce chemin — exactement
+ * le même symptôme que le bug `creator-member`, mais pour les invités,
+ * pas seulement le créateur, et sur LES DEUX parcours de création (la
+ * roulette n'est pas épargnée : `createRouletteResultSession` a la même
+ * lacune). Seul un réinvite manuel ultérieur via la page invités (qui,
+ * lui, appelle bien `enqueueSessionInviteSync`) déclenchait la
+ * synchronisation — expliquant qu'un fil de test ayant reçu ce geste
+ * manuel affiche des membres alors qu'un autre, jamais retouché après
+ * création, n'affiche que le bot.
+ *
+ * Appelée par `createSession`/`createRouletteResultSession` DANS LA MÊME
+ * transaction que `inviteToSession` (même garantie d'atomicité que
+ * `enqueueSessionCreationDeliveries` : un crash entre les deux ne doit
+ * jamais laisser un invité avec accès applicatif mais sans la moindre
+ * intention de synchronisation Discord enqueue-ée). Contourne DÉLIBÉRÉMENT
+ * la lecture par le client global de `enqueueSessionInviteSync` ci-dessus
+ * (qui ne verrait pas encore la ligne `SessionInvite` non committée créée
+ * dans la même transaction) : l'appelant a déjà l'id de session ET l'id
+ * d'invite en main (retournés par `inviteToSession(tx)`), aucune relecture
+ * n'est nécessaire ni possible ici.
+ */
+export async function enqueueSessionInviteSyncForNewInvite(
+  sessionId: string,
+  inviteId: string,
+  db?: NotificationDb
+): Promise<void> {
+  await enqueueInviteSyncDelivery(sessionId, inviteId, db);
+}
+
+async function enqueueInviteSyncDelivery(sessionId: string, inviteId: string, db?: NotificationDb): Promise<void> {
   const event = await createNotificationEvent(
     {
       category: "SESSION",
       eventType: "SESSION_INVITE_SYNC",
-      sourceId: invite.sessionId,
+      sourceId: sessionId,
       occurrence: randomUUID(),
     },
     db
@@ -339,7 +453,7 @@ export async function enqueueSessionInviteSync(inviteId: string, db?: Notificati
       transport: "BOT",
       operation: "SEND",
       recipientKey: `user:${inviteId}`,
-      targetSlot: inviteSlot(invite.sessionId, inviteId),
+      targetSlot: inviteSlot(sessionId, inviteId),
     },
     db
   );
@@ -381,6 +495,56 @@ export async function getSessionInviteSyncStatuses(
     result.set(inviteId, latestBySlot.get(inviteSlot(sessionId, inviteId)) ?? "pending");
   }
   return result;
+}
+
+/** État de la DERNIÈRE livraison connue d'un `targetSlot` donné — même
+ * logique que `getSessionInviteSyncStatuses` (ignore `SKIPPED`, une
+ * intention périmée par une plus récente jamais l'état réel visé),
+ * factorisée ici pour être réutilisée par plusieurs `targetSlot`
+ * distincts (`thread`, `creator-member`) sans dupliquer la requête. */
+async function latestDeliveryStatus(
+  targetSlot: string,
+  operation: "SEND" | "EDIT" = "SEND"
+): Promise<"pending" | "synced" | "failed"> {
+  const deliveries = await prisma.notificationDelivery.findMany({
+    where: { targetSlot, operation },
+    orderBy: { sequence: "desc" },
+    select: { status: true },
+  });
+  const latest = deliveries.find((d) => d.status !== "SKIPPED");
+  if (!latest) return "pending";
+  if (latest.status === "SENT") return "synced";
+  if (latest.status === "FAILED") return "failed";
+  return "pending";
+}
+
+export type SessionThreadReadiness = "preparing" | "syncing" | "ready" | "failed";
+
+/**
+ * État honnête du fil privé POUR LE CRÉATEUR — bug remonté en test réel :
+ * jamais "ready" tant que son propre ajout au fil n'est pas confirmé (le
+ * créateur pouvait voir le fil listé côté Discord — permissions de
+ * modération sur le serveur, sans rapport avec ce module — sans jamais y
+ * être RÉELLEMENT membre). Distingue quatre états, jamais un simple
+ * booléen "prêt/pas prêt" :
+ *   - `"preparing"` — le fil lui-même n'existe pas encore (SEND `thread`
+ *     pas encore traité, ou encore en attente après un échec retryable).
+ *   - `"syncing"` — le fil existe, mais l'ajout du créateur comme membre
+ *     n'est pas encore confirmé.
+ *   - `"ready"` — le créateur est confirmé membre du fil.
+ *   - `"failed"` — le fil OU l'ajout du créateur a échoué de façon
+ *     terminale (jamais retenté automatiquement par le cron — voir
+ *     `retrySessionCreatorThreadSyncAction` pour le réessai manuel).
+ */
+export async function getSessionThreadReadiness(sessionId: string): Promise<SessionThreadReadiness> {
+  const threadStatus = await latestDeliveryStatus(threadSlot(sessionId));
+  if (threadStatus === "failed") return "failed";
+  if (threadStatus === "pending") return "preparing";
+
+  const creatorStatus = await latestDeliveryStatus(creatorMemberSlot(sessionId));
+  if (creatorStatus === "failed") return "failed";
+  if (creatorStatus === "synced") return "ready";
+  return "syncing";
 }
 
 /* -------------------------------------------------------------------- */
@@ -615,6 +779,9 @@ export const sessionAnnounceResolver: DeliveryResolver = {
       const inviteId = role.slice("invite:".length);
       return resolveInviteSync(sessionId, inviteId);
     }
+    if (role === "creator-member") {
+      return resolveCreatorThreadMembership(sessionId, session);
+    }
 
     logger.error("session-announce", `targetSlot de rôle inconnu : ${delivery.targetSlot}`, { sessionId });
     return { eligible: false, reason: "unresolvable" };
@@ -782,6 +949,34 @@ async function resolveInviteSync(sessionId: string, inviteId: string): Promise<R
     invite.status === "ACTIVE"
       ? { kind: "add_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
       : { kind: "remove_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
+  return { eligible: true, action };
+}
+
+/**
+ * Ajoute le CRÉATEUR comme membre du fil privé — jamais un retrait
+ * (contrairement à `resolveInviteSync`, symétrique ajout/retrait selon le
+ * statut d'une invitation) : l'accès du créateur n'est jamais révocable.
+ * Dépend de `thread` (a besoin du fil créé), comme toute opération sur le
+ * fil dans ce module.
+ */
+async function resolveCreatorThreadMembership(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(sessionId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+
+  const creator = await prisma.user.findUnique({
+    where: { id: session.createdById },
+    select: { discordId: true },
+  });
+  // Défensif — ne devrait jamais se produire (FK `Session.createdById`
+  // vers `User`, jamais de suppression de compte implémentée dans cette
+  // app), mais refuse plutôt que de planter si c'était le cas un jour.
+  if (!creator) return { eligible: false, reason: "expired" };
+
+  const action: ResolvedAction = {
+    kind: "add_thread_member_verified",
+    threadId: thread.discordThreadId,
+    discordUserId: creator.discordId,
+  };
   return { eligible: true, action };
 }
 

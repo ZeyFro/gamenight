@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { inviteToSession, revokeSessionInvite } from "@/lib/session-access";
-import { enqueueSessionInviteSync } from "@/lib/session-announce";
+import { enqueueSessionInviteSync, enqueueSessionCreatorThreadMembership } from "@/lib/session-announce";
 
 /**
  * Gestion des invités d'une soirée — réservée au CRÉATEUR (jamais un
@@ -123,6 +123,33 @@ export async function retrySessionInviteSyncAction(formData: FormData) {
   if (!invite || invite.sessionId !== sessionId) return;
 
   await enqueueSessionInviteSync(inviteId);
+
+  revalidatePath(`/sessions/${sessionId}/invites`);
+}
+
+/**
+ * Réessaie manuellement l'ajout du CRÉATEUR au fil privé — bug remonté en
+ * test réel : le créateur n'a jamais de `SessionInvite` (il a accès via
+ * `createdById`, jamais via une invitation), donc jamais couvert par
+ * `retrySessionInviteSyncAction` ci-dessus. Couvre deux cas : une soirée
+ * créée AVANT le correctif (jamais enqueue-ée la première fois) et un
+ * échec terminal (jamais retenté automatiquement par le cron). Toujours
+ * réservée au créateur lui-même — `assertOwnsSession` vérifie déjà
+ * `session.createdById === user.id`, donc cette action ne peut jamais
+ * être déclenchée pour ajouter QUELQU'UN D'AUTRE que l'appelant.
+ */
+export async function retrySessionCreatorThreadSyncAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "retrySessionCreatorThreadSync")) return;
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId) return;
+
+  const session = await assertOwnsSession(sessionId, user.id);
+  if (!session || !session.announceViaBot) return;
+
+  await enqueueSessionCreatorThreadMembership(sessionId);
 
   revalidatePath(`/sessions/${sessionId}/invites`);
 }

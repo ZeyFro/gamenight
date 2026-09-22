@@ -159,4 +159,83 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
     expect(invites.map((i) => i.userId)).toEqual([real.id]);
   });
+
+  /**
+   * Complément au diagnostic — bug remonté en test réel : un invité coché
+   * SUR LE FORMULAIRE DE CRÉATION avait bien sa ligne `SessionInvite`
+   * (tests ci-dessus) mais aucune synchronisation Discord n'était jamais
+   * enqueue-ée pour lui (seul `addSessionInviteAction`, l'ajout MANUEL
+   * après création, le faisait) — jamais ajouté au fil privé tant que le
+   * créateur ne le réinvitait pas explicitement depuis la page invités.
+   * Preuve directe que `createSession` enqueue désormais une livraison
+   * `invite:<id>` PAR invité créé, EN PLUS de `thread`/`announce`/
+   * `creator-member` — jamais un doublon, jamais un invité oublié.
+   */
+  describe.skipIf(!TEST_DATABASE_URL)(
+    "synchronisation Discord des invités choisis À LA CRÉATION (bot activé)",
+    () => {
+      beforeEach(() => {
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+        vi.stubEnv("DISCORD_BOT_GUILD_ID", "guild-1");
+        vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "chan-sessions");
+      });
+
+      afterAll(() => {
+        vi.unstubAllEnvs();
+      });
+
+      it("une livraison invite-sync est enqueue-ée pour CHAQUE invité coché à la création, en plus de thread/announce/creator-member", async () => {
+        const creator = await makeUser();
+        const invitedA = await makeUser();
+        const invitedB = await makeUser();
+        currentUserMock.mockResolvedValue(creator);
+
+        await expect(
+          createSession(
+            formData({
+              date: "2026-11-01",
+              time: "20:00",
+              notifyUserId: [invitedA.id, invitedB.id],
+            })
+          )
+        ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+        const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+        const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+        expect(invites).toHaveLength(2);
+
+        // `targetSlot` réel : `default-guild:SESSION:<sessionId>:<role>`, où
+        // `<role>` peut lui-même contenir des ":" (ex. `invite:<inviteId>`)
+        // — on retire le préfixe connu plutôt que de `split(":")`, qui
+        // tronquerait `invite:<id>` à son seul id.
+        const prefix = `default-guild:SESSION:${session.id}:`;
+        const deliveries = await db.notificationDelivery.findMany({});
+        const sessionDeliveries = deliveries.filter((d) => d.targetSlot.startsWith(prefix));
+        const roles = sessionDeliveries.map((d) => d.targetSlot.slice(prefix.length));
+        expect(roles).toContain("thread");
+        expect(roles).toContain("announce");
+        expect(roles).toContain("creator-member");
+        for (const invite of invites) {
+          expect(roles.filter((r) => r === `invite:${invite.id}`)).toHaveLength(1);
+        }
+        expect(sessionDeliveries).toHaveLength(5); // thread + announce + creator-member + 2 invite-sync
+      });
+
+      it("aucun invité coché — aucune livraison invite-sync, seulement thread/announce/creator-member", async () => {
+        const creator = await makeUser();
+        currentUserMock.mockResolvedValue(creator);
+
+        await expect(
+          createSession(formData({ date: "2026-11-01", time: "20:00" }))
+        ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+        const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+        const prefix = `default-guild:SESSION:${session.id}:`;
+        const deliveries = await db.notificationDelivery.findMany({});
+        const sessionDeliveries = deliveries.filter((d) => d.targetSlot.startsWith(prefix));
+        const roles = sessionDeliveries.map((d) => d.targetSlot.slice(prefix.length));
+        expect(roles.sort()).toEqual(["announce", "creator-member", "thread"].sort());
+      });
+    }
+  );
 });

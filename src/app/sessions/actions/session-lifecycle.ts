@@ -10,7 +10,7 @@ import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
 import { isRealDiscordFailure } from "@/lib/discord";
-import { enqueueSessionCreationDeliveries } from "@/lib/session-announce";
+import { enqueueSessionCreationDeliveries, enqueueSessionInviteSyncForNewInvite } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
@@ -116,11 +116,22 @@ export async function createSession(formData: FormData) {
     // visible du seul créateur en silence. Créateur jamais inclus ici
     // (`inviteToSession` l'exclut lui-même), il garde accès via
     // `createdById`.
+    const createdInviteIds: string[] = [];
     for (const guestId of notifiedUserIds) {
-      await inviteToSession(created.id, user.id, guestId, tx);
+      const invite = await inviteToSession(created.id, user.id, guestId, tx);
+      if (invite) createdInviteIds.push(invite.id);
     }
     if (announceViaBot) {
       await enqueueSessionCreationDeliveries(created.id, tx);
+      // Bug remonté en test réel — un invité sélectionné ICI (au
+      // formulaire de création) n'obtenait jusqu'ici jamais de
+      // synchronisation Discord (voir le commentaire de fonction dans
+      // session-announce.ts) : sans cet enqueue, il n'était jamais ajouté
+      // au fil privé tant que le créateur ne le réinvitait pas
+      // manuellement depuis la page invités.
+      for (const inviteId of createdInviteIds) {
+        await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
+      }
     }
     return created;
   });

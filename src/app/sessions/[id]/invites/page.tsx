@@ -3,14 +3,39 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { listAllInvites } from "@/lib/session-access";
-import { getSessionInviteSyncStatuses } from "@/lib/session-announce";
+import { getSessionInviteSyncStatuses, getSessionThreadReadiness, type SessionThreadReadiness } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
-import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSyncAction } from "../../actions/invites";
+import {
+  addSessionInviteAction,
+  revokeSessionInviteAction,
+  retrySessionInviteSyncAction,
+  retrySessionCreatorThreadSyncAction,
+} from "../../actions/invites";
+
+/**
+ * Bug remonté en test réel : le créateur pouvait voir le fil Discord
+ * listé (ex. "Plus de fils actifs", un effet de bord des permissions de
+ * modération de SON compte sur le serveur, sans rapport avec cette app)
+ * sans jamais y être RÉELLEMENT ajouté comme membre — `resolveInviteSync`
+ * n'ajoutait que les invités (`SessionInvite`), jamais le créateur
+ * lui-même (voir `getSessionThreadReadiness`, session-announce.ts). Ces
+ * libellés distinguent quatre états honnêtes, jamais un simple "prêt" par
+ * optimisme.
+ */
+const THREAD_READINESS_LABELS: Record<
+  SessionThreadReadiness,
+  { text: string; tone: "accent" | "warning" | "neutral" }
+> = {
+  preparing: { text: "⏳ Préparation du fil Discord en cours (pas encore créé)", tone: "neutral" },
+  syncing: { text: "⏳ Fil créé — ton ajout comme membre est en cours de synchronisation", tone: "neutral" },
+  ready: { text: "✓ Fil Discord prêt — tu y as accès", tone: "accent" },
+  failed: { text: "⚠️ Échec de préparation du fil ou de ton ajout — réessai manuel possible", tone: "warning" },
+};
 
 const SYNC_LABELS: Record<string, { text: string; tone: "accent" | "warning" | "neutral" }> = {
   synced: { text: "✓ Synchronisé sur Discord", tone: "accent" },
@@ -81,6 +106,8 @@ export default async function SessionInvitesPage({
     ? await getSessionInviteSyncStatuses(sessionId, invites.map((i) => i.id))
     : new Map<string, "synced" | "pending" | "failed">();
 
+  const creatorThreadReadiness = session.announceViaBot ? await getSessionThreadReadiness(sessionId) : null;
+
   const botConfigured = isSessionAnnounceViaBotEnabled();
 
   return (
@@ -107,6 +134,31 @@ export default async function SessionInvitesPage({
           appliqués côté site, mais leur synchronisation Discord (fil privé) est en
           attente jusqu&apos;à ce que la configuration soit restaurée.
         </p>
+      )}
+
+      {creatorThreadReadiness && (
+        <Card className="flex flex-col gap-2">
+          <h2 className="font-semibold text-foreground">Ton accès au fil Discord</h2>
+          <p
+            className={`text-sm ${
+              THREAD_READINESS_LABELS[creatorThreadReadiness].tone === "warning"
+                ? "text-warning"
+                : THREAD_READINESS_LABELS[creatorThreadReadiness].tone === "accent"
+                  ? "text-accent"
+                  : "text-muted"
+            }`}
+          >
+            {THREAD_READINESS_LABELS[creatorThreadReadiness].text}
+          </p>
+          {creatorThreadReadiness === "failed" && (
+            <form action={retrySessionCreatorThreadSyncAction}>
+              <input type="hidden" name="sessionId" value={sessionId} />
+              <Button type="submit" variant="secondary" size="sm">
+                Réessayer
+              </Button>
+            </form>
+          )}
+        </Card>
       )}
 
       <Card className="flex flex-col gap-3">

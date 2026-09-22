@@ -5,6 +5,7 @@ import { announceSessionResult } from "@/lib/discord-announce";
 import {
   enqueueSessionAnnounceUpdate,
   enqueueSessionCreationDeliveries,
+  enqueueSessionInviteSyncForNewInvite,
   enqueueSessionResultThreadSummary,
 } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
@@ -63,11 +64,21 @@ export async function createRouletteResultSession(data: {
     // (session-lifecycle.ts) : `SessionInvite` posée pour EXACTEMENT
     // `data.notifiedUserIds` (les participants réels de la roulette),
     // DANS LA MÊME transaction que la création de la session.
+    const createdInviteIds: string[] = [];
     for (const guestId of data.notifiedUserIds) {
-      await inviteToSession(created.id, data.createdById, guestId, tx);
+      const invite = await inviteToSession(created.id, data.createdById, guestId, tx);
+      if (invite) createdInviteIds.push(invite.id);
     }
     if (announceViaBot) {
       await enqueueSessionCreationDeliveries(created.id, tx);
+      // Même correctif que `createSession` (session-lifecycle.ts) : un
+      // participant Roulette n'était jusqu'ici jamais synchronisé vers le
+      // fil Discord tant qu'il n'était pas réinvité manuellement — voir le
+      // commentaire de `enqueueSessionInviteSyncForNewInvite`,
+      // session-announce.ts.
+      for (const inviteId of createdInviteIds) {
+        await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
+      }
     }
     return created;
   });
