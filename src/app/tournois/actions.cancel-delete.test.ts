@@ -31,7 +31,11 @@ vi.mock("@/lib/badges", () => ({ checkTournamentBadges: vi.fn() }));
 vi.mock("@/lib/discord", () => ({ postToDiscord: vi.fn(), ACCENT_COLOR: 0 }));
 vi.mock("@/lib/app-url", () => ({ resolveAbsoluteUrl: vi.fn() }));
 vi.mock("@/lib/discord-bot-config", () => ({ getTournamentAnnounceConfig: vi.fn(() => null) }));
-vi.mock("@/lib/tournament-announce", () => ({ enqueueTournamentCreationDeliveries: vi.fn() }));
+vi.mock("@/lib/tournament-announce", () => ({
+  enqueueTournamentCreationDeliveries: vi.fn(),
+  enqueueTournamentThreadMember: vi.fn(),
+  resyncTournamentThreadMembers: vi.fn(),
+}));
 
 import { cancelTournamentAction, deleteTournamentAction } from "./actions";
 

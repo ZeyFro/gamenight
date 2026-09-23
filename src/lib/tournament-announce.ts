@@ -117,6 +117,15 @@ function threadSummarySlot(tournamentId: string): string {
 function threadCloseSlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-close`;
 }
+function threadDeleteSlot(tournamentId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-delete`;
+}
+function announceDeleteSlot(tournamentId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:announce-delete`;
+}
+function memberSlot(tournamentId: string, userId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:member:${userId}`;
+}
 
 /** Jamais de mention sur ce chantier — aucun `users`/`roles`, voir le
  * commentaire de fichier. Une seule constante partagée : aucun risque
@@ -278,6 +287,169 @@ export async function enqueueTournamentThreadClose(
     },
     db
   );
+}
+
+/**
+ * Chantier nettoyage réel du stockage (V2) — suppression manuelle
+ * définitive d'un tournoi (`deleteTournament`, tournaments.ts) : supprime
+ * DÉFINITIVEMENT (jamais une simple édition/archivage, réservés à
+ * l'annulation — voir `cancelTournament`, comportement inchangé et
+ * distinct) le message d'annonce dans le salon PARENT et le fil dédié,
+ * AVEC ses messages. Toujours appelées ENSEMBLE par `deleteTournament`
+ * (deux livraisons indépendantes, comme partout ailleurs dans ce module).
+ *
+ * Occurrence ALÉATOIRE (jamais fixe) — même raisonnement que
+ * `enqueueSessionThreadDelete` (session-announce.ts) : appelable
+ * plusieurs fois (l'appel automatique à la suppression, PUIS un éventuel
+ * réessai manuel d'un nettoyage resté en échec terminal), la convergence
+ * `[targetSlot, operation]` garantit qu'une seule intention survit à la
+ * fois sans jamais dupliquer l'effet (idempotence Discord elle-même déjà
+ * assurée côté `performDiscordAction`, équivalence 404 → succès).
+ *
+ * `db` optionnel — composable avec la transaction qui supprime la ligne
+ * `Tournament` (voir `deleteTournament`) : un crash entre les deux ne doit
+ * jamais laisser un tournoi supprimé en base sans que son annonce/son fil
+ * ne soient jamais nettoyés.
+ */
+export async function enqueueTournamentAnnounceDelete(tournamentId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_REMOVED", sourceId: tournamentId, occurrence: randomUUID() },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: announceDeleteSlot(tournamentId),
+    },
+    db
+  );
+}
+
+export async function enqueueTournamentThreadDelete(tournamentId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_REMOVED", sourceId: tournamentId, occurrence: randomUUID() },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadDeleteSlot(tournamentId),
+    },
+    db
+  );
+}
+
+/**
+ * État de la dernière tentative de nettoyage Discord connue pour un
+ * tournoi SUPPRIMÉ — même usage d'audit/retry manuel que
+ * `getSessionThreadDeleteStatus` (session-announce.ts, voir son
+ * commentaire pour le raisonnement complet).
+ */
+export async function getTournamentCleanupStatus(
+  tournamentId: string
+): Promise<{
+  announce: "never_enqueued" | "pending" | "done" | "failed";
+  thread: "never_enqueued" | "pending" | "done" | "failed";
+}> {
+  async function statusFor(targetSlot: string): Promise<"never_enqueued" | "pending" | "done" | "failed"> {
+    const rows = await prisma.notificationDelivery.findMany({
+      where: { targetSlot, operation: "SEND" },
+      orderBy: { sequence: "desc" },
+      select: { status: true },
+    });
+    const latest = rows.find((r) => r.status !== "SKIPPED");
+    if (!latest) return rows.length > 0 ? "pending" : "never_enqueued";
+    if (latest.status === "SENT") return "done";
+    if (latest.status === "FAILED") return "failed";
+    return "pending";
+  }
+  return {
+    announce: await statusFor(announceDeleteSlot(tournamentId)),
+    thread: await statusFor(threadDeleteSlot(tournamentId)),
+  };
+}
+
+/**
+ * Chantier auto-adhésion aux fils de tournois (V2) — ajoute UNE personne
+ * comme membre du fil du tournoi (créateur, destinataire sélectionné à la
+ * création, OU joueur qui s'inscrit ensuite — même rôle `member:<userId>`
+ * pour les trois cas, voir le commentaire de fichier). Ajouter au fil
+ * n'inscrit JAMAIS au tournoi (aucune écriture `TournamentParticipant`
+ * ici) et ne notifie jamais séparément (aucun message envoyé, seulement
+ * une adhésion API — voir `resolveThreadMembership`).
+ *
+ * Occurrence ALÉATOIRE (comme `enqueueSessionInviteSync`) — un appel
+ * répété pour la MÊME personne (ex. notifiée à la création PUIS inscrite
+ * ensuite) crée une nouvelle ligne sur le MÊME `targetSlot`
+ * (`memberSlot(tournamentId, userId)`, dérivé de l'id, jamais dupliqué par
+ * personne) ; seule la plus récente est traitée (convergence), et le
+ * `PUT` Discord sous-jacent est de toute façon idempotent — déduplication
+ * garantie à deux niveaux, jamais un double ajout traité comme deux
+ * opérations distinctes.
+ *
+ * `db` optionnel — composable avec la transaction de création du tournoi
+ * ou d'inscription (voir `createTournamentAction`/`registerForTournamentAction`).
+ */
+export async function enqueueTournamentThreadMember(
+  tournamentId: string,
+  userId: string,
+  db?: NotificationDb
+): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_THREAD_MEMBER", sourceId: tournamentId, occurrence: randomUUID() },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: `user:${userId}`,
+      targetSlot: memberSlot(tournamentId, userId),
+    },
+    db
+  );
+}
+
+/**
+ * Resynchronisation GROUPÉE du fil — réservée au créateur
+ * (`resyncTournamentThreadMembersAction`, tournois/actions.ts, vérifie
+ * `createdById === actorUserId`), pour un tournoi créé AVANT ce
+ * correctif (jamais enqueue-é la première fois). Ne recrée JAMAIS le fil
+ * ni ne renvoie l'annonce/reping personne (aucun message envoyé,
+ * uniquement des ajouts silencieux d'adhésion) — même garantie que
+ * `resyncSessionThreadMembers` (session-announce.ts). Relit l'état
+ * COURANT (destinataires persistés + inscrits ACTUELS) à CET INSTANT,
+ * jamais un instantané périmé.
+ */
+export async function resyncTournamentThreadMembers(tournamentId: string): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { createdById: true, notifiedUserIds: true },
+  });
+  if (!tournament) return;
+
+  const userIds = new Set<string>([tournament.createdById]);
+  for (const id of resolveNotifiedUserIds(tournament.notifiedUserIds) ?? []) userIds.add(id);
+
+  const participants = await prisma.tournamentParticipant.findMany({
+    where: { tournamentId },
+    select: { userId: true },
+  });
+  for (const p of participants) userIds.add(p.userId);
+
+  for (const userId of userIds) {
+    await enqueueTournamentThreadMember(tournamentId, userId);
+  }
 }
 
 /**
@@ -537,6 +709,17 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     if (role === "thread-close") {
       return resolveThreadClose(tournamentId);
     }
+    // Chantier nettoyage réel du stockage (V2) — suppression manuelle
+    // définitive : ces deux rôles ne dépendent JAMAIS de l'existence de la
+    // ligne `Tournament` (voir le commentaire d'`enqueueTournamentAnnounceDelete`/
+    // `enqueueTournamentThreadDelete`), exactement comme `thread-close`
+    // ci-dessus.
+    if (role === "thread-delete") {
+      return resolveThreadDelete(tournamentId);
+    }
+    if (role === "announce-delete") {
+      return resolveAnnounceDelete(tournamentId);
+    }
 
     const tournament = await loadTournament(tournamentId);
 
@@ -564,6 +747,10 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     if (role === "thread-summary") {
       return resolveThreadSummary(tournamentId, tournament);
     }
+    if (role.startsWith("member:")) {
+      const userId = role.slice("member:".length);
+      return resolveThreadMembership(tournamentId, userId);
+    }
 
     logger.error("tournament-announce", `targetSlot de rôle inconnu : ${delivery.targetSlot}`, {
       tournamentId,
@@ -571,6 +758,35 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     return { eligible: false, reason: "unresolvable" };
   },
 };
+
+/**
+ * Adhésion automatique au fil — V2. Dépend de `thread` SENT (a besoin du
+ * fil créé, même dépendance que toute autre opération sur le fil dans ce
+ * module). Le tournoi doit encore exister (vérifié par le dispatcher
+ * ci-dessus AVANT d'appeler cette fonction, `tournament` chargé pour tous
+ * les rôles hors `thread-close`/`thread-delete`/`announce-delete`) — une
+ * synchronisation périmée ne peut donc jamais rouvrir un fil déjà fermé/
+ * supprimé (le rôle `thread-delete`, dispatché en premier et indépendant
+ * de l'état du tournoi, l'emporte structurellement une fois le tournoi
+ * supprimé : `member:<userId>` retombe alors sur `expired` via le
+ * dispatcher, avant même d'atteindre cette fonction).
+ */
+async function resolveThreadMembership(tournamentId: string, userId: string): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(tournamentId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { discordId: true } });
+  // Défensif — ne devrait jamais se produire (aucune suppression de compte
+  // implémentée dans cette app), refuse plutôt que de planter.
+  if (!user) return { eligible: false, reason: "expired" };
+
+  const action: ResolvedAction = {
+    kind: "add_thread_member",
+    threadId: thread.discordThreadId,
+    discordUserId: user.discordId,
+  };
+  return { eligible: true, action };
+}
 
 async function resolveAnnounceDelivery(
   delivery: ClaimedDelivery,
@@ -707,6 +923,60 @@ async function resolveThreadClose(tournamentId: string): Promise<Resolution> {
     select: { status: true },
   });
   if (threadSend && (threadSend.status === "PENDING" || threadSend.status === "RESERVED")) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+  return { eligible: false, reason: "expired" };
+}
+
+/**
+ * Suppression PERMANENTE du fil — V2, suppression manuelle définitive
+ * d'un tournoi. Même structure EXACTE que `resolveThreadClose` ci-dessus
+ * (dépend uniquement de la référence déjà persistée du SEND `thread`,
+ * jamais de l'état du tournoi lui-même) — seule l'action Discord change
+ * (`delete_thread_permanent` au lieu d'`archive_thread`).
+ */
+async function resolveThreadDelete(tournamentId: string): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(tournamentId));
+  if (thread?.discordThreadId) {
+    const action: ResolvedAction = { kind: "delete_thread_permanent", threadId: thread.discordThreadId };
+    return { eligible: true, action };
+  }
+
+  const threadSend = await prisma.notificationDelivery.findFirst({
+    where: { targetSlot: threadSlot(tournamentId), operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { status: true },
+  });
+  if (threadSend && (threadSend.status === "PENDING" || threadSend.status === "RESERVED")) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+  return { eligible: false, reason: "expired" };
+}
+
+/**
+ * Suppression du message d'annonce dans le salon PARENT — V2, suppression
+ * manuelle définitive d'un tournoi. Même structure que `resolveThreadDelete`
+ * ci-dessus, appliquée au SEND `announce` (jamais le salon lui-même,
+ * jamais un message reconstruit/deviné — uniquement la référence
+ * PERSISTÉE du message réellement envoyé).
+ */
+async function resolveAnnounceDelete(tournamentId: string): Promise<Resolution> {
+  const sent = await findSentDelivery(announceSlot(tournamentId));
+  if (sent?.discordMessageId && sent.discordChannelId) {
+    const action: ResolvedAction = {
+      kind: "delete_channel_message",
+      channelId: sent.discordChannelId,
+      messageId: sent.discordMessageId,
+    };
+    return { eligible: true, action };
+  }
+
+  const announceSend = await prisma.notificationDelivery.findFirst({
+    where: { targetSlot: announceSlot(tournamentId), operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { status: true },
+  });
+  if (announceSend && (announceSend.status === "PENDING" || announceSend.status === "RESERVED")) {
     return { eligible: false, reason: "dependency_not_ready" };
   }
   return { eligible: false, reason: "expired" };

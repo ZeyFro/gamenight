@@ -633,7 +633,7 @@ export default async function SessionDetailPage({
           <ButtonLink href={`/sessions/${session.id}/invites`} variant="secondary" size="sm">
             👥 Gérer les invités
           </ButtonLink>
-          <DeleteSessionDialog sessionId={session.id} />
+          <DeleteSessionDialog sessionId={session.id} hasThread={session.announceViaBot} />
         </div>
       )}
 

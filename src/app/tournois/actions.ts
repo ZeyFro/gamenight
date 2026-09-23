@@ -12,11 +12,15 @@ import {
   cancelTournament,
   deleteTournament,
 } from "@/lib/tournaments";
+import {
+  enqueueTournamentCreationDeliveries,
+  enqueueTournamentThreadMember,
+  resyncTournamentThreadMembers,
+} from "@/lib/tournament-announce";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
-import { enqueueTournamentCreationDeliveries } from "@/lib/tournament-announce";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import {
@@ -120,6 +124,19 @@ export async function createTournamentAction(formData: FormData) {
     });
     if (announceViaBot) {
       await enqueueTournamentCreationDeliveries(created.id, tx);
+      // Chantier auto-adhésion aux fils de tournois (V2) — constat remonté
+      // (l'annonce et les pings arrivent, mais il fallait ouvrir le salon
+      // PUIS rejoindre manuellement le fil) : le créateur ET chaque
+      // destinataire sélectionné (`notifiedUserIds`, déjà validés contre
+      // de vrais users ci-dessus) sont ajoutés au fil DANS CETTE MÊME
+      // TRANSACTION — un crash entre les deux ne doit jamais laisser un
+      // tournoi bot orphelin de la moindre intention d'adhésion. Ajouter
+      // au fil n'inscrit JAMAIS au tournoi (aucune écriture
+      // `TournamentParticipant` ici) — voir `enqueueTournamentThreadMember`.
+      await enqueueTournamentThreadMember(created.id, user.id, tx);
+      for (const notifiedId of notifiedUserIds) {
+        await enqueueTournamentThreadMember(created.id, notifiedId, tx);
+      }
     }
     return created;
   });
@@ -197,8 +214,10 @@ export async function registerForTournamentAction(formData: FormData) {
   const tournamentId = input.data;
 
   const registered = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; status: string; maxPlayers: number }[]>`
-      SELECT id, status, "maxPlayers" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    const locked = await tx.$queryRaw<
+      { id: string; status: string; maxPlayers: number; announceViaBot: boolean }[]
+    >`
+      SELECT id, status, "maxPlayers", "announceViaBot" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
     `;
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
@@ -218,6 +237,15 @@ export async function registerForTournamentAction(formData: FormData) {
       // toute transaction concurrente sur ce tournoi), gardé en filet de
       // sécurité minimal, comportement identique à avant.
       return false;
+    }
+
+    // Chantier auto-adhésion aux fils de tournois (V2) — un joueur qui
+    // s'inscrit rejoint automatiquement le fil, DANS CETTE MÊME
+    // TRANSACTION que son inscription (même raisonnement que ci-dessus) —
+    // jamais l'inverse (rejoindre le fil n'inscrit jamais au tournoi,
+    // cette fonction n'écrit d'ailleurs aucun `TournamentParticipant`).
+    if (tournament.announceViaBot) {
+      await enqueueTournamentThreadMember(tournamentId, user.id, tx);
     }
 
     // Places pleines → lancement automatique du bracket (spec), dans
@@ -422,4 +450,34 @@ export async function deleteTournamentAction(
 
   revalidatePath("/tournois");
   redirect("/tournois");
+}
+
+/**
+ * Resynchronisation GROUPÉE du fil du tournoi — réservée au créateur (V2,
+ * chantier auto-adhésion), pour un tournoi créé AVANT ce correctif : ni le
+ * créateur ni les destinataires sélectionnés/inscrits n'ont alors la
+ * moindre livraison d'adhésion enqueue-ée. Ne recrée JAMAIS le fil, ne
+ * renvoie AUCUNE annonce, ne reping personne (voir
+ * `resyncTournamentThreadMembers`, tournament-announce.ts) — jamais
+ * exécutée contre la production par cette PR (livrée comme outil, pas
+ * comme rattrapage automatique).
+ */
+export async function resyncTournamentThreadMembersAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "resyncTournamentThreadMembers")) return;
+
+  const input = idSchema.safeParse(String(formData.get("tournamentId") ?? ""));
+  if (!input.success) return;
+  const tournamentId = input.data;
+
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { createdById: true, announceViaBot: true },
+  });
+  if (!tournament || tournament.createdById !== user.id || !tournament.announceViaBot) return;
+
+  await resyncTournamentThreadMembers(tournamentId);
+
+  revalidatePath(`/tournois/${tournamentId}`);
 }

@@ -1162,7 +1162,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(fetchMock).not.toHaveBeenCalled();
       });
 
-      it("suppression APRÈS que l'annonce ait déjà été envoyée : EDIT générique « supprimé » + fermeture du fil, fonctionnent SANS que la ligne Tournament existe encore", async () => {
+      it("suppression APRÈS que l'annonce ait déjà été envoyée : suppression DÉFINITIVE du message ET du fil (jamais une simple édition/archivage), fonctionnent SANS que la ligne Tournament existe encore", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const tournament = await makeTournament(creator.id, game.id);
@@ -1176,24 +1176,115 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(result.ok).toBe(true);
         expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
 
-        mockSendOk("chan-tournois");
-        const editOutcome = await processOne();
-        expect(editOutcome?.outcome).toBe("sent");
-        const [, editInit] = fetchMock.mock.calls.at(-1)!;
-        const editBody = JSON.parse(String(editInit.body));
-        expect(editBody.embeds[0].title).toContain("supprimé");
-        expect(editBody.content).toBeUndefined();
-        expect(editBody.allowed_mentions).toEqual({ parse: [] });
-        // Rendu générique — aucun nom de tournoi/jeu (la ligne n'existe
-        // plus, rien à relire).
-        expect(editBody.embeds[0].description).not.toContain(tournament.name);
+        // Message d'annonce — DELETE, jamais une PATCH/EDIT.
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const deleteAnnounceOutcome = await processOne();
+        expect(deleteAnnounceOutcome?.outcome).toBe("sent");
+        const [deleteAnnounceUrl, deleteAnnounceInit] = fetchMock.mock.calls.at(-1)!;
+        expect(deleteAnnounceInit.method).toBe("DELETE");
+        expect(String(deleteAnnounceUrl)).toContain("/channels/chan-tournois/messages/msg-announce");
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", archived: true }));
-        const closeOutcome = await processOne();
-        expect(closeOutcome?.outcome).toBe("sent");
-        const [, closeInit] = fetchMock.mock.calls.at(-1)!;
-        expect(closeInit.method).toBe("PATCH");
-        expect(JSON.parse(String(closeInit.body)).archived).toBe(true);
+        // Fil — DELETE définitif, jamais un PATCH `archived: true`.
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const deleteThreadOutcome = await processOne();
+        expect(deleteThreadOutcome?.outcome).toBe("sent");
+        const [deleteThreadUrl, deleteThreadInit] = fetchMock.mock.calls.at(-1)!;
+        expect(deleteThreadInit.method).toBe("DELETE");
+        expect(String(deleteThreadUrl)).toContain("/channels/thread-1");
+        expect(deleteThreadInit.body).toBeUndefined();
+      });
+
+      it("annonce/fil déjà absents côté Discord (404) au moment du nettoyage : traité comme un résultat idempotent (objectif déjà atteint), jamais un échec", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+
+        await tournamentsLib.deleteTournament(tournament.id, creator.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Message" }));
+        const announceOutcome = await processOne();
+        expect(announceOutcome?.outcome).toBe("sent");
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Channel" }));
+        const threadOutcome = await processOne();
+        expect(threadOutcome?.outcome).toBe("sent");
+      });
+
+      it("permissions insuffisantes (403) sur la suppression du fil : JAMAIS traité comme un succès, reste FAILED terminal", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        await tournamentsLib.deleteTournament(tournament.id, creator.id);
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 })); // annonce OK
+        await processOne();
+
+        // 403 — non-retryable, immédiatement FAILED terminal (voir
+        // discord-rest.ts), une seule tentative suffit à l'atteindre.
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { message: "Missing Permissions", code: 50013 }));
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:auth_or_permission" });
+        const row = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:thread-delete` },
+        });
+        expect(row.status).toBe("FAILED");
+      });
+
+      /**
+       * Même technique que "suppression PENDANT l'appel réseau du tout
+       * premier SEND" ci-dessus (déclenche la suppression DEPUIS
+       * L'INTÉRIEUR du mock réseau, une fois l'action déjà résolue) —
+       * seule façon de reproduire RÉELLEMENT l'entrelacement : une fois
+       * touchée après la disparition du tournoi, la livraison `thread`
+       * (comme toute livraison hors `thread-close`/`thread-delete`/
+       * `announce-delete`) se refuse elle-même IMMÉDIATEMENT (`expired`),
+       * elle ne reste jamais "PENDING en attendant" après un premier
+       * passage.
+       */
+      it("création du fil ABOUTIT EN VOL via un SEND déjà en vol au moment de la suppression : le nettoyage attend, puis supprime bel et bien le fil créé malgré la suppression — compensation durable, jamais un fil orphelin permanent", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne(); // annonce SENT
+
+        // Le SEND du fil est déjà EN VOL (action résolue, requête réseau
+        // partie) au moment où la suppression commet.
+        fetchMock.mockImplementationOnce(async () => {
+          const result = await tournamentsLib.deleteTournament(tournament.id, creator.id);
+          expect(result.ok).toBe(true);
+          return jsonResponse(200, { id: "thread-orphelin", parent_id: "chan-tournois" });
+        });
+        const threadSendOutcome = await processOne();
+        expect(threadSendOutcome?.outcome).toBe("sent");
+        expect(await db.tournament.findUnique({ where: { id: tournament.id } })).toBeNull();
+
+        // Nettoyage programmé (`announce-delete` puis `thread-delete`,
+        // enqueue-és par `deleteTournament` puisque l'annonce était déjà
+        // SENT) — le message d'annonce d'abord.
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const announceDeleteOutcome = await processOne();
+        expect(announceDeleteOutcome?.outcome).toBe("sent");
+
+        // Puis le fil — voit maintenant `thread` SENT et supprime
+        // RÉELLEMENT ce fil créé en vol malgré la suppression déjà actée —
+        // sans cette compensation, il resterait orphelin indéfiniment.
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const cleanupOutcome = await processOne();
+        expect(cleanupOutcome?.outcome).toBe("sent");
+        const [cleanupUrl, cleanupInit] = fetchMock.mock.calls.at(-1)!;
+        expect(cleanupInit.method).toBe("DELETE");
+        expect(String(cleanupUrl)).toContain("/channels/thread-orphelin");
       });
 
       /**
@@ -1228,7 +1319,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         // `deleteTournament` a vérifié `isTournamentAnnounceSent` AVANT que
         // ce SEND ne commette son statut SENT — il n'a donc rien enqueue-é
-        // à éditer/fermer. La livraison `thread` restée PENDING (dépendait
+        // à supprimer/fermer. La livraison `thread` restée PENDING (dépendait
         // de l'annonce) devient réclamable maintenant qu'elle est SENT —
         // mais se refuse elle-même (`expired`, tournoi disparu) : AUCUN
         // fil n'est donc jamais créé, ce qui évite au moins un fil
@@ -1237,10 +1328,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(threadOutcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
 
         // Plus rien à traiter ensuite. L'annonce publique, elle, reste
-        // visible TELLE QUELLE (jamais éditée en "supprimé") pour un
-        // tournoi qui n'existe plus en base, jusqu'à intervention
-        // manuelle — limite honnêtement constatée, hors du périmètre de
-        // ce ticket (navigation après suppression), pas prétendue résolue.
+        // visible TELLE QUELLE (jamais supprimée) pour un tournoi qui
+        // n'existe plus en base, jusqu'à intervention manuelle (voir
+        // l'onglet admin "Nettoyage") — limite honnêtement constatée, hors
+        // du périmètre de ce ticket (détecter cette course précise après
+        // coup), pas prétendue résolue.
         expect(await processOne()).toBeNull();
       });
 
@@ -1472,6 +1564,199 @@ describe.skipIf(!TEST_DATABASE_URL)(
         });
         const fetchedRegistration = await fetchForHistory(registration.id);
         expect(tournamentsLib.isTournamentVisibleInHistory(fetchedRegistration)).toBe(true);
+      });
+    });
+
+    describe("V2 — adhésion automatique au fil du tournoi", () => {
+      async function setupThread(tournamentId: string) {
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        // Vide les livraisons `member:*` déjà enqueue-ées à la création
+        // pour isoler chaque test sur les appels qu'il déclenche lui-même,
+        // et réinitialise `fetchMock` (les 3 appels ci-dessus sont un
+        // détail d'installation, jamais ce que le test lui-même vérifie).
+        await db.notificationDelivery.deleteMany({
+          where: { targetSlot: { contains: `:TOURNAMENT:${tournamentId}:member:` } },
+        });
+        fetchMock.mockClear();
+      }
+
+      it("créateur ET destinataires sélectionnés ajoutés au fil à la création — jamais une inscription au tournoi", async () => {
+        const creator = await makeUser({ discordName: "creator" });
+        const recipient = await makeUser({ discordName: "recipient" });
+        const game = await makeGame(creator.id);
+        const tournament = await db.tournament.create({
+          data: {
+            name: uniq("tournoi"),
+            gameId: game.id,
+            createdById: creator.id,
+            maxPlayers: 4,
+            announceViaBot: true,
+            discordGuildId: "guild-1",
+            discordChannelId: "chan-tournois",
+            notifiedUserIds: [recipient.id],
+          },
+        });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        await announceLib.enqueueTournamentThreadMember(tournament.id, creator.id);
+        await announceLib.enqueueTournamentThreadMember(tournament.id, recipient.id);
+
+        mockVerifiedSendOk("chan-tournois");
+        await processOne(); // annonce
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne(); // fil
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const creatorOutcome = await processOne();
+        expect(creatorOutcome?.outcome).toBe("sent");
+        const [creatorUrl, creatorInit] = fetchMock.mock.calls.at(-1)!;
+        expect(creatorInit.method).toBe("PUT");
+        expect(String(creatorUrl)).toContain(`/channels/thread-1/thread-members/${creator.discordId}`);
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const recipientOutcome = await processOne();
+        expect(recipientOutcome?.outcome).toBe("sent");
+        const [recipientUrl] = fetchMock.mock.calls.at(-1)!;
+        expect(String(recipientUrl)).toContain(`/channels/thread-1/thread-members/${recipient.discordId}`);
+
+        // Jamais inscrit au tournoi par la seule adhésion au fil.
+        const participants = await db.tournamentParticipant.findMany({ where: { tournamentId: tournament.id } });
+        expect(participants.map((p) => p.userId)).not.toContain(recipient.id);
+      });
+
+      it("un joueur qui s'inscrit ensuite est ajouté au fil — désinscription ne le retire JAMAIS du fil (adhésion monotone)", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { maxPlayers: 4 });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        await setupThread(tournament.id);
+
+        const player = await makeUser({ discordName: "player" });
+        await db.$transaction(async (tx) => {
+          await tx.tournamentParticipant.create({ data: { tournamentId: tournament.id, userId: player.id } });
+          await announceLib.enqueueTournamentThreadMember(tournament.id, player.id, tx);
+        });
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        const [url] = fetchMock.mock.calls.at(-1)!;
+        expect(String(url)).toContain(`/channels/thread-1/thread-members/${player.discordId}`);
+
+        // Désinscription — aucune livraison de RETRAIT n'existe pour les
+        // tournois (jamais implémentée, adhésion monotone par design).
+        await db.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id, userId: player.id } });
+        expect(await processOne()).toBeNull(); // rien de plus à traiter
+      });
+
+      it("dédupliqué : notifié À LA CRÉATION puis inscrit ensuite ne génère qu'un seul ajout traité (convergence), jamais un double PUT distinct compté comme deux opérations", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const notified = await makeUser({ discordName: "notified" });
+        const tournament = await db.tournament.create({
+          data: {
+            name: uniq("tournoi"),
+            gameId: game.id,
+            createdById: creator.id,
+            maxPlayers: 4,
+            announceViaBot: true,
+            discordGuildId: "guild-1",
+            discordChannelId: "chan-tournois",
+            notifiedUserIds: [notified.id],
+          },
+        });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        await announceLib.enqueueTournamentThreadMember(tournament.id, notified.id);
+        await setupThread(tournament.id);
+        // `setupThread` a purgé les livraisons `member:*` déjà en attente —
+        // ré-enqueue explicitement celle du destinataire pour isoler ce test.
+        await announceLib.enqueueTournamentThreadMember(tournament.id, notified.id);
+
+        // La même personne s'inscrit ensuite — nouvelle livraison sur le
+        // MÊME targetSlot (`member:<userId>`).
+        await db.tournamentParticipant.create({ data: { tournamentId: tournament.id, userId: notified.id } });
+        await announceLib.enqueueTournamentThreadMember(tournament.id, notified.id);
+
+        const rows = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:member:${notified.id}` },
+          orderBy: { sequence: "asc" },
+        });
+        expect(rows).toHaveLength(2); // deux intentions enqueue-ées...
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        expect(fetchMock).toHaveBeenCalledTimes(1); // ...mais un SEUL appel Discord réel
+
+        const refreshed = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:member:${notified.id}` },
+        });
+        expect(refreshed.filter((r) => r.status === "SKIPPED")).toHaveLength(1); // l'ancienne, périmée
+        expect(refreshed.filter((r) => r.status === "SENT")).toHaveLength(1); // la plus récente, traitée
+      });
+
+      it("aucune synchronisation périmée ne peut rouvrir un fil déjà supprimé — `member:<userId>` retombe sur `expired` une fois le tournoi disparu", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        await setupThread(tournament.id);
+
+        const latecomer = await makeUser();
+        await announceLib.enqueueTournamentThreadMember(tournament.id, latecomer.id);
+
+        await tournamentsLib.deleteTournament(tournament.id, creator.id);
+
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("resynchronisation groupée (créateur) : réajoute créateur + destinataires + inscrits ACTUELS, sans jamais recréer le fil ni renvoyer l'annonce", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const notified = await makeUser({ discordName: "notified" });
+        const registrant = await makeUser({ discordName: "registrant" });
+        const tournament = await db.tournament.create({
+          data: {
+            name: uniq("tournoi"),
+            gameId: game.id,
+            createdById: creator.id,
+            maxPlayers: 4,
+            announceViaBot: true,
+            discordGuildId: "guild-1",
+            discordChannelId: "chan-tournois",
+            notifiedUserIds: [notified.id],
+          },
+        });
+        await db.tournamentParticipant.create({ data: { tournamentId: tournament.id, userId: registrant.id } });
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        await setupThread(tournament.id);
+
+        const callsBeforeResync = fetchMock.mock.calls.length;
+        await announceLib.resyncTournamentThreadMembers(tournament.id);
+        // Aucun appel Discord tenté par le resync lui-même (enqueue seul).
+        expect(fetchMock.mock.calls.length).toBe(callsBeforeResync);
+
+        const rows = await db.notificationDelivery.findMany({
+          where: { targetSlot: { contains: `:TOURNAMENT:${tournament.id}:member:` } },
+        });
+        const targetedUserIds = new Set(rows.map((r) => r.targetSlot.split(":member:")[1]));
+        expect(targetedUserIds).toEqual(new Set([creator.id, notified.id, registrant.id]));
+
+        // Aucune nouvelle annonce/fil enqueue-é par le resync.
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce` },
+          })
+        ).toBe(1);
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:thread` },
+          })
+        ).toBe(1);
       });
     });
   }

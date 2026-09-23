@@ -7,6 +7,7 @@ import { BadgesTab } from "@/components/admin/BadgesTab";
 import { JeuxStatsTab } from "@/components/admin/JeuxStatsTab";
 import { ReglagesTab } from "@/components/admin/ReglagesTab";
 import { ConfidentialiteTab } from "@/components/admin/ConfidentialiteTab";
+import { NettoyageTab } from "@/components/admin/NettoyageTab";
 
 function isAdminTabKey(value: string | undefined): value is AdminTabKey {
   return !!value && (ADMIN_TAB_KEYS as string[]).includes(value);
@@ -50,6 +51,7 @@ export default async function AdminPage({
       {tab === "jeux-stats" && <JeuxStatsTab />}
       {tab === "reglages" && <ReglagesTab />}
       {tab === "confidentialite" && <ConfidentialiteTab />}
+      {tab === "nettoyage" && <NettoyageTab />}
     </div>
   );
 }

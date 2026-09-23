@@ -10814,3 +10814,423 @@ ici ; limite assumée et documentée plutôt que contournée.
 production, aucune migration distante, aucune suppression d'ancienne
 annonce, aucun merge ni changement de configuration externe n'a été
 effectué dans cette session.**
+
+## V2 — nettoyage réel du stockage et cohérence du cycle de vie Discord (soirées et tournois)
+
+### Statut vérifié des PR #95 à #106 (avant tout travail de ce chantier)
+
+Vérifié via `pull_request_read` (méthode `get`) sur CHAQUE PR individuellement
+— jamais via `list_pull_requests`, dont le champ `merged` s'est révélé
+peu fiable (retourne `false` pour toutes les entrées y compris des PR
+confirmées fusionnées par ailleurs) :
+
+| PR | Sujet | Fusionnée | Date de fusion |
+|----|-------|-----------|-----------------|
+| #95 | Fondations de livraison (`NotificationEvent`/`NotificationDelivery`) | ✅ | 2026-09-16 |
+| #96 | Client Discord REST (bot) | ✅ | 2026-09-16 |
+| #97 | Exécuteur de notifications | ✅ | 2026-09-17 |
+| #98 | Préférences de notification par catégorie | ✅ | 2026-09-17 |
+| #99 | Annonces Discord bot — soirées | ✅ | 2026-09-18 |
+| #100 | Revue ciblée — contrôle de destination | ✅ | 2026-09-19 |
+| #101 | Roulette — `announceViaBot` | ✅ | 2026-09-19 |
+| #102 | Confidentialité des soirées — fils privés | ✅ | 2026-09-21 |
+| #103 | Chantier confidentialité (suite) — vérification fil privé | ✅ | 2026-09-21 |
+| #104 | Annonces Discord tournois + V2 notifications/annulation/suppression | ✅ | 2026-09-22 |
+| #105 | Correctifs V2 remontés en test réel (accès fil, suppression tournoi, roue, historique 7j) | ✅ | 2026-09-22 |
+| #106 | Soirée → Roulette (tirage inline) | ✅ | 2026-09-23 |
+
+**Toutes les PR #95 à #106 sont fusionnées dans `main`.** `main` était à jour
+au commit `1eedbd0` au démarrage de ce chantier — aucune n'est restée au
+stade "déployée en Preview seulement".
+
+### Causes démontrées des problèmes Discord remontés
+
+1. **Suppression manuelle d'une soirée n'a jamais touché Discord** —
+   `deleteSessionAction` (session-lifecycle.ts) faisait un simple
+   `prisma.session.delete()`, explicitement documenté "ménage silencieux,
+   aucune notification Discord". Pour une soirée `announceViaBot`, son fil
+   privé (et tous ses messages) restait donc indéfiniment accessible à ses
+   membres après la suppression de la soirée elle-même.
+2. **Suppression d'un tournoi éditait l'annonce et ARCHIVAIT le fil, ne
+   supprimait jamais rien** — `deleteTournament` (tournaments.ts)
+   appelait `enqueueTournamentAnnounceUpdate` (EDIT "supprimé") +
+   `enqueueTournamentThreadClose` (`archive_thread`, réversible). Le
+   message annonçant l'inscription restait affiché (édité, jamais retiré)
+   et le fil restait consultable (archivé, jamais supprimé) — aucune
+   réduction réelle de données conservées.
+3. **Aucune adhésion automatique au fil des tournois** — le fil de
+   tournoi (`create_thread`, PUBLIC) n'ajoutait jamais personne
+   automatiquement ; seuls l'annonce et les pings arrivaient, l'ouverture
+   du fil restait un geste manuel côté Discord (contrairement aux
+   soirées, qui ajoutent déjà créateur + invités via `creator-member`/
+   `invite:<id>` depuis #105).
+4. **Aucune politique de rétention réelle** — `isSessionVisibleInHistory`/
+   `isTournamentVisibleInHistory` (#105) ne font que MASQUER la liste
+   `/sessions`/`/tournois` après 7 jours ; aucune donnée n'était jamais
+   réellement supprimée (ni le chat, ni les notifications de saisons
+   closes, ni les livraisons techniques terminales).
+
+### Ce qui n'a PAS changé (comportements confirmés fonctionnels, non retouchés)
+
+Conformément à la demande explicite ("les autres parcours récemment
+testés fonctionnent, ne repars pas dans une refonte générale") : aucun
+changement aux flux d'annonce/rappel/résultat des soirées et tournois
+(#99–#105), à la confidentialité des soirées (#102/#103), à
+`cancelTournament` (reste EDIT + `archive_thread`, jamais transformée en
+suppression définitive), ni à `drawSessionGame`/roulette (#106).
+
+### 1. Suppression manuelle → suppression Discord définitive
+
+**Nouveaux kinds Discord** (`src/lib/discord-rest.ts`) :
+- `deleteThreadPermanently` — `DELETE /channels/{channel.id}` sur un fil
+  (soirée ou tournoi). Distinct d'`archiveThread` (réversible, toujours
+  utilisée par `cancelTournament`).
+- `deleteChannelMessage` — `DELETE /channels/{channel.id}/messages/{message.id}`,
+  utilisée pour retirer l'annonce d'un tournoi supprimé dans son salon
+  parent (jamais une édition).
+- `addThreadMember` (déjà existante, réutilisée SANS revérification de
+  type — un fil de tournoi a toujours été PUBLIC, jamais migré depuis un
+  autre type, contrairement aux soirées).
+
+**Nouveaux rôles de `targetSlot`** (mêmes fondations de livraison #95,
+même exécuteur #97, occurrence ALÉATOIRE — appelables plusieurs fois,
+retry manuel inclus) :
+- `thread-delete` (soirées ET tournois) — supprime définitivement le fil.
+- `announce-delete` (tournois uniquement) — supprime le message d'annonce
+  dans le salon parent.
+
+Les deux résolveurs (`resolveSessionThreadDelete`/`resolveThreadDelete`/
+`resolveAnnounceDelete`) sont dispatchés **avant** le chargement de
+l'entité métier (comme `thread-close` déjà existant) : ils ne dépendent
+JAMAIS de l'existence de la `Session`/du `Tournament`, par construction
+(l'entité a déjà disparu au moment où ces livraisons sont réellement
+traitées).
+
+**Enqueue atomique** — `deleteSessionAction`/`deleteTournament` enqueue
+l'intention de nettoyage **dans la même transaction SQL** que la
+suppression de la ligne métier. Aucune transaction atomique DB+Discord
+n'est jamais promise : seule l'écriture de l'intention est garantie
+atomique avec la suppression, l'appel Discord réel a nécessairement lieu
+après, via l'exécuteur.
+
+**Races traitées et testées** (`session-announce.integration.test.ts`/
+`tournament-announce.integration.test.ts`, describe "V2 — suppression
+manuelle définitive") :
+- suppression avant tout envoi Discord → le SEND encore PENDING se
+  refuse lui-même (`expired`) ;
+- suppression pendant l'appel réseau du SEND (déjà en vol) → le SEND
+  aboutit quand même, le nettoyage programmé attend (`dependency_not_ready`)
+  puis supprime RÉELLEMENT la ressource créée après coup — compensation
+  durable, jamais un fil/une annonce orpheline permanente ;
+- ressource déjà absente (404) → traité comme un résultat **idempotent**
+  (objectif déjà atteint), jamais un échec ;
+- permission insuffisante (403) ou erreur réseau → **jamais** un succès,
+  reste `FAILED` terminal ;
+- réessai manuel (occurrence aléatoire, même mécanisme que le bouton
+  "Réessayer" des invitations) : une nouvelle intention converge, l'ancien
+  échec reste visible comme trace (jamais réutilisé pour rejouer
+  l'événement).
+
+**État honnête + réessai manuel, même hors des listes normales** — un
+nouvel onglet **`/admin?tab=nettoyage`** ("Nettoyage") liste les
+suppressions Discord en échec terminal (`listFailedDiscordCleanupDeliveries`,
+`src/lib/discord-cleanup-status.ts`) avec un bouton "Réessayer"
+(`retryDiscordCleanupAction`), réservé aux admins (l'entité elle-même
+n'existe plus, aucune garde "créateur" n'est possible).
+
+**Confirmation UI mise à jour** — `DeleteSessionDialog`/`DeleteTournamentDialog`
+expliquent désormais explicitement que le fil (et, pour un tournoi,
+l'annonce) sera **définitivement supprimé, avec ses messages**. Les
+soirées privées restent traitées à l'identique (confidentialité
+inchangée, aucune donnée exposée par cette page).
+
+### 2. Adhésion automatique aux fils de tournois
+
+**Nouveau rôle `member:<userId>`** (`src/lib/tournament-announce.ts`,
+`enqueueTournamentThreadMember`) — ajoute UNE personne au fil du tournoi
+(action `add_thread_member`, PUT idempotent côté Discord) :
+- à la création (`createTournamentAction`) : le créateur + chaque
+  destinataire sélectionné (`notifiedUserIds`), dans la même transaction ;
+- à l'inscription (`registerForTournamentAction`) : le joueur qui vient
+  de s'inscrire, dans la même transaction que son inscription.
+
+**Jamais l'inverse** : `enqueueTournamentThreadMember` n'écrit AUCUNE
+ligne `TournamentParticipant` — rejoindre le fil n'inscrit jamais au
+tournoi. Le tournoi reste ouvert selon ses règles actuelles (jamais
+transformé en fil privé réservé aux destinataires — confidentialité des
+soirées non transposée ici). Adhésion **monotone** : jamais de retrait
+(se désinscrire du tournoi ne retire jamais du fil), aucun rôle de
+retrait n'existe pour les tournois.
+
+**Séparation stricte** : inscription au tournoi (`TournamentParticipant`) /
+adhésion au fil (`member:<userId>`) / préférence de notification
+(`UserNotificationPreference`, catégorie `TOURNAMENT`, inchangée) —
+trois mécanismes indépendants. Respecte les opt-out existants pour les
+**pings** (l'annonce continue de filtrer par préférence, inchangé) ;
+l'adhésion au fil elle-même n'envoie jamais de message ni de mention
+supplémentaire.
+
+**Déduplication** — même personne notifiée puis inscrite : deux
+livraisons sur le MÊME `targetSlot` (`member:<userId>`), convergence
+"la plus récente gagne" (#95) + idempotence native du `PUT` Discord.
+Jamais un double ajout traité comme deux opérations distinctes.
+
+**Aucune garantie d'affichage dans la barre latérale** — cette
+fonctionnalité confirme l'adhésion côté API Discord (`PUT` réussi),
+jamais une garantie sur le comportement du client Discord lui-même
+(certains clients n'affichent un fil dans la barre latérale qu'après une
+première activité/notification — comportement du client, hors contrôle
+de ce code).
+
+**Permissions Discord vérifiées** (documentation officielle, `raw.githubusercontent.com/discord/discord-api-docs`
+— `discord.com` bloqué en sortie réseau dans cette session) :
+- `PUT /channels/{channel.id}/thread-members/{user.id}` requiert que le
+  bot puisse envoyer des messages dans les fils (`SEND_MESSAGES_IN_THREADS`).
+- `DELETE /channels/{channel.id}` sur un FIL requiert `MANAGE_THREADS`
+  sur le salon parent — **contrairement** à l'archivage simple, qui
+  bénéficie d'une exception pour le créateur du fil sans cette
+  permission. Le bot doit donc détenir `MANAGE_THREADS` explicitement sur
+  #🎮-soirées/#🏆-tournois pour que la suppression définitive fonctionne
+  réellement (jamais `Administrateur`).
+- `DELETE /channels/{channel.id}/messages/{message.id}` sur le PROPRE
+  message du bot ne nécessite aucune permission supplémentaire
+  (`MANAGE_MESSAGES` n'est requise que pour supprimer le message d'un
+  tiers, jamais le cas ici).
+
+**Resynchronisation créateur** — `resyncTournamentThreadMembers`
+(mirroir exact de `resyncSessionThreadMembers`, #105) : réservée au
+créateur, réajoute créateur + destinataires persistés + inscrits ACTUELS,
+sans jamais recréer le fil ni renvoyer l'annonce/reping. Bouton "Resynchroniser
+le fil" sur `/tournois/[id]` (visible dès que le fil existe). **Non
+exécutée en production par cette PR** — livrée comme outil pour les
+tournois créés avant ce correctif.
+
+### 3. Audit du stockage (lecture seule)
+
+`src/lib/storage-audit.ts` (`generateStorageAuditReport`) — inventaire
+en lecture seule (agrégats SQL `count()`, jamais un chargement complet
+des tables), affiché dans **`/admin?tab=nettoyage`** :
+
+| Catégorie | Constat |
+|---|---|
+| Notifications utilisateur (`Notification`) | Aucune FK vers Session/Tournament (`relatedSessionId` libre) — jamais cassées par une future purge de ces lignes. |
+| Événements/livraisons de notification (`NotificationEvent`/`NotificationDelivery`) | Volumétrie proportionnelle à l'activité Discord bot ; rôles à occurrence FIXE (thread/announce/thread-summary/thread-close) protégés contre toute purge automatique — voir §5. |
+| Messages de chat (`ChatMessage`/`ChatReaction`) | Rattachés exclusivement à une `Session` (`sessionId`), cascade sur suppression du message parent. **Aucun message de chat indépendant d'une soirée** dans ce schéma — un seul chemin d'écriture connu. |
+| Soirées/tournois, propositions/votes, inscriptions | `Proposal`/`Vote` cascadent avec `Session` ; `TournamentParticipant`/`TournamentMatch` cascadent avec `Tournament`. |
+| Pièces jointes | **Aucune** pour soirées/tournois/chat — `ChatMessage.content` est un texte simple. Vercel Blob (`banner-blob.ts`) sert UNIQUEMENT la bannière de profil, scope utilisateur, hors de cette politique. |
+| XP/streaks/récompenses/classements/saisons (`XpEvent`, `LevelUpEvent`, `SeasonSnapshot`, `UserBadge`) | **Aucune FK** vers `Session`/`Tournament` (`sourceId` libre) — déjà structurellement à l'abri d'une purge de ces lignes. |
+| `SessionResult` (podium, lu par `/profil/historique` et `revanche.ts`) | **CASCADE avec `Session`** (`onDelete: Cascade`) — le seul modèle "résultat utile" identifié comme VULNÉRABLE si `Session` venait à être supprimée. Voir §6 pour la décision prise. |
+
+Distinction explicite demandée : **messages GameNight** (`ChatMessage`,
+en base, stockage/rétention propres à cette app) vs **messages privés
+Discord** (jamais stockés par cette app, hors de son contrôle) vs
+**messages de fil Discord** (annonces/résumés — référencés par id
+uniquement dans `NotificationDelivery`, le CONTENU n'est jamais persisté
+côté GameNight, seul Discord le détient réellement) — trois stockages et
+politiques de rétention **différents**, jamais confondus dans ce
+chantier.
+
+**Sans accès aux données de production**, les chiffres exacts (volumes,
+gains) ne sont jamais affirmés — seule la structure (modèles, cascades,
+critères d'éligibilité) est garantie exacte. `generateStorageAuditReport()`
+donne des chiffres réels une fois exécuté contre la vraie base.
+
+### 4. Politique de rétention (`src/lib/retention.ts`, centralisée)
+
+| Type de donnée | Règle | Purge |
+|---|---|---|
+| Soirées/tournois **actifs** | Jamais purgés, quel que soit l'âge (statut ≠ terminal). | — |
+| Soirées/tournois **terminés/annulés** | Fenêtre de 7 jours depuis la fin/l'annulation RÉELLE (`Session.date` pour une soirée, `cancelledAt`/dernier `completedAt` de match pour un tournoi — même référence EXACTE que le masquage historique existant #105, jamais une date de création). | La **ligne** `Session`/`Tournament` n'est **PAS** supprimée dans cette PR (voir §6) — seuls son fil/son annonce Discord (si `announceViaBot`) sont programmés pour suppression définitive une fois la fenêtre dépassée. |
+| Anciennes données sans date fiable | Statut terminal mais `cancelledAt`/`completedAt` absent (ne devrait jamais arriver — replis défensifs déjà en place, #105). | **Jamais purgées** — signalées `noReliableDate` dans l'audit, aucune date inventée. |
+| Messages de chat rattachés à une soirée éligible | Suivent la rétention de leur soirée (7 jours après la fin réelle). | **Suppression réelle** (`ChatMessage`+`ChatReaction` cascade), pas un masquage. |
+| Notifications utilisateur | Purgées si **lues** ET créées avant le début de la saison **active** (`Season.startDate`, cycle réel `src/lib/seasons.ts`, jamais un calendrier inventé — toute notification antérieure à la saison active a nécessairement été créée pendant une saison désormais close). | Suppression réelle. **Jamais** les notifications non lues (encore "en cours" pour l'utilisateur) ni celles de la saison active. |
+| Fil/annonce Discord d'un événement éligible **toujours existant** | Même fenêtre de 7 jours que ci-dessus. | Programmé (enqueue, jamais un balayage du serveur par nom/approximation) via les MÊMES rôles `thread-delete`/`announce-delete` que la suppression manuelle — jamais si déjà tenté (`"never_enqueued"` uniquement, un échec `"failed"` attend un réessai manuel). |
+| Livraisons techniques (`NotificationDelivery`) | Statut TERMINAL (`SENT`/`SKIPPED`) ET occurrence NON FIXE (retry-safe) ET plus vieilles que 30 jours. | Suppression réelle. **Jamais** `PENDING`/`RESERVED` (en attente/en cours), **jamais** `FAILED` (visibilité admin/réessai), **jamais** une occurrence FIXE (`thread`/`announce`/`thread-summary`/`thread-close`/premier SEND — la ligne EST la garantie contre un rejeu qui recréerait un fil/une annonce). |
+
+Chaque critère est une fonction **pure**, testée indépendamment
+(`src/lib/retention.test.ts`), et **partagée à l'identique** entre le
+mode dry-run et le mode effectif (`src/lib/retention.ts`, chaque
+fonction `purge*`/`schedule*` prend un paramètre `dryRun` unique — jamais
+deux chemins de décision).
+
+### 5. Préservation des résultats utiles (XP, récompenses, classements)
+
+**Décision prise, documentée honnêtement** : cette PR ne supprime
+**jamais** la ligne `Session`/`Tournament`/`Proposal`/`Vote`/
+`SessionResult`/`TournamentParticipant`/`TournamentMatch` elle-même.
+Raison : `SessionResult.placement` (podium) est lu par `/profil/historique`
+et `src/lib/revanche.ts`, et **cascade avec `Session`** (`onDelete: Cascade`)
+— le supprimer avec la session perdrait cette donnée sans aucun résumé
+durable indépendant existant aujourd'hui. XP (`XpEvent`), niveaux
+(`LevelUpEvent`), classements de saison (`SeasonSnapshot`) et badges
+(`UserBadge`) sont, eux, **déjà** sans FK vers `Session`/`Tournament`
+(id libre non contraint) — donc **déjà à l'abri**, sans action
+nécessaire dans cette PR.
+
+**Ce qui EST réellement purgé** : les messages de chat (contenu textuel,
+le plus volumineux et le plus sensible en confidentialité) et le
+fil/l'annonce Discord — le nettoyage le plus impactant sur le stockage
+réel sans risquer la moindre statistique. **Ce qui reste un GAP
+explicite, signalé plutôt que forcé** : purger `Session`/`Tournament`
+eux-mêmes nécessiterait d'abord un résumé durable et idempotent
+détachant `SessionResult` de la ligne `Session` (ex. dénormaliser les
+champs nécessaires, ou une nouvelle table découplée écrite avant la
+purge) — **non implémenté ici**, aucune donnée n'est donc perdue par
+cette PR, mais la réduction de stockage réelle sur `Session`/`Tournament`
+elles-mêmes reste à faire dans un chantier séparé.
+
+### 6. Exécution automatique — cron `retention-cleanup`
+
+`src/lib/retention-runner.ts` (`runRetentionCleanup`) orchestre les 4
+volets ci-dessus en un seul passage **borné** :
+- lots de taille fixe (`RETENTION_BATCH_SIZE = 50`) par volet ;
+- budget de temps mur (`RETENTION_MAX_BATCH_DURATION_MS = 45s`, sous le
+  plafond Vercel Hobby) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
+  sans jamais planter ;
+- **reprenable sans curseur persisté** : chaque volet interroge "que
+  reste-t-il à faire MAINTENANT" (ex. sessions DONE/CANCELLED encore
+  dotées d'au moins un `ChatMessage`) plutôt que de suivre un état —
+  testé explicitement (`retention.integration.test.ts`, describe
+  "reprise après interruption") ;
+- **protégé contre les exécutions concurrentes** (mode effectif
+  uniquement) par un verrou dédié `CronLock` (`name: "retention-cleanup"`,
+  même mécanisme que le verrou `reminders` existant — nouvelle ligne
+  singleton créée par la migration `20260923120000_add_retention_cleanup_lock`,
+  aucune donnée applicative touchée) ;
+- **aucun chargement intégral d'une table en mémoire** (`take: limit`
+  partout, jamais un `findMany` non borné) ;
+- respecte les limites Discord (réutilise entièrement l'exécuteur #97 —
+  budget de bail, backoff, un seul appel réseau à la fois par livraison
+  réclamée) ;
+- **ne journalise jamais** de contenu de message/secret/donnée
+  personnelle inutile (uniquement des ids, statuts, compteurs).
+
+`dryRun: true` partage EXACTEMENT les mêmes fonctions d'éligibilité que
+`dryRun: false` — seule la mutation réelle (DELETE/enqueue Discord) est
+court-circuitée.
+
+**Bilan lisible** (`RetentionRunReport`, `JSON` exposé par la route et
+l'onglet admin) : candidats/suppressions/conservés/bloqués par volet,
+`errors[]`, `durationMs`, `stoppedReason`.
+
+### Route cron (`/api/cron/retention-cleanup`) — désactivée par défaut
+
+**Deux verrous indépendants**, comme `NOTIFICATION_EXECUTOR_ENABLED`/
+`DISCORD_BOT_*_ANNOUNCE_ENABLED` avant elle :
+
+```
+# 1. Active la route elle-même (répond, mais reste en dry-run par défaut)
+RETENTION_CLEANUP_ENABLED=true
+
+# 2. SEULE façon d'obtenir des mutations réelles — à poser UNIQUEMENT
+#    après avoir observé le dry-run en production pendant au moins
+#    quelques passages
+RETENTION_CLEANUP_MODE=execute
+```
+
+**Aucune des deux n'est définie par cette PR.** Aucun cron externe n'est
+configuré (ni sur Vercel ni ailleurs) — à ajouter manuellement après
+revue, même modèle que `notification-executor`/`reminders` :
+
+```
+GET https://<domaine>/api/cron/retention-cleanup
+Authorization: Bearer <CRON_SECRET>
+```
+
+**Commande de vérification du dry-run** (avant toute activation
+`execute`) :
+```bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://<domaine>/api/cron/retention-cleanup | jq .
+```
+Répond `{"enabled":false,...}` tant que `RETENTION_CLEANUP_ENABLED`
+n'est pas posée ; `{"enabled":true,"dryRun":true,"report":{...}}` une
+fois activée mais avant `RETENTION_CLEANUP_MODE=execute`.
+
+### Retour arrière
+
+- **Avant `RETENTION_CLEANUP_MODE=execute`** : aucune donnée n'a jamais
+  été modifiée — retirer `RETENTION_CLEANUP_ENABLED` suffit à tout
+  arrêter, sans aucune trace.
+- **Après activation `execute`** : repasser `RETENTION_CLEANUP_MODE` à
+  une valeur différente de `"execute"` (ou retirer `RETENTION_CLEANUP_ENABLED`)
+  arrête immédiatement toute nouvelle mutation — **n'importe pas de
+  données déjà purgées**, aucune procédure de cette PR ne restaure des
+  messages de chat, des notifications ou une ressource Discord déjà
+  supprimés (suppression réelle = irréversible, comme documenté partout
+  dans ce chantier). Les livraisons `FAILED` (nettoyage Discord non
+  réussi) restent visibles et réessayables indéfiniment via
+  `/admin?tab=nettoyage`, indépendamment de l'état du cron.
+- La migration `20260923120000_add_retention_cleanup_lock` est purement
+  additive (une ligne `CronLock`) — un `DELETE FROM "CronLock" WHERE
+  name = 'retention-cleanup'` l'annule sans toucher au reste du schéma,
+  si nécessaire (non fait par cette PR).
+
+### Limites connues, explicitement assumées
+
+- Purger `Session`/`Tournament`/`Proposal`/`Vote`/`SessionResult`/
+  `TournamentParticipant`/`TournamentMatch` eux-mêmes reste un chantier
+  séparé (voir §5 — nécessite un résumé durable détaché avant de purger).
+- Les chats "indépendants" éventuels (hors `ChatMessage.sessionId`)
+  n'existent pas dans ce schéma — rien à documenter au-delà de ce
+  constat (aucune suppression globale non définie n'est jamais tentée).
+- Aucun rattrapage n'est lancé contre les anciennes données/anciens fils
+  existants en production par cette PR — seuls l'inventaire (lecture
+  seule) et les outils (dry-run, resync créateur, réessai admin) sont
+  livrés, une activation ultérieure reste une décision humaine explicite.
+- Suppression de lignes en base ne garantit **jamais** une baisse
+  immédiate de l'espace disque physique alloué (Postgres/Neon) —
+  `VACUUM`/`VACUUM FULL` reste une opération de maintenance séparée,
+  jamais déclenchée automatiquement par cette route.
+- "Jouer maintenant" n'est pas implémenté par cette PR (hors périmètre
+  explicite de ce chantier).
+
+### Migrations
+
+- `20260923120000_add_retention_cleanup_lock` — additive, une ligne
+  `CronLock` (`name: "retention-cleanup"`). Aucune colonne, aucune table,
+  aucun enum modifié — `prisma/schema.prisma` **inchangé** par ce
+  chantier.
+
+### Tests
+
+- `src/lib/discord-rest.test.ts` — `deleteThreadPermanently`/
+  `deleteChannelMessage`/`addThreadMember` (unitaires, `fetch` mocké) :
+  succès, 404 honnêtement classifié `not_found` (jamais un succès depuis
+  ce module), 403 non-retryable, budget de bail insuffisant.
+- `src/lib/retention.test.ts` — éligibilité PURE (sessions/tournois
+  actifs/terminés/sans date fiable, limites exactes de la fenêtre de 7
+  jours — juste avant/pile/juste après).
+- `src/lib/retention.integration.test.ts` (Postgres isolé + Discord
+  simulé) — purge chat réelle vs dry-run, programmation du nettoyage
+  Discord (jamais en double), purge de notifications de saison close
+  (aucun cycle exploitable → gap exposé), purge technique (terminal +
+  retry-safe uniquement, jamais `FAILED`/occurrence fixe), préservation
+  XP/badges/résultats, **reprise après interruption** (lot borné, deux
+  passages), **isolation entre soirées** (purger l'une ne touche jamais
+  l'autre), verrou de concurrence (`lock_not_acquired`), réessai manuel
+  jamais automatique.
+- `src/lib/session-announce.integration.test.ts` (nouveau describe "V2 —
+  suppression manuelle définitive du fil privé") et
+  `src/lib/tournament-announce.integration.test.ts` (tests de suppression
+  mis à jour pour DELETE réel + nouveau describe "V2 — adhésion
+  automatique au fil du tournoi") — toutes les races listées ci-dessus,
+  contre une vraie base Postgres et Discord entièrement simulé.
+- `src/app/sessions/actions/session-lifecycle.delete.test.ts` /
+  `src/app/tournois/actions.resync.test.ts` — comportement propre aux
+  actions serveur (autorisation, ordre transaction/enqueue).
+
+Résultats à la livraison : suite Postgres complète **630/630**, suite
+rapide (hors Postgres) **402/402** (226 suites Postgres-only marquées
+`skip` sans base disponible), `npx tsc --noEmit` et `npx eslint .` sans
+erreur, `npx next build` réussi (nouvelle route `/api/cron/retention-cleanup`
+apparaît dans le manifeste de routes).
+
+### Ce qui reste hors périmètre (délimitation explicite)
+
+Aucune suppression réelle en production, aucun envoi Discord réel,
+aucune migration distante, aucun changement de configuration externe
+(Vercel, cron), aucun merge, aucun rattrapage des anciennes données/
+anciens fils, aucune resynchronisation lancée en production. "Jouer
+maintenant" et le reste du bot avancé restent dans la suite du chantier
+V2.

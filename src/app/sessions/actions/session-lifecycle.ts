@@ -10,7 +10,11 @@ import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
 import { isRealDiscordFailure } from "@/lib/discord";
-import { enqueueSessionCreationDeliveries, enqueueSessionInviteSyncForNewInvite } from "@/lib/session-announce";
+import {
+  enqueueSessionCreationDeliveries,
+  enqueueSessionInviteSyncForNewInvite,
+  enqueueSessionThreadDelete,
+} from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
@@ -350,14 +354,27 @@ export async function cancelSessionAction(formData: FormData) {
 }
 
 /**
- * Suppression définitive d'une session — réservée au créateur, jamais de
- * notification Discord (contrairement à l'annulation, qui reste annoncée
- * via F6 : supprimer, c'est du ménage silencieux, pas un événement à
- * communiquer au groupe). Cascade automatique via le schéma
- * (`onDelete: Cascade` sur Proposal → Session et Vote → Proposal) : les
- * propositions et votes liés disparaissent avec la session, et comme les
- * rappels F7 sont un simple champ JSON sur la ligne Session elle-même
- * (`remindersSent`), rien à nettoyer séparément pour eux.
+ * Suppression définitive d'une session — réservée au créateur. Cascade
+ * automatique via le schéma (`onDelete: Cascade` sur Proposal → Session et
+ * Vote → Proposal) : les propositions et votes liés disparaissent avec la
+ * session, et comme les rappels F7 sont un simple champ JSON sur la ligne
+ * Session elle-même (`remindersSent`), rien à nettoyer séparément pour eux.
+ *
+ * Chantier nettoyage réel du stockage (V2) — jusqu'ici AUCUNE notification
+ * Discord n'accompagnait cette suppression (contrairement à l'annulation,
+ * annoncée via F6), volontairement décrit comme "ménage silencieux" : ça
+ * reste vrai pour l'ANNONCE (rien n'est envoyé dans le salon), mais si la
+ * soirée avait un fil privé (`announceViaBot`), il est désormais
+ * DÉFINITIVEMENT supprimé, AVEC ses messages — sans quoi il resterait
+ * indéfiniment accessible à ses membres alors que la soirée elle-même a
+ * disparu du site. Enqueue-é (intention seulement, jamais un appel Discord
+ * réel ici) DANS LA MÊME TRANSACTION que la suppression de la ligne
+ * `Session` elle-même — un crash entre les deux ne doit jamais laisser une
+ * soirée supprimée en base sans que son fil ne soit jamais nettoyé. Aucune
+ * transaction atomique DB+Discord n'est promise : l'appel Discord réel a
+ * nécessairement lieu après, via l'exécuteur (voir
+ * `enqueueSessionThreadDelete`, session-announce.ts, pour le traitement
+ * complet des races possibles).
  */
 export async function deleteSessionAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -369,11 +386,16 @@ export async function deleteSessionAction(formData: FormData) {
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { createdById: true },
+    select: { createdById: true, announceViaBot: true },
   });
   if (!session || session.createdById !== user.id) return;
 
-  await prisma.session.delete({ where: { id: sessionId } });
+  await prisma.$transaction(async (tx) => {
+    if (session.announceViaBot) {
+      await enqueueSessionThreadDelete(sessionId, tx);
+    }
+    await tx.session.delete({ where: { id: sessionId } });
+  });
   revalidatePath("/sessions");
   redirect("/sessions");
 }

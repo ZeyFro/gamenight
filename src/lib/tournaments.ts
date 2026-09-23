@@ -8,9 +8,11 @@ import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import {
+  enqueueTournamentAnnounceDelete,
   enqueueTournamentAnnounceUpdate,
   enqueueTournamentResultThreadSummary,
   enqueueTournamentThreadClose,
+  enqueueTournamentThreadDelete,
   isTournamentAnnounceSent,
 } from "@/lib/tournament-announce";
 
@@ -604,18 +606,27 @@ export interface DeleteTournamentResult {
  * (`launchTournamentAction`) ou une inscription qui remplirait la
  * dernière place au même instant, aucune fenêtre ne subsiste.
  *
- * Cas particulier traité explicitement (revue ciblée V2) — si l'annonce a
- * DÉJÀ été postée sur Discord (`isTournamentAnnounceSent`), l'éditer pour
- * dire "supprimé" et fermer le fil AVANT de perdre toute trace du tournoi
- * est OBLIGATOIRE (sans quoi le lien d'inscription resterait affiché,
- * pointant vers une page qui n'existe plus) — ces deux livraisons
- * (`enqueueTournamentAnnounceUpdate`/`enqueueTournamentThreadClose`) sont
- * enqueue-ées DANS LA MÊME TRANSACTION que la suppression elle-même.
- * Si l'annonce n'a jamais été envoyée (encore `PENDING`, ou pas de
+ * Cas particulier traité explicitement (revue ciblée V2, ÉTENDU par le
+ * chantier nettoyage réel du stockage) — si l'annonce a DÉJÀ été postée sur
+ * Discord (`isTournamentAnnounceSent`), supprimer DÉFINITIVEMENT le
+ * message d'annonce (jamais une simple édition — laisser un message
+ * "supprimé" affiché indéfiniment n'est plus le comportement demandé,
+ * contrairement à l'annulation via `cancelTournament`, qui continue
+ * d'éditer + archiver, comportement distinct et inchangé) ET le fil
+ * (jamais un simple archivage) AVANT de perdre toute trace du tournoi est
+ * OBLIGATOIRE (sans quoi le lien d'inscription resterait affiché, pointant
+ * vers une page qui n'existe plus) — ces deux livraisons
+ * (`enqueueTournamentAnnounceDelete`/`enqueueTournamentThreadDelete`) sont
+ * enqueue-ées DANS LA MÊME TRANSACTION que la suppression elle-même,
+ * jamais un appel Discord réel ici (uniquement des écritures). Si
+ * l'annonce n'a jamais été envoyée (encore `PENDING`, ou pas de
  * `announceViaBot`), rien à enqueue-er : le SEND encore en attente se
  * refuse déjà lui-même (`expired`) dès qu'il constate, au traitement réel,
  * que le tournoi a disparu — voir `resolveAnnounceDelivery`,
- * tournament-announce.ts.
+ * tournament-announce.ts. Aucune transaction atomique DB+Discord n'est
+ * jamais promise : seule l'écriture de l'INTENTION de nettoyage est
+ * garantie atomique avec la suppression, l'appel Discord réel a
+ * nécessairement lieu APRÈS (voir l'exécuteur, notification-executor.ts).
  */
 export async function deleteTournament(tournamentId: string, actorUserId: string): Promise<DeleteTournamentResult> {
   const tournament = await prisma.tournament.findUnique({
@@ -635,8 +646,8 @@ export async function deleteTournament(tournamentId: string, actorUserId: string
     if (!current || current.status !== "REGISTRATION") return; // course perdue — déjà lancé entre-temps
 
     if (tournament.announceViaBot && (await isTournamentAnnounceSent(tournamentId, tx))) {
-      await enqueueTournamentAnnounceUpdate(tournamentId, tx);
-      await enqueueTournamentThreadClose(tournamentId, tx);
+      await enqueueTournamentAnnounceDelete(tournamentId, tx);
+      await enqueueTournamentThreadDelete(tournamentId, tx);
     }
 
     await tx.tournament.delete({ where: { id: tournamentId } });

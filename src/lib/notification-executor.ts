@@ -13,8 +13,11 @@ import {
   type FinalizeSuccessInput,
 } from "@/lib/notification-delivery";
 import {
+  addThreadMember,
   addThreadMemberVerified,
   archiveThread,
+  deleteChannelMessage,
+  deleteThreadPermanently,
   editChannelMessage,
   removeThreadMemberVerified,
   sendChannelMessage,
@@ -178,7 +181,35 @@ export type ResolvedAction =
       message: ResolvedMessageContent;
     }
   | { kind: "add_thread_member_verified"; threadId: string; discordUserId: string }
-  | { kind: "remove_thread_member_verified"; threadId: string; discordUserId: string };
+  | { kind: "remove_thread_member_verified"; threadId: string; discordUserId: string }
+  | {
+      /** Chantier nettoyage réel du stockage (V2) — adhésion automatique
+       * aux fils de TOURNOIS, jamais un fil PRIVÉ (voir le commentaire de
+       * `addThreadMember`, discord-rest.ts) : pas de revérification de
+       * type avant l'ajout, contrairement à `add_thread_member_verified`. */
+      kind: "add_thread_member";
+      threadId: string;
+      discordUserId: string;
+    }
+  | {
+      /** Suppression PERMANENTE d'un fil (soirée ou tournoi) — distincte
+       * d'`archive_thread` (réversible, toujours utilisée par l'annulation,
+       * jamais transformée en suppression définitive). `threadId` provient
+       * EXCLUSIVEMENT d'une référence déjà persistée par un SEND antérieur
+       * sur ce même targetSlot (jamais construit/deviné). */
+      kind: "delete_thread_permanent";
+      threadId: string;
+    }
+  | {
+      /** Suppression du message d'annonce d'un tournoi dans le salon
+       * PARENT (jamais le salon lui-même, jamais un message sans lien
+       * certain) — évite un lien d'inscription cassé après suppression du
+       * tournoi. `channelId`/`messageId` proviennent EXCLUSIVEMENT de la
+       * référence du SEND initial déjà persisté. */
+      kind: "delete_channel_message";
+      channelId: string;
+      messageId: string;
+    };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
  * traitement (retryable ou terminal). `dependency_not_ready` est la SEULE
@@ -513,6 +544,48 @@ export async function performDiscordAction(
         return { ok: true, data: { discordThreadId: action.threadId } };
       }
       return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "add_thread_member": {
+      const result = await addThreadMember({
+        threadId: action.threadId,
+        discordUserId: action.discordUserId,
+        deadline,
+        now,
+      });
+      return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "delete_thread_permanent": {
+      const result = await deleteThreadPermanently({ threadId: action.threadId, deadline, now });
+      // Chantier nettoyage réel du stockage (V2) — un `404` ("fil déjà
+      // absent", déjà supprimé par un appel précédent qui a réussi côté
+      // Discord mais dont la réponse s'est perdue, ou retiré manuellement
+      // par un modérateur) atteint exactement l'état cible d'une
+      // suppression : le fil n'existe plus. Traité comme un succès ICI
+      // (jamais dans discord-rest.ts, qui reste honnête sur la réponse
+      // HTTP brute) — même raisonnement/même équivalence que
+      // `remove_thread_member_verified` ci-dessus. Un refus de permission
+      // (403) ou une erreur réseau restent des échecs, JAMAIS reclassés.
+      if (!result.ok && result.kind === "not_found") {
+        return { ok: true, data: { discordThreadId: action.threadId } };
+      }
+      return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "delete_channel_message": {
+      const result = await deleteChannelMessage({
+        channelId: action.channelId,
+        messageId: action.messageId,
+        deadline,
+        now,
+      });
+      // Même équivalence 404 → succès que `delete_thread_permanent`
+      // ci-dessus : un message déjà absent atteint déjà l'état cible.
+      if (!result.ok && result.kind === "not_found") {
+        return { ok: true, data: { discordMessageId: action.messageId, discordChannelId: action.channelId } };
+      }
+      return mapDiscordResult(result, () => ({
+        discordMessageId: action.messageId,
+        discordChannelId: action.channelId,
+      }));
     }
   }
 }

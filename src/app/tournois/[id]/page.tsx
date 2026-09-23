@@ -16,6 +16,7 @@ import {
   registerForTournamentAction,
   unregisterFromTournamentAction,
   launchTournamentAction,
+  resyncTournamentThreadMembersAction,
 } from "../actions";
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
@@ -107,6 +108,18 @@ export default async function TournoiDetailPage({
           <p className={announceStatus.thread === "failed" ? "text-warning" : announceStatus.thread === "sent" ? "text-accent" : "text-muted"}>
             {THREAD_STATUS_LABELS[announceStatus.thread].text}
           </p>
+          {announceStatus.thread === "sent" && (
+            <form action={resyncTournamentThreadMembersAction} className="mt-1">
+              <input type="hidden" name="tournamentId" value={tournament.id} />
+              <Button type="submit" variant="secondary" size="sm">
+                Resynchroniser le fil
+              </Button>
+              <p className="mt-1 text-xs text-muted">
+                Réajoute le créateur, les destinataires sélectionnés et les inscrits au fil —
+                sans renvoyer d&apos;annonce ni reping personne.
+              </p>
+            </form>
+          )}
         </Card>
       )}
 

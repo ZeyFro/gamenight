@@ -2272,5 +2272,218 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(threadCreationCallsAfter).toHaveLength(1);
       });
     });
+
+    describe("V2 — suppression manuelle définitive du fil privé (chantier nettoyage réel du stockage)", () => {
+      /** Simule `deleteSessionAction` (session-lifecycle.ts) sans passer par
+       * la server action elle-même (`redirect()` non testable ici) : même
+       * paire enqueue+delete DANS UNE TRANSACTION que l'action réelle. */
+      async function deleteSessionWithCleanup(sessionId: string) {
+        await db.$transaction(async (tx) => {
+          await announceLib.enqueueSessionThreadDelete(sessionId, tx);
+          await tx.session.delete({ where: { id: sessionId } });
+        });
+      }
+
+      /** Isole `thread-delete` des autres livraisons enqueue-ées par
+       * `enqueueSessionCreationDeliveries` (`announce`/`creator-member`,
+       * hors sujet ici) — sans ça, ces deux-là (sequence PLUS ANCIENNE que
+       * `thread-delete`) seraient réclamées en premier par
+       * `claimNextDelivery` (ordre strict par `sequence ASC`) dès que la
+       * session a disparu, et résoudraient chacune `expired` (le
+       * dispatcher charge la session pour TOUT rôle hors `thread-delete`)
+       * SANS jamais toucher `fetch` — masquant silencieusement le
+       * comportement réellement testé ici. */
+      async function removeAnnounceAndCreatorMemberDeliveries(sessionId: string) {
+        await db.notificationDelivery.deleteMany({
+          where: {
+            targetSlot: {
+              in: [
+                `default-guild:SESSION:${sessionId}:announce`,
+                `default-guild:SESSION:${sessionId}:creator-member`,
+              ],
+            },
+          },
+        });
+      }
+
+      it("fil déjà créé : DELETE PERMANENT (jamais un archivage), fonctionne SANS que la ligne Session existe encore", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(); // fil créé
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+
+        await deleteSessionWithCleanup(session.id);
+        expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+        const [url, init] = fetchMock.mock.calls.at(-1)!;
+        expect(init.method).toBe("DELETE");
+        expect(String(url)).toBe("https://discord.com/api/v10/channels/thread-1");
+        expect(init.body).toBeUndefined();
+      });
+
+      it("fil déjà absent (404) au moment du nettoyage : résultat idempotent, jamais un échec", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+        await deleteSessionWithCleanup(session.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Channel" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+      });
+
+      it("permission insuffisante (403) : jamais traité comme un succès, immédiatement FAILED terminal (non-retryable, voir discord-rest.ts)", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+        await deleteSessionWithCleanup(session.id);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { message: "Missing Permissions", code: 50013 }));
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "discord:auth_or_permission" });
+        const row = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread-delete` },
+        });
+        expect(row.status).toBe("FAILED");
+      });
+
+      it("le nettoyage attend tant que le SEND `thread` reste PENDING avec une reprise PROGRAMMÉE (échec retryable pas encore retraité) — jamais un raccourci qui suppose son sort", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+
+        // Le SEND `thread` échoue une première fois avec une erreur
+        // RETRYABLE (5xx) — reste PENDING, avec une reprise programmée
+        // dans le futur (backoff), AVANT même que la session ne soit
+        // supprimée.
+        fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
+        const failedThread = await processOne();
+        expect(failedThread?.outcome).toBe("retrying");
+
+        await deleteSessionWithCleanup(session.id);
+
+        // Nettoyage programmé — le SEND `thread` est bien PENDING, mais sa
+        // reprise n'est pas encore due (`nextAttemptAt` dans le futur) :
+        // `dependency_not_ready`, jamais un raccourci qui suppose déjà son
+        // sort (ni un succès ni un échec).
+        const cleanupPending = await processOne();
+        expect(cleanupPending).toMatchObject({ outcome: "retrying", errorClass: "resolver:dependency_not_ready" });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // uniquement l'échec initial, aucun nouvel appel
+
+        // Le SEND `thread`, retraité une fois sa reprise due, se refuse
+        // lui-même (session disparue) — sans nouvel appel réseau.
+        const callsBeforeExpiry = fetchMock.mock.calls.length;
+        const muchLater = new Date(Date.now() + 60 * 60_000);
+        const threadOutcome = await processOne(muchLater);
+        expect(threadOutcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+        expect(fetchMock.mock.calls.length).toBe(callsBeforeExpiry);
+
+        // Le nettoyage, retenté (sa propre reprise différée — backoff
+        // `dependency_not_ready` — est désormais due elle aussi), ne
+        // trouve plus rien à faire.
+        const evenLater = new Date(muchLater.getTime() + 10 * 60_000);
+        const cleanupFinal = await processOne(evenLater);
+        expect(cleanupFinal).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+      });
+
+      /**
+       * Reproduit RÉELLEMENT l'entrelacement (pas seulement l'ordre
+       * séquentiel "avant"/"après") — même technique que le test
+       * équivalent de `tournament-announce.integration.test.ts`
+       * ("suppression PENDANT l'appel réseau du tout premier SEND") :
+       * déclenche la suppression DEPUIS L'INTÉRIEUR du mock réseau du SEND
+       * `thread`, qui a déjà résolu son action (session encore existante
+       * au moment de la résolution) avant que la suppression ne commette.
+       */
+      it("création du fil ABOUTIT EN VOL malgré une suppression commise PENDANT l'appel réseau : le nettoyage attend puis supprime bel et bien ce fil créé après coup — compensation durable", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+
+        fetchMock.mockImplementationOnce(async () => {
+          await deleteSessionWithCleanup(session.id);
+          return jsonResponse(200, { id: "thread-orphelin", parent_id: "chan-sessions" });
+        });
+        const threadOutcome = await processOne();
+        expect(threadOutcome?.outcome).toBe("sent");
+        expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+
+        // Le nettoyage, retenté, voit maintenant `thread` SENT et supprime
+        // RÉELLEMENT ce fil créé en vol malgré la suppression déjà actée.
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const cleanupOutcome = await processOne();
+        expect(cleanupOutcome?.outcome).toBe("sent");
+        const [url] = fetchMock.mock.calls.at(-1)!;
+        expect(String(url)).toContain("/channels/thread-orphelin");
+      });
+
+      it("réessai manuel (occurrence aléatoire) après un premier échec terminal : une nouvelle intention converge, la précédente devient SKIPPED", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+        await deleteSessionWithCleanup(session.id);
+
+        // 403 — non-retryable, immédiatement FAILED terminal (voir
+        // discord-rest.ts), une seule tentative suffit à l'atteindre.
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { message: "Missing Permissions", code: 50013 }));
+        await processOne();
+        const firstAttempt = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread-delete` },
+        });
+        expect(firstAttempt.status).toBe("FAILED");
+
+        // Réessai manuel (même mécanisme que le bouton admin "Réessayer").
+        // La ligne FAILED précédente n'est JAMAIS reréclamée (`claimNextDelivery`
+        // ne sélectionne que `status = 'PENDING'`) — elle reste FAILED
+        // indéfiniment comme trace historique honnête ; seule la NOUVELLE
+        // ligne (occurrence différente, même targetSlot) est traitée.
+        await announceLib.enqueueSessionThreadDelete(session.id);
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        const retryOutcome = await processOne();
+        expect(retryOutcome?.outcome).toBe("sent");
+
+        const rows = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread-delete` },
+        });
+        expect(rows.find((r) => r.id === firstAttempt.id)?.status).toBe("FAILED");
+        expect(rows.some((r) => r.status === "SENT")).toBe(true);
+        // L'état exposé au créateur/admin reflète la livraison la PLUS
+        // RÉCENTE (par séquence), jamais l'ancien échec dépassé.
+        expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("done");
+      });
+
+      it("getSessionThreadDeleteStatus reflète honnêtement l'état — never_enqueued / pending / done / failed", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id);
+        expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("never_enqueued");
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        await removeAnnounceAndCreatorMemberDeliveries(session.id);
+        await deleteSessionWithCleanup(session.id);
+        expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("pending");
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        await processOne();
+        expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("done");
+      });
+    });
   }
 );
