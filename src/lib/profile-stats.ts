@@ -25,7 +25,10 @@ export async function getProfileStats(
     await Promise.all([
       prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } }),
       prisma.userGame.count({ where: { userId, owned: true } }),
-      prisma.session.count({ where: { createdById: userId } }),
+      // Chantier nettoyage réel du stockage (V2, suite) — même correctif
+      // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
+      // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
+      prisma.xpEvent.count({ where: { userId, reason: "CREATE_SESSION" } }),
       prisma.superlativeAward.count({ where: { winnerUserId: userId } }),
     ]);
 

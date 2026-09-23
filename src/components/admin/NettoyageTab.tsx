@@ -59,6 +59,10 @@ export async function NettoyageTab() {
             label="→ éligibles / sans date fiable"
             value={`${audit.sessions.eligibleForPurge} / ${audit.sessions.noReliableDate}`}
           />
+          <AuditRow
+            label="→ bloquées (vote en attente / dette impayée)"
+            value={`${audit.sessions.blockedBySuperlativeVoting} / ${audit.sessions.blockedByUnpaidDebt}`}
+          />
           <AuditRow label="Tournois (total / actifs)" value={`${audit.tournaments.total} / ${audit.tournaments.active}`} />
           <AuditRow
             label="→ éligibles / sans date fiable"

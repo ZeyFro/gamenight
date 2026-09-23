@@ -37,8 +37,18 @@ export async function checkRevancheAfterSessionResults(sessionId: string): Promi
   const notifications: CreateNotificationInput[] = [];
 
   for (const { userId } of session.results) {
+    // Chantier nettoyage réel du stockage (V2, suite) — filtre sur
+    // `SessionResult.gameId` (dénormalisé, survit à la purge de la
+    // soirée), JAMAIS `session: {decidedGameId: ...}` : une relation
+    // filter vers une soirée déjà purgée (`sessionId` devenu `null`) exclut
+    // silencieusement la ligne, sous-comptant l'historique réel de défaites
+    // consécutives à ce jeu — ce filtre resterait alors indéfiniment sous
+    // le seuil `REVANCHE_THRESHOLD` malgré 3 défaites réelles. Toute ligne
+    // `SessionResult` implique déjà une soirée `DONE` au moment de sa
+    // création (`submitSessionResultsAction` le vérifie) — le filtre
+    // `status: "DONE"` d'origine était donc redondant, jamais perdu ici.
     const history = await prisma.sessionResult.findMany({
-      where: { userId, session: { decidedGameId: game.id, status: "DONE" } },
+      where: { userId, gameId: game.id },
       select: { placement: true },
     });
     if (history.length !== REVANCHE_THRESHOLD) continue;

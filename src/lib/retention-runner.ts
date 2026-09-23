@@ -8,15 +8,22 @@ import {
   RETENTION_MAX_BATCH_DURATION_MS,
   purgeClosedSeasonNotificationsBatch,
   purgeEligibleChatMessagesBatch,
+  purgeEligibleSessionsBatch,
+  purgeEligibleTournamentsBatch,
   purgeTechnicalDeliveriesBatch,
   scheduleDiscordCleanupForEligibleEvents,
+  type SessionPurgeBlockReason,
 } from "@/lib/retention";
 
 /**
- * Chantier nettoyage réel du stockage (V2) — orchestre les quatre volets
- * de `retention.ts` (chat, nettoyage Discord programmé, notifications de
- * saison close, données techniques) en un seul passage BORNÉ : chaque
- * volet ne traite qu'UN lot (`RETENTION_BATCH_SIZE`), et l'ensemble
+ * Chantier nettoyage réel du stockage (V2, suite) — orchestre les SIX
+ * volets de `retention.ts` (chat, nettoyage Discord programmé, purge
+ * réelle des lignes Session, purge réelle des lignes Tournament,
+ * notifications de saison close, données techniques), DANS CET ORDRE
+ * (le nettoyage Discord est toujours au moins enqueue-é avant que la
+ * ligne Session/Tournament correspondante ne disparaisse — voir le
+ * commentaire de fichier de `retention.ts`), en un seul passage BORNÉ :
+ * chaque volet ne traite qu'UN lot (`RETENTION_BATCH_SIZE`), et l'ensemble
  * s'arrête dès que `RETENTION_MAX_BATCH_DURATION_MS` est dépassé — jamais
  * un chargement intégral d'une table en mémoire, jamais une exécution sans
  * limite de durée. Protégé contre les exécutions concurrentes par un
@@ -45,6 +52,12 @@ export interface RetentionRunReport {
   stoppedReason: "completed" | "budget_exhausted" | "lock_not_acquired";
   chat: { candidateSessionIds: string[]; messagesAffected: number } | null;
   discordCleanup: { sessionsEnqueued: string[]; tournamentsEnqueued: string[] } | null;
+  sessionRowPurge: {
+    candidateSessionIds: string[];
+    purgedSessionIds: string[];
+    blockedSessions: { sessionId: string; reason: SessionPurgeBlockReason }[];
+  } | null;
+  tournamentRowPurge: { candidateTournamentIds: string[]; purgedTournamentIds: string[] } | null;
   notifications: { notificationsAffected: number; seasonCycleAvailable: boolean } | null;
   technicalData: { deliveriesAffected: number } | null;
   errors: string[];
@@ -69,6 +82,8 @@ export async function runRetentionCleanup(opts: {
     stoppedReason: "completed",
     chat: null,
     discordCleanup: null,
+    sessionRowPurge: null,
+    tournamentRowPurge: null,
     notifications: null,
     technicalData: null,
     errors,
@@ -113,6 +128,30 @@ export async function runRetentionCleanup(opts: {
     } catch (error) {
       errors.push(`discordCleanup: ${String(error)}`);
       logger.error("retention-runner", error, { step: "discordCleanup" });
+    }
+
+    if (Date.now() >= deadlineMs) {
+      report.stoppedReason = "budget_exhausted";
+      return report;
+    }
+
+    try {
+      report.sessionRowPurge = await purgeEligibleSessionsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+    } catch (error) {
+      errors.push(`sessionRowPurge: ${String(error)}`);
+      logger.error("retention-runner", error, { step: "sessionRowPurge" });
+    }
+
+    if (Date.now() >= deadlineMs) {
+      report.stoppedReason = "budget_exhausted";
+      return report;
+    }
+
+    try {
+      report.tournamentRowPurge = await purgeEligibleTournamentsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+    } catch (error) {
+      errors.push(`tournamentRowPurge: ${String(error)}`);
+      logger.error("retention-runner", error, { step: "tournamentRowPurge" });
     }
 
     if (Date.now() >= deadlineMs) {

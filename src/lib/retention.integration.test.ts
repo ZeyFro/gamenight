@@ -75,7 +75,12 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
   async function makeSession(
     creatorId: string,
-    overrides: Partial<{ status: "VOTING" | "SCHEDULED" | "DONE" | "CANCELLED"; date: Date; announceViaBot: boolean }> = {}
+    overrides: Partial<{
+      status: "VOTING" | "SCHEDULED" | "DONE" | "CANCELLED";
+      date: Date;
+      announceViaBot: boolean;
+      superlativeVotingClosed: boolean;
+    }> = {}
   ) {
     return db.session.create({
       data: {
@@ -83,8 +88,17 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         status: overrides.status ?? "DONE",
         createdById: creatorId,
         announceViaBot: overrides.announceViaBot ?? false,
+        // Bloquant par défaut (`false`, valeur par défaut du schéma) sauf
+        // demande explicite — la plupart des tests de purge de ligne
+        // veulent une soirée réellement purgeable, donc `true` par défaut
+        // ICI (contrairement au schéma) pour ne pas alourdir chaque appel.
+        superlativeVotingClosed: overrides.superlativeVotingClosed ?? true,
       },
     });
+  }
+
+  async function makeGame(addedById: string) {
+    return db.game.create({ data: { name: uniq("game"), source: "MANUAL", addedById } });
   }
 
   describe("purgeEligibleChatMessagesBatch — purge RÉELLE, jamais un simple masquage", () => {
@@ -450,6 +464,494 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       expect(report.discordCleanup?.sessionsEnqueued).toEqual([]); // pas re-programmé
       expect(fetchMock.mock.calls.length).toBe(callsBefore); // aucun nouvel appel réseau
       expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("failed"); // inchangé, attend le réessai manuel
+    });
+  });
+
+  describe("purgeEligibleSessionsBatch — purge RÉELLE de la ligne Session (V2, suite)", () => {
+    it("dry-run : compte sans jamais muter, ni la ligne Session ni les résumés durables", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+      await db.sessionResult.create({
+        data: { sessionId: session.id, userId: user.id, placement: 1, gameId: "g1", gameName: "Catan", sessionDate: session.date },
+      });
+
+      const dryRun = await retention.purgeEligibleSessionsBatch({ dryRun: true, now });
+      expect(dryRun.purgedSessionIds).toEqual([session.id]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+      expect(await db.sessionResult.count({ where: { sessionId: session.id } })).toBe(1);
+    });
+
+    it("session ACTIVE (VOTING) : jamais purgée, quel que soit l'âge — jamais sur son seul âge", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const session = await makeSession(user.id, { status: "VOTING", date: new Date("2020-01-01T00:00:00.000Z") });
+      const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(result.candidateSessionIds).toEqual([]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+    });
+
+    it("DONE mais ENCORE DANS la fenêtre de 7 jours : jamais purgée avant son terme", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const session = await makeSession(user.id, { date: new Date("2026-09-15T00:00:00.000Z") }); // 5 jours
+      const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(result.candidateSessionIds).toEqual([]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+    });
+
+    describe("blocages explicites — jamais une récompense/obligation non finalisée effacée silencieusement", () => {
+      it("dette IMPAYÉE liée à la soirée : bloque la purge, remontée avec la bonne raison", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const debtor = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        await db.debt.create({
+          data: { debtorId: debtor.id, sessionId: session.id, reason: "test", paidAt: null },
+        });
+
+        const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(result.candidateSessionIds).toEqual([session.id]);
+        expect(result.purgedSessionIds).toEqual([]);
+        expect(result.blockedSessions).toEqual([{ sessionId: session.id, reason: "debt_unpaid" }]);
+        expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+      });
+
+      it("dette SOLDÉE : ne bloque plus, purge normalement (la dette payée cascade avec la soirée, plus jamais affichée nulle part)", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const debtor = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        await db.debt.create({
+          data: { debtorId: debtor.id, sessionId: session.id, reason: "test", paidAt: now },
+        });
+
+        const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(result.purgedSessionIds).toEqual([session.id]);
+        expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+        expect(await db.debt.count()).toBe(0); // soldée, cascadée avec la soirée — plus jamais lue
+      });
+
+      it("vote de superlatifs PAS ENCORE clôturé : bloque la purge (pronostics/paris/récompenses pas encore résolus)", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const session = await makeSession(user.id, {
+          date: new Date("2026-09-01T00:00:00.000Z"),
+          superlativeVotingClosed: false,
+        });
+
+        const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(result.blockedSessions).toEqual([{ sessionId: session.id, reason: "superlative_voting_pending" }]);
+        expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+      });
+
+      it("une fois clôturé, la même soirée devient purgeable au passage suivant — aucun rattrapage manuel nécessaire", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const session = await makeSession(user.id, {
+          date: new Date("2026-09-01T00:00:00.000Z"),
+          superlativeVotingClosed: false,
+        });
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+
+        await db.session.update({ where: { id: session.id }, data: { superlativeVotingClosed: true } });
+        const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(result.purgedSessionIds).toEqual([session.id]);
+        expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+      });
+    });
+
+    describe("préservation des résultats/récompenses/statistiques — résumé durable, jamais une table d'archive séparée", () => {
+      it("SessionResult SURVIT (sessionId devient null, placement/gameId/gameName/sessionDate intacts) — /profil/historique et revanche.ts continuent de fonctionner", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        const sessionDate = session.date;
+        const result = await db.sessionResult.create({
+          data: {
+            sessionId: session.id,
+            userId: user.id,
+            placement: 1,
+            gameId: "game-1",
+            gameName: "Catan",
+            sessionDate,
+          },
+        });
+
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+
+        const survived = await db.sessionResult.findUniqueOrThrow({ where: { id: result.id } });
+        expect(survived.sessionId).toBeNull();
+        expect(survived.placement).toBe(1);
+        expect(survived.gameId).toBe("game-1");
+        expect(survived.gameName).toBe("Catan");
+        expect(survived.sessionDate).toEqual(sessionDate);
+      });
+
+      it("SuperlativeAward SURVIT (gameName/sessionDate intacts) — vitrine /profil/superlatifs continue de fonctionner", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        const category = await db.superlativeCategory.create({
+          data: { name: uniq("MVP"), icon: "🏆", modifiedById: user.id },
+        });
+        const award = await db.superlativeAward.create({
+          data: {
+            sessionId: session.id,
+            categoryId: category.id,
+            winnerUserId: user.id,
+            voteCount: 3,
+            gameName: "Catan",
+            sessionDate: session.date,
+          },
+        });
+
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+
+        const survived = await db.superlativeAward.findUniqueOrThrow({ where: { id: award.id } });
+        expect(survived.sessionId).toBeNull();
+        expect(survived.gameName).toBe("Catan");
+        expect(survived.voteCount).toBe(3);
+      });
+
+      it("Pronostic SURVIT — taux de réussite À VIE (/profil) jamais sous-compté après purge", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const voter = await makeUser();
+        const oldSession = await makeSession(user.id, { date: new Date("2026-08-01T00:00:00.000Z") });
+        const recentSession = await makeSession(user.id, { date: new Date("2026-09-18T00:00:00.000Z") }); // dans la fenêtre
+        await db.pronostic.create({
+          data: { sessionId: oldSession.id, voterId: voter.id, predictedUserId: user.id, correct: true },
+        });
+        await db.pronostic.create({
+          data: { sessionId: recentSession.id, voterId: voter.id, predictedUserId: user.id, correct: false },
+        });
+
+        const before = await db.pronostic.groupBy({
+          by: ["correct"],
+          where: { voterId: voter.id, correct: { not: null } },
+          _count: { _all: true },
+        });
+        expect(before.reduce((sum, g) => sum + g._count._all, 0)).toBe(2);
+
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now }); // purge oldSession seulement
+
+        expect(await db.session.findUnique({ where: { id: oldSession.id } })).toBeNull();
+        const after = await db.pronostic.groupBy({
+          by: ["correct"],
+          where: { voterId: voter.id, correct: { not: null } },
+          _count: { _all: true },
+        });
+        // Toujours 2 au total — la purge de la soirée n'a fait disparaître
+        // AUCUN pronostic résolu, jamais un sous-comptage.
+        expect(after.reduce((sum, g) => sum + g._count._all, 0)).toBe(2);
+      });
+
+      it("XpBet SURVIT (gameName intact) — historique et somme des gains À VIE (/profil) jamais sous-comptés après purge", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const voter = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        const bet = await db.xpBet.create({
+          data: { sessionId: session.id, voterId: voter.id, targetUserId: user.id, amount: 50, won: true, gameName: "Catan" },
+        });
+
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+
+        const survived = await db.xpBet.findUniqueOrThrow({ where: { id: bet.id } });
+        expect(survived.sessionId).toBeNull();
+        expect(survived.gameName).toBe("Catan");
+        expect(survived.won).toBe(true);
+        const sum = await db.xpBet.aggregate({ where: { voterId: voter.id, won: true }, _sum: { amount: true } });
+        expect(sum._sum.amount).toBe(50);
+      });
+
+      it("checkSessionsCreatedBadges — compte les XpEvent CREATE_SESSION, JAMAIS sous-compté après purge des soirées créées", async () => {
+        const badgesLib = await import("./badges");
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const badge = await db.badge.create({
+          data: {
+            name: uniq("badge"),
+            icon: "🥇",
+            description: "test",
+            category: "PARTICIPATION",
+            rarity: "COMMON",
+            criteria: { type: "SESSIONS_CREATED", count: 2 },
+            modifiedById: user.id,
+          },
+        });
+
+        const s1 = await makeSession(user.id, { date: new Date("2026-08-01T00:00:00.000Z") });
+        const s2 = await makeSession(user.id, { date: new Date("2026-08-02T00:00:00.000Z") });
+        await db.xpEvent.createMany({
+          data: [
+            { userId: user.id, reason: "CREATE_SESSION", sourceId: s1.id, amount: 20 },
+            { userId: user.id, reason: "CREATE_SESSION", sourceId: s2.id, amount: 20 },
+          ],
+        });
+
+        // AVANT toute purge — le badge (seuil 2) doit déjà se débloquer.
+        await badgesLib.checkSessionsCreatedBadges(user.id);
+        expect(await db.userBadge.count({ where: { userId: user.id, badgeId: badge.id } })).toBe(1);
+
+        // Purge des deux soirées créées — le badge reste débloqué (jamais
+        // retiré, cf. commentaire du modèle UserBadge) ET un NOUVEL appel
+        // (ex. après une 3e création) compterait toujours correctement.
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(await db.session.count()).toBe(0);
+        expect(await db.xpEvent.count({ where: { userId: user.id, reason: "CREATE_SESSION" } })).toBe(2);
+        await badgesLib.checkSessionsCreatedBadges(user.id); // rappel — toujours cohérent, aucune erreur
+        expect(await db.userBadge.count({ where: { userId: user.id, badgeId: badge.id } })).toBe(1);
+      });
+    });
+
+    describe("isolation entre soirées de créateurs différents — purger l'une ne touche jamais les résumés d'une autre", () => {
+      it("SessionResult d'un AUTRE user, sur une soirée encore active, reste intact", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const userA = await makeUser();
+        const userB = await makeUser();
+        const eligible = await makeSession(userA.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        const active = await makeSession(userB.id, { status: "VOTING", date: new Date("2026-09-25T00:00:00.000Z") });
+        await db.sessionResult.create({
+          data: { sessionId: eligible.id, userId: userA.id, placement: 1, gameId: "g1", gameName: "A", sessionDate: eligible.date },
+        });
+        const untouched = await db.sessionResult.create({
+          data: { sessionId: active.id, userId: userB.id, placement: 2, gameId: "g2", gameName: "B", sessionDate: active.date },
+        });
+
+        await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+
+        expect(await db.session.findUnique({ where: { id: active.id } })).not.toBeNull();
+        const stillLinked = await db.sessionResult.findUniqueOrThrow({ where: { id: untouched.id } });
+        expect(stillLinked.sessionId).toBe(active.id); // jamais touché
+      });
+    });
+
+    describe("reprise après interruption — sans curseur persisté", () => {
+      it("deux soirées éligibles, lot de taille 1 : le premier passage n'en purge qu'une, le second l'autre, le troisième ne trouve plus rien", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const a = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+        const b = await makeSession(user.id, { date: new Date("2026-09-02T00:00:00.000Z") });
+
+        const first = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
+        expect(first.purgedSessionIds).toHaveLength(1);
+        expect(await db.session.count()).toBe(1);
+
+        const second = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
+        expect(second.purgedSessionIds).toHaveLength(1);
+        expect(second.purgedSessionIds[0]).not.toBe(first.purgedSessionIds[0]);
+        expect(await db.session.count()).toBe(0);
+        expect([a.id, b.id].sort()).toEqual([first.purgedSessionIds[0], second.purgedSessionIds[0]].sort());
+
+        const third = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
+        expect(third.purgedSessionIds).toEqual([]);
+      });
+    });
+
+    describe("course concurrente — nouvelle dette détectée entre la sélection et la suppression réelle", () => {
+      it("la transaction revérifie sous verrou : une dette créée juste avant l'exécution bloque, jamais une suppression sur un état périmé", async () => {
+        const now = new Date("2026-09-20T00:00:00.000Z");
+        const user = await makeUser();
+        const debtor = await makeUser();
+        const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+
+        // Pas de dette au moment de la sélection des candidats — mais on
+        // en crée une AVANT que la fonction ne s'exécute (elle n'a pas
+        // encore progressé assez loin dans notre test synchrone pour
+        // qu'il y ait une vraie fenêtre réseau ; ce test vérifie la
+        // revérification EN TRANSACTION plutôt qu'une vraie course
+        // temporelle — voir les tests d'entrelacement `fetchMock` des
+        // autres suites pour la vraie technique de race).
+        await db.debt.create({ data: { debtorId: debtor.id, sessionId: session.id, reason: "urgent", paidAt: null } });
+
+        const result = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+        expect(result.purgedSessionIds).toEqual([]);
+        expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+      });
+    });
+  });
+
+  describe("purgeEligibleTournamentsBatch — purge RÉELLE de la ligne Tournament (V2, suite)", () => {
+    async function makeTournament(
+      creatorId: string,
+      gameId: string,
+      overrides: Partial<{ status: "REGISTRATION" | "IN_PROGRESS" | "DONE" | "CANCELLED"; championId: string | null; cancelledAt: Date | null }> = {}
+    ) {
+      return db.tournament.create({
+        data: {
+          name: uniq("tournoi"),
+          gameId,
+          createdById: creatorId,
+          maxPlayers: 4,
+          status: overrides.status ?? "DONE",
+          championId: overrides.championId ?? null,
+          cancelledAt: overrides.cancelledAt ?? null,
+          announceViaBot: false,
+        },
+      });
+    }
+
+    it("dry-run : compte sans jamais supprimer", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      const tournament = await makeTournament(creator.id, game.id, { championId: creator.id });
+      await db.tournamentMatch.create({
+        data: { tournamentId: tournament.id, round: 1, position: 0, completedAt: new Date("2026-09-01T00:00:00.000Z") },
+      });
+
+      const result = await retention.purgeEligibleTournamentsBatch({ dryRun: true, now });
+      expect(result.purgedTournamentIds).toEqual([tournament.id]);
+      expect(await db.tournament.findUnique({ where: { id: tournament.id } })).not.toBeNull();
+    });
+
+    it("tournoi ACTIF (IN_PROGRESS) : jamais purgé, quel que soit l'âge de ses matchs déjà joués", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      const tournament = await makeTournament(creator.id, game.id, { status: "IN_PROGRESS" });
+      await db.tournamentMatch.create({
+        data: { tournamentId: tournament.id, round: 1, position: 0, completedAt: new Date("2020-01-01T00:00:00.000Z") },
+      });
+
+      const result = await retention.purgeEligibleTournamentsBatch({ dryRun: false, now });
+      expect(result.candidateTournamentIds).toEqual([]);
+      expect(await db.tournament.findUnique({ where: { id: tournament.id } })).not.toBeNull();
+    });
+
+    it("préservation — XpEvent(TOURNAMENT_RESULT) et UserLifetimeStats survivent, checkTournamentBadges reste exact après purge", async () => {
+      const badgesLib = await import("./badges");
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const champion = await makeUser();
+      const runnerUp = await makeUser();
+      const game = await makeGame(champion.id);
+
+      const wonBadge = await db.badge.create({
+        data: {
+          name: uniq("won-badge"),
+          icon: "🏆",
+          description: "test",
+          category: "PARTICIPATION",
+          rarity: "COMMON",
+          criteria: { type: "TOURNAMENTS_WON", count: 1 },
+          modifiedById: champion.id,
+        },
+      });
+      const participatedBadge = await db.badge.create({
+        data: {
+          name: uniq("participated-badge"),
+          icon: "🎮",
+          description: "test",
+          category: "PARTICIPATION",
+          rarity: "COMMON",
+          criteria: { type: "TOURNAMENTS_PARTICIPATED", count: 1 },
+          modifiedById: champion.id,
+        },
+      });
+
+      const tournament = await makeTournament(champion.id, game.id, { championId: champion.id });
+      await db.tournamentMatch.create({
+        data: {
+          tournamentId: tournament.id,
+          round: 1,
+          position: 0,
+          player1Id: champion.id,
+          player2Id: runnerUp.id,
+          winnerId: champion.id,
+          completedAt: new Date("2026-09-01T00:00:00.000Z"),
+        },
+      });
+      await db.tournamentParticipant.createMany({
+        data: [
+          { tournamentId: tournament.id, userId: champion.id },
+          { tournamentId: tournament.id, userId: runnerUp.id },
+        ],
+      });
+      // Simule ce que `announceTournamentFinalization`/`registerForTournamentAction`
+      // ont déjà écrit durablement AVANT que ce test ne purge le tournoi.
+      await db.xpEvent.create({
+        data: { userId: champion.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:1st`, amount: 200 },
+      });
+      await db.xpEvent.create({
+        data: { userId: runnerUp.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:2nd`, amount: 100 },
+      });
+      await db.userLifetimeStats.createMany({
+        data: [
+          { userId: champion.id, tournamentsParticipatedCount: 1 },
+          { userId: runnerUp.id, tournamentsParticipatedCount: 1 },
+        ],
+      });
+
+      await badgesLib.checkTournamentBadges(champion.id);
+      expect(await db.userBadge.count({ where: { userId: champion.id, badgeId: wonBadge.id } })).toBe(1);
+      expect(await db.userBadge.count({ where: { userId: champion.id, badgeId: participatedBadge.id } })).toBe(1);
+
+      const result = await retention.purgeEligibleTournamentsBatch({ dryRun: false, now });
+      expect(result.purgedTournamentIds).toEqual([tournament.id]);
+      expect(await db.tournament.count()).toBe(0);
+      expect(await db.tournamentParticipant.count()).toBe(0); // cascadé, aucune autre lecture durable n'en dépend
+      expect(await db.tournamentMatch.count()).toBe(0);
+
+      // Les résumés durables, eux, survivent intégralement.
+      expect(await db.xpEvent.count({ where: { reason: "TOURNAMENT_RESULT" } })).toBe(2);
+      const stats = await db.userLifetimeStats.findUniqueOrThrow({ where: { userId: champion.id } });
+      expect(stats.tournamentsParticipatedCount).toBe(1);
+
+      // Rappel de checkTournamentBadges APRÈS la purge — toujours cohérent.
+      await badgesLib.checkTournamentBadges(runnerUp.id);
+      expect(await db.userBadge.count({ where: { userId: runnerUp.id, badgeId: participatedBadge.id } })).toBe(1);
+      expect(await db.userBadge.count({ where: { userId: runnerUp.id, badgeId: wonBadge.id } })).toBe(0); // jamais champion
+    });
+
+    it("reprise après interruption : deux tournois éligibles, lot de taille 1, les deux finissent purgés sur deux passages", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      const t1 = await makeTournament(creator.id, game.id, { championId: creator.id });
+      await db.tournamentMatch.create({
+        data: { tournamentId: t1.id, round: 1, position: 0, completedAt: new Date("2026-09-01T00:00:00.000Z") },
+      });
+      const t2 = await makeTournament(creator.id, game.id, { championId: creator.id });
+      await db.tournamentMatch.create({
+        data: { tournamentId: t2.id, round: 1, position: 0, completedAt: new Date("2026-09-02T00:00:00.000Z") },
+      });
+
+      const first = await retention.purgeEligibleTournamentsBatch({ dryRun: false, limit: 1, now });
+      expect(first.purgedTournamentIds).toHaveLength(1);
+      expect(await db.tournament.count()).toBe(1);
+
+      const second = await retention.purgeEligibleTournamentsBatch({ dryRun: false, limit: 1, now });
+      expect(second.purgedTournamentIds).toHaveLength(1);
+      expect(await db.tournament.count()).toBe(0);
+    });
+  });
+
+  describe("runRetentionCleanup — inclut désormais la purge réelle des lignes Session/Tournament", () => {
+    it("mode effectif : purge la soirée éligible dans le même passage que le nettoyage Discord programmé", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z"), announceViaBot: true });
+
+      const report = await runner.runRetentionCleanup({ dryRun: false, now });
+      expect(report.sessionRowPurge?.purgedSessionIds).toEqual([session.id]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+      // Le nettoyage Discord a été programmé (enqueue), jamais un appel réel.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await announceLib.getSessionThreadDeleteStatus(session.id)).toBe("pending");
+    });
+
+    it("dry-run : le rapport reflète la purge qui SERAIT faite, sans jamais muter", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const session = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
+
+      const report = await runner.runRetentionCleanup({ dryRun: true, now });
+      expect(report.sessionRowPurge?.purgedSessionIds).toEqual([session.id]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
     });
   });
 });

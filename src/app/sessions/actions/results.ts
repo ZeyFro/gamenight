@@ -130,8 +130,21 @@ export async function submitSessionResultsAction(formData: FormData) {
       if (placement) usedPlacements.add(placement);
     }
 
+    // Chantier nettoyage réel du stockage (V2, suite) — `gameId`/
+    // `gameName`/`sessionDate` dénormalisés ICI, où `session.decidedGame`
+    // est déjà connu (même philosophie que `Debt.reason`, déjà figé au
+    // même endroit juste en dessous) : ce résumé doit rester lisible même
+    // après la purge de la soirée, jamais recalculé via une jointure vers
+    // une ligne `Session` qui pourra disparaître.
     await prisma.sessionResult.create({
-      data: { sessionId, userId: participantId, placement },
+      data: {
+        sessionId,
+        userId: participantId,
+        placement,
+        gameId: session.decidedGameId,
+        gameName: session.decidedGame?.name ?? null,
+        sessionDate: session.date,
+      },
     });
 
     let xpResult: { leveledUp: boolean } | null = null;

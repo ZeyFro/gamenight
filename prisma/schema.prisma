@@ -160,6 +160,7 @@ model User {
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+  lifetimeStats         UserLifetimeStats?
 
   // Confidentialité des soirées — voir `SessionInvite` plus bas. Trois
   // relations distinctes vers `User` (invité, invitant, révocateur),
@@ -635,7 +636,19 @@ enum SessionInviteStatus {
 // pronostics.ts pour le detail du matching).
 model Pronostic {
   id              String   @id @default(cuid())
-  sessionId       String
+  // Chantier nettoyage réel du stockage (V2, suite) — nullable, `onDelete:
+  // SetNull` (PAS Cascade, contrairement au commentaire historique de
+  // `Debt`) : `/profil` calcule un taux de réussite À VIE
+  // (`prisma.pronostic.groupBy({by:["correct"], where:{voterId,
+  // correct:{not:null}}})`, src/app/profil/page.tsx) — une purge de la
+  // soirée ne doit jamais faire perdre ni sous-compter ce taux. La ligne
+  // elle-même est DÉJÀ minimale (aucun contenu de chat, aucune donnée
+  // personnelle au-delà des deux users déjà connus par ailleurs) : la
+  // laisser survivre EST le résumé durable, jamais une copie ailleurs.
+  // `@@unique([sessionId, voterId])` ci-dessous reste valide une fois
+  // `sessionId` `NULL` : NULL n'entre jamais en collision avec lui-même
+  // dans une contrainte unique Postgres (sémantique standard).
+  sessionId       String?
   voterId         String
   predictedUserId String
   // `null` tant que non résolu ; posé par `resolvePronostics` en même temps
@@ -645,7 +658,7 @@ model Pronostic {
   correct         Boolean?
   createdAt       DateTime @default(now())
 
-  session       Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session       Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   voter         User    @relation("PronosticVoter", fields: [voterId], references: [id], onDelete: Cascade)
   predictedUser User    @relation("PronosticPredicted", fields: [predictedUserId], references: [id], onDelete: Cascade)
 
@@ -666,15 +679,28 @@ model Pronostic {
 // temps.
 model XpBet {
   id           String   @id @default(cuid())
-  sessionId    String
+  // Chantier nettoyage réel du stockage (V2, suite) — nullable, `onDelete:
+  // SetNull` : `/profil` affiche un historique des 5 paris résolus les
+  // plus récents ET une somme À VIE des gains (src/app/profil/page.tsx) —
+  // les deux doivent survivre à la purge de la soirée. Même raisonnement
+  // que `Pronostic` (voir son commentaire) : la ligne survit telle
+  // quelle, jamais copiée ailleurs.
+  sessionId    String?
   voterId      String
   targetUserId String
   amount       Int
   won          Boolean?
   allIn        Boolean  @default(false)
   createdAt    DateTime @default(now())
+  // Dénormalisé (comme `Debt.reason`, même philosophie) — capturé à la
+  // pose du pari (`placeBet`, src/lib/xp-bets.ts), où `session.decidedGame`
+  // est déjà connu : évite un `include: { session: { decidedGame } } }`
+  // qui échouerait silencieusement (relation devenue `null`) une fois la
+  // soirée purgée. Rempli rétroactivement pour les paris déjà résolus au
+  // moment de la migration (voir son SQL).
+  gameName     String?
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   voter   User    @relation("XpBetVoter", fields: [voterId], references: [id], onDelete: Cascade)
   target  User    @relation("XpBetTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
 
@@ -802,16 +828,45 @@ enum XpReason {
 // est corrigé après coup). `@@unique([sessionId, userId])` : un seul
 // résultat par participant et par session.
 model SessionResult {
-  id        String   @id @default(cuid())
-  sessionId String
+  // Chantier nettoyage réel du stockage (V2, suite) — RÉSUMÉ DURABLE du
+  // podium d'une soirée, conçu explicitement pour survivre à la purge de
+  // celle-ci (`onDelete: SetNull`, PAS Cascade) : `/profil/historique`,
+  // `/profil` (win rate + jeu le plus joué) et `src/lib/revanche.ts`
+  // (compteur de défaites consécutives À UN JEU DONNÉ, à travers TOUTES
+  // les soirées de ce jeu, potentiellement purgées) en dépendent tous les
+  // trois pour des durées bien au-delà de la fenêtre de rétention. Cette
+  // ligne est DÉJÀ minimale (placement + 3 champs dénormalisés, jamais le
+  // contenu du chat/des votes/des propositions) — c'est ELLE le résumé
+  // durable demandé, jamais une copie séparée : rien n'est dupliqué
+  // ailleurs, seul le lien vers `Session` est rendu optionnel.
+  id        String    @id @default(cuid())
+  sessionId String?
   userId    String
   placement Int?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Dénormalisés (même philosophie que `Debt.reason`) — capturés à la
+  // saisie des résultats (`submitSessionResultsAction`), où `session.date`/
+  // `session.decidedGame` sont déjà connus. `gameId` (pas seulement
+  // `gameName`) est nécessaire pour que `revanche.ts` continue de filtrer
+  // "les résultats de CE jeu précis" sans jamais rejoindre `Session` (la
+  // relation `session:{decidedGameId:...}` qu'il utilisait devient
+  // silencieusement incomplète dès qu'une soirée est purgée — une jointure
+  // sur une ligne `NULL` l'exclut du calcul, sous-comptant l'historique
+  // réel). Remplis rétroactivement pour les résultats déjà saisis au
+  // moment de la migration (voir son SQL) — jamais laissés `NULL` pour une
+  // ligne qui a une soirée encore identifiable à ce moment précis.
+  gameId      String?
+  gameName    String?
+  sessionDate DateTime?
+
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, userId])
+  // Sert `revanche.ts` (compte les résultats d'un user pour un jeu donné,
+  // indépendamment de l'existence de la soirée).
+  @@index([userId, gameId])
 }
 
 // Ledger XP append-only — préféré à un simple compteur sur `User` pour
@@ -1004,14 +1059,25 @@ model SuperlativeVote {
 // `@@unique([sessionId, categoryId])` : un seul gagnant par catégorie et
 // par soirée.
 model SuperlativeAward {
+  // Chantier nettoyage réel du stockage (V2, suite) — récompense DURABLE
+  // (vitrine "Superlatifs gagnés" sur le profil, `/profil/superlatifs`,
+  // `/potes/[id]/superlatifs`, la Home) : `onDelete: SetNull`, même
+  // raisonnement exact que `SessionResult` ci-dessus.
   id           String   @id @default(cuid())
-  sessionId    String
+  sessionId    String?
   categoryId   String
   winnerUserId String
   voteCount    Int
   createdAt    DateTime @default(now())
 
-  session  Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Dénormalisés à la clôture du vote (`finalizeSuperlativeVoting`, où
+  // `session.decidedGame`/`session.date` sont déjà connus) — mêmes raisons
+  // que `SessionResult.gameName`/`sessionDate`. Backfillés pour les
+  // récompenses déjà existantes (voir la migration).
+  gameName    String?
+  sessionDate DateTime?
+
+  session  Session?            @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   category SuperlativeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   winner   User                @relation(fields: [winnerUserId], references: [id], onDelete: Cascade)
 
@@ -1350,6 +1416,15 @@ model GroupAchievement {
 // la Home, badge "💀" sur le pseudo du débiteur), non-nul = soldée.
 // `onDelete: Cascade` des deux côtés : une dette n'a plus de sens si la
 // soirée ou l'utilisateur qui la doit disparaît.
+// Chantier nettoyage réel du stockage (V2, suite) — `onDelete: Cascade`
+// délibérément CONSERVÉ (une dette DÉJÀ SOLDÉE, `paidAt` non-nul, n'est
+// plus jamais lue nulle part au-delà de la Home des dettes ACTIVES — voir
+// `src/lib/debts.ts`, aucune page "historique des dettes payées" —
+// disparaître avec la soirée est correct pour elle). En revanche, une
+// dette ENCORE ACTIVE (`paidAt: null`) est une obligation NON RÉSOLUE :
+// `src/lib/retention.ts` (`sessionPurgeEligibility`) la traite comme un
+// BLOCAGE explicite de la purge de sa soirée, jamais une suppression
+// silencieuse d'un gage jamais soldé.
 model Debt {
   id        String    @id @default(cuid())
   debtorId  String
@@ -1361,6 +1436,31 @@ model Debt {
 
   debtor  User    @relation(fields: [debtorId], references: [id], onDelete: Cascade)
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+// Chantier nettoyage réel du stockage (V2, suite) — résumé durable
+// MINIMAL (un seul entier à ce jour) pour un critère de badge qui compte
+// aujourd'hui des lignes `TournamentParticipant` VOUÉES à disparaître
+// avec leur `Tournament` (aucune autre lecture durable n'en dépend, voir
+// le README — contrairement à `SessionResult`/`SuperlativeAward`/
+// `Pronostic`/`XpBet`, aucun découplage de `Tournament` n'était
+// nécessaire/possible ici). Maintenu à l'INSCRIPTION/DÉSINSCRIPTION
+// (`registerForTournamentAction`/`unregisterFromTournamentAction`,
+// src/app/tournois/actions.ts) — jamais recalculé par un `count()` sur
+// des lignes qui peuvent disparaître, exactement la même philosophie que
+// `XpEvent` (ledger append-only) déjà utilisée partout ailleurs pour les
+// critères de badge. `TOURNAMENTS_WON` n'a PAS besoin d'un champ ici : il
+// se déduit déjà durablement de `XpEvent` (`reason: "TOURNAMENT_RESULT"`,
+// `sourceId` se terminant par `:1st"`), voir `src/lib/badges.ts`.
+model UserLifetimeStats {
+  userId                       String @id
+  // "Gladiateur" (5 tournois joués, gagnés ou non) — compte TOUTE
+  // inscription encore active au moment de la lecture, jamais réduit par
+  // la purge d'un tournoi terminé depuis longtemps (contrairement à
+  // l'ancien `tournamentParticipant.count({userId})`).
+  tournamentsParticipatedCount Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — snapshot figé du mois

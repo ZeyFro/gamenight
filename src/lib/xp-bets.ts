@@ -62,10 +62,19 @@ export async function placeBet(
 
   const allIn = amount === maxBetAmount(voter.xpTotal);
 
+  // Chantier nettoyage réel du stockage (V2, suite) — `gameName` dénormalisé
+  // ICI, à la pose du pari (le jeu de la soirée est déjà décidé à ce stade)
+  // : `/profil` affiche l'historique des paris résolus avec le nom du jeu,
+  // qui doit rester lisible même après la purge de la soirée.
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { decidedGame: { select: { name: true } } },
+  });
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.xpBet.create({
-        data: { sessionId, voterId, targetUserId, amount, allIn },
+        data: { sessionId, voterId, targetUserId, amount, allIn, gameName: session?.decidedGame?.name ?? null },
       });
 
       const locked = await tx.$queryRaw<{ xpTotal: number }[]>`

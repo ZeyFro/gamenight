@@ -248,6 +248,19 @@ export async function registerForTournamentAction(formData: FormData) {
       await enqueueTournamentThreadMember(tournamentId, user.id, tx);
     }
 
+    // Chantier nettoyage réel du stockage (V2, suite) — résumé durable
+    // MINIMAL (`UserLifetimeStats.tournamentsParticipatedCount`) maintenu
+    // ICI, à l'inscription, DANS CETTE MÊME TRANSACTION : ce compteur
+    // remplace un `tournamentParticipant.count({userId})` qui deviendrait
+    // faux dès qu'un tournoi ancien est purgé (voir badges.ts,
+    // `checkTournamentBadges`) — jamais recalculé par un `count()` sur des
+    // lignes vouées à disparaître.
+    await tx.userLifetimeStats.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, tournamentsParticipatedCount: 1 },
+      update: { tournamentsParticipatedCount: { increment: 1 } },
+    });
+
     // Places pleines → lancement automatique du bracket (spec), dans
     // CETTE transaction (voir docstring ci-dessus).
     if (participants.length + 1 >= tournament.maxPlayers) {
@@ -295,7 +308,17 @@ export async function unregisterFromTournamentAction(formData: FormData) {
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
 
-    await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
+    const deleted = await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
+    // Décrémente le compteur durable SEULEMENT si une inscription a
+    // réellement été retirée (jamais sur un double appel/une inscription
+    // déjà absente) — voir le commentaire de `registerForTournamentAction`.
+    if (deleted.count > 0) {
+      await tx.userLifetimeStats.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, tournamentsParticipatedCount: 0 },
+        update: { tournamentsParticipatedCount: { decrement: 1 } },
+      });
+    }
     return true;
   });
 

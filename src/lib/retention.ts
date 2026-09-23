@@ -19,34 +19,60 @@ import {
  * appel Discord) et `dryRun: false` (exécute réellement) — un seul chemin
  * de décision, jamais deux logiques divergentes à maintenir en parallèle.
  *
- * Portée VOLONTAIREMENT LIMITÉE dans cette PR (honnêteté > exhaustivité) :
+ * Portée (V2, suite — complète la première itération qui ne purgeait que
+ * le chat) :
  *   - Purge RÉELLEMENT les messages de chat (`ChatMessage`/`ChatReaction`,
  *     cascade) rattachés à une soirée terminée/annulée depuis plus de 7
- *     jours, et programme la suppression Discord (fil + annonce) des
- *     soirées/tournois éligibles dont le nettoyage n'a jamais été
- *     déclenché.
+ *     jours.
+ *   - Purge RÉELLEMENT la ligne `Session`/`Tournament` elle-même une fois
+ *     la fenêtre de 7 jours dépassée — voir `purgeEligibleSessionsBatch`/
+ *     `purgeEligibleTournamentsBatch`. Rendu possible SANS perte de
+ *     résultats/récompenses/statistiques grâce à un RÉSUMÉ DURABLE
+ *     minimal (voir le README, "Résumé durable" — analyse complète des
+ *     dépendances, coûts, et ce qui reste volontairement hors périmètre) :
+ *       - `SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet` — DÉCOUPLÉS
+ *         de `Session` (`onDelete: SetNull`, jamais Cascade), avec 5
+ *         colonnes dénormalisées (`gameId`/`gameName`/`sessionDate`)
+ *         capturées à l'écriture initiale — AUCUNE copie dans une table
+ *         d'archive séparée, la ligne SURVIT telle quelle.
+ *       - `UserLifetimeStats.tournamentsParticipatedCount` — résumé
+ *         durable MINIMAL (un entier) pour le seul critère de badge qui
+ *         comptait des lignes `TournamentParticipant`, elles, toujours
+ *         intégralement cascadées (aucune autre lecture n'en dépend).
+ *       - XP (`XpEvent`) et badges (`UserBadge`) étaient DÉJÀ sans FK vers
+ *         `Session`/`Tournament` avant ce chantier — déjà à l'abri.
+ *     BLOQUE explicitement la purge d'une soirée tant qu'une DETTE reste
+ *     impayée (`Debt.paidAt: null`) ou que le vote de superlatifs n'est
+ *     pas clôturé (`Session.superlativeVotingClosed: false`) — jamais une
+ *     récompense/obligation non finalisée qui disparaît silencieusement
+ *     pour respecter artificiellement le délai (voir
+ *     `sessionPurgeBlockReason`).
+ *   - Programme la suppression Discord (fil + annonce) des soirées/
+ *     tournois éligibles dont le nettoyage n'a jamais été déclenché,
+ *     AVANT (ou au moment de) la purge de leur ligne — jamais après :
+ *     `resolveSessionThreadDelete`/`resolveThreadDelete`/`resolveAnnounceDelete`
+ *     ne dépendent structurellement JAMAIS de l'existence de la ligne
+ *     métier (voir leur commentaire), donc l'ordre exact n'a pas d'impact
+ *     fonctionnel, mais la ligne n'est jamais supprimée sans qu'un
+ *     nettoyage Discord ait été AU MOINS enqueue-é.
  *   - Purge les notifications in-app déjà LUES d'une saison désormais
  *     close.
  *   - Purge les lignes techniques `NotificationDelivery` TERMINALES
  *     (SENT/SKIPPED) et RETRY-SAFE (occurrence non fixe) au-delà d'une
  *     courte rétention.
- *   - NE SUPPRIME JAMAIS la ligne `Session`/`Tournament`/`Proposal`/`Vote`/
- *     `SessionResult`/`TournamentParticipant`/`TournamentMatch` elle-même :
- *     `SessionResult.placement` (podium, lu par `/profil/historique` et
- *     `src/lib/revanche.ts`) et les votes/propositions n'ont, à ce jour,
- *     AUCUN résumé durable indépendant de la ligne `Session` — les
- *     supprimer perdrait ces données sans filet. L'XP (`XpEvent`) et les
- *     badges (`UserBadge`) sont, eux, DÉJÀ sans FK vers `Session`/
- *     `Tournament` (id libre non contraint) et donc DÉJÀ à l'abri d'une
- *     éventuelle suppression future de ces lignes — voir le README pour le
- *     détail de cet inventaire et la marche à suivre pour lever cette
- *     limite (introduire un résumé durable type `SessionResult` détaché de
- *     `Session`, AVANT de rendre la ligne elle-même purgeable).
  *   - Ne touche JAMAIS aux pièces jointes : aucun modèle de ce schéma n'en
  *     stocke pour les soirées/tournois/messages de chat (`ChatMessage.content`
  *     est un simple texte) — Vercel Blob n'est utilisé QUE pour la bannière
  *     de profil (`src/lib/banner-blob.ts`), scope utilisateur, hors de
  *     cette politique.
+ *   - Hors périmètre, documenté explicitement (voir le README) : les
+ *     statistiques GROUPE (pas par utilisateur) de `src/lib/home.ts`
+ *     (`getGroupStats` — total de soirées jouées et jeu le plus joué DU
+ *     GROUPE) continuent de compter des lignes `Session` live et perdront
+ *     en exactitude au fil des purges — aucun résumé durable groupe n'est
+ *     introduit par ce chantier (coût estimé : un compteur global +
+ *     compteur par jeu, complexité jugée disproportionnée face à
+ *     l'exigence "résumé minimal", voir le README pour le détail).
  */
 
 export const RETENTION_CHAT_PURGE_DELAY_DAYS = HISTORY_VISIBILITY_WINDOW_DAYS;
@@ -234,6 +260,220 @@ export async function scheduleDiscordCleanupForEligibleEvents(
   }
 
   return { sessionsEnqueued, tournamentsEnqueued, dryRun: opts.dryRun };
+}
+
+/* -------------------------------------------------------------------- */
+/* Purge RÉELLE de la ligne Session/Tournament — le point qui manquait   */
+/* à la première itération (V2, suite)                                   */
+/* -------------------------------------------------------------------- */
+
+export type SessionPurgeBlockReason = "superlative_voting_pending" | "debt_unpaid";
+
+/**
+ * Bloque UNIQUEMENT sur une opération encore active dont la disparition
+ * silencieuse serait une perte réelle (jamais une purge qui efface une
+ * récompense/obligation non finalisée pour respecter artificiellement le
+ * délai) :
+ *   - `superlative_voting_pending` — `Session.superlativeVotingClosed`
+ *     encore `false` : les pronostics/paris/récompenses de superlatifs de
+ *     CETTE soirée ne sont pas encore résolus (`resolvePronostics`/
+ *     `resolveBets`/`finalizeSuperlativeVoting` n'ont pas encore tourné —
+ *     lazy, voir `finalizeSuperlativeVotingIfDue`). Purger maintenant
+ *     figerait ces pronostics/paris en `correct`/`won` `null` À VIE
+ *     (`resolvePronostics`/`resolveBets` ont besoin de la ligne `Session`
+ *     ET de `SuperlativeVote`/les catégories pour trancher).
+ *   - `debt_unpaid` — au moins une `Debt` liée à cette soirée a
+ *     `paidAt: null` (gage non soldé, encore affiché sur la Home) :
+ *     `Debt` cascade avec `Session` (contrairement aux 4 modèles
+ *     "résultat" ci-dessus — voir son commentaire dans schema.prisma) —
+ *     la purger maintenant effacerait une obligation non résolue sans
+ *     aucune trace.
+ * Ne fait qu'UNE requête (`Debt`) — `superlativeVotingClosed` est déjà
+ * disponible sur la ligne `Session` déjà chargée par l'appelant.
+ */
+export async function sessionPurgeBlockReason(session: {
+  id: string;
+  superlativeVotingClosed: boolean;
+}): Promise<SessionPurgeBlockReason | null> {
+  if (!session.superlativeVotingClosed) return "superlative_voting_pending";
+  const unpaidDebt = await prisma.debt.findFirst({
+    where: { sessionId: session.id, paidAt: null },
+    select: { id: true },
+  });
+  return unpaidDebt ? "debt_unpaid" : null;
+}
+
+export interface SessionRowPurgeBatchResult {
+  /** Soirées éligibles par la date, AVANT tout blocage — pour l'audit. */
+  candidateSessionIds: string[];
+  purgedSessionIds: string[];
+  blockedSessions: { sessionId: string; reason: SessionPurgeBlockReason }[];
+  dryRun: boolean;
+}
+
+/**
+ * Purge RÉELLEMENT la ligne `Session` (et, par cascade, `Proposal`/`Vote`/
+ * `SessionInvite`/`SuperlativeVote`/`ChatMessage` restants/`Debt` déjà
+ * soldées) une fois la fenêtre de 7 jours dépassée ET aucun blocage actif
+ * (voir `sessionPurgeBlockReason`). `SessionResult`/`SuperlativeAward`/
+ * `Pronostic`/`XpBet` SURVIVENT (`onDelete: SetNull`, voir le schéma) —
+ * jamais perdus.
+ *
+ * Programme (enqueue, jamais un appel Discord ici) le nettoyage définitif
+ * du fil AVANT de supprimer la ligne, si `announceViaBot` — reprend le
+ * MÊME mécanisme idempotent que `deleteSessionAction` (occurrence
+ * aléatoire, convergence "la plus récente gagne") : appelable sans risque
+ * même si `scheduleDiscordCleanupForEligibleEvents` a déjà enqueue-é ce
+ * nettoyage lors d'un passage précédent.
+ *
+ * Chaque suppression tourne dans SA PROPRE transaction, qui REVÉRIFIE
+ * sous verrou (`FOR UPDATE`) le statut ET l'absence de dette impayée —
+ * protège contre une course avec une saisie de résultats/un paiement de
+ * dette survenus entre la sélection des candidats et l'exécution réelle
+ * (fenêtre étroite, mais réelle) : la transaction est un no-op silencieux
+ * si l'état a changé, jamais une suppression sur un état périmé.
+ */
+export async function purgeEligibleSessionsBatch(
+  opts: { limit?: number; dryRun: boolean; now?: Date }
+): Promise<SessionRowPurgeBatchResult> {
+  const limit = opts.limit ?? RETENTION_BATCH_SIZE;
+  const now = opts.now ?? wallClockNow();
+
+  const candidates = await prisma.session.findMany({
+    where: { status: { in: ["DONE", "CANCELLED"] } },
+    select: { id: true, status: true, date: true, superlativeVotingClosed: true, announceViaBot: true },
+    take: limit * 4,
+  });
+
+  const candidateSessionIds: string[] = [];
+  const purgedSessionIds: string[] = [];
+  const blockedSessions: { sessionId: string; reason: SessionPurgeBlockReason }[] = [];
+
+  for (const session of candidates) {
+    if (purgedSessionIds.length >= limit) break;
+    const eligibility = sessionPurgeEligibility(session);
+    if (!eligibility.eligible || !isPastRetentionWindow(eligibility.referenceDate, now)) continue;
+    candidateSessionIds.push(session.id);
+
+    const blockReason = await sessionPurgeBlockReason(session);
+    if (blockReason) {
+      blockedSessions.push({ sessionId: session.id, reason: blockReason });
+      continue;
+    }
+
+    if (opts.dryRun) {
+      purgedSessionIds.push(session.id);
+      continue;
+    }
+
+    // Enqueue SEULEMENT si jamais tenté — jamais un réessai automatique
+    // d'un nettoyage déjà `"failed"` (réservé au réessai manuel, voir
+    // `discord-cleanup-status.ts`/l'onglet admin "Nettoyage") : même garde
+    // que `scheduleDiscordCleanupForEligibleEvents` ci-dessus, jamais une
+    // logique divergente entre les deux chemins qui enqueue-ent le même
+    // rôle `thread-delete`.
+    if (session.announceViaBot && (await getSessionThreadDeleteStatus(session.id)) === "never_enqueued") {
+      await enqueueSessionThreadDelete(session.id);
+    }
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string; status: string; superlativeVotingClosed: boolean }[]>`
+        SELECT id, status, "superlativeVotingClosed" FROM "Session" WHERE id = ${session.id} FOR UPDATE
+      `;
+      const current = locked[0];
+      if (!current) return false; // déjà purgée par un passage concurrent
+      if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // ne devrait jamais arriver (statut terminal irréversible), garde défensive
+      if (!current.superlativeVotingClosed) return false; // course perdue — résolu entre-temps
+      const stillUnpaid = await tx.debt.findFirst({ where: { sessionId: session.id, paidAt: null }, select: { id: true } });
+      if (stillUnpaid) return false; // course perdue — nouvelle dette détectée entre-temps
+
+      await tx.session.delete({ where: { id: session.id } });
+      return true;
+    });
+
+    if (deleted) purgedSessionIds.push(session.id);
+    else blockedSessions.push({ sessionId: session.id, reason: "debt_unpaid" });
+  }
+
+  return { candidateSessionIds, purgedSessionIds, blockedSessions, dryRun: opts.dryRun };
+}
+
+export interface TournamentRowPurgeBatchResult {
+  candidateTournamentIds: string[];
+  purgedTournamentIds: string[];
+  dryRun: boolean;
+}
+
+/**
+ * Purge RÉELLEMENT la ligne `Tournament` (et, par cascade,
+ * `TournamentParticipant`/`TournamentMatch`) une fois la fenêtre de 7
+ * jours dépassée — AUCUNE condition bloquante équivalente à
+ * `sessionPurgeBlockReason` : la finalisation d'un tournoi
+ * (`declareWinner`/`advanceWinner`, championId + XP + badges) est
+ * TOUJOURS synchrone, contrairement au vote de superlatifs des soirées
+ * (aucune résolution différée en attente possible pour un tournoi déjà
+ * `DONE`/`CANCELLED`).
+ *
+ * `checkTournamentBadges` compte désormais `XpEvent`/`UserLifetimeStats`
+ * (voir src/lib/badges.ts) — jamais les lignes cascadées ici, aucune
+ * perte de badge/XP possible.
+ */
+export async function purgeEligibleTournamentsBatch(
+  opts: { limit?: number; dryRun: boolean; now?: Date }
+): Promise<TournamentRowPurgeBatchResult> {
+  const limit = opts.limit ?? RETENTION_BATCH_SIZE;
+  const now = opts.now ?? wallClockNow();
+
+  const candidates = await prisma.tournament.findMany({
+    where: { status: { in: ["DONE", "CANCELLED"] } },
+    select: {
+      id: true,
+      status: true,
+      cancelledAt: true,
+      announceViaBot: true,
+      matches: { select: { completedAt: true } },
+    },
+    take: limit * 4,
+  });
+
+  const candidateTournamentIds: string[] = [];
+  const purgedTournamentIds: string[] = [];
+
+  for (const tournament of candidates) {
+    if (purgedTournamentIds.length >= limit) break;
+    const eligibility = tournamentPurgeEligibility(tournament, tournament.matches);
+    if (!eligibility.eligible || !isPastRetentionWindow(eligibility.referenceDate, now)) continue;
+    candidateTournamentIds.push(tournament.id);
+
+    if (opts.dryRun) {
+      purgedTournamentIds.push(tournament.id);
+      continue;
+    }
+
+    // Même garde que `purgeEligibleSessionsBatch` ci-dessus — jamais un
+    // réessai automatique d'un nettoyage déjà `"failed"`.
+    if (tournament.announceViaBot) {
+      const status = await getTournamentCleanupStatus(tournament.id);
+      if (status.thread === "never_enqueued") await enqueueTournamentThreadDelete(tournament.id);
+      if (status.announce === "never_enqueued" && (await isTournamentAnnounceSent(tournament.id))) {
+        await enqueueTournamentAnnounceDelete(tournament.id);
+      }
+    }
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
+        SELECT id, status FROM "Tournament" WHERE id = ${tournament.id} FOR UPDATE
+      `;
+      const current = locked[0];
+      if (!current) return false; // déjà purgé par un passage concurrent
+      if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // garde défensive
+      await tx.tournament.delete({ where: { id: tournament.id } });
+      return true;
+    });
+    if (deleted) purgedTournamentIds.push(tournament.id);
+  }
+
+  return { candidateTournamentIds, purgedTournamentIds, dryRun: opts.dryRun };
 }
 
 /* -------------------------------------------------------------------- */

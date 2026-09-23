@@ -3,6 +3,7 @@ import { wallClockNow } from "@/lib/wallclock";
 import {
   RETENTION_CHAT_PURGE_DELAY_DAYS,
   sessionPurgeEligibility,
+  sessionPurgeBlockReason,
   tournamentPurgeEligibility,
   isPastRetentionWindow,
 } from "@/lib/retention";
@@ -54,7 +55,18 @@ export interface StorageAuditReport {
      * connu), documenté ici plutôt que supposé. */
     independentOfSession: number;
   };
-  sessions: { total: number; active: number; eligibleForPurge: number; noReliableDate: number };
+  sessions: {
+    total: number;
+    active: number;
+    eligibleForPurge: number;
+    noReliableDate: number;
+    /** Éligibles par la date mais bloquées — voir `sessionPurgeBlockReason`
+     * (retention.ts) pour le raisonnement complet. Jamais purgées tant que
+     * ce blocage tient, jamais une récompense/obligation non finalisée
+     * effacée silencieusement. */
+    blockedBySuperlativeVoting: number;
+    blockedByUnpaidDebt: number;
+  };
   tournaments: { total: number; active: number; eligibleForPurge: number; noReliableDate: number };
   sessionResults: { total: number };
   proposalsAndVotes: { proposals: number; votes: number };
@@ -145,15 +157,25 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
   const AUDIT_SAMPLE_SIZE = 2000;
   const terminalSessions = await prisma.session.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
-    select: { status: true, date: true },
+    select: { id: true, status: true, date: true, superlativeVotingClosed: true },
     take: AUDIT_SAMPLE_SIZE,
   });
   let sessionsEligible = 0;
   let sessionsNoDate = 0;
+  let sessionsBlockedBySuperlativeVoting = 0;
+  let sessionsBlockedByDebt = 0;
   for (const s of terminalSessions) {
     const e = sessionPurgeEligibility(s);
     if (e.eligible) {
-      if (isPastRetentionWindow(e.referenceDate, now)) sessionsEligible++;
+      if (isPastRetentionWindow(e.referenceDate, now)) {
+        // Coût borné à l'échantillon ET aux seules soirées déjà éligibles
+        // par la date — jamais une requête `Debt` pour chaque soirée
+        // terminale de l'échantillon.
+        const block = await sessionPurgeBlockReason(s);
+        if (block === "superlative_voting_pending") sessionsBlockedBySuperlativeVoting++;
+        else if (block === "debt_unpaid") sessionsBlockedByDebt++;
+        else sessionsEligible++;
+      }
     } else if (e.reason === "no_reliable_date") {
       sessionsNoDate++;
     }
@@ -198,6 +220,8 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
       active: activeSessions,
       eligibleForPurge: sessionsEligible,
       noReliableDate: sessionsNoDate,
+      blockedBySuperlativeVoting: sessionsBlockedBySuperlativeVoting,
+      blockedByUnpaidDebt: sessionsBlockedByDebt,
     },
     tournaments: {
       total: tournamentTotal,
@@ -221,6 +245,6 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
         "Aucune pièce jointe détenue par l'application pour les soirées/tournois/messages de chat (ChatMessage.content est un simple texte). Vercel Blob (banner-blob.ts) sert UNIQUEMENT la bannière de profil utilisateur, hors périmètre de cette politique.",
     },
     scopeNote:
-      "Cette PR ne supprime JAMAIS la ligne Session/Tournament/Proposal/Vote/SessionResult/TournamentParticipant/TournamentMatch elle-même (SessionResult.placement — podium — n'a aujourd'hui aucun résumé durable indépendant de Session, voir le README). Seuls les messages de chat rattachés et le nettoyage Discord sont réellement purgés dans cette PR.",
+      "Session/Tournament sont RÉELLEMENT supprimées 7 jours après leur fin, sauf blocage explicite (dette impayée, vote de superlatifs pas encore clôturé — voir ci-dessus). SessionResult/SuperlativeAward/Pronostic/XpBet SURVIVENT à cette suppression (résumé durable, jamais copiés dans une table séparée — voir le README). Hors périmètre : les statistiques GROUPE de la Home (total de soirées jouées, jeu le plus joué du groupe) ne sont pas préservées et perdront en exactitude au fil des purges.",
   };
 }
