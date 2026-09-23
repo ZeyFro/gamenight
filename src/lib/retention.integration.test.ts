@@ -30,6 +30,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
   let runner: typeof import("./retention-runner");
   let announceLib: typeof import("./session-announce");
   let executorLib: typeof import("./notification-executor");
+  let sessionsLib: typeof import("./sessions");
+  let homeLib: typeof import("./home");
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
@@ -39,6 +41,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     runner = await import("./retention-runner");
     announceLib = await import("./session-announce");
     executorLib = await import("./notification-executor");
+    sessionsLib = await import("./sessions");
+    homeLib = await import("./home");
   });
 
   afterAll(async () => {
@@ -50,6 +54,11 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       `TRUNCATE "NotificationDelivery", "NotificationEvent", "ChatReaction", "ChatMessage", "SessionInvite", "Vote", "Proposal", "Session", "Notification", "SeasonSnapshot", "Season", "Tournament", "Game", "User" CASCADE`
     );
     await db.$executeRawUnsafe(`UPDATE "CronLock" SET "lockedAt" = NULL, "token" = NULL WHERE name = 'retention-cleanup'`);
+    // GroupSessionStats est un singleton SANS FK vers Session/Game/User —
+    // jamais nettoyé par le TRUNCATE ci-dessus (contrairement à
+    // GroupGameStat, dont la FK CASCADE vers "Game" le vide déjà) : remis
+    // à zéro explicitement, même logique que le reset CronLock ci-dessus.
+    await db.$executeRawUnsafe(`UPDATE "GroupSessionStats" SET "totalSessionsPlayed" = 0 WHERE id = 'global'`);
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
@@ -80,6 +89,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       date: Date;
       announceViaBot: boolean;
       superlativeVotingClosed: boolean;
+      decidedGameId: string;
     }> = {}
   ) {
     return db.session.create({
@@ -93,6 +103,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         // veulent une soirée réellement purgeable, donc `true` par défaut
         // ICI (contrairement au schéma) pour ne pas alourdir chaque appel.
         superlativeVotingClosed: overrides.superlativeVotingClosed ?? true,
+        decidedGameId: overrides.decidedGameId,
       },
     });
   }
@@ -952,6 +963,235 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const report = await runner.runRetentionCleanup({ dryRun: true, now });
       expect(report.sessionRowPurge?.purgedSessionIds).toEqual([session.id]);
       expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+    });
+  });
+
+  describe("Stats du groupe (Home) — GroupSessionStats/GroupGameStat, résumé durable jamais retouché par la purge", () => {
+    it("markSessionDone incrémente les compteurs UNE SEULE FOIS par soirée — rappel idempotent sans double comptage", async () => {
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+      const session = await makeSession(user.id, { status: "SCHEDULED", decidedGameId: game.id });
+
+      await sessionsLib.markSessionDone(session.id);
+      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+
+      // Rappel sur une soirée DÉJÀ DONE (bouton créateur cliqué deux fois,
+      // ou passage cron qui retombe sur une soirée déjà clôturée) — le
+      // `updateMany` conditionnel sur `status: "SCHEDULED"` ne matche plus
+      // rien (`count: 0`), la fonction retourne avant même d'atteindre
+      // l'incrément : jamais un second comptage pour la même soirée.
+      await sessionsLib.markSessionDone(session.id);
+      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+    });
+
+    it("exécution CONCURRENTE de markSessionDone sur la même soirée — un seul incrément, jamais un double comptage", async () => {
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+      const session = await makeSession(user.id, { status: "SCHEDULED", decidedGameId: game.id });
+
+      // Deux appels concurrents (ex. double clic, cron + bouton créateur en
+      // même temps) — le verrou de ligne Postgres sur le `updateMany`
+      // conditionnel sérialise les deux : un seul obtient `count: 1` et
+      // incrémente, l'autre voit `count: 0` et ressort sans rien toucher.
+      await Promise.all([sessionsLib.markSessionDone(session.id), sessionsLib.markSessionDone(session.id)]);
+
+      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect((await db.session.findUniqueOrThrow({ where: { id: session.id } })).status).toBe("DONE");
+    });
+
+    it("getGroupStats() reste IDENTIQUE avant/après purge, sur les MÊMES données — aucune perte, aucun double comptage", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const catan = await makeGame(user.id);
+      const wingspan = await makeGame(user.id);
+
+      // 3 soirées Catan (purgeables, hors fenêtre de 7 jours) + 1 soirée
+      // Wingspan récente (encore dans la fenêtre, jamais purgée) — Catan
+      // doit rester "jeu le plus joué" (3 > 1) même APRÈS la purge des 3
+      // soirées Catan, puisque le compteur durable ne recule jamais.
+      for (let i = 1; i <= 3; i++) {
+        const s = await makeSession(user.id, {
+          status: "SCHEDULED",
+          decidedGameId: catan.id,
+          date: new Date(`2026-09-0${i}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+      const recent = await makeSession(user.id, {
+        status: "SCHEDULED",
+        decidedGameId: wingspan.id,
+        date: new Date("2026-09-18T20:00:00.000Z"), // dans la fenêtre, jamais purgée
+      });
+      await sessionsLib.markSessionDone(recent.id);
+
+      const before = await homeLib.getGroupStats();
+      expect(before.totalSessionsPlayed).toBe(4);
+      expect(before.mostPlayedGame).toEqual({ name: catan.name, coverUrl: catan.coverUrl, count: 3 });
+
+      const purgeResult = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeResult.purgedSessionIds).toHaveLength(3); // les 3 soirées Catan, jamais la récente
+      expect(await db.session.count()).toBe(1); // seule la soirée Wingspan récente reste
+
+      const after = await homeLib.getGroupStats();
+      expect(after).toEqual(before); // STRICTEMENT identique — mêmes données, avant et après purge
+    });
+
+    it("reprise après interruption — deux passages bornés (limit: 1), les compteurs de groupe restent stables", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+
+      for (let i = 1; i <= 2; i++) {
+        const s = await makeSession(user.id, {
+          status: "SCHEDULED",
+          decidedGameId: game.id,
+          date: new Date(`2026-09-0${i}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+
+      const before = await homeLib.getGroupStats();
+      expect(before.totalSessionsPlayed).toBe(2);
+      expect(before.mostPlayedGame).toEqual({ name: game.name, coverUrl: game.coverUrl, count: 2 });
+
+      // La purge elle-même n'écrit JAMAIS dans GroupSessionStats/
+      // GroupGameStat (seul `markSessionDone` le fait) — deux passages
+      // bornés, ou un seul, ou une interruption entre les deux, ne peuvent
+      // donc jamais faire varier ces compteurs.
+      const first = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
+      expect(first.purgedSessionIds).toHaveLength(1);
+      expect(await homeLib.getGroupStats()).toEqual(before); // stable après le 1er passage (reprise simulée)
+
+      const second = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
+      expect(second.purgedSessionIds).toHaveLength(1);
+      expect(await db.session.count()).toBe(0);
+      expect(await homeLib.getGroupStats()).toEqual(before); // stable après le 2e passage aussi
+    });
+  });
+
+  describe("Migration 20260924150000_add_group_session_stats + 20260924090000_add_durable_result_summaries — backfill d'une ANCIENNE soirée déjà existante", () => {
+    it("gameId/gameName/sessionDate sont renseignés par le backfill de migration AVANT toute purge — pas seulement pour les nouvelles écritures (résultats, récompenses, pronostics, paris)", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const winner = await makeUser();
+      const voter = await makeUser();
+      const game = await makeGame(creator.id);
+      // Soirée "ancienne" — représente une soirée qui existait déjà en
+      // production AVANT ce chantier, `decidedGameId` déjà connu :
+      // exactement l'état réel au moment où la migration se serait
+      // exécutée (la soirée existe encore, la jointure vers elle est
+      // encore fiable à 100%).
+      const session = await makeSession(creator.id, {
+        date: new Date("2026-09-01T20:00:00.000Z"),
+        decidedGameId: game.id,
+      });
+      const category = await db.superlativeCategory.create({
+        data: { name: uniq("MVP"), icon: "🏆", modifiedById: creator.id },
+      });
+
+      // Les 4 lignes "résultat" créées comme l'ANCIEN code les aurait
+      // laissées (avant ce chantier) : `sessionId` posé, colonnes
+      // dénormalisées explicitement NULL — l'état exact juste après
+      // `ALTER TABLE ... ADD COLUMN`, AVANT que le `UPDATE` de backfill de
+      // la migration ne tourne. Une dénormalisation limitée aux nouvelles
+      // écritures laisserait ces 4 lignes dans cet état pour toujours.
+      const result = await db.sessionResult.create({
+        data: { sessionId: session.id, userId: winner.id, placement: 1, gameId: null, gameName: null, sessionDate: null },
+      });
+      const award = await db.superlativeAward.create({
+        data: {
+          sessionId: session.id,
+          categoryId: category.id,
+          winnerUserId: winner.id,
+          voteCount: 2,
+          gameName: null,
+          sessionDate: null,
+        },
+      });
+      const pronostic = await db.pronostic.create({
+        data: { sessionId: session.id, voterId: voter.id, predictedUserId: winner.id, correct: true },
+      });
+      const bet = await db.xpBet.create({
+        data: { sessionId: session.id, voterId: voter.id, targetUserId: winner.id, amount: 30, won: true, gameName: null },
+      });
+
+      // Avant backfill — exactement l'état qu'une dénormalisation limitée
+      // aux nouvelles écritures laisserait indéfiniment.
+      expect((await db.sessionResult.findUniqueOrThrow({ where: { id: result.id } })).gameId).toBeNull();
+
+      // Rejoue le UPDATE de backfill EXACT de la migration
+      // `20260924090000_add_durable_result_summaries` (copié tel quel
+      // depuis prisma/migrations/.../migration.sql, jamais une
+      // réimplémentation qui pourrait diverger silencieusement du fichier
+      // de migration réellement appliqué en production).
+      await db.$executeRawUnsafe(`
+        UPDATE "SessionResult" AS sr
+        SET "gameId" = s."decidedGameId",
+            "gameName" = g."name",
+            "sessionDate" = s."date"
+        FROM "Session" AS s
+        LEFT JOIN "Game" AS g ON g."id" = s."decidedGameId"
+        WHERE s."id" = sr."sessionId"
+      `);
+      await db.$executeRawUnsafe(`
+        UPDATE "SuperlativeAward" AS sa
+        SET "gameName" = g."name",
+            "sessionDate" = s."date"
+        FROM "Session" AS s
+        LEFT JOIN "Game" AS g ON g."id" = s."decidedGameId"
+        WHERE s."id" = sa."sessionId"
+      `);
+      await db.$executeRawUnsafe(`
+        UPDATE "XpBet" AS xb
+        SET "gameName" = g."name"
+        FROM "Session" AS s
+        LEFT JOIN "Game" AS g ON g."id" = s."decidedGameId"
+        WHERE s."id" = xb."sessionId"
+      `);
+
+      const resultAfterBackfill = await db.sessionResult.findUniqueOrThrow({ where: { id: result.id } });
+      expect(resultAfterBackfill.gameId).toBe(game.id);
+      expect(resultAfterBackfill.gameName).toBe(game.name);
+      expect(resultAfterBackfill.sessionDate).toEqual(session.date);
+
+      const awardAfterBackfill = await db.superlativeAward.findUniqueOrThrow({ where: { id: award.id } });
+      expect(awardAfterBackfill.gameName).toBe(game.name);
+      expect(awardAfterBackfill.sessionDate).toEqual(session.date);
+
+      const betAfterBackfill = await db.xpBet.findUniqueOrThrow({ where: { id: bet.id } });
+      expect(betAfterBackfill.gameName).toBe(game.name);
+
+      // Maintenant que le backfill a tourné — EXACTEMENT comme en
+      // production, où la migration s'exécute avant tout déploiement du
+      // code de purge —, la soirée est purgée : les 4 lignes doivent
+      // survivre avec leurs données correctement renseignées. Une
+      // ANCIENNE soirée se comporte désormais exactement comme une
+      // nouvelle.
+      const purgeResult = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeResult.purgedSessionIds).toEqual([session.id]);
+      expect(await db.session.findUnique({ where: { id: session.id } })).toBeNull();
+
+      const survivedResult = await db.sessionResult.findUniqueOrThrow({ where: { id: result.id } });
+      expect(survivedResult.sessionId).toBeNull();
+      expect(survivedResult.gameId).toBe(game.id);
+      expect(survivedResult.gameName).toBe(game.name);
+      expect(survivedResult.sessionDate).toEqual(session.date);
+
+      const survivedAward = await db.superlativeAward.findUniqueOrThrow({ where: { id: award.id } });
+      expect(survivedAward.sessionId).toBeNull();
+      expect(survivedAward.gameName).toBe(game.name);
+      expect(survivedAward.sessionDate).toEqual(session.date);
+
+      const survivedPronostic = await db.pronostic.findUniqueOrThrow({ where: { id: pronostic.id } });
+      expect(survivedPronostic.sessionId).toBeNull();
+      expect(survivedPronostic.correct).toBe(true);
+
+      const survivedBet = await db.xpBet.findUniqueOrThrow({ where: { id: bet.id } });
+      expect(survivedBet.sessionId).toBeNull();
+      expect(survivedBet.gameName).toBe(game.name);
     });
   });
 });

@@ -11408,6 +11408,12 @@ chaque passage de purge — corrigé avant livraison.
 
 ### Ce qui doit rester en l'état — quoi, pourquoi, coût estimé
 
+> **Mise à jour** : le gap `home.ts` décrit ci-dessous a été **comblé**
+> (plus un gap assumé, un défaut corrigé) — voir « V2 (suite, 2) —
+> préservation des stats de groupe de la Home » plus bas dans ce
+> document. Ce paragraphe reste tel quel pour l'historique de la
+> décision initiale.
+
 Un seul gap assumé, documenté plutôt que corrigé : **`src/lib/home.ts`
 (`getGroupStats`)** calcule des statistiques **de groupe** (nombre total
 de soirées jouées tous utilisateurs confondus, jeu le plus joué du
@@ -11437,10 +11443,10 @@ Aucun volume de production n'a été inventé nulle part dans ce chantier
 tourne contre une base de développement/test locale, jamais contre la
 production. Tout chiffre présenté comme un **volume** (nombre de lignes,
 octets) est soit une mesure réelle exécutée contre CETTE base de test
-(explicitement qualifiée comme telle), soit absent. Les seuls chiffres
-de nature différente présentés ici — le coût estimé du gap `home.ts`
-ci-dessus — sont explicitement qualifiés d'**hypothèses d'estimation
-d'effort**, jamais de mesures.
+(explicitement qualifiée comme telle), soit absent. Le seul chiffre de
+nature différente présenté ici — le coût estimé (aujourd'hui obsolète,
+voir mise à jour ci-dessus) du gap `home.ts` — était explicitement
+qualifié d'**hypothèse d'estimation d'effort**, jamais d'une mesure.
 
 ### Migration (`20260924090000_add_durable_result_summaries`)
 
@@ -11569,3 +11575,213 @@ par les tests de ce chantier.
 chantier** : aucune des deux variables n'est posée nulle part, aucun cron
 externe n'est configuré, aucune migration n'a été appliquée ailleurs que
 sur une base Postgres de test locale isolée.
+
+---
+
+## V2 (suite, 2) — préservation des stats de groupe de la Home avant déploiement de #107
+
+Ferme le dernier gap explicitement signalé au chantier précédent (« Ce
+qui doit rester en l'état ») : **la perte d'exactitude des statistiques
+de groupe de la Home (`src/lib/home.ts::getGroupStats`) n'était pas
+acceptable comme simple limite documentée** — elles sont désormais
+préservées par des agrégats durables minimaux, jamais en conservant les
+anciennes soirées elles-mêmes.
+
+### Ce qui était affecté, ce qui ne l'était pas
+
+`getGroupStats()` retourne 4 indicateurs. Seuls deux dépendaient de
+lignes `Session` purgeables :
+
+| Indicateur | Source avant ce lot | Affecté par la purge ? |
+|---|---|---|
+| `totalSessionsPlayed` | `Session.count({status:"DONE"})` | **Oui** — sous-compté dès qu'une soirée DONE est purgée. |
+| `mostPlayedGame` | `Session.groupBy({by:"decidedGameId"})` | **Oui** — même cause, et pouvait en plus désigner un AUTRE jeu "le plus joué" une fois les soirées du vrai gagnant purgées. |
+| `bestActiveStreak` | `User.streakCount`/`streakLastActiveAt` | Non — aucune dépendance à `Session`, fenêtre de 24h inchangée, non retouché. |
+| `activePlayers` | `User.streakLastActiveAt` (fenêtre 7 jours) | Non — idem, non retouché. |
+
+### Agrégats durables minimaux — jamais une conservation des anciennes soirées
+
+Deux modèles, volontairement les plus petits possibles (`prisma/schema.prisma`) :
+
+```prisma
+model GroupSessionStats {
+  id                  String @id @default("global") // singleton, même principe que CronLock.name
+  totalSessionsPlayed Int    @default(0)
+}
+
+model GroupGameStat {
+  gameId    String @id
+  playCount Int    @default(0)
+  game      Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+```
+
+Un entier global + un entier par jeu — jamais une ligne par soirée,
+jamais une copie du contenu d'une `Session`. `mostPlayedGame` reste
+`{name, coverUrl, count}` en joignant `GroupGameStat` → `Game` (jamais
+dénormalisé : `Game` elle-même n'est jamais purgée par ce chantier, la
+jointure reste fiable à 100 % même pour un jeu dont toutes les soirées
+ont depuis été purgées).
+
+### Point d'écriture unique, atomique avec la transition de statut
+
+`Session.status → "DONE"` n'a qu'un seul point d'écriture dans tout le
+code : `markSessionDone` (`src/lib/sessions.ts`), appelé aussi bien par
+le bouton créateur (`markSessionDoneAction`) que par le cron d'auto-
+clôture (`closeOverdueScheduledSessions`). L'incrément des deux
+compteurs est posé **dans la même transaction Prisma** que le
+`updateMany` conditionnel (`WHERE status = 'SCHEDULED'`) qui opère cette
+transition :
+
+```ts
+const decided = await prisma.$transaction(async (tx) => {
+  const result = await tx.session.updateMany({
+    where: { id: sessionId, status: "SCHEDULED" },
+    data: { status: "DONE" },
+  });
+  if (result.count === 0) return null; // déjà DONE — rien à incrémenter
+
+  const updated = await tx.session.findUnique({ where: { id: sessionId }, select: { decidedGameId: true } });
+  await tx.groupSessionStats.upsert({
+    where: { id: "global" },
+    create: { id: "global", totalSessionsPlayed: 1 },
+    update: { totalSessionsPlayed: { increment: 1 } },
+  });
+  if (updated?.decidedGameId) {
+    await tx.groupGameStat.upsert({
+      where: { gameId: updated.decidedGameId },
+      create: { gameId: updated.decidedGameId, playCount: 1 },
+      update: { playCount: { increment: 1 } },
+    });
+  }
+  return updated;
+});
+```
+
+### Pourquoi aucun double comptage n'est possible — même en reprise ou en exécution concurrente
+
+- **Jamais retouché par la purge elle-même** : `purgeEligibleSessionsBatch`/
+  `purgeEligibleTournamentsBatch` n'écrivent JAMAIS dans
+  `GroupSessionStats`/`GroupGameStat` — aucune re-dérivation depuis des
+  lignes `Session` vivantes après coup. `getGroupStats()` ne lit QUE ces
+  deux tables, jamais un mélange avec `Session`/`SessionResult` en
+  direct : par construction, il n'existe qu'une seule source de vérité,
+  donc aucun risque de compter une même soirée deux fois (une fois via
+  une lecture live, une fois via le compteur).
+- **Reprise après interruption** : la purge peut s'arrêter et reprendre
+  sur plusieurs passages bornés (`limit`) sans jamais toucher ces deux
+  tables — leur valeur reste strictement identique avant, pendant et
+  après n'importe quel nombre de passages de purge (testé, voir
+  ci-dessous).
+- **Exécution concurrente de `markSessionDone`** : le `updateMany`
+  conditionnel sur `status: "SCHEDULED"` est une opération atomique
+  Postgres — sur deux appels concurrents pour la même soirée (double
+  clic, cron + bouton créateur simultanés), le verrou de ligne implicite
+  du `UPDATE` sérialise les deux, un seul obtient `count: 1` et
+  incrémente, l'autre obtient `count: 0` et ressort sans rien écrire.
+  Aucun incrément ne peut donc jamais s'exécuter deux fois pour la même
+  soirée.
+- **Rappel sur une soirée déjà DONE** (bouton recliqué, cron qui retombe
+  dessus) : même garde — `count: 0`, retour immédiat, aucun second
+  incrément.
+
+### Migration des données existantes — les compteurs sont peuplés AVANT que la purge ne puisse jamais s'exécuter
+
+Une nouvelle migration additive, `20260924150000_add_group_session_stats`,
+crée les deux tables puis les **backfille immédiatement** avec les
+soirées DONE déjà présentes au moment où elle s'exécute :
+
+```sql
+INSERT INTO "GroupSessionStats" ("id", "totalSessionsPlayed")
+SELECT 'global', COUNT(*)::int FROM "Session" WHERE "status" = 'DONE';
+
+INSERT INTO "GroupGameStat" ("gameId", "playCount")
+SELECT "decidedGameId", COUNT(*)::int FROM "Session"
+WHERE "status" = 'DONE' AND "decidedGameId" IS NOT NULL
+GROUP BY "decidedGameId";
+```
+
+Exactement le même raisonnement que le backfill `UserLifetimeStats` de
+la migration précédente : cette migration s'exécute AVANT tout
+déploiement du code de purge, donc TOUTES les soirées DONE existent
+encore à cet instant — le compte est exact au moment de la migration,
+jamais un compteur qui redémarrerait à zéro à l'activation de ce
+chantier. Vérifiée **sans dérive** via `npx prisma migrate diff
+--from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma
+--script` après application.
+
+### Vérification explicite du backfill de la migration PRÉCÉDENTE (`20260924090000_add_durable_result_summaries`)
+
+Demande explicite de ce lot : ne pas se contenter d'affirmer que le
+backfill de la migration précédente (`gameId`/`gameName`/`sessionDate`
+sur `SessionResult`/`SuperlativeAward`/`XpBet`) fonctionne — le prouver
+par un test qui rejoue le `UPDATE` **exact** de cette migration (copié
+depuis le fichier `.sql` réel, jamais une réimplémentation qui pourrait
+diverger silencieusement) contre une "ancienne soirée" simulée : ses 4
+lignes (`SessionResult`, `SuperlativeAward`, `Pronostic`, `XpBet`) créées
+avec les colonnes dénormalisées explicitement `NULL` — l'état exact
+qu'une dénormalisation limitée aux nouvelles écritures aurait laissé
+indéfiniment. Le test (voir Tests ci-dessous) vérifie que le `UPDATE`
+les remplit correctement, PUIS purge la soirée et vérifie que les 4
+lignes survivent avec les bonnes données — une ancienne soirée se
+comporte désormais exactement comme une nouvelle.
+
+### Tests ajoutés (`src/lib/retention.integration.test.ts`)
+
+Deux nouveaux describe, contre Postgres isolé réel :
+
+**« Stats du groupe (Home) »** :
+- incrément unique par soirée + rappel idempotent sur une soirée déjà
+  DONE (aucun second incrément) ;
+- exécution CONCURRENTE de `markSessionDone` sur la même soirée (deux
+  appels en `Promise.all`) — un seul incrément ;
+- **`getGroupStats()` avant/après purge, sur les mêmes données** : 3
+  soirées d'un jeu (purgeables) + 1 soirée récente d'un autre jeu
+  (protégée par la fenêtre de 7 jours), comparaison stricte
+  (`toEqual`) du rapport complet avant et après purge — **identique** ;
+- **reprise après interruption** : deux passages bornés (`limit: 1`),
+  les compteurs restent strictement stables après chaque passage.
+
+**« Migration ... — backfill d'une ANCIENNE soirée déjà existante »** :
+scénario complet avec résultat, récompense, pronostic et pari, colonnes
+dénormalisées `NULL`, `UPDATE` de backfill rejoué tel quel, vérification
+du remplissage, puis purge réelle et vérification de la survie des 4
+lignes avec leurs données correctes.
+
+**Résultats mis à jour** : Postgres complet **656/656** (up de
+651/651 — 5 nouveaux tests), rapide (hors Postgres) **402/402**
+(inchangé, ces tests sont Postgres-only et correctement skippés sans
+`TEST_DATABASE_URL`), `npx tsc --noEmit` / `npx eslint .` sans erreur,
+`npx next build` réussi (toutes les routes générées sans erreur, aucune
+régression).
+
+### Respect des règles d'accès et de la période de calcul
+
+Aucun changement de périmètre : `totalSessionsPlayed`/`mostPlayedGame`
+comptaient déjà **toutes** les soirées DONE sans filtre de
+confidentialité (décision produit déjà actée au chantier confidentialité
+§9, « agrégats globaux non filtrés par soirée ») et sur une fenêtre **à
+vie** (aucun découpage par saison) — ce lot rend cette même portée
+durable, il ne la durcit ni ne l'assouplit. `bestActiveStreak`/
+`activePlayers` restent lus depuis `User`, entièrement inchangés.
+
+### Nettoyage reste désactivé, PR toujours Draft, aucune action réelle
+
+Aucun changement à `RETENTION_CLEANUP_ENABLED`/`RETENTION_CLEANUP_MODE`
+— le dry-run partage toujours les mêmes fonctions d'éligibilité que le
+mode réel, reconfirmé par les tests ci-dessus. Aucune migration
+appliquée ailleurs que sur la base Postgres de test locale isolée,
+aucune donnée réelle modifiée, PR #107 reste en Draft.
+
+### Gap restant, honnêtement signalé (hors périmètre explicite de cette demande)
+
+`src/lib/group-achievements.ts::checkGroupAchievements` recalcule
+certains trophées de groupe encore **verrouillés** (ex. "Century" — 100
+soirées) via un `Session.findMany({status:"DONE"})` en direct — une
+dépendance de même nature que celle corrigée ici, mais sur un fichier
+différent, non mentionné par cette demande (qui cible explicitement
+`home.ts`). Les trophées déjà débloqués ne sont jamais affectés (recalcul
+limité aux trophées `unlockedAt: null`), donc aucune régression visible
+tant qu'un trophée à seuil élevé n'est pas sur le point de se débloquer
+au moment même où ses soirées constitutives commencent à être purgées —
+un cas limite, non corrigé ici, signalé plutôt que passé sous silence.

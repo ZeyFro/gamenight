@@ -335,6 +335,10 @@ model Game {
   // plutôt qu'un tableau.
   wishlistEntry GameWishlist?
 
+  // Chantier nettoyage réel du stockage (V2, suite) — compteur durable
+  // "Stats du groupe" de la Home, voir `GroupGameStat`.
+  groupStat GroupGameStat?
+
   @@unique([steamAppId])
   @@unique([igdbId])
 }
@@ -1461,6 +1465,44 @@ model UserLifetimeStats {
   tournamentsParticipatedCount Int    @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Chantier nettoyage réel du stockage (V2, suite) — résumé durable MINIMAL
+// pour "Stats du groupe" (Home, `src/lib/home.ts::getGroupStats`), qui
+// comptait jusqu'ici `Session.count({status:"DONE"})`/`Session.groupBy`
+// sur des lignes désormais purgeables. AUCUNE ancienne soirée n'est
+// conservée pour ça — seuls deux compteurs, incrémentés UNE SEULE FOIS
+// par soirée, exactement au moment `SCHEDULED → DONE`
+// (`markSessionDone`, `src/lib/sessions.ts` — seul point d'écriture de ce
+// statut dans tout le code, transaction atomique avec l'incrément :
+// jamais retouchés par la purge elle-même, donc aucune re-dérivation
+// depuis des lignes vivantes après coup et aucun risque de double compte
+// entre soirées encore présentes et soirées déjà purgées, y compris en
+// cas d'exécution concurrente de `markSessionDone` (le `updateMany`
+// conditionnel sur `status: "SCHEDULED"` sérialise déjà les appelants
+// concurrents — un seul incrémente jamais). Portée et fenêtre de calcul
+// identiques à l'existant avant ce chantier : total À VIE (aucune fenêtre
+// de saison), TOUTES les soirées DONE sans filtre de confidentialité
+// (déjà la règle en vigueur pour les agrégats de groupe — voir chantier
+// confidentialité §9, "agrégats globaux non filtrés par soirée" —
+// inchangée ici, jamais durcie ni assouplie par ce chantier).
+model GroupSessionStats {
+  // Ligne singleton (mêmes fondations que `CronLock.name`) — un seul
+  // compteur global, jamais par utilisateur/par saison.
+  id                  String @id @default("global")
+  totalSessionsPlayed Int    @default(0)
+}
+
+// Un compteur par jeu — jamais un historique des soirées qui l'ont joué.
+// "Jeu le plus joué" se déduit d'un simple tri par `playCount` desc,
+// `name`/`coverUrl` restent lus depuis `Game` (jamais dénormalisés ici :
+// `Game` elle-même n'est jamais purgée par ce chantier, une jointure
+// reste fiable à 100%).
+model GroupGameStat {
+  gameId    String @id
+  playCount Int    @default(0)
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 }
 
 // Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — snapshot figé du mois

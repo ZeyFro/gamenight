@@ -540,19 +540,50 @@ export async function cancelSession(sessionId: string): Promise<void> {
 export async function markSessionDone(
   sessionId: string
 ): Promise<{ unlockedAchievements: GroupAchievement[] }> {
-  const result = await prisma.session.updateMany({
-    where: { id: sessionId, status: "SCHEDULED" },
-    data: { status: "DONE" },
+  // Chantier nettoyage réel du stockage (V2, suite) — la transition de
+  // statut ET l'incrément des compteurs durables de "Stats du groupe"
+  // (Home, `GroupSessionStats`/`GroupGameStat`) sont posés dans LA MÊME
+  // transaction : le `updateMany` conditionnel sur `status: "SCHEDULED"`
+  // sérialise déjà les appels concurrents à `markSessionDone` pour une
+  // même soirée (verrou de ligne Postgres, un seul appelant obtient
+  // `count: 1`) — l'incrément ne peut donc jamais s'exécuter deux fois
+  // pour la même soirée, ni être posé alors que la transition elle-même
+  // a échoué/roll-back. Jamais retouché par la purge (`retention.ts`) :
+  // aucune re-dérivation depuis des lignes `Session` vivantes après coup,
+  // donc aucun double comptage possible entre soirées encore présentes et
+  // soirées déjà purgées.
+  const decided = await prisma.$transaction(async (tx) => {
+    const result = await tx.session.updateMany({
+      where: { id: sessionId, status: "SCHEDULED" },
+      data: { status: "DONE" },
+    });
+    if (result.count === 0) return null;
+
+    const updated = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: { decidedGameId: true },
+    });
+
+    await tx.groupSessionStats.upsert({
+      where: { id: "global" },
+      create: { id: "global", totalSessionsPlayed: 1 },
+      update: { totalSessionsPlayed: { increment: 1 } },
+    });
+    if (updated?.decidedGameId) {
+      await tx.groupGameStat.upsert({
+        where: { gameId: updated.decidedGameId },
+        create: { gameId: updated.decidedGameId, playCount: 1 },
+        update: { playCount: { increment: 1 } },
+      });
+    }
+
+    return updated;
   });
-  if (result.count === 0) return { unlockedAchievements: [] };
+  if (!decided) return { unlockedAchievements: [] };
 
   // PR 5/9 — ouvre la fenêtre de vote de superlatifs entre potes dès que
   // la session passe DONE (voir src/lib/superlative-voting.ts).
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { decidedGameId: true },
-  });
-  await openSuperlativeVotingWindow(sessionId, session?.decidedGameId ?? null);
+  await openSuperlativeVotingWindow(sessionId, decided.decidedGameId ?? null);
 
   // Sprint 3 suite — les trophées de groupe ("clôture" = soirée DONE) se
   // vérifient à chaque appel, manuel (bouton créateur) ou automatique
