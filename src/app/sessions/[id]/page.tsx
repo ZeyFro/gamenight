@@ -16,7 +16,7 @@ import {
 } from "@/lib/superlative-voting";
 import { getPronosticEligibleUsers } from "@/lib/pronostics";
 import { getChatMessages } from "@/lib/chat";
-import { getSessionAccessRole } from "@/lib/session-access";
+import { getSessionAccessRole, listActiveInvites } from "@/lib/session-access";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -31,6 +31,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
 import { EditSessionDialog } from "@/components/EditSessionDialog";
+import { DrawSessionGameDialog } from "@/components/sessions/DrawSessionGameDialog";
 import { WithdrawProposalDialog } from "@/components/WithdrawProposalDialog";
 import { ProposeGameForm } from "@/components/ProposeGameForm";
 import { PronosticForm } from "@/components/PronosticForm";
@@ -253,6 +254,29 @@ export default async function SessionDetailPage({
   // Modifier n'a de sens que pour une soirée pas encore figée — pas pour
   // une session DONE (déjà jouée) ou CANCELLED (rien à reprogrammer).
   const canEdit = session.status === "VOTING" || session.status === "SCHEDULED";
+
+  // V2 — remplace le lien "🎰 Roulette" cassé (renvoyait vers le
+  // formulaire générique de création d'une roulette, obligeant à
+  // ressaisir la date et resélectionner les invités). Aperçu des jeux
+  // ÉLIGIBLES pour `DrawSessionGameDialog` — RÉUTILISE `availability`
+  // déjà calculée ci-dessus (même source que le badge "JOUABLE" affiché
+  // sur chaque proposition plus bas), purement informatif côté client :
+  // le serveur relit/recalcule tout au moment de la confirmation
+  // (`drawSessionGame`, sessions.ts), jamais ce qui décide le résultat.
+  const drawCandidates =
+    session.status === "VOTING" && isCreator
+      ? session.proposals
+          .filter((p) => availability.get(p.gameId)?.jouable)
+          .map((p) => ({ id: p.gameId, name: p.game.name, coverUrl: p.game.coverUrl }))
+      : [];
+  let drawGroupLabel = "";
+  if (session.status === "VOTING" && isCreator) {
+    const activeInvites = await listActiveInvites(session.id);
+    drawGroupLabel =
+      activeInvites.length === 0
+        ? "Toi seul(e) pour l'instant"
+        : `Toi + ${activeInvites.map((i) => i.user.discordName).join(", ")}`;
+  }
 
   // Défi hebdo (Sprint 3 suite) — bouton "Marquer comme complété" réservé
   // au créateur d'une soirée DONE, et seulement si le défi de LA SEMAINE
@@ -518,16 +542,18 @@ export default async function SessionDetailPage({
               Clôturer le vote maintenant
             </Button>
           </form>
-          {/* FIX Sprint 3 (roulette async) — alternative au vote classique : au
-              lieu de proposer/voter à la main, le créateur peut basculer sur
-              une roulette pré-remplie avec la date déjà choisie ici. */}
-          <ButtonLink
-            href={`/roulette?tab=creer&date=${toDateInputValue(session.date)}&time=${toTimeInputValue(session.date)}`}
-            variant="secondary"
-            size="sm"
-          >
-            🎰 Roulette
-          </ButtonLink>
+          {/* V2 — remplace l'ancien lien vers le formulaire générique de
+              création d'une roulette (bug remonté en test réel : obligeait
+              à ressaisir la date et resélectionner les invités, au risque
+              de créer une DEUXIÈME soirée). Tire désormais un jeu au sort
+              DIRECTEMENT pour CETTE soirée — voir DrawSessionGameDialog. */}
+          <DrawSessionGameDialog
+            sessionId={session.id}
+            sessionDateLabel={formatDateTimeFr(session.date)}
+            groupLabel={drawGroupLabel}
+            candidates={drawCandidates}
+            soundEnabled={user.soundEnabled}
+          />
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
             <Button type="submit" variant="destructive" size="sm">

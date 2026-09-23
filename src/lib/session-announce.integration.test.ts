@@ -1894,5 +1894,383 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(notifications.map((n) => n.userId)).toEqual([stillActive.id]);
       });
     });
+
+    /**
+     * V2 — parcours "soirée → roulette" remplacé : tirage au sort RATTACHÉ
+     * à une soirée existante (`drawSessionGame`, sessions.ts), en
+     * remplacement du lien cassé vers le formulaire générique de création
+     * d'une roulette. Voir le commentaire de fonction pour les règles
+     * d'éligibilité/tirage complètes.
+     */
+    describe("drawSessionGame — tirage au sort rattaché à une soirée existante (V2)", () => {
+      /** Jeu possédé ET disponible par `ownerId` à la date par défaut de
+       * `makeSession` (2026-10-01) — `minPlayers: 1` pour qu'UN SEUL
+       * propriétaire dispo suffise à rendre la proposition "jouable"
+       * (même pattern que les tests `closeSession` existants). */
+      async function makeJouableGame(addedById: string, ownerId: string) {
+        const game = await db.game.create({
+          data: { name: uniq("game"), source: "MANUAL", addedById, minPlayers: 1 },
+        });
+        await db.userGame.create({ data: { userId: ownerId, gameId: game.id, owned: true } });
+        // `upsert` — plusieurs jeux "jouables" possédés par le MÊME
+        // propriétaire (cas courant dans ces tests, ex. gameA/gameB/gameC
+        // tous possédés par le créateur) réutilisent la même disponibilité
+        // du jour, jamais une violation de la contrainte unique
+        // `(userId, date)`.
+        await db.availabilityOverride.upsert({
+          where: { userId_date: { userId: ownerId, date: new Date("2026-10-01") } },
+          create: { userId: ownerId, date: new Date("2026-10-01"), available: true },
+          update: { available: true },
+        });
+        return game;
+      }
+
+      it("conserve l'id/l'URL/le créateur/la date/les invitations/les votes déjà enregistrés — jamais une nouvelle Session", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const originalDate = new Date("2026-10-01T20:00:00.000Z");
+        const session = await makeSession(creator.id, { announceViaBot: false, date: originalDate });
+        await invite(session.id, guest.id, creator.id);
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, guest.id);
+
+        const sessionCountBefore = await db.session.count();
+        const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(outcome).toMatchObject({ kind: "drawn", winnerGameId: game.id });
+
+        expect(await db.session.count()).toBe(sessionCountBefore); // aucune nouvelle Session
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.id).toBe(session.id); // même id/URL
+        expect(stored.createdById).toBe(creator.id);
+        expect(stored.date.getTime()).toBe(originalDate.getTime());
+        expect(stored.status).toBe("SCHEDULED");
+        expect(stored.decidedGameId).toBe(game.id);
+        expect(stored.createdViaRoulette).toBe(false); // jamais modifié artificiellement
+
+        const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+        expect(invites).toHaveLength(1);
+        expect(invites[0].userId).toBe(guest.id);
+        expect(invites[0].status).toBe("ACTIVE");
+
+        const storedProposal = await db.proposal.findUniqueOrThrow({ where: { id: proposal.id } });
+        expect(storedProposal.gameId).toBe(game.id); // proposition déjà écrite, jamais recréée
+        const storedVotes = await db.vote.findMany({ where: { proposalId: proposal.id } });
+        expect(storedVotes.map((v) => v.userId)).toEqual([guest.id]); // votes réels préservés, jamais fabriqués
+      });
+
+      it("refuse la mutation pour un invité actif NON créateur — même id de soirée réel et valide", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await invite(session.id, guest.id, creator.id);
+        await propose(session.id, game.id, creator.id);
+
+        const outcome = await sessionsLib.drawSessionGame(session.id, guest.id);
+        expect(outcome).toEqual({ kind: "not_creator" });
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("VOTING");
+        expect(stored.decidedGameId).toBeNull();
+      });
+
+      it("aucun jeu éligible (aucun propriétaire dispo) : explication sans la moindre mutation, la soirée reste VOTING avec ses propositions intactes", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        // Jeu proposé mais PERSONNE ne le possède/est dispo — jamais
+        // "jouable" simplement parce que le créateur est supposé présent.
+        const game = await db.game.create({
+          data: { name: uniq("game"), source: "MANUAL", addedById: creator.id, minPlayers: 1 },
+        });
+        await propose(session.id, game.id, creator.id);
+
+        const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(outcome).toEqual({ kind: "no_eligible_game" });
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("VOTING");
+        expect(await db.proposal.count({ where: { sessionId: session.id } })).toBe(1); // proposition intacte
+      });
+
+      it("un seul jeu éligible : retenu directement, sans la moindre intervention du hasard", async () => {
+        const creator = await makeUser();
+        const eligibleGame = await makeJouableGame(creator.id, creator.id);
+        // Un second jeu proposé mais NON jouable — ne doit jamais être
+        // choisi, même si le hasard portait sur toutes les propositions
+        // sans filtrer par éligibilité.
+        const ineligibleGame = await db.game.create({
+          data: { name: uniq("game"), source: "MANUAL", addedById: creator.id, minPlayers: 4 },
+        });
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await propose(session.id, eligibleGame.id, creator.id);
+        await propose(session.id, ineligibleGame.id, creator.id);
+
+        const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(outcome).toEqual({
+          kind: "drawn",
+          winnerGameId: eligibleGame.id,
+          candidateGameIds: [eligibleGame.id],
+        });
+      });
+
+      it("plusieurs jeux éligibles : tirage uniforme (Math.random espionné) parmi EXACTEMENT les jeux jouables, jamais un jeu non jouable ni un doublon", async () => {
+        const creator = await makeUser();
+        const gameA = await makeJouableGame(creator.id, creator.id);
+        const gameB = await makeJouableGame(creator.id, creator.id);
+        const gameC = await makeJouableGame(creator.id, creator.id);
+        const ineligibleGame = await db.game.create({
+          data: { name: uniq("game"), source: "MANUAL", addedById: creator.id, minPlayers: 4 },
+        });
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await propose(session.id, gameA.id, creator.id);
+        await propose(session.id, gameB.id, creator.id);
+        await propose(session.id, gameC.id, creator.id);
+        await propose(session.id, ineligibleGame.id, creator.id);
+
+        // Espionne Math.random pour vérifier EXACTEMENT la formule de
+        // tirage (même formule que `spinRoulette`, roulette.ts) — jamais
+        // un algorithme de tirage différent recopié à moitié.
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5); // index 1 sur 3
+        try {
+          const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+          expect(outcome).toMatchObject({ kind: "drawn" });
+          if (outcome.kind === "drawn") {
+            expect(outcome.candidateGameIds.sort()).toEqual([gameA.id, gameB.id, gameC.id].sort());
+            expect(outcome.candidateGameIds).not.toContain(ineligibleGame.id);
+            expect(outcome.winnerGameId).toBe(gameB.id); // Math.floor(0.5*3) = 1 → gameB
+          }
+        } finally {
+          randomSpy.mockRestore();
+        }
+      });
+
+      it("résultat déterminé côté serveur — un second appel après succès ne retire JAMAIS, retrouve l'état déjà décidé", async () => {
+        const creator = await makeUser();
+        const gameA = await makeJouableGame(creator.id, creator.id);
+        const gameB = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await propose(session.id, gameA.id, creator.id);
+        await propose(session.id, gameB.id, creator.id);
+
+        const first = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(first.kind).toBe("drawn");
+        const decidedGameId = first.kind === "drawn" ? first.winnerGameId : null;
+
+        // Deuxième appel (rafraîchissement, ou second clic parvenu malgré
+        // la protection côté UI) — ne relance JAMAIS un tirage.
+        const second = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(second).toEqual({ kind: "not_voting", status: "SCHEDULED", decidedGameId });
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.decidedGameId).toBe(decidedGameId); // jamais écrasé par le second appel
+      });
+
+      it("concurrence RÉELLE — deux tirages simultanés sur LA MÊME soirée (double clic, deux onglets) : un seul commit, l'autre retrouve ce MÊME résultat", async () => {
+        const creator = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await propose(session.id, game.id, creator.id);
+
+        const [first, second] = await Promise.all([
+          sessionsLib.drawSessionGame(session.id, creator.id),
+          sessionsLib.drawSessionGame(session.id, creator.id),
+        ]);
+
+        const drawnOutcomes = [first, second].filter((o) => o.kind === "drawn");
+        expect(drawnOutcomes).toHaveLength(1); // un SEUL commit, jamais les deux
+
+        const notVotingOutcome = [first, second].find((o) => o.kind === "not_voting");
+        expect(notVotingOutcome).toMatchObject({ kind: "not_voting", status: "SCHEDULED", decidedGameId: game.id });
+
+        expect(await db.session.count({ where: { id: session.id, status: "SCHEDULED" } })).toBe(1);
+      });
+
+      it("concurrence RÉELLE — tirage vs clôture manuelle du vote (closeSession) sur LA MÊME soirée : une seule transition gagne, jamais les deux, jamais un crash", async () => {
+        const creator = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, creator.id); // closeSession exige au moins 1 vote (sinon "0 votant" → CANCELLED)
+
+        const [drawOutcome] = await Promise.all([
+          sessionsLib.drawSessionGame(session.id, creator.id),
+          sessionsLib.closeSession(session.id),
+        ]);
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        // Quel que soit l'ordre réel choisi par Postgres, la soirée finit
+        // SCHEDULED avec CE MÊME jeu (le seul éligible pour les deux
+        // chemins ici) — jamais VOTING, jamais deux jeux différents,
+        // jamais un crash.
+        expect(stored.status).toBe("SCHEDULED");
+        expect(stored.decidedGameId).toBe(game.id);
+        // Le tirage a soit gagné (kind: "drawn"), soit trouvé la clôture
+        // déjà passée avant lui (kind: "not_voting", même jeu) — jamais
+        // un troisième état.
+        expect(["drawn", "not_voting"]).toContain(drawOutcome.kind);
+      });
+
+      it("concurrence RÉELLE — annulation pendant le tirage : la soirée finit CANCELLED (même relation, non corrigée ici, que cancelSession/closeSession — cancelSession reste inconditionnel), jamais un état incohérent", async () => {
+        const creator = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        await propose(session.id, game.id, creator.id);
+
+        await Promise.all([
+          sessionsLib.drawSessionGame(session.id, creator.id),
+          sessionsLib.cancelSession(session.id),
+        ]);
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        // `cancelSession` est inconditionnel (même comportement PRÉ-EXISTANT
+        // vis-à-vis de `closeSession`, non modifié par cette PR) : la
+        // soirée finit TOUJOURS CANCELLED, que le tirage ait committé
+        // juste avant ou non. Si le tirage a committé avant l'annulation,
+        // `decidedGameId` reste posé (cancelSession ne le touche jamais) —
+        // les deux variantes sont des états cohérents, jamais un crash ni
+        // une soirée à moitié écrite.
+        expect(stored.status).toBe("CANCELLED");
+        expect([null, game.id]).toContain(stored.decidedGameId);
+      });
+
+      it("concurrence RÉELLE — retrait de la proposition gagnante entre le tirage et son commit : soit la soirée reste VOTING intacte, soit elle est décidée AVANT que le retrait ne soit visible — jamais un jeu retiré annoncé comme retenu", async () => {
+        const creator = await makeUser();
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: false });
+        const proposal = await propose(session.id, game.id, creator.id);
+
+        await Promise.all([
+          sessionsLib.drawSessionGame(session.id, creator.id),
+          db.proposal.delete({ where: { id: proposal.id } }),
+        ]);
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        if (stored.status === "SCHEDULED") {
+          // Le tirage a committé AVANT que le retrait ne soit visible dans
+          // sa transaction — décision légitime (retrait arrivé "trop
+          // tard"), jamais un jeu FANTÔME : `decidedGameId` référence
+          // toujours un `Game` réel (jamais la `Proposal`, supprimée
+          // depuis, qui n'est jamais la source de vérité du champ).
+          expect(stored.decidedGameId).toBe(game.id);
+        } else {
+          // Le retrait a été visible AVANT le commit du tirage — la
+          // protection (`stillProposed`, voir `drawSessionGame`) a
+          // correctement refusé de committer un gagnant qui vient de
+          // disparaître : la soirée reste VOTING, jamais un jeu retiré
+          // annoncé comme retenu.
+          expect(stored.status).toBe("VOTING");
+          expect(stored.decidedGameId).toBeNull();
+        }
+        expect(await db.proposal.findUnique({ where: { id: proposal.id } })).toBeNull();
+      });
+
+      it("Discord en attente au moment du tirage (fil pas encore créé) : le tirage commit quand même, l'EDIT d'annonce attend son tour et se résout proprement une fois le fil SENT — jamais un résultat perdu ni une annonce périmée", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-attend" });
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: true });
+        await invite(session.id, guest.id, creator.id);
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, guest.id);
+        // Fil + annonce initiale ENQUEUE-ÉS (création normale) mais
+        // JAMAIS traités — simule le tirage déclenché avant que le cron
+        // n'ait eu le temps de créer le fil/poster l'annonce.
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+
+        const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(outcome).toMatchObject({ kind: "drawn", winnerGameId: game.id });
+
+        // Traite dans l'ordre RÉEL de réclamation (`sequence` global,
+        // `claimNextDelivery`) : thread → announce SEND → creator-member
+        // (les trois enqueue-és par `enqueueSessionCreationDeliveries`,
+        // AVANT le tirage) → announce EDIT → thread-summary (les deux
+        // enqueue-és PAR `drawSessionGame`, donc après, forcément une
+        // séquence plus récente). `invite()` ci-dessus est l'aide de test
+        // BAS NIVEAU (écriture directe `SessionInvite`, jamais
+        // `enqueueSessionInviteSyncForNewInvite`) — aucune livraison
+        // invite-sync n'existe donc ici, volontairement (pas l'objet de
+        // ce test). Le résultat du tirage n'est PERDU à aucune étape, et
+        // l'EDIT finale rend bien l'état SCHEDULED actuel (jamais l'ancien
+        // texte "en cours de vote").
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(); // thread
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne(); // announce SEND (rend déjà l'état SCHEDULED — enqueue-é AVANT, traité APRÈS le tirage)
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const editOutcome = await processOne(); // announce EDIT (rend l'état SCHEDULED, un seul appel réseau)
+        expect(editOutcome?.outcome).toBe("sent");
+
+        // Le résumé de résultat dans le fil (enqueue-é par drawSessionGame,
+        // dépend aussi de `thread` SENT) se traite normalement.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-resume", channel_id: "thread-1" }));
+        const summaryOutcome = await processOne();
+        expect(summaryOutcome?.outcome).toBe("sent");
+
+        expect(await processOne()).toBeNull(); // plus rien à traiter
+
+        const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
+        expect(stored.status).toBe("SCHEDULED");
+        expect(stored.decidedGameId).toBe(game.id);
+      });
+
+      it("préserve le fil privé existant, n'en crée jamais un second, et l'annonce éditée ne mentionne QUE les vrais votants du jeu retenu — jamais un reping de tout le groupe invité", async () => {
+        const creator = await makeUser();
+        const voter = await makeUser({ discordName: "a-vote" });
+        const silentInvitee = await makeUser({ discordName: "invite-jamais-vote" });
+        const game = await makeJouableGame(creator.id, creator.id);
+        const session = await makeSession(creator.id, { announceViaBot: true });
+        await invite(session.id, voter.id, creator.id);
+        await invite(session.id, silentInvitee.id, creator.id); // invité mais n'a JAMAIS voté
+        const proposal = await propose(session.id, game.id, creator.id);
+        await vote(proposal.id, voter.id);
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(); // thread
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne(); // announce SEND (encore VOTING à ce stade)
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member
+        // `invite()` ci-dessus est l'aide de test BAS NIVEAU (écriture
+        // directe `SessionInvite`, jamais `enqueueSessionInviteSyncForNewInvite`)
+        // — aucune livraison invite-sync n'existe donc ici, volontairement
+        // (pas l'objet de ce test, voir le commentaire équivalent du test
+        // précédent). Prochaine livraison due : l'announce EDIT
+        // enqueue-ée par `drawSessionGame` ci-dessous.
+
+        const threadCreationCalls = fetchMock.mock.calls.filter(
+          ([url, init]) => String(url).includes("/threads") && init?.method === "POST"
+        );
+        expect(threadCreationCalls).toHaveLength(1); // UN SEUL fil créé jusqu'ici
+
+        const outcome = await sessionsLib.drawSessionGame(session.id, creator.id);
+        expect(outcome).toMatchObject({ kind: "drawn", winnerGameId: game.id });
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const editOutcome = await processOne(); // announce EDIT (rend l'état SCHEDULED)
+        expect(editOutcome?.outcome).toBe("sent");
+
+        const [editUrl, editInit] = fetchMock.mock.calls.at(-1)!;
+        expect(String(editUrl)).toContain("/messages/msg-announce"); // ÉDITE le même message, jamais un nouveau
+        const editBody = JSON.parse(String(editInit.body));
+        expect(editBody.content).toContain(`<@${voter.discordId}>`); // le vrai votant du jeu retenu
+        expect(editBody.content).not.toContain(`<@${silentInvitee.discordId}>`); // invité mais jamais votant — jamais un reping de tout le groupe
+
+        // Aucun deuxième fil créé par ce parcours.
+        const threadCreationCallsAfter = fetchMock.mock.calls.filter(
+          ([url, init]) => String(url).includes("/threads") && init?.method === "POST"
+        );
+        expect(threadCreationCallsAfter).toHaveLength(1);
+      });
+    });
   }
 );
