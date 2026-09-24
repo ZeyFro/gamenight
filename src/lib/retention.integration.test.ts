@@ -32,6 +32,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
   let executorLib: typeof import("./notification-executor");
   let sessionsLib: typeof import("./sessions");
   let homeLib: typeof import("./home");
+  let achievementsLib: typeof import("./group-achievements");
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
@@ -43,6 +44,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     executorLib = await import("./notification-executor");
     sessionsLib = await import("./sessions");
     homeLib = await import("./home");
+    achievementsLib = await import("./group-achievements");
   });
 
   afterAll(async () => {
@@ -51,13 +53,16 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
   beforeEach(async () => {
     await db.$executeRawUnsafe(
-      `TRUNCATE "NotificationDelivery", "NotificationEvent", "ChatReaction", "ChatMessage", "SessionInvite", "Vote", "Proposal", "Session", "Notification", "SeasonSnapshot", "Season", "Tournament", "Game", "User" CASCADE`
+      `TRUNCATE "NotificationDelivery", "NotificationEvent", "ChatReaction", "ChatMessage", "SessionInvite", "Vote", "Proposal", "Session", "Notification", "SeasonSnapshot", "Season", "Tournament", "Game", "User", "GroupAchievement", "GroupActiveWeek" CASCADE`
     );
     await db.$executeRawUnsafe(`UPDATE "CronLock" SET "lockedAt" = NULL, "token" = NULL WHERE name = 'retention-cleanup'`);
     // GroupSessionStats est un singleton SANS FK vers Session/Game/User —
     // jamais nettoyé par le TRUNCATE ci-dessus (contrairement à
     // GroupGameStat, dont la FK CASCADE vers "Game" le vide déjà) : remis
     // à zéro explicitement, même logique que le reset CronLock ci-dessus.
+    // GroupAchievement/GroupActiveWeek n'ont elles-mêmes AUCUNE FK sortante
+    // (contrairement à GroupGameStat) — ajoutées explicitement à la liste
+    // TRUNCATE ci-dessus, jamais nettoyées par une CASCADE existante.
     await db.$executeRawUnsafe(`UPDATE "GroupSessionStats" SET "totalSessionsPlayed" = 0 WHERE id = 'global'`);
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -1192,6 +1197,260 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const survivedBet = await db.xpBet.findUniqueOrThrow({ where: { id: bet.id } });
       expect(survivedBet.sessionId).toBeNull();
       expect(survivedBet.gameName).toBe(game.name);
+    });
+  });
+
+  describe("Trophées de groupe (GroupAchievement) — progression/attribution durables, jamais retouchées par la purge", () => {
+    async function makeGroupAchievement(key: string) {
+      const def = achievementsLib.GROUP_ACHIEVEMENT_DEFS.find((d) => d.key === key);
+      if (!def) throw new Error(`définition de trophée inconnue: ${key}`);
+      return db.groupAchievement.create({ data: def });
+    }
+
+    it("« marathoniens » (10 soirées cumulées) se débloque même quand les 9 soirées les plus anciennes ont DÉJÀ été purgées — l'ancien calcul (Session.findMany direct) ne l'aurait jamais vu", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+      await makeGroupAchievement("marathoniens");
+      await makeGroupAchievement("century"); // même mécanisme (totalDone), seuil 100 — doit rester verrouillé
+
+      // 9 soirées ANCIENNES, closes puis purgées AVANT que la 10e ne
+      // ferme. Avec l'ancien calcul (Session.findMany({status:"DONE"})
+      // EN DIRECT), `totalDone` n'aurait alors compté QUE la 10e soirée
+      // encore vivante (1 < 10) — jamais assez pour débloquer ce trophée,
+      // quel que soit le nombre de soirées jouées au total dans l'histoire
+      // du groupe.
+      for (let i = 1; i <= 9; i++) {
+        const s = await makeSession(user.id, {
+          status: "SCHEDULED",
+          decidedGameId: game.id,
+          date: new Date(`2026-08-0${i}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+      const purgeOld = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeOld.purgedSessionIds).toHaveLength(9);
+      expect(await db.session.count()).toBe(0); // AUCUNE des 9 premières soirées ne survit
+
+      // La 10e soirée, récente — encore dans la fenêtre de rétention.
+      const tenth = await makeSession(user.id, {
+        status: "SCHEDULED",
+        decidedGameId: game.id,
+        date: new Date("2026-09-19T20:00:00.000Z"),
+      });
+      const { unlockedAchievements } = await sessionsLib.markSessionDone(tenth.id);
+
+      expect(unlockedAchievements.map((a) => a.key)).toEqual(["marathoniens"]); // "century" reste verrouillé (10 < 100)
+      const marathoniens = await db.groupAchievement.findUniqueOrThrow({ where: { key: "marathoniens" } });
+      expect(marathoniens.unlockedAt).not.toBeNull();
+      const century = await db.groupAchievement.findUniqueOrThrow({ where: { key: "century" } });
+      expect(century.unlockedAt).toBeNull();
+    });
+
+    it("« diversité » (10 jeux distincts cumulés) se débloque même quand les soirées des 9 premiers jeux ont déjà été purgées", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      await makeGroupAchievement("diversite");
+
+      for (let i = 1; i <= 9; i++) {
+        const g = await makeGame(user.id);
+        const s = await makeSession(user.id, {
+          status: "SCHEDULED",
+          decidedGameId: g.id,
+          date: new Date(`2026-08-0${i}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+      const purgeOld = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeOld.purgedSessionIds).toHaveLength(9);
+      expect(await db.session.count()).toBe(0);
+
+      const tenthGame = await makeGame(user.id);
+      const tenth = await makeSession(user.id, {
+        status: "SCHEDULED",
+        decidedGameId: tenthGame.id,
+        date: new Date("2026-09-19T20:00:00.000Z"),
+      });
+      const { unlockedAchievements } = await sessionsLib.markSessionDone(tenth.id);
+      expect(unlockedAchievements.map((a) => a.key)).toContain("diversite");
+    });
+
+    it("« squad » (5 participants distincts cumulés) se débloque même quand TOUTES les soirées où ils ont voté ont déjà été purgées — XpEvent PARTICIPATE survit sans FK vers Session", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      await makeGroupAchievement("squad");
+
+      const participants = [];
+      for (let i = 0; i < 5; i++) participants.push(await makeUser());
+
+      // Une soirée par participant, même définition EXACTE de
+      // "participant" que closeSession (XpEvent reason: PARTICIPATE) —
+      // toutes purgées avant toute nouvelle vérification.
+      for (let i = 0; i < 5; i++) {
+        const s = await makeSession(creator.id, {
+          status: "SCHEDULED",
+          decidedGameId: game.id,
+          date: new Date(`2026-08-0${i + 1}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+        await db.xpEvent.create({
+          data: { userId: participants[i].id, reason: "PARTICIPATE", sourceId: s.id, amount: 20 },
+        });
+      }
+      const purgeOld = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeOld.purgedSessionIds).toHaveLength(5);
+      expect(await db.session.count()).toBe(0); // AUCUNE soirée vivante
+
+      // Aucune nouvelle soirée nécessaire — en production ce serait la
+      // clôture de la PROCHAINE soirée qui redéclencherait le check.
+      const unlocked = await achievementsLib.checkGroupAchievements();
+      expect(unlocked.map((a) => a.key)).toContain("squad");
+      expect(await db.xpEvent.count({ where: { reason: "PARTICIPATE" } })).toBe(5); // survivent intacts
+    });
+
+    it("« réguliers » (4 semaines calendaires consécutives) se débloque même quand les 3 premières semaines ont déjà été purgées AVANT que la 4e ne ferme — l'ancien calcul (Session.findMany direct) n'aurait vu que la 4e", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+      await makeGroupAchievement("reguliers");
+
+      // 3 premières semaines consécutives, closes puis purgées AVANT que
+      // la 4e ne ferme.
+      const firstThreeMondays = ["2026-07-06", "2026-07-13", "2026-07-20"];
+      for (const d of firstThreeMondays) {
+        const s = await makeSession(user.id, {
+          status: "SCHEDULED",
+          decidedGameId: game.id,
+          date: new Date(`${d}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+      const purgeOld = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeOld.purgedSessionIds).toHaveLength(3);
+      expect(await db.session.count()).toBe(0); // les 3 premières soirées ne survivent pas
+      expect(await db.groupActiveWeek.count()).toBe(3); // mais leurs 3 semaines durables, si
+
+      // 4e semaine consécutive (2026-07-27, lundi suivant), fermée APRÈS
+      // que les 3 premières soirées ont déjà disparu — avec l'ancien
+      // calcul (`doneSessions` EN DIRECT à CE check précis), seule cette
+      // 4e semaine serait visible (1 semaine < 4), jamais assez pour
+      // débloquer ce trophée.
+      const fourth = await makeSession(user.id, {
+        status: "SCHEDULED",
+        decidedGameId: game.id,
+        date: new Date("2026-07-27T20:00:00.000Z"),
+      });
+      const { unlockedAchievements } = await sessionsLib.markSessionDone(fourth.id);
+
+      expect(unlockedAchievements.map((a) => a.key)).toContain("reguliers");
+      expect(await db.groupActiveWeek.count()).toBe(4); // les 4 lignes durables, jamais retouchées par la purge
+    });
+
+    it("« noctambules »/« full-house » restent corrects après purge — seuil unique vérifié à la clôture de LA soirée qualifiante elle-même, jamais affecté par la purge d'une AUTRE soirée (progression/attribution identiques avant/après)", async () => {
+      const now = new Date("2026-09-20T00:00:00.000Z");
+      const creator = await makeUser();
+      const otherUser = await makeUser(); // totalUserCount = 2, pour "full-house"
+      const game = await makeGame(creator.id);
+      await makeGroupAchievement("noctambules");
+      await makeGroupAchievement("full-house");
+
+      // La soirée qualifiante : commence après 23h ET réunit TOUS les
+      // membres du groupe (2/2) — les deux prédicats se vérifient à SA
+      // PROPRE clôture, avant que quoi que ce soit ne puisse être purgé.
+      const nightSession = await makeSession(creator.id, {
+        status: "SCHEDULED",
+        decidedGameId: game.id,
+        date: new Date("2026-09-19T23:30:00.000Z"),
+      });
+      const proposal = await db.proposal.create({
+        data: { sessionId: nightSession.id, gameId: game.id, proposedById: creator.id },
+      });
+      await db.vote.createMany({
+        data: [
+          { proposalId: proposal.id, userId: creator.id },
+          { proposalId: proposal.id, userId: otherUser.id },
+        ],
+      });
+
+      const { unlockedAchievements } = await sessionsLib.markSessionDone(nightSession.id);
+      expect(unlockedAchievements.map((a) => a.key).sort()).toEqual(["full-house", "noctambules"]);
+
+      const before = await db.groupAchievement.findMany({
+        where: { key: { in: ["noctambules", "full-house"] } },
+        orderBy: { key: "asc" },
+        select: { key: true, unlockedAt: true },
+      });
+
+      // Purge de PLUSIEURS AUTRES vieilles soirées — jamais un
+      // re-verrouillage des deux trophées déjà acquis.
+      for (let i = 1; i <= 3; i++) {
+        const s = await makeSession(creator.id, {
+          status: "SCHEDULED",
+          decidedGameId: game.id,
+          date: new Date(`2026-08-0${i}T20:00:00.000Z`),
+        });
+        await sessionsLib.markSessionDone(s.id);
+      }
+      const purgeResult = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
+      expect(purgeResult.purgedSessionIds).toHaveLength(3); // les 3 vieilles soirées — nightSession encore dans la fenêtre
+
+      const after = await db.groupAchievement.findMany({
+        where: { key: { in: ["noctambules", "full-house"] } },
+        orderBy: { key: "asc" },
+        select: { key: true, unlockedAt: true },
+      });
+      expect(after).toEqual(before); // STRICTEMENT identiques — ni re-verrouillés, ni re-débloqués
+    });
+
+    it("aucune double attribution — un rappel de checkGroupAchievements ne redébloque ni ne renvoie deux fois le même trophée, aucune notification dupliquée", async () => {
+      const user = await makeUser();
+      const game = await makeGame(user.id);
+      await makeGroupAchievement("premiere-soiree");
+
+      const session = await makeSession(user.id, { status: "SCHEDULED", decidedGameId: game.id });
+      const { unlockedAchievements: first } = await sessionsLib.markSessionDone(session.id);
+      expect(first.map((a) => a.key)).toContain("premiere-soiree");
+
+      const unlockedAt1 = (
+        await db.groupAchievement.findUniqueOrThrow({ where: { key: "premiere-soiree" } })
+      ).unlockedAt;
+      expect(await db.notification.count({ where: { type: "ACHIEVEMENT" } })).toBe(1); // 1 seul membre du groupe ici
+
+      // Rappel explicite (ex. clôture d'une AUTRE soirée juste après) — le
+      // trophée n'est plus dans `locked` (unlockedAt déjà posé), jamais
+      // réévalué ni réannoncé.
+      const second = await achievementsLib.checkGroupAchievements();
+      expect(second).toEqual([]);
+
+      const unlockedAt2 = (
+        await db.groupAchievement.findUniqueOrThrow({ where: { key: "premiere-soiree" } })
+      ).unlockedAt;
+      expect(unlockedAt2).toEqual(unlockedAt1); // jamais réécrit
+      expect(await db.notification.count({ where: { type: "ACHIEVEMENT" } })).toBe(1); // jamais une 2e notification
+    });
+
+    it("exécution CONCURRENTE de checkGroupAchievements — un trophée n'est jamais débloqué/annoncé deux fois", async () => {
+      const user = await makeUser();
+      await makeGroupAchievement("premiere-soiree");
+      // Pose directement le compteur durable (équivalent à une clôture
+      // déjà survenue) pour isoler ce test sur la concurrence de
+      // `checkGroupAchievements` lui-même, plutôt que sur `markSessionDone`
+      // (déjà testé séparément ci-dessus, "Stats du groupe").
+      await db.groupSessionStats.upsert({
+        where: { id: "global" },
+        create: { id: "global", totalSessionsPlayed: 1 },
+        update: { totalSessionsPlayed: 1 },
+      });
+
+      const [r1, r2] = await Promise.all([
+        achievementsLib.checkGroupAchievements(),
+        achievementsLib.checkGroupAchievements(),
+      ]);
+      const totalUnlocked = [...r1, ...r2].filter((a) => a.key === "premiere-soiree");
+      expect(totalUnlocked).toHaveLength(1); // un seul des deux appels concurrents l'a réellement débloqué
+
+      expect(await db.notification.count({ where: { type: "ACHIEVEMENT", userId: user.id } })).toBe(1);
     });
   });
 });

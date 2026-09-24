@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
+import { getWeekStart } from "@/lib/calendar-dates";
 import { announceSessionResult } from "@/lib/discord-announce";
 import {
   enqueueSessionAnnounceUpdate,
@@ -542,16 +543,17 @@ export async function markSessionDone(
 ): Promise<{ unlockedAchievements: GroupAchievement[] }> {
   // Chantier nettoyage réel du stockage (V2, suite) — la transition de
   // statut ET l'incrément des compteurs durables de "Stats du groupe"
-  // (Home, `GroupSessionStats`/`GroupGameStat`) sont posés dans LA MÊME
+  // (Home, `GroupSessionStats`/`GroupGameStat`) ET la ligne durable du
+  // trophée "Réguliers" (`GroupActiveWeek`) sont posés dans LA MÊME
   // transaction : le `updateMany` conditionnel sur `status: "SCHEDULED"`
   // sérialise déjà les appels concurrents à `markSessionDone` pour une
   // même soirée (verrou de ligne Postgres, un seul appelant obtient
-  // `count: 1`) — l'incrément ne peut donc jamais s'exécuter deux fois
-  // pour la même soirée, ni être posé alors que la transition elle-même
-  // a échoué/roll-back. Jamais retouché par la purge (`retention.ts`) :
-  // aucune re-dérivation depuis des lignes `Session` vivantes après coup,
-  // donc aucun double comptage possible entre soirées encore présentes et
-  // soirées déjà purgées.
+  // `count: 1`) — aucun de ces trois écrits ne peut donc jamais s'exécuter
+  // deux fois pour la même soirée, ni être posé alors que la transition
+  // elle-même a échoué/roll-back. Jamais retouchés par la purge
+  // (`retention.ts`) : aucune re-dérivation depuis des lignes `Session`
+  // vivantes après coup, donc aucun double comptage possible entre
+  // soirées encore présentes et soirées déjà purgées.
   const decided = await prisma.$transaction(async (tx) => {
     const result = await tx.session.updateMany({
       where: { id: sessionId, status: "SCHEDULED" },
@@ -561,7 +563,7 @@ export async function markSessionDone(
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
-      select: { decidedGameId: true },
+      select: { decidedGameId: true, date: true },
     });
 
     await tx.groupSessionStats.upsert({
@@ -574,6 +576,18 @@ export async function markSessionDone(
         where: { gameId: updated.decidedGameId },
         create: { gameId: updated.decidedGameId, playCount: 1 },
         update: { playCount: { increment: 1 } },
+      });
+    }
+    if (updated?.date) {
+      // Upsert idempotent — plusieurs soirées la même semaine calendaire
+      // ne créent qu'UNE ligne (`update: {}`, jamais de compteur à
+      // incrémenter ici, seule l'EXISTENCE de la semaine compte pour le
+      // trophée "Réguliers", voir group-achievements.ts).
+      const weekStart = getWeekStart(updated.date);
+      await tx.groupActiveWeek.upsert({
+        where: { weekStart },
+        create: { weekStart },
+        update: {},
       });
     }
 

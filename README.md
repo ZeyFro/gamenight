@@ -11773,7 +11773,15 @@ mode réel, reconfirmé par les tests ci-dessus. Aucune migration
 appliquée ailleurs que sur la base Postgres de test locale isolée,
 aucune donnée réelle modifiée, PR #107 reste en Draft.
 
-### Gap restant, honnêtement signalé (hors périmètre explicite de cette demande)
+### Gap signalé ici — comblé, ne PAS relire comme une limite restante
+
+> **Mise à jour** : le paragraphe ci-dessous, écrit à la livraison de ce
+> lot, signalait `group-achievements.ts::checkGroupAchievements` comme
+> une dépendance de même nature que celle corrigée ici mais laissée hors
+> périmètre. Reconsidéré : la purge doit préserver les récompenses de
+> groupe et leur calcul futur — ce gap est **comblé** dans « V2 (suite, 3)
+> — préservation des trophées de groupe » plus bas. Conservé tel quel
+> pour l'historique.
 
 `src/lib/group-achievements.ts::checkGroupAchievements` recalcule
 certains trophées de groupe encore **verrouillés** (ex. "Century" — 100
@@ -11785,3 +11793,160 @@ limité aux trophées `unlockedAt: null`), donc aucune régression visible
 tant qu'un trophée à seuil élevé n'est pas sur le point de se débloquer
 au moment même où ses soirées constitutives commencent à être purgées —
 un cas limite, non corrigé ici, signalé plutôt que passé sous silence.
+
+---
+
+## V2 (suite, 3) — préservation des trophées de groupe (GroupAchievement)
+
+Le gap signalé au lot précédent (`group-achievements.ts` a une
+dépendance de même nature que `home.ts` mais laissée hors périmètre) est
+**réintégré dans le périmètre** : la purge doit préserver les
+récompenses de groupe et leur calcul futur, pas seulement les stats
+d'affichage de la Home.
+
+### Quels succès sont concernés, et l'effet EXACT d'une purge
+
+10 trophées de groupe (`GROUP_ACHIEVEMENT_DEFS`, `src/lib/group-achievements.ts`),
+recalculés à chaque `markSessionDone` (`checkGroupAchievements`).
+Analyse prédicat par prédicat :
+
+| Trophée | Seuil | Dépendait de | Effet exact d'une purge (AVANT ce lot) |
+|---|---|---|---|
+| Première soirée | ≥1 soirée | `doneSessions.length` | Aucun en pratique — voir "immunisés" ci-dessous (mais lisait la même variable que les 2 suivants). |
+| Marathoniens | ≥10 soirées | `doneSessions.length` | **Régression quasi systématique** : dès qu'une 11ᵉ soirée ferme après que les premières ont dépassé 7 jours, `totalDone` (direct) ne peut plus jamais atteindre 10 en une seule lecture — le trophée ne se débloque plus. |
+| Century | ≥100 soirées | `doneSessions.length` | Même cause, encore plus systématique (100 soirées simultanément vivantes est hautement improbable avec une purge à 7 jours). |
+| Diversité | ≥10 jeux distincts | `Set` sur `decidedGameId` des soirées vivantes | Même régression : les jeux des soirées les plus anciennes purgées "disparaissent" du calcul. |
+| Squad | ≥5 participants distincts | Voteurs de la proposition gagnante, recalculés depuis `Proposal`/`Vote` des soirées vivantes | Même régression : `Proposal`/`Vote` cascadent avec `Session` (purgés avec elle), les participants des soirées les plus anciennes disparaissent du calcul. |
+| Réguliers | 4 semaines calendaires consécutives | `Set` de semaines dérivé des dates des soirées vivantes | Même régression : une semaine dont la soirée a été purgée disparaît du calcul, cassant la continuité. |
+| Noctambules | 1 soirée après 23h | `doneSessions` vivantes | **Aucun effet réel** — voir "immunisés" ci-dessous. |
+| Full House | 1 soirée réunissant tout le groupe | `doneSessions` vivantes + `Proposal`/`Vote` | **Aucun effet réel** — voir "immunisés" ci-dessous. |
+| Collectionneur collectif | ≥500 jeux en bibliothèque | `UserGame` (jamais lié à `Session`) | **Aucun** — pas de dépendance à `Session`. |
+| Légendaire | 1 membre rang Légende | `User.xpTotal` (jamais lié à `Session`) | **Aucun** — pas de dépendance à `Session`. |
+
+**Pourquoi "Noctambules"/"Full House" sont immunisés PAR CONSTRUCTION,
+sans avoir besoin d'un correctif** : ce sont des prédicats à seuil
+**unique** (1 occurrence suffit), et `checkGroupAchievements` est
+appelée **inconditionnellement à chaque `markSessionDone`** — la soirée
+qui vient de passer `DONE` est donc *toujours* encore vivante au moment
+de **son propre check** (la purge exige 7 jours d'ancienneté minimum,
+largement après ce premier passage). Une fois débloqué, `unlockedAt` ne
+revient jamais à `null` — la purge d'une soirée plus ancienne ne peut
+donc jamais "reverrouiller" un trophée déjà acquis. Démontré par test
+(`« noctambules »/« full-house » restent corrects après purge`,
+`retention.integration.test.ts`) plutôt qu'affirmé sans preuve : **aucun
+nouveau schéma pour ces deux-là**.
+
+Les 6 autres (premiere-soiree/marathoniens/century/diversite/squad/
+reguliers) partagent une même cause : un **seuil cumulatif** qui doit
+être observé en une seule lecture de `Session.findMany({status:"DONE"})`
+— une lecture qui, une fois la purge active, ne voit plus jamais
+l'historique complet.
+
+### Correctif — réutilisation des agrégats durables déjà existants, un seul ajout minimal
+
+4 des 6 prédicats affectés se réparent **sans le moindre nouveau
+schéma**, en réutilisant des agrégats déjà introduits aux lots
+précédents de ce chantier :
+
+- **Première soirée / Marathoniens / Century** (`totalDone`) → lisent
+  désormais `GroupSessionStats.totalSessionsPlayed` (déjà écrit par
+  `markSessionDone`, jamais retouché par la purge).
+- **Diversité** (`distinctGames`) → lit désormais
+  `prisma.groupGameStat.count()` : une ligne `GroupGameStat` existe tant
+  qu'un jeu a été décidé au moins une fois, **même si toutes ses soirées
+  ont depuis été purgées** (elle n'est supprimée que si le `Game`
+  lui-même l'était — jamais le cas dans ce chantier).
+- **Squad** (`allParticipantIds`) → lit désormais
+  `prisma.xpEvent.findMany({where:{reason:"PARTICIPATE"}, distinct:["userId"]})`.
+  `XpEvent` `PARTICIPATE` est écrit pour **exactement la même population**
+  que l'ancien calcul (voteurs de la proposition gagnante, à la clôture
+  du vote dans `closeSession`, src/lib/sessions.ts) — sans FK vers
+  `Session`, déjà à l'abri de toute purge, comme tous les `XpEvent`.
+
+Seul **Réguliers** (4 semaines consécutives) n'avait **aucun** agrégat
+durable existant capable de le remplacer : ni `GroupSessionStats`
+(un entier global, pas de granularité hebdomadaire) ni `SessionResult`
+(créé seulement si le créateur saisit les résultats — **optionnel**,
+donc incomplet pour couvrir *toutes* les soirées DONE) ne suffisaient.
+Seul nouvel ajout de schéma de ce lot :
+
+```prisma
+model GroupActiveWeek {
+  weekStart DateTime @id // lundi 00:00 UTC de la semaine, même calcul que getWeekStart()
+}
+```
+
+Une ligne PAR SEMAINE ayant eu ≥1 soirée DONE — jamais une ligne par
+soirée, jamais un compteur incrémenté (upsert idempotent, `update: {}`
+— seule l'existence de la semaine compte). Écrite dans **la même
+transaction** que `GroupSessionStats`/`GroupGameStat`, au même point
+unique (`markSessionDone`), donc soumise aux mêmes garanties
+d'atomicité et de non-concurrence (voir « V2 (suite, 2) »).
+
+### Aucune double attribution — mécanisme inchangé, revérifié
+
+Le verrou existant (`groupAchievement.updateMany({where:{id, unlockedAt:null}, ...})`,
+inchangé par ce lot) garantissait déjà qu'un trophée n'est jamais
+débloqué/annoncé deux fois, y compris en cas d'appels concurrents à
+`checkGroupAchievements` — revérifié explicitement par un nouveau test
+de concurrence (deux appels `Promise.all` sur un trophée à un pas du
+déblocage : un seul des deux l'obtient, une seule notification créée).
+Un rappel séquentiel (ex. clôture d'une autre soirée juste après)
+retourne `[]` et ne touche ni `unlockedAt` ni les notifications déjà
+posées — testé explicitement.
+
+### Tests ajoutés (`src/lib/retention.integration.test.ts`, describe « Trophées de groupe »)
+
+Chaque test construit le scénario où l'**ancien** calcul (`doneSessions`
+en direct) aurait échoué : les soirées contributrices sont purgées
+**avant** que le trophée ne soit vérifié, jamais après — la preuve porte
+sur la résilience à la purge, pas seulement sur un calcul en conditions
+normales :
+
+- **Marathoniens** : 9 soirées anciennes closes puis purgées, une 10ᵉ
+  soirée récente ferme ensuite — débloqué (10 en durable), "Century"
+  reste correctement verrouillé (10 < 100, même mécanisme partagé).
+- **Diversité** : 9 jeux distincts joués puis purgés, un 10ᵉ jeu ferme
+  ensuite — débloqué.
+- **Squad** : 5 soirées d'autant de participants distincts, **toutes**
+  purgées avant toute nouvelle vérification (aucune soirée vivante au
+  moment du check) — débloqué via `XpEvent` seul.
+- **Réguliers** : 3 premières semaines consécutives closes puis
+  purgées, la 4ᵉ ferme ensuite — débloqué via `GroupActiveWeek` seul.
+- **Noctambules/Full House** : débloqués à la clôture de LA soirée
+  qualifiante, puis 3 AUTRES vieilles soirées purgées — état
+  strictement identique avant/après (`toEqual`), ni reverrouillés ni
+  redébloqués.
+- **Idempotence séquentielle** : un rappel explicite ne redébloque rien,
+  ne réécrit pas `unlockedAt`, ne crée pas de notification
+  supplémentaire.
+- **Concurrence** : deux appels `Promise.all` sur le même trophée
+  prêt à se débloquer — un seul déblocage, une seule notification.
+
+**Résultats mis à jour** : Postgres complet **663/663** (up de
+656/656 — 7 nouveaux tests), rapide (hors Postgres) **402/402**
+(inchangé, Postgres-only), `npx tsc --noEmit` / `npx eslint .` sans
+erreur, `npx next build` réussi.
+
+### Migration (`20260925090000_add_group_active_week`)
+
+Additive : `CREATE TABLE "GroupActiveWeek"` + backfill des semaines déjà
+représentées par les soirées DONE existantes, calculé en SQL avec la
+**même arithmétique exacte** que `getWeekStart()` (jour ISO de la
+semaine, UTC, aucune conversion de fuseau horaire) — vérifié
+manuellement par comparaison (`2026-09-01` → lundi `2026-08-31` des deux
+côtés) et **sans dérive** via `prisma migrate diff`. S'exécute avant
+tout déploiement du code de purge, donc toutes les soirées DONE
+existent encore à cet instant — même principe que les deux backfills
+précédents (`UserLifetimeStats`, `GroupSessionStats`/`GroupGameStat`).
+
+### Pas de nouvelle refonte, rien d'autre modifié
+
+Aucun changement à `RETENTION_CLEANUP_ENABLED`/`RETENTION_CLEANUP_MODE`
+(nettoyage désactivé par défaut, dry-run inchangé), aucune migration
+appliquée ailleurs que sur la base Postgres de test locale isolée,
+aucune donnée réelle modifiée, PR #107 reste en Draft. Aucun autre
+prédicat/fichier retouché au-delà de `group-achievements.ts`/`sessions.ts`/
+`prisma/schema.prisma` — en particulier, `Collectionneur collectif` et
+`Légendaire` sont restés inchangés (jamais dépendants de `Session`,
+rien à corriger).

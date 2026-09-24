@@ -1505,6 +1505,25 @@ model GroupGameStat {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 }
 
+// Chantier nettoyage réel du stockage (V2, suite — closes #107) — résumé
+// durable MINIMAL pour le trophée de groupe "Réguliers" (4 semaines
+// calendaires CONSÉCUTIVES avec ≥1 soirée DONE, `checkGroupAchievements`,
+// src/lib/group-achievements.ts). AUCUN agrégat durable existant
+// (`GroupSessionStats`/`GroupGameStat`/`XpEvent`) ne porte de signal PAR
+// SEMAINE pour CHAQUE soirée DONE (contrairement à "diversité"/"squad",
+// réparés sans nouveau schéma) : une ligne par semaine calendaire ayant
+// eu au moins une soirée DONE, jamais une ligne par soirée. Écrite une
+// seule fois par semaine (upsert idempotent, plusieurs soirées la même
+// semaine ne créent qu'une ligne), au même point que
+// `GroupSessionStats`/`GroupGameStat` (`markSessionDone`,
+// src/lib/sessions.ts) — jamais retouchée par la purge, donc jamais
+// perdue quelle que soit l'ancienneté des soirées qui l'ont produite.
+model GroupActiveWeek {
+  // Lundi 00:00 UTC de la semaine (même calcul que `getWeekStart`,
+  // src/lib/calendar-dates.ts) — clé naturelle, une ligne par semaine.
+  weekStart DateTime @id
+}
+
 // Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — snapshot figé du mois
 // précédent, généré au 1er passage du cron `monthly-tasks` sur ou après le
 // 1er du mois (`generateMonthlyRecapIfDue`, src/lib/monthly-recap.ts).
