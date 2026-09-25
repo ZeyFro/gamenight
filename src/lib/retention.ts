@@ -10,6 +10,16 @@ import {
   isTournamentAnnounceSent,
 } from "@/lib/tournament-announce";
 
+// V2 ("Jouer maintenant" — closes le volet rétention de ce chantier) :
+// `purgeEligibleInstantSessionsBatch`/`instantSessionPurgeEligibility`
+// (voir plus bas) purgent RÉELLEMENT la ligne `InstantSession` (et son
+// journal `InstantSessionPresenceInterval`, cascade) 7 jours après sa fin
+// effective — jamais une session `ACTIVE`. XP déjà réglé SYNCHRONEMENT à
+// la fin (voir `endInstantSession`, instant-sessions.ts), donc TOUJOURS
+// acquis avant que la fenêtre de rétention ne commence à courir. Aucune
+// donnée de groupe durable n'est alimentée par les sessions instantanées
+// (délibéré, voir instant-sessions.ts) — rien d'autre à en extraire.
+
 /**
  * Chantier nettoyage réel du stockage (V2) — politique de rétention
  * CENTRALISÉE et documentée, chaque règle testable indépendamment de tout
@@ -131,6 +141,33 @@ export function tournamentPurgeEligibility(
  * quelle — même fenêtre, jamais un second délai parallèle inventé). */
 export function isPastRetentionWindow(referenceDate: Date, now: Date = wallClockNow()): boolean {
   return !isWithinHistoryWindow(referenceDate, now);
+}
+
+/**
+ * V2 ("Jouer maintenant") — une session instantanée n'est purgeable
+ * QUE `status: "ENDED"` (jamais `"ACTIVE"`, quel que soit son âge — "aucun
+ * nettoyage d'une session active", même garde structurelle que
+ * `sessionPurgeEligibility` ci-dessus pour les soirées), avec `endedAt`
+ * comme référence RÉELLE (jamais `createdAt`, jamais `expiresAt` — une
+ * session close AVANT son expiration, ex. le créateur qui quitte, a
+ * `endedAt` bien avant `expiresAt`). `endedAt` est TOUJOURS posé quand
+ * `status: "ENDED"` (`endInstantSession` pose les deux dans la MÊME
+ * transaction, jamais l'un sans l'autre) — `"no_reliable_date"` reste
+ * représenté pour rester honnête sur le contrat, jamais atteignable en
+ * pratique par construction.
+ *
+ * MÊME fenêtre de 7 jours que le reste de cette politique
+ * (`isPastRetentionWindow`), jamais un second délai inventé pour cette
+ * fonctionnalité — "conservation des détails pendant sept jours après la
+ * fin effective".
+ */
+export function instantSessionPurgeEligibility(instantSession: {
+  status: string;
+  endedAt: Date | null;
+}): PurgeEligibility {
+  if (instantSession.status !== "ENDED") return { eligible: false, reason: "active" };
+  if (!instantSession.endedAt) return { eligible: false, reason: "no_reliable_date" };
+  return { eligible: true, referenceDate: instantSession.endedAt };
 }
 
 /* -------------------------------------------------------------------- */
@@ -585,4 +622,90 @@ export async function purgeTechnicalDeliveriesBatch(
     where: { id: { in: candidates.map((c) => c.id) } },
   });
   return { deliveriesAffected: deleted.count, dryRun: false };
+}
+
+/* -------------------------------------------------------------------- */
+/* V2 ("Jouer maintenant") — purge des DÉTAILS de session instantanée     */
+/* -------------------------------------------------------------------- */
+
+export interface InstantSessionRowPurgeBatchResult {
+  candidateInstantSessionIds: string[];
+  purgedInstantSessionIds: string[];
+  dryRun: boolean;
+}
+
+/**
+ * Purge RÉELLEMENT la ligne `InstantSession` (et, par cascade, son journal
+ * détaillé `InstantSessionPresenceInterval` — l'historique arrivée/départ
+ * qui a servi au calcul de présence) une fois la fenêtre de 7 jours
+ * dépassée depuis la fin effective. "Ne crée pas un nouvel historique qui
+ * grossit indéfiniment" : c'est précisément ce que cette purge évite —
+ * sans elle, `InstantSessionPresenceInterval` grossirait sans fin (une
+ * poignée de lignes par participant et par session).
+ *
+ * "Purge UNIQUEMENT après règlement des récompenses" — garanti PAR
+ * CONSTRUCTION, jamais par une condition bloquante supplémentaire ici :
+ * `endInstantSession` (src/lib/instant-sessions.ts) règle l'XP de
+ * participation de TOUS les participants SYNCHRONEMENT, juste après avoir
+ * posé `status: "ENDED"`/`endedAt` — jamais de manière différée. Une
+ * session `ENDED` a donc TOUJOURS déjà son XP réglé (via `XpEvent`,
+ * `reason: "PARTICIPATE"`, `sourceId: instantSessionId` — SANS FK vers
+ * `InstantSession`, déjà à l'abri de cette purge comme partout ailleurs
+ * dans cette politique) avant même que la fenêtre de 7 jours ne
+ * commence à courir. Testé explicitement (voir
+ * `retention.integration.test.ts`) plutôt qu'assumé sans preuve.
+ *
+ * Rien d'autre à préserver spécifiquement : aucune donnée de groupe
+ * durable (`GroupSessionStats`/`GroupGameStat`/`GroupActiveWeek`) n'est
+ * JAMAIS alimentée par les sessions instantanées (voir le commentaire de
+ * fichier de `settleInstantSessionRewards`, instant-sessions.ts — effet
+ * de bord délibérément évité, jamais demandé) — rien à en extraire avant
+ * suppression. Aucun MP Discord n'est jamais supprimé par cette fonction
+ * (aucune capacité de suppression de MP n'existe nulle part dans cette
+ * app, voir le commentaire de fichier de `instant-session-announce.ts`) —
+ * seules les lignes `NotificationDelivery` techniques restent purgeables
+ * séparément par `purgeTechnicalDeliveriesBatch` ci-dessus, SANS
+ * modification : le SEND (`invite:<userId>`, occurrence fixe) reste
+ * protégé indéfiniment (visibilité/réessai admin), les EDIT (occurrence
+ * aléatoire) restent retry-safe après 30 jours — exactement le même
+ * comportement déjà établi pour SESSION/TOURNAMENT, aucun changement
+ * nécessaire à cette fonction pour cette nouvelle catégorie.
+ */
+export async function purgeEligibleInstantSessionsBatch(
+  opts: { limit?: number; dryRun: boolean; now?: Date }
+): Promise<InstantSessionRowPurgeBatchResult> {
+  const limit = opts.limit ?? RETENTION_BATCH_SIZE;
+  const now = opts.now ?? wallClockNow();
+
+  const candidates = await prisma.instantSession.findMany({
+    where: { status: "ENDED" },
+    select: { id: true, status: true, endedAt: true },
+    take: limit * 4,
+  });
+
+  const candidateInstantSessionIds: string[] = [];
+  const purgedInstantSessionIds: string[] = [];
+
+  for (const instantSession of candidates) {
+    if (purgedInstantSessionIds.length >= limit) break;
+    const eligibility = instantSessionPurgeEligibility(instantSession);
+    if (!eligibility.eligible || !isPastRetentionWindow(eligibility.referenceDate, now)) continue;
+    candidateInstantSessionIds.push(instantSession.id);
+
+    if (opts.dryRun) {
+      purgedInstantSessionIds.push(instantSession.id);
+      continue;
+    }
+
+    // `deleteMany` conditionné sur `status: "ENDED"` (pas un simple
+    // `delete`) — protège contre une course improbable où la ligne aurait
+    // déjà disparu entre la sélection et l'exécution (jamais un crash sur
+    // "enregistrement introuvable").
+    const deleted = await prisma.instantSession.deleteMany({
+      where: { id: instantSession.id, status: "ENDED" },
+    });
+    if (deleted.count > 0) purgedInstantSessionIds.push(instantSession.id);
+  }
+
+  return { candidateInstantSessionIds, purgedInstantSessionIds, dryRun: opts.dryRun };
 }

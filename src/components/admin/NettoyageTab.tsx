@@ -68,6 +68,14 @@ export async function NettoyageTab() {
             label="→ éligibles / sans date fiable"
             value={`${audit.tournaments.eligibleForPurge} / ${audit.tournaments.noReliableDate}`}
           />
+          <AuditRow
+            label="Jouer maintenant (total / actives)"
+            value={`${audit.instantSessions.total} / ${audit.instantSessions.active}`}
+          />
+          <AuditRow
+            label="→ éligibles / sans date fiable"
+            value={`${audit.instantSessions.eligibleForPurge} / ${audit.instantSessions.noReliableDate}`}
+          />
           <AuditRow label="Résultats de soirée" value={String(audit.sessionResults.total)} />
           <AuditRow
             label="Propositions / votes"

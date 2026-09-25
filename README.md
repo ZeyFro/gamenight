@@ -11950,3 +11950,232 @@ prédicat/fichier retouché au-delà de `group-achievements.ts`/`sessions.ts`/
 `prisma/schema.prisma` — en particulier, `Collectionneur collectif` et
 `Légendaire` sont restés inchangés (jamais dépendants de `Session`,
 rien à corriger).
+
+## V2 — sessions spontanées « Jouer maintenant » 🎮
+
+Nouveau parcours, distinct des soirées planifiées et de la roulette
+instantanée : n'importe qui peut démarrer une session « on joue
+maintenant » à durée bornée, que d'autres potes rejoignent librement
+sans invitation préalable, avec une XP de participation réutilisant la
+règle existante des soirées.
+
+### Parcours
+
+- Bouton « 🎮 Jouer maintenant » sur l'accueil (`src/app/page.tsx`) et
+  entrée dans la navigation via un `ButtonLink` en tête de `/sessions`
+  (`src/app/sessions/page.tsx`) — même emplacement que Roulette/Tournois,
+  ni l'un ni l'autre n'étant dans la barre de navigation du bas (6
+  icônes déjà occupées) : précédent réutilisé directement, pas une nouvelle
+  exception.
+- `/jouer-maintenant` — liste des sessions actives + formulaire de
+  création (jeu + potes à prévenir, composants `TournamentGameField`/
+  `NotifyRecipientsField` réutilisés tels quels).
+- `/jouer-maintenant/[id]` — détail : jeu, créateur, participants,
+  temps restant, actions rejoindre/quitter, outils créateur (changer de
+  jeu, terminer). Actualisation 30 s si l'onglet est visible (même
+  garde anti-boucles-concurrentes que le chat), countdown visuel
+  recalculé chaque seconde depuis `expiresAt` (jamais une dérive locale
+  qui ignore le serveur).
+
+### Règles métier (`src/lib/instant-sessions.ts`)
+
+- Durée max **3 h**, `expiresAt` posée une seule fois à la création,
+  **jamais repoussée** par une jonction ou un changement de jeu.
+- Le créateur devient participant **dans la même transaction** que la
+  création.
+- Un utilisateur ne peut être membre que **d'une seule** session
+  instantanée active à la fois — garanti par un **index Postgres
+  unique partiel**, pas seulement une vérification applicative :
+  ```sql
+  CREATE UNIQUE INDEX "InstantSessionPresenceInterval_userId_open_key"
+    ON "InstantSessionPresenceInterval"("userId") WHERE "endedAt" IS NULL;
+  ```
+  (inexprimable dans le schéma Prisma — même situation déjà documentée
+  pour d'autres contraintes partielles de ce dépôt.)
+- N'importe qui peut rejoindre librement, à tout moment tant que la
+  session est active — aucune notion d'invitation requise pour
+  participer (l'invitation ne sert qu'à prévenir, jamais à autoriser).
+- Le créateur ne peut pas « quitter » — seulement **terminer** la
+  session (bouton avec confirmation explicite côté UI,
+  `EndInstantSessionDialog.tsx`), ce qui la clôt pour tout le monde.
+  Un autre participant peut quitter et revenir librement tant qu'elle
+  reste active.
+- Changer de jeu (créateur uniquement) ne touche **ni `expiresAt` ni
+  les intervalles de présence** — seuls le jeu et les invitations déjà
+  envoyées sont mis à jour.
+- Le serveur fait autorité sur l'expiration : un règlement paresseux
+  (`settleInstantSessionIfDue`) tourne avant toute jonction/changement
+  de jeu, **et** un passage batch inconditionnel
+  (`settleAllDueInstantSessions`) est greffé sur le cron existant
+  `/api/cron/close-sessions` (déjà appelé toutes les 15 min en
+  production, aucune nouvelle configuration externe requise) — une
+  session expire donc même si personne ne rouvre jamais l'app.
+
+### Présence conjointe et XP
+
+- Éligible après **15 minutes cumulées** en présence d'**au moins un
+  autre participant** — jamais une simple somme individuelle. Calcul
+  par balayage (sweep-line) sur l'historique complet des intervalles
+  arrivée/départ, testé unitairement sur les trois exemples exacts de
+  la demande (20 min seul → 0 ; 10+5+5 → 15 min chacun ; 10 min à trois
+  → 10 min chacun, jamais multiplié/divisé).
+- Réutilise **exactement** la règle XP existante des soirées
+  (`awardXp(userId, "PARTICIPATE", instantSessionId, XP_AMOUNTS.PARTICIPATE)`),
+  gardée par la même contrainte unique `[userId, reason, sourceId]` sur
+  `XpEvent` — idempotente par construction, aucun état séparé
+  « déjà récompensée » à maintenir. `checkSessionsParticipatedBadges`
+  est appelée (même définition, source-agnostique) ; le streak se
+  met à jour via `touchStreak()`, déjà invoquée à chaque requête
+  authentifiée — aucun nouveau code, aucun risque de double
+  actualisation le même jour.
+- **N'appelle jamais** `checkGroupAchievements()` ni ne touche
+  `GroupSessionStats`/`GroupGameStat`/`GroupActiveWeek` : une session
+  instantanée n'est pas une soirée planifiée, étendre silencieusement
+  cette définition n'a jamais été demandé. Vérifié explicitement par
+  test.
+- La présence est **déclarée** (rejoindre/quitter dans l'app), jamais
+  une mesure réelle du temps joué sur Steam — disclaimer affiché sur la
+  page de détail. Fermer l'onglet ne compte jamais comme un départ
+  automatique ; le règlement final à l'expiration (batch cron) couvre
+  ce cas sans dépendre d'un navigateur ouvert.
+
+### Invitations rapides (MP Discord + notification interne)
+
+- Réutilise l'infrastructure de livraison existante
+  (`NotificationEvent`/`NotificationDelivery`, exécuteur cron) — aucun
+  appel Discord direct, aucun nouveau salon/fil.
+- SEND à occurrence **fixe** (une fois par destinataire, jamais
+  dupliqué même en cas de rappel) ; changement de jeu ou fin de session
+  programment une **EDIT** du MP déjà envoyé, **jamais** un nouveau
+  SEND — le résolveur relit toujours l'état courant au moment du
+  traitement effectif, jamais un instantané figé à l'enqueue.
+- Nouvelle catégorie de préférence dédiée `INSTANT_SESSION` (« Jouer
+  maintenant »), activée par défaut sauf si l'utilisateur a
+  `silenceReminders` (même migration de backfill que `TOURNAMENT`
+  avant elle) — vérifiée **au traitement réel du SEND**, jamais à
+  l'enqueue (une préférence désactivée après l'enqueue bloque bien
+  l'envoi).
+- Limite connue, assumée et documentée en commentaire de code : la
+  **notification interne** (`Notification`, cloche du site) est écrite
+  **une seule fois** à l'invitation initiale et n'est jamais éditée par
+  la suite (aucun mécanisme de mise à jour n'existe nulle part ailleurs
+  dans ce dépôt pour ce type de ligne) — seul le MP Discord bénéficie
+  du SEND/EDIT complet. L'état à jour reste toujours consultable sur la
+  page de la session elle-même.
+- Nouveau flag dédié, sans configuration de salon/guilde (un MP ne
+  cible qu'un utilisateur) :
+  ```
+  DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED=true
+  ```
+  Désactivé par défaut, comme tous les flags bot de ce dépôt.
+
+### Accès
+
+Authentification obligatoire pour tout le parcours. Le modèle
+« frontière de communauté » n'existe pas dans cette app (une seule
+guilde Discord servie), donc aucune isolation multi-serveur n'est
+prétendue — limite documentée, pas contournée. Les invitations rapides
+préviennent uniquement, elles n'inscrivent jamais automatiquement qui
+que ce soit à la session.
+
+### Intégration au nettoyage réel du stockage (#107)
+
+- Ajout de `instantSessionPurgeEligibility`/
+  `purgeEligibleInstantSessionsBatch` dans `retention.ts`, avec un 7ᵉ
+  volet dans `retention-runner.ts` — **même fenêtre de 7 jours** que le
+  reste de la politique, appliquée sur `endedAt` (jamais `createdAt`/
+  `expiresAt`), et **seulement** une fois la session `ENDED` (jamais
+  une session active, quel que soit son âge).
+- Par construction, une session `ENDED` a **toujours déjà** ses
+  récompenses XP réglées avant que la fenêtre de purge ne puisse
+  jamais s'appliquer (7 jours au plus tôt) — `endInstantSession` règle
+  les récompenses immédiatement après le commit qui la termine.
+- La purge cascade le journal de présence
+  (`InstantSessionPresenceInterval`) mais **jamais** les `XpEvent`
+  (pas de FK vers `InstantSession`, déjà à l'abri comme pour les
+  soirées planifiées) — l'XP/le streak/les badges survivent
+  intacts à la purge.
+- Les MP Discord déjà envoyés ne sont **pas** supprimés du seul fait
+  que les détails internes sont purgés — aucune suppression Discord
+  n'a été ajoutée par ce lot (contrairement au chantier confidentialité
+  des soirées, hors périmètre ici).
+- Audit en lecture seule (`storage-audit.ts`, onglet Nettoyage) étendu
+  avec le même échantillonnage borné que sessions/tournois.
+- **Aucun changement** à `RETENTION_CLEANUP_ENABLED`/
+  `RETENTION_CLEANUP_MODE` — nettoyage réel désactivé par défaut,
+  dry-run inchangé, comme pour tous les lots précédents de ce chantier.
+
+### Limites connues
+
+- Pas de frontière multi-communauté (app mono-guilde par conception
+  actuelle).
+- Notification interne (cloche) jamais éditée après l'invitation
+  initiale — seul le MP Discord reflète l'état courant en continu.
+- Aucune récompense collective Discord, récapitulatif ou fonctionnalité
+  multi-serveur pour ce type de session — chantiers suivants explicitement
+  hors périmètre de ce lot.
+
+### Tests
+
+- **Unitaires** (`src/lib/instant-sessions.test.ts`) — `computeCoPresenceMs`
+  pure, reproduisant exactement les 3 exemples de la demande + cas
+  limites (seuil pile 15 min, intervalle encore ouvert, intervalle
+  dégénéré, aucun intervalle) ; `instantSessionPurgeEligibility` pure.
+- **Intégration Postgres isolée + Discord simulé**
+  (`src/lib/instant-sessions.integration.test.ts`, 33 tests) — règles
+  métier (créateur/jonction/départ/fin/idempotence), présence conjointe
+  et XP (seuil, non-effet de bord sur les trophées de groupe, badges,
+  passage de minuit, expiration sans navigateur ouvert), concurrence
+  (créations/jonctions simultanées, jonction vs fin, expiration
+  paresseuse vs mutation, changement de jeu vs invitation en attente,
+  règlements concurrents), invitations rapides (SEND unique, préférence
+  déclinée, EDIT sur changement/fin, invitation périmée bloquée),
+  rétention (dry-run, session active jamais purgée, purge réelle avec
+  cascade, reprise bornée).
+- **Résultats** : Postgres complet **710/710** (49 fichiers, +47 tests
+  vs. avant ce lot), rapide (hors Postgres) **416/416** (292 sautés,
+  Postgres-only), `npx tsc --noEmit` / `npx eslint .` sans erreur,
+  `npx next build` réussi (`/jouer-maintenant` et `/jouer-maintenant/[id]`
+  bien générées).
+- **Non testé manuellement** (honnêteté explicite) : parcours UI réel
+  dans un navigateur (création, polling visuel, dialogue de
+  confirmation, réception effective d'un MP Discord) — seule la
+  logique serveur/DB/Discord simulé a été vérifiée par ce lot.
+
+### Procédure de test manuel courte (à faire avant tout déploiement réel)
+
+1. `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED=true` en local/preview.
+2. Créer une session sur `/jouer-maintenant` avec un jeu + un pote à
+   prévenir → vérifier le MP Discord reçu et la notification interne.
+3. Rejoindre avec un second compte, vérifier le countdown et le
+   polling 30 s (couper/rallumer l'onglet).
+4. Changer de jeu (créateur) → vérifier que le MP existant est
+   **édité**, jamais un nouveau MP.
+5. Quitter avec le second compte puis revenir → vérifier que la
+   session reste active et le temps déjà passé conservé.
+6. Terminer la session (créateur, avec confirmation) → vérifier le
+   badge "Terminée", le MP mis à jour, et (si ≥15 min conjointes
+   simulées) l'XP effectivement créditée.
+
+### Migrations
+
+Additives, appliquées et vérifiées **sans dérive** via
+`prisma migrate diff` sur la base de test locale isolée uniquement —
+**aucune migration distante appliquée** :
+
+- `20260926090000_add_instant_sessions` — tables `InstantSession`/
+  `InstantSessionPresenceInterval` + l'index unique partiel ci-dessus.
+- `20260926090001_add_instant_session_notification_category` —
+  `ALTER TYPE "UserNotificationCategory" ADD VALUE 'INSTANT_SESSION'`
+  (migration séparée du backfill suivant — restriction Postgres sur les
+  valeurs d'enum ajoutées dans la même transaction qu'un usage).
+- `20260926090002_backfill_instant_session_notification_preferences` —
+  backfill des préférences existantes (activée sauf `silenceReminders`).
+- `20260926090003_add_instant_session_invite_notification_type` —
+  `ALTER TYPE "NotificationType" ADD VALUE 'INSTANT_SESSION_INVITE'`.
+
+### Rien d'autre modifié
+
+Aucun changement aux réglages de rétention/nettoyage, aucune action
+Discord réelle, aucune migration distante, aucun merge — PR ouverte en
+**Draft**.

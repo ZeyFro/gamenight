@@ -257,6 +257,11 @@ export default async function SessionsPage({
           <ButtonLink href="/tournois" variant="secondary" size="sm">
             🏆 Tournois
           </ButtonLink>
+          {/* V2 — "Jouer maintenant", même logique de découvrabilité —
+              distinct d'une soirée planifiée ET de la roulette. */}
+          <ButtonLink href="/jouer-maintenant" variant="secondary" size="sm">
+            🎮 Jouer maintenant
+          </ButtonLink>
         </div>
       </div>
 

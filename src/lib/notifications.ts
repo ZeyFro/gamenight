@@ -58,8 +58,15 @@ export async function listRecentNotifications(
 
 /** Lien vers la page concernée par une notification, `null` si aucune. */
 export function notificationHref(
-  notification: Pick<Notification, "relatedSessionId" | "relatedBadgeId" | "relatedGameId">
+  notification: Pick<Notification, "type" | "relatedSessionId" | "relatedBadgeId" | "relatedGameId">
 ): string | null {
+  // V2 ("Jouer maintenant") — `relatedSessionId` réutilisé pour porter
+  // l'id de l'`InstantSession` (même champ "libre", pas de nouvelle
+  // colonne dédiée) : SEUL ce type précis pointe vers
+  // `/jouer-maintenant/<id>` plutôt que `/sessions/<id>`.
+  if (notification.type === "INSTANT_SESSION_INVITE" && notification.relatedSessionId) {
+    return `/jouer-maintenant/${notification.relatedSessionId}`;
+  }
   if (notification.relatedSessionId) return `/sessions/${notification.relatedSessionId}`;
   if (notification.relatedBadgeId) return "/profil/badges";
   // FEATURE 3 (revanche) — même mécanisme de préremplissage que "Proposer

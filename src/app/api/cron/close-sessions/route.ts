@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
 import { processOpenRoulettes } from "@/lib/roulette";
+import { settleAllDueInstantSessions } from "@/lib/instant-sessions";
 import { ensureActiveSeasonExists } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
@@ -121,5 +122,24 @@ export async function GET(request: Request) {
   // mécaniques que `claimSessionClose`).
   const roulettes = await processOpenRoulettes();
 
-  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done, roulettes });
+  // V2 ("Jouer maintenant") — même cron, même logique de déclenchement :
+  // règle TOUTES les sessions instantanées dont `expiresAt` est dépassée
+  // (3h fixes, jamais repoussées), y compris si AUCUN navigateur n'a
+  // rechargé la page depuis. Inconditionnel (comme le reste de cette
+  // route) — jamais gouverné par `RETENTION_CLEANUP_ENABLED`, qui ne
+  // concerne que la SUPPRESSION des lignes 7 jours plus tard (voir
+  // `retention.ts`), un chantier bien séparé de cette clôture de cycle de
+  // vie. `settleAllDueInstantSessions` referme la session (statut, tous
+  // les intervalles de présence encore ouverts) ET règle l'XP de
+  // participation — jamais un état "expirée mais pas encore réglée"
+  // observable après le passage de ce cron.
+  const instantSessions = await settleAllDueInstantSessions();
+  if (instantSessions.length > 0) {
+    logger.info(
+      "cron:close-sessions",
+      `${instantSessions.length} session(s) instantanée(s) expirée(s) réglée(s) : ${instantSessions.join(", ")}`
+    );
+  }
+
+  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done, roulettes, instantSessions });
 }

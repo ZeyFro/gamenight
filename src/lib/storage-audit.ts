@@ -5,6 +5,7 @@ import {
   sessionPurgeEligibility,
   sessionPurgeBlockReason,
   tournamentPurgeEligibility,
+  instantSessionPurgeEligibility,
   isPastRetentionWindow,
 } from "@/lib/retention";
 import { getActiveSeason } from "@/lib/seasons";
@@ -68,6 +69,10 @@ export interface StorageAuditReport {
     blockedByUnpaidDebt: number;
   };
   tournaments: { total: number; active: number; eligibleForPurge: number; noReliableDate: number };
+  /** V2 ("Jouer maintenant") — pas de blocage comme `sessions` ci-dessus
+   * (aucune condition équivalente à une dette/un vote en attente n'existe
+   * pour ce type, voir `retention.ts`). */
+  instantSessions: { total: number; active: number; eligibleForPurge: number; noReliableDate: number };
   sessionResults: { total: number };
   proposalsAndVotes: { proposals: number; votes: number };
   tournamentMatches: { total: number };
@@ -201,6 +206,29 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
     where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] } },
   });
 
+  // V2 ("Jouer maintenant") — même échantillonnage borné que
+  // sessions/tournois ci-dessus, même raison (limite assumée documentée
+  // dans le README).
+  const [instantSessionTotal, activeInstantSessions, terminalInstantSessions] = await Promise.all([
+    prisma.instantSession.count(),
+    prisma.instantSession.count({ where: { status: "ACTIVE" } }),
+    prisma.instantSession.findMany({
+      where: { status: "ENDED" },
+      select: { status: true, endedAt: true },
+      take: AUDIT_SAMPLE_SIZE,
+    }),
+  ]);
+  let instantSessionsEligible = 0;
+  let instantSessionsNoDate = 0;
+  for (const s of terminalInstantSessions) {
+    const e = instantSessionPurgeEligibility(s);
+    if (e.eligible) {
+      if (isPastRetentionWindow(e.referenceDate, now)) instantSessionsEligible++;
+    } else if (e.reason === "no_reliable_date") {
+      instantSessionsNoDate++;
+    }
+  }
+
   return {
     generatedAt: now.toISOString(),
     notifications: {
@@ -229,6 +257,12 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
       eligibleForPurge: tournamentsEligible,
       noReliableDate: tournamentsNoDate,
     },
+    instantSessions: {
+      total: instantSessionTotal,
+      active: activeInstantSessions,
+      eligibleForPurge: instantSessionsEligible,
+      noReliableDate: instantSessionsNoDate,
+    },
     sessionResults: { total: sessionResultTotal },
     proposalsAndVotes: { proposals: proposalTotal, votes: voteTotal },
     tournamentMatches: { total: matchTotal },
@@ -245,6 +279,6 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
         "Aucune pièce jointe détenue par l'application pour les soirées/tournois/messages de chat (ChatMessage.content est un simple texte). Vercel Blob (banner-blob.ts) sert UNIQUEMENT la bannière de profil utilisateur, hors périmètre de cette politique.",
     },
     scopeNote:
-      "Session/Tournament sont RÉELLEMENT supprimées 7 jours après leur fin, sauf blocage explicite (dette impayée, vote de superlatifs pas encore clôturé — voir ci-dessus). SessionResult/SuperlativeAward/Pronostic/XpBet SURVIVENT à cette suppression (résumé durable, jamais copiés dans une table séparée — voir le README). Hors périmètre : les statistiques GROUPE de la Home (total de soirées jouées, jeu le plus joué du groupe) ne sont pas préservées et perdront en exactitude au fil des purges.",
+      "Session/Tournament/InstantSession sont RÉELLEMENT supprimées 7 jours après leur fin (Session sauf blocage explicite : dette impayée, vote de superlatifs pas encore clôturé — voir ci-dessus ; InstantSession sans condition bloquante équivalente). SessionResult/SuperlativeAward/Pronostic/XpBet SURVIVENT à la suppression d'une Session (résumé durable, jamais copiés dans une table séparée). L'XP de participation à une InstantSession (XpEvent) survit de la même façon, déjà sans FK — voir le README.",
   };
 }

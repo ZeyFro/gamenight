@@ -290,3 +290,15 @@ export const resolveIgdbGameSchema = z.object({
   name: z.string().trim().min(1, "Nom manquant.").max(200, "200 caractères max."),
   coverUrl: z.union([httpUrlSchema, z.literal("")]),
 });
+
+/** V2 ("Jouer maintenant") — `createInstantSessionAction`. */
+export const createInstantSessionSchema = z.object({
+  gameId: idSchema,
+  notifyUserIds: z.array(idSchema),
+});
+
+/** `changeInstantSessionGameAction`. */
+export const changeInstantSessionGameSchema = z.object({
+  instantSessionId: idSchema,
+  gameId: idSchema,
+});
