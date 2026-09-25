@@ -123,6 +123,68 @@ describe("computeTimingsDue", () => {
     );
     expect(due).toEqual([1440]);
   });
+
+  it("plusieurs seuils dus au MÊME passage (soirée décidée tard) : un seul renvoyé, le plus PROCHE de l'échéance (minutes le plus petit)", () => {
+    // Soirée décidée à 29 min de son heure — les 4 seuils habituels
+    // (12h/2h/45min/30min) sont TOUS déjà dépassés dès le premier
+    // passage du cron. Reproduit le bug remonté (rappels tous postés à
+    // la même minute) : un seul est renvoyé ici, jamais les 4 d'un coup
+    // — et c'est le PLUS actionnable (30 min) qui part en premier, pas
+    // le plus ancien (12h, déjà mensonger vu le retard).
+    const due = computeTimingsDue(
+      {
+        date: new Date("2026-06-15T20:00:00Z"),
+        reminderTimings: [720, 120, 45, 30],
+        remindersSent: [],
+      },
+      new Date("2026-06-15T19:31:00Z") // 29 min avant
+    );
+    expect(due).toEqual([30]);
+  });
+
+  it("rattrapage étalé sur plusieurs passages successifs, du plus proche au plus lointain — jamais deux à la fois tant que la soirée n'a pas commencé", () => {
+    const session = {
+      date: new Date("2026-06-15T20:00:00Z"),
+      reminderTimings: [720, 120, 45, 30],
+      remindersSent: [] as string[],
+    };
+    const now = new Date("2026-06-15T19:31:00Z"); // 29 min avant, tout est dû
+
+    const pass1 = computeTimingsDue(session, now);
+    expect(pass1).toEqual([30]);
+    session.remindersSent = [...session.remindersSent, ...pass1.map(String)];
+
+    const pass2 = computeTimingsDue(session, now); // même instant, passage suivant du cron
+    expect(pass2).toEqual([45]);
+    session.remindersSent = [...session.remindersSent, ...pass2.map(String)];
+
+    const pass3 = computeTimingsDue(session, now);
+    expect(pass3).toEqual([120]);
+    session.remindersSent = [...session.remindersSent, ...pass3.map(String)];
+
+    const pass4 = computeTimingsDue(session, now);
+    expect(pass4).toEqual([720]);
+  });
+
+  it("soirée déjà COMMENCÉE (minutesUntil <= 0) : tous les seuils encore dus sont vidés d'un coup, jamais retardés davantage", () => {
+    const due = computeTimingsDue(
+      {
+        date: new Date("2026-06-15T20:00:00Z"),
+        reminderTimings: [720, 120, 45, 30],
+        remindersSent: [],
+      },
+      new Date("2026-06-15T20:05:00Z") // 5 min APRÈS le début
+    );
+    expect(due).toEqual([30, 45, 120, 720]);
+  });
+
+  it("un seul seuil dû : comportement inchangé (pas de plafonnement inutile)", () => {
+    const due = computeTimingsDue(
+      { date: new Date("2026-06-15T20:00:00Z"), reminderTimings: [720, 120, 45, 30], remindersSent: ["720", "120", "45"] },
+      new Date("2026-06-15T19:31:00Z")
+    );
+    expect(due).toEqual([30]);
+  });
 });
 
 describe("applyReminderResults", () => {
