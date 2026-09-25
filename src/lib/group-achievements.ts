@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { getWeekStart } from "@/lib/calendar-dates";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { announceGroupAchievementUnlocked } from "@/lib/discord-group-achievement";
 import { logger } from "@/lib/logger";
@@ -87,8 +86,42 @@ export const GROUP_ACHIEVEMENT_DEFS: {
  * Réclame chaque déblocage atomiquement (`updateMany` conditionné sur
  * `unlockedAt: null`, même mécanique que `claimSessionClose`) : si deux
  * clôtures tombent en même temps, chaque trophée n'est annoncé qu'une
- * fois. Retourne les trophées nouvellement débloqués (pour les confettis
- * de l'appelant, `?celebrate=achievement`).
+ * fois, quel que soit le nombre d'appels concurrents ou successifs de
+ * cette fonction (aucune ligne `GroupAchievement` déjà débloquée n'est
+ * jamais réévaluée par le `for (const achievement of locked)` ci-dessous
+ * — `locked` ne contient que les trophées encore `unlockedAt: null` —
+ * donc jamais une double annonce Discord/notification pour le même
+ * trophée). Retourne les trophées nouvellement débloqués (pour les
+ * confettis de l'appelant, `?celebrate=achievement`).
+ *
+ * Chantier nettoyage réel du stockage (V2, suite — closes #107) — 5 des
+ * 10 prédicats ci-dessous dépendaient d'un `Session.findMany({status:"DONE"})`
+ * EN DIRECT, désormais purgeable 7 jours après la fin d'une soirée :
+ * `totalDone`/`distinctGames`/`allParticipantIds`/`weekStartMsSet`
+ * n'étaient recalculés QUE sur les soirées ENCORE VIVANTES au moment du
+ * check, jamais sur l'historique complet — un trophée à seuil CUMULATIF
+ * (marathoniens, century, diversité, squad, réguliers) pouvait donc ne
+ * JAMAIS se débloquer une fois la purge active : dès que les soirées les
+ * plus anciennes contribuant au total sortaient de la fenêtre de 7 jours
+ * avant qu'un total suffisant ne soit un jour observé EN UNE SEULE fois
+ * (concrètement quasi systématique pour "marathoniens"/10 soirées et
+ * "century"/100 soirées, la purge à 7 jours rendant peu probable que 10,
+ * a fortiori 100, soirées soient simultanément encore vivantes). Ces 5
+ * prédicats lisent désormais des agrégats DURABLES
+ * (`GroupSessionStats`/`GroupGameStat`/`XpEvent`/`GroupActiveWeek`),
+ * jamais retouchés par la purge — voir chacun ci-dessous.
+ *
+ * `noctambules`/`full-house` restent lus depuis `doneSessions` EN DIRECT,
+ * volontairement, PAS un oubli : ce sont des prédicats à seuil UNIQUE (1
+ * occurrence suffit), et `checkGroupAchievements` est appelée
+ * INCONDITIONNELLEMENT à CHAQUE `markSessionDone` — la soirée qui vient
+ * de passer `DONE` est donc TOUJOURS encore vivante au moment de SON
+ * PROPRE check (la purge exige 7 jours d'ancienneté minimum, largement
+ * après ce premier passage), qu'une éventuelle purge future de soirées
+ * plus anciennes n'affecte en rien. Aucune dépendance à un historique
+ * accumulé sur plusieurs soirées à la fois, donc aucun risque — prouvé
+ * par test (`group-achievements` dans `retention.integration.test.ts`)
+ * plutôt qu'un nouvel agrégat durable inutile pour ces deux-là.
  */
 export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
   const locked = await prisma.groupAchievement.findMany({ where: { unlockedAt: null } });
@@ -97,44 +130,70 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
   const doneSessions = await prisma.session.findMany({
     where: { status: "DONE" },
     select: {
-      id: true,
       date: true,
       decidedGameId: true,
       proposals: { select: { gameId: true, votes: { select: { userId: true } } } },
     },
   });
 
-  const totalDone = doneSessions.length;
-  const distinctGames = new Set(doneSessions.map((s) => s.decidedGameId).filter(Boolean)).size;
-
-  const allParticipantIds = new Set<string>();
   let hasNightSession = false;
   let fullHouseSessionParticipants = 0;
-  const weekStartMsSet = new Set<number>();
-
   const totalUserCount = await prisma.user.count();
 
   for (const s of doneSessions) {
+    // "full-house" (participants à LA soirée qui vient de clôturer, ou à
+    // toute autre soirée encore vivante) — seul le maximum importe, aucun
+    // historique cumulé requis, jamais affecté par la purge d'une AUTRE
+    // soirée (voir le commentaire de fonction ci-dessus).
     const winningVotes = s.decidedGameId
       ? s.proposals.filter((p) => p.gameId === s.decidedGameId).flatMap((p) => p.votes)
       : [];
     const sessionParticipantIds = new Set(winningVotes.map((v) => v.userId));
-    for (const id of sessionParticipantIds) allParticipantIds.add(id);
-
     if (sessionParticipantIds.size > fullHouseSessionParticipants) {
       fullHouseSessionParticipants = sessionParticipantIds.size;
     }
     if (s.date.getUTCHours() >= 23) hasNightSession = true;
-    weekStartMsSet.add(getWeekStart(s.date).getTime());
   }
-
   const hasFullHouse = totalUserCount > 0 && fullHouseSessionParticipants === totalUserCount;
 
-  const sortedWeeks = [...weekStartMsSet].sort((a, b) => a - b);
-  let longestConsecutiveWeeks = sortedWeeks.length > 0 ? 1 : 0;
+  // Durables — jamais retouchés par la purge (`retention.ts`), jamais un
+  // mélange avec `doneSessions` ci-dessus pour ces 5 prédicats : une
+  // seule source de vérité chacun, donc aucun double comptage possible
+  // entre soirées encore présentes et soirées déjà purgées.
+  const [sessionStats, distinctGamesCount, distinctParticipants, activeWeeks, libraryGameGroups, users] =
+    await Promise.all([
+      // "marathoniens"/"century"/"premiere-soiree" — total à vie, jamais
+      // recalculé depuis les lignes `Session` (voir `GroupSessionStats`,
+      // incrémenté UNE FOIS par soirée dans `markSessionDone`).
+      prisma.groupSessionStats.findUnique({ where: { id: "global" }, select: { totalSessionsPlayed: true } }),
+      // "diversité" — un jeu compte tant qu'il a été décidé au moins une
+      // fois, MÊME si toutes ses soirées ont depuis été purgées
+      // (`GroupGameStat` n'est jamais supprimé par la purge de `Session`,
+      // seulement si le `Game` lui-même l'était — ne se produit jamais
+      // dans ce chantier).
+      prisma.groupGameStat.count(),
+      // "squad" — même définition EXACTE de "participant" que
+      // `allParticipantIds` avant ce lot (voteurs de la proposition
+      // gagnante) : `XpEvent` `reason: "PARTICIPATE"` est écrit pour
+      // CETTE MÊME population, à la clôture du vote (`closeSession`,
+      // src/lib/sessions.ts) — sans FK vers `Session`, déjà à l'abri de
+      // toute purge, aucun nouveau schéma nécessaire.
+      prisma.xpEvent.findMany({ where: { reason: "PARTICIPATE" }, distinct: ["userId"], select: { userId: true } }),
+      // "réguliers" — voir `GroupActiveWeek` (prisma/schema.prisma) : une
+      // ligne par semaine calendaire ayant eu ≥1 soirée DONE, écrite dans
+      // `markSessionDone`, jamais retouchée par la purge.
+      prisma.groupActiveWeek.findMany({ select: { weekStart: true }, orderBy: { weekStart: "asc" } }),
+      prisma.userGame.groupBy({ by: ["gameId"], where: { owned: true } }),
+      prisma.user.findMany({ select: { xpTotal: true } }),
+    ]);
+
+  const totalDone = sessionStats?.totalSessionsPlayed ?? 0;
+
+  const sortedWeeksMs = activeWeeks.map((w) => w.weekStart.getTime());
+  let longestConsecutiveWeeks = sortedWeeksMs.length > 0 ? 1 : 0;
   let currentRun = 1;
-  for (let i = 1; i < sortedWeeks.length; i++) {
-    if (sortedWeeks[i] - sortedWeeks[i - 1] === WEEK_MS) {
+  for (let i = 1; i < sortedWeeksMs.length; i++) {
+    if (sortedWeeksMs[i] - sortedWeeksMs[i - 1] === WEEK_MS) {
       currentRun += 1;
       longestConsecutiveWeeks = Math.max(longestConsecutiveWeeks, currentRun);
     } else {
@@ -142,20 +201,14 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
     }
   }
 
-  const libraryGameGroups = await prisma.userGame.groupBy({
-    by: ["gameId"],
-    where: { owned: true },
-  });
   const libraryGamesCount = libraryGameGroups.length;
-
-  const users = await prisma.user.findMany({ select: { xpTotal: true } });
   const hasLegendaryUser = users.some((u) => rankForLevel(levelForXp(u.xpTotal)).name === "Légende");
 
   const predicateByKey: Record<string, boolean> = {
     "premiere-soiree": totalDone >= 1,
-    squad: allParticipantIds.size >= 5,
+    squad: distinctParticipants.length >= 5,
     marathoniens: totalDone >= 10,
-    diversite: distinctGames >= 10,
+    diversite: distinctGamesCount >= 10,
     reguliers: longestConsecutiveWeeks >= 4,
     noctambules: hasNightSession,
     century: totalDone >= 100,

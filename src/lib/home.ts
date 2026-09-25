@@ -138,16 +138,28 @@ const ACTIVE_PLAYER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * compteur de groupe est une fenêtre plus large (7 jours) — un pote qui
  * n'a pas ouvert l'app depuis 2 jours n'a pas "disparu" du groupe, il n'a
  * juste pas de streak en cours.
+ *
+ * Chantier nettoyage réel du stockage (V2, suite) — `totalSessionsPlayed`
+ * et `mostPlayedGame` ne comptent PLUS de lignes `Session` en direct
+ * (`session.count`/`session.groupBy`, cassés par la purge réelle des
+ * soirées terminées +7j) : ils lisent exclusivement les compteurs
+ * durables `GroupSessionStats`/`GroupGameStat` (src/lib/sessions.ts,
+ * `markSessionDone`, seul point d'écriture), jamais un mélange des deux
+ * sources — élimine par construction tout risque de double comptage
+ * entre soirées encore présentes et soirées déjà purgées. `Game` n'étant
+ * jamais purgée par ce chantier, la jointure `name`/`coverUrl` reste
+ * fiable à 100% même pour un jeu dont toutes les soirées ont depuis été
+ * purgées. `bestActiveStreak`/`activePlayers` restent inchangés : dérivés
+ * de `User.streakCount`/`streakLastActiveAt`, jamais de `Session`.
  */
 export async function getGroupStats(): Promise<GroupStats> {
   const now = Date.now();
 
-  const [totalSessionsPlayed, gameGroups, bestStreakUser, activePlayers] = await Promise.all([
-    prisma.session.count({ where: { status: "DONE" } }),
-    prisma.session.groupBy({
-      by: ["decidedGameId"],
-      where: { status: "DONE", decidedGameId: { not: null } },
-      _count: { _all: true },
+  const [sessionStats, topGameStat, bestStreakUser, activePlayers] = await Promise.all([
+    prisma.groupSessionStats.findUnique({ where: { id: "global" }, select: { totalSessionsPlayed: true } }),
+    prisma.groupGameStat.findFirst({
+      orderBy: { playCount: "desc" },
+      select: { playCount: true, game: { select: { name: true, coverUrl: true } } },
     }),
     prisma.user.findFirst({
       where: {
@@ -162,24 +174,11 @@ export async function getGroupStats(): Promise<GroupStats> {
     }),
   ]);
 
-  let mostPlayedGame: GroupStats["mostPlayedGame"] = null;
-  const topGroup = gameGroups.reduce<(typeof gameGroups)[number] | null>(
-    (best, g) => (!best || g._count._all > best._count._all ? g : best),
-    null
-  );
-  if (topGroup?.decidedGameId) {
-    const game = await prisma.game.findUnique({
-      where: { id: topGroup.decidedGameId },
-      select: { name: true, coverUrl: true },
-    });
-    if (game) {
-      mostPlayedGame = { name: game.name, coverUrl: game.coverUrl, count: topGroup._count._all };
-    }
-  }
-
   return {
-    totalSessionsPlayed,
-    mostPlayedGame,
+    totalSessionsPlayed: sessionStats?.totalSessionsPlayed ?? 0,
+    mostPlayedGame: topGameStat
+      ? { name: topGameStat.game.name, coverUrl: topGameStat.game.coverUrl, count: topGameStat.playCount }
+      : null,
     bestActiveStreak: bestStreakUser
       ? { discordName: bestStreakUser.discordName, streakCount: bestStreakUser.streakCount }
       : null,

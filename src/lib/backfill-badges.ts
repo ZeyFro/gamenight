@@ -66,7 +66,10 @@ async function computeStats(user: {
 }): Promise<BadgeStats> {
   const [sessionsCreated, sessionsParticipated, votesCast, superlativesWon, libraryCount] =
     await Promise.all([
-      prisma.session.count({ where: { createdById: user.id } }),
+      // Chantier nettoyage réel du stockage (V2, suite) — même correctif
+      // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
+      // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
+      prisma.xpEvent.count({ where: { userId: user.id, reason: "CREATE_SESSION" } }),
       prisma.xpEvent.count({ where: { userId: user.id, reason: "PARTICIPATE" } }),
       prisma.xpEvent.count({ where: { userId: user.id, reason: "VOTE" } }),
       prisma.superlativeAward.count({ where: { winnerUserId: user.id } }),

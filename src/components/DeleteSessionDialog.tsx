@@ -11,8 +11,14 @@ import { deleteSessionAction } from "@/app/sessions/actions/session-lifecycle";
  * n'est même rendu que côté créateur, cf. page appelante — la garde
  * server-side dans `deleteSessionAction` reste la vraie protection).
  * Confirmation obligatoire avant d'envoyer le formulaire réel.
+ *
+ * `hasThread` (V2, chantier nettoyage réel du stockage) — vrai pour une
+ * soirée sur le chemin bot (`Session.announceViaBot`) : son fil privé
+ * Discord, s'il existe, sera définitivement supprimé AVEC ses messages
+ * (voir `deleteSessionAction`) — annoncé honnêtement ICI plutôt que de
+ * continuer à affirmer qu'aucun message Discord n'est jamais concerné.
  */
-export function DeleteSessionDialog({ sessionId }: { sessionId: string }) {
+export function DeleteSessionDialog({ sessionId, hasThread = false }: { sessionId: string; hasThread?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -36,8 +42,11 @@ export function DeleteSessionDialog({ sessionId }: { sessionId: string }) {
             </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted">
               Définitif : la soirée, ses propositions et les votes associés
-              seront supprimés. Aucun message n&apos;est envoyé dans
-              Discord.
+              seront supprimés. Aucune annonce n&apos;est envoyée dans
+              Discord
+              {hasThread
+                ? ", mais son fil privé sera définitivement supprimé, avec tous ses messages."
+                : "."}
             </Dialog.Description>
 
             <div className="mt-4 flex gap-3">

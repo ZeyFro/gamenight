@@ -6,7 +6,8 @@ export type AdminTabKey =
   | "badges"
   | "jeux-stats"
   | "reglages"
-  | "confidentialite";
+  | "confidentialite"
+  | "nettoyage";
 
 export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "messages",
@@ -15,6 +16,7 @@ export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "jeux-stats",
   "reglages",
   "confidentialite",
+  "nettoyage",
 ];
 
 const TABS: { key: AdminTabKey; label: string }[] = [
@@ -24,6 +26,7 @@ const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "jeux-stats", label: "Jeux-stats" },
   { key: "reglages", label: "Réglages" },
   { key: "confidentialite", label: "Confidentialité" },
+  { key: "nettoyage", label: "Nettoyage" },
 ];
 
 /**

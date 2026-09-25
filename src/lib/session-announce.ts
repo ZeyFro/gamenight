@@ -134,6 +134,9 @@ function inviteSlot(sessionId: string, inviteId: string): string {
 function creatorMemberSlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:creator-member`;
 }
+function threadDeleteSlot(sessionId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-delete`;
+}
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
 
@@ -591,6 +594,86 @@ export async function resyncSessionThreadMembers(sessionId: string): Promise<voi
   }
 }
 
+/**
+ * Chantier nettoyage réel du stockage (V2) — suppression manuelle
+ * définitive d'une soirée (`deleteSessionAction`, session-lifecycle.ts) :
+ * ferme définitivement (jamais un simple archivage) le fil privé, AVEC ses
+ * messages. Occurrence ALÉATOIRE (jamais fixe) — délibérément appelable
+ * PLUSIEURS FOIS depuis la même fonction : le premier appel vient
+ * automatiquement de `deleteSessionAction` (au moment de la suppression),
+ * les suivants viennent d'un réessai manuel (nettoyage échoué de façon
+ * terminale — permission refusée, etc.) exposé séparément (voir le README
+ * pour la procédure de retry, hors périmètre d'une UI dédiée dans cette
+ * PR). Chaque appel crée une NOUVELLE ligne `NotificationDelivery` ; seule
+ * la plus récente survit (convergence `[targetSlot, operation]`,
+ * `claimNextDelivery`, #95) — jamais deux suppressions traitées en
+ * double, un second appel du client Discord sur un fil déjà absent
+ * atteint de toute façon l'état cible (voir `performDiscordAction`,
+ * équivalence 404 → succès pour `delete_thread_permanent`).
+ *
+ * `db` optionnel — composable avec la transaction qui supprime la ligne
+ * `Session` elle-même (voir `deleteSessionAction`) : un crash entre les
+ * deux ne doit jamais laisser une soirée supprimée en base sans que son
+ * fil ne soit jamais nettoyé.
+ *
+ * Ne dépend JAMAIS de l'existence de la ligne `Session` (voir
+ * `resolveSessionThreadDelete`, spécifiquement dispatché AVANT le
+ * chargement de la session dans le résolveur ci-dessous) : par
+ * construction, au moment où cette livraison est réellement traitée, la
+ * session a déjà disparu (supprimée dans la même transaction que
+ * l'enqueue) — cette fonction n'a donc structurellement de sens QUE pour
+ * un nettoyage après coup, jamais pour un fil encore "vivant".
+ */
+export async function enqueueSessionThreadDelete(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    {
+      category: "SESSION",
+      eventType: "SESSION_REMOVED",
+      sourceId: sessionId,
+      occurrence: randomUUID(),
+    },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadDeleteSlot(sessionId),
+    },
+    db
+  );
+}
+
+/**
+ * État de la dernière tentative de nettoyage Discord connue pour une
+ * soirée SUPPRIMÉE (la ligne `Session` n'existe plus — lu par son id brut,
+ * jamais via une relation Prisma qui échouerait silencieusement). Réservé
+ * à un usage d'audit/retry manuel (voir le README, "Nettoyage échoué —
+ * état honnête et réessai") : `"never_enqueued"` distingue une soirée
+ * jamais passée par le chemin bot (rien à nettoyer) d'un nettoyage
+ * réellement en attente/échoué.
+ */
+export async function getSessionThreadDeleteStatus(
+  sessionId: string
+): Promise<"never_enqueued" | "pending" | "done" | "failed"> {
+  const status = await latestDeliveryStatus(threadDeleteSlot(sessionId));
+  if (status === "synced") return "done";
+  if (status === "failed") return "failed";
+  // `latestDeliveryStatus` renvoie "pending" aussi bien pour "jamais
+  // enqueue-é" que pour "en attente réelle" — cette fonction distingue les
+  // deux en vérifiant l'existence d'au moins une ligne, contrairement à
+  // `latestDeliveryStatus` (facteur commun avec `getSessionThreadDeleteStatus`
+  // côté tournoi, même garde).
+  const any = await prisma.notificationDelivery.findFirst({
+    where: { targetSlot: threadDeleteSlot(sessionId) },
+    select: { id: true },
+  });
+  return any ? "pending" : "never_enqueued";
+}
+
 /* -------------------------------------------------------------------- */
 /* Résolution — appelée par l'exécuteur (#97), jamais directement        */
 /* -------------------------------------------------------------------- */
@@ -800,10 +883,19 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (!config) return { eligible: false, reason: "not_configured" };
 
     const sessionId = event.sourceId;
+    const role = delivery.targetSlot.split(":").slice(3).join(":");
+
+    // Chantier nettoyage réel du stockage (V2) — SEUL rôle de ce module
+    // qui NE dépend PAS de l'existence de la ligne `Session` (voir le
+    // commentaire de `enqueueSessionThreadDelete`) : dispatché AVANT le
+    // chargement de la session, exactement comme `thread-close` pour les
+    // tournois (tournament-announce.ts).
+    if (role === "thread-delete") {
+      return resolveSessionThreadDelete(sessionId);
+    }
+
     const session = await loadSession(sessionId);
     if (!session) return { eligible: false, reason: "expired" };
-
-    const role = delivery.targetSlot.split(":").slice(3).join(":");
 
     if (role === "thread") {
       return resolveThreadCreation(sessionId, config.channelId);
@@ -1042,6 +1134,43 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
     message: { ...message, embeds: [rendering.embed] },
   };
   return { eligible: true, action };
+}
+
+/**
+ * Suppression PERMANENTE du fil — V2, suppression manuelle d'une soirée.
+ * Ne dépend QUE de la référence du fil déjà persistée (`thread` SENT),
+ * JAMAIS de l'existence de la session (voir le commentaire de
+ * `enqueueSessionThreadDelete`) — même structure exacte que
+ * `resolveThreadClose` (tournament-announce.ts), qui traite le même
+ * problème pour l'archivage sur annulation/suppression de tournoi :
+ *   - `thread` SENT → supprime le fil réel.
+ *   - `thread` encore PENDING/RESERVED → pas encore tranché, le fil
+ *     pourrait encore se créer (course "suppression pendant la création du
+ *     fil", cf. demande explicite) — `dependency_not_ready`, retenté
+ *     jusqu'à ce que `thread` se règle dans un sens ou dans l'autre. Si le
+ *     SEND finit par réussir malgré la suppression déjà actée (fil créé
+ *     "en vol"), cette livraison-ci finira par le voir SENT et le
+ *     supprimera — compensation durable, sans jamais dépendre d'un
+ *     rattrapage manuel pour ce cas précis.
+ *   - FAILED/SKIPPED/jamais enqueue-é → le fil ne sera jamais créé, rien à
+ *     supprimer (`expired`, définitif).
+ */
+async function resolveSessionThreadDelete(sessionId: string): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(sessionId));
+  if (thread?.discordThreadId) {
+    const action: ResolvedAction = { kind: "delete_thread_permanent", threadId: thread.discordThreadId };
+    return { eligible: true, action };
+  }
+
+  const threadSend = await prisma.notificationDelivery.findFirst({
+    where: { targetSlot: threadSlot(sessionId), operation: "SEND" },
+    orderBy: { sequence: "desc" },
+    select: { status: true },
+  });
+  if (threadSend && (threadSend.status === "PENDING" || threadSend.status === "RESERVED")) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+  return { eligible: false, reason: "expired" };
 }
 
 async function resolveThreadReminder(sessionId: string, session: SessionWithVotes, minutes: number): Promise<Resolution> {

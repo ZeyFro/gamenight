@@ -154,12 +154,21 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     return;
   }
 
+  // Chantier nettoyage réel du stockage (V2, suite) — `gameName`/
+  // `sessionDate` dénormalisés ICI, où `session.decidedGame` est déjà
+  // connu (même raisonnement que `SessionResult`, src/app/sessions/actions/results.ts) :
+  // la vitrine "Superlatifs gagnés" doit rester lisible même après la
+  // purge de la soirée.
+  const decidedGameName = session.decidedGame.name;
+  const sessionDate = session.date;
   await prisma.superlativeAward.createMany({
     data: awards.map((a) => ({
       sessionId,
       categoryId: a.categoryId,
       winnerUserId: a.winnerUserId,
       voteCount: a.voteCount,
+      gameName: decidedGameName,
+      sessionDate,
     })),
   });
 

@@ -9,9 +9,13 @@ export default async function ProfilSuperlatifsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
+  // Chantier nettoyage réel du stockage (V2, suite) — `gameName`/
+  // `sessionDate` DÉNORMALISÉS sur `SuperlativeAward` lui-même (survit à
+  // la purge de la soirée, `session` devient `null` — jamais rejoint pour
+  // ces deux champs).
   const awards = await prisma.superlativeAward.findMany({
     where: { winnerUserId: user.id },
-    include: { category: true, session: { include: { decidedGame: true } } },
+    include: { category: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -22,8 +26,8 @@ export default async function ProfilSuperlatifsPage() {
           id: a.id,
           categoryIcon: a.category.icon,
           categoryName: a.category.name,
-          gameName: a.session.decidedGame?.name ?? "?",
-          sessionDate: a.session.date,
+          gameName: a.gameName ?? "?",
+          sessionDate: a.sessionDate ?? a.createdAt,
           voteCount: a.voteCount,
         }))}
         emptyMessage="Aucune récompense gagnée pour l'instant."

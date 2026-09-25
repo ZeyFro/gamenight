@@ -49,8 +49,8 @@ export function DeleteTournamentDialog({ tournamentId }: { tournamentId: string 
             </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted">
               Définitif : le tournoi et les inscriptions en cours seront supprimés. Si une
-              annonce a déjà été postée dans Discord, elle sera éditée pour indiquer
-              &laquo;&nbsp;supprimé&nbsp;&raquo; et le fil associé sera fermé.
+              annonce a déjà été postée dans Discord, elle sera retirée et le fil associé sera
+              définitivement supprimé, avec tous ses messages.
             </Dialog.Description>
 
             {state.error && (

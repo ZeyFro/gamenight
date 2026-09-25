@@ -1054,3 +1054,89 @@ export async function removeThreadMemberVerified(input: ThreadMemberInput): Prom
   if (!verified.ok) return verified;
   return removeThreadMember({ ...input, threadId: verified.data.threadId });
 }
+
+/**
+ * Chantier nettoyage réel du stockage (V2) — adhésion automatique aux fils
+ * de TOURNOIS (`src/lib/tournament-announce.ts`) utilise directement
+ * `addThreadMember` ci-dessus (PAS `addThreadMemberVerified`) : un fil de
+ * tournoi a TOUJOURS été un fil PUBLIC créé via `startThreadFromMessage`,
+ * jamais migré depuis un ancien fil de type différent contrairement aux
+ * soirées — aucune revérification de type n'est donc nécessaire avant d'y
+ * ajouter un membre (voir le kind d'action `add_thread_member`,
+ * notification-executor.ts, distinct de `add_thread_member_verified`).
+ */
+
+/**
+ * Chantier nettoyage réel du stockage (V2) — suppression PERMANENTE d'un
+ * fil Discord (soirée OU tournoi), distincte d'`archiveThread` (qui ne
+ * fait que le figer, réversible, toujours utilisée par
+ * `cancelTournament`/annulation — jamais transformée en suppression
+ * définitive, cf. demande explicite). `DELETE /channels/{channel.id}` —
+ * un fil est un salon côté API Discord (voir le commentaire de fichier),
+ * donc le même endpoint que la suppression d'un salon classique
+ * s'applique. Supprime le fil ET tous ses messages avec lui (comportement
+ * natif Discord, rien à faire de plus côté application) — jamais utilisée
+ * sur autre chose qu'un `threadId` persisté et déjà vérifié appartenir à
+ * l'entité supprimée (voir les résolveurs `resolveSessionThreadDelete`/
+ * `resolveTournamentThreadDelete`, jamais un id dérivé d'une recherche par
+ * nom ou approximation).
+ *
+ * Permission Discord — vérifiée auprès de la documentation officielle
+ * (docs.discord.com/developers/resources/channel, section DELETE
+ * /channels/{channel.id} ; `discord.com` bloqué en sortie réseau dans
+ * cette session, vérifié via `raw.githubusercontent.com/discord/discord-api-docs`,
+ * jamais depuis la seule mémoire d'entraînement) : supprimer un THREAD
+ * requiert la permission `MANAGE_THREADS` sur le salon parent — CONTRAIREMENT
+ * à l'archivage simple (`archiveThread`), qui bénéficie d'une exception pour
+ * le créateur du fil sans cette permission. Le bot DOIT donc détenir
+ * `MANAGE_THREADS` pour que cette fonctionnalité fonctionne réellement — à
+ * accorder explicitement sur les salons #🎮-soirées/#🏆-tournois
+ * uniquement (jamais `Administrateur`), voir le README pour la procédure.
+ * Un fil déjà absent (`404`) N'EST PAS reclassé en succès ICI — même
+ * discipline que `removeThreadMember` : c'est au résolveur appelant de
+ * décider que ce cas atteint l'état cible visé (fil absent = objectif de
+ * suppression déjà atteint), jamais ce client.
+ */
+export async function deleteThreadPermanently(
+  input: { threadId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<{ threadId: string }>> {
+  return discordRequest({
+    method: "DELETE",
+    path: `/channels/${input.threadId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({ threadId: input.threadId }),
+  });
+}
+
+/**
+ * Chantier nettoyage réel du stockage (V2) — suppression du message
+ * d'annonce d'un tournoi dans le salon PARENT (jamais un fil, jamais le
+ * salon lui-même) après suppression définitive du tournoi — évite de
+ * laisser un lien d'inscription cassé pointant vers une page qui n'existe
+ * plus (cf. demande explicite). `DELETE /channels/{channel.id}/messages/{message.id}` —
+ * le bot supprime TOUJOURS son PROPRE message ici (celui qu'il a lui-même
+ * envoyé au premier SEND de l'annonce, jamais un message d'un tiers) :
+ * aucune permission supplémentaire (`MANAGE_MESSAGES`) n'est nécessaire
+ * pour ce cas précis d'après la documentation officielle (un bot peut
+ * toujours supprimer ses propres messages) — seul un salon dont le bot
+ * n'a même plus accès en lecture/écriture ferait échouer cet appel
+ * (classé `auth_or_permission`, jamais un succès). `messageId`/`channelId`
+ * proviennent EXCLUSIVEMENT de la référence PERSISTÉE du message
+ * réellement envoyé (voir `findSentDelivery`, tournament-announce.ts),
+ * jamais reconstruits ni devinés. Un message déjà absent (`404`) N'EST PAS
+ * reclassé en succès ICI — même discipline que `removeThreadMember`.
+ */
+export async function deleteChannelMessage(
+  input: { channelId: string; messageId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<{ channelId: string; messageId: string }>> {
+  return discordRequest({
+    method: "DELETE",
+    path: `/channels/${input.channelId}/messages/${input.messageId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({ channelId: input.channelId, messageId: input.messageId }),
+  });
+}

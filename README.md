@@ -10814,3 +10814,1139 @@ ici ; limite assumée et documentée plutôt que contournée.
 production, aucune migration distante, aucune suppression d'ancienne
 annonce, aucun merge ni changement de configuration externe n'a été
 effectué dans cette session.**
+
+## V2 — nettoyage réel du stockage et cohérence du cycle de vie Discord (soirées et tournois)
+
+### Statut vérifié des PR #95 à #106 (avant tout travail de ce chantier)
+
+Vérifié via `pull_request_read` (méthode `get`) sur CHAQUE PR individuellement
+— jamais via `list_pull_requests`, dont le champ `merged` s'est révélé
+peu fiable (retourne `false` pour toutes les entrées y compris des PR
+confirmées fusionnées par ailleurs) :
+
+| PR | Sujet | Fusionnée | Date de fusion |
+|----|-------|-----------|-----------------|
+| #95 | Fondations de livraison (`NotificationEvent`/`NotificationDelivery`) | ✅ | 2026-09-16 |
+| #96 | Client Discord REST (bot) | ✅ | 2026-09-16 |
+| #97 | Exécuteur de notifications | ✅ | 2026-09-17 |
+| #98 | Préférences de notification par catégorie | ✅ | 2026-09-17 |
+| #99 | Annonces Discord bot — soirées | ✅ | 2026-09-18 |
+| #100 | Revue ciblée — contrôle de destination | ✅ | 2026-09-19 |
+| #101 | Roulette — `announceViaBot` | ✅ | 2026-09-19 |
+| #102 | Confidentialité des soirées — fils privés | ✅ | 2026-09-21 |
+| #103 | Chantier confidentialité (suite) — vérification fil privé | ✅ | 2026-09-21 |
+| #104 | Annonces Discord tournois + V2 notifications/annulation/suppression | ✅ | 2026-09-22 |
+| #105 | Correctifs V2 remontés en test réel (accès fil, suppression tournoi, roue, historique 7j) | ✅ | 2026-09-22 |
+| #106 | Soirée → Roulette (tirage inline) | ✅ | 2026-09-23 |
+
+**Toutes les PR #95 à #106 sont fusionnées dans `main`.** `main` était à jour
+au commit `1eedbd0` au démarrage de ce chantier — aucune n'est restée au
+stade "déployée en Preview seulement".
+
+### Causes démontrées des problèmes Discord remontés
+
+1. **Suppression manuelle d'une soirée n'a jamais touché Discord** —
+   `deleteSessionAction` (session-lifecycle.ts) faisait un simple
+   `prisma.session.delete()`, explicitement documenté "ménage silencieux,
+   aucune notification Discord". Pour une soirée `announceViaBot`, son fil
+   privé (et tous ses messages) restait donc indéfiniment accessible à ses
+   membres après la suppression de la soirée elle-même.
+2. **Suppression d'un tournoi éditait l'annonce et ARCHIVAIT le fil, ne
+   supprimait jamais rien** — `deleteTournament` (tournaments.ts)
+   appelait `enqueueTournamentAnnounceUpdate` (EDIT "supprimé") +
+   `enqueueTournamentThreadClose` (`archive_thread`, réversible). Le
+   message annonçant l'inscription restait affiché (édité, jamais retiré)
+   et le fil restait consultable (archivé, jamais supprimé) — aucune
+   réduction réelle de données conservées.
+3. **Aucune adhésion automatique au fil des tournois** — le fil de
+   tournoi (`create_thread`, PUBLIC) n'ajoutait jamais personne
+   automatiquement ; seuls l'annonce et les pings arrivaient, l'ouverture
+   du fil restait un geste manuel côté Discord (contrairement aux
+   soirées, qui ajoutent déjà créateur + invités via `creator-member`/
+   `invite:<id>` depuis #105).
+4. **Aucune politique de rétention réelle** — `isSessionVisibleInHistory`/
+   `isTournamentVisibleInHistory` (#105) ne font que MASQUER la liste
+   `/sessions`/`/tournois` après 7 jours ; aucune donnée n'était jamais
+   réellement supprimée (ni le chat, ni les notifications de saisons
+   closes, ni les livraisons techniques terminales).
+
+### Ce qui n'a PAS changé (comportements confirmés fonctionnels, non retouchés)
+
+Conformément à la demande explicite ("les autres parcours récemment
+testés fonctionnent, ne repars pas dans une refonte générale") : aucun
+changement aux flux d'annonce/rappel/résultat des soirées et tournois
+(#99–#105), à la confidentialité des soirées (#102/#103), à
+`cancelTournament` (reste EDIT + `archive_thread`, jamais transformée en
+suppression définitive), ni à `drawSessionGame`/roulette (#106).
+
+### 1. Suppression manuelle → suppression Discord définitive
+
+**Nouveaux kinds Discord** (`src/lib/discord-rest.ts`) :
+- `deleteThreadPermanently` — `DELETE /channels/{channel.id}` sur un fil
+  (soirée ou tournoi). Distinct d'`archiveThread` (réversible, toujours
+  utilisée par `cancelTournament`).
+- `deleteChannelMessage` — `DELETE /channels/{channel.id}/messages/{message.id}`,
+  utilisée pour retirer l'annonce d'un tournoi supprimé dans son salon
+  parent (jamais une édition).
+- `addThreadMember` (déjà existante, réutilisée SANS revérification de
+  type — un fil de tournoi a toujours été PUBLIC, jamais migré depuis un
+  autre type, contrairement aux soirées).
+
+**Nouveaux rôles de `targetSlot`** (mêmes fondations de livraison #95,
+même exécuteur #97, occurrence ALÉATOIRE — appelables plusieurs fois,
+retry manuel inclus) :
+- `thread-delete` (soirées ET tournois) — supprime définitivement le fil.
+- `announce-delete` (tournois uniquement) — supprime le message d'annonce
+  dans le salon parent.
+
+Les deux résolveurs (`resolveSessionThreadDelete`/`resolveThreadDelete`/
+`resolveAnnounceDelete`) sont dispatchés **avant** le chargement de
+l'entité métier (comme `thread-close` déjà existant) : ils ne dépendent
+JAMAIS de l'existence de la `Session`/du `Tournament`, par construction
+(l'entité a déjà disparu au moment où ces livraisons sont réellement
+traitées).
+
+**Enqueue atomique** — `deleteSessionAction`/`deleteTournament` enqueue
+l'intention de nettoyage **dans la même transaction SQL** que la
+suppression de la ligne métier. Aucune transaction atomique DB+Discord
+n'est jamais promise : seule l'écriture de l'intention est garantie
+atomique avec la suppression, l'appel Discord réel a nécessairement lieu
+après, via l'exécuteur.
+
+**Races traitées et testées** (`session-announce.integration.test.ts`/
+`tournament-announce.integration.test.ts`, describe "V2 — suppression
+manuelle définitive") :
+- suppression avant tout envoi Discord → le SEND encore PENDING se
+  refuse lui-même (`expired`) ;
+- suppression pendant l'appel réseau du SEND (déjà en vol) → le SEND
+  aboutit quand même, le nettoyage programmé attend (`dependency_not_ready`)
+  puis supprime RÉELLEMENT la ressource créée après coup — compensation
+  durable, jamais un fil/une annonce orpheline permanente ;
+- ressource déjà absente (404) → traité comme un résultat **idempotent**
+  (objectif déjà atteint), jamais un échec ;
+- permission insuffisante (403) ou erreur réseau → **jamais** un succès,
+  reste `FAILED` terminal ;
+- réessai manuel (occurrence aléatoire, même mécanisme que le bouton
+  "Réessayer" des invitations) : une nouvelle intention converge, l'ancien
+  échec reste visible comme trace (jamais réutilisé pour rejouer
+  l'événement).
+
+**État honnête + réessai manuel, même hors des listes normales** — un
+nouvel onglet **`/admin?tab=nettoyage`** ("Nettoyage") liste les
+suppressions Discord en échec terminal (`listFailedDiscordCleanupDeliveries`,
+`src/lib/discord-cleanup-status.ts`) avec un bouton "Réessayer"
+(`retryDiscordCleanupAction`), réservé aux admins (l'entité elle-même
+n'existe plus, aucune garde "créateur" n'est possible).
+
+**Confirmation UI mise à jour** — `DeleteSessionDialog`/`DeleteTournamentDialog`
+expliquent désormais explicitement que le fil (et, pour un tournoi,
+l'annonce) sera **définitivement supprimé, avec ses messages**. Les
+soirées privées restent traitées à l'identique (confidentialité
+inchangée, aucune donnée exposée par cette page).
+
+### 2. Adhésion automatique aux fils de tournois
+
+**Nouveau rôle `member:<userId>`** (`src/lib/tournament-announce.ts`,
+`enqueueTournamentThreadMember`) — ajoute UNE personne au fil du tournoi
+(action `add_thread_member`, PUT idempotent côté Discord) :
+- à la création (`createTournamentAction`) : le créateur + chaque
+  destinataire sélectionné (`notifiedUserIds`), dans la même transaction ;
+- à l'inscription (`registerForTournamentAction`) : le joueur qui vient
+  de s'inscrire, dans la même transaction que son inscription.
+
+**Jamais l'inverse** : `enqueueTournamentThreadMember` n'écrit AUCUNE
+ligne `TournamentParticipant` — rejoindre le fil n'inscrit jamais au
+tournoi. Le tournoi reste ouvert selon ses règles actuelles (jamais
+transformé en fil privé réservé aux destinataires — confidentialité des
+soirées non transposée ici). Adhésion **monotone** : jamais de retrait
+(se désinscrire du tournoi ne retire jamais du fil), aucun rôle de
+retrait n'existe pour les tournois.
+
+**Séparation stricte** : inscription au tournoi (`TournamentParticipant`) /
+adhésion au fil (`member:<userId>`) / préférence de notification
+(`UserNotificationPreference`, catégorie `TOURNAMENT`, inchangée) —
+trois mécanismes indépendants. Respecte les opt-out existants pour les
+**pings** (l'annonce continue de filtrer par préférence, inchangé) ;
+l'adhésion au fil elle-même n'envoie jamais de message ni de mention
+supplémentaire.
+
+**Déduplication** — même personne notifiée puis inscrite : deux
+livraisons sur le MÊME `targetSlot` (`member:<userId>`), convergence
+"la plus récente gagne" (#95) + idempotence native du `PUT` Discord.
+Jamais un double ajout traité comme deux opérations distinctes.
+
+**Aucune garantie d'affichage dans la barre latérale** — cette
+fonctionnalité confirme l'adhésion côté API Discord (`PUT` réussi),
+jamais une garantie sur le comportement du client Discord lui-même
+(certains clients n'affichent un fil dans la barre latérale qu'après une
+première activité/notification — comportement du client, hors contrôle
+de ce code).
+
+**Permissions Discord vérifiées** (documentation officielle, `raw.githubusercontent.com/discord/discord-api-docs`
+— `discord.com` bloqué en sortie réseau dans cette session) :
+- `PUT /channels/{channel.id}/thread-members/{user.id}` requiert que le
+  bot puisse envoyer des messages dans les fils (`SEND_MESSAGES_IN_THREADS`).
+- `DELETE /channels/{channel.id}` sur un FIL requiert `MANAGE_THREADS`
+  sur le salon parent — **contrairement** à l'archivage simple, qui
+  bénéficie d'une exception pour le créateur du fil sans cette
+  permission. Le bot doit donc détenir `MANAGE_THREADS` explicitement sur
+  #🎮-soirées/#🏆-tournois pour que la suppression définitive fonctionne
+  réellement (jamais `Administrateur`).
+- `DELETE /channels/{channel.id}/messages/{message.id}` sur le PROPRE
+  message du bot ne nécessite aucune permission supplémentaire
+  (`MANAGE_MESSAGES` n'est requise que pour supprimer le message d'un
+  tiers, jamais le cas ici).
+
+**Resynchronisation créateur** — `resyncTournamentThreadMembers`
+(mirroir exact de `resyncSessionThreadMembers`, #105) : réservée au
+créateur, réajoute créateur + destinataires persistés + inscrits ACTUELS,
+sans jamais recréer le fil ni renvoyer l'annonce/reping. Bouton "Resynchroniser
+le fil" sur `/tournois/[id]` (visible dès que le fil existe). **Non
+exécutée en production par cette PR** — livrée comme outil pour les
+tournois créés avant ce correctif.
+
+### 3. Audit du stockage (lecture seule)
+
+`src/lib/storage-audit.ts` (`generateStorageAuditReport`) — inventaire
+en lecture seule (agrégats SQL `count()`, jamais un chargement complet
+des tables), affiché dans **`/admin?tab=nettoyage`** :
+
+| Catégorie | Constat |
+|---|---|
+| Notifications utilisateur (`Notification`) | Aucune FK vers Session/Tournament (`relatedSessionId` libre) — jamais cassées par une future purge de ces lignes. |
+| Événements/livraisons de notification (`NotificationEvent`/`NotificationDelivery`) | Volumétrie proportionnelle à l'activité Discord bot ; rôles à occurrence FIXE (thread/announce/thread-summary/thread-close) protégés contre toute purge automatique — voir §5. |
+| Messages de chat (`ChatMessage`/`ChatReaction`) | Rattachés exclusivement à une `Session` (`sessionId`), cascade sur suppression du message parent. **Aucun message de chat indépendant d'une soirée** dans ce schéma — un seul chemin d'écriture connu. |
+| Soirées/tournois, propositions/votes, inscriptions | `Proposal`/`Vote` cascadent avec `Session` ; `TournamentParticipant`/`TournamentMatch` cascadent avec `Tournament`. |
+| Pièces jointes | **Aucune** pour soirées/tournois/chat — `ChatMessage.content` est un texte simple. Vercel Blob (`banner-blob.ts`) sert UNIQUEMENT la bannière de profil, scope utilisateur, hors de cette politique. |
+| XP/streaks/récompenses/classements/saisons (`XpEvent`, `LevelUpEvent`, `SeasonSnapshot`, `UserBadge`) | **Aucune FK** vers `Session`/`Tournament` (`sourceId` libre) — déjà structurellement à l'abri d'une purge de ces lignes. |
+| `SessionResult` (podium, lu par `/profil/historique` et `revanche.ts`) | **CASCADE avec `Session`** (`onDelete: Cascade`) — le seul modèle "résultat utile" identifié comme VULNÉRABLE si `Session` venait à être supprimée. Voir §6 pour la décision prise. |
+
+Distinction explicite demandée : **messages GameNight** (`ChatMessage`,
+en base, stockage/rétention propres à cette app) vs **messages privés
+Discord** (jamais stockés par cette app, hors de son contrôle) vs
+**messages de fil Discord** (annonces/résumés — référencés par id
+uniquement dans `NotificationDelivery`, le CONTENU n'est jamais persisté
+côté GameNight, seul Discord le détient réellement) — trois stockages et
+politiques de rétention **différents**, jamais confondus dans ce
+chantier.
+
+**Sans accès aux données de production**, les chiffres exacts (volumes,
+gains) ne sont jamais affirmés — seule la structure (modèles, cascades,
+critères d'éligibilité) est garantie exacte. `generateStorageAuditReport()`
+donne des chiffres réels une fois exécuté contre la vraie base.
+
+### 4. Politique de rétention (`src/lib/retention.ts`, centralisée)
+
+| Type de donnée | Règle | Purge |
+|---|---|---|
+| Soirées/tournois **actifs** | Jamais purgés, quel que soit l'âge (statut ≠ terminal). | — |
+| Soirées/tournois **terminés/annulés** | Fenêtre de 7 jours depuis la fin/l'annulation RÉELLE (`Session.date` pour une soirée, `cancelledAt`/dernier `completedAt` de match pour un tournoi — même référence EXACTE que le masquage historique existant #105, jamais une date de création). | La **ligne** `Session`/`Tournament` n'est **PAS** supprimée dans cette PR (voir §6) — seuls son fil/son annonce Discord (si `announceViaBot`) sont programmés pour suppression définitive une fois la fenêtre dépassée. |
+| Anciennes données sans date fiable | Statut terminal mais `cancelledAt`/`completedAt` absent (ne devrait jamais arriver — replis défensifs déjà en place, #105). | **Jamais purgées** — signalées `noReliableDate` dans l'audit, aucune date inventée. |
+| Messages de chat rattachés à une soirée éligible | Suivent la rétention de leur soirée (7 jours après la fin réelle). | **Suppression réelle** (`ChatMessage`+`ChatReaction` cascade), pas un masquage. |
+| Notifications utilisateur | Purgées si **lues** ET créées avant le début de la saison **active** (`Season.startDate`, cycle réel `src/lib/seasons.ts`, jamais un calendrier inventé — toute notification antérieure à la saison active a nécessairement été créée pendant une saison désormais close). | Suppression réelle. **Jamais** les notifications non lues (encore "en cours" pour l'utilisateur) ni celles de la saison active. |
+| Fil/annonce Discord d'un événement éligible **toujours existant** | Même fenêtre de 7 jours que ci-dessus. | Programmé (enqueue, jamais un balayage du serveur par nom/approximation) via les MÊMES rôles `thread-delete`/`announce-delete` que la suppression manuelle — jamais si déjà tenté (`"never_enqueued"` uniquement, un échec `"failed"` attend un réessai manuel). |
+| Livraisons techniques (`NotificationDelivery`) | Statut TERMINAL (`SENT`/`SKIPPED`) ET occurrence NON FIXE (retry-safe) ET plus vieilles que 30 jours. | Suppression réelle. **Jamais** `PENDING`/`RESERVED` (en attente/en cours), **jamais** `FAILED` (visibilité admin/réessai), **jamais** une occurrence FIXE (`thread`/`announce`/`thread-summary`/`thread-close`/premier SEND — la ligne EST la garantie contre un rejeu qui recréerait un fil/une annonce). |
+
+Chaque critère est une fonction **pure**, testée indépendamment
+(`src/lib/retention.test.ts`), et **partagée à l'identique** entre le
+mode dry-run et le mode effectif (`src/lib/retention.ts`, chaque
+fonction `purge*`/`schedule*` prend un paramètre `dryRun` unique — jamais
+deux chemins de décision).
+
+### 5. Préservation des résultats utiles (XP, récompenses, classements)
+
+> **Mise à jour** : le paragraphe ci-dessous décrivait l'état initial de
+> cette PR, où `Session`/`Tournament` n'étaient volontairement **jamais**
+> supprimées (gap explicite). Ce gap est désormais **comblé** — voir
+> « V2 (suite) — purge réelle des lignes `Session`/`Tournament` » plus
+> bas dans ce document pour le résumé durable implémenté et la purge
+> réelle de ces lignes. Ce paragraphe reste tel quel pour l'historique.
+
+**Décision prise, documentée honnêtement** : cette PR ne supprime
+**jamais** la ligne `Session`/`Tournament`/`Proposal`/`Vote`/
+`SessionResult`/`TournamentParticipant`/`TournamentMatch` elle-même.
+Raison : `SessionResult.placement` (podium) est lu par `/profil/historique`
+et `src/lib/revanche.ts`, et **cascade avec `Session`** (`onDelete: Cascade`)
+— le supprimer avec la session perdrait cette donnée sans aucun résumé
+durable indépendant existant aujourd'hui. XP (`XpEvent`), niveaux
+(`LevelUpEvent`), classements de saison (`SeasonSnapshot`) et badges
+(`UserBadge`) sont, eux, **déjà** sans FK vers `Session`/`Tournament`
+(id libre non contraint) — donc **déjà à l'abri**, sans action
+nécessaire dans cette PR.
+
+**Ce qui EST réellement purgé** : les messages de chat (contenu textuel,
+le plus volumineux et le plus sensible en confidentialité) et le
+fil/l'annonce Discord — le nettoyage le plus impactant sur le stockage
+réel sans risquer la moindre statistique. **Ce qui reste un GAP
+explicite, signalé plutôt que forcé** : purger `Session`/`Tournament`
+eux-mêmes nécessiterait d'abord un résumé durable et idempotent
+détachant `SessionResult` de la ligne `Session` (ex. dénormaliser les
+champs nécessaires, ou une nouvelle table découplée écrite avant la
+purge) — **non implémenté ici**, aucune donnée n'est donc perdue par
+cette PR, mais la réduction de stockage réelle sur `Session`/`Tournament`
+elles-mêmes reste à faire dans un chantier séparé.
+
+### 6. Exécution automatique — cron `retention-cleanup`
+
+> **Mise à jour** : `runRetentionCleanup` orchestre désormais **six**
+> volets, pas quatre — la purge réelle des lignes `Session` et
+> `Tournament` (voir « V2 (suite) » plus bas) a été insérée entre le
+> nettoyage Discord programmé et les notifications de saison close, dans
+> cet ordre précis pour que le nettoyage Discord soit toujours au moins
+> programmé avant que la ligne ne disparaisse.
+
+`src/lib/retention-runner.ts` (`runRetentionCleanup`) orchestre les 4
+volets ci-dessus en un seul passage **borné** :
+- lots de taille fixe (`RETENTION_BATCH_SIZE = 50`) par volet ;
+- budget de temps mur (`RETENTION_MAX_BATCH_DURATION_MS = 45s`, sous le
+  plafond Vercel Hobby) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
+  sans jamais planter ;
+- **reprenable sans curseur persisté** : chaque volet interroge "que
+  reste-t-il à faire MAINTENANT" (ex. sessions DONE/CANCELLED encore
+  dotées d'au moins un `ChatMessage`) plutôt que de suivre un état —
+  testé explicitement (`retention.integration.test.ts`, describe
+  "reprise après interruption") ;
+- **protégé contre les exécutions concurrentes** (mode effectif
+  uniquement) par un verrou dédié `CronLock` (`name: "retention-cleanup"`,
+  même mécanisme que le verrou `reminders` existant — nouvelle ligne
+  singleton créée par la migration `20260923120000_add_retention_cleanup_lock`,
+  aucune donnée applicative touchée) ;
+- **aucun chargement intégral d'une table en mémoire** (`take: limit`
+  partout, jamais un `findMany` non borné) ;
+- respecte les limites Discord (réutilise entièrement l'exécuteur #97 —
+  budget de bail, backoff, un seul appel réseau à la fois par livraison
+  réclamée) ;
+- **ne journalise jamais** de contenu de message/secret/donnée
+  personnelle inutile (uniquement des ids, statuts, compteurs).
+
+`dryRun: true` partage EXACTEMENT les mêmes fonctions d'éligibilité que
+`dryRun: false` — seule la mutation réelle (DELETE/enqueue Discord) est
+court-circuitée.
+
+**Bilan lisible** (`RetentionRunReport`, `JSON` exposé par la route et
+l'onglet admin) : candidats/suppressions/conservés/bloqués par volet,
+`errors[]`, `durationMs`, `stoppedReason`.
+
+### Route cron (`/api/cron/retention-cleanup`) — désactivée par défaut
+
+**Deux verrous indépendants**, comme `NOTIFICATION_EXECUTOR_ENABLED`/
+`DISCORD_BOT_*_ANNOUNCE_ENABLED` avant elle :
+
+```
+# 1. Active la route elle-même (répond, mais reste en dry-run par défaut)
+RETENTION_CLEANUP_ENABLED=true
+
+# 2. SEULE façon d'obtenir des mutations réelles — à poser UNIQUEMENT
+#    après avoir observé le dry-run en production pendant au moins
+#    quelques passages
+RETENTION_CLEANUP_MODE=execute
+```
+
+**Aucune des deux n'est définie par cette PR.** Aucun cron externe n'est
+configuré (ni sur Vercel ni ailleurs) — à ajouter manuellement après
+revue, même modèle que `notification-executor`/`reminders` :
+
+```
+GET https://<domaine>/api/cron/retention-cleanup
+Authorization: Bearer <CRON_SECRET>
+```
+
+**Commande de vérification du dry-run** (avant toute activation
+`execute`) :
+```bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://<domaine>/api/cron/retention-cleanup | jq .
+```
+Répond `{"enabled":false,...}` tant que `RETENTION_CLEANUP_ENABLED`
+n'est pas posée ; `{"enabled":true,"dryRun":true,"report":{...}}` une
+fois activée mais avant `RETENTION_CLEANUP_MODE=execute`.
+
+### Retour arrière
+
+- **Avant `RETENTION_CLEANUP_MODE=execute`** : aucune donnée n'a jamais
+  été modifiée — retirer `RETENTION_CLEANUP_ENABLED` suffit à tout
+  arrêter, sans aucune trace.
+- **Après activation `execute`** : repasser `RETENTION_CLEANUP_MODE` à
+  une valeur différente de `"execute"` (ou retirer `RETENTION_CLEANUP_ENABLED`)
+  arrête immédiatement toute nouvelle mutation — **n'importe pas de
+  données déjà purgées**, aucune procédure de cette PR ne restaure des
+  messages de chat, des notifications ou une ressource Discord déjà
+  supprimés (suppression réelle = irréversible, comme documenté partout
+  dans ce chantier). Les livraisons `FAILED` (nettoyage Discord non
+  réussi) restent visibles et réessayables indéfiniment via
+  `/admin?tab=nettoyage`, indépendamment de l'état du cron.
+- La migration `20260923120000_add_retention_cleanup_lock` est purement
+  additive (une ligne `CronLock`) — un `DELETE FROM "CronLock" WHERE
+  name = 'retention-cleanup'` l'annule sans toucher au reste du schéma,
+  si nécessaire (non fait par cette PR).
+
+### Limites connues, explicitement assumées
+
+- ~~Purger `Session`/`Tournament`/`Proposal`/`Vote`/`SessionResult`/
+  `TournamentParticipant`/`TournamentMatch` eux-mêmes reste un chantier
+  séparé~~ **Fait** dans « V2 (suite) » (`Session`/`Tournament` sont
+  désormais réellement purgées ; `Proposal`/`Vote`/`TournamentParticipant`/
+  `TournamentMatch` cascadent avec elles ; `SessionResult` survit via le
+  résumé durable — voir plus bas pour le détail et le gap qui, lui,
+  reste assumé).
+- Les chats "indépendants" éventuels (hors `ChatMessage.sessionId`)
+  n'existent pas dans ce schéma — rien à documenter au-delà de ce
+  constat (aucune suppression globale non définie n'est jamais tentée).
+- Aucun rattrapage n'est lancé contre les anciennes données/anciens fils
+  existants en production par cette PR — seuls l'inventaire (lecture
+  seule) et les outils (dry-run, resync créateur, réessai admin) sont
+  livrés, une activation ultérieure reste une décision humaine explicite.
+- Suppression de lignes en base ne garantit **jamais** une baisse
+  immédiate de l'espace disque physique alloué (Postgres/Neon) —
+  `VACUUM`/`VACUUM FULL` reste une opération de maintenance séparée,
+  jamais déclenchée automatiquement par cette route.
+- "Jouer maintenant" n'est pas implémenté par cette PR (hors périmètre
+  explicite de ce chantier).
+
+### Migrations
+
+- `20260923120000_add_retention_cleanup_lock` — additive, une ligne
+  `CronLock` (`name: "retention-cleanup"`). Aucune colonne, aucune table,
+  aucun enum modifié — `prisma/schema.prisma` **inchangé** par ce
+  chantier.
+- `20260924090000_add_durable_result_summaries` (V2, suite) — voir plus
+  bas pour le détail complet (FK `SetNull`, colonnes dénormalisées,
+  nouvelle table `UserLifetimeStats`, backfill des lignes existantes).
+
+### Tests
+
+- `src/lib/discord-rest.test.ts` — `deleteThreadPermanently`/
+  `deleteChannelMessage`/`addThreadMember` (unitaires, `fetch` mocké) :
+  succès, 404 honnêtement classifié `not_found` (jamais un succès depuis
+  ce module), 403 non-retryable, budget de bail insuffisant.
+- `src/lib/retention.test.ts` — éligibilité PURE (sessions/tournois
+  actifs/terminés/sans date fiable, limites exactes de la fenêtre de 7
+  jours — juste avant/pile/juste après).
+- `src/lib/retention.integration.test.ts` (Postgres isolé + Discord
+  simulé) — purge chat réelle vs dry-run, programmation du nettoyage
+  Discord (jamais en double), purge de notifications de saison close
+  (aucun cycle exploitable → gap exposé), purge technique (terminal +
+  retry-safe uniquement, jamais `FAILED`/occurrence fixe), préservation
+  XP/badges/résultats, **reprise après interruption** (lot borné, deux
+  passages), **isolation entre soirées** (purger l'une ne touche jamais
+  l'autre), verrou de concurrence (`lock_not_acquired`), réessai manuel
+  jamais automatique.
+- `src/lib/session-announce.integration.test.ts` (nouveau describe "V2 —
+  suppression manuelle définitive du fil privé") et
+  `src/lib/tournament-announce.integration.test.ts` (tests de suppression
+  mis à jour pour DELETE réel + nouveau describe "V2 — adhésion
+  automatique au fil du tournoi") — toutes les races listées ci-dessus,
+  contre une vraie base Postgres et Discord entièrement simulé.
+- `src/app/sessions/actions/session-lifecycle.delete.test.ts` /
+  `src/app/tournois/actions.resync.test.ts` — comportement propre aux
+  actions serveur (autorisation, ordre transaction/enqueue).
+
+Résultats à la livraison (état initial de cette PR, avant « V2, suite »
+ci-dessous) : suite Postgres complète **630/630**, suite rapide (hors
+Postgres) **402/402** (226 suites Postgres-only marquées `skip` sans base
+disponible), `npx tsc --noEmit` et `npx eslint .` sans erreur, `npx next
+build` réussi (nouvelle route `/api/cron/retention-cleanup` apparaît dans
+le manifeste de routes). Voir « V2, suite » pour les résultats mis à jour
+après l'ajout de la purge réelle Session/Tournament.
+
+### Ce qui reste hors périmètre (délimitation explicite)
+
+Aucune suppression réelle en production, aucun envoi Discord réel,
+aucune migration distante, aucun changement de configuration externe
+(Vercel, cron), aucun merge, aucun rattrapage des anciennes données/
+anciens fils, aucune resynchronisation lancée en production. "Jouer
+maintenant" et le reste du bot avancé restent dans la suite du chantier
+V2.
+
+---
+
+## V2 (suite) — purge réelle des lignes Session/Tournament : résumé durable des résultats
+
+Complète le point explicitement laissé ouvert au §5 ci-dessus
+(« purger `Session`/`Tournament` eux-mêmes nécessiterait d'abord un
+résumé durable [...] non implémenté ici ») : la demande porte sur une
+**réduction réelle du stockage des historiques**, pas seulement des
+messages de chat. Ce chantier supprime désormais réellement les lignes
+`Session`/`Tournament` 7 jours après leur fin, en préservant les
+résultats/XP/badges/classements/statistiques par un **résumé durable
+minimal** — jamais une copie intégrale dans une table d'archive.
+
+### Pourquoi `Session`/`Tournament` ne pouvaient pas être purgées avant (analyse des dépendances)
+
+Avant ce chantier, quatre modèles portaient une FK **`onDelete: Cascade`**
+vers `Session` et seraient donc partis avec elle : `SessionResult`
+(podium, lu par `/profil/historique`, `/profil` et `revanche.ts`),
+`SuperlativeAward` (récompenses par jeu, lues par `/profil/superlatifs`
+et `/potes/[id]/superlatifs`), `Pronostic` (pronostics, taux de réussite
+lifetime sur `/profil`) et `XpBet` (paris XP). `Proposal`/`Vote`
+cascadent également mais ne sont lus qu'à la vie de la soirée (jamais
+après coup) — leur perte est sans conséquence. Côté `Tournament` :
+`TournamentParticipant`/`TournamentMatch` cascadent, mais **aucune**
+lecture de calcul lifetime ne s'appuyait sur eux directement — les
+critères de badges `TOURNAMENTS_WON`/`TOURNAMENTS_PARTICIPATED`
+(`src/lib/badges.ts`) comptaient respectivement `Tournament.count({championId})`
+et `TournamentParticipant.count({userId})`, deux requêtes qui seraient
+devenues silencieusement fausses (sous-comptage) après une purge sans
+compensation. C'est cette dépendance — pas une limite technique de
+Postgres ni de Prisma — qui bloquait toute purge réelle : supprimer la
+ligne `Session`/`Tournament` sans rien d'autre aurait cassé ces lectures
+et fait régresser silencieusement des statistiques déjà affichées aux
+utilisateurs (violation explicite de la contrainte « vérifie que les
+lectures et calculs existants continuent de fonctionner »).
+
+Deux catégories de données étaient déjà **structurellement à l'abri**,
+sans dépendance à corriger : `XpEvent`/`LevelUpEvent`/`SeasonSnapshot`/
+`UserBadge` (aucune FK vers `Session`/`Tournament`, `sourceId` est un id
+libre non contraint) et le `MonthlyRecap` mensuel
+(`generateMonthlyRecapIfDue`, inchangé) — son snapshot JSON permanent du
+mois précédent est calculé et figé le jour 1 du mois suivant, donc
+**toujours** avant que la fenêtre de purge de 7 jours ne se referme sur
+la moindre soirée de ce mois-là (vérifié par lecture de code, aucun
+changement nécessaire).
+
+### Décision de conception : `SetNull` + dénormalisation à l'écriture, jamais une table d'archive
+
+Deux approches étaient possibles pour découpler `SessionResult` (et
+consorts) de `Session` : (a) copier chaque ligne pertinente dans une
+table d'archive séparée au moment de la purge, ou (b) rendre la FK
+optionnelle (`onDelete: SetNull`) et dénormaliser, **au moment de
+l'écriture originale**, les quelques champs qu'une lecture ultérieure
+peut encore réclamer une fois la `Session` disparue (`gameId`,
+`gameName`, `sessionDate`). La demande excluait explicitement la
+première option ("Ne déplace pas simplement toutes les données dans une
+table d'archive") — (b) est retenue :
+
+- **`SessionResult`** : `sessionId` devient `String?` (`onDelete: SetNull`
+  au lieu de `Cascade`), + colonnes `gameId String?`/`gameName String?`/
+  `sessionDate DateTime?`, remplies à la création
+  (`submitSessionResultsAction`, `src/app/sessions/actions/results.ts`).
+  Devient de facto **le résumé durable lui-même** : la ligne survit
+  intacte à la suppression de sa `Session`, avec tout ce qu'une lecture
+  ultérieure (`/profil/historique`, `/profil`, `revanche.ts`) réclame.
+- **`SuperlativeAward`** : même traitement (`gameName`, `sessionDate`,
+  écrits dans `finalizeSuperlativeVoting`, `src/lib/superlative-voting.ts`).
+- **`Pronostic`** : `sessionId` nullable + `SetNull` (aucune colonne
+  dénormalisée nécessaire — seul le champ `correct` compte pour le taux
+  de réussite lifetime, déjà porté par la ligne elle-même).
+- **`XpBet`** : `sessionId` nullable + `SetNull` + `gameName String?`
+  (écrit dans `placeBet`, `src/lib/xp-bets.ts`, pour l'affichage
+  `/profil`).
+- **`Debt`** (gages) : schéma **inchangé** (reste `Cascade` des deux
+  côtés) — volontairement, voir « Condition bloquante » ci-dessous : une
+  dette impayée bloque la purge de sa soirée plutôt que d'être
+  dénormalisée, jamais effacée silencieusement pendant qu'elle est due.
+
+Ce choix coûte 4 colonnes ajoutées (2 sur `SuperlativeAward`, 3 sur
+`SessionResult`, 1 sur `XpBet`) et 4 FK rendues optionnelles — contre une
+table d'archive qui aurait dupliqué un schéma entier, exigé une logique
+de copie transactionnelle supplémentaire à chaque purge, et risqué un
+double comptage (ligne vivante + ligne archivée coexistant un instant).
+Aucune copie n'a jamais lieu : la ligne `SessionResult`/`SuperlativeAward`/
+`Pronostic`/`XpBet` purgée avec sa `Session` n'existe pas — elle **est**
+purgée avec elle si (et seulement si) elle n'a jamais existé en premier
+lieu ; celle qui existe déjà continue d'exister, seule sa FK devient
+`NULL`.
+
+### `UserLifetimeStats` — la seule pièce de schéma réellement neuve
+
+Sur les 5 critères de badges à risque, 4 avaient déjà un remplaçant
+durable disponible sans nouveau schéma : `checkSessionsCreatedBadges` et
+le calcul équivalent (`backfill-badges.ts`, `profile-stats.ts`) comptent
+désormais `XpEvent.count({userId, reason: "CREATE_SESSION"})` au lieu de
+`Session.count({createdById})` ; `checkTournamentBadges` compte les
+victoires via `XpEvent.count({userId, reason: "TOURNAMENT_RESULT",
+sourceId: {endsWith: ":1st"}})` au lieu de `Tournament.count({championId})`
+— ces `XpEvent` existaient déjà, écrits à chaque événement, jamais liés
+par FK à `Session`/`Tournament`. Seul le nombre de tournois **participés**
+(`TOURNAMENTS_PARTICIPATED`) n'avait aucun proxy durable existant : d'où
+`UserLifetimeStats` (`userId String @id`,
+`tournamentsParticipatedCount Int @default(0)`), incrémenté/décrémenté
+**au moment exact** de l'inscription/désinscription
+(`registerForTournamentAction`/`unregisterFromTournamentAction`,
+`src/app/tournois/actions.ts`, dans la même transaction) plutôt que
+recalculé après coup sur des lignes potentiellement déjà purgées. Un seul
+entier par utilisateur — la définition même du « minimal » demandé, pas
+une table miroir de `TournamentParticipant`.
+
+### Conditions bloquantes — jamais une purge qui efface un résultat non finalisé
+
+`sessionPurgeBlockReason` (`src/lib/retention.ts`) bloque la purge d'une
+soirée par ailleurs éligible (terminée, hors fenêtre de 7 jours) si :
+
+| Raison | Condition | Pourquoi |
+|---|---|---|
+| `superlative_voting_pending` | `Session.superlativeVotingClosed === false` | Le vote de superlatifs n'est pas clôturé — purger maintenant effacerait la possibilité même de le clôturer, jamais un `SuperlativeAward` créé après coup sur une soirée qui n'existe plus. |
+| `debt_unpaid` | Un `Debt` lié (`sessionId`) avec `paidAt: null` existe | Une dette (gage) encore due entre deux potes — la purger silencieusement effacerait une obligation réelle non soldée. `Debt` cascade toujours avec `Session` (schéma inchangé), donc le blocage est la seule protection ; une fois payée (`paidAt` renseigné), elle cesse de bloquer et disparaît normalement avec sa soirée. |
+
+Une soirée bloquée reste candidate aux passages suivants du cron — dès
+que le blocage se lève (vote clôturé, dette payée), elle redevient
+purgeable sans action supplémentaire. Jamais de purge forcée ignorant
+ces conditions.
+
+### Sécurité des accès concurrents
+
+`purgeEligibleSessionsBatch`/`purgeEligibleTournamentsBatch` reprennent
+le pattern déjà utilisé par `deleteTournament`/
+`registerForTournamentAction` : `SELECT ... FOR UPDATE` sur la ligne
+candidate **dans la transaction de suppression**, puis re-vérification
+complète de l'éligibilité et des conditions bloquantes juste avant le
+`DELETE` — une dette créée ou un vote rouvert entre la sélection du lot
+et l'exécution de la transaction annule la purge de cette ligne au lieu
+de l'exécuter sur un état déjà obsolète (testé explicitement, voir
+Tests).
+
+**Nettoyage Discord — jamais un rejeu automatique d'un échec** : comme
+`scheduleDiscordCleanupForEligibleEvents`, `purgeEligibleSessionsBatch`/
+`purgeEligibleTournamentsBatch` ne programment `thread-delete`/
+`announce-delete` que si le statut de livraison est encore
+`"never_enqueued"` — jamais si `"failed"` (qui attend un réessai manuel
+explicite via `/admin?tab=nettoyage`) ni `"pending"`/`"done"`. Bug
+auto-détecté pendant l'écriture des tests de ce chantier (voir Tests) :
+la première version enqueue-ait sans cette garde, ce qui aurait
+silencieusement retenté un nettoyage Discord déjà en échec terminal à
+chaque passage de purge — corrigé avant livraison.
+
+### Ce qui doit rester en l'état — quoi, pourquoi, coût estimé
+
+> **Mise à jour** : le gap `home.ts` décrit ci-dessous a été **comblé**
+> (plus un gap assumé, un défaut corrigé) — voir « V2 (suite, 2) —
+> préservation des stats de groupe de la Home » plus bas dans ce
+> document. Ce paragraphe reste tel quel pour l'historique de la
+> décision initiale.
+
+Un seul gap assumé, documenté plutôt que corrigé : **`src/lib/home.ts`
+(`getGroupStats`)** calcule des statistiques **de groupe** (nombre total
+de soirées jouées tous utilisateurs confondus, jeu le plus joué du
+groupe) directement à partir des lignes `Session`/`SessionResult`
+vivantes. Ces chiffres **dégraderont en exactitude** au fil des purges
+(une soirée purgée sort du calcul groupe, même si son
+`SessionResult` individuel survit et reste exact pour l'utilisateur
+concerné). Non corrigé dans ce chantier car cela demanderait un nouveau
+compteur durable **par jeu, au niveau du groupe entier** (pas juste par
+utilisateur) — une pièce de schéma et de logique d'écriture
+supplémentaire, disproportionnée par rapport à la demande explicite d'un
+« résumé durable **minimal** » centré sur les résultats/XP/badges/
+classements/statistiques **individuels**. Coût estimé pour combler ce
+gap plus tard : un nouveau modèle (ex. `GroupGameStat` ou équivalent,
+clé `gameId`, compteur incrémenté à chaque `SessionResult` créé) +
+migration additive + une écriture supplémentaire dans
+`submitSessionResultsAction` — un chantier de l'ordre d'une demi-journée
+à une journée, **hypothèse d'estimation, jamais une mesure**. Aucune
+autre donnée n'a été identifiée comme nécessitant un maintien de la
+ligne `Session`/`Tournament` elle-même au-delà des deux conditions
+bloquantes déjà listées ci-dessus.
+
+### Distinction mesures vs hypothèses
+
+Aucun volume de production n'a été inventé nulle part dans ce chantier
+(ni ici, ni dans `storage-audit.ts`, ni dans ce README) — cette session
+tourne contre une base de développement/test locale, jamais contre la
+production. Tout chiffre présenté comme un **volume** (nombre de lignes,
+octets) est soit une mesure réelle exécutée contre CETTE base de test
+(explicitement qualifiée comme telle), soit absent. Le seul chiffre de
+nature différente présenté ici — le coût estimé (aujourd'hui obsolète,
+voir mise à jour ci-dessus) du gap `home.ts` — était explicitement
+qualifié d'**hypothèse d'estimation d'effort**, jamais d'une mesure.
+
+### Migration (`20260924090000_add_durable_result_summaries`)
+
+Écrite à la main (pas de `prisma migrate dev` contre une base de
+développement partagée), vérifiée **sans dérive** via `npx prisma migrate
+diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma
+--script` après application :
+
+1. `SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet` : FK `sessionId`
+   recréée `ON DELETE SET NULL` (au lieu de `CASCADE`).
+2. Ajout des colonnes dénormalisées (`gameId`/`gameName`/`sessionDate`
+   selon le modèle, voir ci-dessus) + un index
+   `SessionResult(userId, gameId)`.
+3. **Backfill des lignes déjà existantes** (`UPDATE ... FROM "Session"
+   s LEFT JOIN "Game" g ...`) — toute ligne déjà en base au moment de la
+   migration récupère immédiatement ses champs dénormalisés depuis sa
+   `Session`/son `Game` encore vivants à cet instant ; seules les lignes
+   créées APRÈS ce backfill dépendent du code applicatif modifié pour les
+   renseigner (pas de fenêtre où une ligne resterait dénormalisée à
+   vide).
+4. `CREATE TABLE "UserLifetimeStats"` + FK vers `User` (`Cascade` — une
+   ligne de stats n'a aucun sens sans son utilisateur) + backfill
+   (`INSERT ... SELECT userId, COUNT(*) FROM "TournamentParticipant"
+   GROUP BY userId ON CONFLICT DO NOTHING`) : les utilisateurs déjà
+   inscrits à des tournois avant cette migration récupèrent leur
+   compteur correct dès l'application de la migration, jamais à zéro.
+
+Purement additive/décontraignante (aucune donnée existante n'est
+supprimée ou tronquée par cette migration) — aucune procédure de retour
+arrière dédiée n'est nécessaire au-delà du retour arrière standard de
+migration Prisma (non exécuté par cette PR).
+
+### Tests ajoutés (`src/lib/retention.integration.test.ts`)
+
+Contre Postgres isolé réel + Discord entièrement simulé, deux nouveaux
+describe :
+
+**`purgeEligibleSessionsBatch`** — dry-run sans mutation ; soirée active
+jamais purgée ; soirée dans la fenêtre de 7 jours jamais purgée ; dette
+impayée bloque avec la bonne raison (`debt_unpaid`) ; dette payée ne
+bloque pas (et la ligne `Debt` elle-même disparaît, cascade normal) ;
+`superlativeVotingClosed: false` bloque puis débloque au passage suivant
+une fois clôturé ; **préservation vérifiée individuellement** pour
+`SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet` (données
+dénormalisées correctes, `sessionId: null` après purge) ; correction de
+`checkSessionsCreatedBadges` vérifiée AVANT et APRÈS purge (avec un vrai
+badge `SESSIONS_CREATED` seedé) ; **isolation** entre deux utilisateurs
+(soirée de l'un purgée, soirée de l'autre intacte, son `SessionResult`
+reste lié) ; **reprise après interruption** (deux passages `limit: 1`
+puis un troisième passage vide) ; **race concurrente** — une dette créée
+juste avant l'exécution de la transaction est rattrapée par la
+re-vérification `FOR UPDATE`.
+
+**`purgeEligibleTournamentsBatch`** — dry-run ; tournoi actif jamais
+purgé ; préservation complète (seed de `Badge` `TOURNAMENTS_WON`/
+`TOURNAMENTS_PARTICIPATED`, `Tournament`+`TournamentMatch`+
+`TournamentParticipant`+`XpEvent(TOURNAMENT_RESULT)`+`UserLifetimeStats`
+réels, `checkTournamentBadges` vérifié avant/après purge,
+`TournamentParticipant`/`TournamentMatch` à 0 après purge tandis que
+`XpEvent`/`UserLifetimeStats` survivent intacts) ; reprise après
+interruption (deux passages `limit: 1`).
+
+Un troisième describe (`runRetentionCleanup — inclut désormais la purge
+réelle des lignes Session/Tournament`) vérifie l'intégration complète du
+runner en dry-run et en mode réel.
+
+**Résultats mis à jour** (après cette suite) : Postgres complet
+**651/651** (up de 630/630), rapide (hors Postgres) **402/402**,
+`npx tsc --noEmit` / `npx eslint .` sans erreur, `npx next build` réussi
+(`/api/cron/retention-cleanup` toujours présente dans le manifeste de
+routes).
+
+**Nettoyage reste désactivé par défaut** — aucun changement à
+`RETENTION_CLEANUP_ENABLED`/`RETENTION_CLEANUP_MODE`, le dry-run reste
+partagé à l'identique entre les deux modes (mêmes fonctions
+d'éligibilité, seule la mutation réelle est court-circuitée) — reconfirmé
+par les tests de ce chantier.
+
+### Procédure concrète — consulter le dry-run puis activer le nettoyage
+
+1. **Variables d'environnement exactes** (aucune autre ne contrôle ce
+   comportement) :
+   - `RETENTION_CLEANUP_ENABLED=true` — active la route (répond, reste en
+     dry-run par défaut).
+   - `RETENTION_CLEANUP_MODE=execute` — **seule** valeur qui déclenche des
+     mutations réelles (suppression de messages/notifications/lignes
+     `Session`/`Tournament`, suppression Discord). Toute autre valeur (ou
+     absence) reste en dry-run.
+   - `CRON_SECRET` — jeton d'authentification du endpoint (même variable
+     que les autres crons existants, `notification-executor`/`reminders`).
+2. **Endpoint du cron** : `GET /api/cron/retention-cleanup`
+   (`src/app/api/cron/retention-cleanup/route.ts`).
+3. **Authentification** : en-tête `Authorization: Bearer <CRON_SECRET>` —
+   requête sans cet en-tête ou avec un jeton incorrect refusée avant tout
+   traitement (`verifyCronRequest`, même garde que les autres crons).
+4. **Consulter le dry-run** (avant toute activation `execute`) :
+   ```bash
+   curl -s -H "Authorization: Bearer $CRON_SECRET" \
+     https://<domaine>/api/cron/retention-cleanup | jq .
+   ```
+   Répond `{"enabled":false,...}` tant que `RETENTION_CLEANUP_ENABLED`
+   n'est pas posée. Une fois posée (sans `RETENTION_CLEANUP_MODE=execute`),
+   répond `{"enabled":true,"dryRun":true,"report":{...}}` — le `report`
+   inclut désormais `sessionRowPurge`/`tournamentRowPurge`
+   (`candidateSessionIds`/`purgedSessionIds`/`blockedSessions` avec leur
+   `reason`, et l'équivalent tournoi) en plus des volets existants (chat,
+   nettoyage Discord, notifications, données techniques). **Relire ce
+   rapport sur plusieurs passages** avant d'activer `execute` — en
+   particulier vérifier que `blockedSessions` correspond bien aux soirées
+   avec vote/dette en attente réels, et qu'aucune soirée inattendue
+   n'apparaît dans `purgedSessionIds` en dry-run (qui liste alors les
+   soirées qui SERAIENT purgées).
+5. **Activer réellement** : poser `RETENTION_CLEANUP_MODE=execute` en plus
+   de `RETENTION_CLEANUP_ENABLED=true`, puis configurer un cron externe
+   (cron-job.org ou équivalent, même modèle que `notification-executor`/
+   `reminders`) appelant périodiquement le endpoint ci-dessus avec le
+   même en-tête `Authorization`.
+6. **Retour arrière** : avant `execute`, retirer `RETENTION_CLEANUP_ENABLED`
+   arrête tout sans aucune trace. Après `execute`, repasser
+   `RETENTION_CLEANUP_MODE` à une valeur différente de `"execute"` (ou
+   retirer `RETENTION_CLEANUP_ENABLED`) arrête toute nouvelle mutation —
+   **n'importe pas** les lignes `Session`/`Tournament` déjà purgées
+   (suppression réelle = irréversible, comme le reste de ce chantier).
+
+**Aucune action réelle n'a été effectuée en production par ce
+chantier** : aucune des deux variables n'est posée nulle part, aucun cron
+externe n'est configuré, aucune migration n'a été appliquée ailleurs que
+sur une base Postgres de test locale isolée.
+
+---
+
+## V2 (suite, 2) — préservation des stats de groupe de la Home avant déploiement de #107
+
+Ferme le dernier gap explicitement signalé au chantier précédent (« Ce
+qui doit rester en l'état ») : **la perte d'exactitude des statistiques
+de groupe de la Home (`src/lib/home.ts::getGroupStats`) n'était pas
+acceptable comme simple limite documentée** — elles sont désormais
+préservées par des agrégats durables minimaux, jamais en conservant les
+anciennes soirées elles-mêmes.
+
+### Ce qui était affecté, ce qui ne l'était pas
+
+`getGroupStats()` retourne 4 indicateurs. Seuls deux dépendaient de
+lignes `Session` purgeables :
+
+| Indicateur | Source avant ce lot | Affecté par la purge ? |
+|---|---|---|
+| `totalSessionsPlayed` | `Session.count({status:"DONE"})` | **Oui** — sous-compté dès qu'une soirée DONE est purgée. |
+| `mostPlayedGame` | `Session.groupBy({by:"decidedGameId"})` | **Oui** — même cause, et pouvait en plus désigner un AUTRE jeu "le plus joué" une fois les soirées du vrai gagnant purgées. |
+| `bestActiveStreak` | `User.streakCount`/`streakLastActiveAt` | Non — aucune dépendance à `Session`, fenêtre de 24h inchangée, non retouché. |
+| `activePlayers` | `User.streakLastActiveAt` (fenêtre 7 jours) | Non — idem, non retouché. |
+
+### Agrégats durables minimaux — jamais une conservation des anciennes soirées
+
+Deux modèles, volontairement les plus petits possibles (`prisma/schema.prisma`) :
+
+```prisma
+model GroupSessionStats {
+  id                  String @id @default("global") // singleton, même principe que CronLock.name
+  totalSessionsPlayed Int    @default(0)
+}
+
+model GroupGameStat {
+  gameId    String @id
+  playCount Int    @default(0)
+  game      Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+```
+
+Un entier global + un entier par jeu — jamais une ligne par soirée,
+jamais une copie du contenu d'une `Session`. `mostPlayedGame` reste
+`{name, coverUrl, count}` en joignant `GroupGameStat` → `Game` (jamais
+dénormalisé : `Game` elle-même n'est jamais purgée par ce chantier, la
+jointure reste fiable à 100 % même pour un jeu dont toutes les soirées
+ont depuis été purgées).
+
+### Point d'écriture unique, atomique avec la transition de statut
+
+`Session.status → "DONE"` n'a qu'un seul point d'écriture dans tout le
+code : `markSessionDone` (`src/lib/sessions.ts`), appelé aussi bien par
+le bouton créateur (`markSessionDoneAction`) que par le cron d'auto-
+clôture (`closeOverdueScheduledSessions`). L'incrément des deux
+compteurs est posé **dans la même transaction Prisma** que le
+`updateMany` conditionnel (`WHERE status = 'SCHEDULED'`) qui opère cette
+transition :
+
+```ts
+const decided = await prisma.$transaction(async (tx) => {
+  const result = await tx.session.updateMany({
+    where: { id: sessionId, status: "SCHEDULED" },
+    data: { status: "DONE" },
+  });
+  if (result.count === 0) return null; // déjà DONE — rien à incrémenter
+
+  const updated = await tx.session.findUnique({ where: { id: sessionId }, select: { decidedGameId: true } });
+  await tx.groupSessionStats.upsert({
+    where: { id: "global" },
+    create: { id: "global", totalSessionsPlayed: 1 },
+    update: { totalSessionsPlayed: { increment: 1 } },
+  });
+  if (updated?.decidedGameId) {
+    await tx.groupGameStat.upsert({
+      where: { gameId: updated.decidedGameId },
+      create: { gameId: updated.decidedGameId, playCount: 1 },
+      update: { playCount: { increment: 1 } },
+    });
+  }
+  return updated;
+});
+```
+
+### Pourquoi aucun double comptage n'est possible — même en reprise ou en exécution concurrente
+
+- **Jamais retouché par la purge elle-même** : `purgeEligibleSessionsBatch`/
+  `purgeEligibleTournamentsBatch` n'écrivent JAMAIS dans
+  `GroupSessionStats`/`GroupGameStat` — aucune re-dérivation depuis des
+  lignes `Session` vivantes après coup. `getGroupStats()` ne lit QUE ces
+  deux tables, jamais un mélange avec `Session`/`SessionResult` en
+  direct : par construction, il n'existe qu'une seule source de vérité,
+  donc aucun risque de compter une même soirée deux fois (une fois via
+  une lecture live, une fois via le compteur).
+- **Reprise après interruption** : la purge peut s'arrêter et reprendre
+  sur plusieurs passages bornés (`limit`) sans jamais toucher ces deux
+  tables — leur valeur reste strictement identique avant, pendant et
+  après n'importe quel nombre de passages de purge (testé, voir
+  ci-dessous).
+- **Exécution concurrente de `markSessionDone`** : le `updateMany`
+  conditionnel sur `status: "SCHEDULED"` est une opération atomique
+  Postgres — sur deux appels concurrents pour la même soirée (double
+  clic, cron + bouton créateur simultanés), le verrou de ligne implicite
+  du `UPDATE` sérialise les deux, un seul obtient `count: 1` et
+  incrémente, l'autre obtient `count: 0` et ressort sans rien écrire.
+  Aucun incrément ne peut donc jamais s'exécuter deux fois pour la même
+  soirée.
+- **Rappel sur une soirée déjà DONE** (bouton recliqué, cron qui retombe
+  dessus) : même garde — `count: 0`, retour immédiat, aucun second
+  incrément.
+
+### Migration des données existantes — les compteurs sont peuplés AVANT que la purge ne puisse jamais s'exécuter
+
+Une nouvelle migration additive, `20260924150000_add_group_session_stats`,
+crée les deux tables puis les **backfille immédiatement** avec les
+soirées DONE déjà présentes au moment où elle s'exécute :
+
+```sql
+INSERT INTO "GroupSessionStats" ("id", "totalSessionsPlayed")
+SELECT 'global', COUNT(*)::int FROM "Session" WHERE "status" = 'DONE';
+
+INSERT INTO "GroupGameStat" ("gameId", "playCount")
+SELECT "decidedGameId", COUNT(*)::int FROM "Session"
+WHERE "status" = 'DONE' AND "decidedGameId" IS NOT NULL
+GROUP BY "decidedGameId";
+```
+
+Exactement le même raisonnement que le backfill `UserLifetimeStats` de
+la migration précédente : cette migration s'exécute AVANT tout
+déploiement du code de purge, donc TOUTES les soirées DONE existent
+encore à cet instant — le compte est exact au moment de la migration,
+jamais un compteur qui redémarrerait à zéro à l'activation de ce
+chantier. Vérifiée **sans dérive** via `npx prisma migrate diff
+--from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma
+--script` après application.
+
+### Vérification explicite du backfill de la migration PRÉCÉDENTE (`20260924090000_add_durable_result_summaries`)
+
+Demande explicite de ce lot : ne pas se contenter d'affirmer que le
+backfill de la migration précédente (`gameId`/`gameName`/`sessionDate`
+sur `SessionResult`/`SuperlativeAward`/`XpBet`) fonctionne — le prouver
+par un test qui rejoue le `UPDATE` **exact** de cette migration (copié
+depuis le fichier `.sql` réel, jamais une réimplémentation qui pourrait
+diverger silencieusement) contre une "ancienne soirée" simulée : ses 4
+lignes (`SessionResult`, `SuperlativeAward`, `Pronostic`, `XpBet`) créées
+avec les colonnes dénormalisées explicitement `NULL` — l'état exact
+qu'une dénormalisation limitée aux nouvelles écritures aurait laissé
+indéfiniment. Le test (voir Tests ci-dessous) vérifie que le `UPDATE`
+les remplit correctement, PUIS purge la soirée et vérifie que les 4
+lignes survivent avec les bonnes données — une ancienne soirée se
+comporte désormais exactement comme une nouvelle.
+
+### Tests ajoutés (`src/lib/retention.integration.test.ts`)
+
+Deux nouveaux describe, contre Postgres isolé réel :
+
+**« Stats du groupe (Home) »** :
+- incrément unique par soirée + rappel idempotent sur une soirée déjà
+  DONE (aucun second incrément) ;
+- exécution CONCURRENTE de `markSessionDone` sur la même soirée (deux
+  appels en `Promise.all`) — un seul incrément ;
+- **`getGroupStats()` avant/après purge, sur les mêmes données** : 3
+  soirées d'un jeu (purgeables) + 1 soirée récente d'un autre jeu
+  (protégée par la fenêtre de 7 jours), comparaison stricte
+  (`toEqual`) du rapport complet avant et après purge — **identique** ;
+- **reprise après interruption** : deux passages bornés (`limit: 1`),
+  les compteurs restent strictement stables après chaque passage.
+
+**« Migration ... — backfill d'une ANCIENNE soirée déjà existante »** :
+scénario complet avec résultat, récompense, pronostic et pari, colonnes
+dénormalisées `NULL`, `UPDATE` de backfill rejoué tel quel, vérification
+du remplissage, puis purge réelle et vérification de la survie des 4
+lignes avec leurs données correctes.
+
+**Résultats mis à jour** : Postgres complet **656/656** (up de
+651/651 — 5 nouveaux tests), rapide (hors Postgres) **402/402**
+(inchangé, ces tests sont Postgres-only et correctement skippés sans
+`TEST_DATABASE_URL`), `npx tsc --noEmit` / `npx eslint .` sans erreur,
+`npx next build` réussi (toutes les routes générées sans erreur, aucune
+régression).
+
+### Respect des règles d'accès et de la période de calcul
+
+Aucun changement de périmètre : `totalSessionsPlayed`/`mostPlayedGame`
+comptaient déjà **toutes** les soirées DONE sans filtre de
+confidentialité (décision produit déjà actée au chantier confidentialité
+§9, « agrégats globaux non filtrés par soirée ») et sur une fenêtre **à
+vie** (aucun découpage par saison) — ce lot rend cette même portée
+durable, il ne la durcit ni ne l'assouplit. `bestActiveStreak`/
+`activePlayers` restent lus depuis `User`, entièrement inchangés.
+
+### Nettoyage reste désactivé, PR toujours Draft, aucune action réelle
+
+Aucun changement à `RETENTION_CLEANUP_ENABLED`/`RETENTION_CLEANUP_MODE`
+— le dry-run partage toujours les mêmes fonctions d'éligibilité que le
+mode réel, reconfirmé par les tests ci-dessus. Aucune migration
+appliquée ailleurs que sur la base Postgres de test locale isolée,
+aucune donnée réelle modifiée, PR #107 reste en Draft.
+
+### Gap signalé ici — comblé, ne PAS relire comme une limite restante
+
+> **Mise à jour** : le paragraphe ci-dessous, écrit à la livraison de ce
+> lot, signalait `group-achievements.ts::checkGroupAchievements` comme
+> une dépendance de même nature que celle corrigée ici mais laissée hors
+> périmètre. Reconsidéré : la purge doit préserver les récompenses de
+> groupe et leur calcul futur — ce gap est **comblé** dans « V2 (suite, 3)
+> — préservation des trophées de groupe » plus bas. Conservé tel quel
+> pour l'historique.
+
+`src/lib/group-achievements.ts::checkGroupAchievements` recalcule
+certains trophées de groupe encore **verrouillés** (ex. "Century" — 100
+soirées) via un `Session.findMany({status:"DONE"})` en direct — une
+dépendance de même nature que celle corrigée ici, mais sur un fichier
+différent, non mentionné par cette demande (qui cible explicitement
+`home.ts`). Les trophées déjà débloqués ne sont jamais affectés (recalcul
+limité aux trophées `unlockedAt: null`), donc aucune régression visible
+tant qu'un trophée à seuil élevé n'est pas sur le point de se débloquer
+au moment même où ses soirées constitutives commencent à être purgées —
+un cas limite, non corrigé ici, signalé plutôt que passé sous silence.
+
+---
+
+## V2 (suite, 3) — préservation des trophées de groupe (GroupAchievement)
+
+Le gap signalé au lot précédent (`group-achievements.ts` a une
+dépendance de même nature que `home.ts` mais laissée hors périmètre) est
+**réintégré dans le périmètre** : la purge doit préserver les
+récompenses de groupe et leur calcul futur, pas seulement les stats
+d'affichage de la Home.
+
+### Quels succès sont concernés, et l'effet EXACT d'une purge
+
+10 trophées de groupe (`GROUP_ACHIEVEMENT_DEFS`, `src/lib/group-achievements.ts`),
+recalculés à chaque `markSessionDone` (`checkGroupAchievements`).
+Analyse prédicat par prédicat :
+
+| Trophée | Seuil | Dépendait de | Effet exact d'une purge (AVANT ce lot) |
+|---|---|---|---|
+| Première soirée | ≥1 soirée | `doneSessions.length` | Aucun en pratique — voir "immunisés" ci-dessous (mais lisait la même variable que les 2 suivants). |
+| Marathoniens | ≥10 soirées | `doneSessions.length` | **Régression quasi systématique** : dès qu'une 11ᵉ soirée ferme après que les premières ont dépassé 7 jours, `totalDone` (direct) ne peut plus jamais atteindre 10 en une seule lecture — le trophée ne se débloque plus. |
+| Century | ≥100 soirées | `doneSessions.length` | Même cause, encore plus systématique (100 soirées simultanément vivantes est hautement improbable avec une purge à 7 jours). |
+| Diversité | ≥10 jeux distincts | `Set` sur `decidedGameId` des soirées vivantes | Même régression : les jeux des soirées les plus anciennes purgées "disparaissent" du calcul. |
+| Squad | ≥5 participants distincts | Voteurs de la proposition gagnante, recalculés depuis `Proposal`/`Vote` des soirées vivantes | Même régression : `Proposal`/`Vote` cascadent avec `Session` (purgés avec elle), les participants des soirées les plus anciennes disparaissent du calcul. |
+| Réguliers | 4 semaines calendaires consécutives | `Set` de semaines dérivé des dates des soirées vivantes | Même régression : une semaine dont la soirée a été purgée disparaît du calcul, cassant la continuité. |
+| Noctambules | 1 soirée après 23h | `doneSessions` vivantes | **Aucun effet réel** — voir "immunisés" ci-dessous. |
+| Full House | 1 soirée réunissant tout le groupe | `doneSessions` vivantes + `Proposal`/`Vote` | **Aucun effet réel** — voir "immunisés" ci-dessous. |
+| Collectionneur collectif | ≥500 jeux en bibliothèque | `UserGame` (jamais lié à `Session`) | **Aucun** — pas de dépendance à `Session`. |
+| Légendaire | 1 membre rang Légende | `User.xpTotal` (jamais lié à `Session`) | **Aucun** — pas de dépendance à `Session`. |
+
+**Pourquoi "Noctambules"/"Full House" sont immunisés PAR CONSTRUCTION,
+sans avoir besoin d'un correctif** : ce sont des prédicats à seuil
+**unique** (1 occurrence suffit), et `checkGroupAchievements` est
+appelée **inconditionnellement à chaque `markSessionDone`** — la soirée
+qui vient de passer `DONE` est donc *toujours* encore vivante au moment
+de **son propre check** (la purge exige 7 jours d'ancienneté minimum,
+largement après ce premier passage). Une fois débloqué, `unlockedAt` ne
+revient jamais à `null` — la purge d'une soirée plus ancienne ne peut
+donc jamais "reverrouiller" un trophée déjà acquis. Démontré par test
+(`« noctambules »/« full-house » restent corrects après purge`,
+`retention.integration.test.ts`) plutôt qu'affirmé sans preuve : **aucun
+nouveau schéma pour ces deux-là**.
+
+Les 6 autres (premiere-soiree/marathoniens/century/diversite/squad/
+reguliers) partagent une même cause : un **seuil cumulatif** qui doit
+être observé en une seule lecture de `Session.findMany({status:"DONE"})`
+— une lecture qui, une fois la purge active, ne voit plus jamais
+l'historique complet.
+
+### Correctif — réutilisation des agrégats durables déjà existants, un seul ajout minimal
+
+4 des 6 prédicats affectés se réparent **sans le moindre nouveau
+schéma**, en réutilisant des agrégats déjà introduits aux lots
+précédents de ce chantier :
+
+- **Première soirée / Marathoniens / Century** (`totalDone`) → lisent
+  désormais `GroupSessionStats.totalSessionsPlayed` (déjà écrit par
+  `markSessionDone`, jamais retouché par la purge).
+- **Diversité** (`distinctGames`) → lit désormais
+  `prisma.groupGameStat.count()` : une ligne `GroupGameStat` existe tant
+  qu'un jeu a été décidé au moins une fois, **même si toutes ses soirées
+  ont depuis été purgées** (elle n'est supprimée que si le `Game`
+  lui-même l'était — jamais le cas dans ce chantier).
+- **Squad** (`allParticipantIds`) → lit désormais
+  `prisma.xpEvent.findMany({where:{reason:"PARTICIPATE"}, distinct:["userId"]})`.
+  `XpEvent` `PARTICIPATE` est écrit pour **exactement la même population**
+  que l'ancien calcul (voteurs de la proposition gagnante, à la clôture
+  du vote dans `closeSession`, src/lib/sessions.ts) — sans FK vers
+  `Session`, déjà à l'abri de toute purge, comme tous les `XpEvent`.
+
+Seul **Réguliers** (4 semaines consécutives) n'avait **aucun** agrégat
+durable existant capable de le remplacer : ni `GroupSessionStats`
+(un entier global, pas de granularité hebdomadaire) ni `SessionResult`
+(créé seulement si le créateur saisit les résultats — **optionnel**,
+donc incomplet pour couvrir *toutes* les soirées DONE) ne suffisaient.
+Seul nouvel ajout de schéma de ce lot :
+
+```prisma
+model GroupActiveWeek {
+  weekStart DateTime @id // lundi 00:00 UTC de la semaine, même calcul que getWeekStart()
+}
+```
+
+Une ligne PAR SEMAINE ayant eu ≥1 soirée DONE — jamais une ligne par
+soirée, jamais un compteur incrémenté (upsert idempotent, `update: {}`
+— seule l'existence de la semaine compte). Écrite dans **la même
+transaction** que `GroupSessionStats`/`GroupGameStat`, au même point
+unique (`markSessionDone`), donc soumise aux mêmes garanties
+d'atomicité et de non-concurrence (voir « V2 (suite, 2) »).
+
+### Aucune double attribution — mécanisme inchangé, revérifié
+
+Le verrou existant (`groupAchievement.updateMany({where:{id, unlockedAt:null}, ...})`,
+inchangé par ce lot) garantissait déjà qu'un trophée n'est jamais
+débloqué/annoncé deux fois, y compris en cas d'appels concurrents à
+`checkGroupAchievements` — revérifié explicitement par un nouveau test
+de concurrence (deux appels `Promise.all` sur un trophée à un pas du
+déblocage : un seul des deux l'obtient, une seule notification créée).
+Un rappel séquentiel (ex. clôture d'une autre soirée juste après)
+retourne `[]` et ne touche ni `unlockedAt` ni les notifications déjà
+posées — testé explicitement.
+
+### Tests ajoutés (`src/lib/retention.integration.test.ts`, describe « Trophées de groupe »)
+
+Chaque test construit le scénario où l'**ancien** calcul (`doneSessions`
+en direct) aurait échoué : les soirées contributrices sont purgées
+**avant** que le trophée ne soit vérifié, jamais après — la preuve porte
+sur la résilience à la purge, pas seulement sur un calcul en conditions
+normales :
+
+- **Marathoniens** : 9 soirées anciennes closes puis purgées, une 10ᵉ
+  soirée récente ferme ensuite — débloqué (10 en durable), "Century"
+  reste correctement verrouillé (10 < 100, même mécanisme partagé).
+- **Diversité** : 9 jeux distincts joués puis purgés, un 10ᵉ jeu ferme
+  ensuite — débloqué.
+- **Squad** : 5 soirées d'autant de participants distincts, **toutes**
+  purgées avant toute nouvelle vérification (aucune soirée vivante au
+  moment du check) — débloqué via `XpEvent` seul.
+- **Réguliers** : 3 premières semaines consécutives closes puis
+  purgées, la 4ᵉ ferme ensuite — débloqué via `GroupActiveWeek` seul.
+- **Noctambules/Full House** : débloqués à la clôture de LA soirée
+  qualifiante, puis 3 AUTRES vieilles soirées purgées — état
+  strictement identique avant/après (`toEqual`), ni reverrouillés ni
+  redébloqués.
+- **Idempotence séquentielle** : un rappel explicite ne redébloque rien,
+  ne réécrit pas `unlockedAt`, ne crée pas de notification
+  supplémentaire.
+- **Concurrence** : deux appels `Promise.all` sur le même trophée
+  prêt à se débloquer — un seul déblocage, une seule notification.
+
+**Résultats mis à jour** : Postgres complet **663/663** (up de
+656/656 — 7 nouveaux tests), rapide (hors Postgres) **402/402**
+(inchangé, Postgres-only), `npx tsc --noEmit` / `npx eslint .` sans
+erreur, `npx next build` réussi.
+
+### Migration (`20260925090000_add_group_active_week`)
+
+Additive : `CREATE TABLE "GroupActiveWeek"` + backfill des semaines déjà
+représentées par les soirées DONE existantes, calculé en SQL avec la
+**même arithmétique exacte** que `getWeekStart()` (jour ISO de la
+semaine, UTC, aucune conversion de fuseau horaire) — vérifié
+manuellement par comparaison (`2026-09-01` → lundi `2026-08-31` des deux
+côtés) et **sans dérive** via `prisma migrate diff`. S'exécute avant
+tout déploiement du code de purge, donc toutes les soirées DONE
+existent encore à cet instant — même principe que les deux backfills
+précédents (`UserLifetimeStats`, `GroupSessionStats`/`GroupGameStat`).
+
+### Pas de nouvelle refonte, rien d'autre modifié
+
+Aucun changement à `RETENTION_CLEANUP_ENABLED`/`RETENTION_CLEANUP_MODE`
+(nettoyage désactivé par défaut, dry-run inchangé), aucune migration
+appliquée ailleurs que sur la base Postgres de test locale isolée,
+aucune donnée réelle modifiée, PR #107 reste en Draft. Aucun autre
+prédicat/fichier retouché au-delà de `group-achievements.ts`/`sessions.ts`/
+`prisma/schema.prisma` — en particulier, `Collectionneur collectif` et
+`Légendaire` sont restés inchangés (jamais dépendants de `Session`,
+rien à corriger).

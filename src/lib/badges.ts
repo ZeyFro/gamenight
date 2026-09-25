@@ -146,9 +146,20 @@ async function unlockBadge(userId: string, badge: Badge): Promise<boolean> {
   return true;
 }
 
-/** Après `createSession` — First Blood / Meneur / Community leader. */
+/**
+ * Après `createSession` — First Blood / Meneur / Community leader.
+ *
+ * Chantier nettoyage réel du stockage (V2, suite) — compte les `XpEvent`
+ * `CREATE_SESSION` (posés à CHAQUE création de session, classique ET
+ * roulette — voir `session-lifecycle.ts`/`roulette.ts`) plutôt que les
+ * lignes `Session` elles-mêmes : même raisonnement EXACT que
+ * `checkSessionsParticipatedBadges`/`checkVotesCastBadges` juste en
+ * dessous (déjà ainsi AVANT ce chantier) — un badge ne doit jamais se
+ * reverrouiller/sous-compter parce qu'une soirée ancienne a été purgée,
+ * seul le cumul historique compte.
+ */
 export async function checkSessionsCreatedBadges(userId: string): Promise<boolean> {
-  const count = await prisma.session.count({ where: { createdById: userId } });
+  const count = await prisma.xpEvent.count({ where: { userId, reason: "CREATE_SESSION" } });
   return unlockMatchingBadges(userId, { sessionsCreated: count });
 }
 
@@ -227,15 +238,29 @@ export async function checkBetBadges(userId: string): Promise<void> {
  * Après la fin d'un tournoi (`finalizeTournament`, src/lib/tournaments.ts),
  * pour chaque participant — "Champion de tournoi" (1 victoire) et
  * "Gladiateur" (5 tournois joués, gagnés ou non).
+ *
+ * Chantier nettoyage réel du stockage (V2, suite) — ni `Tournament` ni
+ * `TournamentParticipant` ne survivent à la purge (contrairement à
+ * `SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet`, aucune autre
+ * lecture durable n'en dépend — voir le README) : ces deux critères ne
+ * peuvent donc plus compter des lignes live.
+ *   - `tournamentsWon` — compte les `XpEvent` `TOURNAMENT_RESULT` dont le
+ *     `sourceId` finit par `:1st` (posé UNIQUEMENT pour le champion, voir
+ *     `announceTournamentFinalization`, tournaments.ts) — déjà durable,
+ *     aucun nouveau champ nécessaire.
+ *   - `tournamentsParticipated` — `UserLifetimeStats.tournamentsParticipatedCount`,
+ *     résumé durable MINIMAL maintenu à l'inscription/désinscription (voir
+ *     `registerForTournamentAction`/`unregisterFromTournamentAction`,
+ *     tournois/actions.ts) — jamais recalculé par un `count()`.
  */
 export async function checkTournamentBadges(userId: string): Promise<void> {
-  const [won, participated] = await Promise.all([
-    prisma.tournament.count({ where: { championId: userId } }),
-    prisma.tournamentParticipant.count({ where: { userId } }),
+  const [won, stats] = await Promise.all([
+    prisma.xpEvent.count({ where: { userId, reason: "TOURNAMENT_RESULT", sourceId: { endsWith: ":1st" } } }),
+    prisma.userLifetimeStats.findUnique({ where: { userId }, select: { tournamentsParticipatedCount: true } }),
   ]);
   await unlockMatchingBadges(userId, {
     tournamentsWon: won,
-    tournamentsParticipated: participated,
+    tournamentsParticipated: stats?.tournamentsParticipatedCount ?? 0,
   });
 }
 

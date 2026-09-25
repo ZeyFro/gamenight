@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  addThreadMember,
   archiveThread,
+  deleteChannelMessage,
+  deleteThreadPermanently,
   editChannelMessage,
   NO_MENTIONS,
   openDmChannel,
@@ -589,6 +592,93 @@ describe("discord-rest", () => {
         now: NOW,
       });
       expect(JSON.stringify(result)).not.toMatch(/super-secret/);
+    });
+  });
+
+  describe("chantier nettoyage réel du stockage (V2) — suppression permanente", () => {
+    it("deleteThreadPermanently : DELETE /channels/{id}, sans corps, succès sur 204", async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+      const result = await deleteThreadPermanently({ threadId: "thread-1", deadline: FAR_FUTURE, now: NOW });
+      expect(result).toEqual({ ok: true, data: { threadId: "thread-1" } });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe("https://discord.com/api/v10/channels/thread-1");
+      expect(init.method).toBe("DELETE");
+      expect(init.body).toBeUndefined();
+    });
+
+    it("deleteThreadPermanently : un fil déjà absent (404) reste honnêtement classifié not_found — JAMAIS un succès depuis ce module (la décision d'équivalence appartient au résolveur appelant)", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(404, { code: 10003, message: "Unknown Channel" }));
+      const result = await deleteThreadPermanently({ threadId: "thread-1", deadline: FAR_FUTURE, now: NOW });
+      expect(result).toEqual({
+        ok: false,
+        kind: "not_found",
+        httpStatus: 404,
+        message: expect.any(String),
+        retryable: false,
+      });
+    });
+
+    it("deleteThreadPermanently : permission refusée (403) — non-retryable, jamais un succès", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(403, { code: 50013, message: "Missing Permissions" }));
+      const result = await deleteThreadPermanently({ threadId: "thread-1", deadline: FAR_FUTURE, now: NOW });
+      expect(result.ok).toBe(false);
+      expect(result).toMatchObject({ kind: "auth_or_permission", retryable: false });
+    });
+
+    it("deleteChannelMessage : DELETE /channels/{c}/messages/{m}, sans corps, succès sur 204", async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+      const result = await deleteChannelMessage({
+        channelId: "chan-1",
+        messageId: "msg-1",
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      expect(result).toEqual({ ok: true, data: { channelId: "chan-1", messageId: "msg-1" } });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe("https://discord.com/api/v10/channels/chan-1/messages/msg-1");
+      expect(init.method).toBe("DELETE");
+    });
+
+    it("deleteChannelMessage : message déjà absent (404) reste honnêtement classifié not_found", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(404, { code: 10008, message: "Unknown Message" }));
+      const result = await deleteChannelMessage({
+        channelId: "chan-1",
+        messageId: "msg-1",
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      expect(result).toMatchObject({ ok: false, kind: "not_found", retryable: false });
+    });
+
+    it("deleteThreadPermanently/deleteChannelMessage : aucun appel réseau tenté si le budget de bail est insuffisant", async () => {
+      const almostExpired = new Date(NOW.getTime() + 500);
+      const r1 = await deleteThreadPermanently({ threadId: "thread-1", deadline: almostExpired, now: NOW });
+      const r2 = await deleteChannelMessage({
+        channelId: "chan-1",
+        messageId: "msg-1",
+        deadline: almostExpired,
+        now: NOW,
+      });
+      expect(r1).toMatchObject({ ok: false, kind: "insufficient_lease" });
+      expect(r2).toMatchObject({ ok: false, kind: "insufficient_lease" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("chantier auto-adhésion aux fils de tournois (V2) — addThreadMember non vérifié", () => {
+    it("PUT /channels/{id}/thread-members/{user}, idempotent sur 204, sans revérification de type (contrairement à addThreadMemberVerified)", async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+      const result = await addThreadMember({
+        threadId: "thread-1",
+        discordUserId: "user-1",
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      expect(result).toEqual({ ok: true, data: {} });
+      expect(fetchMock).toHaveBeenCalledTimes(1); // aucun GET de vérification préalable
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe("https://discord.com/api/v10/channels/thread-1/thread-members/user-1");
+      expect(init.method).toBe("PUT");
     });
   });
 });

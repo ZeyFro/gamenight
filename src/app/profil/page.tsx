@@ -54,32 +54,39 @@ export default async function ProfilApercuPage() {
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
     }),
+    // Chantier nettoyage réel du stockage (V2, suite) — `gameName`
+    // dénormalisé, survit à la purge de la soirée (jamais de jointure
+    // `session.decidedGame` qui deviendrait `null`).
     prisma.superlativeAward.findMany({
       where: { winnerUserId: user.id },
-      include: { category: true, session: { include: { decidedGame: true } } },
+      include: { category: true },
       orderBy: { createdAt: "desc" },
       take: 3,
     }),
     // Sprint 4 (Pronostics) — taux de réussite sur les pronos déjà résolus
     // (`correct` non-null), un prono en attente (soirée pas encore
-    // `DONE`) ne compte ni pour ni contre.
+    // `DONE`) ne compte ni pour ni contre. `Pronostic` survit désormais à
+    // la purge de sa soirée (`onDelete: SetNull`) — ce taux reste exact À
+    // VIE, jamais sous-compté au fil des purges.
     prisma.pronostic.groupBy({
       by: ["correct"],
       where: { voterId: user.id, correct: { not: null } },
       _count: { _all: true },
     }),
     // Sprint 4 (Paris d'XP) — historique gains/pertes, résolus seulement.
+    // `gameName` dénormalisé (voir `XpBet` dans le schéma).
     prisma.xpBet.findMany({
       where: { voterId: user.id, won: { not: null } },
-      include: { target: true, session: { select: { decidedGame: { select: { name: true } } } } },
+      include: { target: true },
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
     // Amélioration profil (stats) — sert à la fois le win rate et le jeu
-    // le plus joué, une seule requête pour les deux.
+    // le plus joué, une seule requête pour les deux. `gameId`/`gameName`
+    // dénormalisés sur `SessionResult` (survit à la purge de sa soirée).
     prisma.sessionResult.findMany({
       where: { userId: user.id },
-      select: { placement: true, session: { select: { decidedGame: true } } },
+      select: { placement: true, gameId: true, gameName: true },
     }),
     prisma.xpBet.aggregate({
       where: { voterId: user.id, won: true },
@@ -115,16 +122,27 @@ export default async function ProfilApercuPage() {
 
   // Jeu le plus joué — toutes soirées confondues (coop incluses), simple
   // décompte en mémoire (pas de `groupBy` possible à travers une relation
-  // en Prisma), même approche que `monthly-recap.ts`.
-  const gamePlayCounts = new Map<string, { name: string; coverUrl: string | null; count: number }>();
+  // en Prisma), même approche que `monthly-recap.ts`. Basé sur
+  // `SessionResult.gameId`/`gameName` (dénormalisés, survivent à la purge
+  // de la soirée) — jamais `session.decidedGame`.
+  const gamePlayCounts = new Map<string, { name: string; count: number }>();
   for (const result of sessionResults) {
-    const game = result.session.decidedGame;
-    if (!game) continue;
-    const entry = gamePlayCounts.get(game.id);
+    if (!result.gameId || !result.gameName) continue;
+    const entry = gamePlayCounts.get(result.gameId);
     if (entry) entry.count += 1;
-    else gamePlayCounts.set(game.id, { name: game.name, coverUrl: game.coverUrl, count: 1 });
+    else gamePlayCounts.set(result.gameId, { name: result.gameName, count: 1 });
   }
-  const mostPlayedGame = [...gamePlayCounts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
+  const topGameEntry = [...gamePlayCounts.entries()].sort((a, b) => b[1].count - a[1].count)[0];
+  // `coverUrl` n'est jamais dénormalisé (uniquement nécessaire pour LE jeu
+  // le plus joué, une lecture supplémentaire ciblée suffit — `Game`
+  // lui-même n'est jamais purgé par ce chantier, sa couverture reste
+  // toujours accessible).
+  const topGame = topGameEntry
+    ? await prisma.game.findUnique({ where: { id: topGameEntry[0] }, select: { coverUrl: true } })
+    : null;
+  const mostPlayedGame = topGameEntry
+    ? { name: topGameEntry[1].name, count: topGameEntry[1].count, coverUrl: topGame?.coverUrl ?? null }
+    : null;
 
   // Paris d'XP gagnés payent double (cf. `resolveBets` dans xp-bets.ts).
   const xpWonFromBets = (xpBetsWon._sum.amount ?? 0) * 2;
@@ -288,7 +306,7 @@ export default async function ProfilApercuPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">{award.category.name}</p>
                   <p className="text-xs text-muted">
-                    {award.session.decidedGame?.name ?? "?"}
+                    {award.gameName ?? "?"}
                   </p>
                 </div>
               </Card>
@@ -317,9 +335,7 @@ export default async function ProfilApercuPage() {
               <Card key={bet.id} className="flex items-center justify-between gap-3">
                 <p className="text-sm text-foreground">
                   {bet.amount} XP sur {bet.target.discordName}
-                  {bet.session.decidedGame && (
-                    <span className="text-muted"> · {bet.session.decidedGame.name}</span>
-                  )}
+                  {bet.gameName && <span className="text-muted"> · {bet.gameName}</span>}
                 </p>
                 <span
                   className={`shrink-0 text-sm font-semibold ${bet.won ? "text-accent" : "text-destructive"}`}

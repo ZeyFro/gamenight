@@ -14,9 +14,11 @@ export default async function PoteSuperlatifsPage({
 
   const { id } = await params;
 
+  // Chantier nettoyage réel du stockage (V2, suite) — `gameName`/
+  // `sessionDate` dénormalisés, survivent à la purge de la soirée.
   const awards = await prisma.superlativeAward.findMany({
     where: { winnerUserId: id },
-    include: { category: true, session: { include: { decidedGame: true } } },
+    include: { category: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -26,8 +28,8 @@ export default async function PoteSuperlatifsPage({
         id: a.id,
         categoryIcon: a.category.icon,
         categoryName: a.category.name,
-        gameName: a.session.decidedGame?.name ?? "?",
-        sessionDate: a.session.date,
+        gameName: a.gameName ?? "?",
+        sessionDate: a.sessionDate ?? a.createdAt,
         voteCount: a.voteCount,
       }))}
       emptyMessage="Aucune récompense gagnée pour l'instant."
