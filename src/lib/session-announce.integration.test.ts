@@ -1416,21 +1416,53 @@ describe.skipIf(!TEST_DATABASE_URL)(
           await db.notificationEvent.count({ where: { sourceId: stored.id, eventType: "SESSION_CREATED" } })
         ).toBe(1);
 
-        // Fil privé créé en premier (aucune dépendance), puis l'annonce
-        // POSTÉE DEDANS — doit rendre l'état "validée" (pas "nouvelle
-        // soirée à voter", cette session n'a jamais été VOTING) ET la
-        // notification interne assortie doit porter le bon type/titre
-        // (bug corrigé : `resolveSendNotificationMeta`).
+        // Fil privé créé en premier (aucune dépendance). Bug remonté en
+        // test réel (aucun ping Discord reçu) : contrairement à une
+        // session classique (premier SEND en VOTING, ne mentionne jamais
+        // personne), une session Roulette mentionne RÉELLEMENT des joueurs
+        // dès son tout premier SEND (le jeu et les votants sont déjà
+        // connus à la création) — ce SEND doit donc attendre que ces
+        // joueurs soient membres CONFIRMÉS du fil avant de partir, sinon
+        // Discord ne les notifierait jamais malgré la mention dans le
+        // texte (voir `verifyMentionedUsersAreThreadMembers`,
+        // session-announce.ts). Ordre réel de traitement (`sequence`) :
+        // thread → announce (PAS ENCORE prêt, p1/p2 pas encore membres) →
+        // creator-member → invite:p1 → invite:p2 → announce (prêt cette
+        // fois, retenté après le backoff de dépendance).
+        const t0 = new Date("2026-01-01T00:00:00.000Z");
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
-        await processOne();
+        await processOne(t0); // thread
+
+        const notReady = await processOne(t0); // announce — p1/p2 pas encore membres du fil
+        expect(notReady).toMatchObject({ outcome: "retrying", errorClass: "resolver:dependency_not_ready" });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // aucun appel réseau supplémentaire pour ce refus
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // creator-member
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:p1 — ajout réel au fil
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:p2 — ajout réel au fil
+
+        // Au-delà du backoff de dépendance (2 min) pour qu'`announce`
+        // redevienne éligible à la réclamation.
+        const later = new Date(t0.getTime() + 5 * 60_000);
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "thread-1" }));
-        const outcome = await processOne();
+        const outcome = await processOne(later); // announce — p1/p2 désormais membres, part enfin
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[2];
-        const body = JSON.parse(String(init.body));
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        const body = JSON.parse(String(init!.body));
         expect(body.embeds[0].title).toContain(`Soirée validée : ${game.name}`);
+        // Le PING lui-même — la mention des deux joueurs, absente avant ce
+        // fix (c'est précisément le bug remonté : le salon était créé,
+        // mais personne n'était jamais mentionné/notifié).
+        expect(body.content).toContain(`<@${p1.discordId}>`);
+        expect(body.content).toContain(`<@${p2.discordId}>`);
 
         const notifications = await db.notification.findMany({ where: { relatedSessionId: stored.id } });
         expect(notifications.length).toBeGreaterThan(0);
@@ -1515,16 +1547,33 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // Aucune mention n'existe encore à cet instant — seule l'intention
         // de notification a été posée à l'enqueue. Le SEND réel, traité
         // ici, doit relire la préférence à CE moment (potentiellement bien
-        // plus tard que l'enqueue, selon la cadence du cron).
+        // plus tard que l'enqueue, selon la cadence du cron). Comme dans le
+        // test précédent, l'annonce attend que les DEUX votants (candidats
+        // aux mentions AVANT filtrage par préférence — `roulettePrefOff`
+        // y compris, bien qu'il finisse exclu du message) soient membres
+        // confirmés du fil avant de partir.
+        const t0 = new Date("2026-01-01T00:00:00.000Z");
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
-        await processOne();
+        await processOne(t0); // thread
+        await processOne(t0); // announce — pas encore prêt (retrying)
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // creator-member
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:roulettePrefOff
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:sessionPrefOff
+
+        const later = new Date(t0.getTime() + 5 * 60_000);
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "thread-1" }));
-        const outcome = await processOne();
+        const outcome = await processOne(later); // announce — désormais prêt
         expect(outcome?.outcome).toBe("sent");
 
-        const [, init] = fetchMock.mock.calls[2];
-        const body = JSON.parse(String(init.body));
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        const body = JSON.parse(String(init!.body));
         expect(body.content).not.toContain(`<@${roulettePrefOff.discordId}>`);
         expect(body.content).toContain(`<@${sessionPrefOff.discordId}>`);
 
@@ -1533,6 +1582,73 @@ describe.skipIf(!TEST_DATABASE_URL)(
         ).map((n) => n.userId);
         expect(notifiedUserIds).not.toContain(roulettePrefOff.id);
         expect(notifiedUserIds).toContain(sessionPrefOff.id);
+      });
+
+      it("NON-RÉGRESSION — création roulette : la notification Discord part avec EXACTEMENT les bons utilisateurs, jamais de doublon de ping", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser({ discordName: "p1" });
+        const p2 = await makeUser({ discordName: "p2" });
+        const outsider = await makeUser({ discordName: "jamais-invite" });
+        const game = await makeGame(creator.id);
+        const roulette = await makeRoulette(creator.id, [
+          { userId: p1.id, gameId: game.id },
+          { userId: p2.id, gameId: game.id },
+        ]);
+
+        vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+        await rouletteLib.spinRoulette(roulette.id);
+        const stored = await db.session.findFirstOrThrow({ where: { createdViaRoulette: true } });
+
+        const t0 = new Date("2026-01-01T00:00:00.000Z");
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(t0); // thread
+        await processOne(t0); // announce — pas encore prêt
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // creator-member
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:p1
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(t0); // invite:p2
+
+        const later = new Date(t0.getTime() + 5 * 60_000);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-1", channel_id: "thread-1" }));
+        const outcome = await processOne(later);
+        expect(outcome?.outcome).toBe("sent");
+
+        // EXACTEMENT les bons utilisateurs mentionnés — ni un tiers jamais
+        // invité, ni le créateur en double (il n'a jamais voté, aucune
+        // raison structurelle qu'il apparaisse dans les mentions ici).
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        const body = JSON.parse(String(init!.body));
+        expect(body.allowed_mentions.users.sort()).toEqual([p1.discordId, p2.discordId].sort());
+        expect(body.content).not.toContain(`<@${outsider.discordId}>`);
+        expect(body.content).not.toContain(`<@${creator.discordId}>`);
+
+        // Un seul SEND en base pour ce rôle — jamais deux lignes pour la
+        // même cible/occurrence (garantie d'idempotence préexistante de
+        // `createNotificationEvent`/`enqueueDelivery`, revérifiée ici dans
+        // le contexte spécifique de ce bug).
+        const announceDeliveries = await db.notificationDelivery.findMany({
+          where: { targetSlot: `default-guild:SESSION:${stored.id}:announce`, operation: "SEND" },
+        });
+        expect(announceDeliveries).toHaveLength(1);
+        expect(announceDeliveries[0].status).toBe("SENT");
+
+        // Un seul appel réseau de POST message pour cette annonce — jamais
+        // un second ping renvoyé pour les mêmes destinataires (un rappel
+        // du même passage, ou un passage suivant, ne republie rien).
+        const messagePosts = fetchMock.mock.calls.filter(
+          ([url, init]) =>
+            String(url).includes("/messages") && (init as RequestInit | undefined)?.method === "POST"
+        );
+        expect(messagePosts).toHaveLength(1);
+
+        const laterAgain = new Date(later.getTime() + 60_000);
+        expect(await processOne(laterAgain)).toBeNull(); // plus rien à traiter, aucun doublon possible
       });
     });
 

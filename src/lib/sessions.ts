@@ -77,7 +77,16 @@ export async function createRouletteResultSession(data: {
       // participant Roulette n'était jusqu'ici jamais synchronisé vers le
       // fil Discord tant qu'il n'était pas réinvité manuellement — voir le
       // commentaire de `enqueueSessionInviteSyncForNewInvite`,
-      // session-announce.ts.
+      // session-announce.ts. L'ORDRE d'enqueue ici (après thread/annonce)
+      // n'a plus d'importance pour le ping : `resolveAnnounceDelivery`
+      // (`verifyMentionedUsersAreThreadMembers`, session-announce.ts)
+      // vérifie désormais explicitement, au traitement RÉEL du SEND, que
+      // chaque joueur mentionné est déjà membre confirmé du fil — sinon
+      // `dependency_not_ready`, retenté normalement une fois ces ajouts de
+      // membre traités (bug remonté en test réel : le premier SEND d'une
+      // session Roulette mentionne réellement des joueurs dès son tout
+      // premier envoi, contrairement à une session classique dont le
+      // premier SEND — statut VOTING — ne mentionne jamais personne).
       for (const inviteId of createdInviteIds) {
         await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
       }

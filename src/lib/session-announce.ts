@@ -870,6 +870,73 @@ async function findSentDelivery(targetSlot: string) {
 }
 
 /**
+ * Bug remonté en test réel (sessions Roulette) — le SEND initial de
+ * `announce` mentionne parfois des joueurs DÈS SA PREMIÈRE émission (le
+ * jeu est déjà décidé à la création pour une session Roulette,
+ * `createRouletteResultSession`, contrairement à une session classique où
+ * le premier SEND — statut VOTING — ne mentionne jamais personne, aucun
+ * vote n'existe encore à cet instant : la classique n'a donc jamais pu
+ * rencontrer ce bug). Or `enqueueSessionCreationDeliveries` (qui enqueue
+ * `thread` PUIS `announce`) est appelée AVANT la boucle qui enqueue les
+ * `invite:<id>` de chaque participant (`createRouletteResultSession`,
+ * sessions.ts) — `announce` reçoit donc une `sequence` PLUS PETITE que
+ * les ajouts de membre au fil, et `claimNextDelivery` traite les
+ * livraisons dues STRICTEMENT par `sequence` croissante (voir son
+ * commentaire, notification-delivery.ts) : `announce` était ainsi posté
+ * — mentions Discord dans le texte — AVANT que les joueurs mentionnés
+ * n'aient été ajoutés comme membres du fil PRIVÉ, qui ne notifie jamais
+ * quelqu'un mentionné mais absent du fil au moment du post.
+ *
+ * Corrigé ICI plutôt qu'en réordonnant l'enqueue (plus robuste : ne
+ * dépend pas d'une hypothèse d'ordre de traitement, fonctionne même si
+ * l'exécuteur retente `invite:X` avec un backoff) — le SEND initial
+ * vérifie explicitement que CHAQUE personne qu'il va mentionner est déjà
+ * un membre confirmé du fil (son `invite:<id>`, ou `creator-member` pour
+ * le créateur, déjà `SENT`) avant de partir ; sinon `dependency_not_ready`,
+ * retenté normalement au passage suivant — exactement le même idiome que
+ * la dépendance sur `thread` juste au-dessus. Sans effet sur la classique
+ * (son SEND initial ne mentionne jamais personne, la fonction retourne
+ * alors immédiatement `true`) ni sur aucune EDIT ultérieure (jamais
+ * appelée pour ce cas, seul le tout premier SEND peut mentionner
+ * quelqu'un avant que le fil n'ait eu la moindre chance de se peupler).
+ */
+async function verifyMentionedUsersAreThreadMembers(
+  sessionId: string,
+  creatorId: string,
+  mentions: { id: string }[]
+): Promise<boolean> {
+  if (mentions.length === 0) return true;
+
+  if (mentions.some((m) => m.id === creatorId)) {
+    const creatorSent = await findSentDelivery(creatorMemberSlot(sessionId));
+    if (!creatorSent) return false;
+  }
+
+  const nonCreatorIds = mentions.map((m) => m.id).filter((id) => id !== creatorId);
+  if (nonCreatorIds.length === 0) return true;
+
+  const invites = await prisma.sessionInvite.findMany({
+    where: { sessionId, userId: { in: nonCreatorIds }, status: "ACTIVE" },
+    select: { id: true },
+  });
+  // Un mentionné sans invitation ACTIVE ne devrait jamais arriver (les
+  // mentions viennent des votants, toujours invités à la création) —
+  // prudence : jamais envoyé tant que ce cas n'est pas résolu plutôt que
+  // de supposer silencieusement que ça n'arrivera jamais.
+  if (invites.length < nonCreatorIds.length) return false;
+
+  const sentInviteDeliveries = await prisma.notificationDelivery.findMany({
+    where: {
+      targetSlot: { in: invites.map((invite) => inviteSlot(sessionId, invite.id)) },
+      operation: "SEND",
+      status: "SENT",
+    },
+    select: { targetSlot: true },
+  });
+  return sentInviteDeliveries.length === invites.length;
+}
+
+/**
  * Résolveur SESSION — dispatché par le rôle terminal du `targetSlot`
  * (`thread`/`announce`/`thread-reminder-<n>`/`thread-summary`/
  * `invite:<inviteId>`). Chaque dépendance inter-`targetSlot` (tout
@@ -970,6 +1037,25 @@ async function resolveAnnounceDelivery(
   const rendering = resolveAnnounceRendering(session);
 
   if (delivery.operation === "SEND") {
+    // Voir `verifyMentionedUsersAreThreadMembers` — ne poste jamais le
+    // premier message d'une session Roulette (SEUL cas où le SEND initial
+    // mentionne réellement des joueurs dès sa toute première tentative,
+    // voir son commentaire) tant que ces joueurs ne sont pas encore membres
+    // du fil privé. Scopé à `createdViaRoulette` : une session classique
+    // n'a structurellement JAMAIS de votes au moment de son premier SEND
+    // (statut VOTING, personne n'a encore voté) — cette vérification y
+    // serait un no-op coûteux pour rien, et pourrait retarder à tort un
+    // SEND anticipé (ex. `drawSessionGame` décidant très tôt) qui reste,
+    // lui, un cas déjà géré/testé séparément, hors du périmètre de ce fix.
+    if (session.createdViaRoulette) {
+      const mentionsReady = await verifyMentionedUsersAreThreadMembers(
+        session.id,
+        session.createdById,
+        rendering.candidateMentions ?? []
+      );
+      if (!mentionsReady) return { eligible: false, reason: "dependency_not_ready" };
+    }
+
     const { notifType, notifTitle } = resolveSendNotificationMeta(session, rendering);
     const message = await buildMessageContent(
       session,

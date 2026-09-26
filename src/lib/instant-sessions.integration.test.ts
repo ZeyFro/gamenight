@@ -884,4 +884,146 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
       expect(new Set([...first.purgedInstantSessionIds, ...second.purgedInstantSessionIds])).toEqual(new Set(ids));
     });
   });
+
+  describe("Lecture — getInstantSessionView (bug remonté : 500 en production sur /jouer-maintenant/[id])", () => {
+    // Fonction qui alimente DIRECTEMENT la page détail (`[id]/page.tsx`) —
+    // là où un utilisateur atterrit juste après avoir créé une session
+    // (redirect immédiat) ou cliqué sur une session active depuis la
+    // liste. Aucun test d'intégration ne l'appelait DIRECTEMENT avant ce
+    // lot (seulement via des chemins détournés) — gap de couverture
+    // comblé ici, quelle qu'en soit la cause exacte du 500 remonté.
+
+    it("session valide, créateur seul : vue complète, aucune exception", async () => {
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+
+      const view = await lib.getInstantSessionView(created.instantSession.id, creator.id);
+      expect(view).not.toBeNull();
+      expect(view!.status).toBe("ACTIVE");
+      expect(view!.game.id).toBe(game.id);
+      expect(view!.creator.id).toBe(creator.id);
+      expect(view!.viewerIsCreator).toBe(true);
+      expect(view!.viewerIsParticipant).toBe(true);
+      expect(view!.participants).toHaveLength(1);
+      expect(view!.participants[0]).toMatchObject({ userId: creator.id, isPresent: true, eligible: false });
+      expect(view!.timeRemainingMs).toBeGreaterThan(0);
+      expect(view!.timeRemainingMs).toBeLessThanOrEqual(lib.INSTANT_SESSION_MAX_DURATION_MS);
+    });
+
+    it("session valide, avec un second participant ayant rejoint puis quitté : vue complète, aucune exception", async () => {
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+      const sessionId = created.instantSession.id;
+
+      await lib.joinInstantSession(sessionId, guest.id);
+      await lib.leaveInstantSession(sessionId, guest.id);
+
+      const view = await lib.getInstantSessionView(sessionId, guest.id);
+      expect(view).not.toBeNull();
+      expect(view!.participants).toHaveLength(2);
+      const guestView = view!.participants.find((p) => p.userId === guest.id);
+      expect(guestView).toBeDefined();
+      expect(guestView!.isPresent).toBe(false); // parti — intervalle fermé
+      expect(view!.viewerIsParticipant).toBe(false); // le viewer (guest) est parti, pas un participant actuel
+      expect(view!.viewerIsCreator).toBe(false);
+    });
+
+    it("session TERMINÉE (créateur a quitté) : vue cohérente avec endedAt/endedReason, aucune exception", async () => {
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+      const sessionId = created.instantSession.id;
+      await lib.joinInstantSession(sessionId, guest.id);
+      await lib.endInstantSession(sessionId, creator.id, "creator_left");
+
+      const view = await lib.getInstantSessionView(sessionId, guest.id);
+      expect(view).not.toBeNull();
+      expect(view!.status).toBe("ENDED");
+      expect(view!.endedReason).toBe("creator_left");
+      expect(view!.endedAt).not.toBeNull();
+      // `timeRemainingMs` reste dérivé de `expiresAt` (jamais recalculé à
+      // la fin) — une fin anticipée par le créateur, bien avant les 3h
+      // naturelles, laisse donc `timeRemainingMs` > 0 ; seul `status`
+      // (vérifié ci-dessus) fait foi pour l'UI (voir `isEnded`,
+      // `InstantSessionDetail.tsx`), jamais ce champ pour une session
+      // déjà terminée.
+      expect(view!.timeRemainingMs).toBeGreaterThan(0);
+      // Les DEUX intervalles ont été fermés au même instant par la fin —
+      // plus personne "présent", jamais une exception sur ce chemin.
+      expect(view!.participants.every((p) => !p.isPresent)).toBe(true);
+    });
+
+    it("session inexistante (id jamais créé) : retourne null proprement, jamais une exception — la page redirige sur ce cas", async () => {
+      const creator = await makeUser();
+      // Un id de forme plausible (même longueur qu'un vrai cuid) mais
+      // n'existant jamais en base — c'est EXACTEMENT ce que reçoit
+      // `getInstantSessionView` pour un lien périmé/mal formé, la page
+      // détail passant `params.id` BRUT, sans validation de schéma
+      // préalable (voir `[id]/page.tsx`).
+      const view = await lib.getInstantSessionView("cminexistantxxxxxxxxxxxxxxx", creator.id);
+      expect(view).toBeNull();
+    });
+
+    it("id complètement invalide (vide, caractères spéciaux, injection SQL tentée) : retourne null, jamais une exception serveur", async () => {
+      const creator = await makeUser();
+      for (const bogusId of ["", "'; DROP TABLE \"InstantSession\"; --", "🎮", "a".repeat(500)]) {
+        await expect(lib.getInstantSessionView(bogusId, creator.id)).resolves.toBeNull();
+      }
+      // La table existe toujours — aucune injection n'a pu passer (Prisma
+      // paramètre systématiquement ses requêtes, revérifié ici pour ce
+      // chemin précis plutôt que supposé).
+      expect(await db.instantSession.findMany()).toBeDefined();
+    });
+
+    it("viewer authentifié mais jamais participant : vue quand même renvoyée (accès libre, pas de confidentialité), aucune exception", async () => {
+      const creator = await makeUser();
+      const outsider = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+
+      const view = await lib.getInstantSessionView(created.instantSession.id, outsider.id);
+      expect(view).not.toBeNull();
+      expect(view!.viewerIsParticipant).toBe(false);
+      expect(view!.viewerIsCreator).toBe(false);
+    });
+
+    it("viewerId lui-même invalide/inexistant (compte supprimé entre-temps, cas défensif) : ne plante jamais, viewerIsParticipant/Creator restent false", async () => {
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+
+      const view = await lib.getInstantSessionView(created.instantSession.id, "user-jamais-cree");
+      expect(view).not.toBeNull();
+      expect(view!.viewerIsParticipant).toBe(false);
+      expect(view!.viewerIsCreator).toBe(false);
+    });
+
+    it("appels concurrents sur la MÊME session (double poll/chargement simultané) : chacun renvoie une vue cohérente, aucune exception", async () => {
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const game = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+      const sessionId = created.instantSession.id;
+      await lib.joinInstantSession(sessionId, guest.id);
+
+      const [viewA, viewB] = await Promise.all([
+        lib.getInstantSessionView(sessionId, creator.id),
+        lib.getInstantSessionView(sessionId, guest.id),
+      ]);
+      expect(viewA).not.toBeNull();
+      expect(viewB).not.toBeNull();
+      expect(viewA!.participants).toHaveLength(2);
+      expect(viewB!.participants).toHaveLength(2);
+    });
+  });
 });
