@@ -138,14 +138,16 @@ export async function GET(request: Request) {
 
     const sent: string[] = [];
     const failed: string[] = [];
+    const staleSkipped: string[] = [];
 
     for (const session of sessions) {
-      const timingsDue = computeTimingsDue(session, now);
-      if (timingsDue.length === 0) continue;
+      const { toSend, toResolveWithoutSending } = computeTimingsDue(session, now);
+      if (!toSend && toResolveWithoutSending.length === 0) continue;
 
       const outcomes: ReminderSendOutcome[] = [];
 
-      for (const minutes of timingsDue) {
+      if (toSend) {
+        const { minutes, actualMinutesRemaining } = toSend;
         try {
           // Chemin bot (chantier annonces Discord/fils) : n'ENVOIE rien
           // ici — enqueue une livraison `thread-reminder-<minutes>`
@@ -155,7 +157,12 @@ export async function GET(request: Request) {
           // réelle (et ses propres tentatives/backoff si le fil n'existe
           // pas encore) reste entièrement de la responsabilité de
           // l'exécuteur (`session-announce.ts`/`notification-executor.ts`),
-          // jamais réessayée par ce cron une fois enqueue confirmé.
+          // jamais réessayée par ce cron une fois enqueue confirmé. Le
+          // libellé affiché ("dans Xh/Xmin !") n'est PAS calculé ici pour
+          // ce chemin : `resolveThreadReminder` le recalcule à partir du
+          // temps RÉELLEMENT restant au moment du traitement effectif
+          // (potentiellement décalé si l'exécuteur traite la livraison
+          // plus tard), jamais figé à l'enqueue — voir son commentaire.
           const ok = session.announceViaBot
             ? await enqueueSessionReminderDelivery(session.id, minutes).then(
                 () => true,
@@ -168,7 +175,7 @@ export async function GET(request: Request) {
                   return false;
                 }
               )
-            : await sendSessionReminder(session, minutes).then((result) => {
+            : await sendSessionReminder(session, actualMinutesRemaining).then((result) => {
                 // Chantier confidentialité des soirées — ce chemin webhook
                 // ne poste plus JAMAIS dans Discord (voir le commentaire de
                 // `WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY`, src/lib/discord.ts).
@@ -201,11 +208,18 @@ export async function GET(request: Request) {
         }
       }
 
+      if (toResolveWithoutSending.length > 0) {
+        staleSkipped.push(
+          ...toResolveWithoutSending.map((minutes) => `${session.id}:${minutes}min`)
+        );
+      }
+
       const hasNewSuccess = outcomes.some((outcome) => outcome.ok);
-      if (hasNewSuccess) {
+      if (hasNewSuccess || toResolveWithoutSending.length > 0) {
         const remindersSent = applyReminderResults(
           parseRemindersSent(session.remindersSent),
-          outcomes
+          outcomes,
+          toResolveWithoutSending
         );
         await prisma.session.update({
           where: { id: session.id },
@@ -216,9 +230,9 @@ export async function GET(request: Request) {
 
     logger.info(
       "cron:reminders",
-      `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s) sur ${sessions.length} session(s) vérifiée(s).`
+      `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s), ${staleSkipped.length} seuil(s) obsolète(s) consommé(s) sans envoi, sur ${sessions.length} session(s) vérifiée(s).`
     );
-    return NextResponse.json({ checked: sessions.length, sent, failed });
+    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped });
   } catch (error) {
     // Ne jamais laisser une erreur inattendue remonter en 500 non
     // capturé — cron-job.org compte ça comme un échec et finit par

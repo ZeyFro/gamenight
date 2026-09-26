@@ -17,10 +17,18 @@ import { logger } from "@/lib/logger";
  * notifications INTERNES restent envoyées, EN PLUS restreintes aux
  * invités encore ACTIFS (`filterByActiveSessionInvite`) — même garantie
  * que les autres chemins de ce chantier.
+ *
+ * Fix bug remonté (rappels de rattrapage au contenu mensonger) :
+ * `actualMinutesRemaining` est le temps RÉELLEMENT restant avant la
+ * soirée (calculé par `computeTimingsDue`, `reminders.ts`), jamais le
+ * seuil configuré tel quel — ce chemin est appelé de façon SYNCHRONE
+ * juste après ce calcul (même passage de cron, aucun délai de file
+ * d'attente contrairement au chemin bot), donc aucun recalcul
+ * supplémentaire n'est nécessaire ici pour rester exact.
  */
 export async function sendSessionReminder(
   session: Session & { decidedGame: Game | null },
-  minutesBefore: number
+  actualMinutesRemaining: number
 ): Promise<PostToDiscordResult> {
   if (!session.decidedGame) {
     return { ok: false, error: "pas_de_jeu_decide" };
@@ -47,7 +55,7 @@ export async function sendSessionReminder(
     players.map((u) => ({
       userId: u.id,
       type: "REMINDER" as const,
-      title: `⏰ Rappel — dans ${formatReminderTimingShort(minutesBefore)} !`,
+      title: `⏰ Rappel — dans ${formatReminderTimingShort(actualMinutesRemaining)} !`,
       message: session.decidedGame!.name,
       relatedSessionId: session.id,
     }))

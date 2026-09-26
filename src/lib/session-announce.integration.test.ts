@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { wallClockNow } from "@/lib/wallclock";
 
 /**
  * Chantier annonces Discord bot (salons #🎮-soirées/#🏆-tournois et fils par
@@ -522,6 +523,113 @@ describe.skipIf(!TEST_DATABASE_URL)(
           expect(row.nextAttemptAt).toBeNull();
         }
       );
+    });
+
+    describe("rappel — contenu recalculé au TRAITEMENT réel, jamais figé à l'enqueue (fix rattrapage tardif)", () => {
+      // `wallClockNow()` lit l'horloge RÉELLE (via `Intl.DateTimeFormat`,
+      // jamais le `now` explicite passé à `processOne`, qui ne sert qu'à
+      // `claimNextDelivery`/au backoff) — `resolveThreadReminder` doit
+      // donc être testé sous horloge système CONTRÔLÉE (`vi.setSystemTime`),
+      // jamais seulement via le paramètre `now` de `processOne` comme le
+      // reste de ce fichier. `wallT0` (résultat de `wallClockNow()` sous
+      // cette horloge figée) sert de référence pour construire `date` de
+      // la session — même représentation "horloge murale" que le reste de
+      // l'app (cf. wallclock.ts), pour ne jamais introduire un décalage
+      // CET/CEST accidentel entre la session et l'horloge de test.
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("session COMMENCÉE entre l'enqueue (temps restant positif) et le traitement effectif : refus définitif, AUCUN message posté", async () => {
+        // `realT0` (horloge SYSTÈME, pilotée par `vi.setSystemTime`) et
+        // `wallT0` (lecture `wallClockNow()` à cet instant, potentiellement
+        // décalée de 1-2h CET/CEST) sont DEUX représentations distinctes —
+        // seuls des DELTAS identiques appliqués à chacune restent
+        // synchronisés (l'écart constant s'annule dans une soustraction),
+        // jamais une valeur de l'une réinjectée telle quelle dans l'autre.
+        const realT0 = new Date("2026-06-15T12:00:00.000Z");
+        vi.useFakeTimers();
+        vi.setSystemTime(realT0);
+        const wallT0 = wallClockNow();
+
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, {
+          status: "SCHEDULED",
+          date: new Date(wallT0.getTime() + 10 * 60_000), // dans 10 min (horloge murale) au moment de l'enqueue
+        });
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member
+
+        // Rappel enqueue-é alors qu'il restait du temps (comportement
+        // légitime à l'enqueue) — simule soit une ancienne livraison
+        // (avant ce fix), soit le seul rappel désormais enqueue-é par
+        // passage (`computeTimingsDue`) mais traité en retard par
+        // l'exécuteur.
+        await announceLib.enqueueSessionReminderDelivery(session.id, 15);
+
+        // Avance l'horloge RÉELLE de 15 min (même delta appliqué à realT0
+        // et wallT0) : la soirée (dans 10 min à l'enqueue) a donc
+        // maintenant COMMENCÉ depuis 5 min au moment du traitement.
+        vi.setSystemTime(new Date(realT0.getTime() + 15 * 60_000));
+        const callsBefore = fetchMock.mock.calls.length;
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+        // Aucun appel réseau supplémentaire — le refus intervient AVANT
+        // toute tentative de construction/envoi du message.
+        expect(fetchMock.mock.calls.length).toBe(callsBefore);
+
+        const row = await db.notificationDelivery.findFirstOrThrow({
+          where: { targetSlot: `default-guild:SESSION:${session.id}:thread-reminder-15` },
+        });
+        expect(row.status).toBe("FAILED");
+        expect(row.nextAttemptAt).toBeNull();
+      });
+
+      it("temps réel restant très différent du seuil figé à l'enqueue : le message reflète le temps RÉEL au traitement, jamais le seuil d'origine (jamais « 12h » pour une soirée dans 10 min)", async () => {
+        const realT0 = new Date("2026-06-15T12:00:00.000Z");
+        vi.useFakeTimers();
+        vi.setSystemTime(realT0);
+        const wallT0 = wallClockNow();
+
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, {
+          status: "SCHEDULED",
+          date: new Date(wallT0.getTime() + 45 * 60_000), // dans 45 min (horloge murale)
+        });
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member
+
+        // Enqueue-é sous le seuil "720" (12h) — un vieux rattrapage — mais
+        // traité bien plus tard : il ne reste RÉELLEMENT que 10 minutes.
+        await announceLib.enqueueSessionReminderDelivery(session.id, 720);
+
+        // Avance l'horloge RÉELLE de 35 min (45 - 10) : il reste alors
+        // exactement 10 min (horloge murale) avant la soirée.
+        vi.setSystemTime(new Date(realT0.getTime() + 35 * 60_000));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-reminder", channel_id: "thread-1" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        const body = JSON.parse(String(init!.body));
+        expect(body.content).toContain("10 min");
+        expect(body.content).not.toContain("12h");
+      });
     });
 
     describe("éditions concurrentes — convergence vers l'état courant", () => {
