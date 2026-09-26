@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getValidSession } from "@/lib/valid-session";
 import { searchIgdbGames } from "@/lib/igdb";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getValidSession();
+  if (!session?.user?.discordId) {
     return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
   }
 
