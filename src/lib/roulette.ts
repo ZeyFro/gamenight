@@ -70,13 +70,6 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
     notifiedUserIds: participantIds,
   });
 
-  const proposal = await prisma.proposal.create({
-    data: { sessionId: session.id, gameId: winnerEntry.gameId, proposedById: roulette.createdById },
-  });
-  await prisma.vote.createMany({
-    data: participantIds.map((userId) => ({ proposalId: proposal.id, userId })),
-  });
-
   await prisma.roulette.update({
     where: { id: rouletteId },
     data: { status: "DONE", resultGameId: winnerEntry.gameId, resultSessionId: session.id },

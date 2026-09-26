@@ -76,19 +76,12 @@ export async function createSessionFromRouletteAction(formData: FormData) {
 
   const date = parseDateAndTime(dateStr, timeStr);
 
-  const { session, announceViaBot } = await createRouletteResultSession({
+  const { session, announceViaBot, proposalId } = await createRouletteResultSession({
     date,
     decidedGameId: gameId,
     decidedTime: date,
     createdById: user.id,
     notifiedUserIds: finalParticipantIds,
-  });
-
-  const proposal = await prisma.proposal.create({
-    data: { sessionId: session.id, gameId, proposedById: user.id },
-  });
-  await prisma.vote.createMany({
-    data: finalParticipantIds.map((userId) => ({ proposalId: proposal.id, userId })),
   });
 
   const xpResult = await awardXp(
@@ -105,7 +98,7 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   let announceResult: PostToDiscordResult = { ok: true };
   if (!announceViaBot) {
     const winner = await prisma.proposal.findUniqueOrThrow({
-      where: { id: proposal.id },
+      where: { id: proposalId },
       include: { game: true, votes: { include: { user: true } } },
     });
     announceResult = await announceSessionResult(session, winner, false);
