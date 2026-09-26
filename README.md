@@ -12179,3 +12179,122 @@ Additives, appliquées et vérifiées **sans dérive** via
 Aucun changement aux réglages de rétention/nettoyage, aucune action
 Discord réelle, aucune migration distante, aucun merge — PR ouverte en
 **Draft**.
+
+## Fix bug remonté : rappels de rattrapage tardifs (rafale + contenu mensonger)
+
+Bug remonté en usage réel : une soirée décidée/validée tard (proposition
+choisie tout près de l'heure de la soirée) faisait partir les 4 rappels
+configurés (ex. 12h/2h/45min/30min) **tous à la même minute**, chacun
+affichant son propre libellé figé — y compris "dans 12h !" pour une
+soirée qui commençait en réalité dans 20 minutes. Une première
+correction (spike, jamais mergée) avait simplement étalé les rattrapages
+sur plusieurs passages du cron — insuffisante : un seuil ancien pouvait
+encore partir avec son libellé d'origine mensonger avant d'être atteint
+par le rattrapage suivant. Cette version corrige le contenu à la racine,
+pas seulement le rythme d'envoi.
+
+### Comportement exact (`src/lib/reminders.ts::computeTimingsDue`)
+
+- **Au premier passage tardif** (plusieurs seuils dus en même temps) :
+  au maximum **un seul** rappel est traité, avec le **temps réellement
+  restant** (calculé à cet instant), jamais le libellé du seuil
+  configuré. C'est le seuil le **plus proche de l'échéance** parmi ceux
+  dus qui est choisi (le plus actionnable), pas le plus ancien.
+- **Les seuils plus anciens que lui** (dépassés par le même retard) sont
+  marqués résolus **sans être envoyés** — ils ne repartiront jamais
+  ensuite avec un contenu obsolète.
+- **Les rappels futurs continuent normalement** : un seuil pas encore dû
+  reste intact et partira à son propre passage, avec le temps restant
+  réel à ce moment (qui coïncide alors avec le seuil, cas courant
+  inchangé).
+- **Après le début de la soirée**, plus aucun rappel n'est envoyé — ni un
+  message isolé, ni un flush groupé (l'ancienne version de ce fix en
+  avait un ; il a été retiré, un compte à rebours n'a plus aucun sens
+  une fois la soirée commencée).
+
+Exemple exact (seuils 720/120/45/30 min) :
+
+| Passage | Temps restant réel | Résultat |
+|---|---|---|
+| 1 | 40 min | 1 rappel envoyé — **« dans 40 min »** (jamais « 45 min », « 2h » ou « 12h ») ; 720/120/45 marqués dépassés |
+| 2 | 39 min | rien (30 pas encore dû, le reste déjà résolu) |
+| 3 | 30 min | rappel normal — « dans 30 min » |
+| 4 (après le début) | négatif | rien — aucun compte à rebours pour une soirée déjà en cours |
+
+### Contenu recalculé au TRAITEMENT réel, jamais figé à l'enqueue
+
+Le chemin **bot** (`enqueueSessionReminderDelivery`/`resolveThreadReminder`,
+`session-announce.ts`) passe par une file asynchrone
+(`NotificationDelivery`) — le traitement réel peut avoir lieu plus tard
+que l'enqueue si l'exécuteur a lui-même du retard. `resolveThreadReminder`
+ne dérive donc **plus jamais** son libellé du seuil configuré : il
+recalcule le temps réellement restant (`wallClockNow()`) **au moment du
+traitement effectif**, et refuse purement et simplement l'envoi
+(`expired`) si la soirée a depuis commencé — qu'il s'agisse d'une
+livraison enqueue-ée avant ce fix ou de la seule désormais enqueue-able
+par passage. Aucun message n'est jamais posté pour une soirée déjà en
+cours, quel que soit le seuil d'origine de la livraison en file.
+
+Le chemin **webhook legacy** (`sendSessionReminder`, `discord-reminder.ts`,
+qui n'écrit plus que la notification interne — voir "Chantier
+confidentialité des soirées") est appelé de façon **synchrone**, dans le
+même passage que le calcul — le temps réel restant lui est transmis
+directement par l'appelant, sans recalcul supplémentaire nécessaire.
+
+### Mécanismes réutilisés, aucune nouvelle refonte
+
+- `Session.remindersSent` (`String[]`, inchangé) reste l'unique état
+  persisté — les seuils "consommés sans envoi" y sont ajoutés
+  **inconditionnellement** (`applyReminderResults`, nouveau 3ᵉ paramètre
+  `staleToMark`), les seuils réellement envoyés seulement après succès
+  confirmé (comportement inchangé, anti-doublon préexistant).
+- `formatReminderTimingShort` (`reminder-timings.ts`, préexistant,
+  générique) est réutilisé tel quel pour formatter le temps réel restant
+  — aucune nouvelle fonction de formatage.
+- Verrou `CronLock` (protection contre deux exécutions concurrentes du
+  cron), idempotence du `targetSlot` d'enqueue (`thread-reminder-<n>`,
+  occurrence fixe), préférences de notification et filtrage aux invités
+  actifs (`filterByActiveSessionInvite`) : **tous inchangés**, aucun
+  nouveau mécanisme de concurrence/déduplication introduit par ce fix.
+
+### Limites connues (documentées, pas contournées)
+
+- Si le retard dépasse la fenêtre restante (ex. session décidée à
+  35 min de son heure avec un cron toutes les 15 min et un gros
+  rattrapage), un ou plusieurs des seuils les plus anciens peuvent
+  malgré tout ne **jamais** être tentés — la route cron filtre déjà les
+  soirées sur `date > now`, donc une fois la soirée commencée, plus
+  aucun passage ne la revoit. C'est un compromis assumé : mieux vaut ne
+  jamais tenter un rappel devenu sans objet que d'en envoyer un
+  mensonger ou d'en retarder un pertinent.
+- Le rythme réel d'étalement dépend de la fréquence du cron externe
+  (15 min, inchangée par ce fix, voir README section F7).
+
+### Tests (`reminders.test.ts` + `session-announce.integration.test.ts`)
+
+- **Unitaires, horloge contrôlée** (`reminders.test.ts`) : cas courant
+  (seuils un par un, DST, minuit — inchangés), rattrapage (premier
+  passage tardif avec temps réel affiché, seuils plus anciens marqués
+  dépassés, passage suivant sans rien, passage normal au dernier seuil,
+  enchaînement complet des 4 passages de l'exemple), soirée déjà
+  commencée (aucun envoi, aucun flush groupé, y compris pile à
+  `minutesUntil === 0`), passages concurrents (deux lectures avec le
+  même `remindersSent` renvoient exactement le même résultat — la
+  convergence réelle vient de l'idempotence de l'enqueue, revérifiée),
+  `applyReminderResults` avec seuils obsolètes marqués sans envoi.
+- **Intégration Postgres isolée + Discord simulé, horloge système
+  contrôlée** (`session-announce.integration.test.ts`) : un rappel
+  enqueue-é avec du temps restant mais résolu APRÈS le début de la
+  soirée est refusé sans aucun appel réseau ; un rappel enqueue-é sous
+  un vieux seuil (12h) mais traité alors qu'il ne reste réellement que
+  10 minutes affiche bien "10 min" dans le message posté, jamais "12h".
+- **Résultats** : Postgres complet **677/677**, rapide (hors Postgres)
+  **414/414**, `npx tsc --noEmit` / `npx eslint .` sans erreur,
+  `npx next build` réussi.
+
+### Rien d'autre modifié
+
+Branche dédiée (`claude/gamenight-fix-reminders-burst`), indépendante de
+la PR #108 (V2 "Jouer maintenant", non touchée). Aucun changement aux
+réglages de rétention, aucun envoi Discord réel, aucune migration
+(schéma inchangé), aucun merge — PR ouverte en **Draft**.

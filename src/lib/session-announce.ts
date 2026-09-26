@@ -2,7 +2,8 @@ import { randomUUID } from "crypto";
 import type { Game, Proposal, Session, User, Vote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { formatDateTimeFr } from "@/lib/wallclock";
+import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
+import { formatReminderTimingShort } from "@/lib/reminder-timings";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
@@ -909,7 +910,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role.startsWith("thread-reminder-")) {
       const minutes = Number(role.slice("thread-reminder-".length));
       if (!Number.isFinite(minutes)) return { eligible: false, reason: "unresolvable" };
-      return resolveThreadReminder(sessionId, session, minutes);
+      return resolveThreadReminder(sessionId, session);
     }
     if (role.startsWith("invite:")) {
       const inviteId = role.slice("invite:".length);
@@ -1173,7 +1174,24 @@ async function resolveSessionThreadDelete(sessionId: string): Promise<Resolution
   return { eligible: false, reason: "expired" };
 }
 
-async function resolveThreadReminder(sessionId: string, session: SessionWithVotes, minutes: number): Promise<Resolution> {
+/**
+ * Fix bug remonté (rappels de rattrapage au contenu mensonger, ex. "dans
+ * 12h !" affiché alors que la soirée commence dans 20 minutes) : le
+ * libellé n'est PLUS dérivé du seuil configuré (`minutes`, encodé dans le
+ * `targetSlot` uniquement pour l'idempotence de l'enqueue, voir
+ * `enqueueSessionReminderDelivery`) — le temps RÉELLEMENT restant est
+ * recalculé ICI, au moment du traitement effectif (`wallClockNow()`,
+ * jamais mis en cache depuis l'enqueue), qui peut avoir lieu plus tard
+ * que prévu si l'exécuteur avait lui-même du retard sur sa propre file.
+ * Si la soirée a depuis COMMENCÉ (temps restant ≤ 0), plus aucun compte
+ * à rebours n'a de sens : refus définitif (`expired`), jamais un message
+ * annonçant une soirée à venir qui a déjà débuté — cette garde couvre
+ * aussi bien une livraison enqueue-ée avant ce fix (encore en file) que
+ * la seule qui puisse désormais être enqueue-ée par passage (voir
+ * `computeTimingsDue`, reminders.ts) mais traitée en retard par
+ * l'exécuteur.
+ */
+async function resolveThreadReminder(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
@@ -1184,13 +1202,17 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     return { eligible: false, reason: "expired" };
   }
 
+  const minutesRemaining = (session.date.getTime() - wallClockNow().getTime()) / 60_000;
+  if (minutesRemaining <= 0) {
+    return { eligible: false, reason: "expired" };
+  }
+
   const voters = new Map<string, User & { silenceReminders: boolean }>();
   for (const proposal of session.proposals) {
     for (const vote of proposal.votes) voters.set(vote.user.id, vote.user);
   }
 
-  const timingLabel = minutes >= 60 ? `${Math.round(minutes / 60)}h` : `${minutes}min`;
-  const reminderTitle = `⏰ Rappel — dans ${timingLabel} !`;
+  const reminderTitle = `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
   const message = await buildMessageContent(
     session,
     Array.from(voters.values()),
