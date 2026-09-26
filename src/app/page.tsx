@@ -413,6 +413,15 @@ export default async function Home({
         </StaggerItem>
         </div>
 
+        {/* V2 — "Jouer maintenant" : CTA plein-large, distinct de "Prochaine
+            soirée" (planifiée) ci-dessus — démarrer une session spontanée
+            ne demande aucune planification. */}
+        <StaggerItem>
+          <ButtonLink href="/jouer-maintenant" variant="secondary" fullWidthOnMobile className="w-full justify-center">
+            🎮 Jouer maintenant
+          </ButtonLink>
+        </StaggerItem>
+
         {/* Activité récente + Dispos de la semaine côte à côte sur desktop */}
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
         <StaggerItem>

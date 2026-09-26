@@ -73,3 +73,15 @@ export function isTournamentAnnounceViaBotEnabled(): boolean {
     process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && getTournamentAnnounceConfig() !== null
   );
 }
+
+/**
+ * V2 ("Jouer maintenant") — invitation rapide par MP Discord. Contrairement
+ * à SESSION/TOURNAMENT ci-dessus, AUCUN salon n'est nécessaire (un MP ne
+ * cible jamais un salon, voir `sendDirectMessage`, discord-rest.ts) : un
+ * seul verrou, pas de paire guildId/channelId à valider. `DISCORD_BOT_TOKEN`
+ * reste requis globalement (déjà le cas pour tout le chantier bot),
+ * jamais revérifié ici spécifiquement (délégué à `discord-rest.ts`).
+ */
+export function isInstantSessionInviteViaBotEnabled(): boolean {
+  return process.env.DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED === "true";
+}

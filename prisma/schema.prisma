@@ -225,6 +225,10 @@ model User {
   createdRoulettes Roulette[]
   rouletteEntries  RouletteEntry[]
 
+  // V2 ("Jouer maintenant") — voir `InstantSession`/`InstantSessionPresenceInterval`.
+  createdInstantSessions   InstantSession[]                  @relation("InstantSessionCreatedBy")
+  instantSessionPresence   InstantSessionPresenceInterval[]
+
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts Debt[]
 
@@ -329,6 +333,9 @@ model Game {
 
   // Sprint 5 (Tournois Bracket) — jeu du tournoi.
   tournaments Tournament[]
+
+  // V2 ("Jouer maintenant") — voir `InstantSession`.
+  instantSessions InstantSession[]
 
   // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
   // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
@@ -1230,6 +1237,13 @@ enum NotificationType {
   // détectée (voir `Debt`/`detectDebts`), jusqu'ici sans aucune
   // notification in-app.
   DEBT
+  // V2 ("Jouer maintenant") — invitation rapide à une session instantanée.
+  // Créée UNE SEULE FOIS, à l'invitation initiale (voir le commentaire de
+  // fichier de `instant-session-announce.ts` pour la limite assumée :
+  // contrairement au MP Discord correspondant, cette ligne n'est jamais
+  // éditée après coup — aucun mécanisme d'édition n'existe pour
+  // `Notification` nulle part ailleurs dans cette app).
+  INSTANT_SESSION_INVITE
 }
 
 model Notification {
@@ -1356,6 +1370,96 @@ model RouletteEntry {
   game     Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([rouletteId, userId, gameId])
+}
+
+// V2 — "Jouer maintenant" : sessions spontanées, distinctes des soirées
+// planifiées (`Session`, créneau à l'avance, votes, confidentialité par
+// invitation) ET de la roulette instantanée (`Roulette`, tirage d'UN jeu
+// parmi des propositions). Ici : un jeu choisi directement, un groupe qui
+// se forme en temps réel, une fenêtre de vie COURTE et FIXE (3h,
+// `expiresAt`, jamais repoussée par une arrivée ou un changement de jeu —
+// posée UNE FOIS à la création, jamais relue/recalculée). Accès :
+// n'importe quel utilisateur authentifié peut voir/rejoindre librement
+// (même portée qu'un tournoi — pas de confidentialité par invitation
+// comme les soirées ; l'app ne modélise qu'une seule communauté, voir le
+// README pour la limite assumée "pas d'isolation multi-serveur").
+enum InstantSessionStatus {
+  ACTIVE
+  ENDED
+}
+
+model InstantSession {
+  id          String                @id @default(cuid())
+  createdById String
+  gameId      String
+  status      InstantSessionStatus  @default(ACTIVE)
+
+  // Toujours posées explicitement par le code applicatif (`wallClockNow()`),
+  // jamais `@default(now())` (horloge SQL, vrai UTC) — cohérence stricte
+  // avec les intervalles de présence ci-dessous, qui utilisent la MÊME
+  // source de temps pour tous leurs calculs de durée (voir le commentaire
+  // de fichier de `src/lib/instant-sessions.ts`).
+  createdAt DateTime
+  // Fixée à la création (`createdAt` + 3h) et JAMAIS recalculée ensuite —
+  // ni une arrivée, ni un changement de jeu ne la repousse (règle
+  // produit explicite). Le serveur fait autorité : toute lecture/action
+  // revérifie `expiresAt` contre l'heure courante AVANT d'agir, jamais un
+  // simple filtre d'affichage (voir `settleInstantSessionIfDue`).
+  expiresAt DateTime
+  endedAt   DateTime?
+  // Code court, libre (pas d'enum) : "creator_left" | "expired" — jamais
+  // affiché tel quel à l'utilisateur (traduit côté UI), juste un
+  // diagnostic/audit minimal.
+  endedReason String?
+
+  // Sélection "qui prévenir" au moment de l'invitation rapide — MÊME
+  // philosophie que `Session.notifiedUserIds`/`Tournament.notifiedUserIds` :
+  // un simple filtre de mentions (MP Discord + notification interne),
+  // JAMAIS une liste d'accès ni une inscription automatique (n'importe
+  // qui peut rejoindre librement, voir le commentaire de modèle
+  // ci-dessus). `null` = jamais posé, `[]` = explicitement personne.
+  notifiedUserIds Json?
+
+  createdBy User                             @relation("InstantSessionCreatedBy", fields: [createdById], references: [id])
+  game      Game                             @relation(fields: [gameId], references: [id])
+  presence  InstantSessionPresenceInterval[]
+
+  // Sert la liste "sessions actives" ET le passage périodique
+  // (cron + paresseux) qui règle les sessions dont l'échéance est dépassée.
+  @@index([status, expiresAt])
+}
+
+// Journal d'APPARTENANCE, pas un historique de "temps joué" — une ligne
+// par passage (arrivée → départ), append-only, jamais réécrite après
+// coup (sauf la clôture de `endedAt` au départ/à la fin). C'est la SEULE
+// source de vérité pour calculer la présence conjointe (voir
+// `computeCoPresenceMs`, src/lib/instant-sessions.ts) : le serveur ne
+// fait JAMAIS confiance à un compteur transmis par le client, uniquement
+// à ces horodatages serveur.
+//
+// `endedAt: null` = intervalle OUVERT (l'utilisateur est actuellement
+// présent). Un utilisateur peut avoir PLUSIEURS lignes pour la même
+// session (arrivée, départ, retour...) — jamais plus d'une ligne OUVERTE
+// à la fois, ni pour cette session ni pour une AUTRE : un index unique
+// PARTIEL (`InstantSessionPresenceInterval_userId_open_key`, posé par la
+// migration, non représentable directement dans le schema Prisma —
+// documenté ici et dans le fichier de migration, même limite déjà
+// assumée que les deux dérives préexistantes du README) garantit AU
+// NIVEAU BASE "au plus une session instantanée active par utilisateur, à
+// la fois", même en cas de créations/jonctions concurrentes — jamais
+// seulement une vérification applicative.
+model InstantSessionPresenceInterval {
+  id               String    @id @default(cuid())
+  instantSessionId String
+  userId           String
+  startedAt        DateTime
+  endedAt          DateTime?
+
+  instantSession InstantSession @relation(fields: [instantSessionId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([instantSessionId, userId])
+  @@index([instantSessionId, endedAt])
 }
 
 // Défi hebdo (Sprint 3 suite) — UNE ligne par semaine calendaire pour tout
@@ -1875,6 +1979,16 @@ enum UserNotificationCategory {
   // demandé le silence global ne reçoit jamais une réactivation silencieuse
   // pour cette nouvelle catégorie.
   TOURNAMENT
+  // V2 ("Jouer maintenant") — gouverne le MP Discord + la notification
+  // interne d'invitation rapide à une session instantanée. Distincte de
+  // SESSION à dessein (règle produit explicite : distinguer clairement
+  // cette fonctionnalité des soirées planifiées) — un compte peut vouloir
+  // les soirées planifiées mais pas les pings spontanés, ou l'inverse.
+  // Même backfill EXACT que TOURNAMENT à son introduction (migration
+  // `20260926090002_backfill_instant_session_notification_preferences`) :
+  // `enabled = NOT silenceReminders`, jamais une réactivation silencieuse
+  // pour un compte ayant déjà demandé le silence global.
+  INSTANT_SESSION
 }
 
 model UserNotificationPreference {
