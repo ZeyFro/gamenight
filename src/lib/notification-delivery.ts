@@ -579,9 +579,10 @@ export interface FinalizeFailureInput {
 export async function finalizeDeliveryFailure(
   id: string,
   reservationToken: string,
-  input: FinalizeFailureInput
+  input: FinalizeFailureInput,
+  db: NotificationDb = prisma
 ): Promise<boolean> {
-  const result = await prisma.notificationDelivery.updateMany({
+  const result = await db.notificationDelivery.updateMany({
     where: { id, status: "RESERVED", reservationToken },
     data: input.retryable
       ? {

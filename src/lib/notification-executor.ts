@@ -11,6 +11,7 @@ import {
   type ClaimedDelivery,
   type FinalizeFailureInput,
   type FinalizeSuccessInput,
+  type NotificationDb,
 } from "@/lib/notification-delivery";
 import {
   addThreadMember,
@@ -266,6 +267,22 @@ export interface ResolveInput {
  */
 export interface DeliveryResolver {
   resolve(input: ResolveInput): Promise<Resolution>;
+  /**
+   * V2 (MP soirées) — optionnel. Appelé quand l'APPEL DISCORD d'une
+   * livraison échoue définitivement (jamais pour un refus du résolveur,
+   * jamais pour un échec encore retentable), DANS LA MÊME transaction que
+   * son passage à FAILED : une compensation enqueue-ée ici (ex. mention de
+   * secours quand un MP est fermé) existe si et seulement si l'échec est
+   * acté. Uniquement des écritures via `db`, jamais d'appel Discord.
+   */
+  onTerminalDiscordFailure?(input: TerminalDiscordFailureInput): Promise<void>;
+}
+
+export interface TerminalDiscordFailureInput {
+  delivery: ClaimedDelivery;
+  event: NotificationEvent;
+  errorClass: string;
+  db: NotificationDb;
 }
 
 /**
@@ -791,7 +808,20 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
   }
 
   const failure = classifyDiscordFailure(discordResult, claimed.attempts, now);
-  await finalizeDeliveryFailure(claimed.id, reservationToken, failure);
+  const onTerminalFailure = opts.resolver.onTerminalDiscordFailure?.bind(opts.resolver);
+  if (!failure.retryable && onTerminalFailure) {
+    // Échec définitif ET compensation dans la même transaction (voir
+    // `DeliveryResolver.onTerminalDiscordFailure`) — la finalisation reste
+    // gardée par le jeton : une réservation déjà reprise ne déclenche rien.
+    await prisma.$transaction(async (tx) => {
+      const finalized = await finalizeDeliveryFailure(claimed.id, reservationToken, failure, tx);
+      if (finalized) {
+        await onTerminalFailure({ delivery: claimed, event, errorClass: failure.errorClass, db: tx });
+      }
+    });
+  } else {
+    await finalizeDeliveryFailure(claimed.id, reservationToken, failure);
+  }
   return {
     deliveryId: claimed.id,
     outcome: failure.retryable ? "retrying" : "failed",

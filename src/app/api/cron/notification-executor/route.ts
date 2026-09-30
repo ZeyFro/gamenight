@@ -28,6 +28,11 @@ const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "INSTANT_SESSION") return instantSessionInviteResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
   },
+  // MP des soirées (V2) — sans ce relais, la mention de secours d'un MP
+  // fermé ne serait jamais mise en file (le hook vit sur le résolveur SESSION).
+  async onTerminalDiscordFailure(input) {
+    if (input.event.category === "SESSION") await sessionAnnounceResolver.onTerminalDiscordFailure?.(input);
+  },
 };
 
 /**

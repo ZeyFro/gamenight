@@ -12354,3 +12354,41 @@ avec un fil bot sont archivés ; leur suppression suit 24 h plus tard (les
 tournois annulés avant cette PR, déjà archivés, sont supprimés dès le
 passage suivant). Les anciens fils de l'époque webhook, sans identifiant
 persisté, ne sont jamais touchés (aucune recherche par nom).
+
+## V2 — MP des soirées (annonce, mise à jour, rappels)
+
+Avec `DISCORD_DM_SESSION_ENABLED=true` (désactivé par défaut), une soirée
+bot prévient chaque pote concerné **en message privé** en plus du fil :
+
+| Événement | MP | Fil de la soirée |
+| :-- | :-- | :-- |
+| Création | « 📣 Nouvelle soirée » + embed | annonce sans mention |
+| Changement de date / jeu décidé | « 🔄 Soirée mise à jour » — **seulement** aux potes déjà prévenus par MP | annonce éditée |
+| Rappel | « ⏰ Rappel — dans … » | message de rappel sans mention |
+| Résumé, ajout de membres, résultat | — | inchangé |
+
+Les destinataires sont exactement ceux qui étaient mentionnés
+(`resolveEligibleMentions` : sélection du créateur, invitation active,
+préférence `SESSION`/`ROULETTE`), **relus juste avant l'envoi** : une
+préférence désactivée, une invitation retirée, une soirée annulée ou
+commencée entre-temps empêche le MP (échec traçable `resolver:*`).
+
+- **Un seul ping** : quand le MP d'un pote est mis en file, sa mention est
+  retirée du message du fil.
+- **Pas de doublon** : un `targetSlot` par `[soirée, type, pote]`
+  (`…:dm:announce|update:<event>|reminder:<minutes>:<userId>`) ; un retry
+  retombe sur la même livraison.
+- **MP fermé** (code Discord `50007`, classé `discord:dm_unavailable`,
+  non retentable) : la livraison passe en `FAILED` avec cette classe
+  d'erreur, aucune nouvelle tentative de MP, et une **mention de secours**
+  (`…:dm-fallback:…`) est postée dans le fil, dans la même transaction que
+  l'échec (`DeliveryResolver.onTerminalDiscordFailure`). Les messages
+  suivants mentionnent ce pote dans le fil comme avant. Les autres échecs
+  terminaux (permission, etc.) sont tracés sans mention de secours.
+- **Rate limits** : les MP passent par l'exécuteur existant (un envoi à la
+  fois, `retry_after` respecté). La doc Discord déconseille l'ouverture
+  massive de MP (« create DM ») et compte les 403 dans la limite de
+  10 000 requêtes invalides / 10 min : d'où l'absence de retry sur un MP
+  fermé.
+
+Le cron `notification-executor` doit tourner. Rien n'est activé par cette PR.
