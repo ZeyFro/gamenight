@@ -631,3 +631,25 @@ export async function recoverExpiredReservations(now: Date = new Date()): Promis
   });
   return result.count;
 }
+
+/**
+ * Nettoyage automatique des fils (V2) — vrai si une livraison d'un même
+ * événement métier (même préfixe de `targetSlot`, ex.
+ * `default-guild:SESSION:<id>:`) est encore PENDING/RESERVED, hors des
+ * emplacements `excludeSlots` (typiquement les livraisons de nettoyage
+ * elles-mêmes). Sert à ne jamais verrouiller un fil pendant qu'un résumé,
+ * un rappel ou une synchronisation de membre attend encore d'y être posé.
+ */
+export async function hasUnsettledDeliveriesWithPrefix(
+  prefix: string,
+  excludeSlots: string[]
+): Promise<boolean> {
+  const unsettled = await prisma.notificationDelivery.findFirst({
+    where: {
+      targetSlot: { startsWith: prefix, notIn: excludeSlots },
+      status: { in: ["PENDING", "RESERVED"] },
+    },
+    select: { id: true },
+  });
+  return unsettled !== null;
+}

@@ -1049,6 +1049,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(closeInit.method).toBe("PATCH");
         const closeBody = JSON.parse(String(closeInit.body));
         expect(closeBody.archived).toBe(true);
+        // Nettoyage automatique des fils (V2) — verrouillé en plus d'archivé.
+        expect(closeBody.locked).toBe(true);
       });
 
       it("un tournoi déjà CANCELLED refuse toute déclaration de vainqueur, même pour un match jamais encore joué (garde déjà existante de declareWinner, étendue à CANCELLED)", async () => {
