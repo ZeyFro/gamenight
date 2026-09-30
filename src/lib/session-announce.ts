@@ -8,7 +8,7 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
-import { getSessionAnnounceConfig } from "@/lib/discord-bot-config";
+import { getSessionAnnounceConfig, isSessionDirectMessageEnabled } from "@/lib/discord-bot-config";
 import {
   createNotificationEvent,
   enqueueDelivery,
@@ -22,6 +22,7 @@ import type {
   ResolvedAction,
   ResolvedMessageContent,
   ResolveInput,
+  TerminalDiscordFailureInput,
 } from "@/lib/notification-executor";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
 
@@ -158,6 +159,113 @@ export function sessionThreadCleanupSlots(sessionId: string) {
 }
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
+
+/* -------------------------------------------------------------------- */
+/* MP des soirées (V2) — un MP par pote concerné, mention de secours     */
+/* -------------------------------------------------------------------- */
+
+/**
+ * Rôles d'un `targetSlot` de MP : `dm:<kind>:<userId>` où `<kind>` vaut
+ * `announce`, `update:<eventId>` ou `reminder:<minutes>`. Mention de
+ * secours dans le fil (MP fermé) : `dm-fallback:<kind>:<userId>`, même
+ * `<kind>` que le MP d'origine. Un `userId` (cuid) ne contient jamais `:`.
+ */
+type DmKind = "announce" | `update:${string}` | `reminder:${string}`;
+
+function dmSlot(sessionId: string, kind: DmKind, userId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:${kind}:${userId}`;
+}
+function dmFallbackSlot(sessionId: string, kind: string, userId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm-fallback:${kind}:${userId}`;
+}
+
+const DM_UNAVAILABLE_ERROR_CLASS = "discord:dm_unavailable";
+
+/**
+ * Met en file un MP par destinataire (idempotent : un seul MP par
+ * `[soirée, kind, pote]`, un retry du résolveur retombe sur la même ligne)
+ * et renvoie les potes DÉSORMAIS couverts par un MP — dont la mention est
+ * donc retirée du fil. Jamais couverts :
+ *   - un pote dont un MP de cette soirée a déjà échoué en `dm_unavailable`
+ *     (MP fermé : aucune nouvelle tentative, il reste mentionné dans le fil) ;
+ *   - pour une mise à jour (`update`), un pote qui n'a jamais reçu le MP
+ *     d'annonce (pas de MP surprise pour une soirée annoncée sans MP).
+ * Uniquement des écritures — jamais d'appel Discord (voir le commentaire de
+ * fichier de `notification-delivery.ts`).
+ */
+async function enqueueSessionDirectMessages<T extends { id: string }>(
+  sessionId: string,
+  kind: DmKind,
+  users: T[]
+): Promise<T[]> {
+  if (users.length === 0) return [];
+  const prefix = `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:`;
+  const known = await prisma.notificationDelivery.findMany({
+    where: { targetSlot: { startsWith: prefix }, recipientKey: { in: users.map((u) => `user:${u.id}`) } },
+    select: { targetSlot: true, recipientKey: true, errorClass: true },
+  });
+  const blocked = new Set(known.filter((d) => d.errorClass === DM_UNAVAILABLE_ERROR_CLASS).map((d) => d.recipientKey));
+  const announced = new Set(known.filter((d) => d.targetSlot.includes(":dm:announce:")).map((d) => d.recipientKey));
+
+  const covered = users.filter((u) => {
+    const key = `user:${u.id}`;
+    if (blocked.has(key)) return false;
+    return kind.startsWith("update:") ? announced.has(key) : true;
+  });
+  if (covered.length === 0) return [];
+
+  const event = await createNotificationEvent({
+    category: "SESSION",
+    eventType: "SESSION_DM",
+    sourceId: sessionId,
+    occurrence: kind,
+  });
+  for (const user of covered) {
+    await enqueueDelivery({
+      eventId: event.id,
+      channel: "DISCORD_DM",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: `user:${user.id}`,
+      targetSlot: dmSlot(sessionId, kind, user.id),
+    });
+  }
+  return covered;
+}
+
+/**
+ * MP fermé (`discord:dm_unavailable`, jamais une autre erreur) : trace
+ * l'échec (déjà écrite par l'exécuteur) ET met en file une mention de
+ * secours dans le fil de la soirée — dans la MÊME transaction que le
+ * passage à FAILED. Jamais de nouvelle tentative de MP. Idempotent
+ * (occurrence = `targetSlot` du MP d'origine).
+ */
+async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput): Promise<void> {
+  const { delivery, event, errorClass, db } = input;
+  if (event.category !== "SESSION" || delivery.channel !== "DISCORD_DM") return;
+  if (errorClass !== DM_UNAVAILABLE_ERROR_CLASS) return;
+  const role = delivery.targetSlot.split(":").slice(3).join(":");
+  if (!role.startsWith("dm:")) return;
+  const rest = role.slice("dm:".length);
+  const userId = rest.slice(rest.lastIndexOf(":") + 1);
+  const kind = rest.slice(0, rest.lastIndexOf(":"));
+
+  const fallbackEvent = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_DM_FALLBACK", sourceId: event.sourceId, occurrence: delivery.targetSlot },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: fallbackEvent.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: `user:${userId}`,
+      targetSlot: dmFallbackSlot(event.sourceId, kind, userId),
+    },
+    db
+  );
+}
 
 /* -------------------------------------------------------------------- */
 /* Enqueue — appelé depuis les points d'entrée métier existants          */
@@ -936,10 +1044,17 @@ async function buildMessageContent(
   // (l'embed porte déjà toute l'information), non vide pour un rappel
   // (aucun embed, sans quoi le message ne contiendrait QUE des mentions,
   // ou rien du tout si personne n'est éligible à être mentionné).
-  discordBodyText = ""
+  discordBodyText = "",
+  // MP des soirées (V2) — si fourni ET `DISCORD_DM_SESSION_ENABLED`, chaque
+  // pote éligible reçoit un MP (mis en file ici) et sa mention est RETIRÉE
+  // du message du fil (un seul ping). Mention de secours si le MP échoue.
+  dmKind?: DmKind
 ): Promise<ResolvedMessageContent> {
   const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions) : [];
-  const { text, userIds } = mentionContent(eligible);
+  const dmCovered =
+    dmKind && isSessionDirectMessageEnabled() ? await enqueueSessionDirectMessages(session.id, dmKind, eligible) : [];
+  const dmCoveredIds = new Set(dmCovered.map((u) => u.id));
+  const { text, userIds } = mentionContent(eligible.filter((u) => !dmCoveredIds.has(u.id)));
 
   // Notification interne (#98, même philosophie que le chemin webhook) —
   // EXACTEMENT les mêmes destinataires que les mentions ci-dessus, jamais
@@ -1016,7 +1131,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role.startsWith("thread-reminder-")) {
       const minutes = Number(role.slice("thread-reminder-".length));
       if (!Number.isFinite(minutes)) return { eligible: false, reason: "unresolvable" };
-      return resolveThreadReminder(sessionId, session);
+      return resolveThreadReminder(sessionId, session, minutes);
     }
     if (role.startsWith("invite:")) {
       const inviteId = role.slice("invite:".length);
@@ -1025,11 +1140,106 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role === "creator-member") {
       return resolveCreatorThreadMembership(sessionId, session);
     }
+    if (role.startsWith("dm:")) {
+      return resolveSessionDirectMessage(role, session);
+    }
+    if (role.startsWith("dm-fallback:")) {
+      return resolveSessionDirectMessageFallback(role, session);
+    }
 
     logger.error("session-announce", `targetSlot de rôle inconnu : ${delivery.targetSlot}`, { sessionId });
     return { eligible: false, reason: "unresolvable" };
   },
+  onTerminalDiscordFailure: enqueueDirectMessageFallback,
 };
+
+interface ParsedDmRole {
+  /** `announce`, `update:<eventId>` ou `reminder:<minutes>`. */
+  kind: string;
+  base: "announce" | "update" | "reminder";
+  userId: string;
+}
+
+function parseDmRole(role: string, prefix: "dm:" | "dm-fallback:"): ParsedDmRole | null {
+  const rest = role.slice(prefix.length);
+  const cut = rest.lastIndexOf(":");
+  if (cut < 0) return null;
+  const kind = rest.slice(0, cut);
+  const base = kind.split(":")[0];
+  if (base !== "announce" && base !== "update" && base !== "reminder") return null;
+  return { kind, base, userId: rest.slice(cut + 1) };
+}
+
+/** Texte d'accroche d'un MP/d'une mention de secours, selon le kind. */
+function dmSubject(session: SessionWithVotes, parsed: ParsedDmRole): string | null {
+  if (parsed.base === "reminder") {
+    const minutesRemaining = (session.date.getTime() - wallClockNow().getTime()) / 60_000;
+    if (minutesRemaining <= 0) return null;
+    return `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
+  }
+  return parsed.base === "update" ? "🔄 Soirée mise à jour" : "📣 Nouvelle soirée";
+}
+
+/**
+ * MP d'une soirée — état relu JUSTE À TEMPS, jamais depuis l'enqueue : la
+ * soirée doit toujours être VOTING/SCHEDULED (jamais un MP pour une soirée
+ * annulée/terminée, ni un rappel après le début), et le pote doit toujours
+ * être éligible (sélection du créateur, invitation ACTIVE, préférence
+ * `SESSION`/`ROULETTE`) — une désactivation postérieure à l'enqueue
+ * empêche l'envoi. Un MP fermé (`dm_unavailable`) n'est JAMAIS retenté
+ * (échec définitif, voir `discord-rest.ts`) : c'est `onTerminalDiscordFailure`
+ * qui met alors la mention de secours en file.
+ */
+async function resolveSessionDirectMessage(role: string, session: SessionWithVotes): Promise<Resolution> {
+  const parsed = parseDmRole(role, "dm:");
+  if (!parsed) return { eligible: false, reason: "unresolvable" };
+  if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
+  const subject = dmSubject(session, parsed);
+  if (!subject) return { eligible: false, reason: "expired" };
+
+  const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
+  if (!recipient) return { eligible: false, reason: "unresolvable" };
+  const [allowed] = await resolveEligibleMentions(session, [recipient]);
+  if (!allowed) return { eligible: false, reason: "preference_declined" };
+
+  const rendering = resolveAnnounceRendering(session);
+  const action: ResolvedAction = {
+    kind: "send_direct_message",
+    userId: recipient.discordId,
+    message: { content: subject, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE },
+  };
+  return { eligible: true, action };
+}
+
+/**
+ * Mention de secours dans le fil quand le MP d'un pote est fermé — même
+ * garde d'état/d'éligibilité que le MP, postée DANS le fil privé (jamais
+ * le salon public). Ne mentionne que ce pote.
+ */
+async function resolveSessionDirectMessageFallback(role: string, session: SessionWithVotes): Promise<Resolution> {
+  const parsed = parseDmRole(role, "dm-fallback:");
+  if (!parsed) return { eligible: false, reason: "unresolvable" };
+  const thread = await findSentDelivery(threadSlot(session.id));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+  if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
+  const subject = dmSubject(session, parsed);
+  if (!subject) return { eligible: false, reason: "expired" };
+
+  const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
+  if (!recipient) return { eligible: false, reason: "unresolvable" };
+  const [allowed] = await resolveEligibleMentions(session, [recipient]);
+  if (!allowed) return { eligible: false, reason: "preference_declined" };
+
+  const action: ResolvedAction = {
+    kind: "send_thread_message_verified",
+    threadId: thread.discordThreadId,
+    message: {
+      content: `<@${recipient.discordId}> ${subject} (MP impossible) — ${absoluteSessionUrl(session.id)}`,
+      allowedMentions: { ...NO_MENTIONS_PARSE, users: [recipient.discordId] },
+    },
+  };
+  return { eligible: true, action };
+}
 
 /**
  * Bug remonté (production, sessions Roulette) — le SEND initial supposait
@@ -1082,7 +1292,9 @@ async function resolveAnnounceDelivery(
       rendering.candidateMentions,
       notifType,
       notifTitle,
-      formatDateTimeFr(session.date)
+      formatDateTimeFr(session.date),
+      "",
+      "announce"
     );
     const action: ResolvedAction = {
       kind: "send_thread_message_verified",
@@ -1139,7 +1351,9 @@ async function resolveAnnounceDelivery(
     rendering.candidateMentions,
     notifType,
     notifTitle,
-    formatDateTimeFr(session.date)
+    formatDateTimeFr(session.date),
+    "",
+    `update:${delivery.eventId}`
   );
   const action: ResolvedAction = {
     kind: "edit_channel_message",
@@ -1338,7 +1552,11 @@ async function resolveSessionThreadArchive(sessionId: string): Promise<Resolutio
  * `computeTimingsDue`, reminders.ts) mais traitée en retard par
  * l'exécuteur.
  */
-async function resolveThreadReminder(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
+async function resolveThreadReminder(
+  sessionId: string,
+  session: SessionWithVotes,
+  minutes: number
+): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
@@ -1377,7 +1595,8 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     "SESSION_CREATED",
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
-    reminderTitle
+    reminderTitle,
+    `reminder:${minutes}`
   );
   const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };

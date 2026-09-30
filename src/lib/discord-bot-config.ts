@@ -85,3 +85,15 @@ export function isTournamentAnnounceViaBotEnabled(): boolean {
 export function isInstantSessionInviteViaBotEnabled(): boolean {
   return process.env.DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED === "true";
 }
+
+/**
+ * V2 (MP soirées) — les annonces, changements de date, jeux décidés et
+ * rappels d'une soirée bot partent AUSSI en MP à chaque pote concerné, et
+ * leur mention disparaît alors du fil (secours : mention dans le fil si le
+ * MP échoue définitivement, voir `session-announce.ts`). Ne gouverne QUE la
+ * création de nouveaux MP : ceux déjà en file restent traités. Sans effet
+ * sans le chemin bot des soirées lui-même (`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`).
+ */
+export function isSessionDirectMessageEnabled(): boolean {
+  return process.env.DISCORD_DM_SESSION_ENABLED === "true";
+}
