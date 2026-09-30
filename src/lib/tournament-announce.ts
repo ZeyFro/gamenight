@@ -9,6 +9,7 @@ import { filterUsersByNotificationPreference } from "@/lib/notification-preferen
 import {
   createNotificationEvent,
   enqueueDelivery,
+  hasUnsettledDeliveriesWithPrefix,
   type ClaimedDelivery,
   type NotificationDb,
 } from "@/lib/notification-delivery";
@@ -125,6 +126,24 @@ function announceDeleteSlot(tournamentId: string): string {
 }
 function memberSlot(tournamentId: string, userId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:member:${userId}`;
+}
+
+/**
+ * Nettoyage automatique des fils (V2) — emplacements lus par le
+ * planificateur `discord-thread-cleanup.ts`. `archive` est le `thread-close`
+ * historique (archivage à l'annulation), réutilisé tel quel.
+ */
+export function tournamentThreadCleanupSlots(tournamentId: string) {
+  return {
+    prefix: `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:`,
+    thread: threadSlot(tournamentId),
+    archive: threadCloseSlot(tournamentId),
+    delete: threadDeleteSlot(tournamentId),
+  };
+}
+
+export function isTerminalTournamentStatus(status: string): boolean {
+  return status === "DONE" || status === "CANCELLED";
 }
 
 /** Jamais de mention sur ce chantier — aucun `users`/`roles`, voir le
@@ -324,6 +343,29 @@ export async function enqueueTournamentAnnounceDelete(tournamentId: string, db?:
       operation: "SEND",
       recipientKey: "channel",
       targetSlot: announceDeleteSlot(tournamentId),
+    },
+    db
+  );
+}
+
+/**
+ * Nettoyage automatique des fils (V2) — même `targetSlot` que
+ * `enqueueTournamentThreadDelete`, occurrence FIXE (un passage cron répété
+ * ne crée jamais une seconde intention). Voir `enqueueSessionThreadAutoDelete`.
+ */
+export async function enqueueTournamentThreadAutoDelete(tournamentId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_THREAD_AUTO_DELETE", sourceId: tournamentId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadDeleteSlot(tournamentId),
     },
     db
   );
@@ -680,6 +722,12 @@ async function findSentDelivery(targetSlot: string) {
   });
 }
 
+/** Ligne absente (tournoi supprimé) = plus active ; sinon, statut relu. */
+async function isTournamentStillActive(tournamentId: string): Promise<boolean> {
+  const live = await prisma.tournament.findUnique({ where: { id: tournamentId }, select: { status: true } });
+  return live !== null && !isTerminalTournamentStatus(live.status);
+}
+
 /**
  * Résolveur TOURNAMENT — dispatché par le rôle terminal du `targetSlot`
  * (`announce`/`thread`/`thread-summary`/`thread-close`), même structure
@@ -894,13 +942,11 @@ async function resolveThreadCreation(tournamentId: string, tournament: Tournamen
 }
 
 /**
- * Ferme (archive) le fil — V2 annulation/suppression. Ne dépend QUE de la
- * référence du fil déjà persistée (`thread` SENT), JAMAIS de l'état actuel
- * du tournoi : contrairement à `announce`/`thread`/`thread-summary`, cette
- * livraison doit continuer à fonctionner même après la SUPPRESSION du
- * tournoi (ligne disparue) — sa seule mission est de fermer un fil
- * Discord qui existe peut-être encore, indépendamment de ce qu'il reste
- * en base de l'entité qui l'a créé.
+ * Ferme (archive ET verrouille) le fil — V2 annulation, et depuis le
+ * nettoyage automatique des fils, aussi la fin normale (DONE). Ne dépend
+ * que de la référence du fil déjà persistée (`thread` SENT) et continue de
+ * fonctionner après la SUPPRESSION du tournoi (ligne disparue) ; seule
+ * exception : un tournoi encore présent ET actif n'est jamais fermé.
  *
  * Relit l'état ACTUEL (jamais figé) de la livraison "thread" elle-même
  * pour décider : SENT → archive le fil réel ; encore PENDING/RESERVED →
@@ -911,9 +957,22 @@ async function resolveThreadCreation(tournamentId: string, tournament: Tournamen
  * (`expired`, définitif).
  */
 async function resolveThreadClose(tournamentId: string): Promise<Resolution> {
+  // Nettoyage automatique des fils (V2) — un tournoi encore actif ne voit
+  // jamais son fil fermé ; tournoi absent (supprimé) ou terminé : passe.
+  if (await isTournamentStillActive(tournamentId)) return { eligible: false, reason: "expired" };
+  // Jamais verrouiller pendant qu'un résumé/ajout de membre doit encore
+  // passer par le fil (un fil verrouillé refuserait ces écritures).
+  const slots = tournamentThreadCleanupSlots(tournamentId);
+  const cleanupSlots = [slots.archive, slots.delete, announceDeleteSlot(tournamentId)];
+  if (await hasUnsettledDeliveriesWithPrefix(slots.prefix, cleanupSlots)) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+
   const thread = await findSentDelivery(threadSlot(tournamentId));
   if (thread?.discordThreadId) {
-    const action: ResolvedAction = { kind: "archive_thread", threadId: thread.discordThreadId, locked: false };
+    // Verrouillé (V2, décision produit) : plus personne n'écrit dans le fil
+    // d'un tournoi terminé/annulé avant sa suppression définitive.
+    const action: ResolvedAction = { kind: "archive_thread", threadId: thread.discordThreadId, locked: true };
     return { eligible: true, action };
   }
 
@@ -936,6 +995,10 @@ async function resolveThreadClose(tournamentId: string): Promise<Resolution> {
  * (`delete_thread_permanent` au lieu d'`archive_thread`).
  */
 async function resolveThreadDelete(tournamentId: string): Promise<Resolution> {
+  if (await isTournamentStillActive(tournamentId)) {
+    logger.warn("tournament-announce", "Suppression de fil refusée : tournoi encore actif.", { tournamentId });
+    return { eligible: false, reason: "expired" };
+  }
   const thread = await findSentDelivery(threadSlot(tournamentId));
   if (thread?.discordThreadId) {
     const action: ResolvedAction = { kind: "delete_thread_permanent", threadId: thread.discordThreadId };

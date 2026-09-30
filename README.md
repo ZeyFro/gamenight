@@ -12298,3 +12298,59 @@ Branche dédiée (`claude/gamenight-fix-reminders-burst`), indépendante de
 la PR #108 (V2 "Jouer maintenant", non touchée). Aucun changement aux
 réglages de rétention, aucun envoi Discord réel, aucune migration
 (schéma inchangé), aucun merge — PR ouverte en **Draft**.
+
+## V2 — Nettoyage automatique des fils Discord (soirées et tournois)
+
+Les fils « Soirée — <id> » et « Tournoi — <id> » restaient actifs après la
+fin de l'événement. Règle désormais appliquée
+(`src/lib/discord-thread-cleanup.ts`) :
+
+1. **Fin de l'événement** (soirée `DONE`/`CANCELLED`, tournoi `DONE`/`CANCELLED`)
+   → au passage cron suivant, le fil est **archivé et verrouillé**
+   (plus personne n'y écrit).
+2. **24 h après cet archivage** (horodatage réel `sentAt` de la livraison)
+   → le fil est **supprimé définitivement**, avec ses messages.
+
+Une soirée ou un tournoi **supprimé** garde son chemin existant (suppression
+immédiate du fil). Annuler un tournoi verrouille désormais aussi le fil
+(`thread-close`, `locked: true`).
+
+### Garanties
+
+- **Jamais un fil encore utile** : les résolveurs relisent le statut au
+  moment du traitement. Une soirée/un tournoi encore actif (ou redevenu
+  actif) fait refuser l'archivage comme la suppression, même si une
+  intention existe déjà (`resolver:expired`, aucun appel Discord).
+- **Jamais de verrouillage prématuré** : l'archivage attend
+  (`dependency_not_ready`) tant qu'une autre livraison de l'événement
+  (résumé, rappel, ajout de membre…) doit encore passer par le fil.
+- **Relançable** : occurrences fixes (un passage répété ou concurrent
+  retombe sur la même livraison) ; un fil déjà absent (404) à l'archivage
+  ou à la suppression compte comme l'objectif atteint.
+- **Traçable** : chaque étape est une ligne `NotificationDelivery`
+  (`thread-archive`/`thread-close` puis `thread-delete`). Un archivage en
+  échec terminal (ex. 403, permission manquante) bloque la suppression et
+  apparaît dans `archiveFailed` du rapport + un log `warn`.
+- **Aucun appel Discord dans la route** : elle n'enqueue que des
+  intentions, traitées par `/api/cron/notification-executor` (retries,
+  `retry_after` des 429, budget de bail).
+
+### Activation (non faite par cette PR)
+
+1. **Permission Discord** : accorder au bot `Gérer les fils`
+   (`MANAGE_THREADS`) sur #🎮-soirées et #🏆-tournois uniquement (jamais
+   `Administrateur`). Doc Discord : verrouiller (`locked`) et supprimer un
+   fil exigent tous deux cette permission.
+2. **Variables Vercel** : `DISCORD_THREAD_CLEANUP_ENABLED=true`, laisser
+   `DISCORD_THREAD_CLEANUP_MODE` vide pour observer d'abord le rapport en
+   dry-run, puis `execute`.
+3. **Cron externe** (cron-job.org, même compte que les autres) :
+   `GET /api/cron/discord-thread-cleanup` toutes les 15 min, en-tête
+   `Authorization: Bearer <CRON_SECRET>`. Le cron `notification-executor`
+   doit lui aussi tourner.
+
+Au premier passage en `execute`, toutes les soirées/tournois déjà terminés
+avec un fil bot sont archivés ; leur suppression suit 24 h plus tard (les
+tournois annulés avant cette PR, déjà archivés, sont supprimés dès le
+passage suivant). Les anciens fils de l'époque webhook, sans identifiant
+persisté, ne sont jamais touchés (aucune recherche par nom).

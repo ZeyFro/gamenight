@@ -480,6 +480,14 @@ export async function performDiscordAction(
         deadline,
         now,
       });
+      // Nettoyage automatique des fils (V2) — un fil déjà absent (supprimé
+      // à la main par un modérateur) n'a plus besoin d'être fermé : même
+      // équivalence 404 → succès que `delete_thread_permanent` ci-dessous.
+      // Un 403 (permission `MANAGE_THREADS` manquante pour `locked`) reste
+      // un échec, jamais reclassé.
+      if (!result.ok && result.kind === "not_found") {
+        return { ok: true, data: { discordThreadId: action.threadId } };
+      }
       return mapDiscordResult(result, (data) => ({
         discordThreadId: data.threadId,
         discordChannelId: data.parentId ?? undefined,

@@ -12,6 +12,7 @@ import { getSessionAnnounceConfig } from "@/lib/discord-bot-config";
 import {
   createNotificationEvent,
   enqueueDelivery,
+  hasUnsettledDeliveriesWithPrefix,
   type ClaimedDelivery,
   type NotificationDb,
 } from "@/lib/notification-delivery";
@@ -137,6 +138,23 @@ function creatorMemberSlot(sessionId: string): string {
 }
 function threadDeleteSlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-delete`;
+}
+function threadArchiveSlot(sessionId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-archive`;
+}
+
+/**
+ * Nettoyage automatique des fils (V2) — emplacements lus par le
+ * planificateur `discord-thread-cleanup.ts`, jamais reconstruits là-bas
+ * à la main : une seule définition des `targetSlot` d'une soirée.
+ */
+export function sessionThreadCleanupSlots(sessionId: string) {
+  return {
+    prefix: `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:`,
+    thread: threadSlot(sessionId),
+    archive: threadArchiveSlot(sessionId),
+    delete: threadDeleteSlot(sessionId),
+  };
 }
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
@@ -649,6 +667,56 @@ export async function enqueueSessionThreadDelete(sessionId: string, db?: Notific
 }
 
 /**
+ * Nettoyage automatique des fils (V2) — archive ET verrouille le fil d'une
+ * soirée terminée/annulée (voir `discord-thread-cleanup.ts`, seul
+ * appelant). Occurrence FIXE : un fil ne s'archive qu'une fois, un
+ * passage cron répété (ou concurrent) retombe sur la MÊME livraison.
+ */
+export async function enqueueSessionThreadArchive(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_THREAD_ARCHIVE", sourceId: sessionId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadArchiveSlot(sessionId),
+    },
+    db
+  );
+}
+
+/**
+ * Nettoyage automatique des fils (V2) — suppression définitive programmée
+ * par le cron une fois le délai écoulé après l'archivage. Même `targetSlot`
+ * que `enqueueSessionThreadDelete` (donc même résolveur, même garde, et
+ * même lecture par `getSessionThreadDeleteStatus`), mais occurrence FIXE :
+ * contrairement au réessai manuel, un passage cron répété ne doit jamais
+ * créer une seconde intention.
+ */
+export async function enqueueSessionThreadAutoDelete(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_THREAD_AUTO_DELETE", sourceId: sessionId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadDeleteSlot(sessionId),
+    },
+    db
+  );
+}
+
+/**
  * État de la dernière tentative de nettoyage Discord connue pour une
  * soirée SUPPRIMÉE (la ligne `Session` n'existe plus — lu par son id brut,
  * jamais via une relation Prisma qui échouerait silencieusement). Réservé
@@ -929,6 +997,9 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role === "thread-delete") {
       return resolveSessionThreadDelete(sessionId);
     }
+    if (role === "thread-archive") {
+      return resolveSessionThreadArchive(sessionId);
+    }
 
     const session = await loadSession(sessionId);
     if (!session) return { eligible: false, reason: "expired" };
@@ -1192,6 +1263,19 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
  *     supprimer (`expired`, définitif).
  */
 async function resolveSessionThreadDelete(sessionId: string): Promise<Resolution> {
+  // Nettoyage automatique des fils (V2) — garde relue AU TRAITEMENT : une
+  // soirée supprimée (ligne absente, cas historique ci-dessus) ou terminée
+  // passe ; une soirée encore active ne voit JAMAIS son fil supprimé,
+  // quelle que soit la façon dont la livraison a été enqueue-ée.
+  const live = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+  if (live && !isTerminalSessionStatus(live.status)) {
+    logger.warn("session-announce", "Suppression de fil refusée : soirée encore active.", {
+      sessionId,
+      status: live.status,
+    });
+    return { eligible: false, reason: "expired" };
+  }
+
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (thread?.discordThreadId) {
     const action: ResolvedAction = { kind: "delete_thread_permanent", threadId: thread.discordThreadId };
@@ -1207,6 +1291,34 @@ async function resolveSessionThreadDelete(sessionId: string): Promise<Resolution
     return { eligible: false, reason: "dependency_not_ready" };
   }
   return { eligible: false, reason: "expired" };
+}
+
+export function isTerminalSessionStatus(status: string): boolean {
+  return status === "DONE" || status === "CANCELLED";
+}
+
+/**
+ * Nettoyage automatique des fils (V2) — archive ET verrouille le fil d'une
+ * soirée terminée/annulée. Relit l'état AU TRAITEMENT : soirée supprimée
+ * (le fil est déjà pris en charge par `thread-delete`) ou encore active →
+ * `expired`, jamais un verrouillage d'un fil encore utile. Attend
+ * (`dependency_not_ready`) tant qu'une autre livraison de la soirée
+ * (résumé, rappel, synchronisation de membre…) doit encore passer par le
+ * fil — un fil verrouillé refuserait ces écritures.
+ */
+async function resolveSessionThreadArchive(sessionId: string): Promise<Resolution> {
+  const live = await prisma.session.findUnique({ where: { id: sessionId }, select: { status: true } });
+  if (!live || !isTerminalSessionStatus(live.status)) return { eligible: false, reason: "expired" };
+
+  const slots = sessionThreadCleanupSlots(sessionId);
+  if (await hasUnsettledDeliveriesWithPrefix(slots.prefix, [slots.archive, slots.delete])) {
+    return { eligible: false, reason: "dependency_not_ready" };
+  }
+
+  const thread = await findSentDelivery(slots.thread);
+  if (!thread?.discordThreadId) return { eligible: false, reason: "expired" };
+  const action: ResolvedAction = { kind: "archive_thread", threadId: thread.discordThreadId, locked: true };
+  return { eligible: true, action };
 }
 
 /**
