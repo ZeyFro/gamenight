@@ -12373,6 +12373,11 @@ préférence `SESSION`/`ROULETTE`), **relus juste avant l'envoi** : une
 préférence désactivée, une invitation retirée, une soirée annulée ou
 commencée entre-temps empêche le MP (échec traçable `resolver:*`).
 
+- **Le créateur reçoit aussi les MP** (création, mise à jour, rappels),
+  comme les invités, même s'il n'est ni invité ni dans la sélection ; seule
+  sa préférence `SESSION` (`ROULETTE` pour une soirée issue d'une roulette)
+  s'applique, relue avant l'envoi. Il n'est jamais mentionné dans le fil,
+  sauf en secours si son MP est fermé.
 - **Un seul ping** : quand le MP d'un pote est mis en file, sa mention est
   retirée du message du fil.
 - **Pas de doublon** : un `targetSlot` par `[soirée, type, pote]`

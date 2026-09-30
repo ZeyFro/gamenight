@@ -155,7 +155,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
   }
 
   describe("annonce", () => {
-    it("un MP par invité, mention retirée du fil, aucun doublon après un retry", async () => {
+    it("un MP par invité ET pour le créateur, mention retirée du fil, aucun doublon après un retry", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const b = await makeUser();
@@ -174,10 +174,10 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(body.allowed_mentions.users).toBeUndefined();
 
       const rows = await dmRows(session.id);
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(3); // a, b + le créateur
       expect(rows.every((r) => r.status === "SENT" && r.channel === "DISCORD_DM")).toBe(true);
       const dmPosts = calls("POST", /\/channels\/dm-[^/]+\/messages$/);
-      expect(dmPosts).toHaveLength(2);
+      expect(dmPosts).toHaveLength(3);
       const dmBody = JSON.parse(String(dmPosts[0][1].body));
       expect(dmBody.content).toBe("📣 Nouvelle soirée");
       expect(dmBody.embeds).toHaveLength(1);
@@ -203,19 +203,128 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       const a = await makeUser();
       const session = await makeReadySession(creator.id, [a.id]);
 
-      // Annonce seule : on ne traite pas encore le MP.
+      // Annonce seule : on ne traite pas encore les MP.
       await executorLib.processNextDelivery({
         resolver: announceLib.sessionAnnounceResolver,
         owner: "w1",
       });
-      expect(await dmRows(session.id)).toHaveLength(1);
+      expect(await dmRows(session.id)).toHaveLength(2); // a + le créateur
 
       await db.userNotificationPreference.create({ data: { userId: a.id, category: "SESSION", enabled: false } });
-      const outcome = await executorLib.processNextDelivery({
-        resolver: announceLib.sessionAnnounceResolver,
-        owner: "w2",
+      await drain();
+      const rows = await dmRows(session.id);
+      expect(rows.find((r) => r.recipientKey === `user:${a.id}`)).toMatchObject({
+        status: "FAILED",
+        errorClass: "resolver:preference_declined",
       });
-      expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:preference_declined" });
+      expect(calls("POST", new RegExp(`/channels/dm-${a.discordId}/messages$`))).toHaveLength(0);
+      expect(rows.find((r) => r.recipientKey === `user:${creator.id}`)!.status).toBe("SENT");
+    });
+  });
+
+  describe("le créateur reçoit aussi les MP", () => {
+    it("création : MP au créateur, jamais mentionné dans le fil ; un pote non sélectionné n'en reçoit pas", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      // Le créateur n'est ni invité ni dans `notifiedUserIds` : il ne dépend
+      // que de sa propre préférence.
+      await db.session.update({ where: { id: session.id }, data: { notifiedUserIds: [a.id] } });
+
+      await drain();
+
+      const rows = await dmRows(session.id);
+      expect(rows.map((r) => r.recipientKey).sort()).toEqual([`user:${a.id}`, `user:${creator.id}`].sort());
+      expect(rows.every((r) => r.status === "SENT")).toBe(true);
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(1);
+      const threadBody = JSON.parse(String(calls("POST", /\/channels\/thread-1\/messages$/).at(-1)![1].body));
+      expect(threadBody.content).toBeUndefined();
+    });
+
+    it("préférence SESSION du créateur désactivée : aucun MP pour lui, l'invité en reçoit un", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      await db.userNotificationPreference.create({
+        data: { userId: creator.id, category: "SESSION", enabled: false },
+      });
+
+      await drain();
+
+      const rows = await dmRows(session.id);
+      expect(rows.map((r) => r.recipientKey)).toEqual([`user:${a.id}`]);
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(0);
+    });
+
+    it("préférence désactivée APRÈS la mise en file : le MP du créateur est refusé au traitement", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      await executorLib.processNextDelivery({ resolver: announceLib.sessionAnnounceResolver, owner: "w1" });
+      await db.userNotificationPreference.create({
+        data: { userId: creator.id, category: "SESSION", enabled: false },
+      });
+
+      await drain();
+
+      const row = (await dmRows(session.id)).find((r) => r.recipientKey === `user:${creator.id}`)!;
+      expect(row).toMatchObject({ status: "FAILED", errorClass: "resolver:preference_declined" });
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(0);
+    });
+
+    it("mise à jour et rappel : le créateur les reçoit en MP, sans mention dans le fil", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      await drain(); // annonce + MP d'annonce
+
+      await announceLib.enqueueSessionAnnounceUpdate(session.id);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+
+      const creatorDms = calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`)).map(
+        ([, init]) => JSON.parse(String(init.body)).content
+      );
+      expect(creatorDms).toHaveLength(3);
+      expect(creatorDms).toContain("🔄 Soirée mise à jour");
+      expect(creatorDms.some((c: string) => c.includes("⏰ Rappel"))).toBe(true);
+      const reminderThreadBody = JSON.parse(String(calls("POST", /\/channels\/thread-1\/messages$/).at(-1)![1].body));
+      expect(reminderThreadBody.content).not.toContain(`<@${creator.discordId}>`);
+    });
+
+    it("MP du créateur fermé : échec tracé, mention de secours dans le fil, aucun nouveau MP", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      closedDms.add(creator.discordId);
+
+      await drain();
+
+      const failed = (await dmRows(session.id)).find((r) => r.recipientKey === `user:${creator.id}`)!;
+      expect(failed).toMatchObject({ status: "FAILED", errorClass: "discord:dm_unavailable" });
+      const fallback = calls("POST", /\/channels\/thread-1\/messages$/)
+        .map(([, init]) => JSON.parse(String(init.body)))
+        .find((body) => typeof body.content === "string" && body.content.includes("MP impossible"));
+      expect(fallback.content).toContain(`<@${creator.discordId}>`);
+      expect(fallback.allowed_mentions.users).toEqual([creator.discordId]);
+
+      // Rappel suivant : pas de nouveau MP au créateur, mentionné dans le fil.
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(1);
+      const reminderBody = JSON.parse(String(calls("POST", /\/channels\/thread-1\/messages$/).at(-1)![1].body));
+      expect(reminderBody.content).toContain(`<@${creator.discordId}>`);
+    });
+
+    it("interrupteur éteint : le créateur ne reçoit aucun MP", async () => {
+      vi.stubEnv("DISCORD_DM_SESSION_ENABLED", "false");
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+
+      await drain();
+
+      expect(await dmRows(session.id)).toHaveLength(0);
       expect(calls("POST", /users\/@me\/channels/)).toHaveLength(0);
     });
   });
@@ -269,7 +378,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(
         await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm-fallback:" } } })
       ).toBe(0);
-      expect(await dmRows(session.id)).toHaveLength(1);
+      expect(await dmRows(session.id)).toHaveLength(2); // a + le créateur
     });
   });
 
@@ -318,14 +427,12 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       const a = await makeUser();
       const session = await makeReadySession(creator.id, [a.id]);
       await executorLib.processNextDelivery({ resolver: announceLib.sessionAnnounceResolver, owner: "w1" });
-      expect(await dmRows(session.id)).toHaveLength(1);
+      expect(await dmRows(session.id)).toHaveLength(2); // a + le créateur
 
       await db.session.update({ where: { id: session.id }, data: { status: "CANCELLED" } });
-      const outcome = await executorLib.processNextDelivery({
-        resolver: announceLib.sessionAnnounceResolver,
-        owner: "w2",
-      });
-      expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+      const outcomes = await drain();
+      expect(outcomes).toHaveLength(2);
+      expect(outcomes.every((o) => o.outcome === "failed" && o.errorClass === "resolver:expired")).toBe(true);
       expect(calls("POST", /users\/@me\/channels/)).toHaveLength(0);
     });
   });

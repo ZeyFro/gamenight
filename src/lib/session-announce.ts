@@ -197,8 +197,8 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
   sessionId: string,
   kind: DmKind,
   users: T[]
-): Promise<T[]> {
-  if (users.length === 0) return [];
+): Promise<{ covered: T[]; blocked: T[] }> {
+  if (users.length === 0) return { covered: [], blocked: [] };
   const prefix = `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:`;
   const known = await prisma.notificationDelivery.findMany({
     where: { targetSlot: { startsWith: prefix }, recipientKey: { in: users.map((u) => `user:${u.id}`) } },
@@ -207,12 +207,13 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
   const blocked = new Set(known.filter((d) => d.errorClass === DM_UNAVAILABLE_ERROR_CLASS).map((d) => d.recipientKey));
   const announced = new Set(known.filter((d) => d.targetSlot.includes(":dm:announce:")).map((d) => d.recipientKey));
 
+  const blockedUsers = users.filter((u) => blocked.has(`user:${u.id}`));
   const covered = users.filter((u) => {
     const key = `user:${u.id}`;
     if (blocked.has(key)) return false;
     return kind.startsWith("update:") ? announced.has(key) : true;
   });
-  if (covered.length === 0) return [];
+  if (covered.length === 0) return { covered: [], blocked: blockedUsers };
 
   const event = await createNotificationEvent({
     category: "SESSION",
@@ -230,7 +231,34 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
       targetSlot: dmSlot(sessionId, kind, user.id),
     });
   }
-  return covered;
+  return { covered, blocked: blockedUsers };
+}
+
+/**
+ * Le CRÉATEUR reçoit aussi les MP de sa soirée (création, mise à jour,
+ * rappels), comme les invités — il n'est jamais dans la sélection
+ * `notifiedUserIds` ni dans les invitations (accès non révocable, voir
+ * `session-access.ts`), donc hors de `resolveEligibleMentions`. Seule sa
+ * préférence personnelle (`SESSION`, ou `ROULETTE` pour une soirée issue
+ * d'une roulette) reste appliquée, comme pour tout le monde.
+ */
+async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | "createdViaRoulette">) {
+  const creator = await prisma.user.findUnique({ where: { id: session.createdById } });
+  if (!creator) return null;
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  const [allowed] = await filterUsersByNotificationPreference([creator], category);
+  return allowed ?? null;
+}
+
+/** Éligibilité d'un destinataire de MP relue à l'envoi : le créateur
+ * n'est soumis qu'à sa préférence, tout autre pote à la règle complète
+ * des mentions (sélection, invitation active, préférence). */
+async function isDmRecipientEligible(
+  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette">,
+  recipient: User
+): Promise<boolean> {
+  if (recipient.id === session.createdById) return (await resolveCreatorDmRecipient(session)) !== null;
+  return (await resolveEligibleMentions(session, [recipient])).length > 0;
 }
 
 /**
@@ -1051,10 +1079,21 @@ async function buildMessageContent(
   dmKind?: DmKind
 ): Promise<ResolvedMessageContent> {
   const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions) : [];
-  const dmCovered =
-    dmKind && isSessionDirectMessageEnabled() ? await enqueueSessionDirectMessages(session.id, dmKind, eligible) : [];
-  const dmCoveredIds = new Set(dmCovered.map((u) => u.id));
-  const { text, userIds } = mentionContent(eligible.filter((u) => !dmCoveredIds.has(u.id)));
+  // Le créateur est destinataire de MP en plus des invités (jamais mentionné
+  // dans le fil, sauf en secours si son MP est fermé) — pas pour un état sans
+  // mention (annulation : `candidateMentions === null`).
+  const dmActive = Boolean(dmKind) && isSessionDirectMessageEnabled();
+  const creatorRecipient =
+    dmActive && candidateMentions !== null && !eligible.some((u) => u.id === session.createdById)
+      ? await resolveCreatorDmRecipient(session)
+      : null;
+  const dmTargets = creatorRecipient ? [...eligible, creatorRecipient] : eligible;
+  const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(session.id, dmKind, dmTargets) : null;
+  const dmCoveredIds = new Set((dm?.covered ?? []).map((u) => u.id));
+  const mentioned = eligible.filter((u) => !dmCoveredIds.has(u.id));
+  // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
+  if (creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) mentioned.push(creatorRecipient);
+  const { text, userIds } = mentionContent(mentioned);
 
   // Notification interne (#98, même philosophie que le chemin webhook) —
   // EXACTEMENT les mêmes destinataires que les mentions ci-dessus, jamais
@@ -1199,8 +1238,7 @@ async function resolveSessionDirectMessage(role: string, session: SessionWithVot
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  const [allowed] = await resolveEligibleMentions(session, [recipient]);
-  if (!allowed) return { eligible: false, reason: "preference_declined" };
+  if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
 
   const rendering = resolveAnnounceRendering(session);
   const action: ResolvedAction = {
@@ -1227,8 +1265,7 @@ async function resolveSessionDirectMessageFallback(role: string, session: Sessio
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  const [allowed] = await resolveEligibleMentions(session, [recipient]);
-  if (!allowed) return { eligible: false, reason: "preference_declined" };
+  if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
 
   const action: ResolvedAction = {
     kind: "send_thread_message_verified",
