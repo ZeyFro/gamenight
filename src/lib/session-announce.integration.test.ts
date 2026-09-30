@@ -236,6 +236,60 @@ describe.skipIf(!TEST_DATABASE_URL)(
       });
     });
 
+    describe("annonce initiale (VOTING) — mentionne les invités dès la création, jamais seulement les votants (bug corrigé, diagnostic ping Discord réel 26/09)", () => {
+      it("aucun vote encore posé — les invités actifs sont mentionnés dès le SEND initial, pas seulement dans une EDIT ultérieure (jamais notifiée par Discord)", async () => {
+        const creator = await makeUser({ discordName: "createur" });
+        const guest1 = await makeUser({ discordName: "invite-1" });
+        const guest2 = await makeUser({ discordName: "invite-2" });
+        const session = await makeSession(creator.id);
+        await invite(session.id, guest1.id, creator.id);
+        await invite(session.id, guest2.id, creator.id);
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[2];
+        const body = JSON.parse(String(init.body));
+        expect(body.content).toContain(`<@${guest1.discordId}>`);
+        expect(body.content).toContain(`<@${guest2.discordId}>`);
+        // Le créateur ne se pingue jamais lui-même.
+        expect(body.content).not.toContain(`<@${creator.discordId}>`);
+
+        const notifiedIds = (
+          await db.notification.findMany({ where: { relatedSessionId: session.id } })
+        ).map((n) => n.userId);
+        expect(notifiedIds.sort()).toEqual([guest1.id, guest2.id].sort());
+      });
+
+      it("un invité avec la préférence SESSION désactivée n'est jamais mentionné, même sans aucun vote", async () => {
+        const creator = await makeUser();
+        const declined = await makeUser({ discordName: "refuse-sans-vote" });
+        const session = await makeSession(creator.id);
+        await invite(session.id, declined.id, creator.id);
+        await db.userNotificationPreference.create({
+          data: { userId: declined.id, category: "SESSION", enabled: false },
+        });
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls[2];
+        const body = JSON.parse(String(init.body));
+        expect(body.content).toBeFalsy();
+        expect(await db.notification.count({ where: { relatedSessionId: session.id } })).toBe(0);
+      });
+    });
+
     describe("protection contre un ancien fil PUBLIC référencé en base (revue ciblée, confidentialité des soirées)", () => {
       // Une ligne `NotificationDelivery` "thread" SENT est produite UNE
       // SEULE FOIS, à la création de la soirée (occurrence fixe, jamais
@@ -523,6 +577,35 @@ describe.skipIf(!TEST_DATABASE_URL)(
           expect(row.nextAttemptAt).toBeNull();
         }
       );
+    });
+
+    describe("rappel VOTING — mentionne les invités, jamais seulement les votants (bug corrigé, diagnostic ping Discord réel 26/09)", () => {
+      it("rappel envoyé avant tout vote — mentionne les invités actifs, jamais personne", async () => {
+        const creator = await makeUser();
+        const guest = await makeUser({ discordName: "invite-rappel" });
+        const session = await makeSession(creator.id);
+        await invite(session.id, guest.id, creator.id);
+
+        await announceLib.enqueueSessionCreationDeliveries(session.id);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-sessions" }));
+        await processOne(); // thread
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-announce", channel_id: "thread-1" }));
+        await processOne(); // announce
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(emptyResponse(204));
+        await processOne(); // creator-member — vide la file avant d'enqueue-er le rappel
+
+        await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-reminder", channel_id: "thread-1" }));
+        const outcome = await processOne();
+        expect(outcome?.outcome).toBe("sent");
+
+        const [, init] = fetchMock.mock.calls.at(-1)!;
+        const body = JSON.parse(String(init.body));
+        expect(body.content).toContain(`<@${guest.discordId}>`);
+      });
     });
 
     describe("rappel — contenu recalculé au TRAITEMENT réel, jamais figé à l'enqueue (fix rattrapage tardif)", () => {
@@ -1533,6 +1616,31 @@ describe.skipIf(!TEST_DATABASE_URL)(
         ).map((n) => n.userId);
         expect(notifiedUserIds).not.toContain(roulettePrefOff.id);
         expect(notifiedUserIds).toContain(sessionPrefOff.id);
+      });
+    });
+
+    describe("createRouletteResultSession — Proposal/Vote du jeu gagnant créés ATOMIQUEMENT (fix course diagnostic ping Discord 26/09)", () => {
+      it("le Proposal et les Vote existent immédiatement après l'appel — plus besoin d'une création séparée par l'appelant, jamais une fenêtre où le SEND différé les trouverait absents", async () => {
+        const creator = await makeUser();
+        const p1 = await makeUser();
+        const p2 = await makeUser();
+        const game = await makeGame(creator.id);
+
+        const { session, proposalId } = await sessionsLib.createRouletteResultSession({
+          date: new Date("2026-10-01T20:00:00.000Z"),
+          decidedGameId: game.id,
+          decidedTime: new Date("2026-10-01T20:00:00.000Z"),
+          createdById: creator.id,
+          notifiedUserIds: [creator.id, p1.id, p2.id],
+        });
+
+        const proposal = await db.proposal.findUnique({
+          where: { id: proposalId },
+          include: { votes: true },
+        });
+        expect(proposal?.sessionId).toBe(session.id);
+        expect(proposal?.gameId).toBe(game.id);
+        expect(proposal?.votes.map((v) => v.userId).sort()).toEqual([creator.id, p1.id, p2.id].sort());
       });
     });
 

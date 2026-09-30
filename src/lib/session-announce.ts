@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Game, Proposal, Session, User, Vote } from "@prisma/client";
+import type { Game, Proposal, Session, SessionInvite, User, Vote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
@@ -681,6 +681,7 @@ export async function getSessionThreadDeleteStatus(
 
 type SessionWithVotes = Session & {
   proposals: (Proposal & { game: Game; votes: (Vote & { user: User })[] })[];
+  invites: (SessionInvite & { user: User })[];
 };
 
 async function loadSession(sessionId: string): Promise<SessionWithVotes | null> {
@@ -691,6 +692,7 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
         include: { game: true, votes: { include: { user: true } } },
         orderBy: { createdAt: "asc" },
       },
+      invites: { include: { user: true } },
     },
   });
 }
@@ -698,6 +700,42 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
 function absoluteSessionUrl(sessionId: string): string {
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return `${base}/sessions/${sessionId}`;
+}
+
+/**
+ * Bug remonté (test réel Discord, 26/09) — les candidats aux mentions
+ * d'une soirée encore VOTING (annonce initiale ET rappels) étaient
+ * jusqu'ici les VOTANTS des propositions (`Vote`), jamais les invités : à
+ * la création, personne n'a encore voté → aucune mention sur le SEND
+ * initial, et l'EDIT qui suit (changement de créneau, clôture) ne peut
+ * jamais rattraper ça, Discord ne notifiant jamais les mentions ajoutées
+ * par édition (voir `resolveAnnounceDelivery`). Corrigé en amont : les
+ * candidats sont désormais les invités `ACTIVE` de la soirée, jamais les
+ * votants, pour VOTING (branche SCHEDULED/DONE inchangée — le résultat
+ * décidé continue de mentionner les votants du jeu gagnant, comportement
+ * voulu).
+ *
+ * Fonction PURE — ne lit rien en base, reçoit `session.invites` déjà
+ * chargé par `loadSession` et filtre elle-même le statut plutôt que de
+ * dépendre d'un `where` Prisma : testable sans `TEST_DATABASE_URL` (voir
+ * `session-announce.pure.test.ts`), contrairement au reste de ce module.
+ *
+ * JAMAIS le créateur, même pour une roulette où il figure dans
+ * `notifiedUserIds` (et serait donc autrement inclus par
+ * `resolveEligibleMentions`) : un créateur ne doit jamais se pinger
+ * lui-même pour sa propre soirée.
+ */
+export function resolveInvitedCandidates<U extends { id: string }>(
+  invites: { status: "ACTIVE" | "REVOKED"; user: U }[],
+  excludeUserId: string
+): U[] {
+  const seen = new Map<string, U>();
+  for (const invite of invites) {
+    if (invite.status !== "ACTIVE") continue;
+    if (invite.user.id === excludeUserId) continue;
+    if (!seen.has(invite.user.id)) seen.set(invite.user.id, invite.user);
+  }
+  return Array.from(seen.values());
 }
 
 /**
@@ -798,11 +836,8 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
     };
   }
 
-  // VOTING — création ou modification de créneau.
-  const voters = new Map<string, User & { silenceReminders: boolean }>();
-  for (const proposal of session.proposals) {
-    for (const vote of proposal.votes) voters.set(vote.user.id, vote.user);
-  }
+  // VOTING — création ou modification de créneau. Candidats = les invités
+  // ACTIVE, jamais les votants (voir le commentaire de `resolveInvitedCandidates`).
   return {
     embed: {
       title: "📣 Soirée",
@@ -817,7 +852,7 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
         { name: "Lien", value: absoluteSessionUrl(session.id) },
       ],
     },
-    candidateMentions: Array.from(voters.values()),
+    candidateMentions: resolveInvitedCandidates(session.invites, session.createdById),
   };
 }
 
@@ -1207,15 +1242,26 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     return { eligible: false, reason: "expired" };
   }
 
-  const voters = new Map<string, User & { silenceReminders: boolean }>();
-  for (const proposal of session.proposals) {
-    for (const vote of proposal.votes) voters.set(vote.user.id, vote.user);
+  // Même bug que l'annonce initiale (voir `resolveInvitedCandidates`) —
+  // un rappel VOTING envoyé avant tout vote ne mentionnait jamais
+  // personne. `SCHEDULED` (jeu déjà décidé) garde son comportement
+  // d'origine, inchangé : les votants de TOUTES les propositions (pas
+  // seulement du jeu gagnant), pas la portée de ce correctif.
+  let candidates: (User & { silenceReminders: boolean })[];
+  if (session.status === "VOTING") {
+    candidates = resolveInvitedCandidates(session.invites, session.createdById);
+  } else {
+    const voters = new Map<string, User & { silenceReminders: boolean }>();
+    for (const proposal of session.proposals) {
+      for (const vote of proposal.votes) voters.set(vote.user.id, vote.user);
+    }
+    candidates = Array.from(voters.values());
   }
 
   const reminderTitle = `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
   const message = await buildMessageContent(
     session,
-    Array.from(voters.values()),
+    candidates,
     "SESSION_CREATED",
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),

@@ -41,10 +41,18 @@ import type { Game, GroupAchievement, Session, SessionStatus, User } from "@pris
  * morceau de code testable plutôt que dupliqué (même raisonnement que
  * `updateSessionSchedule`) : les deux appelants restent seuls responsables
  * de LEURS propres données (jeu gagnant, participants) et de LEUR propre
- * annonce webhook (contenu différent entre les deux, `Proposal`/`Vote` du
- * jeu gagnant toujours créés par l'appelant, hors de cette transaction —
- * même effet de bord secondaire non-critique que `createSession` pour son
- * `preselectedGameId`).
+ * annonce webhook.
+ *
+ * Correctif (diagnostic ping Discord, 26/09) — le `Proposal`/`Vote` du jeu
+ * gagnant sont désormais créés ICI, DANS CETTE MÊME transaction, plutôt
+ * que par l'appelant juste après (comportement d'origine, documenté à tort
+ * ci-dessus comme "non-critique"). Sans ça, le SEND initial de l'annonce
+ * (occurrence FIXE, jamais retenté — voir `enqueueSessionCreationDeliveries`)
+ * pouvait être traité par le cron entre le commit de cette transaction et
+ * la création séparée du `Proposal`/`Vote` : `resolveAnnounceRendering`
+ * (branche SCHEDULED/DONE) ne trouve alors aucun gagnant et retombe sur un
+ * rendu neutre SANS mention, envoyé définitivement. `proposalId` retourné
+ * pour l'appelant qui en a besoin (chemin webhook, annonce du résultat).
  */
 export async function createRouletteResultSession(data: {
   date: Date;
@@ -52,13 +60,13 @@ export async function createRouletteResultSession(data: {
   decidedTime: Date;
   createdById: string;
   notifiedUserIds: string[];
-}): Promise<{ session: Session; announceViaBot: boolean }> {
+}): Promise<{ session: Session; announceViaBot: boolean; proposalId: string }> {
   const announceViaBot = isSessionAnnounceViaBotEnabled();
   logger.info("sessions", "Décision de transport à la création (session issue d'une roulette).", {
     announceViaBot,
   });
 
-  const session = await prisma.$transaction(async (tx) => {
+  const { session, proposalId } = await prisma.$transaction(async (tx) => {
     const created = await tx.session.create({
       data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot },
     });
@@ -82,10 +90,16 @@ export async function createRouletteResultSession(data: {
         await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
       }
     }
-    return created;
+    const proposal = await tx.proposal.create({
+      data: { sessionId: created.id, gameId: data.decidedGameId, proposedById: data.createdById },
+    });
+    await tx.vote.createMany({
+      data: data.notifiedUserIds.map((userId) => ({ proposalId: proposal.id, userId })),
+    });
+    return { session: created, proposalId: proposal.id };
   });
 
-  return { session, announceViaBot };
+  return { session, announceViaBot, proposalId };
 }
 
 /**
