@@ -5,8 +5,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * d'invitation (double ping, créateur : MP sans mention) ; modification/fin =
  * annonce ET MP d'invitation ÉDITÉS (aucun nouveau MP) ; changement de date =
  * message avec mention dans le fil + nouveau MP « Date modifiée » ; vote
- * validé = message avec mention dans le fil, aucun MP ; rappel = fil seul ;
- * secours (mention) si le MP du créateur est fermé. Postgres isolé (`TEST_DATABASE_URL`) + Discord entièrement simulé
+ * validé et rappel = message avec mention dans le fil ET MP à chaque invité et
+ * au créateur (MP oui, mention non) ; secours (mention) si le MP du créateur est fermé. Postgres isolé (`TEST_DATABASE_URL`) + Discord entièrement simulé
  * par un routeur d'URL sur `fetch` : AUCUN appel réseau réel, aucun MP réel.
  * Suite entièrement SKIPPÉE si `TEST_DATABASE_URL` est absente.
  */
@@ -281,7 +281,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(0);
     });
 
-    it("modification : le MP d'invitation du créateur est ÉDITÉ (aucun nouveau MP) ; rappel : fil seul, créateur non mentionné", async () => {
+    it("modification : le MP d'invitation du créateur est ÉDITÉ (aucun nouveau MP) ; rappel : fil avec mention + MP, créateur reçoit le MP sans mention", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const session = await makeReadySession(creator.id, [a.id]);
@@ -291,12 +291,18 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       await announceLib.enqueueSessionReminderDelivery(session.id, 60);
       await drain();
 
-      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`))).toHaveLength(1);
+      // Invitation (1) + rappel (1) : jamais de MP de mise à jour.
+      const creatorDms = calls("POST", new RegExp(`/channels/dm-${creator.discordId}/messages$`)).map(
+        ([, init]) => JSON.parse(String(init.body)).content
+      );
+      expect(creatorDms).toHaveLength(2);
+      expect(creatorDms.some((c: string) => c.includes("⏰ Rappel"))).toBe(true);
       const edits = calls("PATCH", new RegExp(`/channels/dm-${creator.discordId}/messages/dm-msg$`));
       expect(edits).toHaveLength(1);
       expect(JSON.parse(String(edits[0][1].body)).content).toBe("📣 Soirée mise à jour");
       const reminderThreadBody = JSON.parse(String(calls("POST", /\/channels\/thread-1\/messages$/).at(-1)![1].body));
       expect(reminderThreadBody.content).toContain("⏰ Rappel");
+      expect(reminderThreadBody.content).toContain(`<@${a.discordId}>`);
       expect(reminderThreadBody.content).not.toContain(`<@${creator.discordId}>`);
     });
 
@@ -429,7 +435,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect((await dmRows(session.id)).every((r) => r.operation === "SEND")).toBe(true);
     });
 
-    it("rappel : dans le fil avec mention des invités, plus aucun MP de rappel", async () => {
+    it("rappel : dans le fil avec mention des invités ET en MP à chaque invité et au créateur, sans doublon", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const session = await makeReadySession(creator.id, [a.id]);
@@ -442,19 +448,42 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       const threadBody = JSON.parse(String(calls("POST", /\/channels\/thread-1\/messages$/).at(-1)![1].body));
       expect(threadBody.content).toContain("⏰ Rappel");
       expect(threadBody.content).toContain(`<@${a.discordId}>`);
-      expect(calls("POST", /\/channels\/dm-/)).toHaveLength(0);
-      expect(
-        await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm:reminder:" } } })
-      ).toBe(0);
+      expect(threadBody.content).not.toContain(`<@${creator.discordId}>`);
+      const dms = calls("POST", /\/channels\/dm-[^/]+\/messages$/);
+      expect(dms).toHaveLength(2); // a + créateur
+      expect(dms.every(([, init]) => JSON.parse(String(init.body)).content.includes("⏰ Rappel"))).toBe(true);
+      expect(await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm:reminder:60:" } } })).toBe(2);
+
+      // Rappel rejoué : même palier, aucun MP en double.
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(2);
     });
 
-    it("anciens MP de rappel / de mise à jour déjà en file : abandonnés (expired), jamais envoyés", async () => {
+    it("rappel : le créateur n'est pas mentionné dans le fil même sans préférence ; préférence SESSION coupée → pas de MP pour lui", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const session = await makeReadySession(creator.id, [a.id]);
+      await db.userNotificationPreference.create({
+        data: { userId: creator.id, category: "SESSION", enabled: false },
+      });
+      await drain();
+      fetchMock.mockClear();
+
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/`))).toHaveLength(0);
+      expect(calls("POST", new RegExp(`/channels/dm-${a.discordId}/`))).toHaveLength(1);
+    });
+
+    it("anciens MP de mise à jour déjà en file : abandonnés (expired), jamais envoyés", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const session = await makeReadySession(creator.id, [a.id]);
       await drain();
       fetchMock.mockClear();
-      for (const kind of ["reminder:60", "update:old"]) {
+      for (const kind of ["update:old"]) {
         const event = await db.notificationEvent.create({
           data: { category: "SESSION", eventType: "SESSION_DM", sourceId: session.id, occurrence: kind },
         });
@@ -516,7 +545,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(calls("POST", new RegExp(`/channels/dm-${late.discordId}/`))).toHaveLength(0);
     });
 
-    it("vote validé : message « Soirée validée : {jeu} » avec mention dans le fil, aucun nouveau MP", async () => {
+    it("vote validé : message « Soirée validée : {jeu} » avec mention dans le fil ET MP aux joueurs et au créateur (sans mention)", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const b = await makeUser();
@@ -540,7 +569,16 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(body.content).toContain("🎮 Soirée validée : Jeu Test");
       expect(body.content).toContain(`<@${a.discordId}>`);
       expect(body.content).not.toContain(`<@${b.discordId}>`);
-      expect(calls("POST", /\/channels\/dm-/)).toHaveLength(0);
+      expect(body.content).not.toContain(`<@${creator.discordId}>`);
+      // MP : le joueur du jeu retenu (a) et le créateur ; pas b (n'a pas voté pour ce jeu).
+      const dms = calls("POST", /\/channels\/dm-[^/]+\/messages$/);
+      expect(dms).toHaveLength(2);
+      for (const [, init] of dms) {
+        expect(JSON.parse(String(init.body)).content).toBe("🎮 Soirée validée : Jeu Test");
+      }
+      expect(calls("POST", new RegExp(`/channels/dm-${a.discordId}/`))).toHaveLength(1);
+      expect(calls("POST", new RegExp(`/channels/dm-${creator.discordId}/`))).toHaveLength(1);
+      expect(calls("POST", new RegExp(`/channels/dm-${b.discordId}/`))).toHaveLength(0);
     });
 
     it("fin de session : MP d'invitation édité (annulée / terminée), aucun nouveau MP ni message", async () => {

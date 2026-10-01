@@ -105,7 +105,8 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  *   - `thread-summary` — SEND, résumé posté DANS le fil à la clôture ;
  *     même dépendance sur `thread`.
  *   - `thread-validated` — SEND une fois, « Soirée validée : {jeu} » avec
- *     mention des joueurs du jeu retenu, posté DANS le fil (pas de MP).
+ *     mention des joueurs du jeu retenu, posté DANS le fil, + MP
+ *     (`dm:validated:<userId>`) aux joueurs et au créateur.
  *   - `thread-date-<changeId>` — SEND (occurrence aléatoire, une par
  *     changement de date) : message avec mention dans le fil + nouveau MP
  *     « Date modifiée » (`dm:date:<changeId>:<userId>`).
@@ -180,17 +181,17 @@ const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
 
 /**
  * Rôles d'un `targetSlot` de MP : `dm:<kind>:<userId>` où `<kind>` vaut
- * `announce` (invitation, ÉDITÉE ensuite à chaque changement/fin de soirée)
- * ou `date:<eventId>` (nouveau MP « Date modifiée »). Mention de secours
+ * `announce` (invitation, ÉDITÉE ensuite à chaque changement/fin de soirée),
+ * `date:<eventId>` (nouveau MP « Date modifiée »), `validated` (soirée
+ * validée) ou `reminder:<minutes>` (rappel) — ces trois derniers en plus du
+ * message du fil, créateur inclus (MP oui, mention non). Mention de secours
  * dans le fil (MP fermé, créateur seulement) : `dm-fallback:<kind>:<userId>`,
  * même `<kind>` que le MP d'origine. Un `userId` (cuid) ne contient jamais `:`.
  *
- * Les anciens kinds `update:<eventId>` et `reminder:<minutes>` ne sont plus
- * jamais mis en file (plus de MP de mise à jour ni de rappel : l'invitation
- * est éditée, le rappel est dans le fil) ; leurs lignes déjà en file sont
- * simplement abandonnées (`expired`) par le résolveur.
+ * L'ancien kind `update:<eventId>` n'est plus jamais mis en file (l'invitation
+ * est éditée) ; ses lignes déjà en file sont abandonnées (`expired`).
  */
-type DmKind = "announce" | `date:${string}`;
+type DmKind = "announce" | "validated" | `date:${string}` | `reminder:${string}`;
 
 function dmSlot(sessionId: string, kind: DmKind, userId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:${kind}:${userId}`;
@@ -208,9 +209,8 @@ const DM_UNAVAILABLE_ERROR_CLASS = "discord:dm_unavailable";
  * donc retirée du fil. Jamais couverts :
  *   - un pote dont un MP de cette soirée a déjà échoué en `dm_unavailable`
  *     (MP fermé : aucune nouvelle tentative, il reste mentionné dans le fil) ;
- *   - pour tout kind autre que `announce` (`date`), un pote qui n'a jamais
- *     reçu le MP d'invitation (pas de MP surprise pour une soirée annoncée
- *     sans MP).
+ *   - pour `date`, un pote qui n'a jamais reçu le MP d'invitation (pas de
+ *     MP surprise pour une soirée annoncée sans MP).
  * Uniquement des écritures — jamais d'appel Discord (voir le commentaire de
  * fichier de `notification-delivery.ts`).
  */
@@ -232,7 +232,7 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
   const covered = users.filter((u) => {
     const key = `user:${u.id}`;
     if (blocked.has(key)) return false;
-    return kind === "announce" ? true : announced.has(key);
+    return kind.startsWith("date:") ? announced.has(key) : true;
   });
   if (covered.length === 0) return { covered: [], blocked: blockedUsers };
 
@@ -256,8 +256,8 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
 }
 
 /**
- * Le CRÉATEUR reçoit aussi les MP de sa soirée (invitation, date modifiée),
- * comme les invités — il n'est jamais dans la sélection
+ * Le CRÉATEUR reçoit aussi les MP de sa soirée (invitation, date modifiée,
+ * validation, rappels), comme les invités — il n'est jamais dans la sélection
  * `notifiedUserIds` ni dans les invitations (accès non révocable, voir
  * `session-access.ts`), donc hors de `resolveEligibleMentions`. Seule sa
  * préférence personnelle (`SESSION`, ou `ROULETTE` pour une soirée issue
@@ -523,7 +523,8 @@ async function enqueueSessionDirectMessageEdits(sessionId: string, db?: Notifica
 /**
  * Soirée validée (vote clos avec un jeu retenu, ou tirage) : message distinct
  * « Soirée validée : {jeu} » dans le fil, avec mention des joueurs — une
- * édition de l'annonce ne notifie personne. Aucun MP. Occurrence FIXE (un seul
+ * édition de l'annonce ne notifie personne. MP en plus (voir
+ * `resolveThreadValidated`). Occurrence FIXE (un seul
  * message par soirée). Jamais appelé pour une soirée de roulette, créée
  * directement validée (son message de création le dit déjà).
  */
@@ -1293,7 +1294,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role.startsWith("thread-reminder-")) {
       const minutes = Number(role.slice("thread-reminder-".length));
       if (!Number.isFinite(minutes)) return { eligible: false, reason: "unresolvable" };
-      return resolveThreadReminder(sessionId, session);
+      return resolveThreadReminder(sessionId, session, minutes);
     }
     if (role.startsWith("invite:")) {
       const inviteId = role.slice("invite:".length);
@@ -1316,9 +1317,9 @@ export const sessionAnnounceResolver: DeliveryResolver = {
 };
 
 interface ParsedDmRole {
-  /** `announce`, `date:<changeId>` (ou, hérité, `update:<id>`/`reminder:<min>`). */
+  /** `announce`, `validated`, `date:<changeId>`, `reminder:<min>` (ou, hérité, `update:<id>`). */
   kind: string;
-  base: "announce" | "date" | "update" | "reminder";
+  base: "announce" | "date" | "validated" | "update" | "reminder";
   userId: string;
 }
 
@@ -1328,17 +1329,28 @@ function parseDmRole(role: string, prefix: "dm:" | "dm-fallback:"): ParsedDmRole
   if (cut < 0) return null;
   const kind = rest.slice(0, cut);
   const base = kind.split(":")[0];
-  if (base !== "announce" && base !== "date" && base !== "update" && base !== "reminder") return null;
+  if (base !== "announce" && base !== "date" && base !== "validated" && base !== "update" && base !== "reminder") {
+    return null;
+  }
   return { kind, base, userId: rest.slice(cut + 1) };
 }
 
 /**
  * Texte d'accroche d'un MP/d'une mention de secours, selon le kind (et, pour
  * l'édition du MP d'invitation, le statut courant de la soirée). `null` pour
- * un kind hérité (`update`/`reminder`, plus jamais envoyé).
+ * un kind hérité (`update`, plus jamais envoyé).
  */
 function dmSubject(session: SessionWithVotes, parsed: ParsedDmRole, operation: "SEND" | "EDIT"): string | null {
   if (parsed.base === "date") return "📅 Date modifiée";
+  if (parsed.base === "reminder") {
+    const minutesRemaining = (session.date.getTime() - wallClockNow().getTime()) / 60_000;
+    if (minutesRemaining <= 0) return null;
+    return `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
+  }
+  if (parsed.base === "validated") {
+    const winner = session.proposals.find((p) => p.gameId === session.decidedGameId);
+    return winner ? `🎮 Soirée validée : ${winner.game.name}` : null;
+  }
   if (parsed.base !== "announce") return null;
   if (operation === "SEND") return "📣 Nouvelle soirée";
   switch (session.status) {
@@ -1656,8 +1668,8 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
 
 /**
  * « Soirée validée : {jeu} » dans le fil, avec mention des joueurs du jeu
- * retenu (même ensemble que l'annonce validée, préférences relues). Jamais de
- * MP. N'a de sens que pour une soirée validée (SCHEDULED/DONE) avec un gagnant.
+ * retenu (même ensemble que l'annonce validée, préférences relues), ET en MP à
+ * chaque joueur éligible et au créateur (MP oui, mention non). N'a de sens que pour une soirée validée (SCHEDULED/DONE) avec un gagnant.
  */
 async function resolveThreadValidated(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
@@ -1675,7 +1687,7 @@ async function resolveThreadValidated(sessionId: string, session: SessionWithVot
     title,
     title,
     `${title} — ${absoluteSessionUrl(session.id)}`,
-    undefined,
+    "validated",
     false
   );
   const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
@@ -1807,7 +1819,11 @@ async function resolveSessionThreadArchive(sessionId: string): Promise<Resolutio
  * `computeTimingsDue`, reminders.ts) mais traitée en retard par
  * l'exécuteur.
  */
-async function resolveThreadReminder(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
+async function resolveThreadReminder(
+  sessionId: string,
+  session: SessionWithVotes,
+  minutes: number
+): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
@@ -1846,8 +1862,9 @@ async function resolveThreadReminder(sessionId: string, session: SessionWithVote
     "SESSION_CREATED",
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
-    reminderTitle
-    // Aucun `dmKind` : le rappel est UNIQUEMENT dans le fil (avec mention).
+    reminderTitle,
+    `reminder:${minutes}`
+    // Rappel : mention dans le fil ET MP à chaque invité, créateur inclus (MP, pas de mention).
   );
   const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };
