@@ -4,10 +4,8 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { LocalGameOption } from "@/lib/game-search";
 import { TournamentGameField, type SelectedGame } from "@/components/tournois/TournamentGameField";
-import {
-  changeInstantSessionGameAction,
-  INITIAL_INSTANT_SESSION_ACTION_STATE,
-} from "@/app/jouer-maintenant/actions";
+import { changeInstantSessionGameAction } from "@/app/jouer-maintenant/actions";
+import { INITIAL_INSTANT_SESSION_ACTION_STATE } from "@/app/jouer-maintenant/action-state";
 
 /**
  * "Changement de jeu réservé au créateur" — le bouton n'est rendu que
