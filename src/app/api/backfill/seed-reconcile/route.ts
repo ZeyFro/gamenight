@@ -1,33 +1,38 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { runSeedReconciliation } from "@/lib/seed-reconciliation";
+import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
- * PR "build ne fait plus que compiler" — regroupe les 11 anciens scripts
- * `npm run build` (seeds de référentiel + backfills de réconciliation,
- * désormais `src/lib/seed-*.ts`/`backfill-*.ts`), extraits du build pour
- * que celui-ci ne fasse plus que `prisma migrate deploy && next build`
- * (aucune écriture de données métier à chaque déploiement).
- *
- * Contrairement à `/api/backfill/igdb-coop`/`steam-store` (qui appellent
- * des API externes lentes, d'où leur traitement en arrière-plan via
- * `after()` + réponse `202` immédiate) : les 11 tâches ici sont 100%
- * lecture/écriture base, aucun appel réseau — largement sous la seconde
- * pour la taille de ce groupe. Traitement SYNCHRONE à dessein : la
- * réponse contient le résultat réel par tâche, plus utile pour un `curl`
- * de vérification qu'un `202` suivi d'un coup d'œil aux logs Vercel.
- *
- * Best-effort strict : `runSeedReconciliation` encapsule chaque tâche
- * dans son propre try/catch (voir `src/lib/seed-reconciliation.ts`) — un
- * échec d'une tâche n'empêche jamais les autres, et ne fait jamais
- * planter cette route (toujours 200, `results` indique "error" pour la
- * tâche concernée).
- *
- * Déclenchement : cron externe quotidien (cron-job.org, voir README) +
- * curl manuel pour un re-seed à la demande — les deux réutilisent le même
- * `CRON_SECRET` que `/api/cron/*`/`/api/backfill/*`.
+ * Hobby + Fluid compute : durée par défaut ET maximale de 300 s. `after()`
+ * vit au plus `maxDuration` de la route ; `runSeedReconciliation` s'arrête
+ * volontairement avant (budget 240 s, entre deux tâches).
  */
-export async function POST(request: Request) {
+export const maxDuration = 300;
+
+/**
+ * Regroupe les 11 anciens scripts `npm run build` (seeds de référentiel +
+ * backfills de réconciliation, `src/lib/seed-*.ts`/`backfill-*.ts`).
+ *
+ * cron-job.org coupe à 30 s alors que le traitement peut les dépasser
+ * (boucles N+1 vers Neon qui croissent avec les données) : même contrat
+ * qu'`/api/backfill/igdb-coop` — réponse `202` immédiate, traitement dans
+ * `after()`. Le résultat réel n'est donc PLUS dans la réponse : il est dans
+ * les logs Vercel (`seed-reconcile : début` / `tâche X début|fin` / `fin
+ * stopReason=completed|time_budget|error`). Un `début` sans `fin` = coupure
+ * par la plateforme.
+ *
+ * Best-effort strict : chaque tâche a son propre try/catch
+ * (`runSeedReconciliation`), un échec n'empêche jamais les autres.
+ * Pas de verrou : toutes les tâches sont idempotentes (uniques `XpEvent`/
+ * `UserBadge`/`Badge`/`Tag`…) ; deux passages simultanés ne créent pas de
+ * doublon sauf `SuperlativeCategory`/`MessageTemplate` au tout premier seed.
+ *
+ * GET et POST équivalents (cron-job.org envoie un GET par défaut, `curl -X
+ * POST` pour un lancement manuel), `Authorization: Bearer <CRON_SECRET>`.
+ */
+async function handle(request: Request) {
   const auth = verifyCronRequest(request);
   if (!auth.ok) {
     return NextResponse.json(
@@ -36,6 +41,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const results = await runSeedReconciliation();
-  return NextResponse.json({ ok: true, results });
+  after(() => {
+    runSeedReconciliation().catch((error) => {
+      logger.error("seed-reconcile", error);
+    });
+  });
+
+  return NextResponse.json(
+    { status: "accepted", message: "Réconciliation des seeds lancée en arrière-plan." },
+    { status: 202 }
+  );
 }
+
+export const GET = handle;
+export const POST = handle;

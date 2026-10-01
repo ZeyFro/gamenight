@@ -485,10 +485,29 @@ export type ImportSteamLibraryResult =
  * trouvé du nouveau, pour le logging du cron et le message de la
  * resync Family.
  */
+export type ImportSteamLibraryResultWithBudget =
+  | ImportSteamLibraryResult
+  | { status: "partial"; processed: number; total: number };
+
+// `opts.deadlineMs` (timestamp `Date.now()` absolu, utilisé seulement par le
+// cron `steam-library-full-sync`) : la boucle d'upserts s'arrête dès qu'il est
+// dépassé et renvoie `partial` SANS badges/wishlist/`steamLastSyncAt` (réservé
+// au succès complet). Les upserts déjà faits restent (idempotents). Sans
+// `opts` : comportement historique, aucun budget, jamais de `partial`.
 export async function importSteamLibrary(
   userId: string,
   steamId64: string
-): Promise<ImportSteamLibraryResult> {
+): Promise<ImportSteamLibraryResult>;
+export async function importSteamLibrary(
+  userId: string,
+  steamId64: string,
+  opts: { deadlineMs: number }
+): Promise<ImportSteamLibraryResultWithBudget>;
+export async function importSteamLibrary(
+  userId: string,
+  steamId64: string,
+  opts?: { deadlineMs: number }
+): Promise<ImportSteamLibraryResultWithBudget> {
   const result = await getOwnedGames(steamId64);
 
   if (!result.ok) {
@@ -508,8 +527,13 @@ export async function importSteamLibrary(
     ).map((ug) => ug.game.steamAppId)
   );
   let newCount = 0;
+  let processed = 0;
 
   for (const game of result.games) {
+    if (opts && Date.now() > opts.deadlineMs) {
+      return { status: "partial", processed, total: result.games.length };
+    }
+    processed += 1;
     if (!alreadyOwnedAppIds.has(game.appid)) newCount += 1;
     const dbGame = await prisma.game.upsert({
       where: { steamAppId: game.appid },

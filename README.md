@@ -2162,39 +2162,36 @@ appelée par une route unique :
 ### `POST /api/backfill/seed-reconcile`
 
 Même protection `CRON_SECRET` que le reste des routes `/api/cron/*` et
-`/api/backfill/*`. Contrairement à `igdb-coop`/`steam-store` (traitement
-en tâche de fond via `after()` + réponse `202` immédiate, nécessaire
-parce qu'elles appellent des API externes lentes) : ici, traitement
-**synchrone** — les 11 tâches sont 100% lecture/écriture base, largement
-sous la seconde pour ce groupe, donc la réponse contient directement le
-résultat réel par tâche :
+`/api/backfill/*`. GET et POST équivalents. **Réponse `202` immédiate** +
+traitement dans `after()` (même contrat que `igdb-coop`/`steam-store`) :
+cron-job.org coupe à 30 s alors que les 11 tâches (boucles N+1 vers Neon,
+qui croissent avec les données) peuvent les dépasser. `maxDuration = 300`
+(Hobby + Fluid compute : durée par défaut ET maximale 300 s) ; budget interne
+240 s, vérifié ENTRE les tâches (une tâche n'est jamais interrompue).
 
 ```json
-{
-  "ok": true,
-  "results": {
-    "seedDefaultMessages": "ok",
-    "fixInvalidMessageTemplates": "ok",
-    "backfillXp": "ok",
-    "backfillUserColors": "ok",
-    "seedGameStats": "ok",
-    "seedSuperlatives": "ok",
-    "seedBadges": "ok",
-    "backfillBadges": "ok",
-    "seedTags": "ok",
-    "seedGroupAchievements": "ok",
-    "seedInitialSeason": "ok"
-  }
-}
+{ "status": "accepted", "message": "Réconciliation des seeds lancée en arrière-plan." }
 ```
 
+Le résultat par tâche n'est **plus** dans la réponse : il est dans les logs
+Vercel (contexte `seed-reconcile`) :
+
+- `début (11 tâches, budget 240000 ms)`
+- par tâche : `tâche X début` puis `tâche X fin <ms> ok|error`
+- `fin stopReason=completed|time_budget|error durée=<ms> sautées=[…]`
+  (`time_budget` = budget atteint, niveau **warn**, tâches restantes listées
+  et reprises au passage suivant — tout est idempotent).
+- Un `début`/`tâche X début` **sans `fin`** = coupure par la plateforme
+  (> 300 s) : signal pour passer à un traitement avec curseur.
+
 **Best-effort strict** : chaque tâche dans son propre `try`/`catch` (voir
-`src/lib/seed-reconciliation.ts`) — un échec de l'une (`"error"` dans
-`results`, détail dans les logs Vercel) n'empêche JAMAIS les 10 autres de
-s'exécuter, et cette route répond toujours `200` (jamais de 5xx qui
-pourrait faire croire à un cron externe que "tout" a échoué). Contraste
-volontaire avec le comportement précédent, où une exception importait
-tout le build.
+`src/lib/seed-reconciliation.ts`) — un échec de l'une (`error` dans les
+logs) n'empêche JAMAIS les 10 autres de s'exécuter, et la route répond
+toujours `202`. **Pas de verrou** : deux passages simultanés ne dupliquent
+rien (uniques `XpEvent`/`UserBadge`/`Badge`/`Tag`/`GroupAchievement`/`Season`/
+`GameStatType`, violation attrapée par tâche) — seules exceptions, sans
+contrainte unique : `SuperlativeCategory` et `MessageTemplate`, au tout
+premier seed uniquement.
 
 **Ordre figé, identique à l'ancien `npm run build`** : les 11 tâches
 tournent dans la même fonction plutôt que dans des routes séparées, à
@@ -2270,7 +2267,8 @@ que de compter dessus par hasard :
    header `Authorization: Bearer <CRON_SECRET>`, 1x/jour).
 4. **Lancer le curl manuel une fois** (voir « Déclenchement manuel »
    ci-dessus) pour confirmer que la route répond
-   `{ "ok": true, "results": {...} }` avec les 11 tâches à `"ok"`.
+   `202 { "status": "accepted" }`, puis vérifier dans les logs Vercel
+   (`seed-reconcile`) un `fin stopReason=completed` avec les 11 tâches `ok`.
 5. Seulement à ce stade, c'est fini — plus aucune manip requise pour les
    déploiements suivants.
 
@@ -7938,7 +7936,7 @@ flaky, à chaque exécution.
   cadence recommandée : toutes les 2h) — import complet inchangé
   (`importSteamLibrary`, strictement la même fonction), **un seul compte
   par passage**, en rotation round-robin sur `steamFullSyncAttemptedAt`
-  (ASC, `nulls: "first"`). `maxDuration = 60`.
+  (ASC, `nulls: "first"`). `maxDuration = 60` à l'époque ; voir « Phase 5 » : désormais 300 s + 202 + `after()`.
 
 ### Nouveaux champs `User` (migration additive, pas de backfill)
 
@@ -12448,3 +12446,27 @@ mention de secours — mutualisés), `src/lib/roulette-dm.ts` (résolveur
 roulette), `tournament-announce.ts` (résolveurs `dm:`/`dm-fallback:`).
 Les MP des soirées (`session-announce.ts`) gardent leur propre copie de ce
 code ; les rapprocher est un refactor volontairement hors de cette PR.
+
+## V2 — Phase 5 : crons longs (202 + `after()`)
+
+`/api/backfill/seed-reconcile` et `/api/cron/steam-library-full-sync` dépassaient
+les 30 s de cron-job.org (faux « Échec (délai d'attente) » alors que le travail
+finissait côté Vercel). Les deux répondent désormais `202` immédiatement et
+traitent dans `after()`, `maxDuration = 300` (Hobby + Fluid compute), budget
+interne 240 s.
+
+- **seed-reconcile** : voir sa section ci-dessus (réponse 202, plus de `results`).
+- **steam-library-full-sync** : sélection du compte + `steamFullSyncAttemptedAt`
+  synchrones, import dans `after()`. `importSteamLibrary(userId, steamId64, { deadlineMs })`
+  s'arrête au budget et renvoie `partial` **sans** badges/wishlist/`steamLastSyncAt`
+  (réservé au succès complet) ; sans option, comportement inchangé (bouton « Réimporter »,
+  lien initial). Logs (`cron:steam-library-full-sync`) : `début userId=…` puis
+  `fin stopReason=completed|time_budget userId=… jeux=n/total durée=<ms>` ; en cas d'erreur
+  `logger.error` avec `stopReason: "error"`. Un `début` sans `fin` = coupure plateforme.
+- **Sans migration, sans curseur, sans CronLock** (décision) : un passage `time_budget`
+  repart de zéro au prochain tour du compte. Si les logs montrent des dépassements,
+  prévoir une PR avec curseur + migration.
+- Chevauchement : idempotence existante (uniques `XpEvent`/`UserBadge`/`UserGame`/`Game.steamAppId`).
+  `unlockBadge` retourne avant l'annonce Discord sur violation unique → pas de double notification.
+- Tests : `route.test.ts` des deux routes ; `src/lib/cron-longs.integration.test.ts`
+  (Postgres isolé : deux passages = mêmes lignes qu'un seul, budget épuisé).

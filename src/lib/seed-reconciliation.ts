@@ -32,49 +32,74 @@ import { seedInitialSeason } from "@/lib/seed-season";
  * (aucune tâche n'a quoi que ce soit à faire) est négligeable.
  */
 
-type TaskResult = "ok" | "error";
+/** "skipped" : budget de temps épuisé avant cette tâche (reprise au prochain passage, tout est idempotent). */
+type TaskResult = "ok" | "error" | "skipped";
+
+/**
+ * Budget interne (maxDuration = 300 s sur la route, Hobby + Fluid compute) :
+ * vérifié ENTRE les tâches seulement — une tâche n'est jamais interrompue.
+ */
+export const SEED_RECONCILE_TIME_BUDGET_MS = 240_000;
 
 export interface SeedReconciliationSummary {
-  seedDefaultMessages: TaskResult;
-  fixInvalidMessageTemplates: TaskResult;
-  backfillXp: TaskResult;
-  backfillUserColors: TaskResult;
-  seedGameStats: TaskResult;
-  seedSuperlatives: TaskResult;
-  seedBadges: TaskResult;
-  backfillBadges: TaskResult;
-  seedTags: TaskResult;
-  seedGroupAchievements: TaskResult;
-  seedInitialSeason: TaskResult;
+  stopReason: "completed" | "time_budget" | "error";
+  durationMs: number;
+  results: Record<SeedTaskName, TaskResult>;
 }
 
-async function runTask(name: string, task: () => Promise<void>): Promise<TaskResult> {
-  try {
-    await task();
-    return "ok";
-  } catch (error) {
-    logger.error("seed-reconcile", error, { task: name });
-    return "error";
+const TASKS = [
+  ["seedDefaultMessages", seedDefaultMessages],
+  ["fixInvalidMessageTemplates", fixInvalidMessageTemplates],
+  ["backfillXp", backfillXp],
+  ["backfillUserColors", backfillUserColors],
+  ["seedGameStats", seedGameStats],
+  ["seedSuperlatives", seedSuperlatives],
+  // Ordre figé : seedBadges AVANT backfillBadges (ce dernier a besoin des
+  // Badge déjà créés — voir le commentaire en tête de fichier).
+  ["seedBadges", seedBadges],
+  ["backfillBadges", backfillBadges],
+  ["seedTags", seedTags],
+  ["seedGroupAchievements", seedGroupAchievements],
+  ["seedInitialSeason", seedInitialSeason],
+] as const;
+
+export type SeedTaskName = (typeof TASKS)[number][0];
+
+export async function runSeedReconciliation(
+  opts: { budgetMs?: number } = {}
+): Promise<SeedReconciliationSummary> {
+  const budgetMs = opts.budgetMs ?? SEED_RECONCILE_TIME_BUDGET_MS;
+  const startedAt = Date.now();
+  const results = {} as Record<SeedTaskName, TaskResult>;
+  const skipped: string[] = [];
+  let anyError = false;
+  logger.info("seed-reconcile", `début (${TASKS.length} tâches, budget ${budgetMs} ms)`);
+
+  for (const [name, task] of TASKS) {
+    if (Date.now() - startedAt > budgetMs) {
+      results[name] = "skipped";
+      skipped.push(name);
+      continue;
+    }
+    // Un "début" sans "fin" correspondant dans les logs = exécution coupée par la plateforme.
+    logger.info("seed-reconcile", `tâche ${name} début`);
+    const taskStart = Date.now();
+    try {
+      await task();
+      results[name] = "ok";
+    } catch (error) {
+      results[name] = "error";
+      anyError = true;
+      logger.error("seed-reconcile", error, { task: name });
+    }
+    logger.info("seed-reconcile", `tâche ${name} fin ${Date.now() - taskStart} ms ${results[name]}`);
   }
-}
 
-export async function runSeedReconciliation(): Promise<SeedReconciliationSummary> {
-  return {
-    seedDefaultMessages: await runTask("seedDefaultMessages", seedDefaultMessages),
-    fixInvalidMessageTemplates: await runTask(
-      "fixInvalidMessageTemplates",
-      fixInvalidMessageTemplates
-    ),
-    backfillXp: await runTask("backfillXp", backfillXp),
-    backfillUserColors: await runTask("backfillUserColors", backfillUserColors),
-    seedGameStats: await runTask("seedGameStats", seedGameStats),
-    seedSuperlatives: await runTask("seedSuperlatives", seedSuperlatives),
-    // Ordre figé : seedBadges AVANT backfillBadges (ce dernier a besoin
-    // des Badge déjà créés — voir le commentaire en tête de fichier).
-    seedBadges: await runTask("seedBadges", seedBadges),
-    backfillBadges: await runTask("backfillBadges", backfillBadges),
-    seedTags: await runTask("seedTags", seedTags),
-    seedGroupAchievements: await runTask("seedGroupAchievements", seedGroupAchievements),
-    seedInitialSeason: await runTask("seedInitialSeason", seedInitialSeason),
-  };
+  const stopReason = skipped.length > 0 ? "time_budget" : anyError ? "error" : "completed";
+  const durationMs = Date.now() - startedAt;
+  const message = `fin stopReason=${stopReason} durée=${durationMs} ms sautées=[${skipped.join(",")}]`;
+  if (stopReason === "time_budget") logger.warn("seed-reconcile", message);
+  else logger.info("seed-reconcile", message);
+
+  return { stopReason, durationMs, results };
 }

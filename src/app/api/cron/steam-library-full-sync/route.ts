@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importSteamLibrary } from "@/lib/steam";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { wallClockNow } from "@/lib/wallclock";
+
+/**
+ * Budget interne de l'import (`maxDuration` 300 s, Hobby + Fluid compute) :
+ * au-delà, `importSteamLibrary` s'arrête (`partial`, sans `steamLastSyncAt`).
+ */
+const FULL_SYNC_TIME_BUDGET_MS = 240_000;
 
 /**
  * Fix "cron Steam surdimensionné" — import complet de bibliothèque
@@ -32,12 +39,16 @@ import { wallClockNow } from "@/lib/wallclock";
  * indéfiniment "le plus ancien" si on s'y fiait pour l'ordre — d'où le
  * champ dédié `steamFullSyncAttemptedAt`.
  *
- * Avec ~5 comptes liés et une cadence de 2h, chaque compte repasse en
- * rotation en une dizaine d'heures — largement sous une journée, sans
- * jamais approcher les 60s de `maxDuration` puisqu'un seul compte est
- * traité par passage.
+ * cron-job.org coupe à 30 s : sélection du compte et pose de
+ * `steamFullSyncAttemptedAt` restent synchrones (rapides), puis l'import
+ * tourne dans `after()` et la route répond `202` (même contrat
+ * qu'`/api/backfill/igdb-coop`). Résultat dans les logs Vercel
+ * (`cron:steam-library-full-sync` : `début` / `fin stopReason=completed|
+ * time_budget|error jeux=n/total durée=ms`) ; un `début` sans `fin` =
+ * coupure plateforme. Pas de verrou : l'import est idempotent (uniques
+ * `Game.steamAppId`, `UserGame[userId,gameId]`, `UserBadge`).
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const auth = verifyCronRequest(request);
@@ -65,17 +76,40 @@ export async function GET(request: Request) {
     data: { steamFullSyncAttemptedAt: wallClockNow() },
   });
 
-  try {
-    const result = await importSteamLibrary(nextUser.id, nextUser.steamId64!);
-    logger.info(
-      "cron:steam-library-full-sync",
-      result.status === "imported"
-        ? `Import complet réussi — ${result.count} jeu(x), ${result.newCount} nouveau(x).`
-        : "Import complet — profil privé."
-    );
-    return NextResponse.json({ attempted: true, status: result.status });
-  } catch (error) {
-    logger.error("cron:steam-library-full-sync", error, { userId: nextUser.id });
-    return NextResponse.json({ attempted: true, status: "error" }, { status: 500 });
-  }
+  const userId = nextUser.id;
+  const steamId64 = nextUser.steamId64!;
+  after(async () => {
+    const startedAt = Date.now();
+    logger.info("cron:steam-library-full-sync", `début userId=${userId}`);
+    try {
+      const result = await importSteamLibrary(userId, steamId64, {
+        deadlineMs: startedAt + FULL_SYNC_TIME_BUDGET_MS,
+      });
+      const durationMs = Date.now() - startedAt;
+      if (result.status === "partial") {
+        logger.warn(
+          "cron:steam-library-full-sync",
+          `fin stopReason=time_budget userId=${userId} jeux=${result.processed}/${result.total} durée=${durationMs} ms`
+        );
+      } else if (result.status === "imported") {
+        logger.info(
+          "cron:steam-library-full-sync",
+          `fin stopReason=completed userId=${userId} jeux=${result.count}/${result.count} nouveaux=${result.newCount} durée=${durationMs} ms`
+        );
+      } else {
+        logger.info(
+          "cron:steam-library-full-sync",
+          `fin stopReason=completed userId=${userId} profil privé durée=${durationMs} ms`
+        );
+      }
+    } catch (error) {
+      logger.error("cron:steam-library-full-sync", error, {
+        userId,
+        stopReason: "error",
+        durationMs: Date.now() - startedAt,
+      });
+    }
+  });
+
+  return NextResponse.json({ attempted: true, status: "accepted" }, { status: 202 });
 }
