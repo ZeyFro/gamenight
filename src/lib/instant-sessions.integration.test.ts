@@ -102,6 +102,33 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
       expect(open).not.toBeNull();
     });
 
+    it("création avec PLUSIEURS invités : réussit (pas de 500) et met un MP en file par invité", async () => {
+      // Non-régression : `createNotificationEvent` était appelé une fois par
+      // invité avec la même clé (category, eventType, sourceId, occurrence)
+      // DANS la transaction de création — le 2e appel levait P2002, ce qui
+      // avorte la transaction Postgres (25P02) et remontait en 500.
+      const creator = await makeUser();
+      const guestA = await makeUser();
+      const guestB = await makeUser();
+      const game = await makeGame(creator.id);
+
+      const result = await lib.createInstantSession({
+        creatorId: creator.id,
+        gameId: game.id,
+        notifiedUserIds: [guestA.id, guestB.id],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const deliveries = await db.notificationDelivery.findMany({
+        where: { targetSlot: { contains: result.instantSession.id }, operation: "SEND" },
+        select: { recipientKey: true },
+      });
+      expect(deliveries.map((d) => d.recipientKey).sort()).toEqual(
+        [`user:${guestA.id}`, `user:${guestB.id}`].sort()
+      );
+    });
+
     it("expiresAt = createdAt + 3h, JAMAIS repoussé par une jonction ultérieure", async () => {
       const creator = await makeUser();
       const joiner = await makeUser();
