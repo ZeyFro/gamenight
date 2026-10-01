@@ -2,6 +2,14 @@
 
 App de soirées jeux entre potes. Détails fonctionnels : `README.md`, `SPEC-gamenight.md`.
 
+## État du projet
+V1 terminée (périmètre `SPEC` §6). V2 (bot Discord avancé : fils, MP, nettoyage, « Jouer maintenant ») en cours. Dernières phases :
+- #121 backfill IGDB Coop : GET accepté, pas de double passage, jeux introuvables marqués
+- #122 tests du nettoyage des fils Discord (429, 404 tournoi, reprise)
+- #123 « Jouer maintenant » : durée max 3 h, invités dédupliqués, test bout en bout
+- #124 « Jouer maintenant » : 500 sur toutes les actions (export non-fonction en `use server`)
+- #125 profil : avatar Discord sans spam d'API, lien de page klipy refusé, rotation du cron Steam
+
 ## Stack
 Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon · Auth.js v5 (Discord OAuth) · Vercel Hobby (pas de cron < 1/jour : crons externes) · Vitest.
 
@@ -21,22 +29,44 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - PR en Draft ; s'arrêter à « PR ouverte, build vert » (check Vercel). Pas de merge/déploiement sans demande.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
-- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle. Changement Prisma seulement si justifié.
+- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée par `prisma migrate deploy` au build Vercel). Changement Prisma seulement si justifié.
 - Pas de refactor large, pas de try/catch silencieux.
 - Commits/PR en français, style `type(scope): …`.
+
+## Pièges appris
+- Un fichier `"use server"` ne peut exporter que des fonctions async (sinon 500 sur toutes ses actions, invisible de tsc/lint/build) : gardé par `src/lib/use-server-exports.test.ts`.
+- Les tests d'intégration partagent une base (TRUNCATE) : `npm run test:postgres` (un fichier à la fois), jamais deux runs en parallèle.
+- `auth()` appelé depuis un composant serveur ou une server action jette les `Set-Cookie` : rien n'y est persisté dans le JWT (`src/auth.ts`).
+- `/api/backfill/igdb-coop` accepte GET et POST (`Authorization: Bearer <CRON_SECRET>`) et répond 202 ; le traitement tourne dans `after()`.
+- cron-job.org coupe à 30 s : les routes longues doivent répondre 202 (ou rester sous 30 s).
+- klipy : les liens de page (`klipy.com/…`) sont refusés, seuls les liens d'image (`static.klipy.com/…`) fonctionnent (`src/lib/banner-url.ts`).
 
 ## Notifications Discord
 `enqueue` (`createNotificationEvent` + `enqueueDelivery`, `src/lib/notification-delivery.ts`) → lignes `NotificationEvent` / `NotificationDelivery` → executor (`src/lib/notification-executor.ts`, route cron `/api/cron/notification-executor`) qui réclame les livraisons (bail), résout le contenu puis appelle Discord (`discord-rest.ts`, `discord-dm.ts`). Les actions n'appellent pas Discord directement quand le chemin bot est actif.
 
+Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionné dans le fil.
+- Soirée : création, changement de date, « Soirée validée », rappel = mention dans le fil ET MP. Modification/fin = annonce et MP d'invitation édités, jamais de nouveau MP. MP fermé : mention de secours pour le créateur seulement.
+- Tournoi : création = mention dans le fil ET MP ; lancement/fin/annulation = MP d'invitation édité.
+- Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
+- Les commentaires de `discord-bot-config.ts` parlant de « mention retirée du fil » datent d'avant #116 ; le README (section « MP des soirées ») aussi.
+
 ## Switches d'environnement
-Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run).
-- `NOTIFICATION_EXECUTOR_ENABLED`
-- `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` · `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`
-- `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`
-- `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED`
-- `DISCORD_THREAD_CLEANUP_ENABLED` + `DISCORD_THREAD_CLEANUP_MODE`
-- `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE`
-Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
+Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
+- `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
+- `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` · `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` : annonces soirées / tournois via le bot ; exigent aussi `DISCORD_BOT_GUILD_ID` et le salon (`…_SESSION_CHANNEL_ID` / `…_TOURNAMENT_CHANNEL_ID`)
+- `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
+- `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED` : création de nouveaux MP (les MP déjà en file sont traités) ; les MP de soirée exigent aussi le chemin bot soirées
+- `DISCORD_THREAD_CLEANUP_ENABLED` + `DISCORD_THREAD_CLEANUP_MODE` : archivage/suppression des fils (dry-run sauf `execute`)
+- `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE` : purge de rétention (dry-run sauf `execute`)
+
+## Outils
+- Superpowers : planifier une grosse fonctionnalité.
+- Context7 : doc Next / Prisma / Auth.js (avant de se fier à la mémoire).
+- Playwright : vérifier un parcours dans le navigateur.
+- `/security-review` avant de merger du code sensible (auth, Discord, crons, secrets).
+- Ponytail / Headroom / CodeBurn : économie et suivi des tokens.
+- claude-code-setup : hooks et automatisations.
+- Au début d'une tâche, annonce en une ligne quels outils tu vas utiliser et pourquoi.
 
 ## Style de réponse
 Réponses courtes, en français. Pas de recap inutile ni de re-explication du diff.
