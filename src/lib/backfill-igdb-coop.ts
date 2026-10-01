@@ -52,6 +52,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 const TIME_BUDGET_MS = 50_000;
 
+/**
+ * Disjoncteur : après N échecs réseau/API CONSÉCUTIFS (ex. 429 persistant
+ * malgré le nouvel essai de `fetchIgdbGameDetails`, ou IGDB en panne), le
+ * passage s'arrête au lieu de continuer à solliciter IGDB pour rien — le
+ * reste est couvert par un prochain appel (idempotent).
+ */
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 export interface IgdbCoopBackfillSummary {
   eligible: number;
   processed: number;
@@ -86,6 +94,11 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   let detailsFilled = 0;
   let detailsFailed = 0;
   let detailsStoppedEarly = false;
+  let consecutiveFailures = 0;
+  // Jeux dont la fiche vient d'être récupérée en phase 1 : exclus de la
+  // phase 2 (isCoop/maxPlayers déjà synchronisés par `getGameDetails`),
+  // sinon chacun coûterait un second appel IGDB inutile dans le même passage.
+  const filledIds = new Set<string>();
   const uncached = shuffle(
     await prisma.game.findMany({
       where: { igdbDetails: { equals: Prisma.DbNull }, igdbId: { not: null } },
@@ -105,7 +118,21 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     // renvoie dans `error` — comptées ici, jamais ignorées.
     const result = await getGameDetails(game);
     if (result.error) detailsFailed += 1;
-    else detailsFilled += 1;
+    else {
+      detailsFilled += 1;
+      filledIds.add(game.id);
+    }
+    // `not_found` (IGDB ne connaît pas ce jeu) n'est pas une panne : seul
+    // `fetch_failed` arme le disjoncteur.
+    consecutiveFailures = result.error === "fetch_failed" ? consecutiveFailures + 1 : 0;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      detailsStoppedEarly = true;
+      logger.warn(
+        "igdb-coop",
+        `Arrêt après ${MAX_CONSECUTIVE_FAILURES} échecs consécutifs (IGDB indisponible ou limite de requêtes) — reprise au prochain appel.`
+      );
+      break;
+    }
     await sleep(REQUEST_DELAY_MS);
   }
   if (uncached.length > 0) {
@@ -116,18 +143,22 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   }
 
   const games = shuffle(
-    await prisma.game.findMany({
-      where: {
-        igdbDetails: { not: Prisma.DbNull },
-        playInfoManual: false,
-        igdbId: { not: null },
-      },
-      select: { id: true, name: true, igdbId: true, isCoop: true, maxPlayers: true },
-    })
+    (
+      await prisma.game.findMany({
+        where: {
+          igdbDetails: { not: Prisma.DbNull },
+          playInfoManual: false,
+          igdbId: { not: null },
+        },
+        select: { id: true, name: true, igdbId: true, isCoop: true, maxPlayers: true },
+      })
+    ).filter((g) => !filledIds.has(g.id))
   );
 
   if (games.length === 0 || detailsStoppedEarly) {
-    logger.info("igdb-coop", "Aucun jeu éligible (cache IGDB + pas de correction manuelle).");
+    if (!detailsStoppedEarly) {
+      logger.info("igdb-coop", "Aucun jeu éligible (cache IGDB + pas de correction manuelle).");
+    }
     return {
       eligible: uncached.length,
       processed: detailsFilled + detailsFailed,
@@ -173,8 +204,20 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       }
     } catch (error) {
       failed += 1;
+      consecutiveFailures += 1;
       logger.error("igdb-coop", error, { gameId: game.id, gameName: game.name, igdbId: game.igdbId });
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        stoppedEarly = true;
+        logger.warn(
+          "igdb-coop",
+          `Arrêt après ${MAX_CONSECUTIVE_FAILURES} échecs consécutifs (IGDB indisponible ou limite de requêtes) — reprise au prochain appel.`
+        );
+        break;
+      }
+      await sleep(REQUEST_DELAY_MS);
+      continue;
     }
+    consecutiveFailures = 0;
 
     await sleep(REQUEST_DELAY_MS);
   }

@@ -342,6 +342,21 @@ export interface IgdbGameDetails {
  * aucun cache : c'est `src/lib/game-details.ts` qui gère le cache en base
  * et l'appel à la demande.
  */
+/** Plafond par appel IGDB : sans lui, un appel bloqué consommerait tout le
+ * budget d'une fonction serverless (backfill : `maxDuration` 60 s). */
+const IGDB_REQUEST_TIMEOUT_MS = 8_000;
+/** Attente maximale avant l'UNIQUE nouvel essai après un 429 (IGDB : 4 req/s). */
+const IGDB_RATE_LIMIT_MAX_WAIT_MS = 2_000;
+const IGDB_RATE_LIMIT_DEFAULT_WAIT_MS = 1_000;
+
+function rateLimitWaitMs(res: Response): number {
+  const seconds = Number(res.headers.get("retry-after"));
+  const ms = Number.isFinite(seconds) && res.headers.get("retry-after") !== null
+    ? seconds * 1000
+    : IGDB_RATE_LIMIT_DEFAULT_WAIT_MS;
+  return Math.min(Math.max(ms, 0), IGDB_RATE_LIMIT_MAX_WAIT_MS);
+}
+
 export async function fetchIgdbGameDetails(
   igdbId: number
 ): Promise<IgdbGameDetails | null> {
@@ -350,7 +365,9 @@ export async function fetchIgdbGameDetails(
     process.env.IGDB_CLIENT_ID!.trim(),
   ];
 
-  const res = await fetch("https://api.igdb.com/v4/games", {
+  const request = () =>
+    fetch("https://api.igdb.com/v4/games", {
+    signal: AbortSignal.timeout(IGDB_REQUEST_TIMEOUT_MS),
     method: "POST",
     headers: {
       "Client-ID": clientId,
@@ -359,6 +376,14 @@ export async function fetchIgdbGameDetails(
     },
     body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,multiplayer_modes.onlinecoop,multiplayer_modes.offlinecoop,multiplayer_modes.lancoop,multiplayer_modes.campaigncoop,multiplayer_modes.offlinemax,multiplayer_modes.onlinemax,multiplayer_modes.offlinecoopmax,multiplayer_modes.onlinecoopmax; limit 1;`,
   });
+
+  let res = await request();
+  if (res.status === 429) {
+    // Un seul nouvel essai, après `Retry-After` (plafonné) — jamais de
+    // boucle : un 429 persistant remonte en erreur à l'appelant.
+    await new Promise((resolve) => setTimeout(resolve, rateLimitWaitMs(res)));
+    res = await request();
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");

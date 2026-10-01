@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -135,5 +136,69 @@ describe.skipIf(!TEST_DATABASE_URL)("runIgdbCoopBackfill (Postgres isolé + IGDB
     expect(summary.detailsFilled).toBe(0);
     const reread = await db.game.findUniqueOrThrow({ where: { id: game.id } });
     expect(reread.igdbDetails).toBeNull();
+  });
+
+  it("429 IGDB : un seul nouvel essai après Retry-After, puis la fiche est remplie", async () => {
+    const user = await db.user.create({ data: { discordId: "u-4", discordName: "u-4" } });
+    const game = await db.game.create({
+      data: { name: "429 puis OK", source: "MANUAL", addedById: user.id, igdbId: 4242 },
+    });
+    let igdbCalls = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://id.twitch.tv/oauth2/token")) {
+        return jsonResponse(200, { access_token: "tok", expires_in: 3600 });
+      }
+      igdbCalls += 1;
+      if (igdbCalls === 1) {
+        return new Response("{}", { status: 429, headers: { "Retry-After": "0" } });
+      }
+      return jsonResponse(200, [{ id: 4242, name: "x", multiplayer_modes: [{ onlinecoop: true }] }]);
+    });
+
+    const summary = await lib.runIgdbCoopBackfill();
+
+    expect(igdbCalls).toBe(2);
+    expect(summary.detailsFilled).toBe(1);
+    const reread = await db.game.findUniqueOrThrow({ where: { id: game.id } });
+    expect(reread.igdbDetailsFetchedAt).not.toBeNull();
+  });
+
+  it("429 persistant : le passage s'arrête après 3 échecs consécutifs au lieu de solliciter IGDB pour chaque jeu", async () => {
+    const user = await db.user.create({ data: { discordId: "u-5", discordName: "u-5" } });
+    for (let i = 0; i < 6; i += 1) {
+      await db.game.create({
+        data: { name: `Jeu ${i}`, source: "MANUAL", addedById: user.id, igdbId: 5000 + i },
+      });
+    }
+    let igdbCalls = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://id.twitch.tv/oauth2/token")) {
+        return jsonResponse(200, { access_token: "tok", expires_in: 3600 });
+      }
+      igdbCalls += 1;
+      return new Response("{}", { status: 429, headers: { "Retry-After": "0" } });
+    });
+
+    const summary = await lib.runIgdbCoopBackfill();
+
+    expect(summary.stoppedEarly).toBe(true);
+    expect(summary.failed).toBe(3);
+    // 3 jeux × (1 essai + 1 nouvel essai) = 6 appels IGDB, jamais 12.
+    expect(igdbCalls).toBe(6);
+    expect(await db.game.count({ where: { igdbDetails: { not: Prisma.DbNull } } })).toBe(0);
+  });
+
+  it("chaque appel IGDB porte un timeout (signal d'annulation)", async () => {
+    const user = await db.user.create({ data: { discordId: "u-6", discordName: "u-6" } });
+    await db.game.create({
+      data: { name: "Timeout", source: "MANUAL", addedById: user.id, igdbId: 4242 },
+    });
+
+    await lib.runIgdbCoopBackfill();
+
+    const igdbCall = fetchMock.mock.calls.find((c) => String(c[0]) === "https://api.igdb.com/v4/games");
+    expect(igdbCall?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
