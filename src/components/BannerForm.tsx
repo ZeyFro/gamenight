@@ -1,5 +1,6 @@
 "use client";
 
+import { findBannerUrlProblem } from "@/lib/banner-url";
 import { useState } from "react";
 import { setBannerUrlAction, uploadBannerAction } from "@/app/profil/actions";
 import { Button } from "@/components/ui/Button";
@@ -101,6 +102,7 @@ export function BannerForm({
   const [url, setUrl] = useState(initialUrl ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const urlProblem = findBannerUrlProblem(url);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const input = e.target;
@@ -159,11 +161,15 @@ export function BannerForm({
             placeholder="https://exemple.com/ma-banniere.jpg (1500×500 recommandé)"
             className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
-          <p className="text-xs text-faint">
-            Vide = bannière par défaut (dégradé violet). Format 1500×500 recommandé,
-            d&apos;autres ratios sont acceptés (recadrage automatique centré).
-          </p>
-          <Button type="submit" variant="primary" fullWidthOnMobile>
+          {urlProblem ? (
+            <p className="text-xs text-destructive">{urlProblem}</p>
+          ) : (
+            <p className="text-xs text-faint">
+              Vide = bannière par défaut (dégradé violet). Format 1500×500 recommandé,
+              d&apos;autres ratios sont acceptés (recadrage automatique centré).
+            </p>
+          )}
+          <Button type="submit" variant="primary" fullWidthOnMobile disabled={!!urlProblem}>
             Enregistrer la bannière
           </Button>
         </form>

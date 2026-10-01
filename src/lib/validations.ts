@@ -1,3 +1,4 @@
+import { findBannerUrlProblem } from "@/lib/banner-url";
 import { z } from "zod";
 
 /**
@@ -163,7 +164,12 @@ export const userColorSchema = z.object({
 
 /** `setBannerUrlAction` — vide = retour à la bannière par défaut, sinon URL http(s). */
 export const bannerUrlSchema = z.object({
-  bannerUrl: z.union([httpUrlSchema, z.literal("")]),
+  bannerUrl: z
+    .union([httpUrlSchema, z.literal("")])
+    .superRefine((value, ctx) => {
+      const problem = findBannerUrlProblem(value);
+      if (problem) ctx.addIssue({ code: "custom", message: problem });
+    }),
 });
 
 export const PLAYER_COUNT_ERROR_MESSAGE =

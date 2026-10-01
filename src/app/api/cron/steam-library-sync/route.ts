@@ -59,6 +59,11 @@ export async function GET(request: Request) {
   const users = await prisma.user.findMany({
     where: { steamId64: { not: null } },
     select: { id: true, steamId64: true },
+    // Rotation : si `TIME_BUDGET_MS` est atteint avant la fin de la liste, ce
+    // sont les comptes vérifiés le moins récemment (ou jamais) qui passent
+    // en premier au tour suivant. Sans tri, les mêmes comptes en queue de
+    // liste n'étaient jamais rafraîchis (famine déterministe).
+    orderBy: { steamActivityCheckedAt: { sort: "asc", nulls: "first" } },
   });
 
   const { results, processedCount } = await processInBatches(

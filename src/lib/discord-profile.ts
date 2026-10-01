@@ -37,37 +37,6 @@ interface DiscordSelfResponse {
   avatar: string | null;
 }
 
-/**
- * Rafraîchit `discordName`/`discordAvatar` en base depuis l'API Discord
- * (`GET /users/@me`, scope `identify` déjà demandé par le provider) —
- * appelé par `auth.ts` (callback `jwt`), throttlé côté appelant.
- * Best-effort : un jeton d'accès expiré (Discord : ~7 jours de durée de
- * vie) ou une erreur réseau ne doit jamais casser la session — on logue
- * et on laisse les données en base telles quelles, elles seront de toute
- * façon rafraîchies à la prochaine vraie reconnexion Discord (callback
- * `signIn`, qui upsert déjà `discordName`/`discordAvatar` à chaque
- * authentification complète).
- */
-export async function refreshDiscordProfile(discordId: string, accessToken: string): Promise<void> {
-  try {
-    const res = await fetch("https://discord.com/api/users/@me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return;
-
-    const profile = (await res.json()) as DiscordSelfResponse;
-    await prisma.user.update({
-      where: { discordId },
-      data: {
-        discordName: profile.global_name ?? profile.username,
-        discordAvatar: discordAvatarUrl(profile.id, profile.avatar, profile.discriminator),
-      },
-    });
-  } catch (error) {
-    logger.error("discord-profile", error, { discordId });
-  }
-}
-
 interface DiscordTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -88,7 +57,7 @@ interface DiscordTokenResponse {
  */
 async function refreshDiscordAccessToken(
   refreshToken: string
-): Promise<DiscordTokenResponse | null> {
+): Promise<DiscordTokenResponse | "rate_limited" | null> {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const clientSecret = process.env.DISCORD_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
@@ -103,6 +72,7 @@ async function refreshDiscordAccessToken(
       client_secret: clientSecret,
     }),
   });
+  if (res.status === 429) return "rate_limited";
   if (!res.ok) return null;
 
   return (await res.json()) as DiscordTokenResponse;
@@ -161,6 +131,8 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   skipped: number;
   unreadable: number;
   unreadableUsers: OAuthProfileUser[];
+  /** Discord a répondu 429 : le lot s'est arrêté, le reste est repris au passage horaire suivant. */
+  rateLimited: boolean;
 }> {
   const users = await prisma.user.findMany({
     where: { discordRefreshToken: { not: null } },
@@ -199,6 +171,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
         discordName: u.discordName,
         discordAvatar: u.discordAvatar,
       })),
+      rateLimited: false,
     };
   }
 
@@ -206,6 +179,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   let failed = 0;
   let skipped = 0;
   let unreadable = 0;
+  let rateLimited = false;
   const unreadableUsers: OAuthProfileUser[] = [];
 
   for (const user of users) {
@@ -242,6 +216,13 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
       if (isExpiredOrSoon) {
         const refreshed = await refreshDiscordAccessToken(storedRefresh.value);
+        if (refreshed === "rate_limited") {
+          // 429 : continuer ne ferait qu'aggraver la limite (et allonger le
+          // blocage) — on arrête le lot, le prochain passage horaire reprend.
+          rateLimited = true;
+          logger.warn("discord-profile", "Discord a répondu 429 (renouvellement de jeton) — lot OAuth interrompu.");
+          break;
+        }
         if (!refreshed) {
           // `refresh_token` révoqué/expiré côté Discord — rien à faire
           // ici, l'utilisateur redonnera un jeton valide à sa prochaine
@@ -275,6 +256,13 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
       const res = await fetch("https://discord.com/api/v10/users/@me", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if (res.status === 429) {
+        rateLimited = true;
+        logger.warn("discord-profile", "Discord a répondu 429 (GET /users/@me) — lot OAuth interrompu.", {
+          retryAfter: res.headers.get("retry-after"),
+        });
+        break;
+      }
       if (!res.ok) {
         failed += 1;
         const body = await res.text().catch(() => "");
@@ -311,10 +299,10 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
   logger.info(
     "discord-profile",
-    `Cron OAuth terminé : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s), ${unreadable} illisible(s) sur ${users.length}.`
+    `Cron OAuth terminé${rateLimited ? " (INTERROMPU : 429)" : ""} : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s), ${unreadable} illisible(s) sur ${users.length}.`
   );
 
-  return { checked: users.length, updated, failed, skipped, unreadable, unreadableUsers };
+  return { checked: users.length, updated, failed, skipped, unreadable, unreadableUsers, rateLimited };
 }
 
 /**
@@ -344,16 +332,25 @@ export async function refreshAllDiscordProfiles(): Promise<{
     skipped: number;
     unreadable: number;
     unreadableUsers: OAuthProfileUser[];
+    rateLimited: boolean;
   };
   bot: {
     checked: number;
     updated: number;
     failed: number;
     botTokenConfigured: boolean;
+    rateLimited: boolean;
     error?: string;
   };
 }> {
   const oauth = await refreshAllDiscordProfilesViaOAuth();
+
+  // Discord limite aussi par IP : après un 429 OAuth, enchaîner le repli bot
+  // depuis la même fonction serverless ne ferait qu'insister. Reprise au
+  // prochain passage horaire.
+  if (oauth.rateLimited) {
+    return { oauth, bot: { checked: 0, updated: 0, failed: 0, botTokenConfigured: true, rateLimited: false } };
+  }
 
   const usersWithoutTokenInDb = await prisma.user.findMany({
     where: { discordRefreshToken: null },
@@ -376,7 +373,7 @@ export async function refreshAllDiscordProfiles(): Promise<{
     );
     return {
       oauth,
-      bot: { checked: 0, updated: 0, failed: 0, botTokenConfigured: true },
+      bot: { checked: 0, updated: 0, failed: 0, botTokenConfigured: true, rateLimited: false },
     };
   }
 
@@ -389,6 +386,7 @@ export async function refreshAllDiscordProfiles(): Promise<{
         updated: 0,
         failed: 0,
         botTokenConfigured: false,
+        rateLimited: false,
         error: `DISCORD_BOT_TOKEN non configurée — ${usersToCheckViaBot.length} user(s) sans jeton OAuth stocké/lisible resteront non rafraîchis jusqu'à leur prochaine vraie reconnexion.`,
       },
     };
@@ -412,14 +410,28 @@ export async function refreshAllDiscordProfiles(): Promise<{
 async function refreshAllDiscordProfilesViaBotFor(
   users: { discordId: string; discordName: string; discordAvatar: string | null }[],
   botToken: string
-): Promise<{ checked: number; updated: number; failed: number; botTokenConfigured: boolean }> {
+): Promise<{
+  checked: number;
+  updated: number;
+  failed: number;
+  botTokenConfigured: boolean;
+  rateLimited: boolean;
+}> {
   let updated = 0;
   let failed = 0;
+  let rateLimited = false;
   for (const user of users) {
     try {
       const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
         headers: { Authorization: `Bot ${botToken}` },
       });
+      if (res.status === 429) {
+        rateLimited = true;
+        logger.warn("discord-profile", "Discord a répondu 429 (GET /users/{id}, bot) — lot interrompu.", {
+          retryAfter: res.headers.get("retry-after"),
+        });
+        break;
+      }
       if (!res.ok) {
         failed += 1;
         const body = await res.text().catch(() => "");
@@ -454,5 +466,5 @@ async function refreshAllDiscordProfilesViaBotFor(
     }
   }
 
-  return { checked: users.length, updated, failed, botTokenConfigured: true };
+  return { checked: users.length, updated, failed, botTokenConfigured: true, rateLimited };
 }
