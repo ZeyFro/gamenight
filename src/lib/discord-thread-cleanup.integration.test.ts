@@ -32,6 +32,7 @@ describe.skipIf(!TEST_DATABASE_URL)("discord-thread-cleanup (intégration Postgr
   let sessionAnnounce: typeof import("./session-announce");
   let tournamentAnnounce: typeof import("./tournament-announce");
   let executorLib: typeof import("./notification-executor");
+  let delivery: typeof import("./notification-delivery");
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
@@ -41,6 +42,7 @@ describe.skipIf(!TEST_DATABASE_URL)("discord-thread-cleanup (intégration Postgr
     sessionAnnounce = await import("./session-announce");
     tournamentAnnounce = await import("./tournament-announce");
     executorLib = await import("./notification-executor");
+    delivery = await import("./notification-delivery");
   });
 
   afterAll(async () => {
@@ -318,6 +320,181 @@ describe.skipIf(!TEST_DATABASE_URL)("discord-thread-cleanup (intégration Postgr
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
       expect((await processOne())?.outcome).toBe("sent");
       expect(fetchMock.mock.calls.at(-1)![1].method).toBe("DELETE");
+    });
+  });
+
+  describe("429 : le retry_after de Discord est respecté", () => {
+    async function sessionWithArchiveEnqueued() {
+      const creator = await makeUser();
+      const session = await makeSession(creator.id, { status: "DONE" });
+      await markThreadCreated("SESSION", session.id, "thread-429");
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      return { session, slots: sessionAnnounce.sessionThreadCleanupSlots(session.id) };
+    }
+
+    it("archivage : 429 retry_after=12 s → reprogrammé à +12 s (pas le backoff générique), inatteignable avant, rejoué ensuite", async () => {
+      const { slots } = await sessionWithArchiveEnqueued();
+      const t0 = new Date();
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { message: "rate limited", retry_after: 12, global: false }));
+      const first = await executorLib.processNextDelivery({ resolver, owner: uniq("w"), now: t0 });
+      expect(first).toMatchObject({ outcome: "retrying", errorClass: "discord:rate_limited" });
+
+      const [row] = await slotRows(slots.archive);
+      expect(row.status).toBe("PENDING");
+      const delayMs = row.nextAttemptAt!.getTime() - t0.getTime();
+      expect(delayMs).toBeGreaterThanOrEqual(12_000);
+      expect(delayMs).toBeLessThan(15_000);
+
+      // Avant l'échéance : rien n'est réservé, aucun nouvel appel Discord.
+      const calls = fetchMock.mock.calls.length;
+      const early = await executorLib.processNextDelivery({
+        resolver,
+        owner: uniq("w"),
+        now: new Date(t0.getTime() + 5_000),
+      });
+      expect(early).toBeNull();
+      expect(fetchMock.mock.calls.length).toBe(calls);
+
+      // Après : rejoué et abouti, toujours une seule ligne sur le slot.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { id: "thread-429", parent_id: "chan-sessions", thread_metadata: { archived: true } })
+      );
+      const later = await executorLib.processNextDelivery({
+        resolver,
+        owner: uniq("w"),
+        now: new Date(t0.getTime() + 13_000),
+      });
+      expect(later?.outcome).toBe("sent");
+      expect(await slotRows(slots.archive)).toHaveLength(1);
+    });
+
+    it("suppression : 429 avec en-tête Retry-After seul → délai respecté, pas de doublon par le cron, puis suppression réussie", async () => {
+      const { slots } = await sessionWithArchiveEnqueued();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { id: "thread-429", parent_id: "chan-sessions", thread_metadata: { archived: true } })
+      );
+      expect((await processOne())?.outcome).toBe("sent");
+      await backdateArchive(slots.archive, DAY_MS + 60_000);
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+
+      const t0 = new Date();
+      fetchMock.mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "30" } }));
+      const limited = await executorLib.processNextDelivery({ resolver, owner: uniq("w"), now: t0 });
+      expect(limited).toMatchObject({ outcome: "retrying", errorClass: "discord:rate_limited" });
+      const [row] = await slotRows(slots.delete);
+      const delayMs = row.nextAttemptAt!.getTime() - t0.getTime();
+      expect(delayMs).toBeGreaterThanOrEqual(30_000);
+      expect(delayMs).toBeLessThan(33_000);
+
+      // Un passage cron entre-temps ne double pas la suppression.
+      const report = await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      expect(report.sessions.deleteEnqueued).toEqual([]);
+      expect(await slotRows(slots.delete)).toHaveLength(1);
+
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const later = await executorLib.processNextDelivery({
+        resolver,
+        owner: uniq("w"),
+        now: new Date(t0.getTime() + 31_000),
+      });
+      expect(later?.outcome).toBe("sent");
+    });
+  });
+
+  describe("tournoi : fil déjà supprimé à la main (404)", () => {
+    it("fermeture puis suppression aboutissent sans échec bloquant", async () => {
+      const creator = await makeUser();
+      const tournament = await makeTournament(creator.id, "CANCELLED");
+      await markThreadCreated("TOURNAMENT", tournament.id, "t-gone");
+      const slots = tournamentAnnounce.tournamentThreadCleanupSlots(tournament.id);
+
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Channel", code: 10003 }));
+      expect((await processOne())?.outcome).toBe("sent");
+
+      await backdateArchive(slots.archive, DAY_MS + 60_000);
+      const due = await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      expect(due.tournaments.archiveFailed).toEqual([]);
+      expect(due.tournaments.deleteEnqueued).toEqual([tournament.id]);
+      fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: "Unknown Channel", code: 10003 }));
+      expect((await processOne())?.outcome).toBe("sent");
+    });
+  });
+
+  describe("reprise après interruption — aucun doublon (idempotence targetSlot)", () => {
+    it("passage interrompu entre createNotificationEvent et enqueueDelivery : le relancer crée exactement 1 livraison", async () => {
+      const creator = await makeUser();
+      const session = await makeSession(creator.id, { status: "DONE" });
+      await markThreadCreated("SESSION", session.id, "thread-int1");
+      const slots = sessionAnnounce.sessionThreadCleanupSlots(session.id);
+
+      // État laissé par un crash : l'événement existe, la livraison non.
+      await db.notificationEvent.create({
+        data: { category: "SESSION", eventType: "SESSION_THREAD_ARCHIVE", sourceId: session.id },
+      });
+      expect(await slotRows(slots.archive)).toHaveLength(0);
+
+      const report = await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      expect(report.sessions.archiveEnqueued).toEqual([session.id]);
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+
+      expect(await slotRows(slots.archive)).toHaveLength(1);
+      expect(
+        await db.notificationEvent.count({ where: { eventType: "SESSION_THREAD_ARCHIVE", sourceId: session.id } })
+      ).toBe(1);
+    });
+
+    it("passage interrompu par le plafond puis relancé plusieurs fois : chaque fil a exactement 1 archivage", async () => {
+      const creator = await makeUser();
+      const ids: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const s = await makeSession(creator.id, { status: "DONE" });
+        await markThreadCreated("SESSION", s.id, `t-int-${i}`);
+        ids.push(s.id);
+      }
+      await cleanup.runDiscordThreadCleanup({ dryRun: false, maxActions: 1 });
+      await cleanup.runDiscordThreadCleanup({ dryRun: false, maxActions: 2 });
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+
+      for (const id of ids) {
+        expect(await slotRows(sessionAnnounce.sessionThreadCleanupSlots(id).archive)).toHaveLength(1);
+      }
+    });
+
+    it("exécuteur mort après réservation (bail expiré) : le cron n'enqueue rien de plus, la reprise archive une seule fois", async () => {
+      const creator = await makeUser();
+      const session = await makeSession(creator.id, { status: "DONE" });
+      await markThreadCreated("SESSION", session.id, "thread-int3");
+      const slots = sessionAnnounce.sessionThreadCleanupSlots(session.id);
+      await cleanup.runDiscordThreadCleanup({ dryRun: false });
+
+      // Un worker réserve la livraison puis « meurt » sans la finaliser.
+      const t0 = new Date();
+      const claimed = await delivery.claimNextDelivery("worker-mort", { now: t0, leaseMs: 30_000 });
+      expect(claimed?.status).toBe("RESERVED");
+
+      // Cron relancé pendant ce temps : l'archivage est « en attente », rien de nouveau.
+      const during = await cleanup.runDiscordThreadCleanup({ dryRun: false });
+      expect(during.sessions.archiveEnqueued).toEqual([]);
+      expect(during.sessions.waiting).toBe(1);
+      expect(await slotRows(slots.archive)).toHaveLength(1);
+
+      // Bail expiré : récupérée, rejouée, un seul appel Discord réussi.
+      expect(await delivery.recoverExpiredReservations(new Date(t0.getTime() + 60_000))).toBe(1);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { id: "thread-int3", parent_id: "chan-sessions", thread_metadata: { archived: true } })
+      );
+      const replay = await executorLib.processNextDelivery({
+        resolver,
+        owner: uniq("w"),
+        now: new Date(t0.getTime() + 61_000),
+      });
+      expect(replay?.outcome).toBe("sent");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const rows = await slotRows(slots.archive);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe("SENT");
     });
   });
 
