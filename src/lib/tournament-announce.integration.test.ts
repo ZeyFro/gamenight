@@ -814,24 +814,36 @@ describe.skipIf(!TEST_DATABASE_URL)(
     });
 
     describe("V2 — notifications maîtrisées (mentions à la création)", () => {
-      it("SEND initial : mentionne les destinataires sélectionnés, ids dédupliqués, allowed_mentions.users explicite", async () => {
+      it("annonce du salon : jamais de mention ; les destinataires sélectionnés sont mentionnés DANS LE FIL, ids dédupliqués, créateur jamais mentionné, allowed_mentions.users explicite", async () => {
         const creator = await makeUser();
         const game = await makeGame(creator.id);
         const guestA = await makeUser({ discordName: "guestA" });
         const guestB = await makeUser({ discordName: "guestB" });
         const notInvited = await makeUser({ discordName: "pasPrevenu" });
         const tournament = await makeTournament(creator.id, game.id, {
-          notifiedUserIds: [guestA.id, guestB.id, guestA.id], // doublon volontaire
+          notifiedUserIds: [guestA.id, guestB.id, guestA.id, creator.id], // doublon volontaire, créateur dans sa sélection
         });
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 
         mockVerifiedSendOk("chan-tournois");
         const outcome = await processOne();
         expect(outcome?.outcome).toBe("sent");
+        // L'annonce du salon ne mentionne personne.
+        const [, announceInit] = fetchMock.mock.calls[1];
+        const announceBody = JSON.parse(String(announceInit.body));
+        expect(announceBody.content).toBeUndefined();
+        expect(announceBody.allowed_mentions).toEqual({ parse: [] });
 
-        const [, sendInit] = fetchMock.mock.calls[1];
+        // Fil, puis message de bienvenue avec les mentions.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        mockSendOk("thread-1", "msg-invite");
+        expect((await processOne())?.outcome).toBe("sent");
+
+        const [, sendInit] = fetchMock.mock.calls.at(-1)!;
         const sendBody = JSON.parse(String(sendInit.body));
         expect(sendBody.content).toContain(`<@${guestA.discordId}>`);
+        expect(sendBody.content).not.toContain(`<@${creator.discordId}>`);
         expect(sendBody.content).toContain(`<@${guestB.discordId}>`);
         expect(sendBody.content).not.toContain(notInvited.discordId);
         // Dédupliqué — une seule occurrence de guestA malgré le doublon en base.
@@ -917,6 +929,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
         await processOne();
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         await processOne();
+        // Message de bienvenue (avec mention) dans le fil.
+        mockSendOk("thread-1", "msg-invite");
+        await processOne();
 
         await launchBracket(tournament.id);
         mockSendOk("chan-tournois");
@@ -948,10 +963,16 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(outcome?.outcome).toBe("sent");
 
         // Une seule livraison SENT au final (jamais republiée une fois
-        // envoyée) — son contenu porte la mention une seule fois.
+        // envoyée) ; l'annonce ne mentionne personne et le message de bienvenue
+        // du fil n'est mis en file qu'UNE fois malgré le réessai.
         const [, sendInit] = fetchMock.mock.calls.at(-1)!;
         const sendBody = JSON.parse(String(sendInit.body));
-        expect(sendBody.content).toBe(`<@${guest.discordId}>`);
+        expect(sendBody.content).toBeUndefined();
+        expect(
+          await db.notificationDelivery.count({
+            where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:thread-invite` },
+          })
+        ).toBe(1);
 
         const deliveries = await db.notificationDelivery.findMany({
           where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:announce`, operation: "SEND" },
@@ -1580,7 +1601,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // et réinitialise `fetchMock` (les 3 appels ci-dessus sont un
         // détail d'installation, jamais ce que le test lui-même vérifie).
         await db.notificationDelivery.deleteMany({
-          where: { targetSlot: { contains: `:TOURNAMENT:${tournamentId}:member:` } },
+          where: {
+            OR: [
+              { targetSlot: { contains: `:TOURNAMENT:${tournamentId}:member:` } },
+              { targetSlot: { endsWith: `:TOURNAMENT:${tournamentId}:thread-invite` } },
+            ],
+          },
         });
         fetchMock.mockClear();
       }

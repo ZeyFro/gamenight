@@ -1293,7 +1293,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role.startsWith("thread-reminder-")) {
       const minutes = Number(role.slice("thread-reminder-".length));
       if (!Number.isFinite(minutes)) return { eligible: false, reason: "unresolvable" };
-      return resolveThreadReminder(sessionId, session, minutes);
+      return resolveThreadReminder(sessionId, session);
     }
     if (role.startsWith("invite:")) {
       const inviteId = role.slice("invite:".length);
@@ -1807,11 +1807,7 @@ async function resolveSessionThreadArchive(sessionId: string): Promise<Resolutio
  * `computeTimingsDue`, reminders.ts) mais traitée en retard par
  * l'exécuteur.
  */
-async function resolveThreadReminder(
-  sessionId: string,
-  session: SessionWithVotes,
-  minutes: number
-): Promise<Resolution> {
+async function resolveThreadReminder(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 

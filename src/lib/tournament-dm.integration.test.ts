@@ -1,9 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * MP des tournois (V2) — l'annonce d'ouverture part en MP à chaque pote
- * sélectionné ET au créateur, leur mention est retirée de l'annonce du
- * salon, mention de secours dans le fil si le MP est fermé. Postgres isolé
+ * MP des tournois (V2) — règles de ping : création = annonce (sans mention) +
+ * fil avec mention des joueurs ET MP d'invitation à chaque joueur (double ping ;
+ * créateur : MP sans mention) ; lancement/fin/annulation = MP d'invitation
+ * ÉDITÉ (aucun nouveau MP) ; arrivée d'un joueur : aucun ping ; secours (mention
+ * dans le fil) si le MP du créateur est fermé. Postgres isolé
  * (`TEST_DATABASE_URL`) + Discord entièrement simulé par un routeur d'URL
  * sur `fetch` : AUCUN appel réseau réel, aucun MP réel. Suite entièrement
  * SKIPPÉE si `TEST_DATABASE_URL` est absente.
@@ -68,6 +70,12 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       }
       if (method === "POST" && path === "/channels/thread-t1/messages") {
         return jsonResponse(200, { id: "msg-thread", channel_id: "thread-t1" });
+      }
+      if (method === "PUT" && /^\/channels\/thread-t1\/thread-members\/.+$/.test(path)) {
+        return new Response(null, { status: 204 });
+      }
+      if (method === "PATCH" && /^\/channels\/dm-.+\/messages\/dm-msg$/.test(path)) {
+        return jsonResponse(200, { id: "dm-msg", channel_id: path.split("/")[2] });
       }
       if (method === "POST" && path === "/users/@me/channels") {
         const { recipient_id } = JSON.parse(String(init.body));
@@ -153,7 +161,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
   }
 
   describe("annonce d'ouverture", () => {
-    it("un MP par pote sélectionné ET pour le créateur, mention retirée du salon, aucun doublon après un retry", async () => {
+    it("un MP par pote sélectionné ET pour le créateur, annonce sans mention, joueurs mentionnés dans le fil (double ping), créateur jamais mentionné, aucun doublon après un retry", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const b = await makeUser();
@@ -167,8 +175,17 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       await drain(new Date(t0.getTime() + 10 * 60_000));
 
       const body = JSON.parse(String(calls("POST", /\/channels\/chan-tournois\/messages$/).at(-1)![1].body));
-      expect(body.content).toBeUndefined(); // plus aucune mention dans l'annonce
+      expect(body.content).toBeUndefined(); // l'annonce du salon ne mentionne personne
       expect(body.allowed_mentions).toEqual({ parse: [] });
+
+      // Mention des joueurs dans le fil, créateur exclu, exactement une fois.
+      const threadPosts = calls("POST", /\/channels\/thread-t1\/messages$/);
+      expect(threadPosts).toHaveLength(1);
+      const threadBody = JSON.parse(String(threadPosts[0][1].body));
+      expect(threadBody.content).toContain(`<@${a.discordId}>`);
+      expect(threadBody.content).toContain(`<@${b.discordId}>`);
+      expect(threadBody.content).not.toContain(`<@${creator.discordId}>`);
+      expect([...threadBody.allowed_mentions.users].sort()).toEqual([a.discordId, b.discordId].sort());
 
       const rows = await dmRows(tournament.id);
       expect(rows).toHaveLength(3);
@@ -183,7 +200,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       expect(dmBody.allowed_mentions).toEqual({ parse: [] });
     });
 
-    it("interrupteur éteint : comportement historique (mention dans le salon, aucun MP, créateur non prévenu)", async () => {
+    it("interrupteur MP éteint : mention dans le fil (annonce sans mention), aucun MP, créateur non prévenu", async () => {
       vi.stubEnv("DISCORD_DM_TOURNAMENT_ENABLED", "false");
       const creator = await makeUser();
       const a = await makeUser();
@@ -192,7 +209,9 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       await drain();
 
       const body = JSON.parse(String(calls("POST", /\/channels\/chan-tournois\/messages$/).at(-1)![1].body));
-      expect(body.content).toBe(`<@${a.discordId}>`);
+      expect(body.content).toBeUndefined();
+      const threadBody = JSON.parse(String(calls("POST", /\/channels\/thread-t1\/messages$/).at(-1)![1].body));
+      expect(threadBody.content).toContain(`<@${a.discordId}>`);
       expect(await dmRows(tournament.id)).toHaveLength(0);
       expect(calls("POST", /users\/@me\/channels/)).toHaveLength(0);
     });
@@ -240,8 +259,64 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
     });
   });
 
+  describe("modification, fin, arrivée d'un joueur", () => {
+    it("lancement puis annulation : MP d'invitation ÉDITÉ (statut courant), aucun nouveau MP ni mention", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const tournament = await makeTournament(creator.id, [a.id]);
+      await drain();
+      fetchMock.mockClear();
+
+      await db.tournament.update({ where: { id: tournament.id }, data: { status: "IN_PROGRESS" } });
+      await announceLib.enqueueTournamentAnnounceUpdate(tournament.id);
+      await drain();
+
+      const edits = calls("PATCH", /\/channels\/dm-[^/]+\/messages\/dm-msg$/);
+      expect(edits).toHaveLength(2); // a + créateur
+      expect(JSON.parse(String(edits[0][1].body)).content).toContain("en cours");
+      expect(calls("POST", /\/channels\/dm-/)).toHaveLength(0);
+      expect(calls("POST", /\/channels\/thread-t1\/messages$/)).toHaveLength(0);
+
+      await db.tournament.update({ where: { id: tournament.id }, data: { status: "CANCELLED" } });
+      await announceLib.enqueueTournamentAnnounceUpdate(tournament.id);
+      await drain();
+      const last = calls("PATCH", /\/channels\/dm-[^/]+\/messages\/dm-msg$/).at(-1)!;
+      expect(JSON.parse(String(last[1].body)).content).toContain("annulé");
+      expect(calls("POST", /\/channels\/dm-/)).toHaveLength(0);
+    });
+
+    it("modification : interrupteur MP éteint → aucune édition de MP en file", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const tournament = await makeTournament(creator.id, [a.id]);
+      await drain();
+      vi.stubEnv("DISCORD_DM_TOURNAMENT_ENABLED", "false");
+
+      await announceLib.enqueueTournamentAnnounceUpdate(tournament.id);
+      await drain();
+
+      expect(calls("PATCH", /\/channels\/dm-/)).toHaveLength(0);
+    });
+
+    it("arrivée d'un joueur : ajouté au fil, aucune mention, aucun MP", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const tournament = await makeTournament(creator.id, [a.id]);
+      await drain();
+      fetchMock.mockClear();
+
+      const late = await makeUser();
+      await announceLib.enqueueTournamentThreadMember(tournament.id, late.id);
+      await drain();
+
+      expect(calls("PUT", /\/channels\/thread-t1\/thread-members\//)).toHaveLength(1);
+      expect(calls("POST", /\/channels\/thread-t1\/messages$/)).toHaveLength(0);
+      expect(calls("POST", /\/channels\/dm-/)).toHaveLength(0);
+    });
+  });
+
   describe("MP fermé (50007)", () => {
-    it("échec tracé, mention de secours dans le fil, jamais de nouvelle tentative de MP", async () => {
+    it("joueur : échec tracé, déjà mentionné dans le fil (pas de secours en plus), jamais de nouvelle tentative de MP", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const b = await makeUser();
@@ -258,12 +333,12 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       expect(failed.errorClass).toBe("discord:dm_unavailable");
       expect(calls("POST", new RegExp(`/channels/dm-${a.discordId}/messages$`))).toHaveLength(1);
 
-      // Mention de secours : postée dans le fil, ne mentionne que ce pote.
-      const fallback = JSON.parse(String(calls("POST", /\/channels\/thread-t1\/messages$/).at(-1)![1].body));
-      expect(fallback.content).toContain(`<@${a.discordId}>`);
-      expect(fallback.content).toContain("MP impossible");
-      expect(fallback.content).not.toContain(`<@${b.discordId}>`);
-      expect(fallback.allowed_mentions.users).toEqual([a.discordId]);
+      // Pas de message de secours pour un joueur : il est déjà mentionné dans
+      // le fil avec les autres (double ping).
+      expect(await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm-fallback:" } } })).toBe(0);
+      const threadPosts = calls("POST", /\/channels\/thread-t1\/messages$/);
+      expect(threadPosts).toHaveLength(1);
+      expect(JSON.parse(String(threadPosts[0][1].body)).content).toContain(`<@${a.discordId}>`);
 
       // Un nouveau passage ne renvoie AUCUN MP à ce pote.
       const { enqueueDirectMessages } = await import("./discord-dm");
@@ -277,6 +352,24 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des tournois (intégration Postgres isol
       expect(result.blocked.map((u) => u.id)).toEqual([a.id]);
       await drain();
       expect(calls("POST", new RegExp(`/channels/dm-${a.discordId}/messages$`))).toHaveLength(1);
+    });
+
+    it("MP du CRÉATEUR fermé : mention de secours dans le fil, seulement pour lui", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const tournament = await makeTournament(creator.id, [a.id]);
+      closedDms.add(creator.discordId);
+
+      await drain();
+
+      const failed = (await dmRows(tournament.id)).find((r) => r.recipientKey === `user:${creator.id}`)!;
+      expect(failed).toMatchObject({ status: "FAILED", errorClass: "discord:dm_unavailable" });
+      const fallback = calls("POST", /\/channels\/thread-t1\/messages$/)
+        .map(([, init]) => JSON.parse(String(init.body)))
+        .find((body) => typeof body.content === "string" && body.content.includes("MP impossible"));
+      expect(fallback.content).toContain(`<@${creator.discordId}>`);
+      expect(fallback.allowed_mentions.users).toEqual([creator.discordId]);
+      expect(await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm-fallback:" } } })).toBe(1);
     });
 
     it("une autre erreur terminale (permission) ne déclenche pas de mention de secours", async () => {
