@@ -4,7 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
 import { getTournamentAnnounceConfig, isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
-import { enqueueDirectMessageFallback, enqueueDirectMessages, parseDmRole } from "@/lib/discord-dm";
+import {
+  enqueueDirectMessageEdits,
+  enqueueDirectMessageFallback,
+  enqueueDirectMessages,
+  parseDmRole,
+} from "@/lib/discord-dm";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import {
@@ -87,9 +92,16 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  * de ce chantier (aucune règle de tournoi inventée au-delà de ce qui est
  * demandé).
  *
+ * **Règles de ping (PR D)** — création = annonce (jamais de mention) + fil,
+ * mention des joueurs dans le fil (`thread-invite`, un message distinct) ET MP
+ * d'invitation à chaque joueur (double ping voulu ; créateur : MP, pas de
+ * mention). Modification/fin (lancement, clôture, annulation) = annonce ET MP
+ * d'invitation ÉDITÉS, jamais un nouveau MP. Secours (mention dans le fil) si le
+ * MP du créateur est fermé. Arrivée/départ d'un joueur : aucun ping.
+ *
  * **Mentions (V2, notifications maîtrisées)** — LE SEUL message qui
- * mentionne jamais quelqu'un est le SEND initial de `announce` (ouverture
- * des inscriptions), et UNIQUEMENT les destinataires explicitement
+ * mentionne jamais quelqu'un est `thread-invite` (ouverture des
+ * inscriptions, DANS le fil), et UNIQUEMENT les destinataires explicitement
  * sélectionnés par le créateur au formulaire (`Tournament.notifiedUserIds`,
  * même contrat que `Session.notifiedUserIds`) ET encore éligibles à ce
  * moment-là (préférence `TOURNAMENT` relue au traitement RÉEL, jamais à
@@ -113,6 +125,9 @@ function announceSlot(tournamentId: string): string {
 }
 function threadSlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread`;
+}
+function threadInviteSlot(tournamentId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-invite`;
 }
 function threadSummarySlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-summary`;
@@ -241,6 +256,14 @@ export async function enqueueTournamentAnnounceUpdate(
     },
     db
   );
+  // Les MP d'invitation déjà envoyés sont ÉDITÉS aussi (statut courant), jamais
+  // un nouveau MP.
+  if (isTournamentDirectMessageEnabled()) {
+    await enqueueDirectMessageEdits(
+      { category: "TOURNAMENT", sourceId: tournamentId, eventType: "TOURNAMENT_DM_EDIT", kind: "announce" },
+      db
+    );
+  }
 }
 
 /**
@@ -731,10 +754,18 @@ async function isTournamentDmRecipientEligible(
  * définitif) : c'est `onTerminalDiscordFailure` qui met la mention de
  * secours en file.
  */
-async function resolveTournamentDirectMessage(role: string, tournament: TournamentWithMatches): Promise<Resolution> {
+async function resolveTournamentDirectMessage(
+  role: string,
+  tournament: TournamentWithMatches,
+  delivery: ClaimedDelivery
+): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm:");
   if (!parsed || parsed.kind !== "announce") return { eligible: false, reason: "unresolvable" };
-  if (tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
+  const isEdit = delivery.operation === "EDIT";
+  // SEND : seulement tant que les inscriptions sont ouvertes. EDIT : le MP
+  // d'invitation déjà envoyé est mis à jour quel que soit l'état (lancé,
+  // terminé, annulé).
+  if (!isEdit && tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
@@ -743,15 +774,24 @@ async function resolveTournamentDirectMessage(role: string, tournament: Tourname
   }
 
   const rendering = resolveTournamentAnnounceRendering(tournament);
-  const action: ResolvedAction = {
-    kind: "send_direct_message",
-    userId: recipient.discordId,
-    message: {
-      content: `🏆 Tournoi ${tournament.name} — inscriptions ouvertes`,
-      embeds: [rendering.embed],
-      allowedMentions: NO_MENTIONS,
-    },
+  const message: ResolvedMessageContent = {
+    content: isEdit ? rendering.embed.title : `🏆 Tournoi ${tournament.name} — inscriptions ouvertes`,
+    embeds: [rendering.embed],
+    allowedMentions: NO_MENTIONS,
   };
+  if (isEdit) {
+    const sent = await findSentDelivery(delivery.targetSlot);
+    if (!sent?.discordMessageId || !sent.discordChannelId) return { eligible: false, reason: "unresolvable" };
+    const action: ResolvedAction = {
+      kind: "edit_channel_message",
+      channelId: sent.discordChannelId,
+      messageId: sent.discordMessageId,
+      isDirectMessage: true,
+      message,
+    };
+    return { eligible: true, action };
+  }
+  const action: ResolvedAction = { kind: "send_direct_message", userId: recipient.discordId, message };
   return { eligible: true, action };
 }
 
@@ -766,6 +806,8 @@ async function resolveTournamentDirectMessageFallback(
 ): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm-fallback:");
   if (!parsed || parsed.kind !== "announce") return { eligible: false, reason: "unresolvable" };
+  // Secours réservé au créateur (les joueurs sont déjà mentionnés dans le fil).
+  if (parsed.userId !== tournament.createdById) return { eligible: false, reason: "unresolvable" };
   const thread = await findSentDelivery(threadSlot(tournament.id));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
   if (tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
@@ -886,7 +928,7 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     if (!tournament) return { eligible: false, reason: "expired" };
 
     if (role.startsWith("dm:")) {
-      return resolveTournamentDirectMessage(role, tournament);
+      return resolveTournamentDirectMessage(role, tournament, delivery);
     }
     if (role.startsWith("dm-fallback:")) {
       return resolveTournamentDirectMessageFallback(role, tournament);
@@ -894,6 +936,9 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
 
     if (role === "thread") {
       return resolveThreadCreation(tournamentId, tournament);
+    }
+    if (role === "thread-invite") {
+      return resolveThreadInvite(tournamentId, tournament);
     }
     if (role === "thread-summary") {
       return resolveThreadSummary(tournamentId, tournament);
@@ -909,8 +954,53 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     return { eligible: false, reason: "unresolvable" };
   },
   // MP des tournois (V2) — mention de secours dans le fil si un MP est fermé.
-  onTerminalDiscordFailure: (input: TerminalDiscordFailureInput) => enqueueDirectMessageFallback(input, "TOURNAMENT"),
+  onTerminalDiscordFailure: enqueueCreatorDirectMessageFallback,
 };
+
+/**
+ * Secours MP fermé : réservé au CRÉATEUR (les joueurs sont déjà mentionnés dans
+ * le fil par `thread-invite` — un message de secours serait un second ping).
+ */
+async function enqueueCreatorDirectMessageFallback(input: TerminalDiscordFailureInput): Promise<void> {
+  const { delivery, event } = input;
+  if (event.category !== "TOURNAMENT" || delivery.channel !== "DISCORD_DM") return;
+  const parsed = parseDmRole(delivery.targetSlot.split(":").slice(3).join(":"), "dm:");
+  if (!parsed) return;
+  const tournament = await prisma.tournament.findUnique({ where: { id: event.sourceId }, select: { createdById: true } });
+  if (tournament?.createdById !== parsed.userId) return;
+  await enqueueDirectMessageFallback(input, "TOURNAMENT");
+}
+
+/**
+ * Message de bienvenue DANS le fil avec mention des joueurs sélectionnés
+ * (préférence `TOURNAMENT` relue maintenant ; créateur jamais mentionné). Une
+ * édition de l'annonce ne notifie personne : c'est CE message qui ping. Seulement
+ * tant que les inscriptions sont ouvertes.
+ */
+async function resolveThreadInvite(tournamentId: string, tournament: TournamentWithMatches): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(tournamentId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+  if (tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
+
+  const rendering = resolveTournamentAnnounceRendering(tournament);
+  const eligible = rendering.candidateMentionIds
+    ? (await resolveEligibleTournamentMentions(rendering.candidateMentionIds)).filter(
+        (u) => u.id !== tournament.createdById
+      )
+    : [];
+  const mentions = buildMessageContent(rendering.embed, eligible);
+  const action: ResolvedAction = {
+    kind: "send_thread_message",
+    threadId: thread.discordThreadId,
+    message: {
+      ...mentions,
+      content: [`🏆 Tournoi ${tournament.name} — inscriptions ouvertes`, mentionContent(eligible).text]
+        .filter((part) => part.length > 0)
+        .join(" "),
+    },
+  };
+  return { eligible: true, action };
+}
 
 /**
  * Adhésion automatique au fil — V2. Dépend de `thread` SENT (a besoin du
@@ -980,39 +1070,53 @@ async function resolveAnnounceDelivery(
       return { eligible: false, reason: "not_configured" };
     }
 
-    // Mentions (V2) — UNIQUEMENT sur ce tout premier SEND, jamais sur une
-    // EDIT. Relit la préférence TOURNAMENT MAINTENANT (traitement réel),
-    // jamais un instantané figé à l'enqueue.
+    // Double ping (PR D) : l'annonce du salon ne mentionne JAMAIS personne
+    // (les joueurs sont mentionnés dans le fil, `thread-invite`) ; chaque
+    // pote éligible ET le créateur reçoivent en plus l'invitation en MP.
+    // Préférence TOURNAMENT relue MAINTENANT (traitement réel), jamais un
+    // instantané figé à l'enqueue. Secours (créateur seulement) si son MP est fermé.
     const eligible = rendering.candidateMentionIds
       ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds)
       : [];
-
-    // MP des tournois (V2) — chaque pote éligible ET le créateur reçoivent
-    // l'annonce en MP ; leur mention est alors RETIRÉE de l'annonce du salon
-    // (un seul ping). Mention de secours dans le fil si un MP est fermé.
-    let mentioned = eligible;
     if (isTournamentDirectMessageEnabled()) {
       const creator = eligible.some((u) => u.id === tournament.createdById)
         ? null
         : await resolveTournamentCreatorDmRecipient(tournament.createdById);
-      const dm = await enqueueDirectMessages({
+      await enqueueDirectMessages({
         category: "TOURNAMENT",
         sourceId: tournament.id,
         eventType: "TOURNAMENT_DM",
         kind: "announce",
         users: creator ? [...eligible, creator] : eligible,
       });
-      const coveredIds = new Set(dm.covered.map((u) => u.id));
-      mentioned = eligible.filter((u) => !coveredIds.has(u.id));
-      // MP déjà fermé du créateur : mentionné dans l'annonce comme n'importe quel pote.
-      if (creator && dm.blocked.some((u) => u.id === creator.id)) mentioned = [...mentioned, creator];
+    }
+
+    // Message de bienvenue DANS le fil, avec mention des joueurs : mis en file ici
+    // (comme les MP, occurrence fixe → idempotent sur un retry), traité quand le
+    // fil existe (`dependency_not_ready` sinon). Seulement s'il y a quelqu'un à
+    // mentionner (le créateur n'est jamais mentionné).
+    if (eligible.some((u) => u.id !== tournament.createdById)) {
+      const inviteEvent = await createNotificationEvent({
+        category: "TOURNAMENT",
+        eventType: "TOURNAMENT_THREAD_INVITE",
+        sourceId: tournament.id,
+        occurrence: "thread-invite",
+      });
+      await enqueueDelivery({
+        eventId: inviteEvent.id,
+        channel: "DISCORD_CHANNEL",
+        transport: "BOT",
+        operation: "SEND",
+        recipientKey: "channel",
+        targetSlot: threadInviteSlot(tournament.id),
+      });
     }
 
     const action: ResolvedAction = {
       kind: "send_channel_message_verified",
       channelId: tournament.discordChannelId,
       guildId: tournament.discordGuildId,
-      message: buildMessageContent(rendering.embed, mentioned),
+      message: buildMessageContent(rendering.embed),
     };
     return { eligible: true, action };
   }

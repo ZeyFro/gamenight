@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
+import { randomUUID } from "crypto";
+import { createNotificationEvent, enqueueDelivery, type NotificationDb } from "@/lib/notification-delivery";
 import type { TerminalDiscordFailureInput } from "@/lib/notification-executor";
 
 /**
@@ -95,6 +96,45 @@ export async function enqueueDirectMessages<T extends { id: string }>(
 }
 
 /**
+ * ÉDITE les MP `<kind>` déjà envoyés (jamais un nouveau MP) : un EDIT sur le
+ * même `targetSlot` que le SEND d'origine, pour chaque pote dont ce MP est
+ * `SENT`. Un MP jamais envoyé, fermé ou encore en attente est ignoré (un SEND
+ * en attente rend de toute façon l'état courant). Lecture via le client global
+ * (lignes déjà committées), écritures via `db` (composable avec la
+ * transaction métier de l'appelant). L'état affiché est relu à l'envoi par le
+ * résolveur de la catégorie.
+ */
+export async function enqueueDirectMessageEdits(
+  input: { category: DmCategory; sourceId: string; eventType: string; kind: string },
+  db?: NotificationDb
+): Promise<void> {
+  const { category, sourceId, eventType, kind } = input;
+  const sent = await prisma.notificationDelivery.findMany({
+    where: {
+      targetSlot: { startsWith: `${GUILD_SLOT_PREFIX}:${category}:${sourceId}:dm:${kind}:` },
+      operation: "SEND",
+      status: "SENT",
+    },
+    select: { targetSlot: true, recipientKey: true },
+  });
+  if (sent.length === 0) return;
+  const event = await createNotificationEvent({ category, eventType, sourceId, occurrence: randomUUID() }, db);
+  for (const delivery of sent) {
+    await enqueueDelivery(
+      {
+        eventId: event.id,
+        channel: "DISCORD_DM",
+        transport: "BOT",
+        operation: "EDIT",
+        recipientKey: delivery.recipientKey,
+        targetSlot: delivery.targetSlot,
+      },
+      db
+    );
+  }
+}
+
+/**
  * MP fermé (`discord:dm_unavailable`, jamais une autre erreur) — met en file
  * la mention de secours dans le fil, dans la MÊME transaction que le passage
  * à FAILED (voir `DeliveryResolver.onTerminalDiscordFailure`). Idempotent
@@ -106,7 +146,7 @@ export async function enqueueDirectMessageFallback(
   category: DmCategory
 ): Promise<void> {
   const { delivery, event, errorClass, db } = input;
-  if (event.category !== category || delivery.channel !== "DISCORD_DM") return;
+  if (event.category !== category || delivery.channel !== "DISCORD_DM" || delivery.operation !== "SEND") return;
   if (errorClass !== DM_UNAVAILABLE_ERROR_CLASS) return;
   const role = delivery.targetSlot.split(":").slice(3).join(":");
   const parsed = parseDmRole(role, "dm:");

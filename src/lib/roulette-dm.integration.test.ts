@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * MP de la roulette (V2) — invitation, rappel et résultat envoyés en MP à
- * chaque participant ET au créateur ; préférence `ROULETTE` relue à l'envoi ;
+ * MP de la roulette (V2) — invitation et rappel envoyés en MP à chaque
+ * participant ET au créateur ; à la fin (tirage ou annulation) le MP
+ * d'invitation est ÉDITÉ, jamais un nouveau MP, jamais de mention ; préférence `ROULETTE` relue à l'envoi ;
  * un MP fermé est seulement tracé (une roulette n'a ni fil ni annonce
  * publique, donc aucune mention de secours). Postgres isolé
  * (`TEST_DATABASE_URL`) + Discord simulé : AUCUN appel réseau réel, aucun MP
@@ -57,6 +58,8 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
         const { recipient_id } = JSON.parse(String(init.body));
         return jsonResponse(200, { id: `dm-${recipient_id}` });
       }
+      const dmEdit = path.match(/^\/channels\/dm-(.+)\/messages\/dm-msg$/);
+      if (method === "PATCH" && dmEdit) return jsonResponse(200, { id: "dm-msg", channel_id: `dm-${dmEdit[1]}` });
       const dmMatch = path.match(/^\/channels\/dm-(.+)\/messages$/);
       if (method === "POST" && dmMatch) {
         if (closedDms.has(dmMatch[1])) {
@@ -241,13 +244,23 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
     });
   });
 
-  describe("résultat (soirée hors chemin bot)", () => {
-    it("MP aux participants invités à la soirée ET au créateur, avec le jeu gagnant", async () => {
+  describe("fin de roulette — le MP d'invitation est édité", () => {
+    function dmEdits(discordId: string) {
+      return fetchMock.mock.calls.filter(
+        ([url, init]) => init?.method === "PATCH" && String(url).includes(`/channels/dm-${discordId}/messages/dm-msg`)
+      );
+    }
+
+    it("tirage : MP d'invitation édité avec le jeu gagnant (participants invités à la soirée ET créateur), aucun nouveau MP", async () => {
       const creator = await makeUser();
       const a = await makeUser();
       const b = await makeUser();
       const game = await db.game.create({ data: { name: "Mario Kart", source: "MANUAL", addedById: creator.id } });
       const roulette = await makeRoulette(creator.id, [a.id, b.id]);
+      await rouletteLib.announceRouletteCreated(roulette, creator);
+      await drain();
+      expect(dmPosts(a.discordId)).toHaveLength(1);
+
       const session = await db.session.create({
         data: {
           date: roulette.scheduledAt,
@@ -258,7 +271,7 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
           announceViaBot: false,
         },
       });
-      // `b` n'est plus invité à la soirée issue du tirage : pas de MP.
+      // `b` n'est plus invité à la soirée issue du tirage : son MP n'est pas édité.
       await db.sessionInvite.create({ data: { sessionId: session.id, userId: a.id, invitedById: creator.id, status: "ACTIVE" } });
       await db.roulette.update({
         where: { id: roulette.id },
@@ -266,12 +279,86 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
       });
 
       await rouletteLib.announceRouletteResult(roulette, "Mario Kart", null, [creator.id, a.id, b.id], session.id);
+      await rouletteDm.enqueueRouletteDirectMessageEdits(roulette.id);
       await drain();
 
+      expect(dmEdits(a.discordId)).toHaveLength(1);
+      expect(dmEdits(creator.discordId)).toHaveLength(1);
+      expect(dmEdits(b.discordId)).toHaveLength(0);
+      expect(JSON.parse(String(dmEdits(a.discordId)[0][1].body)).content).toBe("🎰 La roue a choisi : Mario Kart");
+      // Aucun nouveau MP (ni de résultat), un seul MP d'invitation par pote.
       expect(dmPosts(a.discordId)).toHaveLength(1);
       expect(dmPosts(creator.discordId)).toHaveLength(1);
-      expect(dmPosts(b.discordId)).toHaveLength(0);
-      expect(JSON.parse(String(dmPosts(a.discordId)[0][1].body)).content).toBe("🎰 La roue a choisi : Mario Kart");
+      expect(await dmRows(roulette.id, "result")).toHaveLength(0);
+    });
+
+    it("annulation (moins de 2 participants) : MP d'invitation édité « annulée », aucun nouveau MP", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const roulette = await makeRoulette(creator.id, [a.id]);
+      await rouletteLib.announceRouletteCreated(roulette, creator);
+      await drain();
+      await db.roulette.update({ where: { id: roulette.id }, data: { status: "DONE" } });
+
+      await rouletteDm.enqueueRouletteDirectMessageEdits(roulette.id);
+      await drain();
+
+      expect(dmEdits(a.discordId)).toHaveLength(1);
+      expect(JSON.parse(String(dmEdits(a.discordId)[0][1].body)).content).toContain("annulée");
+      expect(dmPosts(a.discordId)).toHaveLength(1);
+    });
+
+    it("pote dont le MP n'a jamais été envoyé (MP fermé) : aucune édition, aucun nouveau MP", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const roulette = await makeRoulette(creator.id, [a.id]);
+      closedDms.add(a.discordId);
+      await rouletteLib.announceRouletteCreated(roulette, creator);
+      await drain();
+      await db.roulette.update({ where: { id: roulette.id }, data: { status: "DONE" } });
+
+      await rouletteDm.enqueueRouletteDirectMessageEdits(roulette.id);
+      await drain();
+
+      expect(dmEdits(a.discordId)).toHaveLength(0);
+      expect(dmPosts(a.discordId)).toHaveLength(1);
+    });
+
+    it("interrupteur éteint : aucune édition en file", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const roulette = await makeRoulette(creator.id, [a.id]);
+      await rouletteLib.announceRouletteCreated(roulette, creator);
+      await drain();
+      vi.stubEnv("DISCORD_DM_ROULETTE_ENABLED", "false");
+
+      await rouletteDm.enqueueRouletteDirectMessageEdits(roulette.id);
+      await drain();
+
+      expect(dmEdits(a.discordId)).toHaveLength(0);
+    });
+
+    it("anciens MP de résultat déjà en file : abandonnés (expired), jamais envoyés", async () => {
+      const creator = await makeUser();
+      const a = await makeUser();
+      const roulette = await makeRoulette(creator.id, [a.id]);
+      const event = await db.notificationEvent.create({
+        data: { category: "ROULETTE", eventType: "ROULETTE_DM", sourceId: roulette.id, occurrence: "result" },
+      });
+      await db.notificationDelivery.create({
+        data: {
+          eventId: event.id,
+          channel: "DISCORD_DM",
+          transport: "BOT",
+          operation: "SEND",
+          recipientKey: `user:${a.id}`,
+          targetSlot: `default-guild:ROULETTE:${roulette.id}:dm:result:${a.id}`,
+        },
+      });
+
+      const outcomes = await drain();
+      expect(outcomes).toEqual([expect.objectContaining({ outcome: "failed", errorClass: "resolver:expired" })]);
+      expect(dmPosts(a.discordId)).toHaveLength(0);
     });
   });
 
