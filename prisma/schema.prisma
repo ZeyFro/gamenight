@@ -1960,6 +1960,8 @@ enum NotificationCategory {
   RECAP
   INSTANT_SESSION
   ADMIN
+  // V2 (MP roulette) — voir la migration `20260930160000_add_roulette_notification_category`.
+  ROULETTE
 }
 
 // Catégories réellement pilotables aujourd'hui depuis le profil. Cet enum

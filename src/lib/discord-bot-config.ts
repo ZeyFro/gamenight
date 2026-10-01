@@ -97,3 +97,22 @@ export function isInstantSessionInviteViaBotEnabled(): boolean {
 export function isSessionDirectMessageEnabled(): boolean {
   return process.env.DISCORD_DM_SESSION_ENABLED === "true";
 }
+
+/**
+ * V2 (MP tournois) — l'annonce d'ouverture d'un tournoi bot part AUSSI en MP
+ * à chaque pote sélectionné et au créateur ; leur mention disparaît de
+ * l'annonce du salon (mention de secours dans le fil du tournoi si le MP est
+ * fermé). Éteint par défaut ; ne gouverne que la création de nouveaux MP.
+ */
+export function isTournamentDirectMessageEnabled(): boolean {
+  return process.env.DISCORD_DM_TOURNAMENT_ENABLED === "true";
+}
+
+/**
+ * V2 (MP roulette) — invitation, rappel et (hors chemin bot des soirées)
+ * résultat d'une roulette envoyés en MP. Éteint par défaut ; ne gouverne
+ * que la création de nouveaux MP.
+ */
+export function isRouletteDirectMessageEnabled(): boolean {
+  return process.env.DISCORD_DM_ROULETTE_ENABLED === "true";
+}
