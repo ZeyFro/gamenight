@@ -57,10 +57,11 @@ export interface EnqueueDirectMessagesInput<T extends { id: string }> {
 
 /**
  * Met en file un MP par destinataire et renvoie :
- *   - `covered` : les potes désormais couverts par un MP (leur mention doit
- *     être retirée du message public) ;
+ *   - `covered` : les potes désormais couverts par un MP (double ping : leur
+ *     mention dans le fil, quand il y en a une, est conservée) ;
  *   - `blocked` : les potes dont un MP de cette source a déjà échoué en
- *     `dm_unavailable` — AUCUN nouveau MP, à mentionner comme avant.
+ *     `dm_unavailable` — AUCUN nouveau MP (le créateur est alors mentionné
+ *     en secours dans le fil, pour les tournois).
  */
 export async function enqueueDirectMessages<T extends { id: string }>(
   input: EnqueueDirectMessagesInput<T>

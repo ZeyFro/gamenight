@@ -796,9 +796,10 @@ async function resolveTournamentDirectMessage(
 }
 
 /**
- * Mention de secours dans le FIL du tournoi quand le MP d'un pote est
- * fermé — même garde d'état/d'éligibilité que le MP. Attend que le fil
- * existe (`dependency_not_ready`). Ne mentionne que ce pote.
+ * Mention de secours dans le FIL du tournoi quand le MP du CRÉATEUR est
+ * fermé (les joueurs sont déjà mentionnés dans le fil) — même garde
+ * d'état/d'éligibilité que le MP. Attend que le fil existe
+ * (`dependency_not_ready`). Ne mentionne que ce pote.
  */
 async function resolveTournamentDirectMessageFallback(
   role: string,
