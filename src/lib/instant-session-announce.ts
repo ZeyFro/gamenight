@@ -91,11 +91,16 @@ export async function enqueueInstantSessionInvites(
 ): Promise<void> {
   if (userIds.length === 0) return;
 
+  // UN SEUL événement pour tous les destinataires (clé unique : category,
+  // eventType, sourceId, occurrence) — le créer par destinataire levait P2002
+  // dès le 2e invité, ce qui avorte la transaction de création (25P02) quand
+  // `db` est un client de transaction. La granularité par personne est portée
+  // par `recipientKey`/`targetSlot` de chaque livraison, pas par l'événement.
+  const event = await createNotificationEvent(
+    { category: "INSTANT_SESSION", eventType: "INSTANT_SESSION_INVITE", sourceId: instantSessionId },
+    db
+  );
   for (const userId of userIds) {
-    const event = await createNotificationEvent(
-      { category: "INSTANT_SESSION", eventType: "INSTANT_SESSION_INVITE", sourceId: instantSessionId },
-      db
-    );
     await enqueueDelivery(
       {
         eventId: event.id,
