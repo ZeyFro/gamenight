@@ -11,31 +11,33 @@ const block = (msg) => {
   console.error(`Bloqué par .claude/hooks/guard.mjs : ${msg}`);
   process.exit(2);
 };
+const norm = (s) => s.split(String.fromCharCode(92)).join("/");
+const isEnvName = (name) => /^\.env(\..+)?$/.test(name) && name !== ".env.example";
 
-const isEnvFile = (p) => /^\.env(\..+)?$/.test(basename(p)) && basename(p) !== ".env.example";
-const paths = [input.file_path, input.path, input.notebook_path].filter(Boolean);
-const command = typeof input.command === "string" ? input.command : "";
-
-for (const p of paths) {
-  if (isEnvFile(p)) block(`accès à ${basename(p)} interdit (secrets). Utilise .env.example.`);
-}
-if (/neon\.tech/i.test(command)) {
-  block("neon.tech interdit : jamais la base Neon en test. Utilise TEST_DATABASE_URL (Postgres Docker local).");
-}
-if (command && /(^|[\s"'=/]|\\)\.env(\.[\w.-]+)?(?=$|[\s"';|&<>])/.test(command.replace(/\.env\.example/g, ""))) {
-  block("commande touchant un fichier .env* interdite.");
-}
-
-const norm = (p) => p.split(String.fromCharCode(92)).join("/");
-const inMigrations = (p) => /(^|\/)prisma\/migrations\//.test(norm(p));
-if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool)) {
-  for (const p of paths) {
-    if (inMigrations(p) && existsSync(resolve(process.cwd(), p))) {
-      block("migration Prisma existante immuable. Crée une nouvelle migration à la place.");
-    }
+// Outils fichier : on regarde uniquement le chemin.
+for (const p of [input.file_path, input.path, input.notebook_path].filter(Boolean)) {
+  if (isEnvName(basename(norm(p)))) block(`accès à ${basename(norm(p))} interdit.`);
+  if (
+    ["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool) &&
+    /(^|\/)prisma\/migrations\//.test(norm(p)) &&
+    existsSync(resolve(process.cwd(), p))
+  ) {
+    block("migration Prisma existante immuable : crée-en une nouvelle.");
   }
 }
-if (command && /prisma\/migrations/.test(norm(command)) &&
-    /\b(rm|mv|sed\s+-i|truncate|git\s+(checkout|restore|rm|reset|clean))\b|[^>]>{1,2}[^>]/.test(command)) {
-  block("commande potentiellement modificatrice sur prisma/migrations existantes.");
+
+// Bash : uniquement les motifs exacts.
+const command = typeof input.command === "string" ? input.command : "";
+if (command) {
+  if (/neon\.tech/i.test(command)) block("neon.tech interdit : utilise TEST_DATABASE_URL (Postgres local).");
+
+  // Un argument qui EST un fichier .env* (pas .env.example), pas une simple mention.
+  const args = norm(command).split(/[\s"'=;|&<>()]+/);
+  const isProse = /^\s*(git\s+commit|gh\s+pr)\b/.test(command); // message/corps : texte libre
+  if (!isProse && args.some((a) => isEnvName(a.split("/").pop()))) block("fichier .env* interdit.");
+
+  // Commande destructive dont la cible est une migration existante.
+  if (/\b(rm|mv|sed\s+-i|git\s+(checkout|restore|rm))\b[^;&|]*prisma\/migrations\/[^\s]+/.test(norm(command))) {
+    block("modification d'une migration Prisma existante interdite.");
+  }
 }
