@@ -7,6 +7,7 @@ import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
 import type { Roulette, User } from "@prisma/client";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 
 /**
  * Chantier confidentialité des soirées — voir le commentaire de fonction
@@ -58,6 +59,9 @@ export async function announceRouletteCreated(
     }))
   );
 
+  // MP (V2) — participants ET créateur, si DISCORD_DM_ROULETTE_ENABLED.
+  await enqueueRouletteDirectMessages(roulette.id, "created", [...notifiedUserIds, creator.id]);
+
   return skippedByPrivacy("de création de roulette");
 }
 
@@ -66,8 +70,9 @@ export async function announceRouletteReminder(
   roulette: Pick<Roulette, "id" | "deadline">,
   missingUserIds: string[]
 ): Promise<PostToDiscordResult> {
-  void roulette;
-  void missingUserIds;
+  // MP (V2) — seulement ceux qui n'ont pas encore proposé leurs 2 jeux
+  // (créateur inclus s'il en fait partie).
+  await enqueueRouletteDirectMessages(roulette.id, "reminder", missingUserIds);
   return skippedByPrivacy("de rappel de roulette");
 }
 
@@ -98,6 +103,15 @@ export async function announceRouletteResult(
       message: formatDateTimeFr(roulette.scheduledAt),
       relatedSessionId: sessionId,
     }))
+  );
+
+  // MP (V2) — appelée seulement hors chemin bot des soirées (voir
+  // `spinRoulette`), donc jamais en doublon avec les MP de la soirée.
+  // Créateur inclus.
+  await enqueueRouletteDirectMessages(
+    roulette.id,
+    "result",
+    session ? [...winnerUserIds, session.createdById] : winnerUserIds
   );
 
   return skippedByPrivacy("de résultat de roulette");

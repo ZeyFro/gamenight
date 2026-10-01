@@ -12392,3 +12392,53 @@ commencée entre-temps empêche le MP (échec traçable `resolver:*`).
   fermé.
 
 Le cron `notification-executor` doit tourner. Rien n'est activé par cette PR.
+
+## V2 — MP des tournois et de la roulette
+
+Même modèle que les MP des soirées (`DISCORD_DM_SESSION_ENABLED`), avec deux
+interrupteurs **séparés**, éteints par défaut : `DISCORD_DM_TOURNAMENT_ENABLED`
+et `DISCORD_DM_ROULETTE_ENABLED` (exactement `true`). Ils ne gouvernent que la
+création de nouveaux MP : ceux déjà en file sont toujours traités.
+
+### Tournois
+| Événement | MP | Salon / fil |
+| :-- | :-- | :-- |
+| Ouverture des inscriptions (tournoi bot) | « 🏆 Tournoi … — inscriptions ouvertes » + embed, à chaque pote sélectionné **et au créateur** | annonce du salon sans mention |
+| Modification, lancement, résultat, annulation | — | inchangé |
+
+- Préférence `TOURNAMENT` relue avant l'envoi ; un pote doit toujours figurer
+  dans la sélection du créateur (le créateur n'est soumis qu'à sa préférence).
+  Le tournoi doit encore être en `REGISTRATION` : lancé/annulé/supprimé
+  entre-temps → MP refusé (`resolver:expired`).
+- **Un seul ping** : la mention d'un pote dont le MP est mis en file est
+  retirée de l'annonce du salon.
+- **MP fermé** (`discord:dm_unavailable`, jamais retenté) : échec tracé en
+  `FAILED` + **mention de secours dans le fil du tournoi** (même transaction
+  que l'échec, via `DeliveryResolver.onTerminalDiscordFailure`). Les autres
+  échecs terminaux (permission…) sont tracés sans mention de secours.
+
+### Roulette
+| Événement | MP |
+| :-- | :-- |
+| Création | « 🎰 Roulette du gambling » — participants **et créateur** |
+| Rappel (deadline − 1 h) | « ⏰ … dernier rappel » — seulement ceux qui n'ont pas proposé leurs 2 jeux (créateur inclus s'il en fait partie) |
+| Résultat | « 🎰 La roue a choisi : … » — **seulement quand la soirée issue du tirage n'est pas sur le chemin bot** (sinon ce sont déjà les MP de la soirée, aucun doublon) |
+
+- Préférence `ROULETTE` filtrée à la mise en file ET relue à l'envoi ; la roulette
+  doit être `OPEN` (création), `OPEN` et deadline non dépassée (rappel), `DONE`
+  avec sa soirée et le pote toujours invité (résultat).
+- **Pas de mention de secours** : une roulette n'a ni fil ni annonce publique
+  (les annonces webhook sont supprimées pour confidentialité, voir
+  `discord-roulette.ts`). Un MP fermé est seulement tracé, et le pote ne
+  reçoit aucun autre MP de cette roulette (aucune nouvelle tentative).
+- Nouvelle valeur d'enum `NotificationCategory.ROULETTE` (migration
+  `20260930160000_add_roulette_notification_category`, purement additive) :
+  le résolveur SESSION charge une `Session` par `sourceId`, ce qui ne
+  convient pas à une roulette.
+
+### Code
+`src/lib/discord-dm.ts` (mise en file, exclusion des MP déjà fermés, hook de
+mention de secours — mutualisés), `src/lib/roulette-dm.ts` (résolveur
+roulette), `tournament-announce.ts` (résolveurs `dm:`/`dm-fallback:`).
+Les MP des soirées (`session-announce.ts`) gardent leur propre copie de ce
+code ; les rapprocher est un refactor volontairement hors de cette PR.

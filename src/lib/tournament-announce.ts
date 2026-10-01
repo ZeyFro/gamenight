@@ -3,7 +3,8 @@ import type { Tournament, TournamentMatch, TournamentParticipant, User } from "@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
-import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
+import { getTournamentAnnounceConfig, isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { enqueueDirectMessageFallback, enqueueDirectMessages, parseDmRole } from "@/lib/discord-dm";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import {
@@ -19,6 +20,7 @@ import type {
   ResolvedAction,
   ResolvedMessageContent,
   ResolveInput,
+  TerminalDiscordFailureInput,
 } from "@/lib/notification-executor";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
 
@@ -691,6 +693,100 @@ async function resolveEligibleTournamentMentions(
   return filterUsersByNotificationPreference(candidates, "TOURNAMENT");
 }
 
+/**
+ * Le CRÉATEUR du tournoi reçoit aussi le MP d'annonce, même s'il n'est pas
+ * dans sa propre sélection `notifiedUserIds` — seule sa préférence
+ * `TOURNAMENT` s'applique (relue à chaque appel), comme pour tout le monde.
+ */
+async function resolveTournamentCreatorDmRecipient(
+  creatorId: string
+): Promise<{ id: string; discordId: string; silenceReminders: boolean } | null> {
+  const creator = await prisma.user.findUnique({
+    where: { id: creatorId },
+    select: { id: true, discordId: true, silenceReminders: true },
+  });
+  if (!creator) return null;
+  const [allowed] = await filterUsersByNotificationPreference([creator], "TOURNAMENT");
+  return allowed ?? null;
+}
+
+/** Éligibilité d'un destinataire de MP relue À L'ENVOI : le créateur n'est
+ * soumis qu'à sa préférence ; tout autre pote doit toujours figurer dans la
+ * sélection du créateur ET avoir la préférence `TOURNAMENT` active. */
+async function isTournamentDmRecipientEligible(
+  tournament: Pick<Tournament, "createdById" | "notifiedUserIds">,
+  userId: string
+): Promise<boolean> {
+  if (userId === tournament.createdById) return (await resolveTournamentCreatorDmRecipient(userId)) !== null;
+  const selected = resolveNotifiedUserIds(tournament.notifiedUserIds) ?? [];
+  if (!selected.includes(userId)) return false;
+  return (await resolveEligibleTournamentMentions([userId])).length > 0;
+}
+
+/**
+ * MP d'ouverture d'un tournoi — état relu JUSTE À TEMPS : le tournoi doit
+ * toujours exister et accepter les inscriptions (jamais un MP pour un
+ * tournoi lancé/annulé/supprimé entre-temps), et le destinataire rester
+ * éligible. Un MP fermé n'est JAMAIS retenté (`dm_unavailable`, échec
+ * définitif) : c'est `onTerminalDiscordFailure` qui met la mention de
+ * secours en file.
+ */
+async function resolveTournamentDirectMessage(role: string, tournament: TournamentWithMatches): Promise<Resolution> {
+  const parsed = parseDmRole(role, "dm:");
+  if (!parsed || parsed.kind !== "announce") return { eligible: false, reason: "unresolvable" };
+  if (tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
+
+  const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
+  if (!recipient) return { eligible: false, reason: "unresolvable" };
+  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id))) {
+    return { eligible: false, reason: "preference_declined" };
+  }
+
+  const rendering = resolveTournamentAnnounceRendering(tournament);
+  const action: ResolvedAction = {
+    kind: "send_direct_message",
+    userId: recipient.discordId,
+    message: {
+      content: `🏆 Tournoi ${tournament.name} — inscriptions ouvertes`,
+      embeds: [rendering.embed],
+      allowedMentions: NO_MENTIONS,
+    },
+  };
+  return { eligible: true, action };
+}
+
+/**
+ * Mention de secours dans le FIL du tournoi quand le MP d'un pote est
+ * fermé — même garde d'état/d'éligibilité que le MP. Attend que le fil
+ * existe (`dependency_not_ready`). Ne mentionne que ce pote.
+ */
+async function resolveTournamentDirectMessageFallback(
+  role: string,
+  tournament: TournamentWithMatches
+): Promise<Resolution> {
+  const parsed = parseDmRole(role, "dm-fallback:");
+  if (!parsed || parsed.kind !== "announce") return { eligible: false, reason: "unresolvable" };
+  const thread = await findSentDelivery(threadSlot(tournament.id));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+  if (tournament.status !== "REGISTRATION") return { eligible: false, reason: "expired" };
+
+  const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
+  if (!recipient) return { eligible: false, reason: "unresolvable" };
+  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id))) {
+    return { eligible: false, reason: "preference_declined" };
+  }
+
+  const action: ResolvedAction = {
+    kind: "send_thread_message",
+    threadId: thread.discordThreadId,
+    message: {
+      content: `<@${recipient.discordId}> 🏆 Tournoi ${tournament.name} — inscriptions ouvertes (MP impossible) — ${absoluteTournamentUrl(tournament.id)}`,
+      allowedMentions: { ...NO_MENTIONS, users: [recipient.discordId] },
+    },
+  };
+  return { eligible: true, action };
+}
+
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
   return { text: users.map((u) => `<@${u.discordId}>`).join(" "), userIds: users.map((u) => u.discordId) };
 }
@@ -789,6 +885,13 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
 
     if (!tournament) return { eligible: false, reason: "expired" };
 
+    if (role.startsWith("dm:")) {
+      return resolveTournamentDirectMessage(role, tournament);
+    }
+    if (role.startsWith("dm-fallback:")) {
+      return resolveTournamentDirectMessageFallback(role, tournament);
+    }
+
     if (role === "thread") {
       return resolveThreadCreation(tournamentId, tournament);
     }
@@ -805,6 +908,8 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     });
     return { eligible: false, reason: "unresolvable" };
   },
+  // MP des tournois (V2) — mention de secours dans le fil si un MP est fermé.
+  onTerminalDiscordFailure: (input: TerminalDiscordFailureInput) => enqueueDirectMessageFallback(input, "TOURNAMENT"),
 };
 
 /**
@@ -878,9 +983,30 @@ async function resolveAnnounceDelivery(
     // Mentions (V2) — UNIQUEMENT sur ce tout premier SEND, jamais sur une
     // EDIT. Relit la préférence TOURNAMENT MAINTENANT (traitement réel),
     // jamais un instantané figé à l'enqueue.
-    const mentioned = rendering.candidateMentionIds
+    const eligible = rendering.candidateMentionIds
       ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds)
       : [];
+
+    // MP des tournois (V2) — chaque pote éligible ET le créateur reçoivent
+    // l'annonce en MP ; leur mention est alors RETIRÉE de l'annonce du salon
+    // (un seul ping). Mention de secours dans le fil si un MP est fermé.
+    let mentioned = eligible;
+    if (isTournamentDirectMessageEnabled()) {
+      const creator = eligible.some((u) => u.id === tournament.createdById)
+        ? null
+        : await resolveTournamentCreatorDmRecipient(tournament.createdById);
+      const dm = await enqueueDirectMessages({
+        category: "TOURNAMENT",
+        sourceId: tournament.id,
+        eventType: "TOURNAMENT_DM",
+        kind: "announce",
+        users: creator ? [...eligible, creator] : eligible,
+      });
+      const coveredIds = new Set(dm.covered.map((u) => u.id));
+      mentioned = eligible.filter((u) => !coveredIds.has(u.id));
+      // MP déjà fermé du créateur : mentionné dans l'annonce comme n'importe quel pote.
+      if (creator && dm.blocked.some((u) => u.id === creator.id)) mentioned = [...mentioned, creator];
+    }
 
     const action: ResolvedAction = {
       kind: "send_channel_message_verified",
