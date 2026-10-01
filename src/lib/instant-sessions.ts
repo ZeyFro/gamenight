@@ -142,6 +142,11 @@ export async function createInstantSession(input: {
 }): Promise<CreateInstantSessionResult> {
   const now = wallClockNow();
   const expiresAt = new Date(now.getTime() + INSTANT_SESSION_MAX_DURATION_MS);
+  // Le serveur fait autorité sur la liste des invités : le créateur n'est
+  // jamais invité à sa propre session (règle de ping « créateur sans
+  // mention »), et un id en double (formulaire forgé) ferait échouer toute
+  // la transaction (violation d'unicité → 25P02) au lieu d'être ignoré.
+  const notifiedUserIds = [...new Set(input.notifiedUserIds)].filter((id) => id !== input.creatorId);
 
   try {
     const instantSession = await prisma.$transaction(async (tx) => {
@@ -151,14 +156,14 @@ export async function createInstantSession(input: {
           gameId: input.gameId,
           createdAt: now,
           expiresAt,
-          notifiedUserIds: input.notifiedUserIds,
+          notifiedUserIds,
         },
       });
       await tx.instantSessionPresenceInterval.create({
         data: { instantSessionId: created.id, userId: input.creatorId, startedAt: now },
       });
-      if (input.notifiedUserIds.length > 0) {
-        await enqueueInstantSessionInvites(created.id, input.notifiedUserIds, tx);
+      if (notifiedUserIds.length > 0) {
+        await enqueueInstantSessionInvites(created.id, notifiedUserIds, tx);
       }
       return created;
     });
@@ -229,6 +234,11 @@ export async function leaveInstantSession(
   instantSessionId: string,
   userId: string
 ): Promise<InstantSessionActionResult> {
+  // Expiration paresseuse d'abord (comme join/change) : sans elle, un
+  // départ APRÈS l'échéance fermait l'intervalle à l'heure du départ,
+  // au-delà des 3 h maximum.
+  await settleInstantSessionIfDue(instantSessionId);
+
   const session = await prisma.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { createdById: true, status: true },
@@ -304,17 +314,22 @@ export async function endInstantSession(
   requestedById: string | null,
   reason: "creator_left" | "expired"
 ): Promise<InstantSessionActionResult> {
-  const now = wallClockNow();
-
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.instantSession.findUnique({
       where: { id: instantSessionId },
-      select: { createdById: true, status: true },
+      select: { createdById: true, status: true, expiresAt: true },
     });
     if (!session) return { ok: false as const, reason: "not_found" as const };
     if (requestedById !== null && session.createdById !== requestedById) {
       return { ok: false as const, reason: "not_creator" as const };
     }
+
+    // Durée max 3 h : une expiration réglée tardivement (cron en retard,
+    // page rouverte plus tard) est datée À L'ÉCHÉANCE, jamais à l'heure du
+    // règlement — sinon la session et les intervalles de présence
+    // dépasseraient les 3 h autorisées.
+    const wallNow = wallClockNow();
+    const now = reason === "expired" && session.expiresAt < wallNow ? session.expiresAt : wallNow;
 
     const claimed = await tx.instantSession.updateMany({
       where: { id: instantSessionId, status: "ACTIVE" },
