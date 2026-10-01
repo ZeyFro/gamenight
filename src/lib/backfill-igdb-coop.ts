@@ -14,9 +14,17 @@
  * aucune duplication de la logique IGDB ici, seule la boucle
  * "parcourir les jeux éligibles" est nouvelle.
  *
- * Portée inchangée depuis PR 32 (2.5/4, Bug 2A) : jeux avec un cache IGDB
- * déjà en base (`igdbDetails != null`, donc un `igdbId` connu) ET jamais
- * confirmés manuellement (`playInfoManual: false`).
+ * Deux phases, partageant le même budget de temps :
+ *   1. REMPLISSAGE — jeux avec un `igdbId` mais SANS cache
+ *      (`igdbDetails` null) : `getGameDetails` récupère et persiste
+ *      `igdbDetails`/`igdbDetailsFetchedAt` (+ isCoop/maxPlayers sauf
+ *      `playInfoManual`). Avant ce correctif, seule la phase 2 existait :
+ *      un jeu jamais visité sur sa fiche n'était JAMAIS rempli par le cron
+ *      (exclu par `igdbDetails != null`), et la phase 2 n'écrivait jamais
+ *      `igdbDetailsFetchedAt`.
+ *   2. RESYNCHRONISATION (portée inchangée depuis PR 32, 2.5/4, Bug 2A) :
+ *      jeux avec un cache IGDB déjà en base ET jamais confirmés
+ *      manuellement (`playInfoManual: false`).
  *
  * Ordre de traitement mélangé (`shuffle`, voir `src/lib/shuffle.ts`) et
  * arrêt anticipé au-delà de `TIME_BUDGET_MS` : sans marqueur de
@@ -29,6 +37,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchIgdbGameDetails } from "@/lib/igdb";
+import { getGameDetails } from "@/lib/game-details";
 import { shuffle } from "@/lib/shuffle";
 import { logger } from "@/lib/logger";
 
@@ -51,6 +60,8 @@ export interface IgdbCoopBackfillSummary {
   failed: number;
   stoppedEarly: boolean;
   skippedNoCredentials: boolean;
+  /** Jeux dont le cache IGDB (igdbDetails/igdbDetailsFetchedAt) a été rempli par la phase 1. */
+  detailsFilled: number;
 }
 
 export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
@@ -68,7 +79,40 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       failed: 0,
       stoppedEarly: false,
       skippedNoCredentials: true,
+      detailsFilled: 0,
     };
+  }
+
+  let detailsFilled = 0;
+  let detailsFailed = 0;
+  let detailsStoppedEarly = false;
+  const uncached = shuffle(
+    await prisma.game.findMany({
+      where: { igdbDetails: { equals: Prisma.DbNull }, igdbId: { not: null } },
+    })
+  );
+  for (const game of uncached) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      detailsStoppedEarly = true;
+      logger.warn(
+        "igdb-coop",
+        `Arrêt anticipé pendant le remplissage — ${detailsFilled + detailsFailed}/${uncached.length} jeu(x) sans cache traité(s), le reste au prochain appel.`
+      );
+      break;
+    }
+    logger.info("igdb-coop", `Remplissage fiche IGDB: ${game.name}...`);
+    // `getGameDetails` journalise lui-même ses erreurs (logger.error) et les
+    // renvoie dans `error` — comptées ici, jamais ignorées.
+    const result = await getGameDetails(game);
+    if (result.error) detailsFailed += 1;
+    else detailsFilled += 1;
+    await sleep(REQUEST_DELAY_MS);
+  }
+  if (uncached.length > 0) {
+    logger.info(
+      "igdb-coop",
+      `Remplissage terminé — ${detailsFilled} fiche(s) remplie(s), ${detailsFailed} échec(s) sur ${uncached.length} jeu(x) sans cache.`
+    );
   }
 
   const games = shuffle(
@@ -82,16 +126,17 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     })
   );
 
-  if (games.length === 0) {
+  if (games.length === 0 || detailsStoppedEarly) {
     logger.info("igdb-coop", "Aucun jeu éligible (cache IGDB + pas de correction manuelle).");
     return {
-      eligible: 0,
-      processed: 0,
+      eligible: uncached.length,
+      processed: detailsFilled + detailsFailed,
       updated: 0,
       unchanged: 0,
-      failed: 0,
-      stoppedEarly: false,
+      failed: detailsFailed,
+      stoppedEarly: detailsStoppedEarly,
       skippedNoCredentials: false,
+      detailsFilled,
     };
   }
 
@@ -141,12 +186,13 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   );
 
   return {
-    eligible: games.length,
-    processed,
+    eligible: games.length + uncached.length,
+    processed: processed + detailsFilled + detailsFailed,
     updated,
     unchanged,
-    failed,
+    failed: failed + detailsFailed,
     stoppedEarly,
     skippedNoCredentials: false,
+    detailsFilled,
   };
 }
