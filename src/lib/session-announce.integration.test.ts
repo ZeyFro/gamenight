@@ -180,6 +180,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
     }
 
     /** Traite UNE livraison due, avec le vrai résolveur SESSION du chantier. */
+    // Soirée FUTURE relative à l'horloge réelle, pour les tests de RAPPEL :
+    // `resolveThreadReminder` (session-announce.ts) compare `session.date` à
+    // `wallClockNow()` (heure murale réelle) et refuse (`expired`) un rappel dont
+    // la soirée est passée — la date par défaut de `makeSession` (2026-10-01,
+    // en dur) l'est depuis le 1er octobre 2026 à 20 h (heure de Paris).
+    const futureDate = () => new Date(Date.now() + 7 * 24 * 3600_000);
+
     async function processOne(now?: Date) {
       return executorLib.processNextDelivery({
         resolver: announceLib.sessionAnnounceResolver,
@@ -523,7 +530,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
       it("une fois le fil créé, le rappel en attente devient éligible et part dans le fil", async () => {
         const creator = await makeUser();
-        const session = await makeSession(creator.id, { status: "SCHEDULED" });
+        const session = await makeSession(creator.id, { status: "SCHEDULED", date: futureDate() });
         const t0 = new Date("2026-01-01T00:00:00.000Z");
         await announceLib.enqueueSessionReminderDelivery(session.id, 60);
         await processOne(t0); // dependency_not_ready — le fil n'existe pas encore
@@ -583,7 +590,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
       it("rappel envoyé avant tout vote — mentionne les invités actifs, jamais personne", async () => {
         const creator = await makeUser();
         const guest = await makeUser({ discordName: "invite-rappel" });
-        const session = await makeSession(creator.id);
+        const session = await makeSession(creator.id, { date: futureDate() });
         await invite(session.id, guest.id, creator.id);
 
         await announceLib.enqueueSessionCreationDeliveries(session.id);
