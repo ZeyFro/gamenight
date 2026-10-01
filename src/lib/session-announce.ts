@@ -104,6 +104,14 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  *     posté DANS le fil ; dépend que `thread` soit `SENT`.
  *   - `thread-summary` — SEND, résumé posté DANS le fil à la clôture ;
  *     même dépendance sur `thread`.
+ *   - `thread-validated` — SEND une fois, « Soirée validée : {jeu} » avec
+ *     mention des joueurs du jeu retenu, posté DANS le fil (pas de MP).
+ *   - `thread-date-<changeId>` — SEND (occurrence aléatoire, une par
+ *     changement de date) : message avec mention dans le fil + nouveau MP
+ *     « Date modifiée » (`dm:date:<changeId>:<userId>`).
+ *   - `dm:announce:<userId>` — le MP d'invitation : SEND à la création, puis
+ *     EDIT (même targetSlot, jamais un nouveau MP) à chaque modification ou
+ *     fin de soirée.
  *   - `invite:<inviteId>` — SEND (occurrence aléatoire, une par
  *     changement de statut de l'invitation), ajoute/retire le membre
  *     Discord correspondant ; dépend aussi que `thread` soit `SENT`.
@@ -127,6 +135,12 @@ function threadSlot(sessionId: string): string {
 }
 function threadReminderSlot(sessionId: string, minutes: number): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-reminder-${minutes}`;
+}
+function threadValidatedSlot(sessionId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-validated`;
+}
+function threadDateSlot(sessionId: string, changeId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-date-${changeId}`;
 }
 function threadSummarySlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-summary`;
@@ -166,11 +180,17 @@ const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
 
 /**
  * Rôles d'un `targetSlot` de MP : `dm:<kind>:<userId>` où `<kind>` vaut
- * `announce`, `update:<eventId>` ou `reminder:<minutes>`. Mention de
- * secours dans le fil (MP fermé) : `dm-fallback:<kind>:<userId>`, même
- * `<kind>` que le MP d'origine. Un `userId` (cuid) ne contient jamais `:`.
+ * `announce` (invitation, ÉDITÉE ensuite à chaque changement/fin de soirée)
+ * ou `date:<eventId>` (nouveau MP « Date modifiée »). Mention de secours
+ * dans le fil (MP fermé, créateur seulement) : `dm-fallback:<kind>:<userId>`,
+ * même `<kind>` que le MP d'origine. Un `userId` (cuid) ne contient jamais `:`.
+ *
+ * Les anciens kinds `update:<eventId>` et `reminder:<minutes>` ne sont plus
+ * jamais mis en file (plus de MP de mise à jour ni de rappel : l'invitation
+ * est éditée, le rappel est dans le fil) ; leurs lignes déjà en file sont
+ * simplement abandonnées (`expired`) par le résolveur.
  */
-type DmKind = "announce" | `update:${string}` | `reminder:${string}`;
+type DmKind = "announce" | `date:${string}`;
 
 function dmSlot(sessionId: string, kind: DmKind, userId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:${kind}:${userId}`;
@@ -188,8 +208,9 @@ const DM_UNAVAILABLE_ERROR_CLASS = "discord:dm_unavailable";
  * donc retirée du fil. Jamais couverts :
  *   - un pote dont un MP de cette soirée a déjà échoué en `dm_unavailable`
  *     (MP fermé : aucune nouvelle tentative, il reste mentionné dans le fil) ;
- *   - pour une mise à jour (`update`), un pote qui n'a jamais reçu le MP
- *     d'annonce (pas de MP surprise pour une soirée annoncée sans MP).
+ *   - pour tout kind autre que `announce` (`date`), un pote qui n'a jamais
+ *     reçu le MP d'invitation (pas de MP surprise pour une soirée annoncée
+ *     sans MP).
  * Uniquement des écritures — jamais d'appel Discord (voir le commentaire de
  * fichier de `notification-delivery.ts`).
  */
@@ -211,7 +232,7 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
   const covered = users.filter((u) => {
     const key = `user:${u.id}`;
     if (blocked.has(key)) return false;
-    return kind.startsWith("update:") ? announced.has(key) : true;
+    return kind === "announce" ? true : announced.has(key);
   });
   if (covered.length === 0) return { covered: [], blocked: blockedUsers };
 
@@ -235,8 +256,8 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
 }
 
 /**
- * Le CRÉATEUR reçoit aussi les MP de sa soirée (création, mise à jour,
- * rappels), comme les invités — il n'est jamais dans la sélection
+ * Le CRÉATEUR reçoit aussi les MP de sa soirée (invitation, date modifiée),
+ * comme les invités — il n'est jamais dans la sélection
  * `notifiedUserIds` ni dans les invitations (accès non révocable, voir
  * `session-access.ts`), donc hors de `resolveEligibleMentions`. Seule sa
  * préférence personnelle (`SESSION`, ou `ROULETTE` pour une soirée issue
@@ -263,20 +284,25 @@ async function isDmRecipientEligible(
 
 /**
  * MP fermé (`discord:dm_unavailable`, jamais une autre erreur) : trace
- * l'échec (déjà écrite par l'exécuteur) ET met en file une mention de
- * secours dans le fil de la soirée — dans la MÊME transaction que le
+ * l'échec (déjà écrite par l'exécuteur) ET, pour le CRÉATEUR seulement, met
+ * en file une mention de secours dans le fil de la soirée — dans la MÊME transaction que le
  * passage à FAILED. Jamais de nouvelle tentative de MP. Idempotent
  * (occurrence = `targetSlot` du MP d'origine).
  */
 async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput): Promise<void> {
   const { delivery, event, errorClass, db } = input;
-  if (event.category !== "SESSION" || delivery.channel !== "DISCORD_DM") return;
+  if (event.category !== "SESSION" || delivery.channel !== "DISCORD_DM" || delivery.operation !== "SEND") return;
   if (errorClass !== DM_UNAVAILABLE_ERROR_CLASS) return;
   const role = delivery.targetSlot.split(":").slice(3).join(":");
   if (!role.startsWith("dm:")) return;
   const rest = role.slice("dm:".length);
   const userId = rest.slice(rest.lastIndexOf(":") + 1);
   const kind = rest.slice(0, rest.lastIndexOf(":"));
+  // Les invités sont TOUJOURS mentionnés dans le fil (double ping) : un
+  // message de secours serait un second ping inutile. Seul le créateur, qui
+  // n'est jamais mentionné, a besoin du secours.
+  const session = await prisma.session.findUnique({ where: { id: event.sourceId }, select: { createdById: true } });
+  if (session?.createdById !== userId) return;
 
   const fallbackEvent = await createNotificationEvent(
     { category: "SESSION", eventType: "SESSION_DM_FALLBACK", sourceId: event.sourceId, occurrence: delivery.targetSlot },
@@ -451,6 +477,94 @@ export async function enqueueSessionAnnounceUpdate(sessionId: string, db?: Notif
       operation: "EDIT",
       recipientKey: "channel",
       targetSlot: announceSlot(sessionId),
+    },
+    db
+  );
+  await enqueueSessionDirectMessageEdits(sessionId, db);
+}
+
+/**
+ * Édite les MP d'invitation DÉJÀ envoyés (jamais un nouveau MP) : un EDIT sur
+ * le même `targetSlot` que le SEND d'origine, pour chaque pote dont le MP
+ * `announce` est `SENT`. Un MP jamais envoyé, fermé ou encore en attente est
+ * ignoré (le SEND en attente rend de toute façon l'état courant). Lecture via
+ * le client global (lignes déjà committées), écritures via `db`.
+ */
+async function enqueueSessionDirectMessageEdits(sessionId: string, db?: NotificationDb): Promise<void> {
+  if (!isSessionDirectMessageEnabled()) return;
+  const sent = await prisma.notificationDelivery.findMany({
+    where: {
+      targetSlot: { startsWith: `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:announce:` },
+      operation: "SEND",
+      status: "SENT",
+    },
+    select: { targetSlot: true, recipientKey: true },
+  });
+  if (sent.length === 0) return;
+  const event = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_DM_EDIT", sourceId: sessionId, occurrence: randomUUID() },
+    db
+  );
+  for (const delivery of sent) {
+    await enqueueDelivery(
+      {
+        eventId: event.id,
+        channel: "DISCORD_DM",
+        transport: "BOT",
+        operation: "EDIT",
+        recipientKey: delivery.recipientKey,
+        targetSlot: delivery.targetSlot,
+      },
+      db
+    );
+  }
+}
+
+/**
+ * Soirée validée (vote clos avec un jeu retenu, ou tirage) : message distinct
+ * « Soirée validée : {jeu} » dans le fil, avec mention des joueurs — une
+ * édition de l'annonce ne notifie personne. Aucun MP. Occurrence FIXE (un seul
+ * message par soirée). Jamais appelé pour une soirée de roulette, créée
+ * directement validée (son message de création le dit déjà).
+ */
+export async function enqueueSessionValidated(sessionId: string, db?: NotificationDb): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_VALIDATED", sourceId: sessionId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadValidatedSlot(sessionId),
+    },
+    db
+  );
+}
+
+/**
+ * Changement de date : message avec mention dans le fil + nouveau MP « Date
+ * modifiée » (mis en file à l'envoi du message). Occurrence ALÉATOIRE : une
+ * ligne par changement. L'annonce et le MP d'invitation sont édités à part
+ * (`enqueueSessionAnnounceUpdate`, à appeler aussi).
+ */
+export async function enqueueSessionDateChange(sessionId: string, db?: NotificationDb): Promise<void> {
+  const changeId = randomUUID();
+  const event = await createNotificationEvent(
+    { category: "SESSION", eventType: "SESSION_DATE_CHANGED", sourceId: sessionId, occurrence: changeId },
+    db
+  );
+  await enqueueDelivery(
+    {
+      eventId: event.id,
+      channel: "DISCORD_CHANNEL",
+      transport: "BOT",
+      operation: "SEND",
+      recipientKey: "channel",
+      targetSlot: threadDateSlot(sessionId, changeId),
     },
     db
   );
@@ -1074,9 +1188,12 @@ async function buildMessageContent(
   // ou rien du tout si personne n'est éligible à être mentionné).
   discordBodyText = "",
   // MP des soirées (V2) — si fourni ET `DISCORD_DM_SESSION_ENABLED`, chaque
-  // pote éligible reçoit un MP (mis en file ici) et sa mention est RETIRÉE
-  // du message du fil (un seul ping). Mention de secours si le MP échoue.
-  dmKind?: DmKind
+  // pote éligible reçoit un MP (mis en file ici) EN PLUS de sa mention dans
+  // le fil (double ping voulu). Secours (mention du créateur) si son MP échoue.
+  dmKind?: DmKind,
+  // Notification in-app : `false` pour les messages qui complètent une
+  // édition d'annonce (déjà notifiée in-app) — jamais deux fois la même.
+  inApp = true
 ): Promise<ResolvedMessageContent> {
   const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions) : [];
   // Le créateur est destinataire de MP en plus des invités (jamais mentionné
@@ -1089,8 +1206,8 @@ async function buildMessageContent(
       : null;
   const dmTargets = creatorRecipient ? [...eligible, creatorRecipient] : eligible;
   const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(session.id, dmKind, dmTargets) : null;
-  const dmCoveredIds = new Set((dm?.covered ?? []).map((u) => u.id));
-  const mentioned = eligible.filter((u) => !dmCoveredIds.has(u.id));
+  // Double ping : TOUS les invités éligibles restent mentionnés, MP ou non.
+  const mentioned = [...eligible];
   // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
   if (creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) mentioned.push(creatorRecipient);
   const { text, userIds } = mentionContent(mentioned);
@@ -1100,7 +1217,7 @@ async function buildMessageContent(
   // un ensemble différent, et jamais si le webhook a déjà pu les créer
   // pour cette session (impossible ici : une session `announceViaBot`
   // n'appelle jamais les fonctions webhook, voir le commentaire de fichier).
-  if (eligible.length > 0) {
+  if (inApp && eligible.length > 0) {
     await createNotifications(
       eligible.map((u) => ({
         userId: u.id,
@@ -1164,6 +1281,12 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     if (role === "announce") {
       return resolveAnnounceDelivery(delivery, session);
     }
+    if (role === "thread-validated") {
+      return resolveThreadValidated(sessionId, session);
+    }
+    if (role.startsWith("thread-date-")) {
+      return resolveThreadDateChange(sessionId, session, role.slice("thread-date-".length));
+    }
     if (role === "thread-summary") {
       return resolveThreadSummary(sessionId, session);
     }
@@ -1180,7 +1303,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
       return resolveCreatorThreadMembership(sessionId, session);
     }
     if (role.startsWith("dm:")) {
-      return resolveSessionDirectMessage(role, session);
+      return resolveSessionDirectMessage(role, session, delivery);
     }
     if (role.startsWith("dm-fallback:")) {
       return resolveSessionDirectMessageFallback(role, session);
@@ -1193,9 +1316,9 @@ export const sessionAnnounceResolver: DeliveryResolver = {
 };
 
 interface ParsedDmRole {
-  /** `announce`, `update:<eventId>` ou `reminder:<minutes>`. */
+  /** `announce`, `date:<changeId>` (ou, hérité, `update:<id>`/`reminder:<min>`). */
   kind: string;
-  base: "announce" | "update" | "reminder";
+  base: "announce" | "date" | "update" | "reminder";
   userId: string;
 }
 
@@ -1205,35 +1328,58 @@ function parseDmRole(role: string, prefix: "dm:" | "dm-fallback:"): ParsedDmRole
   if (cut < 0) return null;
   const kind = rest.slice(0, cut);
   const base = kind.split(":")[0];
-  if (base !== "announce" && base !== "update" && base !== "reminder") return null;
+  if (base !== "announce" && base !== "date" && base !== "update" && base !== "reminder") return null;
   return { kind, base, userId: rest.slice(cut + 1) };
 }
 
-/** Texte d'accroche d'un MP/d'une mention de secours, selon le kind. */
-function dmSubject(session: SessionWithVotes, parsed: ParsedDmRole): string | null {
-  if (parsed.base === "reminder") {
-    const minutesRemaining = (session.date.getTime() - wallClockNow().getTime()) / 60_000;
-    if (minutesRemaining <= 0) return null;
-    return `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
+/**
+ * Texte d'accroche d'un MP/d'une mention de secours, selon le kind (et, pour
+ * l'édition du MP d'invitation, le statut courant de la soirée). `null` pour
+ * un kind hérité (`update`/`reminder`, plus jamais envoyé).
+ */
+function dmSubject(session: SessionWithVotes, parsed: ParsedDmRole, operation: "SEND" | "EDIT"): string | null {
+  if (parsed.base === "date") return "📅 Date modifiée";
+  if (parsed.base !== "announce") return null;
+  if (operation === "SEND") return "📣 Nouvelle soirée";
+  switch (session.status) {
+    case "CANCELLED":
+      return "❌ Soirée annulée";
+    case "DONE":
+      return "✅ Soirée terminée";
+    case "SCHEDULED":
+      return "🎮 Soirée validée";
+    default:
+      return "📣 Soirée mise à jour";
   }
-  return parsed.base === "update" ? "🔄 Soirée mise à jour" : "📣 Nouvelle soirée";
 }
 
 /**
- * MP d'une soirée — état relu JUSTE À TEMPS, jamais depuis l'enqueue : la
- * soirée doit toujours être VOTING/SCHEDULED (jamais un MP pour une soirée
- * annulée/terminée, ni un rappel après le début), et le pote doit toujours
- * être éligible (sélection du créateur, invitation ACTIVE, préférence
- * `SESSION`/`ROULETTE`) — une désactivation postérieure à l'enqueue
- * empêche l'envoi. Un MP fermé (`dm_unavailable`) n'est JAMAIS retenté
- * (échec définitif, voir `discord-rest.ts`) : c'est `onTerminalDiscordFailure`
- * qui met alors la mention de secours en file.
+ * MP d'une soirée — état relu JUSTE À TEMPS, jamais depuis l'enqueue, et le
+ * pote doit toujours être éligible (sélection du créateur, invitation ACTIVE,
+ * préférence `SESSION`/`ROULETTE`) — une désactivation postérieure à
+ * l'enqueue empêche l'envoi.
+ *   - SEND (`announce`, `date`) : la soirée doit être VOTING/SCHEDULED
+ *     (jamais un MP pour une soirée annulée/terminée).
+ *   - EDIT (`announce` uniquement) : édite le MP d'invitation déjà envoyé, quel
+ *     que soit l'état de la soirée (terminée/annulée incluses) ; jamais un
+ *     nouveau MP si l'original n'existe pas.
+ * Un MP fermé (`dm_unavailable`) n'est JAMAIS retenté (échec définitif, voir
+ * `discord-rest.ts`) : `onTerminalDiscordFailure` met alors, pour le créateur
+ * seulement, la mention de secours en file.
  */
-async function resolveSessionDirectMessage(role: string, session: SessionWithVotes): Promise<Resolution> {
+async function resolveSessionDirectMessage(
+  role: string,
+  session: SessionWithVotes,
+  delivery: ClaimedDelivery
+): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
-  if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
-  const subject = dmSubject(session, parsed);
+  const operation = delivery.operation === "EDIT" ? "EDIT" : "SEND";
+  if (operation === "EDIT" && parsed.base !== "announce") return { eligible: false, reason: "unresolvable" };
+  if (operation === "SEND" && session.status !== "VOTING" && session.status !== "SCHEDULED") {
+    return { eligible: false, reason: "expired" };
+  }
+  const subject = dmSubject(session, parsed, operation);
   if (!subject) return { eligible: false, reason: "expired" };
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
@@ -1241,11 +1387,22 @@ async function resolveSessionDirectMessage(role: string, session: SessionWithVot
   if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
 
   const rendering = resolveAnnounceRendering(session);
-  const action: ResolvedAction = {
-    kind: "send_direct_message",
-    userId: recipient.discordId,
-    message: { content: subject, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE },
-  };
+  const message = { content: subject, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE };
+
+  if (operation === "EDIT") {
+    const sent = await findSentDelivery(delivery.targetSlot);
+    if (!sent?.discordMessageId || !sent.discordChannelId) return { eligible: false, reason: "unresolvable" };
+    const action: ResolvedAction = {
+      kind: "edit_channel_message",
+      channelId: sent.discordChannelId,
+      messageId: sent.discordMessageId,
+      isDirectMessage: true,
+      message,
+    };
+    return { eligible: true, action };
+  }
+
+  const action: ResolvedAction = { kind: "send_direct_message", userId: recipient.discordId, message };
   return { eligible: true, action };
 }
 
@@ -1260,7 +1417,9 @@ async function resolveSessionDirectMessageFallback(role: string, session: Sessio
   const thread = await findSentDelivery(threadSlot(session.id));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
   if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
-  const subject = dmSubject(session, parsed);
+  // Secours réservé au créateur (les invités sont déjà mentionnés dans le fil).
+  if (parsed.userId !== session.createdById) return { eligible: false, reason: "unresolvable" };
+  const subject = dmSubject(session, parsed, "SEND");
   if (!subject) return { eligible: false, reason: "expired" };
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
@@ -1389,8 +1548,9 @@ async function resolveAnnounceDelivery(
     notifType,
     notifTitle,
     formatDateTimeFr(session.date),
-    "",
-    `update:${delivery.eventId}`
+    ""
+    // Aucun `dmKind` : une édition ne met en file AUCUN nouveau MP (les MP
+    // d'invitation sont édités à part, `enqueueSessionDirectMessageEdits`).
   );
   const action: ResolvedAction = {
     kind: "edit_channel_message",
@@ -1491,6 +1651,64 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
     threadId: thread.discordThreadId,
     message: { ...message, embeds: [rendering.embed] },
   };
+  return { eligible: true, action };
+}
+
+/**
+ * « Soirée validée : {jeu} » dans le fil, avec mention des joueurs du jeu
+ * retenu (même ensemble que l'annonce validée, préférences relues). Jamais de
+ * MP. N'a de sens que pour une soirée validée (SCHEDULED/DONE) avec un gagnant.
+ */
+async function resolveThreadValidated(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(sessionId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+  if (session.status !== "SCHEDULED" && session.status !== "DONE") return { eligible: false, reason: "expired" };
+  const winner = session.proposals.find((p) => p.gameId === session.decidedGameId);
+  if (!winner) return { eligible: false, reason: "expired" };
+
+  const rendering = resolveAnnounceRendering(session);
+  const title = `🎮 Soirée validée : ${winner.game.name}`;
+  const message = await buildMessageContent(
+    session,
+    rendering.candidateMentions,
+    "SESSION_RESULT",
+    title,
+    title,
+    `${title} — ${absoluteSessionUrl(session.id)}`,
+    undefined,
+    false
+  );
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
+  return { eligible: true, action };
+}
+
+/**
+ * Changement de date : message avec mention dans le fil (une édition ne notifie
+ * personne) ET nouveau MP « Date modifiée » à chaque pote ayant reçu
+ * l'invitation (double ping). Créneau relu au traitement, jamais figé.
+ */
+async function resolveThreadDateChange(
+  sessionId: string,
+  session: SessionWithVotes,
+  changeId: string
+): Promise<Resolution> {
+  const thread = await findSentDelivery(threadSlot(sessionId));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+  if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
+
+  const rendering = resolveAnnounceRendering(session);
+  const body = `📅 Date modifiée : ${formatDateTimeFr(session.date)} — ${absoluteSessionUrl(session.id)}`;
+  const message = await buildMessageContent(
+    session,
+    rendering.candidateMentions,
+    "SESSION_CREATED",
+    "📅 Date modifiée",
+    formatDateTimeFr(session.date),
+    body,
+    `date:${changeId}`,
+    false
+  );
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };
 }
 
@@ -1632,8 +1850,8 @@ async function resolveThreadReminder(
     "SESSION_CREATED",
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
-    reminderTitle,
-    `reminder:${minutes}`
+    reminderTitle
+    // Aucun `dmKind` : le rappel est UNIQUEMENT dans le fil (avec mention).
   );
   const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
   return { eligible: true, action };

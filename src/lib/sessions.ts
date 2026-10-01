@@ -8,6 +8,8 @@ import {
   enqueueSessionCreationDeliveries,
   enqueueSessionInviteSyncForNewInvite,
   enqueueSessionResultThreadSummary,
+  enqueueSessionDateChange,
+  enqueueSessionValidated,
 } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
 import { inviteToSession } from "@/lib/session-access";
@@ -171,9 +173,16 @@ export async function updateSessionSchedule(
   announceViaBot: boolean
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    const before = await tx.session.findUnique({ where: { id: sessionId }, select: { date: true } });
     await tx.session.update({ where: { id: sessionId }, data });
     if (announceViaBot) {
+      // L'annonce et le MP d'invitation sont ÉDITÉS (une édition ne notifie
+      // personne) ; un changement de DATE y ajoute un message avec mention
+      // dans le fil et un nouveau MP « Date modifiée ».
       await enqueueSessionAnnounceUpdate(sessionId, tx);
+      if (before && before.date.getTime() !== data.date.getTime()) {
+        await enqueueSessionDateChange(sessionId, tx);
+      }
     }
   });
 }
@@ -225,7 +234,10 @@ async function claimSessionCloseWithAnnounce(
     if (result.count !== 1) return false;
     if (announceViaBot) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
-      if (winner) await enqueueSessionResultThreadSummary(sessionId, tx);
+      if (winner) {
+        await enqueueSessionResultThreadSummary(sessionId, tx);
+        await enqueueSessionValidated(sessionId, tx);
+      }
     }
     return true;
   });
@@ -477,6 +489,7 @@ export async function drawSessionGame(
     if (announceViaBot) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
       await enqueueSessionResultThreadSummary(sessionId, tx);
+      await enqueueSessionValidated(sessionId, tx);
     }
     return true;
   });
@@ -577,8 +590,10 @@ export async function markSessionDone(
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
-      select: { decidedGameId: true, date: true },
+      select: { decidedGameId: true, date: true, announceViaBot: true },
     });
+    // Fin de session : annonce et MP d'invitation ÉDITÉS (statut terminé), sans nouveau message.
+    if (updated?.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, tx);
 
     await tx.groupSessionStats.upsert({
       where: { id: "global" },

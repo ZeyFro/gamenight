@@ -1187,6 +1187,48 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
       });
 
+      it("câblage des règles de ping : changement de date → message de date ; même date → aucun ; fin → édition seule", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, {
+          announceViaBot: true,
+          status: "SCHEDULED",
+          date: new Date("2026-10-01T20:00:00.000Z"),
+        });
+        const slots = async (like: string) =>
+          db.notificationDelivery.count({ where: { targetSlot: { contains: `:${session.id}:${like}` } } });
+
+        // Même créneau (seule la deadline change) : édition, aucun message de date.
+        await sessionsLib.updateSessionSchedule(
+          session.id,
+          { date: new Date("2026-10-01T20:00:00.000Z"), votingDeadline: null },
+          true
+        );
+        expect(await slots("announce")).toBe(1);
+        expect(await slots("thread-date-")).toBe(0);
+
+        // Date changée : édition de l'annonce ET message de date dans le fil.
+        await sessionsLib.updateSessionSchedule(
+          session.id,
+          { date: new Date("2026-10-05T20:00:00.000Z"), votingDeadline: null },
+          true
+        );
+        expect(await slots("thread-date-")).toBe(1);
+
+        // Sans chemin bot : rien du tout.
+        await sessionsLib.updateSessionSchedule(
+          session.id,
+          { date: new Date("2026-10-09T20:00:00.000Z"), votingDeadline: null },
+          false
+        );
+        expect(await slots("thread-date-")).toBe(1);
+
+        // Fin de session : édition de l'annonce seulement (aucun message en plus).
+        const before = await db.notificationDelivery.count();
+        await sessionsLib.markSessionDone(session.id);
+        expect(await db.notificationDelivery.count()).toBe(before + 1);
+        expect(await slots("thread-validated")).toBe(0);
+      });
+
       it("annulation (cancelSession) : un échec d'enqueue annule aussi le passage à CANCELLED", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id, { announceViaBot: true, status: "VOTING" });
@@ -2428,6 +2470,13 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-resume", channel_id: "thread-1" }));
         const summaryOutcome = await processOne();
         expect(summaryOutcome?.outcome).toBe("sent");
+
+        // Message distinct « Soirée validée : {jeu} » (avec mention), aussi
+        // enqueue-é par drawSessionGame.
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-validated", channel_id: "thread-1" }));
+        const validatedOutcome = await processOne();
+        expect(validatedOutcome?.outcome).toBe("sent");
 
         expect(await processOne()).toBeNull(); // plus rien à traiter
 
