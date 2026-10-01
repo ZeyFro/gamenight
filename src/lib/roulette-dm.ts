@@ -5,28 +5,45 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { isRouletteDirectMessageEnabled } from "@/lib/discord-bot-config";
-import { enqueueDirectMessages, parseDmRole } from "@/lib/discord-dm";
+import { enqueueDirectMessageEdits, enqueueDirectMessages, parseDmRole } from "@/lib/discord-dm";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
 import type { DeliveryResolver, Resolution, ResolvedAction, ResolveInput } from "@/lib/notification-executor";
 
 /**
- * MP de la roulette (V2) — invitation, rappel, et résultat (uniquement quand
- * la soirée issue du tirage n'est PAS sur le chemin bot, voir
- * `spinRoulette` : sinon ses MP sont déjà ceux des soirées). Même modèle que
- * les MP des soirées/tournois (`discord-dm.ts`) : un MP par pote (créateur
- * inclus), préférence `ROULETTE` relue à l'envoi, aucun nouveau MP vers un
- * pote dont le MP de cette roulette est fermé.
+ * MP de la roulette (V2) — invitation et rappel ; à la fin (tirage fait ou
+ * annulation faute de participants) le MP d'INVITATION déjà envoyé est ÉDITÉ
+ * (jeu retenu / annulée), jamais un nouveau MP (`enqueueRouletteDirectMessageEdits`).
+ * Même modèle que les MP des soirées/tournois (`discord-dm.ts`) : un MP par
+ * pote (créateur inclus), préférence `ROULETTE` relue à l'envoi, aucun nouveau
+ * MP vers un pote dont le MP de cette roulette est fermé.
  *
  * Une roulette n'a NI fil NI annonce publique (les annonces webhook sont
  * supprimées pour confidentialité, voir `discord-roulette.ts`) : il n'y a
  * donc aucune mention à retirer ni aucune mention de secours — un MP fermé
  * est seulement tracé (`FAILED`, `discord:dm_unavailable`).
  *
- * Kinds : `created`, `reminder`, `result`. Rôle de `targetSlot` :
+ * Kinds : `created` (invitation, éditée à la fin) et `reminder` (le rappel
+ * reste en MP : pas de fil pour la roulette). L'ancien kind `result` n'est
+ * plus mis en file ; ses lignes déjà en file sont abandonnées (`expired`).
+ * Rôle de `targetSlot` :
  * `default-guild:ROULETTE:<rouletteId>:dm:<kind>:<userId>`.
  */
 
-export type RouletteDmKind = "created" | "reminder" | "result";
+export type RouletteDmKind = "created" | "reminder";
+
+/**
+ * Fin de roulette : ÉDITE les MP d'invitation déjà envoyés (aucun nouveau MP,
+ * aucune mention). Ne fait rien si l'interrupteur est éteint.
+ */
+export async function enqueueRouletteDirectMessageEdits(rouletteId: string): Promise<void> {
+  if (!isRouletteDirectMessageEnabled()) return;
+  await enqueueDirectMessageEdits({
+    category: "ROULETTE",
+    sourceId: rouletteId,
+    eventType: "ROULETTE_DM_EDIT",
+    kind: "created",
+  });
+}
 
 /**
  * Met en file un MP par pote éligible — `userIds` doit déjà être la liste
@@ -68,10 +85,10 @@ const ACCENT_COLOR = 0x8b5cf6;
 
 /**
  * Résolveur ROULETTE — état relu JUSTE À TEMPS, jamais depuis l'enqueue :
- *   - `created` : la roulette doit encore être `OPEN` ;
- *   - `reminder` : `OPEN` ET deadline pas encore passée ;
- *   - `result` : `DONE` avec sa soirée, et le pote y est toujours invité
- *     (créateur exempté, comme partout : son accès n'est jamais révocable).
+ *   - `created` (SEND) : la roulette doit encore être `OPEN` ; (EDIT) : tout
+ *     état — rend le jeu retenu (`DONE` avec sa soirée) ou « annulée »
+ *     (`DONE` sans soirée), sinon l'invitation d'origine ;
+ *   - `reminder` : `OPEN` ET deadline pas encore passée.
  * Le destinataire doit toujours faire partie des participants (ou être le
  * créateur) et avoir la préférence `ROULETTE` active.
  */
@@ -83,16 +100,17 @@ export const rouletteDmResolver: DeliveryResolver = {
     if (!parsed || !["created", "reminder", "result"].includes(parsed.kind)) {
       return { eligible: false, reason: "unresolvable" };
     }
+    // Ancien kind `result` : plus jamais envoyé (le MP d'invitation est édité).
+    if (parsed.kind === "result") return { eligible: false, reason: "expired" };
     const kind = parsed.kind as RouletteDmKind;
+    const isEdit = delivery.operation === "EDIT";
+    if (isEdit && kind !== "created") return { eligible: false, reason: "unresolvable" };
 
     const roulette = await prisma.roulette.findUnique({ where: { id: rouletteId } });
     if (!roulette) return { eligible: false, reason: "expired" };
 
-    if (kind === "created" && roulette.status !== "OPEN") return { eligible: false, reason: "expired" };
+    if (kind === "created" && !isEdit && roulette.status !== "OPEN") return { eligible: false, reason: "expired" };
     if (kind === "reminder" && (roulette.status !== "OPEN" || roulette.deadline <= wallClockNow())) {
-      return { eligible: false, reason: "expired" };
-    }
-    if (kind === "result" && (roulette.status !== "DONE" || !roulette.resultSessionId)) {
       return { eligible: false, reason: "expired" };
     }
 
@@ -113,22 +131,24 @@ export const rouletteDmResolver: DeliveryResolver = {
     let content: string;
     let embed: DiscordRestEmbed;
 
-    if (kind === "result") {
+    if (isEdit && roulette.status === "DONE" && roulette.resultSessionId) {
       const session = await prisma.session.findUnique({
-        where: { id: roulette.resultSessionId! },
+        where: { id: roulette.resultSessionId },
         select: { id: true, createdById: true, decidedGame: { select: { name: true } } },
       });
       if (!session) return { eligible: false, reason: "expired" };
       const [invited] = await filterByActiveSessionInvite(session.id, session.createdById, [recipient]);
       if (!invited) return { eligible: false, reason: "preference_declined" };
-      const gameName = session.decidedGame?.name ?? "?";
-      content = `🎰 La roue a choisi : ${gameName}`;
+      content = `🎰 La roue a choisi : ${session.decidedGame?.name ?? "?"}`;
       embed = {
         title: content,
         description: formatDateTimeFr(roulette.scheduledAt),
         color: ACCENT_COLOR,
         ...(url ? { fields: [{ name: "Lien", value: url }] } : {}),
       };
+    } else if (isEdit && roulette.status === "DONE") {
+      content = "🎰 Roulette annulée — moins de 2 participants";
+      embed = { title: content, description: formatDateTimeFr(roulette.scheduledAt), color: 0xef4444 };
     } else {
       content = kind === "reminder" ? "⏰ Roulette du gambling — dernier rappel" : "🎰 Roulette du gambling";
       embed = {
@@ -139,11 +159,23 @@ export const rouletteDmResolver: DeliveryResolver = {
       };
     }
 
-    const action: ResolvedAction = {
-      kind: "send_direct_message",
-      userId: recipient.discordId,
-      message: { content, embeds: [embed], allowedMentions: NO_MENTIONS },
-    };
+    const message = { content, embeds: [embed], allowedMentions: NO_MENTIONS };
+    if (isEdit) {
+      const sent = await prisma.notificationDelivery.findFirst({
+        where: { targetSlot: delivery.targetSlot, operation: "SEND", status: "SENT" },
+        select: { discordMessageId: true, discordChannelId: true },
+      });
+      if (!sent?.discordMessageId || !sent.discordChannelId) return { eligible: false, reason: "unresolvable" };
+      const action: ResolvedAction = {
+        kind: "edit_channel_message",
+        channelId: sent.discordChannelId,
+        messageId: sent.discordMessageId,
+        isDirectMessage: true,
+        message,
+      };
+      return { eligible: true, action };
+    }
+    const action: ResolvedAction = { kind: "send_direct_message", userId: recipient.discordId, message };
     return { eligible: true, action };
   },
 };

@@ -105,14 +105,9 @@ export async function announceRouletteResult(
     }))
   );
 
-  // MP (V2) — appelée seulement hors chemin bot des soirées (voir
-  // `spinRoulette`), donc jamais en doublon avec les MP de la soirée.
-  // Créateur inclus.
-  await enqueueRouletteDirectMessages(
-    roulette.id,
-    "result",
-    session ? [...winnerUserIds, session.createdById] : winnerUserIds
-  );
+  // Plus de MP de résultat : à la fin d'une roulette (tirage ou annulation),
+  // `spinRoulette` ÉDITE le MP d'invitation déjà envoyé
+  // (`enqueueRouletteDirectMessageEdits`), jamais un nouveau MP.
 
   return skippedByPrivacy("de résultat de roulette");
 }

@@ -5,6 +5,7 @@ import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { announceRouletteCancelled, announceRouletteReminder, announceRouletteResult } from "@/lib/discord-roulette";
+import { enqueueRouletteDirectMessageEdits } from "@/lib/roulette-dm";
 import { createRouletteResultSession } from "@/lib/sessions";
 import { logger } from "@/lib/logger";
 import type { Roulette } from "@prisma/client";
@@ -55,6 +56,8 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
 
   if (participantIds.length < 2) {
     await prisma.roulette.update({ where: { id: rouletteId }, data: { status: "DONE" } });
+    // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (annulée), aucun nouveau message.
+    await enqueueRouletteDirectMessageEdits(rouletteId);
     await announceRouletteCancelled(roulette);
     logger.info("roulette", `Roulette ${rouletteId} annulée — moins de 2 participants.`);
     return;
@@ -74,6 +77,9 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
     where: { id: rouletteId },
     data: { status: "DONE", resultGameId: winnerEntry.gameId, resultSessionId: session.id },
   });
+
+  // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (jeu retenu), aucun nouveau message.
+  await enqueueRouletteDirectMessageEdits(rouletteId);
 
   await awardXp(roulette.createdById, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
   await checkSessionsCreatedBadges(roulette.createdById);
