@@ -87,31 +87,38 @@ export function isInstantSessionInviteViaBotEnabled(): boolean {
 }
 
 /**
- * V2 (MP soirées) — les annonces, changements de date, jeux décidés et
- * rappels d'une soirée bot partent AUSSI en MP à chaque pote concerné, et
- * leur mention disparaît alors du fil (secours : mention dans le fil si le
- * MP échoue définitivement, voir `session-announce.ts`). Ne gouverne QUE la
- * création de nouveaux MP : ceux déjà en file restent traités. Sans effet
- * sans le chemin bot des soirées lui-même (`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`).
+ * V2 (MP soirées, règles de ping #116) — la création, le changement de date,
+ * « Soirée validée » et les rappels d'une soirée bot partent en MP à chaque
+ * pote concerné ET au créateur, EN PLUS de la mention dans le fil (double
+ * ping ; le créateur n'est jamais mentionné dans le fil, sauf mention de
+ * secours si son MP est fermé, voir `session-announce.ts`). Modification ou
+ * fin de soirée : le MP d'invitation déjà envoyé est ÉDITÉ, jamais un nouveau
+ * MP. Ne gouverne QUE la création de nouveaux MP : ceux déjà en file restent
+ * traités. Sans effet sans le chemin bot des soirées lui-même
+ * (`DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`).
  */
 export function isSessionDirectMessageEnabled(): boolean {
   return process.env.DISCORD_DM_SESSION_ENABLED === "true";
 }
 
 /**
- * V2 (MP tournois) — l'annonce d'ouverture d'un tournoi bot part AUSSI en MP
- * à chaque pote sélectionné et au créateur ; leur mention disparaît de
- * l'annonce du salon (mention de secours dans le fil du tournoi si le MP est
- * fermé). Éteint par défaut ; ne gouverne que la création de nouveaux MP.
+ * V2 (MP tournois, règles de ping #116) — l'ouverture d'un tournoi bot part en
+ * MP à chaque pote sélectionné et au créateur, EN PLUS de la mention des
+ * joueurs dans le fil (`thread-invite`) ; l'annonce du salon ne mentionne
+ * jamais personne et le créateur n'est jamais mentionné (sauf mention de
+ * secours dans le fil si son MP est fermé). Lancement, clôture, annulation :
+ * MP d'invitation ÉDITÉ. Éteint par défaut ; ne gouverne que la création de
+ * nouveaux MP.
  */
 export function isTournamentDirectMessageEnabled(): boolean {
   return process.env.DISCORD_DM_TOURNAMENT_ENABLED === "true";
 }
 
 /**
- * V2 (MP roulette) — invitation, rappel et (hors chemin bot des soirées)
- * résultat d'une roulette envoyés en MP. Éteint par défaut ; ne gouverne
- * que la création de nouveaux MP.
+ * V2 (MP roulette) — invitation et rappel envoyés en MP, jamais de mention
+ * (une roulette n'a ni fil ni annonce publique) ; à la fin (tirage ou
+ * annulation) le MP d'invitation déjà envoyé est ÉDITÉ, plus de MP de
+ * résultat. Éteint par défaut ; ne gouverne que la création de nouveaux MP.
  */
 export function isRouletteDirectMessageEnabled(): boolean {
   return process.env.DISCORD_DM_ROULETTE_ENABLED === "true";

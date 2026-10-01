@@ -205,10 +205,11 @@ const DM_UNAVAILABLE_ERROR_CLASS = "discord:dm_unavailable";
 /**
  * Met en file un MP par destinataire (idempotent : un seul MP par
  * `[soirée, kind, pote]`, un retry du résolveur retombe sur la même ligne)
- * et renvoie les potes DÉSORMAIS couverts par un MP — dont la mention est
- * donc retirée du fil. Jamais couverts :
+ * et renvoie les potes DÉSORMAIS couverts par un MP (leur mention dans le fil
+ * est conservée : double ping, voir `buildMessageContent`). Jamais couverts :
  *   - un pote dont un MP de cette soirée a déjà échoué en `dm_unavailable`
- *     (MP fermé : aucune nouvelle tentative, il reste mentionné dans le fil) ;
+ *     (MP fermé : aucune nouvelle tentative ; le créateur est alors mentionné
+ *     en secours dans le fil, les invités le sont de toute façon) ;
  *   - pour `date`, un pote qui n'a jamais reçu le MP d'invitation (pas de
  *     MP surprise pour une soirée annoncée sans MP).
  * Uniquement des écritures — jamais d'appel Discord (voir le commentaire de

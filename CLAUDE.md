@@ -3,12 +3,7 @@
 App de soirées jeux entre potes. Détails fonctionnels : `README.md`, `SPEC-gamenight.md`.
 
 ## État du projet
-V1 terminée (périmètre `SPEC` §6). V2 (bot Discord avancé : fils, MP, nettoyage, « Jouer maintenant ») en cours. Dernières phases :
-- #121 backfill IGDB Coop : GET accepté, pas de double passage, jeux introuvables marqués
-- #122 tests du nettoyage des fils Discord (429, 404 tournoi, reprise)
-- #123 « Jouer maintenant » : durée max 3 h, invités dédupliqués, test bout en bout
-- #124 « Jouer maintenant » : 500 sur toutes les actions (export non-fonction en `use server`)
-- #125 profil : avatar Discord sans spam d'API, lien de page klipy refusé, rotation du cron Steam
+V1 terminée (périmètre `SPEC` §6). V2 (bot Discord : fils, MP, nettoyage, « Jouer maintenant ») en cours de **stabilisation** : PR #121 à #128 mergées (backfill IGDB Coop, tests du nettoyage des fils, « Jouer maintenant » durée max 3 h et 500 « use server », avatar/klipy/rotation Steam, crons longs en 202 + `after()`, test de rappel sans date en dur). Phase 6 : docs de fin de V2 (README : MP #116, tableau des env, tableau des crons, « Reporté après V2 »).
 
 ## Stack
 Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon · Auth.js v5 (Discord OAuth) · Vercel Hobby (pas de cron < 1/jour : crons externes) · Vitest.
@@ -38,7 +33,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - Les tests d'intégration partagent une base (TRUNCATE) : `npm run test:postgres` (un fichier à la fois), jamais deux runs en parallèle.
 - `auth()` appelé depuis un composant serveur ou une server action jette les `Set-Cookie` : rien n'y est persisté dans le JWT (`src/auth.ts`).
 - `/api/backfill/igdb-coop` accepte GET et POST (`Authorization: Bearer <CRON_SECRET>`) et répond 202 ; le traitement tourne dans `after()`.
-- cron-job.org coupe à 30 s : les routes longues doivent répondre 202 (ou rester sous 30 s).
+- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync` : `maxDuration` 300, budget 240 s ; `igdb-coop`, `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
 - klipy : les liens de page (`klipy.com/…`) sont refusés, seuls les liens d'image (`static.klipy.com/…`) fonctionnent (`src/lib/banner-url.ts`).
 
 ## Notifications Discord
@@ -48,7 +43,6 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Soirée : création, changement de date, « Soirée validée », rappel = mention dans le fil ET MP. Modification/fin = annonce et MP d'invitation édités, jamais de nouveau MP. MP fermé : mention de secours pour le créateur seulement.
 - Tournoi : création = mention dans le fil ET MP ; lancement/fin/annulation = MP d'invitation édité.
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
-- Les commentaires de `discord-bot-config.ts` parlant de « mention retirée du fil » datent d'avant #116 ; le README (section « MP des soirées ») aussi.
 
 ## Switches d'environnement
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.

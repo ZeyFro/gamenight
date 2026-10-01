@@ -126,6 +126,8 @@ Puis remplir chaque variable :
 | `CRON_SECRET` | *(Recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège toutes les routes `/api/cron/*`/`/api/backfill/*` — **absente = routes désactivées (503)**, voir la section dédiée pour la configuration du cron externe. |
 | `ADMIN_DISCORD_IDS` | Ton `discordId` (mode développeur Discord → clic droit sur ton profil → **Copier l'ID utilisateur**), et ceux d'autres admins si besoin, séparés par des virgules. Donne accès à `/admin` — voir la section « Rôle admin » ci-dessous. |
 
+Le tableau complet (variables V2, interrupteurs, défauts, fichier de lecture) est dans « V2 — Référence : variables d'environnement », en fin de document.
+
 ## 3. Base de données
 
 Le dossier `prisma/migrations/` contient déjà la migration initiale (table
@@ -6622,6 +6624,8 @@ Home et les crons) n'avait encore aucun index — ajouté
 
 ### I5 — Tableau récapitulatif des crons
 
+> Tableau historique (avant la V2) : voir « V2 — Référence : routes cron et backfill » en fin de document pour la version à jour.
+
 Aucun doublon constaté (chaque cron couvre une tâche distincte) :
 
 | Cron | URL | Fréquence | Ce qu'il fait |
@@ -7453,25 +7457,27 @@ principal dès leur prochain login.
 
 ### Bug 2 — bannières GIF bloquées (`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`)
 
-Le blocage vient d'un en-tête `Cross-Origin-Resource-Policy` posé côté
-hébergeur du GIF (klipy.com) sur SA réponse — pas quelque chose que
-`referrerPolicy`, `next.config.js` ou tout autre réglage côté navigateur/app
-peut contourner : `referrerPolicy` ne gouverne que l'en-tête `Referer`
-sortant, un mécanisme sans rapport avec CORP. Ajouté quand même à
-`BannerImage` (demandé, inoffensif) mais ce n'est pas le vrai fix.
+**Cause** : le lien que l'on copie depuis la barre d'adresse de klipy (`https://klipy.com/gifs/<slug>`)
+est une **page HTML**, pas une image. Cette page répond avec
+`Cross-Origin-Resource-Policy: same-origin` (+ `X-Content-Type-Options: nosniff`) : le navigateur
+refuse de l'embarquer dans un `<img>` d'une autre origine. Seuls les **liens d'image directs**
+(`static.klipy.com/…`) fonctionnent : les fichiers médias y sont servis sans CORP
+(`access-control-allow-origin: *`). Source : commentaire de `src/lib/banner-url.ts` (l. 1-16).
 
-Changements :
-- `klipy.com` ajouté à `images.remotePatterns` (`next.config.ts`) — utile
-  pour d'autres hébergeurs de bannière compatibles `next/image`, mais **ne
-  résout pas** un blocage CORP (celui-ci bloque même une requête `<img>`
-  native, avant que `next/image` n'entre en jeu).
-- Nouveau composant partagé `src/components/BannerImage.tsx` : `<img>`
-  natif (nécessaire pour disposer d'un événement `onError`, absent d'un
-  `background-image` CSS) avec `onError` basculant sur le même dégradé de
-  secours (`bannerFallbackStyle`) que l'absence de bannière — **c'est le
-  vrai fix** : une bannière bloquée par CORP reste invisible sans previous
-  fix, désormais elle affiche proprement le dégradé de la couleur du user
-  au lieu d'un blanc/erreur silencieux. Utilisé sur `/profil` et `/potes`.
+Ce n'est donc pas un réglage de l'app : `referrerPolicy` ne gouverne que l'en-tête `Referer` sortant
+(sans rapport avec CORP), `next.config.ts` ne peut pas modifier la réponse de klipy, et un proxy ne
+récupérerait que du HTML.
+
+**Correctifs en place** :
+- **Refus du lien de page** : `findBannerUrlProblem` (`src/lib/banner-url.ts:22`) rejette tout hôte
+  `klipy.com` / `www.klipy.com` avec un message qui dit quoi copier (« clic droit → Copier l'adresse
+  de l'image », le lien doit commencer par `static.klipy.com`) ; appelée par `BannerForm.tsx:105` et
+  par la validation serveur (`src/lib/validations.ts:170`).
+- **Repli visuel** : `src/components/BannerImage.tsx` — `<img>` natif avec `onError` qui bascule sur le
+  dégradé de secours (`bannerFallbackStyle`) au lieu d'un blanc silencieux (utilisé sur `/profil`
+  et `/potes`).
+- `klipy.com` figure aussi dans `images.remotePatterns` (`next.config.ts:27`) : utile pour
+  `next/image`, mais **sans effet** sur un blocage CORP (qui frappe même un `<img>` natif).
 
 ### Bug 3 — cron rappels inactif depuis le 21/08
 
@@ -12356,46 +12362,64 @@ persisté, ne sont jamais touchés (aucune recherche par nom).
 
 ## V2 — MP des soirées (annonce, mise à jour, rappels)
 
+> Aligné sur les règles de ping de la PR #116 (sources : `src/lib/session-announce.ts`,
+> `buildMessageContent` l. 1179-1239, `enqueueSessionAnnounceUpdate` l. 463,
+> `enqueueSessionDirectMessageEdits` l. 494). Les versions antérieures de cette
+> section (« la mention est retirée du fil ») sont périmées.
+
 Avec `DISCORD_DM_SESSION_ENABLED=true` (désactivé par défaut), une soirée
-bot prévient chaque pote concerné **en message privé** en plus du fil :
+bot prévient chaque pote concerné **en message privé EN PLUS de la mention
+dans le fil** (double ping) :
 
 | Événement | MP | Fil de la soirée |
 | :-- | :-- | :-- |
-| Création | « 📣 Nouvelle soirée » + embed | annonce sans mention |
-| Changement de date / jeu décidé | « 🔄 Soirée mise à jour » — **seulement** aux potes déjà prévenus par MP | annonce éditée |
-| Rappel | « ⏰ Rappel — dans … » | message de rappel sans mention |
-| Résumé, ajout de membres, résultat | — | inchangé |
+| Création | « 📣 Nouvelle soirée » + embed (`dm:announce`) | annonce **avec mention** des invités éligibles |
+| Changement de date | **nouveau** MP « 📅 Date modifiée » (`dm:date:<id>`), seulement aux potes déjà prévenus par le MP d'invitation | message « 📅 Date modifiée » **avec mention** ; annonce éditée |
+| « Soirée validée » (vote clos, jeu retenu) | **nouveau** MP « 🎮 Soirée validée : {jeu} » (`dm:validated`) | message « Soirée validée » **avec mention** des joueurs du jeu retenu |
+| Rappel | **nouveau** MP « ⏰ Rappel — dans … » (`dm:reminder:<min>`) | message de rappel **avec mention** |
+| Modification de la soirée | le MP d'invitation déjà envoyé est **édité** (statut courant) — **jamais de nouveau MP** | annonce **éditée** (une édition ne notifie personne) |
+| Fin de soirée (terminée / annulée) | le MP d'invitation est **édité** (« ✅ Soirée terminée » / « ❌ Soirée annulée »), aucun nouveau MP | annonce éditée + résumé dans le fil à la clôture (sans mention) |
 
-Les destinataires sont exactement ceux qui étaient mentionnés
+Les destinataires sont exactement ceux qui sont mentionnés
 (`resolveEligibleMentions` : sélection du créateur, invitation active,
 préférence `SESSION`/`ROULETTE`), **relus juste avant l'envoi** : une
 préférence désactivée, une invitation retirée, une soirée annulée ou
 commencée entre-temps empêche le MP (échec traçable `resolver:*`).
 
-- **Le créateur reçoit aussi les MP** (création, mise à jour, rappels),
-  comme les invités, même s'il n'est ni invité ni dans la sélection ; seule
-  sa préférence `SESSION` (`ROULETTE` pour une soirée issue d'une roulette)
-  s'applique, relue avant l'envoi. Il n'est jamais mentionné dans le fil,
-  sauf en secours si son MP est fermé.
-- **Un seul ping** : quand le MP d'un pote est mis en file, sa mention est
-  retirée du message du fil.
+- **Le créateur reçoit aussi les MP** (création, changement de date,
+  « Soirée validée », rappels, et l'édition du MP d'invitation), comme les
+  invités, même s'il n'est ni invité ni dans la sélection ; seule sa
+  préférence `SESSION` (`ROULETTE` pour une soirée issue d'une roulette)
+  s'applique, relue avant l'envoi (`resolveCreatorDmRecipient`, l. 267).
+  **Il n'est jamais mentionné dans le fil**, sauf en secours si son MP est
+  fermé (voir ci-dessous).
+- **Double ping** : la mention d'un invité dans le fil est **conservée** quand
+  son MP est mis en file (`buildMessageContent`, l. 1211 : « TOUS les invités
+  éligibles restent mentionnés, MP ou non »).
+- **Modification ou fin = édition, pas de nouvelle notification** : un EDIT sur le
+  même `targetSlot` que le SEND d'origine, uniquement pour les potes dont le MP
+  `announce` est `SENT` ; un MP jamais envoyé, fermé ou encore en attente est
+  ignoré. L'ancien type `update:<event>` n'est plus mis en file ; ses lignes
+  déjà en file sont abandonnées (`expired`).
 - **Pas de doublon** : un `targetSlot` par `[soirée, type, pote]`
-  (`…:dm:announce|update:<event>|reminder:<minutes>:<userId>`) ; un retry
+  (`…:dm:announce|date:<event>|validated|reminder:<minutes>:<userId>`) ; un retry
   retombe sur la même livraison.
 - **MP fermé** (code Discord `50007`, classé `discord:dm_unavailable`,
   non retentable) : la livraison passe en `FAILED` avec cette classe
-  d'erreur, aucune nouvelle tentative de MP, et une **mention de secours**
-  (`…:dm-fallback:…`) est postée dans le fil, dans la même transaction que
-  l'échec (`DeliveryResolver.onTerminalDiscordFailure`). Les messages
-  suivants mentionnent ce pote dans le fil comme avant. Les autres échecs
-  terminaux (permission, etc.) sont tracés sans mention de secours.
+  d'erreur et aucune nouvelle tentative de MP n'est faite. Une **mention de
+  secours** (`…:dm-fallback:…`) n'est postée dans le fil que pour le
+  **créateur** (dans la même transaction que l'échec,
+  `DeliveryResolver.onTerminalDiscordFailure`, `enqueueDirectMessageFallback`
+  l. 293) : les invités sont déjà mentionnés dans le fil, un secours serait un
+  second ping. Les autres échecs terminaux (permission, etc.) sont tracés sans
+  mention de secours.
 - **Rate limits** : les MP passent par l'exécuteur existant (un envoi à la
   fois, `retry_after` respecté). La doc Discord déconseille l'ouverture
   massive de MP (« create DM ») et compte les 403 dans la limite de
   10 000 requêtes invalides / 10 min : d'où l'absence de retry sur un MP
   fermé.
 
-Le cron `notification-executor` doit tourner. Rien n'est activé par cette PR.
+Le cron `notification-executor` doit tourner.
 
 ## V2 — MP des tournois et de la roulette
 
@@ -12407,33 +12431,40 @@ création de nouveaux MP : ceux déjà en file sont toujours traités.
 ### Tournois
 | Événement | MP | Salon / fil |
 | :-- | :-- | :-- |
-| Ouverture des inscriptions (tournoi bot) | « 🏆 Tournoi … — inscriptions ouvertes » + embed, à chaque pote sélectionné **et au créateur** | annonce du salon sans mention |
-| Modification, lancement, résultat, annulation | — | inchangé |
+| Ouverture des inscriptions (tournoi bot) | « 🏆 Tournoi … — inscriptions ouvertes » + embed, à chaque pote sélectionné **et au créateur** | annonce du salon **sans mention** ; message `thread-invite` **dans le fil** avec mention des joueurs sélectionnés (créateur jamais mentionné) |
+| Lancement, clôture, annulation | le MP d'invitation déjà envoyé est **édité** (statut courant), aucun nouveau MP | annonce du salon éditée, sans mention |
+| Arrivée / départ d'un joueur | — | aucun ping |
 
 - Préférence `TOURNAMENT` relue avant l'envoi ; un pote doit toujours figurer
   dans la sélection du créateur (le créateur n'est soumis qu'à sa préférence).
-  Le tournoi doit encore être en `REGISTRATION` : lancé/annulé/supprimé
-  entre-temps → MP refusé (`resolver:expired`).
-- **Un seul ping** : la mention d'un pote dont le MP est mis en file est
-  retirée de l'annonce du salon.
+  Le MP d'ouverture n'est envoyé que tant que le tournoi est en `REGISTRATION` :
+  lancé/annulé/supprimé entre-temps → MP refusé (`resolver:expired`). L'édition,
+  elle, s'applique à tout état.
+- **Double ping** : le seul message qui mentionne quelqu'un est `thread-invite`
+  (dans le fil) ; la mention d'un joueur y est conservée même si son MP est mis
+  en file (`tournament-announce.ts`, en-tête l. 95-118 et l. 1074-1114).
 - **MP fermé** (`discord:dm_unavailable`, jamais retenté) : échec tracé en
-  `FAILED` + **mention de secours dans le fil du tournoi** (même transaction
-  que l'échec, via `DeliveryResolver.onTerminalDiscordFailure`). Les autres
-  échecs terminaux (permission…) sont tracés sans mention de secours.
+  `FAILED`. **Mention de secours dans le fil du tournoi pour le créateur
+  seulement** (les joueurs sont déjà mentionnés), même transaction que
+  l'échec, via `DeliveryResolver.onTerminalDiscordFailure`. Les autres échecs
+  terminaux (permission…) sont tracés sans mention de secours.
 
 ### Roulette
 | Événement | MP |
 | :-- | :-- |
 | Création | « 🎰 Roulette du gambling » — participants **et créateur** |
-| Rappel (deadline − 1 h) | « ⏰ … dernier rappel » — seulement ceux qui n'ont pas proposé leurs 2 jeux (créateur inclus s'il en fait partie) |
-| Résultat | « 🎰 La roue a choisi : … » — **seulement quand la soirée issue du tirage n'est pas sur le chemin bot** (sinon ce sont déjà les MP de la soirée, aucun doublon) |
+| Rappel (deadline − 1 h) | « ⏰ … dernier rappel » — seulement ceux qui n'ont pas proposé leurs 2 jeux (créateur inclus s'il en fait partie) ; ce MP est **conservé** |
+| Fin (tirage ou annulation, moins de 2 participants) | le MP d'invitation déjà envoyé est **édité** (« 🎰 La roue a choisi : … » ou « Roulette annulée »), **aucun nouveau MP** de résultat (`enqueueRouletteDirectMessageEdits`, `roulette-dm.ts` l. 38) |
 
+- **Jamais de mention** : une roulette n'a ni fil ni annonce publique (les
+  annonces webhook sont supprimées pour confidentialité, voir
+  `discord-roulette.ts`) ; tous les MP sont envoyés avec `allowedMentions: {parse: []}`.
 - Préférence `ROULETTE` filtrée à la mise en file ET relue à l'envoi ; la roulette
-  doit être `OPEN` (création), `OPEN` et deadline non dépassée (rappel), `DONE`
-  avec sa soirée et le pote toujours invité (résultat).
-- **Pas de mention de secours** : une roulette n'a ni fil ni annonce publique
-  (les annonces webhook sont supprimées pour confidentialité, voir
-  `discord-roulette.ts`). Un MP fermé est seulement tracé, et le pote ne
+  doit être `OPEN` (création), `OPEN` et deadline non dépassée (rappel) ; l'édition
+  finale exige `DONE` avec sa soirée et le pote toujours invité (tirage). L'ancien
+  kind `result` n'est plus mis en file ; ses lignes déjà en file sont abandonnées
+  (`expired`).
+- **Pas de mention de secours** : un MP fermé est seulement tracé, et le pote ne
   reçoit aucun autre MP de cette roulette (aucune nouvelle tentative).
 - Nouvelle valeur d'enum `NotificationCategory.ROULETTE` (migration
   `20260930160000_add_roulette_notification_category`, purement additive) :
@@ -12441,9 +12472,9 @@ création de nouveaux MP : ceux déjà en file sont toujours traités.
   convient pas à une roulette.
 
 ### Code
-`src/lib/discord-dm.ts` (mise en file, exclusion des MP déjà fermés, hook de
-mention de secours — mutualisés), `src/lib/roulette-dm.ts` (résolveur
-roulette), `tournament-announce.ts` (résolveurs `dm:`/`dm-fallback:`).
+`src/lib/discord-dm.ts` (mise en file, exclusion des MP déjà fermés, édition des
+MP déjà envoyés — mutualisés tournois/roulette), `src/lib/roulette-dm.ts`
+(résolveur roulette), `tournament-announce.ts` (résolveurs `dm:`/`dm-fallback:`).
 Les MP des soirées (`session-announce.ts`) gardent leur propre copie de ce
 code ; les rapprocher est un refactor volontairement hors de cette PR.
 
@@ -12470,3 +12501,110 @@ interne 240 s.
   `unlockBadge` retourne avant l'annonce Discord sur violation unique → pas de double notification.
 - Tests : `route.test.ts` des deux routes ; `src/lib/cron-longs.integration.test.ts`
   (Postgres isolé : deux passages = mêmes lignes qu'un seul, budget épuisé).
+
+## V2 — Référence : variables d'environnement
+
+Relevé par `process.env.*` sur tout `src/` (hors tests ; 32 variables). Les interrupteurs
+sont **tous éteints par défaut** : actifs uniquement si la valeur vaut exactement `true`
+(`RETENTION_CLEANUP_MODE` / `DISCORD_THREAD_CLEANUP_MODE` : `execute` exactement, sinon dry-run).
+La colonne « présente dans `.env.example` » dit seulement si le nom y figure (les valeurs ne sont jamais lues).
+
+### Interrupteurs et configuration Discord V2
+
+| Variable | Rôle | Défaut | Lue dans |
+| :-- | :-- | :-- | :-- |
+| `NOTIFICATION_EXECUTOR_ENABLED` | Sans elle l'executor ne réclame ni n'envoie rien (`{enabled:false, processed:0}`) | éteint | `src/app/api/cron/notification-executor/route.ts:95` |
+| `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` | Annonces de soirées via le bot (fil dédié) ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_SESSION_CHANNEL_ID`, sinon repli webhook | éteint | `src/lib/discord-bot-config.ts:46` |
+| `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` | Annonces de tournois via le bot ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | éteint | `src/lib/discord-bot-config.ts:73`, `src/app/tournois/actions.ts:110` |
+| `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` | Invitation « Jouer maintenant » par MP (aucun salon requis) | éteint | `src/lib/discord-bot-config.ts:86` |
+| `DISCORD_DM_SESSION_ENABLED` | Création de nouveaux MP de soirée (les MP déjà en file sont traités) ; sans effet sans le chemin bot des soirées | éteint | `src/lib/discord-bot-config.ts:101` |
+| `DISCORD_DM_TOURNAMENT_ENABLED` | Création de nouveaux MP de tournoi | éteint | `src/lib/discord-bot-config.ts:114` |
+| `DISCORD_DM_ROULETTE_ENABLED` | Création de nouveaux MP de roulette | éteint | `src/lib/discord-bot-config.ts:124` |
+| `DISCORD_THREAD_CLEANUP_ENABLED` | Active `/api/cron/discord-thread-cleanup` (sinon `{enabled:false, dryRun:true, report:null}`) | éteint | `src/app/api/cron/discord-thread-cleanup/route.ts:33` |
+| `DISCORD_THREAD_CLEANUP_MODE` | `execute` = archive/supprime réellement les fils ; toute autre valeur = dry-run (rapport seul) | dry-run | `src/app/api/cron/discord-thread-cleanup/route.ts:37` |
+| `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
+| `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
+| `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
+| `DISCORD_BOT_SESSION_CHANNEL_ID` | Salon des soirées | absent | `src/lib/discord-bot-config.ts:34` |
+| `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | Salon des tournois | absent | `src/lib/discord-bot-config.ts:66` |
+| `DISCORD_BOT_TOKEN` | Jeton du bot (REST : fils, MP, rafraîchissement de profils en repli) | absent (⇒ `null`, bot inutilisable) | `src/lib/discord-rest.ts:162`, `src/lib/discord-profile.ts:380` |
+
+### Sécurité des crons
+
+| Variable | Rôle | Défaut | Lue dans |
+| :-- | :-- | :-- | :-- |
+| `CRON_SECRET` | Jeton `Authorization: Bearer …` de toutes les routes `/api/cron/*` et `/api/backfill/*` ; **absent = 503** (fail-closed) | absent | `src/lib/cron-auth.ts:29`, `src/app/api/admin/force-relogin/route.ts:17` |
+
+### Application, auth, intégrations
+
+| Variable | Rôle | Défaut | Lue dans |
+| :-- | :-- | :-- | :-- |
+| `DATABASE_URL` | Connexion Postgres (Neon, adapter Prisma) | requise | `src/lib/prisma.ts:4` |
+| `AUTH_SECRET` | Secret Auth.js | requise | non référencée dans `src/` (lue implicitement par Auth.js — non vérifié dans son code) |
+| `AUTH_URL` | URL publique de base (liens dans les messages Discord, force-relogin) | `http://localhost:3000` | `src/lib/force-relogin.ts:33`, `src/lib/monthly-recap.ts:153`, `src/lib/session-announce.ts:1021`, `src/lib/tournament-announce.ts:588` |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | OAuth Discord (connexion, rafraîchissement des profils) | requises | `src/auth.ts:10-11`, `src/lib/discord-profile.ts:61-62` |
+| `DISCORD_TOKEN_ENCRYPTION_KEY` | Clé de chiffrement des jetons OAuth persistés (Base64, 32 octets décodés) ; erreur contrôlée si absente/invalide | absent | `src/lib/discord-token-crypto.ts:28` (lue l. 46) |
+| `DISCORD_WEBHOOK_URL` | Webhook historique (annonces hors chemin bot, rappels, recap mensuel) ; absent = dégradation propre | absent | `src/lib/discord.ts:60` |
+| `ADMIN_DISCORD_IDS` | `discordId` des admins, séparés par des virgules | aucun admin | `src/lib/admin.ts:27` |
+| `STEAM_API_KEY` | Import de bibliothèque / activité Steam | absent | `src/lib/steam.ts:88`, `:153` |
+| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | IGDB via Twitch (recherche, fiche jeu, backfill Coop) ; absentes = backfill sauté (log `warn`) | absentes | `src/lib/igdb.ts:13-14`, `src/lib/backfill-igdb-coop.ts:87` |
+| `DEEPL_API_KEY` | Traduction FR des descriptions IGDB (optionnelle) | absente = description en VO | `src/lib/deepl.ts:17` |
+| `BLOB_READ_WRITE_TOKEN` | Upload d'images de bannière (Vercel Blob) ; absent = upload désactivé | absent | `src/app/profil/actions.ts:194`, `src/app/profil/parametres/page.tsx:122` |
+
+### Fournies par la plateforme (ne pas définir à la main)
+
+| Variable | Rôle | Lue dans |
+| :-- | :-- | :-- |
+| `VERCEL_ENV`, `VERCEL_URL`, `VERCEL_PROJECT_PRODUCTION_URL` | Résolution de l'URL absolue des liens (prod → domaine de production, sinon URL du déploiement), via `src/lib/app-url.ts` | `src/app/tournois/actions.ts:150-152`, `src/lib/instant-session-announce.ts:208-210`, `src/lib/roulette-dm.ts:77-79` |
+| `NODE_ENV` | Cache du client Prisma hors production | `src/lib/prisma.ts:12` |
+
+**Pas des variables d'environnement** : `SEED_RECONCILE_TIME_BUDGET_MS` est une constante de code
+(`export const … = 240_000`, `src/lib/seed-reconciliation.ts:42`) ; de même les budgets `TIME_BUDGET_MS`
+(`backfill-igdb-coop.ts:53`, `backfill-steam-coop.ts:46`, `steam-library-sync/route.ts:46`) et
+`FULL_SYNC_TIME_BUDGET_MS` (`steam-library-full-sync/route.ts:13`).
+`TEST_DATABASE_URL` n'est lue que par les tests d'intégration et `scripts/test-postgres.mjs:3`.
+
+**Présentes dans le code mais absentes de `.env.example`** (vérifié par comparaison des noms) :
+`DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`, `RETENTION_CLEANUP_ENABLED`, `RETENTION_CLEANUP_MODE`
+(+ les variables plateforme `VERCEL_*` / `NODE_ENV`, normales). À l'inverse, `AUTH_SECRET` est dans
+`.env.example` sans être référencée dans `src/`.
+
+## V2 — Référence : routes cron et backfill
+
+Relevé route par route (`src/app/api/cron/*`, `src/app/api/backfill/*`). Toutes exigent
+`Authorization: Bearer <CRON_SECRET>` (`verifyCronRequest` : 503 sans secret, 401 si invalide).
+« non déclaré » = pas d'`export const maxDuration` dans la route (durée par défaut de la
+plateforme, non vérifiable dans le code). cron-job.org coupe à 30 s : les routes longues
+répondent donc `202` et travaillent dans `after()`.
+
+| Route | Méthodes | `maxDuration` | Mode | Fréquence conseillée | Log à surveiller |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `/api/cron/close-sessions` | GET | non déclaré | synchrone | 15 min (commentaire de la route) | `cron:close-sessions` (erreurs par tâche/session) |
+| `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | 15 min (README § F7) | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
+| `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | non documentée dans le repo — à confirmer | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
+| `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | 15 min (README « Nettoyage automatique des fils ») | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
+| `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | non documentée dans le repo — à confirmer | `cron:retention-cleanup` (`Passage terminé.`) |
+| `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | ~2 min (commentaire de `steam.ts:245`) | `cron:steam-library-sync` |
+| `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 2 h (commentaire de la route) | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
+| `/api/cron/monthly-tasks` | GET | non déclaré | synchrone | 1×/jour (README « Saisons ») | `cron:monthly-tasks` |
+| `/api/cron/refresh-discord-profiles` | GET | non déclaré | synchrone | 1 h (commentaire de la route) | `cron:refresh-discord-profiles` |
+| `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 1×/jour (README « seed-reconcile ») | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
+| `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 1×/jour (README « Configurer le cron externe ») | `igdb-coop` (`Processing n/N`, `stopReason`) |
+| `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | 1×/jour (idem) | `steam-store` (`Processing n/N`) |
+| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | 1×/jour max (README « actus ») | `game-news` |
+
+Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
+
+## Reporté après V2
+
+Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont
+des estimations tirées de l'état actuel du code, pas des décisions déjà documentées ailleurs dans le repo
+(seul le suivi par curseur y est mentionné : `seed-reconcile` et Phase 5 ci-dessus).
+
+| Item | Pourquoi reporté | Ce que ça demanderait |
+| :-- | :-- | :-- |
+| Récaps et récompenses Discord | Le recap mensuel existe déjà, via le webhook (`src/lib/monthly-recap.ts:3`, `postToDiscord`) ; la V2 s'est concentrée sur le chemin bot (fils, MP, nettoyage, « Jouer maintenant ») | Porter recap/récompenses sur le chemin bot (nouvelle catégorie `NotificationCategory` → migration additive, résolveur dans l'executor, interrupteur dédié) |
+| Multi-serveur Discord | Un seul serveur est supposé partout : `DISCORD_BOT_GUILD_ID` unique (`discord-bot-config.ts:33`, `:65`) et préfixe de slot figé `default-guild` (`session-announce.ts`, `tournament-announce.ts`, `discord-dm.ts`) | Config serveur/salon par groupe (modèle + migration), `targetSlot` par serveur, permissions bot par serveur, rattachement utilisateur → serveur |
+| Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
+| Indicateur « en jeu maintenant » sur `/potes` | L'activité Steam actuelle vient de `GetRecentlyPlayedGames` (`steam.ts:157`), qui n'indique pas la partie en cours | Appel `GetPlayerSummaries` (jeu courant), nouveau champ sur `User` + migration additive, cadence de rafraîchissement compatible avec les quotas Steam et cron-job.org (30 s) |
+| Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
