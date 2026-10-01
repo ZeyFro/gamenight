@@ -45,8 +45,9 @@ const REQUEST_DELAY_MS = 250;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Marge sous la limite d'exécution serverless (`maxDuration = 60` sur la
- * route, plafond du plan Vercel Hobby) : on arrête volontairement la
+ * Marge sous la limite d'exécution serverless (`maxDuration = 60`
+ * explicite sur la route, pas le plafond du plan : 300s sur Hobby avec
+ * Fluid compute) : on arrête volontairement la
  * boucle avant l'échéance plutôt que de risquer une coupure brutale par
  * la plateforme en plein appel réseau/écriture.
  */

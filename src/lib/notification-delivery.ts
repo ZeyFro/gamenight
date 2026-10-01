@@ -74,9 +74,10 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  * discipline de timeout attendue du futur appelant.
  */
 
-// Dérivé du plafond d'exécution de 60s (`maxDuration` déclaré sur les routes
-// cron courtes, ex. notification-executor ; seed-reconcile et
-// steam-library-full-sync sont, elles, à 300s) :
+// Dérivé du `maxDuration` explicite de 60s déclaré sur les routes cron
+// courtes (ex. notification-executor ; seed-reconcile et
+// steam-library-full-sync sont, elles, à 300s, le défaut et maximum Hobby
+// avec Fluid compute) :
 // un appel Discord (webhook ou bot REST, simple requête HTTP) ne devrait
 // jamais s'approcher de cette limite. 30s laisse une marge d'au moins 2x
 // avant le kill de la plateforme — pas une valeur devinée, même logique de

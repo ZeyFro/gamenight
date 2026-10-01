@@ -37,8 +37,9 @@ const REQUEST_DELAY_MS = 1500;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Marge sous la limite d'exécution serverless (`maxDuration = 60` sur la
- * route, plafond du plan Vercel Hobby). Avec un délai de 1,5s/requête,
+ * Marge sous la limite d'exécution serverless (`maxDuration = 60`
+ * explicite sur la route, pas le plafond du plan : 300s sur Hobby avec
+ * Fluid compute). Avec un délai de 1,5s/requête,
  * une bibliothèque de plus d'une trentaine de jeux ne rentre
  * structurellement pas dans une seule invocation — c'est attendu et géré
  * par l'ordre mélangé + les appels répétés (cron quotidien), pas un bug.

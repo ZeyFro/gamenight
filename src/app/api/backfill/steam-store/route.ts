@@ -5,7 +5,8 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
- * Plafond du plan Vercel Hobby — voir la même note dans
+ * `maxDuration` explicite de 60s (pas le plafond du plan : 300s sur Hobby
+ * avec Fluid compute) — voir la même note dans
  * `/api/backfill/igdb-coop/route.ts`. `runSteamCoopBackfill` s'arrête
  * volontairement avant cette échéance (`TIME_BUDGET_MS`).
  */

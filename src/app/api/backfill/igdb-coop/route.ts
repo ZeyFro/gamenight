@@ -5,9 +5,11 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
- * Plafond du plan Vercel Hobby (voir README, § "Rappels drôles avant
- * session" pour le précédent avec `/api/cron/reminders`) — inutile de
- * demander plus, ce serait ignoré/rejeté au déploiement de toute façon.
+ * `maxDuration` explicite de 60s (voir README, § "Rappels drôles avant
+ * session" pour le précédent avec `/api/cron/reminders`). Ce n'est pas le
+ * plafond du plan : défaut et maximum Vercel sont de 300s sur Hobby avec
+ * Fluid compute (doc Vercel, « Duration limits »), comme les routes
+ * `seed-reconcile` et `steam-library-full-sync`.
  * `runIgdbCoopBackfill` s'arrête volontairement avant cette échéance
  * (`TIME_BUDGET_MS`), donc cette route ne devrait jamais être coupée en
  * plein milieu d'une écriture.

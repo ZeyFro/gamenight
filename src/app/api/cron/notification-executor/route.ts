@@ -41,11 +41,12 @@ const DISPATCH_RESOLVER: DeliveryResolver = {
 };
 
 /**
- * Borne dure de durée d'exécution du plan Vercel Hobby (60s) — même
- * convention que les autres routes cron de ce dépôt (voir
+ * `maxDuration` EXPLICITE de 60s, volontairement plus bas que le défaut
+ * Vercel (300s sur Hobby avec Fluid compute, qui est aussi le maximum) —
+ * même convention que les routes cron courtes de ce dépôt (voir
  * `src/app/api/cron/reminders/route.ts`). `runExecutorBatch` s'arrête
  * elle-même bien avant (`DEFAULT_BATCH_BUDGET_MS`, 50s), cette valeur est
- * le filet de sécurité de la plateforme, pas le mécanisme d'arrêt normal.
+ * le filet de sécurité de la route, pas le mécanisme d'arrêt normal.
  */
 export const maxDuration = 60;
 

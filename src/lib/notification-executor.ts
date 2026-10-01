@@ -66,7 +66,7 @@ import {
  */
 
 // Borne de tentatives — pas dérivée d'une contrainte plateforme précise
-// (contrairement aux timeouts/lease dérivés du plafond Vercel Hobby
+// (contrairement aux timeouts/lease dérivés du `maxDuration` de 60s
 // ailleurs dans ce chantier) : choisie pour qu'une notification ne reste
 // jamais bloquée en re-tentative silencieuse indéfiniment, tout en
 // laissant plusieurs heures de marge aux pannes transitoires (rate limit,
@@ -96,9 +96,9 @@ const DEPENDENCY_RETRY_BACKOFF_MS = 2 * 60_000;
 // d'exécution de la route, pas contre une expiration de bail par lot.
 export const DEFAULT_MAX_DELIVERIES_PER_RUN = 25;
 
-// Budget de temps mur pour un batch complet — sous le plafond dur de 60s
-// du plan Vercel Hobby (`maxDuration`, même convention que les autres
-// routes cron de ce dépôt), avec une marge pour la réponse HTTP elle-même
+// Budget de temps mur pour un batch complet — sous le `maxDuration`
+// explicite de 60s de la route (même convention que les autres routes cron
+// courtes ; le défaut Vercel serait de 300s), avec une marge pour la réponse HTTP elle-même
 // et un éventuel dernier appel Discord déjà engagé au moment où le budget
 // est atteint.
 export const DEFAULT_BATCH_BUDGET_MS = 50_000;
