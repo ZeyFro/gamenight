@@ -13,9 +13,9 @@ import {
   joinInstantSession,
   leaveInstantSession,
   toInstantSessionViewDTO,
-  type InstantSessionActionFailureReason,
   type InstantSessionViewDTO,
 } from "@/lib/instant-sessions";
+import type { InstantSessionActionState } from "@/app/jouer-maintenant/action-state";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import {
   changeInstantSessionGameSchema,
@@ -37,12 +37,6 @@ import {
  * le bouton pendant la soumission (empêche les doubles soumissions).
  */
 
-export interface InstantSessionActionState {
-  status: "idle" | "success" | "error";
-  errorReason?: InstantSessionActionFailureReason | "validation" | "rate_limited";
-}
-
-export const INITIAL_INSTANT_SESSION_ACTION_STATE: InstantSessionActionState = { status: "idle" };
 
 export async function createInstantSessionAction(formData: FormData) {
   const user = await getCurrentUser();

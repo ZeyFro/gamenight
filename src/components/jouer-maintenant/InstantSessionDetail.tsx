@@ -12,8 +12,8 @@ import {
   getInstantSessionViewAction,
   joinInstantSessionAction,
   leaveInstantSessionAction,
-  INITIAL_INSTANT_SESSION_ACTION_STATE,
 } from "@/app/jouer-maintenant/actions";
+import { INITIAL_INSTANT_SESSION_ACTION_STATE } from "@/app/jouer-maintenant/action-state";
 
 const POLL_INTERVAL_MS = 30_000;
 

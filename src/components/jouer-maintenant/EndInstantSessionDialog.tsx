@@ -4,10 +4,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useActionState, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
-import {
-  endInstantSessionAction,
-  INITIAL_INSTANT_SESSION_ACTION_STATE,
-} from "@/app/jouer-maintenant/actions";
+import { endInstantSessionAction } from "@/app/jouer-maintenant/actions";
+import { INITIAL_INSTANT_SESSION_ACTION_STATE } from "@/app/jouer-maintenant/action-state";
 
 /**
  * "Si le créateur quitte, la session se termine pour tous, APRÈS

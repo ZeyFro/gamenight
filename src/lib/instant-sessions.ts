@@ -140,6 +140,16 @@ export async function createInstantSession(input: {
   gameId: string;
   notifiedUserIds: string[];
 }): Promise<CreateInstantSessionResult> {
+  // Expiration paresseuse d'abord : une session échue mais pas encore
+  // réglée par le cron garde l'intervalle de présence du créateur ouvert, ce
+  // qui bloquerait la création (index unique partiel) jusqu'au prochain
+  // passage du cron alors que la session est finie depuis longtemps.
+  const stale = await prisma.instantSessionPresenceInterval.findFirst({
+    where: { userId: input.creatorId, endedAt: null },
+    select: { instantSessionId: true },
+  });
+  if (stale) await settleInstantSessionIfDue(stale.instantSessionId);
+
   const now = wallClockNow();
   const expiresAt = new Date(now.getTime() + INSTANT_SESSION_MAX_DURATION_MS);
   // Le serveur fait autorité sur la liste des invités : le créateur n'est
