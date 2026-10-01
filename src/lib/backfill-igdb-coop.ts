@@ -52,7 +52,24 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 const TIME_BUDGET_MS = 50_000;
 
+/**
+ * Délai avant de retenter un jeu qu'IGDB ne connaît pas (`igdbNotFoundAt`
+ * posé) : sans lui, chaque passage réinterrogeait les mêmes jeux
+ * introuvables pour rien.
+ */
+export const IGDB_NOT_FOUND_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Pourquoi le passage s'est arrêté (distingue « rien à faire » de « plus le temps »). */
+export type IgdbCoopStopReason =
+  | "no_credentials"
+  | "no_eligible"
+  | "time_budget"
+  | "completed";
+
 export interface IgdbCoopBackfillSummary {
+  stopReason: IgdbCoopStopReason;
+  /** Jeux introuvables sur IGDB (marqués `igdbNotFoundAt`), non comptés dans `failed`. */
+  notFound: number;
   eligible: number;
   processed: number;
   updated: number;
@@ -72,6 +89,8 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   if (!hasCredentials) {
     logger.warn("igdb-coop", "IGDB_CLIENT_ID/IGDB_CLIENT_SECRET non configurées — backfill sauté.");
     return {
+      stopReason: "no_credentials",
+      notFound: 0,
       eligible: 0,
       processed: 0,
       updated: 0,
@@ -85,10 +104,21 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
 
   let detailsFilled = 0;
   let detailsFailed = 0;
+  let detailsNotFound = 0;
   let detailsStoppedEarly = false;
+  // Jeux dont la fiche vient d'être remplie : exclus de la phase 2 du même
+  // passage (leur isCoop/maxPlayers viennent d'être synchronisés).
+  const filledIds: string[] = [];
   const uncached = shuffle(
     await prisma.game.findMany({
-      where: { igdbDetails: { equals: Prisma.DbNull }, igdbId: { not: null } },
+      where: {
+        igdbDetails: { equals: Prisma.DbNull },
+        igdbId: { not: null },
+        OR: [
+          { igdbNotFoundAt: null },
+          { igdbNotFoundAt: { lt: new Date(startedAt - IGDB_NOT_FOUND_RETRY_MS) } },
+        ],
+      },
     })
   );
   for (const game of uncached) {
@@ -96,7 +126,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       detailsStoppedEarly = true;
       logger.warn(
         "igdb-coop",
-        `Arrêt anticipé pendant le remplissage — ${detailsFilled + detailsFailed}/${uncached.length} jeu(x) sans cache traité(s), le reste au prochain appel.`
+        `Budget de temps épuisé pendant le remplissage — ${detailsFilled + detailsFailed + detailsNotFound}/${uncached.length} jeu(x) sans cache traité(s), le reste au prochain appel.`
       );
       break;
     }
@@ -104,14 +134,18 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     // `getGameDetails` journalise lui-même ses erreurs (logger.error) et les
     // renvoie dans `error` — comptées ici, jamais ignorées.
     const result = await getGameDetails(game);
-    if (result.error) detailsFailed += 1;
-    else detailsFilled += 1;
+    if (result.error === "not_found") detailsNotFound += 1;
+    else if (result.error) detailsFailed += 1;
+    else {
+      detailsFilled += 1;
+      filledIds.push(game.id);
+    }
     await sleep(REQUEST_DELAY_MS);
   }
   if (uncached.length > 0) {
     logger.info(
       "igdb-coop",
-      `Remplissage terminé — ${detailsFilled} fiche(s) remplie(s), ${detailsFailed} échec(s) sur ${uncached.length} jeu(x) sans cache.`
+      `Remplissage terminé — ${detailsFilled} fiche(s) remplie(s), ${detailsNotFound} introuvable(s) sur IGDB (retentés dans ${IGDB_NOT_FOUND_RETRY_MS / 86_400_000} j), ${detailsFailed} échec(s) sur ${uncached.length} jeu(x) sans cache.`
     );
   }
 
@@ -121,16 +155,30 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
         igdbDetails: { not: Prisma.DbNull },
         playInfoManual: false,
         igdbId: { not: null },
+        id: { notIn: filledIds },
+        OR: [
+          { igdbNotFoundAt: null },
+          { igdbNotFoundAt: { lt: new Date(startedAt - IGDB_NOT_FOUND_RETRY_MS) } },
+        ],
       },
       select: { id: true, name: true, igdbId: true, isCoop: true, maxPlayers: true },
     })
   );
 
   if (games.length === 0 || detailsStoppedEarly) {
-    logger.info("igdb-coop", "Aucun jeu éligible (cache IGDB + pas de correction manuelle).");
+    // Le message d'arrêt du budget a déjà été journalisé (warn) dans la
+    // boucle de remplissage : ici seul « rien à resynchroniser » est loggé.
+    if (!detailsStoppedEarly) {
+      logger.info(
+        "igdb-coop",
+        "Aucun jeu éligible à la resynchronisation (cache IGDB + pas de correction manuelle, hors fiches remplies à l'instant)."
+      );
+    }
     return {
+      stopReason: detailsStoppedEarly ? "time_budget" : "no_eligible",
+      notFound: detailsNotFound,
       eligible: uncached.length,
-      processed: detailsFilled + detailsFailed,
+      processed: detailsFilled + detailsFailed + detailsNotFound,
       updated: 0,
       unchanged: 0,
       failed: detailsFailed,
@@ -143,6 +191,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   let updated = 0;
   let unchanged = 0;
   let failed = 0;
+  let notFound = 0;
   let processed = 0;
   let stoppedEarly = false;
 
@@ -151,7 +200,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       stoppedEarly = true;
       logger.warn(
         "igdb-coop",
-        `Arrêt anticipé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
+        `Budget de temps épuisé après ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${processed}/${games.length} jeu(x) traité(s) dans cet appel, le reste sera couvert par un prochain appel (idempotent).`
       );
       break;
     }
@@ -162,8 +211,19 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     try {
       // `igdbId` non-null garanti par le `where` ci-dessus.
       const details = await fetchIgdbGameDetails(game.igdbId!);
-      const isCoop = details?.isCoop ?? false;
-      const maxPlayers = game.maxPlayers ?? details?.maxPlayersFromModes ?? null;
+      if (!details) {
+        // IGDB ne connaît plus ce jeu : on garde les valeurs actuelles (ne
+        // surtout pas écraser isCoop par `false`) et on le marque.
+        await prisma.game.update({
+          where: { id: game.id },
+          data: { igdbNotFoundAt: new Date() },
+        });
+        notFound += 1;
+        await sleep(REQUEST_DELAY_MS);
+        continue;
+      }
+      const isCoop = details.isCoop;
+      const maxPlayers = game.maxPlayers ?? details.maxPlayersFromModes ?? null;
 
       if (isCoop !== game.isCoop || maxPlayers !== game.maxPlayers) {
         await prisma.game.update({ where: { id: game.id }, data: { isCoop, maxPlayers } });
@@ -182,12 +242,14 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   logger.info(
     "igdb-coop",
-    `Terminé en ${elapsedSeconds}s — ${updated}/${processed} mis à jour, ${unchanged} déjà corrects, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (arrêt anticipé)" : ""}.`
+    `Terminé en ${elapsedSeconds}s — ${updated}/${processed} mis à jour, ${unchanged} déjà corrects, ${notFound} introuvable(s) sur IGDB, ${failed} échec(s) sur ${processed}/${games.length} jeu(x) traité(s)${stoppedEarly ? " (budget de temps épuisé)" : ""}.`
   );
 
   return {
+    stopReason: stoppedEarly ? "time_budget" : "completed",
+    notFound: notFound + detailsNotFound,
     eligible: games.length + uncached.length,
-    processed: processed + detailsFilled + detailsFailed,
+    processed: processed + detailsFilled + detailsFailed + detailsNotFound,
     updated,
     unchanged,
     failed: failed + detailsFailed,

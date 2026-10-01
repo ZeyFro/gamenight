@@ -2092,8 +2092,9 @@ ajouter 2 nouveaux cron jobs :
 
 1. URL : `https://ton-projet.vercel.app/api/backfill/igdb-coop`
 2. URL : `https://ton-projet.vercel.app/api/backfill/steam-store`
-3. Méthode `POST` pour les deux, en-tête `Authorization: Bearer <CRON_SECRET>`
-   si configurée.
+3. Méthode `GET` ou `POST` (`igdb-coop` accepte les deux ; `steam-store`
+   reste en `POST`), en-tête `Authorization: Bearer <CRON_SECRET>` — sans
+   `CRON_SECRET` côté serveur la route répond 503.
 4. Fréquence recommandée : **une fois par jour** — largement suffisant, ces
    backfills corrigent des jeux ajoutés/importés depuis le dernier passage,
    pas une fonctionnalité temps-réel.

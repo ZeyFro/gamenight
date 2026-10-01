@@ -320,6 +320,12 @@ model Game {
   // de l'API IGDB.
   igdbDetails          Json?
   igdbDetailsFetchedAt DateTime?
+  // Marque datée « IGDB ne connaît pas ce jeu » (fiche introuvable pour
+  // `igdbId`) : le backfill IGDB ne le retente qu'après un délai
+  // (`IGDB_NOT_FOUND_RETRY_MS`, src/lib/backfill-igdb-coop.ts) au lieu de
+  // l'interroger à chaque passage. Remise à `null` dès qu'une fiche est
+  // récupérée avec succès.
+  igdbNotFoundAt       DateTime?
 
   addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
   userGames UserGame[]
