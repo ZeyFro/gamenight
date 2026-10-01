@@ -14,10 +14,11 @@ vi.mock("next/server", async (importOriginal) => {
   return { ...actual, after: (cb: () => void) => void cb() };
 });
 
-import { GET, maxDuration } from "./route";
+import { GET, POST, maxDuration } from "./route";
 
-function req(authorization?: string) {
+function req(authorization?: string, method = "GET") {
   return new Request("https://example.test/api/cron/steam-library-full-sync", {
+    method,
     headers: authorization ? { authorization } : {},
   });
 }
@@ -42,6 +43,21 @@ describe("/api/cron/steam-library-full-sync", () => {
     const [userId, steamId, opts] = importSteamLibrary.mock.calls[0];
     expect([userId, steamId]).toEqual(["u1", "7656"]);
     expect(opts.deadlineMs).toBeGreaterThan(Date.now());
+  });
+
+  it("POST avec le bon Bearer → 202 et lance l'import (même handler que GET)", async () => {
+    const res = await POST(req("Bearer s3cret", "POST"));
+    expect(res.status).toBe(202);
+    expect(importSteamLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST sans/avec mauvais Bearer → 401, 503 sans CRON_SECRET, rien lancé", async () => {
+    expect((await POST(req(undefined, "POST"))).status).toBe(401);
+    expect((await POST(req("Bearer nope", "POST"))).status).toBe(401);
+    vi.stubEnv("CRON_SECRET", "");
+    expect((await POST(req("Bearer s3cret", "POST"))).status).toBe(503);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(importSteamLibrary).not.toHaveBeenCalled();
   });
 
   it("aucun compte lié → 200 attempted:false, rien importé", async () => {

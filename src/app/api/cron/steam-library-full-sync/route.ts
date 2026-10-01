@@ -50,7 +50,8 @@ const FULL_SYNC_TIME_BUDGET_MS = 240_000;
  */
 export const maxDuration = 300;
 
-export async function GET(request: Request) {
+// GET et POST équivalents (cron-job.org envoie un GET par défaut, `curl -X POST` pour un lancement manuel).
+async function handle(request: Request) {
   const auth = verifyCronRequest(request);
   if (!auth.ok) {
     return NextResponse.json(
@@ -113,3 +114,6 @@ export async function GET(request: Request) {
 
   return NextResponse.json({ attempted: true, status: "accepted" }, { status: 202 });
 }
+
+export const GET = handle;
+export const POST = handle;
