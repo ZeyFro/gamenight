@@ -122,6 +122,12 @@ export async function getGameDetails(
         ? cachedDetails
         : await fetchIgdbGameDetails(igdbId);
     if (!fetched) {
+      // IGDB ne connaît pas cet `igdbId` : marque datée pour que le
+      // backfill ne le retente pas à chaque passage.
+      await prisma.game.update({
+        where: { id: game.id },
+        data: { igdbNotFoundAt: new Date() },
+      });
       return { details: null, fetchedAt: null, error: "not_found" };
     }
 
@@ -155,6 +161,7 @@ export async function getGameDetails(
       data: {
         igdbDetails: details as unknown as object,
         igdbDetailsFetchedAt: fetchedAt,
+        igdbNotFoundAt: null,
         ...playInfoUpdate,
       },
     });

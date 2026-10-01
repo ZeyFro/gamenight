@@ -22,8 +22,12 @@ export const maxDuration = 60;
  * externe ou `curl` manuel) — même mécanisme d'authentification que
  * `/api/cron/reminders` (`CRON_SECRET` optionnelle mais recommandée dès
  * que l'URL est publique).
+ *
+ * GET et POST font exactement la même chose : cron-job.org envoie un GET par
+ * défaut, `curl -X POST` reste valable pour un lancement manuel. Dans les
+ * deux cas : `Authorization: Bearer <CRON_SECRET>`.
  */
-export async function POST(request: Request) {
+async function handle(request: Request) {
   const auth = verifyCronRequest(request);
   if (!auth.ok) {
     return NextResponse.json(
@@ -43,3 +47,6 @@ export async function POST(request: Request) {
     { status: 202 }
   );
 }
+
+export const GET = handle;
+export const POST = handle;
