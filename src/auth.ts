@@ -1,20 +1,8 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
-import { refreshDiscordProfile } from "@/lib/discord-profile";
 import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
-
-/**
- * Fenêtre de rafraîchissement avatar/pseudo depuis l'API Discord (bug
- * remonté : l'ancien avatar restait affiché indéfiniment tant que le JWT
- * de session restait valide, le callback `signIn` ci-dessous ne
- * s'exécutant qu'à une VRAIE reconnexion OAuth). Même ordre de grandeur
- * que le throttle de `touchStreak` (12h) — assez fréquent pour que le
- * changement d'avatar/pseudo Discord se propage vite, assez rare pour ne
- * jamais peser sur la latence des pages protégées.
- */
-const DISCORD_PROFILE_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -116,21 +104,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       }
 
-      // Sessions JWT persistantes (jusqu'à 30 jours par défaut) : sans ce
-      // rafraîchissement périodique, un avatar/pseudo changé côté Discord
-      // ne serait répercuté qu'à la prochaine reconnexion OAuth complète.
-      // Best-effort et silencieux (voir `refreshDiscordProfile`) : un
-      // jeton expiré (Discord : ~7 jours) ne casse jamais la session, le
-      // rafraîchissement reprendra à la prochaine vraie reconnexion.
-      const discordId = token.discordId as string | undefined;
-      const discordAccessToken = token.discordAccessToken as string | undefined;
-      const discordSyncedAt = token.discordSyncedAt as number | undefined;
-      const isStale = !discordSyncedAt || Date.now() - discordSyncedAt > DISCORD_PROFILE_SYNC_INTERVAL_MS;
-      if (isStale && discordId && discordAccessToken) {
-        await refreshDiscordProfile(discordId, discordAccessToken);
-        token.discordSyncedAt = Date.now();
-      }
-
+      // PAS de rafraîchissement périodique du profil ici : `auth()` appelé
+      // depuis un composant serveur / une server action n'écrit pas le
+      // cookie de session (Auth.js jette les `Set-Cookie`), donc un
+      // `discordSyncedAt` posé dans ce callback ne serait jamais persisté
+      // et le JWT resterait « périmé » : l'API Discord serait appelée à
+      // CHAQUE requête authentifiée (voir `auth.jwt.test.ts`). Avatar et
+      // pseudo sont rafraîchis (1) à la connexion (`signIn` ci-dessus) et
+      // (2) toutes les heures pour tout le monde par le cron
+      // `/api/cron/refresh-discord-profiles`.
       return token;
     },
     async session({ session, token }) {
