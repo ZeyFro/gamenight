@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { bannerUrlSchema } from "@/lib/validations";
-import { findBannerUrlProblem, KLIPY_PAGE_URL_MESSAGE } from "@/lib/banner-url";
+import {
+  BANNER_HOST_MESSAGE,
+  BANNER_PAGE_MESSAGE,
+  BANNER_HTTPS_MESSAGE,
+  findBannerUrlProblem,
+  KLIPY_PAGE_URL_MESSAGE,
+} from "@/lib/banner-url";
 
 describe("findBannerUrlProblem", () => {
   it.each([
@@ -17,11 +23,48 @@ describe("findBannerUrlProblem", () => {
     "https://static.klipy.com/ii/abc/x.gif",
     "https://i.imgur.com/abc.gif",
     "https://cdn.discordapp.com/attachments/1/2/x.gif",
-    "https://exemple.com/klipy.com/page.png",
+    "https://media.discordapp.net/attachments/1/2/x.png",
+    "https://media.tenor.com/abc/x.gif",
+    "https://media4.giphy.com/media/abc/giphy.gif",
+    "https://abc123.public.blob.vercel-storage.com/banners/u.png",
     "pas une url",
     "",
-  ])("lien média / autre hébergeur / invalide accepté ici : %s", (url) => {
+  ])("lien média d'un hébergeur autorisé / invalide (format validé ailleurs) accepté ici : %s", (url) => {
     expect(findBannerUrlProblem(url)).toBeNull();
+  });
+});
+
+describe("liens de PAGE Tenor/Giphy (pas des images)", () => {
+  it.each([
+    "https://tenor.com/view/chat-gif-123",
+    "https://www.tenor.com/view/x",
+    "https://giphy.com/gifs/chat-abc",
+    "https://www.giphy.com/gifs/x",
+  ])("refusé avec le message « lien de page » : %s", (url) => {
+    expect(findBannerUrlProblem(url)).toBe(BANNER_PAGE_MESSAGE);
+  });
+});
+
+describe("liste blanche d'hôtes + https uniquement", () => {
+  it.each([
+    "https://exemple.com/klipy.com/page.png",
+    "https://evil.example/pixel.gif",
+    "https://i.imgur.com.evil.example/a.png",
+    "https://evilimgur.com/a.png",
+    "https://169.254.169.254/latest",
+    "https://localhost/a.png",
+    "https://user:pw@i.imgur.com@evil.example/a.png",
+  ])("hôte non autorisé refusé : %s", (url) => {
+    expect(findBannerUrlProblem(url)).toBe(BANNER_HOST_MESSAGE);
+  });
+
+  it.each(["http://i.imgur.com/a.png", "HTTP://static.klipy.com/a.gif"])("http refusé : %s", (url) => {
+    expect(findBannerUrlProblem(url)).toBe(BANNER_HTTPS_MESSAGE);
+  });
+
+  it("refus relayé par bannerUrlSchema", () => {
+    const result = bannerUrlSchema.safeParse({ bannerUrl: "https://evil.example/p.gif" });
+    expect(result.success).toBe(false);
   });
 });
 

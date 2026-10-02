@@ -32,6 +32,15 @@ describe("GET /api/steam/link", () => {
     expect(getSteamAuthUrl).not.toHaveBeenCalled();
   });
 
+  it("en https (prod) : cookie state marqué Secure", async () => {
+    getValidSession.mockResolvedValue({ user: { discordId: "user-1" } });
+    getSteamAuthUrl.mockReturnValue("https://steamcommunity.com/openid/login?fake=1");
+
+    const response = await GET(new NextRequest("https://gamenight.example/api/steam/link"));
+
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
   it("session valide → redirection vers l'URL d'auth Steam", async () => {
     getValidSession.mockResolvedValue({ user: { discordId: "user-1" } });
     getSteamAuthUrl.mockReturnValue("https://steamcommunity.com/openid/login?fake=1");
@@ -42,6 +51,14 @@ describe("GET /api/steam/link", () => {
     expect(response.headers.get("location")).toBe(
       "https://steamcommunity.com/openid/login?fake=1"
     );
-    expect(getSteamAuthUrl).toHaveBeenCalledWith("http://localhost/api/steam/callback");
+    const state = response.cookies.get("steam_link_state")?.value;
+    expect(state).toMatch(/^[0-9a-f]{32}$/);
+    expect(getSteamAuthUrl).toHaveBeenCalledWith(
+      `http://localhost/api/steam/callback?state=${state}`
+    );
+    const cookie = response.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=lax/i);
+    expect(cookie).toMatch(/Max-Age=600/i);
   });
 });

@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 /**
  * Vérification d'accès partagée des routes cron/backfill (PR "Accès &
  * secrets") — remplace le bloc dupliqué dans 8 routes qui était fail-open :
@@ -20,7 +22,12 @@ export function checkCronAuth(
   authHeader: string | null
 ): CronAuthResult {
   if (!cronSecret) return { ok: false, status: 503 };
-  if (authHeader !== `Bearer ${cronSecret}`) return { ok: false, status: 401 };
+  // Hash des deux côtés : longueur fixe (timingSafeEqual lève sinon) et
+  // aucune fuite de la longueur du secret ; temps constant sur le contenu.
+  const digest = (v: string) => createHash("sha256").update(v).digest();
+  if (!timingSafeEqual(digest(authHeader ?? ""), digest(`Bearer ${cronSecret}`))) {
+    return { ok: false, status: 401 };
+  }
   return { ok: true };
 }
 

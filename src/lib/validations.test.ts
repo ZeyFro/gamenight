@@ -143,9 +143,12 @@ describe("userColorSchema / bannerUrlSchema", () => {
     expect(userColorSchema.safeParse({ color: "violet" }).success).toBe(false);
   });
 
-  it("bannerUrlSchema accepte une URL http(s) ou une chaîne vide (retour au défaut)", () => {
-    expect(bannerUrlSchema.safeParse({ bannerUrl: "https://exemple.com/x.jpg" }).success).toBe(
+  it("bannerUrlSchema accepte une URL https d'un hébergeur autorisé ou une chaîne vide (retour au défaut)", () => {
+    expect(bannerUrlSchema.safeParse({ bannerUrl: "https://i.imgur.com/x.jpg" }).success).toBe(
       true
+    );
+    expect(bannerUrlSchema.safeParse({ bannerUrl: "https://exemple.com/x.jpg" }).success).toBe(
+      false
     );
     expect(bannerUrlSchema.safeParse({ bannerUrl: "" }).success).toBe(true);
     expect(bannerUrlSchema.safeParse({ bannerUrl: "pas-une-url" }).success).toBe(false);

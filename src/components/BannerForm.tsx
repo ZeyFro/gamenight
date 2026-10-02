@@ -102,7 +102,9 @@ export function BannerForm({
   const [url, setUrl] = useState(initialUrl ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const urlProblem = findBannerUrlProblem(url);
+  // Contrôle à l'écriture seulement : une bannière déjà en base (ancien
+  // hôte, http) s'affiche sans erreur tant qu'elle n'est pas modifiée.
+  const urlProblem = url === (initialUrl ?? "") ? null : findBannerUrlProblem(url);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const input = e.target;

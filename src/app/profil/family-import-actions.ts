@@ -7,7 +7,11 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkLibraryBadges } from "@/lib/badges";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { matchGameName } from "@/lib/family-import";
+import {
+  FAMILY_IMPORT_BATCH_SIZE,
+  FAMILY_IMPORT_MAX_NAME_LENGTH,
+  matchGameName,
+} from "@/lib/family-import";
 import { importSteamLibrary } from "@/lib/steam";
 import { logger } from "@/lib/logger";
 
@@ -61,10 +65,24 @@ export async function matchFamilyImportBatch(
   const user = await getCurrentUser();
   if (!user) return [];
 
+  // Plafonds serveur : le client batch déjà, mais une action serveur est
+  // appelable directement — chaque nom coûte une recherche IGDB.
+  if (
+    !Array.isArray(names) ||
+    names.length > FAMILY_IMPORT_BATCH_SIZE ||
+    names.some((n) => typeof n !== "string")
+  ) {
+    throw new Error(`Import invalide : ${FAMILY_IMPORT_BATCH_SIZE} noms maximum par lot.`);
+  }
+
   const results: FamilyImportItemResult[] = [];
   let importedCount = 0;
 
   for (const input of names) {
+    if (input.length > FAMILY_IMPORT_MAX_NAME_LENGTH) {
+      results.push({ input, outcome: "needsConfirmation", suggestion: null });
+      continue;
+    }
     const match = await matchGameName(input);
 
     if (match.status !== "matched" || !match.candidate) {

@@ -6,7 +6,14 @@ import { wallClockNow, formatDurationFr } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
-const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/;
+// SteamID64 : toujours 17 chiffres.
+const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/;
+const OPENID_NS = "http://specs.openid.net/auth/2.0";
+// Champs que Steam doit avoir signés : sans eux, l'assertion pourrait être
+// rejouée ailleurs (return_to, nonce) ou l'identité modifiée (claimed_id).
+const REQUIRED_SIGNED = ["op_endpoint", "claimed_id", "identity", "return_to", "response_nonce", "assoc_handle"];
+const NONCE_MAX_AGE_MS = 5 * 60 * 1000;
+const VERIFY_TIMEOUT_MS = 10_000;
 
 export function getSteamAuthUrl(returnTo: string): string {
   const realm = new URL(returnTo).origin;
@@ -22,29 +29,51 @@ export function getSteamAuthUrl(returnTo: string): string {
 }
 
 /**
- * Vérifie la réponse OpenID 2.0 de Steam en la re-postant avec
- * `check_authentication` (obligatoire : Steam ne signe pas la réponse d'une
- * façon vérifiable côté client, il faut lui redemander de confirmer).
- * Retourne le SteamID64 si la signature est valide, sinon null.
+ * Vérifie la réponse OpenID 2.0 de Steam. Contrôles locaux d'abord (sans
+ * réseau) : ns/mode/op_endpoint, `return_to` STRICTEMENT égal à celui
+ * attendu (il porte le `state` à usage unique, voir `steam/link`),
+ * champs essentiels signés, `response_nonce` de moins de 5 min,
+ * `claimed_id` strict (17 chiffres) égal à `identity`. Puis
+ * `check_authentication` auprès de Steam (obligatoire : seul Steam peut
+ * valider la signature). Retourne le SteamID64, ou `null` si l'assertion
+ * est invalide ; LÈVE si Steam est injoignable (≠ invalide).
  */
 export async function verifySteamOpenId(
-  query: URLSearchParams
+  query: URLSearchParams,
+  expectedReturnTo: string,
+  now: Date = new Date()
 ): Promise<string | null> {
-  const params = new URLSearchParams(query);
+  if (query.get("openid.ns") !== OPENID_NS) return null;
+  if (query.get("openid.mode") !== "id_res") return null;
+  if (query.get("openid.op_endpoint") !== STEAM_OPENID_ENDPOINT) return null;
+  if (query.get("openid.return_to") !== expectedReturnTo) return null;
+
+  const signed = new Set((query.get("openid.signed") ?? "").split(","));
+  if (!REQUIRED_SIGNED.every((field) => signed.has(field))) return null;
+
+  const nonceTime = Date.parse((query.get("openid.response_nonce") ?? "").slice(0, 20));
+  if (Number.isNaN(nonceTime) || Math.abs(now.getTime() - nonceTime) > NONCE_MAX_AGE_MS) return null;
+
+  const claimedId = query.get("openid.claimed_id") ?? "";
+  const match = STEAM_ID_REGEX.exec(claimedId);
+  if (!match || query.get("openid.identity") !== claimedId) return null;
+
+  // Seuls les paramètres openid.* repartent vers Steam (jamais `state`).
+  const params = new URLSearchParams();
+  for (const [key, value] of query) {
+    if (key.startsWith("openid.")) params.append(key, value);
+  }
   params.set("openid.mode", "check_authentication");
 
   const res = await fetch(STEAM_OPENID_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
+    signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
   });
+  if (!res.ok) throw new Error(`Steam OpenID a répondu ${res.status}`);
   const text = await res.text();
-  if (!text.includes("is_valid:true")) return null;
-
-  const claimedId = query.get("openid.claimed_id");
-  if (!claimedId) return null;
-  const match = STEAM_ID_REGEX.exec(claimedId);
-  return match ? match[1] : null;
+  return text.split("\n").some((line) => line.trim() === "is_valid:true") ? match[1] : null;
 }
 
 export interface SteamOwnedGame {

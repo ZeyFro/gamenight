@@ -4,6 +4,7 @@ import {
   DiscordTokenEncryptionKeyError,
   encryptToken,
   getEncryptionKey,
+  isLegacyToken,
   resolveStoredToken,
 } from "@/lib/discord-token-crypto";
 
@@ -246,6 +247,8 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
             discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
           },
         });
+      } else {
+        await encryptLegacyTokens(user, accessToken, storedRefresh.value, encryptionKey);
       }
 
       if (!accessToken) {
@@ -394,6 +397,33 @@ export async function refreshAllDiscordProfiles(): Promise<{
 
   const bot = await refreshAllDiscordProfilesViaBotFor(usersToCheckViaBot, botToken);
   return { oauth, bot };
+}
+
+/**
+ * Migration paresseuse : un jeton stocké en clair (avant le chiffrement au
+ * repos) est LU tel quel puis réécrit chiffré ici, au passage du cron — un
+ * seul `update`, uniquement les champs encore en clair. Best-effort :
+ * l'échec est journalisé (jamais silencieux) et ne bloque pas le lot.
+ */
+async function encryptLegacyTokens(
+  user: { discordId: string; discordAccessToken: string | null; discordRefreshToken: string | null },
+  accessToken: string | null,
+  refreshToken: string,
+  key: Buffer
+): Promise<void> {
+  const data: { discordAccessToken?: string; discordRefreshToken?: string } = {};
+  if (user.discordAccessToken && accessToken && isLegacyToken(user.discordAccessToken)) {
+    data.discordAccessToken = encryptToken(accessToken, key);
+  }
+  if (user.discordRefreshToken && isLegacyToken(user.discordRefreshToken)) {
+    data.discordRefreshToken = encryptToken(refreshToken, key);
+  }
+  if (!data.discordAccessToken && !data.discordRefreshToken) return;
+  try {
+    await prisma.user.update({ where: { discordId: user.discordId }, data });
+  } catch (error) {
+    logger.error("discord-profile", error, { discordId: user.discordId, step: "encrypt-legacy-tokens" });
+  }
 }
 
 /**
