@@ -35,6 +35,10 @@ export const MATCH_CONFIDENCE_THRESHOLD = 0.85;
 /** Nombre de candidats traités par lot côté client (voir `FamilyImportForm.tsx`) — même ordre de grandeur que suggéré (10–20), avec le délai de `searchIgdbGames` (token Twitch caché, pas de délai artificiel ajouté ici : IGDB tolère largement ce débit). */
 export const FAMILY_IMPORT_BATCH_SIZE = 15;
 
+/** Plafonds d'un import collé : nombre de noms au total, et longueur d'un nom (au-delà : jamais cherché, à confirmer à la main). */
+export const FAMILY_IMPORT_MAX_NAMES = 500;
+export const FAMILY_IMPORT_MAX_NAME_LENGTH = 100;
+
 function normalizeGameName(name: string): string {
   return name
     .toLowerCase()
@@ -111,7 +115,7 @@ export function parseGameNamesFromText(text: string): string[] {
     const key = normalizeGameName(name);
     if (!seen.has(key)) seen.set(key, name);
   }
-  return Array.from(seen.values());
+  return Array.from(seen.values()).slice(0, FAMILY_IMPORT_MAX_NAMES);
 }
 
 export type FamilyMatchStatus = "matched" | "needsConfirmation";

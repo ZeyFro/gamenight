@@ -46,6 +46,21 @@ export function isRealDiscordFailure(result: PostToDiscordResult): boolean {
   return !result.ok && result.error !== WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY;
 }
 
+const MAX_MENTIONED_USERS = 100; // limite Discord pour allowed_mentions.users
+
+/**
+ * Mentions explicites : `parse: []` n'autorise rien d'implicite (jamais
+ * @everyone/@here/rôles) ; seuls les `<@id>` présents dans le contenu
+ * pinguent.
+ */
+export function webhookAllowedMentions(content?: string) {
+  const users = [...new Set([...(content ?? "").matchAll(/<@!?(\d+)>/g)].map((m) => m[1]))].slice(
+    0,
+    MAX_MENTIONED_USERS
+  );
+  return users.length ? { parse: [], users } : { parse: [] };
+}
+
 /**
  * Poste un message dans le salon Discord via `DISCORD_WEBHOOK_URL`. Ne
  * lève jamais d'exception : un échec (webhook absent, invalide, Discord
@@ -70,6 +85,7 @@ export async function postToDiscord(
       body: JSON.stringify({
         content: content || undefined,
         embeds: [embed],
+        allowed_mentions: webhookAllowedMentions(content),
       }),
     });
 

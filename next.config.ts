@@ -1,6 +1,38 @@
 import type { NextConfig } from "next";
 
+// CSP en Report-Only : observée dans la console du navigateur avant de
+// devenir bloquante. `'unsafe-inline'` (scripts/styles) : Next injecte des
+// scripts inline sans nonce — à resserrer avec des nonces si on passe en
+// mode bloquant. `img-src https:` : covers IGDB/Steam, avatars Discord et
+// bannières déjà enregistrées sur d'anciens hôtes.
+const isDev = process.env.NODE_ENV !== "production";
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "frame-src https://www.youtube-nocookie.com",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://discord.com https://steamcommunity.com",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const securityHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+  { key: "Content-Security-Policy-Report-Only", value: csp },
+];
+
 const nextConfig: NextConfig = {
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   images: {
     remotePatterns: [
       {

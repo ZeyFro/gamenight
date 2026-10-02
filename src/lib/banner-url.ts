@@ -18,14 +18,42 @@
 export const KLIPY_PAGE_URL_MESSAGE =
   "Ce lien est une page klipy, pas une image. Ouvre le GIF, clic droit → « Copier l'adresse de l'image » (le lien doit commencer par static.klipy.com), ou télécharge le fichier et utilise « Uploader une image ».";
 
+export const BANNER_HTTPS_MESSAGE = "L'adresse de l'image doit commencer par https://.";
+export const BANNER_HOST_MESSAGE =
+  "Cet hébergeur d'images n'est pas autorisé. Utilise « Uploader une image » ou un lien Discord, Klipy (static.klipy.com), Tenor, Giphy ou Imgur.";
+
+/**
+ * Hôtes autorisés pour une bannière collée (liste blanche : un `<img>`
+ * vers un hôte arbitraire divulgue l'IP/le navigateur de chaque visiteur
+ * du profil). Un nom listé autorise aussi ses sous-domaines.
+ */
+export const BANNER_ALLOWED_HOSTS = [
+  "static.klipy.com",
+  "cdn.discordapp.com",
+  "media.discordapp.net",
+  "imgur.com",
+  "tenor.com",
+  "giphy.com",
+  "images.igdb.com",
+  "cdn.akamai.steamstatic.com",
+  "public.blob.vercel-storage.com",
+] as const;
+
+function isAllowedBannerHost(host: string): boolean {
+  return BANNER_ALLOWED_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 /** `null` si l'URL est acceptable, sinon le message FR à afficher. Pure (aucun réseau). */
 export function findBannerUrlProblem(raw: string): string | null {
-  let host: string;
+  let url: URL;
   try {
-    host = new URL(raw.trim()).hostname.toLowerCase();
+    url = new URL(raw.trim());
   } catch {
     return null; // le format est validé ailleurs (`httpUrlSchema`)
   }
+  const host = url.hostname.toLowerCase();
   if (host === "klipy.com" || host === "www.klipy.com") return KLIPY_PAGE_URL_MESSAGE;
+  if (url.protocol !== "https:") return BANNER_HTTPS_MESSAGE;
+  if (!isAllowedBannerHost(host)) return BANNER_HOST_MESSAGE;
   return null;
 }

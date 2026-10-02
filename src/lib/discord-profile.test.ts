@@ -19,6 +19,7 @@ vi.mock("@/lib/discord-token-crypto", () => ({
   DiscordTokenEncryptionKeyError: class extends Error {},
   getEncryptionKey: () => Buffer.alloc(32),
   encryptToken: (value: string) => value,
+  isLegacyToken: () => false,
   resolveStoredToken: (value: string) => ({ ok: true, value }),
 }));
 
