@@ -1901,9 +1901,10 @@ ligne existe donc forcément avant le premier appel possible à la route.
   libérer **que son propre verrou** (comparaison sur ce `token`) — une
   exécution qui a dépassé le bail ne peut jamais écraser le verrou d'une
   exécution plus récente qui aurait déjà repris la main.
-- **Bail (TTL) = 90s** : la limite dure de durée d'exécution du plan
-  Vercel Hobby est de 60s (`maxDuration`, désormais déclarée explicitement
-  sur cette route comme sur les routes de backfill IGDB/Steam/actus) +
+- **Bail (TTL) = 90s** : le `maxDuration` explicite de cette route est de
+  60s (choix de route, pas le plafond du plan : défaut et maximum Vercel
+  de 300s sur Hobby avec Fluid compute ; déclaré comme sur les routes de
+  backfill IGDB/Steam/actus) +
   30s de marge pour la latence réseau et un éventuel écart d'horloge — une
   exécution ne peut de toute façon jamais dépasser 60s, donc un verrou
   plus vieux que le bail ne peut correspondre qu'à une exécution déjà
@@ -1924,7 +1925,7 @@ ligne existe donc forcément avant le premier appel possible à la route.
 avec un simple verrou à bail, hors scope de ce fix) :
 
 - **Doublon toujours possible** si une exécution dépasse elle-même le
-  bail (dans les faits jamais plus de 60s, la limite plateforme) : une
+  bail (dans les faits jamais plus de 60s, le `maxDuration` de la route) : une
   exécution suivante peut alors reprendre la main avant que la première
   ne soit réellement terminée. Le webhook Discord standard ne fournit
   aucun mécanisme d'idempotence (pas de clé de déduplication possible côté
@@ -8706,8 +8707,8 @@ Chaque livraison est réclamée et traitée **une par une**
 lot réservé d'avance, donc aucun bail ne peut expirer "en attendant son
 tour" dans un lot. `runExecutorBatch` s'arrête au premier des trois : plus
 rien à réclamer, `DEFAULT_MAX_DELIVERIES_PER_RUN` (25) atteint, ou
-`DEFAULT_BATCH_BUDGET_MS` (50s, sous le plafond dur de 60s du plan Vercel
-Hobby) épuisé. Aucun appel réseau n'est jamais fait à l'intérieur d'une
+`DEFAULT_BATCH_BUDGET_MS` (50s, sous le `maxDuration` explicite de 60s de
+la route) épuisé. Aucun appel réseau n'est jamais fait à l'intérieur d'une
 transaction SQL (hérité de `claimNextDelivery`, qui retourne avant tout
 appel Discord).
 
@@ -8720,7 +8721,7 @@ que le budget global du batch (`runExecutorBatch`) était presque épuisé
 pouvait engager un appel réseau dont le bail, lui, restait largement
 valide (30s par défaut) — un seul appel aurait alors pu, à lui seul,
 pousser l'exécution bien au-delà de `DEFAULT_BATCH_BUDGET_MS`, vers la
-limite dure de 60s de la plateforme. `runExecutorBatch` transmet
+`maxDuration` de 60s de la route. `runExecutorBatch` transmet
 maintenant sa propre échéance (`batchDeadline`) à `processNextDelivery` à
 CHAQUE appel ; la deadline effective (et donc celle transmise au client
 Discord) est `min(reservedUntil, batchDeadline) - MIN_CALL_MARGIN_MS`,
@@ -12573,25 +12574,27 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 
 Relevé route par route (`src/app/api/cron/*`, `src/app/api/backfill/*`). Toutes exigent
 `Authorization: Bearer <CRON_SECRET>` (`verifyCronRequest` : 503 sans secret, 401 si invalide).
-« non déclaré » = pas d'`export const maxDuration` dans la route (durée par défaut de la
-plateforme, non vérifiable dans le code). cron-job.org coupe à 30 s : les routes longues
+« non déclaré » = pas d'`export const maxDuration` dans la route : c'est alors le défaut Vercel,
+soit **300 s** sur Hobby avec Fluid compute (activé sur le projet ; doc Vercel « Duration limits »,
+mise à jour le 2026-08-24 : défaut 300 s, maximum 300 s). Les 60 s / 45 s déclarés plus bas sont des
+choix de route, pas le plafond du plan. Fréquences : celles réellement configurées sur cron-job.org. cron-job.org coupe à 30 s : les routes longues
 répondent donc `202` et travaillent dans `after()`.
 
-| Route | Méthodes | `maxDuration` | Mode | Fréquence conseillée | Log à surveiller |
+| Route | Méthodes | `maxDuration` | Mode | Fréquence (cron-job.org) | Log à surveiller |
 | :-- | :-- | :-- | :-- | :-- | :-- |
-| `/api/cron/close-sessions` | GET | non déclaré | synchrone | 15 min (commentaire de la route) | `cron:close-sessions` (erreurs par tâche/session) |
-| `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | 15 min (README § F7) | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
-| `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | non documentée dans le repo — à confirmer | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
-| `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | 15 min (README « Nettoyage automatique des fils ») | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
-| `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | non documentée dans le repo — à confirmer | `cron:retention-cleanup` (`Passage terminé.`) |
-| `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | ~2 min (commentaire de `steam.ts:245`) | `cron:steam-library-sync` |
-| `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 2 h (commentaire de la route) | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
-| `/api/cron/monthly-tasks` | GET | non déclaré | synchrone | 1×/jour (README « Saisons ») | `cron:monthly-tasks` |
-| `/api/cron/refresh-discord-profiles` | GET | non déclaré | synchrone | 1 h (commentaire de la route) | `cron:refresh-discord-profiles` |
-| `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 1×/jour (README « seed-reconcile ») | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
-| `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 1×/jour (README « Configurer le cron externe ») | `igdb-coop` (`Processing n/N`, `stopReason`) |
-| `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | 1×/jour (idem) | `steam-store` (`Processing n/N`) |
-| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | 1×/jour max (README « actus ») | `game-news` |
+| `/api/cron/close-sessions` | GET | non déclaré (défaut 300 s) | synchrone | toutes les 15 min | `cron:close-sessions` (erreurs par tâche/session) |
+| `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | toutes les 5 min | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
+| `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | chaque minute | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
+| `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | toutes les 15 min | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
+| `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
+| `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 5 min | `cron:steam-library-sync` |
+| `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
+| `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | 1×/jour (README « Saisons » ; heure non confirmée) | `cron:monthly-tasks` |
+| `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
+| `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
+| `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
+| `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |
+| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | 1×/jour max (README « actus » ; non confirmée sur cron-job.org) | `game-news` |
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
 

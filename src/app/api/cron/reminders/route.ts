@@ -15,13 +15,14 @@ import {
 } from "@/lib/reminders";
 
 /**
- * Borne dure de durée d'exécution du plan Vercel Hobby (60s) — même
- * convention que les routes de backfill IGDB/Steam/actus
+ * `maxDuration` EXPLICITE de 60s — même convention que les routes de
+ * backfill IGDB/Steam/actus
  * (`src/app/api/backfill/{igdb-coop,steam-store,game-news}/route.ts`).
- * Déclarée explicitement ici en plus (auparavant implicite, jamais
- * déclarée sur cette route) car c'est cette même limite de 60s qui sert
- * de base au bail du verrou `CronLock` (voir `src/lib/cron-lock.ts`) : une
- * exécution ne peut de toute façon jamais dépasser cette valeur.
+ * Ce n'est PAS le plafond du plan : sur Hobby avec Fluid compute, le défaut
+ * et le maximum Vercel sont de 300s (doc Vercel, « Duration limits »).
+ * Déclarée ici (auparavant implicite) car c'est cette valeur de 60s qui
+ * sert de base au bail du verrou `CronLock` (voir `src/lib/cron-lock.ts`) :
+ * une exécution ne peut de toute façon jamais dépasser cette valeur.
  */
 export const maxDuration = 60;
 

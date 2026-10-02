@@ -17,18 +17,19 @@ import { logger } from "@/lib/logger";
  * autre qu'un verrou légitimement détenu par une autre exécution en
  * cours — jamais d'envoi de rappels sans protection.
  *
- * Bail (TTL) = 90s, dérivé de la limite dure de durée d'exécution du plan
- * Vercel Hobby (60s, `maxDuration` — déjà utilisée telle quelle sur les
- * routes de backfill IGDB/Steam/actus) + 30s de marge pour la latence
- * réseau Neon et un éventuel écart d'horloge : PAS une valeur devinée. Une
- * exécution qui dépasserait 60s est de toute façon tuée par la
- * plateforme, donc un verrou plus vieux que ce bail ne peut correspondre
- * qu'à une exécution déjà morte.
+ * Bail (TTL) = 90s, dérivé du `maxDuration` EXPLICITE de 60s déclaré sur
+ * les routes qui prennent ce verrou (`reminders`, et comme elles les routes
+ * de backfill IGDB/Steam/actus) + 30s de marge pour la latence réseau Neon
+ * et un éventuel écart d'horloge : PAS une valeur devinée. Ce 60s est un
+ * choix de route, pas le plafond du plan (défaut et maximum Vercel : 300s
+ * sur Hobby avec Fluid compute). Une exécution qui dépasserait 60s est
+ * tuée par la plateforme, donc un verrou plus vieux que ce bail ne peut
+ * correspondre qu'à une exécution déjà morte.
  *
  * Limite assumée et documentée (pas de solution — impossible avec un
  * simple verrou à bail sans mécanisme de renouvellement/heartbeat, hors
  * scope de ce fix) : si une exécution dépasse elle-même le bail (dans les
- * faits jamais plus de 60s, la limite plateforme), une exécution suivante
+ * faits jamais plus de 60s, le `maxDuration` de la route), une exécution suivante
  * peut reprendre la main AVANT que la première ne se termine — un
  * doublon Discord reste alors possible pour les rappels encore en cours
  * d'envoi à ce moment précis. Le `token` garantit seulement qu'une

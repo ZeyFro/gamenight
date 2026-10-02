@@ -37,8 +37,8 @@ import { processInBatches } from "@/lib/cron-batch";
  * jusqu'à 2 appels Steam séquentiels (précis + repli) ×
  * `STEAM_ACTIVITY_CALL_TIMEOUT_MS` (6s) = 24s, sous les 30s du
  * déclencheur externe. `maxDuration` fixé à 45 (marge au-delà du pire cas
- * calculé pour absorber cold start + latence Prisma, toujours sous le
- * plafond dur de 60s du plan Vercel Hobby).
+ * calculé pour absorber cold start + latence Prisma). Valeur explicite,
+ * volontairement bien sous le défaut Vercel de 300s (Hobby, Fluid compute).
  */
 export const maxDuration = 45;
 
