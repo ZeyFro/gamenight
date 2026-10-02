@@ -5698,10 +5698,10 @@ seul l'appel change.
   ni le cache déjà en base (spec "si l'API est down → actus en cache, pas
   d'erreur").
 - `POST /api/backfill/game-news` (202 + `after()`, `CRON_SECRET`) — même
-  mécanique que `/api/backfill/igdb-coop`/`/steam-store`. **À ajouter au
-  même cron externe quotidien** que ces deux routes (voir § "Configurer
-  le cron externe" plus haut) : `https://ton-projet.vercel.app/api/backfill/game-news`,
-  `POST`, une fois par jour max — jamais appelé à un chargement de page.
+  mécanique que `/api/backfill/igdb-coop`/`/steam-store`. **Planifié sur
+  cron-job.org** : `https://ton-projet.vercel.app/api/backfill/game-news`,
+  `POST`, quotidien à 05:00 (testé : réponse 202) — jamais appelé à un
+  chargement de page.
 - `getRecentGameNews(5)` (`src/lib/home.ts`) — lit uniquement le cache
   `GameNews`, jamais l'API Steam ; comme le backfill ne peuple cette table
   que pour le top 10 du moment, un simple tri `publishedAt desc` global
@@ -6262,6 +6262,8 @@ Header  : Authorization: Bearer <CRON_SECRET>
 Fréquence : 1x par jour
 ```
 
+Planifié sur cron-job.org : quotidien à 03:30 (testé : succès).
+
 ### Fichiers modifiés/ajoutés
 
 - `prisma/schema.prisma` — `MonthlyRecap`, `Season`, `SeasonSnapshot`,
@@ -6635,7 +6637,7 @@ Aucun doublon constaté (chaque cron couvre une tâche distincte) :
 | Rappels de soirée | `/api/cron/reminders` | 15 min | Envoie les rappels Discord programmés (`Session.reminderTimings`) |
 | Sync bibliothèques Steam | `/api/cron/steam-library-sync` | 1h | Réimporte la biblio Steam de chaque compte lié, badges, détection d'achats wishlist |
 | Rafraîchissement profils Discord | `/api/cron/refresh-discord-profiles` | 1h | Avatar/pseudo de tout le monde via le bot Discord (contourne l'expiration du token OAuth individuel) |
-| Tâches mensuelles | `/api/cron/monthly-tasks` | 1x/jour | Clôture de saison si échue, génération du recap Wrapped du mois si le 1er |
+| Tâches mensuelles | `/api/cron/monthly-tasks` | quotidien à 03:30 | Clôture de saison si échue, génération du recap Wrapped du mois si le 1er |
 
 ### Fichiers modifiés/ajoutés
 
@@ -12589,12 +12591,12 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
 | `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 5 min | `cron:steam-library-sync` |
 | `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
-| `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | 1×/jour (README « Saisons » ; heure non confirmée) | `cron:monthly-tasks` |
+| `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 03:30 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
 | `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
 | `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
 | `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |
-| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | 1×/jour max (README « actus » ; non confirmée sur cron-job.org) | `game-news` |
+| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | quotidien à 05:00 | `game-news` |
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
 
