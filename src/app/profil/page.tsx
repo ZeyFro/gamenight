@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { accessibleSessionWhere } from "@/lib/session-access";
 import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
@@ -46,7 +47,7 @@ export default async function ProfilApercuPage() {
     recentXpEvents,
   ] = await Promise.all([
     prisma.session.findFirst({
-      where: { status: { in: ["VOTING", "SCHEDULED"] } },
+      where: { AND: [accessibleSessionWhere(user.id), { status: { in: ["VOTING", "SCHEDULED"] } }] },
       include: { decidedGame: true },
       orderBy: { date: "asc" },
     }),

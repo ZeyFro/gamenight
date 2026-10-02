@@ -47,7 +47,6 @@ describe("auth.ts — callback jwt", () => {
   it("session ancienne (> 12 h) : aucun appel à l'API Discord, quel que soit le nombre d'appels à auth()", async () => {
     const staleToken = {
       discordId: "123",
-      discordAccessToken: "tok",
       discordSyncedAt: Date.now() - 48 * 60 * 60 * 1000,
     };
 
@@ -57,5 +56,16 @@ describe("auth.ts — callback jwt", () => {
     }
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("connexion fraîche : le jeton d'accès Discord n'est PAS copié dans le JWT", async () => {
+    const token = await captured.config!.callbacks.jwt({
+      token: {},
+      profile: { id: "123" },
+      account: { access_token: "secret-access" },
+    });
+
+    expect(JSON.stringify(token)).not.toContain("secret-access");
+    expect(token.discordAccessToken).toBeUndefined();
   });
 });

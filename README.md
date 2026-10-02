@@ -125,6 +125,7 @@ Puis remplir chaque variable :
 | `DEEPL_API_KEY` | *(Optionnelle)* [deepl.com/pro-api](https://www.deepl.com/pro-api) → créer un compte gratuit (plan **Free**, 500k caractères/mois) → clé dans le compte, onglet API. Traduit en français la description IGDB de la fiche jeu. Sans cette variable : description affichée en anglais (VO), aucun crash. |
 | `CRON_SECRET` | *(Recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège toutes les routes `/api/cron/*`/`/api/backfill/*` — **absente = routes désactivées (503)**, voir la section dédiée pour la configuration du cron externe. |
 | `ADMIN_DISCORD_IDS` | Ton `discordId` (mode développeur Discord → clic droit sur ton profil → **Copier l'ID utilisateur**), et ceux d'autres admins si besoin, séparés par des virgules. Donne accès à `/admin` — voir la section « Rôle admin » ci-dessous. |
+| `AUTH_REQUIRE_GUILD_MEMBER` | *(Optionnelle)* `true` exact = un **nouveau** compte Discord doit être membre du serveur `DISCORD_BOT_GUILD_ID` (vérifié avec `DISCORD_BOT_TOKEN`, `GET /guilds/{id}/members/{user}`). Comptes déjà en base et `ADMIN_DISCORD_IDS` passent toujours ; erreur de vérification = refus (fail-closed). Le bot doit être dans le serveur. Absente = tout compte Discord peut se connecter. |
 
 Le tableau complet (variables V2, interrupteurs, défauts, fichier de lecture) est dans « V2 — Référence : variables d'environnement », en fin de document.
 
@@ -12528,6 +12529,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
+| `AUTH_REQUIRE_GUILD_MEMBER` | Porte d'accès : refuse un nouveau compte non membre du serveur `DISCORD_BOT_GUILD_ID` (exige aussi `DISCORD_BOT_TOKEN`) ; existants et admins exemptés, fail-closed | éteint | `src/auth.ts`, `src/lib/guild-member.ts` |
 | `DISCORD_BOT_SESSION_CHANNEL_ID` | Salon des soirées | absent | `src/lib/discord-bot-config.ts:34` |
 | `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | Salon des tournois | absent | `src/lib/discord-bot-config.ts:66` |
 | `DISCORD_BOT_TOKEN` | Jeton du bot (REST : fils, MP, rafraîchissement de profils en repli) | absent (⇒ `null`, bot inutilisable) | `src/lib/discord-rest.ts:162`, `src/lib/discord-profile.ts:380` |
