@@ -3,6 +3,8 @@ import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
+import { parseAdminDiscordIds } from "@/lib/admin-rules";
+import { isGuildMember } from "@/lib/guild-member";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -18,6 +20,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async signIn({ user, profile }) {
       if (!profile?.id) return false;
+
+      // Porte d'accès (opt-in, `true` exact) : un NOUVEAU compte doit être
+      // membre du serveur Discord. Comptes existants et admins passent
+      // toujours ; toute erreur de vérification refuse (fail-closed).
+      if (process.env.AUTH_REQUIRE_GUILD_MEMBER === "true") {
+        try {
+          const discordId = profile.id as string;
+          const known =
+            parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS).has(discordId) ||
+            (await prisma.user.findUnique({ where: { discordId }, select: { id: true } })) !== null;
+          if (!known) {
+            const guildId = process.env.DISCORD_BOT_GUILD_ID?.trim();
+            if (!guildId) throw new Error("DISCORD_BOT_GUILD_ID non configurée.");
+            if (!(await isGuildMember(discordId, guildId))) {
+              appLogger.warn("auth", "Connexion refusée : nouveau compte non membre du serveur.");
+              return false;
+            }
+          }
+        } catch (error) {
+          appLogger.error("auth", error, { discordId: profile.id });
+          return false;
+        }
+      }
 
       try {
         await prisma.user.upsert({
@@ -51,12 +76,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       // Connexion OAuth fraîche : `signIn` vient d'upserter des données à
-      // jour, on peut repousser le prochain rafraîchissement. On garde le
-      // jeton d'accès (scope `identify` déjà demandé par le provider) pour
-      // pouvoir rappeler `/users/@me` plus tard sans repasser par tout le
-      // flux OAuth.
+      // jour, on peut repousser le prochain rafraîchissement. Le jeton
+      // d'accès n'est volontairement PAS copié dans le JWT (cookie) : aucun
+      // lecteur, et un secret de moins dans le cookie. Seule sa copie
+      // chiffrée en base (ci-dessous) est utilisée, par le cron.
       if (account?.access_token) {
-        token.discordAccessToken = account.access_token;
         token.discordSyncedAt = Date.now();
 
         // Feature "forcer la reconnexion globale" — posé une seule fois,
@@ -82,9 +106,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // persistées chiffrées, soit rien n'est écrit (`getEncryptionKey`
         // lève si la clé est absente/invalide — capturé par le catch
         // ci-dessous comme n'importe quelle autre erreur best-effort).
-        // Ne recycle jamais `token.discordAccessToken` (déjà posé en clair
-        // dans le JWT ci-dessus, jamais exposé au client — voir
-        // `next-auth.d.ts`) : c'est bien la valeur DB qui est chiffrée ici.
         if (profile?.id && account.refresh_token) {
           try {
             const key = getEncryptionKey();
