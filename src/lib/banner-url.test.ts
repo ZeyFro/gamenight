@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bannerUrlSchema } from "@/lib/validations";
 import {
   BANNER_HOST_MESSAGE,
+  BANNER_PAGE_MESSAGE,
   BANNER_HTTPS_MESSAGE,
   findBannerUrlProblem,
   KLIPY_PAGE_URL_MESSAGE,
@@ -30,6 +31,17 @@ describe("findBannerUrlProblem", () => {
     "",
   ])("lien média d'un hébergeur autorisé / invalide (format validé ailleurs) accepté ici : %s", (url) => {
     expect(findBannerUrlProblem(url)).toBeNull();
+  });
+});
+
+describe("liens de PAGE Tenor/Giphy (pas des images)", () => {
+  it.each([
+    "https://tenor.com/view/chat-gif-123",
+    "https://www.tenor.com/view/x",
+    "https://giphy.com/gifs/chat-abc",
+    "https://www.giphy.com/gifs/x",
+  ])("refusé avec le message « lien de page » : %s", (url) => {
+    expect(findBannerUrlProblem(url)).toBe(BANNER_PAGE_MESSAGE);
   });
 });
 

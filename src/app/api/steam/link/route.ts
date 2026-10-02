@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidSession } from "@/lib/valid-session";
 import { getSteamAuthUrl } from "@/lib/steam";
 
-export const STEAM_STATE_COOKIE = "steam_link_state";
+const STEAM_STATE_COOKIE = "steam_link_state";
 
 export async function GET(request: NextRequest) {
   const session = await getValidSession();

@@ -32,6 +32,15 @@ describe("GET /api/steam/link", () => {
     expect(getSteamAuthUrl).not.toHaveBeenCalled();
   });
 
+  it("en https (prod) : cookie state marqué Secure", async () => {
+    getValidSession.mockResolvedValue({ user: { discordId: "user-1" } });
+    getSteamAuthUrl.mockReturnValue("https://steamcommunity.com/openid/login?fake=1");
+
+    const response = await GET(new NextRequest("https://gamenight.example/api/steam/link"));
+
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
   it("session valide → redirection vers l'URL d'auth Steam", async () => {
     getValidSession.mockResolvedValue({ user: { discordId: "user-1" } });
     getSteamAuthUrl.mockReturnValue("https://steamcommunity.com/openid/login?fake=1");

@@ -18,6 +18,12 @@
 export const KLIPY_PAGE_URL_MESSAGE =
   "Ce lien est une page klipy, pas une image. Ouvre le GIF, clic droit → « Copier l'adresse de l'image » (le lien doit commencer par static.klipy.com), ou télécharge le fichier et utilise « Uploader une image ».";
 
+export const BANNER_PAGE_MESSAGE =
+  "Ce lien est une page (Tenor ou Giphy), pas une image. Clic droit sur le GIF → « Copier l'adresse de l'image » (media.tenor.com, i.giphy.com…).";
+
+// Hôtes dont seules les PAGES HTML (pas les médias) vivent sur le domaine nu.
+const PAGE_HOSTS = ["tenor.com", "www.tenor.com", "giphy.com", "www.giphy.com"];
+
 export const BANNER_HTTPS_MESSAGE = "L'adresse de l'image doit commencer par https://.";
 export const BANNER_HOST_MESSAGE =
   "Cet hébergeur d'images n'est pas autorisé. Utilise « Uploader une image » ou un lien Discord, Klipy (static.klipy.com), Tenor, Giphy ou Imgur.";
@@ -53,6 +59,7 @@ export function findBannerUrlProblem(raw: string): string | null {
   }
   const host = url.hostname.toLowerCase();
   if (host === "klipy.com" || host === "www.klipy.com") return KLIPY_PAGE_URL_MESSAGE;
+  if (PAGE_HOSTS.includes(host)) return BANNER_PAGE_MESSAGE;
   if (url.protocol !== "https:") return BANNER_HTTPS_MESSAGE;
   if (!isAllowedBannerHost(host)) return BANNER_HOST_MESSAGE;
   return null;
