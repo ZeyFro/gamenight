@@ -2389,6 +2389,44 @@ que de compter dessus par hasard :
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
 
+## Architecture multi-communautés (fondations, PR A)
+
+Objectif : un serveur Discord = une communauté isolée. Cette première PR pose
+les fondations **sans changer le comportement** de l'app (migration
+**additive** uniquement, motif expand/contract : rien n'est retiré ni rendu
+obligatoire sur l'existant).
+
+| Élément | Rôle |
+| :-- | :-- |
+| `Community` | Une communauté : `slug` unique (futur `/c/[slug]/…`), `discordGuildId` unique, statut `PENDING` (bot ajouté, en attente d'activation) / `ACTIVE` / `SUSPENDED` / `LEFT` (bot retiré, `leftAt` = départ des 30 jours de conservation) / `ARCHIVED`. |
+| `CommunityChannelConfig` | Salon Discord par communauté et par catégorie (`SESSION`, `TOURNAMENT`) ; remplacera `DISCORD_BOT_*_CHANNEL_ID`. |
+| `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. Un seul OWNER actif (garanti en code). |
+| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de `/api/backfill/seed-reconcile`, idempotente) : crée la communauté `default` (ACTIVE, `discordGuildId` repris de `DISCORD_BOT_GUILD_ID` tant qu'il est vide) et un Membership pour chaque utilisateur qui n'en a pas. Ne modifie jamais un Membership existant. Rôles : premier `ADMIN_DISCORD_IDS` présent en base → OWNER, autres admins → ADMIN, le reste → MEMBER. |
+| `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
+| `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. Les 84 fichiers existants sont figés dans `EXISTING_EXCEPTIONS`, à vider au fil des PR de filtrage (jamais allonger). |
+
+Modèles collectifs (37) : les 35 du plan (soirées, votes, superlatifs, XP,
+saisons, tournois, chat, roulette, « Jouer maintenant », wishlist, succès et
+stats de groupe…) + `Badge` / `UserBadge` (catalogues copiés par
+communauté). Personnels : `User`, `UserGame`, disponibilités, préférences,
+notifications, tags, tierlist. Globaux : `Game`, `GameNews`, `CronLock`.
+
+Aucune nouvelle variable d'environnement. Après le déploiement, lancer une
+fois `/api/backfill/seed-reconcile` (ou attendre le passage quotidien) pour
+créer la communauté par défaut et les Memberships.
+
+Discord (vérifié dans la doc officielle, voir la PR) : l'ajout du bot émet
+le webhook d'événements `APPLICATION_AUTHORIZED` (`integration_type` 0 +
+`guild` + `user`) ; une installation serveur exige `MANAGE_GUILD` ;
+`GET /guilds/{id}/members/{user}` fonctionne sans l'intent privilégié
+`GUILD_MEMBERS` ; aucun webhook pour le retrait du bot (contrôle par cron via
+`GET /users/@me/guilds`).
+
+Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
+colonne `communityId` sur les modèles collectifs, filtrage des lectures,
+client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,
+suppression) : interdite tant qu'elle n'est pas explicitement validée.
+
 ## Structure du projet
 
 ```
