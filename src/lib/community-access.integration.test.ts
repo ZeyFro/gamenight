@@ -157,6 +157,23 @@ describe.skipIf(!TEST_DATABASE_URL)("community-access (Postgres isolée)", () =>
       else await expect(call).rejects.toThrow(NOT_FOUND);
     });
 
+    it("MEMBER actif qui demande ADMIN → 404, sans rien modifier en base", async () => {
+      const { user, community } = await setup({ role: "MEMBER" });
+      await expect(access.requireCommunityRole(community.id, "ADMIN")).rejects.toThrow(NOT_FOUND);
+      const membership = await db.membership.findUniqueOrThrow({
+        where: { communityId_userId: { communityId: community.id, userId: user.id } },
+      });
+      expect(membership).toMatchObject({ role: "MEMBER", status: "ACTIVE" });
+    });
+
+    it("ADMIN actif qui demande ADMIN → accès, renvoie user / membership / community", async () => {
+      const { user, community } = await setup({ role: "ADMIN" });
+      const result = await access.requireCommunityRole(community.id, "ADMIN");
+      expect(result.user.id).toBe(user.id);
+      expect(result.community.id).toBe(community.id);
+      expect(result.membership).toMatchObject({ userId: user.id, role: "ADMIN", status: "ACTIVE" });
+    });
+
     it("ADMIN dont le Membership est REMOVED → 404", async () => {
       const { community } = await setup({ role: "ADMIN", membership: "REMOVED" });
       await expect(access.requireCommunityRole(community.id, "MEMBER")).rejects.toThrow(NOT_FOUND);

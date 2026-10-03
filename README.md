@@ -2403,7 +2403,7 @@ obligatoire sur l'existant).
 | `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. Un seul OWNER actif (garanti en code). |
 | `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de `/api/backfill/seed-reconcile`, idempotente) : crée la communauté `default` (ACTIVE, `discordGuildId` repris de `DISCORD_BOT_GUILD_ID` tant qu'il est vide) et un Membership pour chaque utilisateur qui n'en a pas. Ne modifie jamais un Membership existant. Rôles : premier `ADMIN_DISCORD_IDS` présent en base → OWNER, autres admins → ADMIN, le reste → MEMBER. |
 | `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
-| `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. Les 84 fichiers existants sont figés dans `EXISTING_EXCEPTIONS`, à vider au fil des PR de filtrage (jamais allonger). |
+| `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. `EXISTING_EXCEPTIONS` fige **185 couples fichier/modèle** (84 fichiers, 37 modèles collectifs), à vider au fil des PR de filtrage (jamais allonger). |
 
 Modèles collectifs (37) : les 35 du plan (soirées, votes, superlatifs, XP,
 saisons, tournois, chat, roulette, « Jouer maintenant », wishlist, succès et
@@ -2421,6 +2421,16 @@ le webhook d'événements `APPLICATION_AUTHORIZED` (`integration_type` 0 +
 `GET /guilds/{id}/members/{user}` fonctionne sans l'intent privilégié
 `GUILD_MEMBERS` ; aucun webhook pour le retrait du bot (contrôle par cron via
 `GET /users/@me/guilds`).
+
+Angles morts du garde-fou (borne basse assumée, à couvrir par revue tant que
+le client scopé n’existe pas) :
+
+- **SQL brut** (`$queryRaw` / `$executeRaw`) sur des tables collectives,
+  présent dans 6 fichiers : `src/lib/retention.ts`, `src/lib/seasons.ts`,
+  `src/lib/tournaments.ts`, `src/lib/xp-bets.ts`,
+  `src/lib/notification-delivery.ts`, `src/app/tournois/actions.ts` ;
+- **`include` imbriqués** (`prisma.user.findMany({ include: { xpEvents: true } })`) ;
+- **scripts hors `src/`** (`prisma/*.mjs`), non analysés.
 
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,
