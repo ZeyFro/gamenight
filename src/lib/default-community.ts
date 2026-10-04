@@ -1,4 +1,4 @@
-import type { CommunityRole } from "@prisma/client";
+import type { Community, CommunityRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseAdminDiscordIds } from "@/lib/admin-rules";
 
@@ -11,6 +11,9 @@ import { parseAdminDiscordIds } from "@/lib/admin-rules";
  * à la main reste tel quel). Seule exception : `discordGuildId` est complété
  * depuis `DISCORD_BOT_GUILD_ID` tant qu'il est vide (décision : la communauté
  * par défaut garde sa configuration d'environnement au début).
+ *
+ * Seuls les utilisateurs sans AUCUN Membership (comptes historiques) sont
+ * rattachés à la communauté par défaut.
  *
  * Rôles des nouveaux Memberships : le premier `ADMIN_DISCORD_IDS` présent en
  * base devient OWNER s'il n'y a pas déjà un OWNER actif (un seul, garanti
@@ -27,16 +30,27 @@ export interface EnsureDefaultCommunityResult {
   membershipsCreated: number;
 }
 
-export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityResult> {
+/**
+ * Ligne `Community` par défaut seule (sans Memberships) : crée la communauté
+ * si elle manque et complète `discordGuildId` depuis `DISCORD_BOT_GUILD_ID`
+ * tant qu'il est vide. Ne modifie jamais le statut ni un serveur déjà
+ * renseigné. Appelée aussi par la porte de connexion (`src/auth.ts`) : avant
+ * le premier passage de `seed-reconcile`, sans elle la communauté par défaut
+ * n'aurait pas de serveur et tout nouveau compte serait refusé.
+ */
+export async function ensureDefaultCommunityRecord(): Promise<Community & { justCreated?: boolean }> {
   const guildId = process.env.DISCORD_BOT_GUILD_ID?.trim() || null;
 
-  // ponytail: deux passages strictement simultanés peuvent se heurter sur le
-  // slug unique ; le second échoue (journalisé par seed-reconcile) et le
-  // passage suivant réussit. Cron quotidien : un verrou n'en vaut pas la peine.
-  let community = await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG } });
-  let created = false;
-  if (!community) {
-    community = await prisma.community.create({
+  const existing = await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG } });
+  if (existing) {
+    if (!existing.discordGuildId && guildId) {
+      return prisma.community.update({ where: { id: existing.id }, data: { discordGuildId: guildId } });
+    }
+    return existing;
+  }
+
+  try {
+    const community = await prisma.community.create({
       data: {
         slug: DEFAULT_COMMUNITY_SLUG,
         name: DEFAULT_COMMUNITY_NAME,
@@ -45,17 +59,27 @@ export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityRe
         discordGuildId: guildId,
       },
     });
-    created = true;
-  } else if (!community.discordGuildId && guildId) {
-    community = await prisma.community.update({
-      where: { id: community.id },
-      data: { discordGuildId: guildId },
-    });
+    return Object.assign(community, { justCreated: true });
+  } catch (error) {
+    // Deux appels simultanés (premières connexions, ou cron) : le slug est
+    // unique, le perdant relit la ligne du gagnant.
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    const winner = await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG } });
+    if (!winner) throw error;
+    return winner;
   }
+}
+
+export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityResult> {
+  const { justCreated, ...community } = await ensureDefaultCommunityRecord();
+  const created = justCreated === true;
   const communityId = community.id;
 
+  // Seuls les utilisateurs SANS AUCUN Membership (comptes historiques) sont
+  // rattachés à la communauté par défaut : un compte confirmé uniquement sur
+  // un autre serveur (porte de connexion multi-serveurs) n'y entre pas.
   const usersWithout = await prisma.user.findMany({
-    where: { memberships: { none: { communityId } } },
+    where: { memberships: { none: {} } },
     select: { id: true, discordId: true, role: true },
   });
   if (usersWithout.length === 0) return { communityId, created, membershipsCreated: 0 };
