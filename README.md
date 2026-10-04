@@ -2075,6 +2075,26 @@ Vercel :
 [steam-store] Processing 8/48: Terraria...
 ```
 
+**Diagnostic « 25 jeux sur 134 ont `igdbDetailsFetchedAt` »** — le backfill n'a pas
+perdu sa logique : la phase 1 (remplissage des jeux ayant un `igdbId` sans fiche)
+existe, est testée avec 134 jeux, et progresse à chaque passage. Ce qui limitait
+le débit : chaque fiche coûte ≈ 1,5-2 s (IGDB + traduction DeepL + pause anti-limite
+de débit), soit **~28 fiches par passage de 50 s** (134 jeux = 5 passages). La route
+passe donc à `maxDuration = 300` / budget **240 s** (comme `seed-reconcile`) : un
+seul passage remplit ~130 fiches. En plus : chaque appel IGDB est borné à 15 s
+(une requête qui ne répond jamais ne bloque plus tout le passage), et une fiche en
+cache **sans date** (`igdbDetailsFetchedAt` null) est rafraîchie puis datée. Le cron
+externe (cron-job.org) n'a pas à changer : la route répond toujours 202.
+
+Un log de **couverture** est émis à chaque passage, pour suivre sans accès à la base :
+
+```
+[igdb-coop] Couverture IGDB : 25/134 fiche(s) datée(s), 109 restante(s), 0 introuvable(s), 0 en cache sans date.
+```
+
+(`introuvable` = IGDB ne connaît pas l'`igdbId`, retenté après 7 jours ; un nombre élevé
+signale des `igdbId` erronés plutôt qu'un problème de débit.)
+
 **Limite honnête assumée — couverture par bibliothèque, pas par appel**
 Sans marqueur de progression persisté en base (aucune nouvelle migration
 pour ça, comme le reste du chantier coop), un seul appel ne garantit pas
@@ -7480,6 +7500,12 @@ récupérerait que du HTML.
 - **Repli visuel** : `src/components/BannerImage.tsx` — `<img>` natif avec `onError` qui bascule sur le
   dégradé de secours (`bannerFallbackStyle`) au lieu d'un blanc silencieux (utilisé sur `/profil`
   et `/potes`).
+  Trois replis : (1) lien connu pour ne PAS être une image (page `klipy.com` / Tenor / Giphy déjà en
+  base, `isKnownNonImageBannerUrl`) → dégradé tout de suite, sans requête ; (2) échec **avant
+  l'hydratation** (rendu serveur : l'événement `error` d'un blocage rapide part avant que React ait
+  attaché `onError`) → rattrapé au montage par un `ref` (image terminée sans dimension) ; (3) échec
+  après hydratation → `onError`. L'échec est mémorisé **par URL** : une nouvelle bannière enregistrée
+  n'hérite plus de l'échec de l'ancienne. Vérifié en navigateur réel (CORP `same-origin`, 404, lien de page).
 - `klipy.com` figure aussi dans `images.remotePatterns` (`next.config.ts:27`) : utile pour
   `next/image`, mais **sans effet** sur un blocage CORP (qui frappe même un `<img>` natif).
 
@@ -7984,9 +8010,44 @@ la catégorie `private`.
 
 `precise` (timestamp exact) / `approximate` (repli, nom seul) / `none`
 (aucune activité récente) / `private` (profil privé) / `error` (Steam
-injoignable/timeout — ne touche jamais l'activité déjà en base). Jamais de
+injoignable/timeout — ne touche jamais l'activité déjà en base). Compteur
+supplémentaire `degraded` : sous-ensemble d'`approximate` quand
+`getOwnedGames` a échoué et que seul `getRecentlyPlayedGames` a répondu. Jamais de
 Steam ID ni de nom réel dans les logs, uniquement des compteurs par
 catégorie.
+
+### Diagnostic : « la dernière activité Steam n'apparaît pas sur /potes »
+
+Reproduit avec Steam simulé (`src/lib/steam-activity.integration.test.ts`,
+aucun appel réel). La carte n'affiche une ligne « 🎮 … » que si
+`User.lastPlayedGame` est renseigné ; voici toutes les causes, du code au
+compte Steam :
+
+| Cause | Effet | Corrigeable ici ? |
+| :-- | :-- | :-- |
+| **Détails de jeu privés** sur Steam (`GetOwnedGames` → `{response:{}}`) | catégorie `private`, activité effacée, `steamPublic=false` | Non — réglage du compte (Steam → Confidentialité → *Détails du jeu* : public) |
+| **Aucune partie sur les 2 dernières semaines** | catégorie `none`, rien affiché (fenêtre imposée par `GetRecentlyPlayedGames`) | Non — limite de l'API Steam |
+| **`GetOwnedGames` en échec** (timeout 6 s sur un gros catalogue, 429, 5xx) | **avant ce correctif : catégorie `error`, activité jamais écrite**, même si l'appel léger répondait | **Oui — corrigé** : repli dégradé sur `GetRecentlyPlayedGames` |
+| Cron `steam-library-sync` non appelé ou `STEAM_API_KEY` absente | `steamActivityCheckedAt` jamais posé | Non — configuration (cron-job.org / Vercel) |
+| Votre propre carte | la page `/potes` liste les AUTRES membres (`id: { not: user.id }`) | Voulu — votre activité est en tête de `/profil` |
+
+**Repli dégradé** (`refreshSteamActivity`) : si `getOwnedGames` échoue,
+`getRecentlyPlayedGames` (petit appel, officiel) est tenté. Liste non vide →
+activité « approximative » habituelle (`steamPublic` posé à `true`, la
+liste n'étant renvoyée que si les détails sont publics). Liste vide →
+ambigu (privé ? aucune partie ?) → `error` : l'activité déjà en base n'est
+**jamais** effacée sur un appel qui n'a pas pu distinguer les deux cas. Un
+profil réellement privé (`{response:{}}`) n'utilise jamais ce repli. Au plus
+2 appels Steam par compte : le calcul du pire cas du cron (24 s pour 5
+comptes) est inchangé.
+
+**Comment vérifier en production** (lecture seule) : la ligne de log
+`cron:steam-library-sync` donne un résumé par passage, par exemple
+`{"precise":0,"approximate":4,"none":1,"private":1,"error":0,"degraded":1,"rejected":0}`.
+Beaucoup de `error` ou de `degraded` = API Steam lente ou catalogues
+lourds ; beaucoup de `private` = comptes à régler côté Steam. Par compte :
+`steamPublic`, `steamActivityCheckedAt` (jamais posé = jamais atteint par le
+cron) et `lastPlayedGame`.
 
 ### Fichiers modifiés/ajoutés
 
@@ -12358,6 +12419,29 @@ immédiate du fil). Annuler un tournoi verrouille désormais aussi le fil
    `Authorization: Bearer <CRON_SECRET>`. Le cron `notification-executor`
    doit lui aussi tourner.
 
+### Archivage immédiat à la fin (drapeau optionnel)
+
+Sans rien d'autre, le fil est archivé au passage cron **suivant** la fin
+(au plus ~15 min). Le drapeau **`DISCORD_THREAD_CLOSE_ON_END_ENABLED=true`**
+(éteint par défaut, exactement `true`) programme l'archivage **dès** que la
+soirée passe `DONE`/`CANCELLED` ou que le tournoi passe `DONE`
+(`src/lib/thread-close-on-end.ts`). C'est la même décision que le cron
+(`decideThreadCleanup`), prise plus tôt, et rien d'autre ne change :
+
+- le drapeau ne fait **rien tout seul** : il exige aussi
+  `DISCORD_THREAD_CLEANUP_ENABLED=true` et `DISCORD_THREAD_CLEANUP_MODE=execute`
+  (en dry-run ou nettoyage éteint, aucun fil n'est touché) ;
+- **jamais sans fil réellement créé** : l'archivage serait sinon refusé
+  définitivement ; le cron rattrape ce cas plus tard ;
+- appelé **après** le commit de la clôture : une panne est journalisée
+  (`thread-close-on-end`), jamais remontée à la clôture, et le cron reste le
+  filet de sécurité ;
+- la **suppression à 24 h**, les réessais, les échecs Discord (fil déjà
+  supprimé 404 / code 10003, permission manquante 403) et l'idempotence sont
+  ceux du chemin existant. L'annulation d'un tournoi archivait déjà
+  immédiatement le fil (inchangé) ; la suppression manuelle d'une soirée ou
+  d'un tournoi garde son chemin propre.
+
 Au premier passage en `execute`, toutes les soirées/tournois déjà terminés
 avec un fil bot sont archivés ; leur suppression suit 24 h plus tard (les
 tournois annulés avant cette PR, déjà archivés, sont supprimés dès le
@@ -12526,6 +12610,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_DM_ROULETTE_ENABLED` | Création de nouveaux MP de roulette | éteint | `src/lib/discord-bot-config.ts:124` |
 | `DISCORD_THREAD_CLEANUP_ENABLED` | Active `/api/cron/discord-thread-cleanup` (sinon `{enabled:false, dryRun:true, report:null}`) | éteint | `src/app/api/cron/discord-thread-cleanup/route.ts:33` |
 | `DISCORD_THREAD_CLEANUP_MODE` | `execute` = archive/supprime réellement les fils ; toute autre valeur = dry-run (rapport seul) | dry-run | `src/app/api/cron/discord-thread-cleanup/route.ts:37` |
+| `DISCORD_THREAD_CLOSE_ON_END_ENABLED` | `true` = archive le fil dès la fin de la soirée/du tournoi au lieu d'attendre le cron ; sans effet si `DISCORD_THREAD_CLEANUP_ENABLED` n'est pas `true` et `DISCORD_THREAD_CLEANUP_MODE` n'est pas `execute` | éteint | `src/lib/thread-close-on-end.ts` |
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
@@ -12596,11 +12681,13 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 03:30 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
 | `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
-| `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
+| `/api/backfill/igdb-coop` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
 | `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |
 | `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | quotidien à 05:00 | `game-news` |
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
+
+**Sonde de santé** : `GET /api/health` (`Authorization: Bearer <CRON_SECRET>`, mêmes codes que les crons : 503 sans `CRON_SECRET`, 401 si mauvais en-tête) répond `200 {"ok":true,"db":"ok"}` si la base répond à un `SELECT 1`, `503 {"ok":false,"db":"error"}` sinon. À brancher sur un monitoring externe (alerte si non-200) ; aucune donnée métier ni secret dans la réponse. Aucun cron n'est configuré par le dépôt.
 
 ## Titres de page (drapeau `PAGE_TITLES_ENABLED`)
 

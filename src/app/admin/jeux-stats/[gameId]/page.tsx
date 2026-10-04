@@ -272,7 +272,7 @@ export default async function GameStatsAdminPage({
                             className={`${INPUT_CLASS} w-20 bg-surface`}
                           />
                         </div>
-                        <Button type="submit" variant="secondary" size="sm">
+                        <Button type="submit" variant="secondary" size="sm" aria-label="Enregistrer la récompense">
                           ✓
                         </Button>
                       </form>
@@ -280,7 +280,7 @@ export default async function GameStatsAdminPage({
                         <form action={deleteSuperlative}>
                           <input type="hidden" name="id" value={s.id} />
                           <input type="hidden" name="gameId" value={game.id} />
-                          <Button type="submit" variant="destructive" size="sm">
+                          <Button type="submit" variant="destructive" size="sm" aria-label="Supprimer la récompense">
                             ✕
                           </Button>
                         </form>
@@ -302,11 +302,12 @@ export default async function GameStatsAdminPage({
                     <input type="hidden" name="gameStatTypeId" value={stat.id} />
                     <input
                       name="name"
+                      aria-label="Nom de la récompense"
                       placeholder="ex. 🐛 Bouffé par le grouille"
                       required
                       className={`min-w-0 flex-1 ${INPUT_CLASS}`}
                     />
-                    <select name="rule" defaultValue="MAX" className={SELECT_CLASS}>
+                    <select name="rule" aria-label="Règle" defaultValue="MAX" className={SELECT_CLASS}>
                       {Object.entries(RULE_LABELS).map(([value, label]) => (
                         <option key={value} value={value}>
                           {label}
@@ -315,6 +316,7 @@ export default async function GameStatsAdminPage({
                     </select>
                     <input
                       name="xpReward"
+                      aria-label="XP"
                       type="number"
                       min={0}
                       defaultValue={20}

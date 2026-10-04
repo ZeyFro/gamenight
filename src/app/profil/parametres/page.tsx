@@ -156,6 +156,7 @@ export default async function ProfilParametresPage({
                   <input type="hidden" name="tagId" value={tag.id} />
                   <button
                     type="submit"
+                    aria-pressed={active}
                     className="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
                     style={
                       active
@@ -178,6 +179,7 @@ export default async function ProfilParametresPage({
               type="text"
               name="name"
               maxLength={24}
+              aria-label="Nom du nouveau tag"
               placeholder="Nouveau tag (ex. Retro)"
               className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             />

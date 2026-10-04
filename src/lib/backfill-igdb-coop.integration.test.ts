@@ -246,10 +246,12 @@ describe.skipIf(!TEST_DATABASE_URL)("runIgdbCoopBackfill (Postgres isolé + IGDB
     await db.game.create({
       data: { name: "Trop tard", source: "MANUAL", addedById: user.id, igdbId: 4242 },
     });
-    // Premier appel (startedAt) = maintenant, les suivants = +60 s.
+    // Premier appel (startedAt) = maintenant, les suivants = budget dépassé.
     const real = Date.now();
     let calls = 0;
-    const spy = vi.spyOn(Date, "now").mockImplementation(() => (calls++ === 0 ? real : real + 60_000));
+    const spy = vi.spyOn(Date, "now").mockImplementation(() =>
+      calls++ === 0 ? real : real + lib.IGDB_COOP_TIME_BUDGET_MS + 1_000
+    );
     try {
       const summary = await lib.runIgdbCoopBackfill();
       expect(summary.stopReason).toBe("time_budget");

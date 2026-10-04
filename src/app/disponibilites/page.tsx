@@ -114,8 +114,9 @@ export default async function DisponibilitesPage() {
                 >
                   <input type="hidden" name="dayOfWeek" value={dayOfWeek} />
                   <div className="flex flex-1 flex-col gap-1">
-                    <label className="text-xs text-muted">Début</label>
+                    <label className="text-xs text-muted" htmlFor={`weekly-start-${dayOfWeek}`}>Début</label>
                     <input
+                      id={`weekly-start-${dayOfWeek}`}
                       type="time"
                       name="startTime"
                       required
@@ -123,8 +124,9 @@ export default async function DisponibilitesPage() {
                     />
                   </div>
                   <div className="flex flex-1 flex-col gap-1">
-                    <label className="text-xs text-muted">Fin</label>
+                    <label className="text-xs text-muted" htmlFor={`weekly-end-${dayOfWeek}`}>Fin</label>
                     <input
+                      id={`weekly-end-${dayOfWeek}`}
                       type="time"
                       name="endTime"
                       required

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { isKnownNonImageBannerUrl } from "@/lib/banner-url";
 import { bannerFallbackStyle } from "@/lib/user-color";
 
 /**
@@ -18,9 +19,26 @@ import { bannerFallbackStyle } from "@/lib/user-color";
  * navigateur — `referrerPolicy` compris, posé ci-dessous à tout hasard
  * pour les hébergeurs qui bloquent plutôt sur la présence d'un Referer —
  * ne contourne un vrai blocage CORP). Le vrai fix accessible ici : ne
- * plus jamais laisser un chargement raté invisible, `onError` bascule
+ * plus jamais laisser un chargement raté invisible, un échec bascule
  * sur le même dégradé de secours (`bannerFallbackStyle`) que l'absence de
  * bannière.
+ *
+ * Trois cas de repli, du plus sûr au plus tardif :
+ *   1. lien connu pour NE PAS être une image (page klipy / Tenor / Giphy,
+ *      déjà en base avant le refus à l'écriture) : dégradé tout de suite, sans
+ *      requête (`isKnownNonImageBannerUrl`) ;
+ *   2. échec AVANT l'hydratation : la page est rendue côté serveur, le
+ *      navigateur lance le chargement dès le HTML reçu et un blocage rapide
+ *      (CORP, 404) déclenche `error` avant que React ait attaché `onError` —
+ *      l'événement est perdu. Le `ref` rattrape ce cas au montage (image déjà
+ *      terminée mais sans aucune dimension) ;
+ *   3. échec APRÈS l'hydratation : `onError`.
+ * L'échec est mémorisé PAR URL : si `url` change (nouvelle bannière
+ * enregistrée alors que le composant reste monté), l'ancien échec ne condamne
+ * pas la nouvelle image au dégradé de secours.
+ *
+ * Limite assumée du cas 2 : un SVG sans dimensions intrinsèques serait pris
+ * pour un échec ; les bannières sont des images matricielles (GIF/PNG/JPEG).
  */
 export function BannerImage({
   url,
@@ -31,9 +49,9 @@ export function BannerImage({
   color: string;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  if (!url || failed) {
+  if (!url || failedUrl === url || isKnownNonImageBannerUrl(url)) {
     return <div className={className} style={bannerFallbackStyle(color)} />;
   }
 
@@ -43,7 +61,12 @@ export function BannerImage({
       src={url}
       alt=""
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      ref={(img) => {
+        if (img && img.complete && img.naturalWidth === 0 && img.naturalHeight === 0) {
+          setFailedUrl(url);
+        }
+      }}
+      onError={() => setFailedUrl(url)}
       className={`object-cover ${className}`}
     />
   );

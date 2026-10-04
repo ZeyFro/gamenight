@@ -19,6 +19,7 @@ import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { logger } from "@/lib/logger";
+import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Session, SessionStatus, User } from "@prisma/client";
@@ -318,6 +319,7 @@ export async function closeSession(
       data: { status: "CANCELLED" },
     });
     if (result.count !== 1) return null;
+    await closeThreadOnEndSafely("session", sessionId);
     return { discord: null };
   }
 
@@ -367,6 +369,7 @@ async function closeAsCancelled(
 ): Promise<CloseSessionResult | null> {
   const claimed = await claimSessionCloseWithAnnounce(sessionId, announceViaBot, { status: "CANCELLED" }, null);
   if (!claimed) return null;
+  await closeThreadOnEndSafely("session", sessionId);
   const discord = announceViaBot ? { ok: true as const } : await announceSessionResult(session, null, false);
   return { discord };
 }
@@ -563,6 +566,7 @@ export async function cancelSession(sessionId: string): Promise<void> {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
     }
   });
+  await closeThreadOnEndSafely("session", sessionId);
 }
 
 export async function markSessionDone(
@@ -623,6 +627,10 @@ export async function markSessionDone(
     return updated;
   });
   if (!decided) return { unlockedAchievements: [] };
+
+  // Archivage immédiat du fil (drapeau DISCORD_THREAD_CLOSE_ON_END_ENABLED,
+  // éteint par défaut) — voir src/lib/thread-close-on-end.ts.
+  await closeThreadOnEndSafely("session", sessionId);
 
   // PR 5/9 — ouvre la fenêtre de vote de superlatifs entre potes dès que
   // la session passe DONE (voir src/lib/superlative-voting.ts).
