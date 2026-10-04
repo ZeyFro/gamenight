@@ -12552,6 +12552,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_WEBHOOK_URL` | Webhook historique (annonces hors chemin bot, rappels, recap mensuel) ; absent = dégradation propre | absent | `src/lib/discord.ts:60` |
 | `ADMIN_DISCORD_IDS` | `discordId` des admins, séparés par des virgules | aucun admin | `src/lib/admin.ts:27` |
 | `STEAM_API_KEY` | Import de bibliothèque / activité Steam | absent | `src/lib/steam.ts:88`, `:153` |
+| `STEAM_NOW_PLAYING_ENABLED` | `true` = « 🟢 En jeu · X » sur `/potes` (un appel `GetPlayerSummaries` groupé par passage de `steam-library-sync`) ; sinon aucun appel, aucune écriture, aucun affichage | éteint | `src/lib/steam-now-playing.ts` |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | IGDB via Twitch (recherche, fiche jeu, backfill Coop) ; absentes = backfill sauté (log `warn`) | absentes | `src/lib/igdb.ts:13-14`, `src/lib/backfill-igdb-coop.ts:87` |
 | `DEEPL_API_KEY` | Traduction FR des descriptions IGDB (optionnelle) | absente = description en VO | `src/lib/deepl.ts:17` |
 | `BLOB_READ_WRITE_TOKEN` | Upload d'images de bannière (Vercel Blob) ; absent = upload désactivé | absent | `src/app/profil/actions.ts:194`, `src/app/profil/parametres/page.tsx:122` |
@@ -12602,6 +12603,32 @@ répondent donc `202` et travaillent dans `after()`.
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
 
+## Indicateur « 🟢 En jeu » sur /potes (drapeau `STEAM_NOW_PLAYING_ENABLED`)
+
+Demande de Yuichiro. **Éteint par défaut** : sans la variable, aucun appel
+Steam de plus, aucune écriture, aucun changement à l'écran.
+
+**Pourquoi un appel de plus** : l'activité déjà récupérée (`GetOwnedGames`,
+`GetRecentlyPlayedGames`) décrit un passé (minutes jouées sur 2 semaines,
+aucun horodatage fiable en production) ; le libellé « Joue à » avait déjà
+été retiré une fois parce qu'il prétendait à tort une activité en cours. Seul
+`ISteamUser/GetPlayerSummaries` (champ `gameextrainfo`, présent pendant une
+partie) donne l'état courant.
+
+| Élément | Détail |
+| :-- | :-- |
+| Données | `User.steamNowPlaying` (nom du jeu) et `User.steamNowPlayingSeenAt` (horodatage réel de la dernière observation « en jeu »), nullables — migration additive `20261003120000_add_steam_now_playing` |
+| Rafraîchissement | `refreshSteamNowPlaying` (`src/lib/steam-now-playing.ts`), appelé par `/api/cron/steam-library-sync` **en parallèle** des lots d'activité : un seul appel pour tous les comptes liés (100 par lot), donc ~720 appels/jour à la cadence de 2 min, très en deçà des quotas Steam ; le pire cas de durée de la route ne change pas |
+| Écriture | en jeu → nom + horodatage ; appel réussi mais pas en jeu → `null` ; échec Steam → **rien n'est écrit** ; compte absent de la réponse → inchangé |
+| Affichage | `/potes` : pastille violette « En jeu · X » (`NowPlayingBadge`) à la place de la ligne « A joué récemment », **seulement** si l'observation a moins de 10 min (`NOW_PLAYING_FRESH_MS`) : un cron arrêté éteint l'indicateur tout seul |
+| Limite | Steam ne renvoie le jeu en cours que si les « Détails du jeu » du profil sont publics ; un compte privé n'apparaît jamais « en jeu » |
+
+Activation : (1) merger la migration (`prisma migrate deploy` au build) ;
+(2) poser `STEAM_NOW_PLAYING_ENABLED=true` ; (3) le cron `steam-library-sync`
+(déjà en place, toutes les ~2 min) fait le reste. La réponse de la route
+contient `nowPlaying: { enabled, checked, playing, error }`, et un log
+`en jeu maintenant — …` à chaque passage quand le drapeau est actif.
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont
@@ -12613,5 +12640,5 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Récaps et récompenses Discord | Le recap mensuel existe déjà, via le webhook (`src/lib/monthly-recap.ts:3`, `postToDiscord`) ; la V2 s'est concentrée sur le chemin bot (fils, MP, nettoyage, « Jouer maintenant ») | Porter recap/récompenses sur le chemin bot (nouvelle catégorie `NotificationCategory` → migration additive, résolveur dans l'executor, interrupteur dédié) |
 | Multi-serveur Discord | Un seul serveur est supposé partout : `DISCORD_BOT_GUILD_ID` unique (`discord-bot-config.ts:33`, `:65`) et préfixe de slot figé `default-guild` (`session-announce.ts`, `tournament-announce.ts`, `discord-dm.ts`) | Config serveur/salon par groupe (modèle + migration), `targetSlot` par serveur, permissions bot par serveur, rattachement utilisateur → serveur |
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
-| Indicateur « en jeu maintenant » sur `/potes` | L'activité Steam actuelle vient de `GetRecentlyPlayedGames` (`steam.ts:157`), qui n'indique pas la partie en cours | Appel `GetPlayerSummaries` (jeu courant), nouveau champ sur `User` + migration additive, cadence de rafraîchissement compatible avec les quotas Steam et cron-job.org (30 s) |
+| ~~Indicateur « en jeu maintenant » sur `/potes`~~ | **Fait derrière le drapeau `STEAM_NOW_PLAYING_ENABLED`** (éteint par défaut) : `GetPlayerSummaries` en un appel groupé par passage de `steam-library-sync`, deux colonnes nullables sur `User` (migration additive `20261003120000_add_steam_now_playing`). Voir « Indicateur en jeu maintenant » | À activer et vérifier en production |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |

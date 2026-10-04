@@ -16,6 +16,8 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
+import { activeNowPlaying, isNowPlayingEnabled } from "@/lib/steam-now-playing";
+import { NowPlayingBadge } from "@/components/NowPlayingBadge";
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   return (
@@ -44,6 +46,8 @@ export default async function PotesPage() {
       steamId64: true,
       lastPlayedGame: true,
       lastPlayedAt: true,
+      steamNowPlaying: true,
+      steamNowPlayingSeenAt: true,
       // Sprint 3 (FEATURE 6) — chips de tags sur la carte pote.
       userTags: { select: { tag: { select: { id: true, name: true } } } },
     },
@@ -81,6 +85,8 @@ export default async function PotesPage() {
   // corps du composant casserait la pureté React Compiler, cf. convention
   // déjà établie ailleurs dans l'app).
   const now = nowMs();
+  // « En jeu maintenant » : nouveau drapeau, éteint par défaut (alors rien ne change).
+  const nowPlayingEnabled = isNowPlayingEnabled();
 
   return (
     <PullToRefresh>
@@ -108,6 +114,9 @@ export default async function PotesPage() {
               pote.lastPlayedAt,
               now
             );
+            const nowPlaying = nowPlayingEnabled
+              ? activeNowPlaying(pote.steamNowPlaying, pote.steamNowPlayingSeenAt, now)
+              : null;
             return (
               <StaggerItem key={pote.id}>
                 <Link href={`/potes/${pote.id}`}>
@@ -178,7 +187,9 @@ export default async function PotesPage() {
                         {pote.steamId64 ? "Steam lié" : "Steam non lié"}
                       </Badge>
 
-                      {pote.steamId64 && steamActivityLabel && (
+                      {pote.steamId64 && nowPlaying && <NowPlayingBadge game={nowPlaying} />}
+
+                      {pote.steamId64 && !nowPlaying && steamActivityLabel && (
                         <p className="text-xs text-muted">🎮 {steamActivityLabel}</p>
                       )}
 

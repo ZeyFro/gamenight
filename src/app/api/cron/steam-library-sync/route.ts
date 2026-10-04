@@ -4,6 +4,7 @@ import { refreshSteamActivity, type SteamActivityCategory } from "@/lib/steam";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { processInBatches } from "@/lib/cron-batch";
+import { refreshSteamNowPlaying } from "@/lib/steam-now-playing";
 
 /**
  * Fix "cron Steam surdimensionné" (activité Steam absente chez les autres
@@ -66,6 +67,12 @@ export async function GET(request: Request) {
     orderBy: { steamActivityCheckedAt: { sort: "asc", nulls: "first" } },
   });
 
+  // « En jeu maintenant » (drapeau STEAM_NOW_PLAYING_ENABLED, éteint par
+  // défaut : alors aucun appel, aucune écriture) — UN seul appel groupé lancé
+  // EN PARALLÈLE des lots d'activité : le pire cas de durée de la route (calculé
+  // ci-dessus) n'augmente pas, et cette promesse ne rejette jamais.
+  const nowPlayingPromise = refreshSteamNowPlaying(users);
+
   const { results, processedCount } = await processInBatches(
     users,
     BATCH_SIZE,
@@ -100,9 +107,15 @@ export async function GET(request: Request) {
     `${processedCount}/${users.length} compte(s) traité(s) — ${JSON.stringify(summary)}`
   );
 
+  const nowPlaying = await nowPlayingPromise;
+  if (nowPlaying.enabled) {
+    logger.info("cron:steam-library-sync", `en jeu maintenant — ${JSON.stringify(nowPlaying)}`);
+  }
+
   return NextResponse.json({
     total: users.length,
     processed: processedCount,
     summary,
+    nowPlaying,
   });
 }

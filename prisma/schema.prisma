@@ -252,6 +252,19 @@ model User {
   lastPlayedGame String?
   lastPlayedAt   DateTime?
 
+  // « En jeu maintenant » sur /potes (drapeau STEAM_NOW_PLAYING_ENABLED,
+  // src/lib/steam-now-playing.ts) — contrairement à `lastPlayedGame`
+  // (passé, GetRecentlyPlayedGames), ceci est l'état COURANT, lu par un seul
+  // appel groupé `GetPlayerSummaries` par passage du cron léger
+  // `steam-library-sync` : nom du jeu en cours (`gameextrainfo`) et
+  // horodatage RÉEL de la dernière observation « en jeu ». Les deux sont
+  // remis à `null` quand l'appel réussit et que le compte n'est pas en jeu ;
+  // jamais touchés si l'appel échoue. L'affichage exige une observation
+  // récente (voir `activeNowPlaying`) : un cron arrêté ne laisse jamais
+  // « en jeu » affiché indéfiniment.
+  steamNowPlaying       String?
+  steamNowPlayingSeenAt DateTime?
+
   // Sprint 4 (Saisons mensuelles) — voir `SeasonSnapshot`.
   seasonSnapshots SeasonSnapshot[]
 
