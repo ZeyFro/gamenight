@@ -5,6 +5,7 @@ import {
   computeSteamActivityUpdate,
   formatSteamActivityLabel,
   categorizeActivityOutcome,
+  categorizeRecentOnlyOutcome,
   buildActivityRefreshWrite,
   STEAM_ACTIVITY_CALL_TIMEOUT_MS,
   type SteamOwnedGame,
@@ -271,5 +272,20 @@ describe("pire cas théorique du cron léger (arithmétique figée)", () => {
     expect(batchCount).toBe(2);
     expect(worstCaseMs).toBe(24_000);
     expect(worstCaseMs).toBeLessThan(30_000);
+  });
+});
+
+describe("categorizeRecentOnlyOutcome (repli dégradé : GetOwnedGames a échoué)", () => {
+  it("parties récentes : activité approximative, jeu au plus grand playtime_2weeks", () => {
+    expect(
+      categorizeRecentOnlyOutcome([
+        { appid: 1, name: "A", playtime_2weeks: 10 },
+        { appid: 2, name: "B", playtime_2weeks: 200 },
+      ])
+    ).toEqual({ category: "approximate", lastPlayedGame: "B" });
+  });
+
+  it("liste vide : ambigu (privé ou aucune partie) → error, JAMAIS « none » qui effacerait l'activité", () => {
+    expect(categorizeRecentOnlyOutcome([])).toEqual({ category: "error" });
   });
 });
