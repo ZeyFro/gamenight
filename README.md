@@ -12615,3 +12615,12 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
 | Indicateur « en jeu maintenant » sur `/potes` | L'activité Steam actuelle vient de `GetRecentlyPlayedGames` (`steam.ts:157`), qui n'indique pas la partie en cours | Appel `GetPlayerSummaries` (jeu courant), nouveau champ sur `User` + migration additive, cadence de rafraîchissement compatible avec les quotas Steam et cron-job.org (30 s) |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
+
+## Collecte des violations CSP (drapeau `CSP_REPORT_ENABLED`)
+
+La CSP est envoyée en `Content-Security-Policy-Report-Only` (`src/lib/csp-policy.ts`, utilisée par `next.config.ts`). **Éteint par défaut** : actif uniquement si `CSP_REPORT_ENABLED` vaut exactement `true`, auquel cas la politique ajoute `report-uri /api/csp-report` et la route `POST /api/csp-report` journalise chaque violation signalée par un navigateur (ligne `csp-report` dans les logs Vercel, niveau `warn`). Sans le drapeau, la politique est inchangée et la route répond 404.
+
+- **Redéploiement nécessaire** après un changement du drapeau : les en-têtes sont calculés au démarrage/build.
+- **Point d'entrée public** (les navigateurs n'ont pas de session) donc borné : corps limité à 16 Ko (413), 60 rapports par minute et par instance (429), aucun stockage en base.
+- **Données minimales** : seuls `document-uri`, `blocked-uri`, `violated-directive`, `effective-directive`, `source-file`, `disposition` et `line-number` sont gardés ; les URI sont tronquées avant `?` et `#`, `script-sample` et la politique d'origine sont ignorés.
+- Étape 1 du plan « CSP bloquante » (`docs/rapport-csp-bloquant.md`) : observer 1 à 2 semaines avant de bloquer.

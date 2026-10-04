@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { buildCsp, isCspReportEnabled } from "./src/lib/csp-policy";
 
 // CSP en Report-Only : observée dans la console du navigateur avant de
 // devenir bloquante. `'unsafe-inline'` (scripts/styles) : Next injecte des
@@ -6,20 +7,7 @@ import type { NextConfig } from "next";
 // mode bloquant. `img-src https:` : covers IGDB/Steam, avatars Discord et
 // bannières déjà enregistrées sur d'anciens hôtes.
 const isDev = process.env.NODE_ENV !== "production";
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "frame-src https://www.youtube-nocookie.com",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self' https://discord.com https://steamcommunity.com",
-  "frame-ancestors 'none'",
-].join("; ");
+const csp = buildCsp({ isDev, reportEnabled: isCspReportEnabled() });
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
