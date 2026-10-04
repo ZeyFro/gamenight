@@ -2,6 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
 import { RecapWrapped } from "@/components/RecapWrapped";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Récap du mois");
 
 export default async function RecapPage({
   params,

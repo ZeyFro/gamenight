@@ -10,6 +10,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantSessionCreateForm";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Jouer maintenant");
 
 const ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

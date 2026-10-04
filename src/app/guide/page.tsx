@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { Card } from "@/components/ui/Card";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Guide");
 
 const SECTIONS: { icon: string; title: string; lines: string[] }[] = [
   {

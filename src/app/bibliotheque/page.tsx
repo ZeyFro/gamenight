@@ -9,6 +9,9 @@ import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { CoopEnrichmentTrigger } from "@/components/CoopEnrichmentTrigger";
 import { MarkAllCoopButton } from "@/components/MarkAllCoopButton";
 import { ButtonLink } from "@/components/ui/Button";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Bibliothèque");
 
 export default async function BibliothequePage({
   searchParams,

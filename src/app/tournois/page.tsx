@@ -10,6 +10,9 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Tournois");
 
 const TABS = [
   { key: "en-cours", label: "En cours" },

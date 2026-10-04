@@ -12,6 +12,9 @@ import { RouletteCountdown } from "@/components/roulette/RouletteCountdown";
 import { RouletteEntryForm } from "@/components/roulette/RouletteEntryForm";
 import { RouletteResultReveal } from "@/components/roulette/RouletteResultReveal";
 import { forceSpinRouletteAction } from "@/app/roulette/actions";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Roulette");
 
 /**
  * Page de propositions d'une roulette async (FIX Sprint 3). Le tirage est

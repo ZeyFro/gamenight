@@ -22,6 +22,9 @@ import {
   getUserNotificationPreferences,
   NOTIFICATION_CATEGORY_DETAILS,
 } from "@/lib/notification-preferences";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Paramètres");
 
 /**
  * Onglet "Rappels perso" — en réalité tous les réglages de compte

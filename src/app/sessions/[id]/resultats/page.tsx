@@ -10,6 +10,9 @@ import {
   SessionResultsForm,
   type ResultParticipant,
 } from "@/components/SessionResultsForm";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Résultats de la soirée");
 
 const PLACEMENT_LABELS: Record<number, string> = {
   1: "🥇 1er",

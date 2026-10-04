@@ -12602,6 +12602,10 @@ répondent donc `202` et travaillent dans `after()`.
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
 
+## Titres de page (drapeau `PAGE_TITLES_ENABLED`)
+
+Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")` (`src/lib/page-title.ts`), affiché `<Titre> · GameNight` (gabarit du layout racine). **Éteint par défaut** : actif uniquement si `PAGE_TITLES_ENABLED` vaut exactement `true` ; sinon les pages n'exportent aucun titre et gardent « GameNight ». La valeur est lue au build pour les pages statiques et à la requête pour les pages dynamiques : après un changement, redéployer. Pour les pages avec identifiant (`/sessions/[id]`, `/jeux/[id]`…) le titre est générique (pas de nom de soirée ou de jeu).
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont

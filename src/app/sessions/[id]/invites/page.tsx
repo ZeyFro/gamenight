@@ -17,6 +17,9 @@ import {
   retrySessionCreatorThreadSyncAction,
   resyncSessionThreadMembersAction,
 } from "../../actions/invites";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Invités de la soirée");
 
 /**
  * Bug remonté en test réel : le créateur pouvait voir le fil Discord
