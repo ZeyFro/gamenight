@@ -2409,6 +2409,54 @@ que de compter dessus par hasard :
 | `npx prisma migrate dev` | Applique les migrations en local (et en crée une nouvelle si le schéma a changé) |
 | `npx prisma migrate deploy` | Applique les migrations existantes sans les modifier (Neon/CI/Vercel) |
 
+## Architecture multi-communautés (fondations, PR A)
+
+Objectif : un serveur Discord = une communauté isolée. Cette première PR pose
+les fondations **sans changer le comportement** de l'app (migration
+**additive** uniquement, motif expand/contract : rien n'est retiré ni rendu
+obligatoire sur l'existant).
+
+| Élément | Rôle |
+| :-- | :-- |
+| `Community` | Une communauté : `slug` unique (futur `/c/[slug]/…`), `discordGuildId` unique, statut `PENDING` (bot ajouté, en attente d'activation) / `ACTIVE` / `SUSPENDED` / `LEFT` (bot retiré, `leftAt` = départ des 30 jours de conservation) / `ARCHIVED`. |
+| `CommunityChannelConfig` | Salon Discord par communauté et par catégorie (`SESSION`, `TOURNAMENT`) ; remplacera `DISCORD_BOT_*_CHANNEL_ID`. |
+| `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. Un seul OWNER actif (garanti en code). |
+| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de `/api/backfill/seed-reconcile`, idempotente) : crée la communauté `default` (ACTIVE, `discordGuildId` repris de `DISCORD_BOT_GUILD_ID` tant qu'il est vide) et un Membership pour chaque utilisateur qui n'en a pas. Ne modifie jamais un Membership existant. Rôles : premier `ADMIN_DISCORD_IDS` présent en base → OWNER, autres admins → ADMIN, le reste → MEMBER. |
+| `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
+| `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. `EXISTING_EXCEPTIONS` fige **185 couples fichier/modèle** (84 fichiers, 37 modèles collectifs), à vider au fil des PR de filtrage (jamais allonger). |
+
+Modèles collectifs (37) : les 35 du plan (soirées, votes, superlatifs, XP,
+saisons, tournois, chat, roulette, « Jouer maintenant », wishlist, succès et
+stats de groupe…) + `Badge` / `UserBadge` (catalogues copiés par
+communauté). Personnels : `User`, `UserGame`, disponibilités, préférences,
+notifications, tags, tierlist. Globaux : `Game`, `GameNews`, `CronLock`.
+
+Aucune nouvelle variable d'environnement. Après le déploiement, lancer une
+fois `/api/backfill/seed-reconcile` (ou attendre le passage quotidien) pour
+créer la communauté par défaut et les Memberships.
+
+Discord (vérifié dans la doc officielle, voir la PR) : l'ajout du bot émet
+le webhook d'événements `APPLICATION_AUTHORIZED` (`integration_type` 0 +
+`guild` + `user`) ; une installation serveur exige `MANAGE_GUILD` ;
+`GET /guilds/{id}/members/{user}` fonctionne sans l'intent privilégié
+`GUILD_MEMBERS` ; aucun webhook pour le retrait du bot (contrôle par cron via
+`GET /users/@me/guilds`).
+
+Angles morts du garde-fou (borne basse assumée, à couvrir par revue tant que
+le client scopé n’existe pas) :
+
+- **SQL brut** (`$queryRaw` / `$executeRaw`) sur des tables collectives,
+  présent dans 6 fichiers : `src/lib/retention.ts`, `src/lib/seasons.ts`,
+  `src/lib/tournaments.ts`, `src/lib/xp-bets.ts`,
+  `src/lib/notification-delivery.ts`, `src/app/tournois/actions.ts` ;
+- **`include` imbriqués** (`prisma.user.findMany({ include: { xpEvents: true } })`) ;
+- **scripts hors `src/`** (`prisma/*.mjs`), non analysés.
+
+Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
+colonne `communityId` sur les modèles collectifs, filtrage des lectures,
+client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,
+suppression) : interdite tant qu'elle n'est pas explicitement validée.
+
 ## Structure du projet
 
 ```
@@ -12637,6 +12685,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_WEBHOOK_URL` | Webhook historique (annonces hors chemin bot, rappels, recap mensuel) ; absent = dégradation propre | absent | `src/lib/discord.ts:60` |
 | `ADMIN_DISCORD_IDS` | `discordId` des admins, séparés par des virgules | aucun admin | `src/lib/admin.ts:27` |
 | `STEAM_API_KEY` | Import de bibliothèque / activité Steam | absent | `src/lib/steam.ts:88`, `:153` |
+| `STEAM_NOW_PLAYING_ENABLED` | `true` = « 🟢 En jeu · X » sur `/potes` (un appel `GetPlayerSummaries` groupé par passage de `steam-library-sync`) ; sinon aucun appel, aucune écriture, aucun affichage | éteint | `src/lib/steam-now-playing.ts` |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | IGDB via Twitch (recherche, fiche jeu, backfill Coop) ; absentes = backfill sauté (log `warn`) | absentes | `src/lib/igdb.ts:13-14`, `src/lib/backfill-igdb-coop.ts:87` |
 | `DEEPL_API_KEY` | Traduction FR des descriptions IGDB (optionnelle) | absente = description en VO | `src/lib/deepl.ts:17` |
 | `BLOB_READ_WRITE_TOKEN` | Upload d'images de bannière (Vercel Blob) ; absent = upload désactivé | absent | `src/app/profil/actions.ts:194`, `src/app/profil/parametres/page.tsx:122` |
@@ -12695,6 +12744,32 @@ Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")
 
 **Titres dynamiques** (drapeau supplémentaire `PAGE_TITLES_DYNAMIC_ENABLED`, éteint par défaut, exige aussi `PAGE_TITLES_ENABLED`) : `/jeux/[id]` affiche le nom du jeu et `/potes/[id]` le pseudo du pote (`dynamicPageMetadata`, `src/lib/dynamic-page-title.ts`), seulement pour une session valide (sinon titre générique, aucune requête de nom) ; nom tronqué à 80 caractères. Une requête `select` d'une seule colonne en plus par chargement de ces deux pages, uniquement drapeau activé. Pas de titre dynamique pour les soirées, tournois et roulettes (accès restreints aux invités : le nom ne doit pas fuiter dans l'onglet).
 
+## Indicateur « 🟢 En jeu » sur /potes (drapeau `STEAM_NOW_PLAYING_ENABLED`)
+
+Demande de Yuichiro. **Éteint par défaut** : sans la variable, aucun appel
+Steam de plus, aucune écriture, aucun changement à l'écran.
+
+**Pourquoi un appel de plus** : l'activité déjà récupérée (`GetOwnedGames`,
+`GetRecentlyPlayedGames`) décrit un passé (minutes jouées sur 2 semaines,
+aucun horodatage fiable en production) ; le libellé « Joue à » avait déjà
+été retiré une fois parce qu'il prétendait à tort une activité en cours. Seul
+`ISteamUser/GetPlayerSummaries` (champ `gameextrainfo`, présent pendant une
+partie) donne l'état courant.
+
+| Élément | Détail |
+| :-- | :-- |
+| Données | `User.steamNowPlaying` (nom du jeu) et `User.steamNowPlayingSeenAt` (horodatage réel de la dernière observation « en jeu »), nullables — migration additive `20261003120000_add_steam_now_playing` |
+| Rafraîchissement | `refreshSteamNowPlaying` (`src/lib/steam-now-playing.ts`), appelé par `/api/cron/steam-library-sync` **en parallèle** des lots d'activité : un seul appel pour tous les comptes liés (100 par lot), donc ~720 appels/jour à la cadence de 2 min, très en deçà des quotas Steam ; le pire cas de durée de la route ne change pas |
+| Écriture | en jeu → nom + horodatage ; appel réussi mais pas en jeu → `null` ; échec Steam → **rien n'est écrit** ; compte absent de la réponse → inchangé |
+| Affichage | `/potes` : pastille violette « En jeu · X » (`NowPlayingBadge`) à la place de la ligne « A joué récemment », **seulement** si l'observation a moins de 10 min (`NOW_PLAYING_FRESH_MS`) : un cron arrêté éteint l'indicateur tout seul |
+| Limite | Steam ne renvoie le jeu en cours que si les « Détails du jeu » du profil sont publics ; un compte privé n'apparaît jamais « en jeu » |
+
+Activation : (1) merger la migration (`prisma migrate deploy` au build) ;
+(2) poser `STEAM_NOW_PLAYING_ENABLED=true` ; (3) le cron `steam-library-sync`
+(déjà en place, toutes les ~2 min) fait le reste. La réponse de la route
+contient `nowPlaying: { enabled, checked, playing, error }`, et un log
+`en jeu maintenant — …` à chaque passage quand le drapeau est actif.
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont
@@ -12706,7 +12781,7 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Récaps et récompenses Discord | Le recap mensuel existe déjà, via le webhook (`src/lib/monthly-recap.ts:3`, `postToDiscord`) ; la V2 s'est concentrée sur le chemin bot (fils, MP, nettoyage, « Jouer maintenant ») | Porter recap/récompenses sur le chemin bot (nouvelle catégorie `NotificationCategory` → migration additive, résolveur dans l'executor, interrupteur dédié) |
 | Multi-serveur Discord | Un seul serveur est supposé partout : `DISCORD_BOT_GUILD_ID` unique (`discord-bot-config.ts:33`, `:65`) et préfixe de slot figé `default-guild` (`session-announce.ts`, `tournament-announce.ts`, `discord-dm.ts`) | Config serveur/salon par groupe (modèle + migration), `targetSlot` par serveur, permissions bot par serveur, rattachement utilisateur → serveur |
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
-| Indicateur « en jeu maintenant » sur `/potes` | L'activité Steam actuelle vient de `GetRecentlyPlayedGames` (`steam.ts:157`), qui n'indique pas la partie en cours | Appel `GetPlayerSummaries` (jeu courant), nouveau champ sur `User` + migration additive, cadence de rafraîchissement compatible avec les quotas Steam et cron-job.org (30 s) |
+| ~~Indicateur « en jeu maintenant » sur `/potes`~~ | **Fait derrière le drapeau `STEAM_NOW_PLAYING_ENABLED`** (éteint par défaut) : `GetPlayerSummaries` en un appel groupé par passage de `steam-library-sync`, deux colonnes nullables sur `User` (migration additive `20261003120000_add_steam_now_playing`). Voir « Indicateur en jeu maintenant » | À activer et vérifier en production |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
 
 ## Lien d'évitement « Aller au contenu » (drapeau `SKIP_LINK_ENABLED`)

@@ -252,6 +252,19 @@ model User {
   lastPlayedGame String?
   lastPlayedAt   DateTime?
 
+  // « En jeu maintenant » sur /potes (drapeau STEAM_NOW_PLAYING_ENABLED,
+  // src/lib/steam-now-playing.ts) — contrairement à `lastPlayedGame`
+  // (passé, GetRecentlyPlayedGames), ceci est l'état COURANT, lu par un seul
+  // appel groupé `GetPlayerSummaries` par passage du cron léger
+  // `steam-library-sync` : nom du jeu en cours (`gameextrainfo`) et
+  // horodatage RÉEL de la dernière observation « en jeu ». Les deux sont
+  // remis à `null` quand l'appel réussit et que le compte n'est pas en jeu ;
+  // jamais touchés si l'appel échoue. L'affichage exige une observation
+  // récente (voir `activeNowPlaying`) : un cron arrêté ne laisse jamais
+  // « en jeu » affiché indéfiniment.
+  steamNowPlaying       String?
+  steamNowPlayingSeenAt DateTime?
+
   // Sprint 4 (Saisons mensuelles) — voir `SeasonSnapshot`.
   seasonSnapshots SeasonSnapshot[]
 
@@ -276,6 +289,9 @@ model User {
   wishlistProposals GameWishlist[]     @relation("WishlistProposedBy")
   wishlistPurchases GameWishlist[]     @relation("WishlistPurchasedBy")
   wishlistVotes     GameWishlistVote[]
+
+  // Multi-communautés (PR A) — relation seule, aucune colonne sur `User`.
+  memberships Membership[]
 
   @@index([xpTotal])
 }
@@ -2193,4 +2209,104 @@ model NotificationDelivery {
   @@index([targetSlot, operation, status, sequence])
   // Sert le balayage de récupération des réservations expirées.
   @@index([reservedUntil])
+}
+
+// =============================================================================
+// Multi-communautés — PR A (expand uniquement). Un serveur Discord = une
+// communauté isolée. Ces tables s'ajoutent sans toucher à l'existant : aucun
+// modèle collectif ne porte encore de `communityId` (PR suivantes). Voir le
+// README, section « Architecture multi-communautés ».
+// =============================================================================
+
+// PENDING : créée à l'ajout du bot, en attente d'activation par un admin
+// plateforme. LEFT : bot retiré du serveur (purge après 30 jours via la
+// rétention). ARCHIVED : fermée volontairement.
+enum CommunityStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  LEFT
+  ARCHIVED
+}
+
+enum CommunityRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+// Catégories de salons configurables par communauté : les deux qui existent
+// aujourd'hui en variables d'environnement (`DISCORD_BOT_SESSION_CHANNEL_ID`,
+// `DISCORD_BOT_TOURNAMENT_CHANNEL_ID`). Ajouter une valeur reste additif.
+enum CommunityChannelCategory {
+  SESSION
+  TOURNAMENT
+}
+
+model Community {
+  id   String @id @default(cuid())
+  // Segment d'URL `/c/[slug]/…` (PR suivante). `default` = la communauté
+  // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
+  slug String @unique
+  name String
+
+  // Null seulement pour la communauté par défaut tant que
+  // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
+  discordGuildId String?         @unique
+  iconHash       String?
+  status         CommunityStatus @default(PENDING)
+
+  // Qui a ajouté le bot (le payload `APPLICATION_AUTHORIZED` ne porte que
+  // l'utilisateur ; Discord exige `MANAGE_GUILD` pour une installation serveur).
+  installedByDiscordId String?
+  activatedAt          DateTime?
+  activatedById        String?
+  // Départ du bot : point de départ des 30 jours de conservation.
+  leftAt               DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  memberships    Membership[]
+  channelConfigs CommunityChannelConfig[]
+
+  @@index([status])
+}
+
+model CommunityChannelConfig {
+  id               String                   @id @default(cuid())
+  communityId      String
+  community        Community                @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  category         CommunityChannelCategory
+  discordChannelId String
+  enabled          Boolean                  @default(true)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@unique([communityId, category])
+}
+
+// Appartenance d'un utilisateur à une communauté. Un seul OWNER actif par
+// communauté : garanti en code (`ensureDefaultCommunity`), pas en base.
+model Membership {
+  id             String           @id @default(cuid())
+  communityId    String
+  community      Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           CommunityRole    @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  joinedAt       DateTime         @default(now())
+  leftAt         DateTime?
+  // Dernière vérification d'appartenance au serveur Discord (cron rotatif,
+  // PR suivante).
+  lastVerifiedAt DateTime?
+
+  @@unique([communityId, userId])
+  @@index([userId])
 }
