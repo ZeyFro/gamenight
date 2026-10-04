@@ -57,6 +57,10 @@ jobs:
 
       - run: npm test
 
+      # Types globaux de Next (`LayoutProps`, `PageProps`…) générés dans
+      # `.next/types` : absents d'un checkout neuf, tsc échoue sans eux.
+      - run: npx next typegen
+
       - run: npx tsc --noEmit
 
       - run: npm run lint
