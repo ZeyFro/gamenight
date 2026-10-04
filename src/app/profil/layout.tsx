@@ -72,7 +72,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
   const [stats, globalRank] = await Promise.all([
     getProfileStats(user.id, user.streakCount),
-    getGlobalRank(user.id, user.xpTotal),
+    getGlobalRank(user.xpTotal),
   ]);
 
   return (

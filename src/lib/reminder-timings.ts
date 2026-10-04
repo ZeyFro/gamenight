@@ -38,22 +38,7 @@ export const REMINDER_CUSTOM_UNIT_MINUTES: Record<ReminderCustomUnit, number> = 
 };
 
 /**
- * Libellé FR d'un timing en minutes — reprend le libellé exact du
- * préréglage s'il correspond (garde le texte "24h avant" identique à ce
- * qu'affichait F7 avant cette PR), sinon compose un libellé générique
- * ("1h30", "3h", "90 min"…) pour un rappel custom.
- */
-export function formatReminderTimingLabel(minutes: number): string {
-  const preset = REMINDER_PRESETS.find((p) => p.minutes === minutes);
-  if (preset) return preset.label;
-
-  if (minutes < 60) return `${minutes} min avant`;
-  if (minutes % 60 === 0) return `${minutes / 60}h avant`;
-  return `${Math.floor(minutes / 60)}h${minutes % 60} avant`;
-}
-
-/**
- * Même idée, format compact sans "avant" — utilisé dans le titre de
+ * Libellé compact d'un timing en minutes, sans "avant" — utilisé dans le titre de
  * l'embed Discord ("⏰ Rappel — dans {label} !").
  */
 export function formatReminderTimingShort(minutes: number): string {
