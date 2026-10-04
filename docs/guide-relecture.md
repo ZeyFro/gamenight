@@ -1,4 +1,4 @@
-# Guide de relecture des PR #135 à #156
+# Guide de relecture des PR #135 à #157
 
 État au 2026-10-04 (soir). **#136 (CI), #137 (hook SessionStart) et #138 (npm audit) sont mergées** par Maxime ; les autres PR sont en **Draft**, sans conflit avec `main`, avec un aperçu Vercel « success ». #155 et #156 ont été ajoutées après la première version de ce guide. Les tests locaux (Postgres Docker, `tsc`, `lint`, `next build`) étaient verts avant chaque push ; la CI GitHub Actions (#136, mergée) s'exécute sur les PR ouvertes ou mises à jour **après** ce merge ; les anciennes branches n'ont pas de check CI tant qu'on n'y pousse pas.
 
@@ -32,6 +32,7 @@ Ne pas merger ces trois PR via l'aperçu seul. Les appliquer dans l'ordre des ho
 | #152 | Route `/api/health` | Rien ; sonde pour un monitoring (Bearer `CRON_SECRET`) | faible | 12 |
 | #155 | `robots.txt` | Page nouvelle `/robots.txt` (`Disallow: /`) | faible | 12 bis |
 | #156 | Titres d'onglet par page | Rien tant que `PAGE_TITLES_ENABLED` est éteint ; sinon « Calendrier · GameNight »… | faible | 12 ter |
+| #157 | Test README « routes cron » ↔ code | Rien (test seul) | faible | 12 quater |
 | #140 | Archivage immédiat des fils | Rien tant que le nouveau drapeau est éteint | faible | 13 |
 | #135 | Fondations multi-communautés | Rien (nouvelles tables non branchées) · **MERGE MANUEL** | moyen | 14 |
 | #142 | Indicateur « En jeu » | Rien tant que `STEAM_NOW_PLAYING_ENABLED` est éteint · **MERGE MANUEL** | moyen | 15 |
