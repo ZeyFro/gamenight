@@ -305,6 +305,7 @@ export default async function Home({
                       src={nextSessionCoverUrl}
                       alt=""
                       fill
+                      sizes="(min-width: 1024px) 1152px, 100vw"
                       className="object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/80 to-surface/40" />
@@ -661,6 +662,7 @@ export default async function Home({
                             <input
                               type="text"
                               name="gage"
+                              aria-label="Gage"
                               placeholder="Définir le gage…"
                               defaultValue={debt.gage ?? ""}
                               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
