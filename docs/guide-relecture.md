@@ -1,6 +1,6 @@
 # Guide de relecture des PR #135 à #156
 
-État au 2026-10-04 (soir). **#136 (CI) est mergée** et **#137 (hook SessionStart) est passée en Ready** par Maxime ; les autres PR sont en **Draft**, sans conflit avec `main`, avec un aperçu Vercel « success ». #155 et #156 ont été ajoutées après la première version de ce guide. Les tests locaux (Postgres Docker, `tsc`, `lint`, `next build`) étaient verts avant chaque push ; la CI GitHub Actions (#136, mergée) s'exécute sur les PR ouvertes ou mises à jour **après** ce merge ; les anciennes branches n'ont pas de check CI tant qu'on n'y pousse pas.
+État au 2026-10-04 (soir). **#136 (CI), #137 (hook SessionStart) et #138 (npm audit) sont mergées** par Maxime ; les autres PR sont en **Draft**, sans conflit avec `main`, avec un aperçu Vercel « success ». #155 et #156 ont été ajoutées après la première version de ce guide. Les tests locaux (Postgres Docker, `tsc`, `lint`, `next build`) étaient verts avant chaque push ; la CI GitHub Actions (#136, mergée) s'exécute sur les PR ouvertes ou mises à jour **après** ce merge ; les anciennes branches n'ont pas de check CI tant qu'on n'y pousse pas.
 
 ## ⚠️ Migrations : MERGE MANUEL
 
@@ -19,8 +19,8 @@ Ne pas merger ces trois PR via l'aperçu seul. Les appliquer dans l'ordre des ho
 | PR | Sujet | Ce que Maxime verra | Risque | Ordre |
 | -- | ----- | ------------------- | ------ | ----- |
 | #136 | CI GitHub Actions | **Déjà mergée.** Un check « verify » sur les PR (à rendre obligatoire) | faible | fait |
-| #137 | Hook SessionStart cloud | Rien dans l'app ; sessions Claude cloud prêtes à tester (**passée en Ready par Maxime**) | faible | 2 |
-| #138 | npm audit (patch) | Rien ; `next` 16.3.1 → 16.3.8 corrige la faille critique | moyen | 3 |
+| #137 | Hook SessionStart cloud | **Déjà mergée.** | faible | fait |
+| #138 | npm audit (patch) | **Déjà mergée** (`next` 16.3.8) | moyen | fait |
 | #153 | `/api/igdb/search` borné | Rien en usage normal ; requête > 100 caractères tronquée | faible | 4 |
 | #144 | Repli des GIF klipy bloqués | Un dégradé à la place d'une bannière invisible | faible | 5 |
 | #143 | Backfill IGDB Coop | Rien ; le cron couvre plus de jeux par passe | moyen | 6 |
@@ -46,10 +46,10 @@ Les PR de documentation ou de tests (#145, #146, #150, #151, #154) n'ont aucun e
 ## Pourquoi cet ordre
 
 1. **#136 : fait.** Les nouveaux pushs passent par la CI.
-2. **#138 tôt** : corrige une faille critique de `next`. Patch seulement, mais il touche tout : surveiller le build Vercel.
+2. **#138 : fait** (faille critique de `next`).
 3. **Corrections de comportement** (#143, #141) avant les nouveautés : elles agissent sur des crons en production sans drapeau.
 4. **Migrations en fin de file, une à la fois**, après avoir lu la description de la PR : vérifier le build Vercel après chacune.
-5. **#146 en dernier** : ses lignes décrivent #136 et #137 comme « à confirmer une fois mergée ».
+5. **#146** : ses lignes « à confirmer » ont été retirées maintenant que #136 et #137 sont mergées ; plus de contrainte d'ordre.
 
 ## Points d'attention
 

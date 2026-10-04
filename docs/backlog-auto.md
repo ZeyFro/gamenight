@@ -14,6 +14,16 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 4 | **`robots.ts` « Disallow: / »** : l'app est réservée aux potes connectés, empêche l'indexation des pages publiques (connexion, profils partagés) | Audit du code : aucun `robots` ni `noindex` global | XS | faible | faible-moyenne | PR #155 |
 | 5 | **Titres de page par route** (`metadata.title` via un gabarit `%s · GameNight`) sur les ~40 pages qui n'en ont pas : onglets lisibles, historique du navigateur, lecteurs d'écran | UX / accessibilité (WCAG 2.4.2) | M | faible, mais visible (titre d'onglet) : réalisée derrière le drapeau `PAGE_TITLES_ENABLED` (éteint par défaut) | moyenne | PR #156 |
 
+## Deuxième série (générée quand une place s'est libérée)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 6 | **Test de cohérence README « routes cron » ↔ routes API** : échoue si une route `/api/cron/*` ou `/api/backfill/*` n'est pas citée dans le tableau de référence du README | Demande déjà exprimée : le tableau des crons est tenu à la main depuis la phase 6 (docs V2) et dérive à chaque nouvelle route | S | nul (test seul) | moyenne | PR (voir guide) |
+| 7 | **Tests unitaires des modules `src/lib` encore sans test** (`superlative-voting`, `storage-audit`, `home`…) | Audit du code : classement de couverture du lot L2 | M | nul (tests seuls) | moyenne | À faire |
+| 8 | **Collecte des violations CSP** : route `/api/csp-report` + `report-to`, derrière un nouveau drapeau `CSP_REPORT_ENABLED` éteint par défaut | Rapport L7 (`docs/rapport-csp-bloquant.md`, étape 1) | M | moyen (point d'entrée public : taille et débit à borner) | élevée | À faire |
+| 9 | **Titres d'onglet dynamiques** (nom du jeu, de la soirée, du pote) pour les pages avec identifiant | UX, suite de #156 | S | faible (une requête de plus par page, derrière `PAGE_TITLES_ENABLED`) | moyenne | À faire, après #156 |
+| 10 | **Lien d'évitement « Aller au contenu »** (visible seulement au focus clavier) | Accessibilité (WCAG 2.4.1) | XS | faible, mais visible au clavier : à valider avec Maxime ou derrière un drapeau | moyenne | À faire |
+
 ## Idées écartées (à discuter)
 - **Récaps et récompenses Discord via le bot** et **multi-serveur Discord** : déjà listés dans « Reporté après V2 » (README) ; touchent aux fonctions et drapeaux `DISCORD_*`, donc hors périmètre autonome.
 - **Page d'état des interrupteurs d'environnement** : utile pour l'exploitation mais lirait les drapeaux `DISCORD_*` ; à décider avec Maxime.
