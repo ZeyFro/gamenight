@@ -49,6 +49,26 @@ function isAllowedBannerHost(host: string): boolean {
   return BANNER_ALLOWED_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
+/**
+ * Vrai pour une URL qu'on SAIT ne pas être une image chargeable dans un
+ * `<img>` : la page HTML de klipy / Tenor / Giphy (hôtes nus). Ce sont des
+ * liens collés AVANT le refus à l'écriture (`findBannerUrlProblem`) et déjà
+ * en base : les charger gaspille une requête qui sera bloquée
+ * (`Cross-Origin-Resource-Policy`) et divulgue le visiteur à ces hôtes pour
+ * rien. `BannerImage` affiche donc tout de suite le dégradé de secours. Ne
+ * concerne QUE ces pages : un hôte hors liste blanche reste affiché comme
+ * avant (anciennes bannières). Pure (aucun réseau).
+ */
+export function isKnownNonImageBannerUrl(raw: string): boolean {
+  let host: string;
+  try {
+    host = new URL(raw.trim()).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return host === "klipy.com" || host === "www.klipy.com" || PAGE_HOSTS.includes(host);
+}
+
 /** `null` si l'URL est acceptable, sinon le message FR à afficher. Pure (aucun réseau). */
 export function findBannerUrlProblem(raw: string): string | null {
   let url: URL;

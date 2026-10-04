@@ -7480,6 +7480,12 @@ récupérerait que du HTML.
 - **Repli visuel** : `src/components/BannerImage.tsx` — `<img>` natif avec `onError` qui bascule sur le
   dégradé de secours (`bannerFallbackStyle`) au lieu d'un blanc silencieux (utilisé sur `/profil`
   et `/potes`).
+  Trois replis : (1) lien connu pour ne PAS être une image (page `klipy.com` / Tenor / Giphy déjà en
+  base, `isKnownNonImageBannerUrl`) → dégradé tout de suite, sans requête ; (2) échec **avant
+  l'hydratation** (rendu serveur : l'événement `error` d'un blocage rapide part avant que React ait
+  attaché `onError`) → rattrapé au montage par un `ref` (image terminée sans dimension) ; (3) échec
+  après hydratation → `onError`. L'échec est mémorisé **par URL** : une nouvelle bannière enregistrée
+  n'hérite plus de l'échec de l'ancienne. Vérifié en navigateur réel (CORP `same-origin`, 404, lien de page).
 - `klipy.com` figure aussi dans `images.remotePatterns` (`next.config.ts:27`) : utile pour
   `next/image`, mais **sans effet** sur un blocage CORP (qui frappe même un `<img>` natif).
 
