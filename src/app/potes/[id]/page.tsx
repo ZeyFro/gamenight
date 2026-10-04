@@ -3,9 +3,17 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { todayDateOnly } from "@/lib/wallclock";
 import { AvailabilityView } from "@/components/AvailabilityView";
-import { pageMetadata } from "@/lib/page-title";
+import type { Metadata } from "next";
+import { dynamicPageMetadata } from "@/lib/dynamic-page-title";
 
-export const metadata = pageMetadata("Profil d'un pote");
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  return dynamicPageMetadata("Profil d'un pote", async () => (await prisma.user.findUnique({ where: { id }, select: { discordName: true } }))?.discordName);
+}
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 

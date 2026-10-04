@@ -12693,6 +12693,8 @@ Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'av
 
 Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")` (`src/lib/page-title.ts`), affiché `<Titre> · GameNight` (gabarit du layout racine). **Éteint par défaut** : actif uniquement si `PAGE_TITLES_ENABLED` vaut exactement `true` ; sinon les pages n'exportent aucun titre et gardent « GameNight ». La valeur est lue au build pour les pages statiques et à la requête pour les pages dynamiques : après un changement, redéployer. Pour les pages avec identifiant (`/sessions/[id]`, `/jeux/[id]`…) le titre est générique (pas de nom de soirée ou de jeu).
 
+**Titres dynamiques** (drapeau supplémentaire `PAGE_TITLES_DYNAMIC_ENABLED`, éteint par défaut, exige aussi `PAGE_TITLES_ENABLED`) : `/jeux/[id]` affiche le nom du jeu et `/potes/[id]` le pseudo du pote (`dynamicPageMetadata`, `src/lib/dynamic-page-title.ts`), seulement pour une session valide (sinon titre générique, aucune requête de nom) ; nom tronqué à 80 caractères. Une requête `select` d'une seule colonne en plus par chargement de ces deux pages, uniquement drapeau activé. Pas de titre dynamique pour les soirées, tournois et roulettes (accès restreints aux invités : le nom ne doit pas fuiter dans l'onglet).
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont
