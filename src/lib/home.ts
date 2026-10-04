@@ -280,3 +280,30 @@ export async function getWeekAvailability(viewerId: string): Promise<WeekAvailab
 
   return days;
 }
+
+/**
+ * Prochaine soirée visible par `viewerId` (VOTING ou SCHEDULED), avec ce qu'il
+ * faut pour l'accueil : jeu décidé, covers et votes des propositions. Même
+ * requête que la carte « Prochaine soirée » de `src/app/page.tsx`, ici pour
+ * l'accueil v2 (`src/lib/home-data.ts`) : l'accès direct à `prisma.session`
+ * reste dans ce module (déjà dans `EXISTING_EXCEPTIONS` de
+ * `community-scope.test.ts`) plutôt que dans un nouveau fichier.
+ * Confidentialité : jamais une soirée privée dont `viewerId` n'est ni créateur
+ * ni invité (`accessibleSessionWhere`).
+ */
+export function getNextSessionForHome(viewerId: string) {
+  return prisma.session.findFirst({
+    where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleSessionWhere(viewerId) },
+    orderBy: { date: "asc" },
+    include: {
+      decidedGame: { select: { name: true, coverUrl: true } },
+      proposals: {
+        select: {
+          gameId: true,
+          game: { select: { coverUrl: true } },
+          votes: { select: { userId: true } },
+        },
+      },
+    },
+  });
+}
