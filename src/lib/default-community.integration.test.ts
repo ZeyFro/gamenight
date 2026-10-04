@@ -102,6 +102,24 @@ describe.skipIf(!TEST_DATABASE_URL)("ensureDefaultCommunity (Postgres isolée)",
     expect(await rolesByDiscordId()).toEqual({ parti: "MEMBER/LEFT", nouveau: "MEMBER/ACTIVE" });
   });
 
+  it("un compte déjà membre d'une AUTRE communauté (connexion multi-serveurs) n'est pas rattaché à la communauté par défaut", async () => {
+    const other = await db.community.create({
+      data: { slug: "autre", name: "Autre", status: "ACTIVE", discordGuildId: "333" },
+    });
+    const confirmedElsewhere = await makeUser("autre-serveur");
+    await db.membership.create({ data: { communityId: other.id, userId: confirmedElsewhere.id } });
+    await makeUser("historique");
+
+    const result = await ensureDefaultCommunity();
+
+    expect(result.membershipsCreated).toBe(1);
+    const inDefault = await db.membership.findMany({
+      where: { communityId: result.communityId },
+      include: { user: true },
+    });
+    expect(inDefault.map((m) => m.user.discordId)).toEqual(["historique"]);
+  });
+
   it("un seul OWNER : un admin d'environnement arrivé après coup devient ADMIN", async () => {
     vi.stubEnv("ADMIN_DISCORD_IDS", "premier,second");
     await makeUser("premier");
