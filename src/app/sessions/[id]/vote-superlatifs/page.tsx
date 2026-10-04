@@ -14,6 +14,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { SuperlativeVoteForm } from "@/components/SuperlativeVoteForm";
 import { forceCloseSuperlativeVotingAction } from "../../actions/superlatives";
 import { getSessionAccessRole } from "@/lib/session-access";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Vote des récompenses");
 
 /**
  * Vote de superlatifs entre potes (PR 5/9, version light) — page dédiée

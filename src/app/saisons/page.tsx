@@ -6,6 +6,9 @@ import { getSeasonProgress } from "@/lib/seasons";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Saisons");
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 

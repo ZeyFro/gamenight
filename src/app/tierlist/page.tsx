@@ -6,6 +6,9 @@ import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { TierlistBoard } from "@/components/TierlistBoard";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Tier list");
 
 /**
  * Tierlist perso (PR 6/9) — classe TOUTE la biblio commune (owned ou non

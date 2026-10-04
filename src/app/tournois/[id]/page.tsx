@@ -18,6 +18,9 @@ import {
   launchTournamentAction,
   resyncTournamentThreadMembersAction,
 } from "../actions";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Tournoi");
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

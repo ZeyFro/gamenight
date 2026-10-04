@@ -20,6 +20,9 @@ import { RouletteWizard } from "@/components/roulette/RouletteWizard";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createRouletteAction } from "./actions";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Roulette");
 
 const ROULETTE_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

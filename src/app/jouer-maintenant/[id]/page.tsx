@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getInstantSessionView, toInstantSessionViewDTO } from "@/lib/instant-sessions";
 import { InstantSessionDetail } from "@/components/jouer-maintenant/InstantSessionDetail";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Jouer maintenant");
 
 /**
  * V2 — "Jouer maintenant" : page détail d'une session instantanée.

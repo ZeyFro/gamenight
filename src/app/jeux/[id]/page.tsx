@@ -15,6 +15,9 @@ import { GameDescription } from "@/components/GameDescription";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
 import type { Game } from "@prisma/client";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Fiche du jeu");
 
 const SOURCE_LABELS: Record<string, string> = {
   STEAM: "Steam",

@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { ToVerifierList } from "@/components/ToVerifierList";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Jeux à vérifier");
 
 export default async function AVerifierPage() {
   const user = await getCurrentUser();

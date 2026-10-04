@@ -12689,6 +12689,10 @@ Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'av
 
 **Sonde de santé** : `GET /api/health` (`Authorization: Bearer <CRON_SECRET>`, mêmes codes que les crons : 503 sans `CRON_SECRET`, 401 si mauvais en-tête) répond `200 {"ok":true,"db":"ok"}` si la base répond à un `SELECT 1`, `503 {"ok":false,"db":"error"}` sinon. À brancher sur un monitoring externe (alerte si non-200) ; aucune donnée métier ni secret dans la réponse. Aucun cron n'est configuré par le dépôt.
 
+## Titres de page (drapeau `PAGE_TITLES_ENABLED`)
+
+Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")` (`src/lib/page-title.ts`), affiché `<Titre> · GameNight` (gabarit du layout racine). **Éteint par défaut** : actif uniquement si `PAGE_TITLES_ENABLED` vaut exactement `true` ; sinon les pages n'exportent aucun titre et gardent « GameNight ». La valeur est lue au build pour les pages statiques et à la requête pour les pages dynamiques : après un changement, redéployer. Pour les pages avec identifiant (`/sessions/[id]`, `/jeux/[id]`…) le titre est générique (pas de nom de soirée ou de jeu).
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont
@@ -12702,6 +12706,10 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
 | Indicateur « en jeu maintenant » sur `/potes` | L'activité Steam actuelle vient de `GetRecentlyPlayedGames` (`steam.ts:157`), qui n'indique pas la partie en cours | Appel `GetPlayerSummaries` (jeu courant), nouveau champ sur `User` + migration additive, cadence de rafraîchissement compatible avec les quotas Steam et cron-job.org (30 s) |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
+
+## Lien d'évitement « Aller au contenu » (drapeau `SKIP_LINK_ENABLED`)
+
+Accessibilité clavier (WCAG 2.4.1) : un lien `Aller au contenu` (`src/components/SkipLink.tsx`) est le premier élément focalisable de chaque page ; invisible tant qu'il n'a pas le focus, il s'affiche en haut à gauche (pastille violette) au premier appui sur Tab, et Entrée place le focus sur `<main id="contenu">`. **Éteint par défaut** : actif uniquement si `SKIP_LINK_ENABLED` vaut exactement `true` (lu à chaque requête, le layout étant dynamique) ; éteint, le lien et l'`id` n'existent pas dans le HTML.
 
 ## Collecte des violations CSP (drapeau `CSP_REPORT_ENABLED`)
 

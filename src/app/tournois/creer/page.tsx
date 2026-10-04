@@ -6,6 +6,9 @@ import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validation
 import { Card } from "@/components/ui/Card";
 import { TournamentCreateForm } from "@/components/tournois/TournamentCreateForm";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Créer un tournoi");
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

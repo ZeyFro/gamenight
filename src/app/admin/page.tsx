@@ -8,6 +8,9 @@ import { JeuxStatsTab } from "@/components/admin/JeuxStatsTab";
 import { ReglagesTab } from "@/components/admin/ReglagesTab";
 import { ConfidentialiteTab } from "@/components/admin/ConfidentialiteTab";
 import { NettoyageTab } from "@/components/admin/NettoyageTab";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Admin");
 
 function isAdminTabKey(value: string | undefined): value is AdminTabKey {
   return !!value && (ADMIN_TAB_KEYS as string[]).includes(value);

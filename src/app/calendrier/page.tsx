@@ -11,6 +11,9 @@ import { PoteFilterDrawer } from "@/components/calendar/PoteFilterDrawer";
 import { ColorDot } from "@/components/ColorDot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Calendrier");
 
 interface CalendrierSearchParams {
   date?: string;

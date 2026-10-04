@@ -10,6 +10,9 @@ import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
 import { XpEvolutionChart, type XpEvolutionPoint } from "@/components/XpEvolutionChart";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Mon profil");
 
 const XP_CHART_DAYS = 30;
 

@@ -7,6 +7,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { FadeInView } from "@/components/ui/FadeInView";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Mon historique");
 
 const PLACEMENT_LABELS: Record<number, string> = {
   1: "🥇 1er",
