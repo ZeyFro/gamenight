@@ -60,6 +60,9 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `/security-review` avant de merger du code sensible (auth, Discord, crons, secrets).
 - Ponytail / Headroom / CodeBurn : économie et suivi des tokens.
 - claude-code-setup : hooks et automatisations.
+- claude-mem : mémoire persistante entre sessions, activée.
+- Session cloud : un hook `SessionStart` (`.claude/hooks/session-start.mjs`) installe les dépendances si besoin, lance `prisma generate`, puis `prisma migrate deploy` sur un Postgres local (127.0.0.1 uniquement, jamais Neon).
+- CI GitHub Actions (`.github/workflows/ci.yml`) : `test:postgres` (service Postgres du job, jamais Neon), `npm test`, `next typegen` + `tsc`, lint, build. Attendre le check vert (`verify`) avant de sortir une PR de Draft.
 - Au début d'une tâche, annonce en une ligne quels outils tu vas utiliser et pourquoi.
 
 ## Style de réponse
