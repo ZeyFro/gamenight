@@ -4,7 +4,8 @@ import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue, isSessionVisibleInHistory } from "@/lib/sessions";
-import { accessibleSessionWhere } from "@/lib/session-access";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
 import {
   finalizeSuperlativeVotingIfDue,
   getPendingSuperlativeVoteSessionIds,
@@ -166,7 +167,9 @@ export default async function SessionsPage({
 
   const [potesRaw, tags] = await Promise.all([
     prisma.user.findMany({
-      where: { id: { not: user.id } },
+      // Multi-communautés (PR4) : potes proposables = membres de la
+      // communauté active du créateur (aucun filtre si l'isolation est éteinte).
+      where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id)] },
       select: {
         id: true,
         discordName: true,
@@ -200,7 +203,7 @@ export default async function SessionsPage({
   // ou auxquelles il est activement invité apparaissent ici (voir
   // src/lib/session-access.ts, source de vérité unique du contrôle d'accès).
   const sessions = await prisma.session.findMany({
-    where: accessibleSessionWhere(user.id),
+    where: await accessibleSessionWhereFor(user.id),
     include: {
       decidedGame: true,
       _count: { select: { proposals: true } },

@@ -195,6 +195,13 @@ describe("community-channels", () => {
       expect(membershipFindMany).not.toHaveBeenCalled();
     });
 
+    it("salons éteints mais isolation allumée : résout aussi la communauté (le créateur doit voir sa propre soirée)", async () => {
+      vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      membershipFindMany.mockResolvedValue([membership("c-b", "serveur-b")]);
+      await expect(pickCreationCommunityId("u1")).resolves.toBe("c-b");
+    });
+
     it("ne considère que les Memberships ACTIVE de communautés ACTIVE, du plus ancien au plus récent", async () => {
       await pickCreationCommunityId("u1");
       expect(membershipFindMany).toHaveBeenCalledWith(

@@ -9,6 +9,7 @@ import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
+import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
   enqueueSessionCreationDeliveries,
@@ -72,10 +73,19 @@ export async function createSession(formData: FormData) {
   // mais une requête manipulée pourrait envoyer un id périmé/inventé ; on
   // filtre silencieusement plutôt que de faire échouer toute la création
   // pour un seul destinataire invalide.
+  // Multi-communautés (PR3/PR4) : sans `COMMUNITY_CHANNELS_ENABLED` ni
+  // `COMMUNITY_ISOLATION_ENABLED`, `communityId` reste `null` et rien ne
+  // change. Sous isolation, sans aucune communauté on refuse (la soirée serait
+  // sinon rattachée à `default` sans que le créateur en soit membre) ; seuls
+  // des membres de CETTE communauté sont invités/mentionnables.
+  const communityId = await pickCreationCommunityId(user.id);
+  if (isCommunityIsolationEnabled() && communityId === null) {
+    redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  }
   const notifiedUserIds = notifyUserIds.length
     ? (
         await prisma.user.findMany({
-          where: { id: { in: notifyUserIds } },
+          where: { AND: [{ id: { in: notifyUserIds } }, await communityMemberUserWhere(communityId)] },
           select: { id: true },
         })
       ).map((u) => u.id)
@@ -83,9 +93,6 @@ export async function createSession(formData: FormData) {
 
   // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
   // commentaire du champ dans schema.prisma (chantier annonces bot).
-  // Multi-communautés (PR3) : sans `COMMUNITY_CHANNELS_ENABLED`, `communityId`
-  // reste `null` et la décision est celle de l'environnement, comme avant.
-  const communityId = await pickCreationCommunityId(user.id);
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
 
   // Création de la session ET enqueue de l'intention de notification bot

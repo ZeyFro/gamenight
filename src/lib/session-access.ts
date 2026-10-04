@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma, SessionInvite } from "@prisma/client";
+import {
+  communityIdFilter,
+  communityMemberUserWhere,
+  getIsolationScope,
+  isCommunityIsolationEnabled,
+  type IsolationScope,
+} from "@/lib/community-isolation";
 
 /**
  * Chantier confidentialité des soirées — remplace l'ancien choix
@@ -33,10 +40,24 @@ export type SessionAccessRole = "creator" | "guest";
  * quitte jamais la base — combinable avec `AND` par l'appelant pour
  * n'importe quel autre filtre (statut, plage de dates...).
  */
-export function accessibleSessionWhere(userId: string): Prisma.SessionWhereInput {
-  return {
+export function accessibleSessionWhere(
+  userId: string,
+  scope: IsolationScope | null = null
+): Prisma.SessionWhereInput {
+  const access: Prisma.SessionWhereInput = {
     OR: [{ createdById: userId }, { invites: { some: { userId, status: "ACTIVE" } } }],
   };
+  // Multi-communautés (PR4) : sans portée (isolation éteinte), forme
+  // historique inchangée. Avec portée, l'accès créateur/invité ne suffit
+  // jamais seul : la soirée doit aussi appartenir à une communauté de
+  // l'utilisateur (`AND` jamais vide).
+  if (!scope) return access;
+  return { AND: [access, communityIdFilter(scope)] };
+}
+
+/** `accessibleSessionWhere` avec la portée de communautés de `userId` (relue en base ; aucune lecture si l'isolation est éteinte). */
+export async function accessibleSessionWhereFor(userId: string): Promise<Prisma.SessionWhereInput> {
+  return accessibleSessionWhere(userId, await getIsolationScope(userId));
 }
 
 /**
@@ -52,7 +73,7 @@ export async function getSessionAccessRole(
   sessionId: string
 ): Promise<SessionAccessRole | null> {
   const session = await prisma.session.findFirst({
-    where: { id: sessionId, ...accessibleSessionWhere(userId) },
+    where: { id: sessionId, ...(await accessibleSessionWhereFor(userId)) },
     select: { createdById: true },
   });
   if (!session) return null;
@@ -107,8 +128,22 @@ export async function inviteToSession(
   guestUserId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<SessionInvite | null> {
-  const session = await db.session.findUnique({ where: { id: sessionId }, select: { createdById: true } });
+  const session = await db.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true, communityId: true },
+  });
   if (!session || session.createdById === guestUserId) return null;
+
+  // Multi-communautés (PR4) : un invité doit être membre ACTIVE de la
+  // communauté de la soirée (`null` = communauté par défaut), jamais d'une
+  // autre communauté de l'invitant.
+  if (isCommunityIsolationEnabled()) {
+    const member = await db.user.findFirst({
+      where: { id: guestUserId, ...(await communityMemberUserWhere(session.communityId)) },
+      select: { id: true },
+    });
+    if (!member) return null;
+  }
 
   return db.sessionInvite.upsert({
     where: { sessionId_userId: { sessionId, userId: guestUserId } },

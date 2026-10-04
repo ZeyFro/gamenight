@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { canViewPote } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ReadOnlyTierlist, type TierlistRowGame } from "@/components/ReadOnlyTierlist";
@@ -17,6 +18,9 @@ export default async function PoteTierlistPage({
   if (!user) redirect("/");
 
   const { id } = await params;
+  // Multi-communautés (PR4) : un layout n'est pas garanti de s'exécuter avant
+  // la page (navigation client) — contrôle répété dans chaque page.
+  if (!(await canViewPote(user.id, id))) notFound();
 
   const tierlistEntries = await prisma.tierlistEntry.findMany({
     where: { userId: id },

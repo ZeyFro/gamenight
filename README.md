@@ -2474,6 +2474,21 @@ le client scopé n’existe pas) :
 
 Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. **Aucune interface d'administration** n'écrit encore `CommunityChannelConfig` : les lignes se posent en base tant que l'écran d'activation n'existe pas (le salon doit appartenir au serveur de la communauté, vérifié à l'envoi).
 
+### Isolation des données par communauté (PR4)
+
+Éteinte par défaut : `COMMUNITY_ISOLATION_ENABLED` doit valoir exactement `true`. Éteinte, **aucun filtre**, aucune lecture de `Membership`, requêtes strictement inchangées. Allumée, l'utilisateur ne voit que les données des communautés `ACTIVE` où il a un `Membership` `ACTIVE` (relu en base à chaque requête) ; `communityId = null` désigne `default`. Fail-closed : sans aucune communauté, rien n'est visible.
+
+| Couvert | Comment |
+| :-- | :-- |
+| Soirées (liste, accueil, calendrier, profil, roulette, détail) | `accessibleSessionWhere` / `getSessionAccessRole` : l'accès créateur/invité **et** la communauté (`AND`, jamais vide). |
+| Invitations | `inviteToSession` refuse un invité non membre de la communauté de la soirée ; les listes d'invitables et de mentions sont limitées à cette communauté. |
+| Tournois | Liste et détail filtrés ; `registerForTournamentAction` vérifie `canAccessTournament` ; mentions limitées à la communauté. |
+| Potes | `/potes` limité aux membres de mes communautés ; `canViewPote` vérifié dans le layout **et dans chaque page** `/potes/[id]/*` (un layout n'est pas garanti de s'exécuter avant ses pages) ; le titre de page ne révèle plus le pseudo d'un autre. |
+| Classement | `getScoreboard(période, { communityId })` : membres de la communauté demandée (`/classement?communaute=<id>`, `requireMembership` → 404 si non membre), sinon communauté active (`default` si membre, sinon la plus ancienne ; provisoire jusqu'à PR5). |
+| Création | Sous isolation, une soirée/un tournoi reçoit toujours un `communityId` ; sans aucune communauté, la création est refusée. |
+
+**Non couvert (backlog, ne pas activer en production avant)** : XP, badges, saisons, superlatifs, chat, dettes, pronostics, paris d'XP, défis, bibliothèque de groupe, statistiques de groupe et accueil (`getGroupStats`, `getRecentActivity`, trophées de groupe), roulette (hors page), « Jouer maintenant », admin, retention. Ces lectures restent globales ; la liste exacte est celle de `EXISTING_EXCEPTIONS` dans `community-scope.test.ts`. **Limite du classement** : l'XP n'est pas rattachée à une communauté (`XpEvent` sans `communityId`) — une communauté classe ses membres sur leur XP personnelle ; un XP réellement par communauté exige une migration et la modification des 19 appelants de `awardXp`.
+
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,
 client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,

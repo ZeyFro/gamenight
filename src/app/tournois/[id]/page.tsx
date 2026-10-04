@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { communityIdFilter, getIsolationScope } from "@/lib/community-isolation";
 import { totalRoundsFor, bracketSizeFor } from "@/lib/tournaments";
 import { getTournamentAnnounceStatus } from "@/lib/tournament-announce";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -57,8 +58,10 @@ export default async function TournoiDetailPage({
   const { error } = await searchParams;
   const errorMessage = error ? (TOURNAMENT_ERROR_MESSAGES[error] ?? null) : null;
 
-  const tournament = await prisma.tournament.findUnique({
-    where: { id },
+  // Multi-communautés (PR4) : un tournoi d'une autre communauté est
+  // indistinct d'un tournoi inexistant (aucun filtre si l'isolation est éteinte).
+  const tournament = await prisma.tournament.findFirst({
+    where: { id, ...communityIdFilter(await getIsolationScope(user.id)) },
     include: {
       game: { select: { name: true, coverUrl: true } },
       createdBy: { select: { discordName: true } },

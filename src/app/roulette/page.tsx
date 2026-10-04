@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { toDateInputValue, wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
-import { accessibleSessionWhere } from "@/lib/session-access";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { isSessionVisibleInHistory } from "@/lib/sessions";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
@@ -281,7 +281,7 @@ async function CreerTab({
  */
 async function HistoriqueTab({ userId }: { userId: string }) {
   const historyAll = await prisma.session.findMany({
-    where: { createdViaRoulette: true, ...accessibleSessionWhere(userId) },
+    where: { createdViaRoulette: true, ...(await accessibleSessionWhereFor(userId)) },
     orderBy: { date: "desc" },
     include: { decidedGame: { select: { name: true, coverUrl: true } } },
   });

@@ -12,6 +12,7 @@ import {
   enqueueSessionValidated,
 } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { inviteToSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
@@ -66,6 +67,11 @@ export async function createRouletteResultSession(data: {
 }): Promise<{ session: Session; announceViaBot: boolean; proposalId: string }> {
   // Multi-communautés (PR3) : `null` tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
   const communityId = await pickCreationCommunityId(data.createdById);
+  // Sous isolation (PR4), sans aucune communauté la soirée serait rattachée à
+  // `default` sans que le créateur en soit membre : on refuse.
+  if (isCommunityIsolationEnabled() && communityId === null) {
+    throw new Error("createRouletteResultSession : le créateur n'appartient à aucune communauté active.");
+  }
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
   logger.info("sessions", "Décision de transport à la création (session issue d'une roulette).", {
     announceViaBot,

@@ -66,26 +66,39 @@ function periodStart(period: ScoreboardPeriod): Date | null {
  * lisible si son propre compteur de soirées reflète l'activité de cette
  * semaine-là, pas tout l'historique du joueur.
  */
-export async function getScoreboard(period: ScoreboardPeriod): Promise<ScoreboardEntry[]> {
+export async function getScoreboard(
+  period: ScoreboardPeriod,
+  options: { communityId?: string | null } = {}
+): Promise<ScoreboardEntry[]> {
+  // Multi-communautés (PR4) : `undefined` = tous les utilisateurs (isolation
+  // éteinte, requêtes historiques) ; `null` = aucune communauté, classement
+  // vide ; sinon uniquement les membres ACTIVE de cette communauté. Limite
+  // assumée : l'XP n'est pas rattachée à une communauté (`XpEvent` sans
+  // `communityId`) — on classe les membres sur leur XP personnelle.
+  const { communityId } = options;
+  if (communityId === null) return [];
+
   const start = periodStart(period);
 
   const users = await prisma.user.findMany({
+    ...(communityId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const } } } } : {}),
     select: { id: true, discordName: true, discordAvatar: true, color: true, xpTotal: true },
   });
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
+  const memberFilter = communityId ? { userId: { in: users.map((u) => u.id) } } : {};
 
   const [xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
     period === "global"
       ? null
       : prisma.xpEvent.groupBy({
           by: ["userId"],
-          where: createdAtFilter,
+          where: { ...createdAtFilter, ...memberFilter },
           _sum: { amount: true },
         }),
     prisma.xpEvent.groupBy({
       by: ["userId"],
-      where: { reason: "PARTICIPATE", ...createdAtFilter },
+      where: { reason: "PARTICIPATE", ...createdAtFilter, ...memberFilter },
       _count: { _all: true },
     }),
     // Amélioration classement — deltas de position ↑/↓ vs il y a 7 jours,
@@ -98,7 +111,7 @@ export async function getScoreboard(period: ScoreboardPeriod): Promise<Scoreboar
     period === "global"
       ? prisma.xpEvent.groupBy({
           by: ["userId"],
-          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) } },
+          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter },
           _sum: { amount: true },
         })
       : null,

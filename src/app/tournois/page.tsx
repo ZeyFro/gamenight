@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { communityIdFilter, getIsolationScope } from "@/lib/community-isolation";
 import { isTournamentVisibleInHistory } from "@/lib/tournaments";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
@@ -47,7 +48,9 @@ export default async function TournoisPage({
   };
 
   const tournamentsAll = await prisma.tournament.findMany({
-    where: { status: statusForTab[activeTab] },
+    // Multi-communautés (PR4) : uniquement les tournois des communautés de
+    // l'utilisateur (aucun filtre si l'isolation est éteinte).
+    where: { status: statusForTab[activeTab], ...communityIdFilter(await getIsolationScope(user.id)) },
     orderBy: { createdAt: "desc" },
     include: {
       game: { select: { name: true, coverUrl: true } },

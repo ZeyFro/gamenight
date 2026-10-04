@@ -8,13 +8,14 @@ import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
 import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
 import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
-import { accessibleSessionWhere } from "@/lib/session-access";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -169,7 +170,7 @@ export default async function Home({
       // Confidentialité des soirées — "Prochaine soirée" ne doit jamais
       // révéler une soirée privée à laquelle l'utilisateur n'est ni
       // créateur ni invité (voir src/lib/session-access.ts).
-      where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleSessionWhere(user.id) },
+      where: { status: { in: ["VOTING", "SCHEDULED"] }, ...(await accessibleSessionWhereFor(user.id)) },
       orderBy: { date: "asc" },
       include: {
         decidedGame: { select: { name: true, coverUrl: true } },
@@ -185,7 +186,7 @@ export default async function Home({
     getRecentActivity(user.id, 3),
     getGroupStats(),
     getWeekAvailability(user.id),
-    getScoreboard("global"),
+    getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
     prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),

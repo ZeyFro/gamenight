@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { canViewPote } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/Badge";
 import { PoteTabs } from "@/components/PoteTabs";
@@ -40,6 +41,9 @@ export default async function PoteLayout({
   // que d'afficher une biblio "en lecture seule" de soi-même.
   if (id === user.id) redirect("/bibliotheque");
 
+  // Multi-communautés (PR4) : fiche d'un membre d'une autre communauté =
+  // indistinct d'un pote inexistant (contrôle aussi répété dans chaque page).
+  if (!(await canViewPote(user.id, id))) notFound();
   const pote = await prisma.user.findUnique({ where: { id } });
   if (!pote) notFound();
 
