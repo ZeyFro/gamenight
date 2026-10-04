@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { memberUserWhereFor } from "@/lib/community-isolation";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
@@ -36,7 +37,9 @@ export default async function PotesPage() {
   if (!user) redirect("/");
 
   const potes = await prisma.user.findMany({
-    where: { id: { not: user.id } },
+    // Multi-communautés (PR4) : uniquement les membres de mes communautés
+    // (aucun filtre si l'isolation est éteinte).
+    where: { AND: [{ id: { not: user.id } }, await memberUserWhereFor(user.id)] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,

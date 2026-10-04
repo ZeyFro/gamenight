@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { getScoreboardCommunityId } from "@/lib/community-access";
 import {
   getScoreboard,
   SCOREBOARD_PERIODS,
@@ -123,15 +124,19 @@ function ScoreboardRow({
 export default async function ClassementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periode?: string }>;
+  searchParams: Promise<{ periode?: string; communaute?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { periode } = await searchParams;
+  const { periode, communaute } = await searchParams;
   const period: ScoreboardPeriod = isScoreboardPeriod(periode) ? periode : "global";
 
-  const entries = await getScoreboard(period);
+  // Multi-communautés (PR4) : classement des membres d'UNE communauté
+  // (`?communaute=<id>`, 404 si non membre ; sinon la communauté active).
+  // `undefined` quand l'isolation est éteinte : tous les utilisateurs, comme avant.
+  const communityId = await getScoreboardCommunityId(user.id, communaute);
+  const entries = await getScoreboard(period, { communityId });
   const podium = entries.slice(0, 3);
   const [first, second, third] = podium;
 

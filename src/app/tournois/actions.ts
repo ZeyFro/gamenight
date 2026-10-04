@@ -21,6 +21,8 @@ import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
+import { canAccessTournament } from "@/lib/community-access";
+import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import {
@@ -77,11 +79,19 @@ export async function createTournamentAction(formData: FormData) {
   // tournoi soit `announceViaBot` ou non (cohérent avec `Session.notifiedUserIds`) —
   // seul le chemin bot la lit réellement (le webhook existant, sans
   // notion de mention Discord, ne la consulte jamais).
+  // Multi-communautés (PR4) : communauté du tournoi résolue AVANT les
+  // destinataires. Sous isolation, sans aucune communauté on refuse (le
+  // tournoi serait sinon rattaché à `default` sans que le créateur en soit
+  // membre) ; sinon seuls des membres de CETTE communauté sont mentionnables.
+  const communityId = await pickCreationCommunityId(user.id);
+  if (isCommunityIsolationEnabled() && communityId === null) {
+    redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
+  }
   const notifyUserIds = parseNotifyRecipientsFromFormData(formData);
   const notifiedUserIds = notifyUserIds.length
     ? (
         await prisma.user.findMany({
-          where: { id: { in: notifyUserIds } },
+          where: { AND: [{ id: { in: notifyUserIds } }, await communityMemberUserWhere(communityId)] },
           select: { id: true },
         })
       ).map((u) => u.id)
@@ -108,7 +118,6 @@ export async function createTournamentAction(formData: FormData) {
   // Multi-communautés (PR3) : destination de la communauté du tournoi ; sans
   // `COMMUNITY_CHANNELS_ENABLED`, `communityId` est `null` et la configuration
   // est celle de l'environnement, comme avant.
-  const communityId = await pickCreationCommunityId(user.id);
   const tournamentAnnounceConfig = await resolveTournamentAnnounceConfig(communityId);
   const announceViaBot =
     process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && tournamentAnnounceConfig !== null;
@@ -217,6 +226,10 @@ export async function registerForTournamentAction(formData: FormData) {
   const input = idSchema.safeParse(String(formData.get("tournamentId") ?? ""));
   if (!input.success) return;
   const tournamentId = input.data;
+
+  // Multi-communautés (PR4) : on ne s'inscrit pas à un tournoi d'une autre
+  // communauté, même en connaissant son id (aucune lecture si isolation éteinte).
+  if (!(await canAccessTournament(user.id, tournamentId))) return;
 
   const registered = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<

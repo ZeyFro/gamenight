@@ -2,6 +2,12 @@ import { notFound } from "next/navigation";
 import type { Community, CommunityRole, Membership, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
+import {
+  communityIdFilter,
+  getIsolationScope,
+  isCommunityIsolationEnabled,
+  resolveActiveCommunityId,
+} from "@/lib/community-isolation";
 
 /**
  * Multi-communautés, PR A — point de contrôle unique de l'accès à une
@@ -43,6 +49,39 @@ export async function findActiveMembership(
     return null;
   }
   return membership;
+}
+
+/**
+ * Isolation (PR4) — `userId` peut-il voir/agir sur ce tournoi ? Éteinte
+ * (`COMMUNITY_ISOLATION_ENABLED` ≠ `true`) : toujours vrai, sans lecture
+ * (comportement historique). Allumée : le tournoi doit appartenir à une
+ * communauté de l'utilisateur (`communityId = null` = communauté par défaut) ;
+ * une autre communauté est indistinguable d'un tournoi inexistant.
+ */
+export async function canAccessTournament(userId: string, tournamentId: string): Promise<boolean> {
+  const scope = await getIsolationScope(userId);
+  if (!scope) return true;
+  const row = await prisma.tournament.findFirst({
+    where: { id: tournamentId, ...communityIdFilter(scope) },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+/**
+ * Communauté du classement. `undefined` = isolation éteinte (tous les
+ * utilisateurs, comme avant) ; `null` = isolation allumée mais aucune
+ * communauté (classement vide) ; sinon l'id. Une communauté demandée
+ * explicitement (`?communaute=`) passe par `requireMembership` : 404 si
+ * l'utilisateur n'en est pas membre ACTIF — jamais le classement d'une autre.
+ */
+export async function getScoreboardCommunityId(
+  userId: string,
+  requested?: string | null
+): Promise<string | null | undefined> {
+  if (!isCommunityIsolationEnabled()) return undefined;
+  if (requested) return (await requireMembership(requested)).community.id;
+  return resolveActiveCommunityId(userId);
 }
 
 /** Utilisateur connecté, membre ACTIVE de la communauté ACTIVE `communityId` ; sinon 404. */

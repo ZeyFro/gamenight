@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { canViewPote } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { todayDateOnly } from "@/lib/wallclock";
@@ -12,7 +13,13 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  return dynamicPageMetadata("Profil d'un pote", async () => (await prisma.user.findUnique({ where: { id }, select: { discordName: true } }))?.discordName);
+  // Multi-communautés (PR4) : le titre ne révèle jamais le pseudo d'un
+  // membre d'une autre communauté.
+  return dynamicPageMetadata("Profil d'un pote", async () => {
+    const viewer = await getCurrentUser();
+    if (!viewer || !(await canViewPote(viewer.id, id))) return undefined;
+    return (await prisma.user.findUnique({ where: { id }, select: { discordName: true } }))?.discordName;
+  });
 }
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -27,6 +34,8 @@ export default async function PoteDisposPage({
   if (!user) redirect("/");
 
   const { id } = await params;
+  // Multi-communautés (PR4) : contrôle répété dans chaque page (voir tierlist).
+  if (!(await canViewPote(user.id, id))) notFound();
 
   const today = todayDateOnly();
   const [weeklySlots, overrides] = await Promise.all([

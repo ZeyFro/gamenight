@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate } from "@/lib/wallclock";
 import { addDays, findBestSlot, type BestSlot, type HourSlot } from "@/lib/calendar-dates";
-import { accessibleSessionWhere } from "@/lib/session-access";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -121,7 +121,7 @@ export async function getCalendarData(
       where: { date: { gte: rangeStart, lt: rangeEndExclusive } },
     }),
     prisma.session.findMany({
-      where: { date: { gte: rangeStart, lt: rangeEndExclusive }, ...accessibleSessionWhere(viewerId) },
+      where: { date: { gte: rangeStart, lt: rangeEndExclusive }, ...(await accessibleSessionWhereFor(viewerId)) },
       include: {
         proposals: {
           select: {

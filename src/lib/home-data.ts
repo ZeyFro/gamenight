@@ -3,6 +3,7 @@ import { nowMs, wallClockNow } from "@/lib/wallclock";
 import { getNextSessionForHome, getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
@@ -41,7 +42,7 @@ export async function loadHomeData(user: User) {
     getRecentActivity(user.id, 3),
     getGroupStats(),
     getWeekAvailability(user.id),
-    getScoreboard("global"),
+    getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
     listGroupAchievements(),

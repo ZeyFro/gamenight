@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { Card } from "@/components/ui/Card";
@@ -41,7 +42,8 @@ export default async function CreerTournoiPage({
   // (`tagIds: []`) : non demandé pour les tournois, `NotifyRecipientsField`
   // masque déjà les chips de tag quand la liste est vide.
   const potesRaw = await prisma.user.findMany({
-    where: { id: { not: user.id } },
+    // Multi-communautés (PR4) : membres de la communauté active du créateur.
+    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id)] },
     select: { id: true, discordName: true, discordAvatar: true, color: true },
     orderBy: { discordName: "asc" },
   });

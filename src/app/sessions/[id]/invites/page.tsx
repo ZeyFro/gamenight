@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { listAllInvites } from "@/lib/session-access";
 import { getSessionInviteSyncStatuses, getSessionThreadReadiness, type SessionThreadReadiness } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabledFor } from "@/lib/community-channels";
+import { communityMemberUserWhere } from "@/lib/community-isolation";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -95,7 +96,9 @@ export default async function SessionInvitesPage({
   const [invites, potes] = await Promise.all([
     listAllInvites(sessionId),
     prisma.user.findMany({
-      where: { id: { not: user.id } },
+      // Multi-communautés (PR4) : seuls les membres de la communauté de CETTE
+      // soirée sont invitables (aucun filtre si l'isolation est éteinte).
+      where: { AND: [{ id: { not: user.id } }, await communityMemberUserWhere(session.communityId)] },
       select: { id: true, discordName: true, discordAvatar: true, color: true },
       orderBy: { discordName: "asc" },
     }),

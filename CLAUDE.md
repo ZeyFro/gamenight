@@ -51,6 +51,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
 - `COMMUNITY_AUTO_CREATE_ENABLED` : création automatique de communautés PENDING (webhook d'événements Discord « application autorisée » + cron `community-guild-sync`) ; exige `DISCORD_APP_PUBLIC_KEY` (signature Ed25519 du webhook)
 - `COMMUNITY_CHANNELS_ENABLED` : salons d'annonce par communauté (`CommunityChannelConfig`) pour soirées et tournois ; éteint = variables `DISCORD_BOT_*` seules, allumé = repli sur elles uniquement pour la communauté `default`
+- `COMMUNITY_ISOLATION_ENABLED` : isolation des soirées, tournois, potes et classements par communauté (Membership ACTIVE) ; éteint = aucun filtre. Couverture partielle (voir README, PR4) : ne pas activer en production avant la fin du backlog
 - `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED` : création de nouveaux MP (les MP déjà en file sont traités) ; les MP de soirée exigent aussi le chemin bot soirées
 - `DISCORD_THREAD_CLEANUP_ENABLED` + `DISCORD_THREAD_CLEANUP_MODE` : archivage/suppression des fils (dry-run sauf `execute`)
 - `DISCORD_THREAD_CLOSE_ON_END_ENABLED` : archive le fil dès la fin (au lieu du cron suivant) ; exige aussi le nettoyage ci-dessus en `execute`

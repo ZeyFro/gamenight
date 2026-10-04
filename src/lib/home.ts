@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCalendarData } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getWeekStart } from "@/lib/calendar-dates";
 import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
-import { accessibleSessionWhere } from "@/lib/session-access";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -47,7 +47,7 @@ export interface ActivityItem {
 export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
-      where: { status: "DONE", ...accessibleSessionWhere(viewerId) },
+      where: { status: "DONE", ...(await accessibleSessionWhereFor(viewerId)) },
       orderBy: { date: "desc" },
       take: limit,
       select: {
@@ -289,11 +289,12 @@ export async function getWeekAvailability(viewerId: string): Promise<WeekAvailab
  * reste dans ce module (déjà dans `EXISTING_EXCEPTIONS` de
  * `community-scope.test.ts`) plutôt que dans un nouveau fichier.
  * Confidentialité : jamais une soirée privée dont `viewerId` n'est ni créateur
- * ni invité (`accessibleSessionWhere`).
+ * ni invité, ni d'une communauté dont il n'est pas membre
+ * (`accessibleSessionWhereFor`).
  */
-export function getNextSessionForHome(viewerId: string) {
+export async function getNextSessionForHome(viewerId: string) {
   return prisma.session.findFirst({
-    where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleSessionWhere(viewerId) },
+    where: { status: { in: ["VOTING", "SCHEDULED"] }, ...(await accessibleSessionWhereFor(viewerId)) },
     orderBy: { date: "asc" },
     include: {
       decidedGame: { select: { name: true, coverUrl: true } },

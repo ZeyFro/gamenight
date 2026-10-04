@@ -1,6 +1,7 @@
 import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import {
   getSessionAnnounceConfig,
   getTournamentAnnounceConfig,
@@ -83,20 +84,16 @@ export async function isTournamentAnnounceViaBotEnabledFor(communityId: string |
 }
 
 /**
- * Communauté d'une NOUVELLE soirée/tournoi. Éteint : `null` (aucun
- * changement). Allumé : la seule communauté ACTIVE du créateur ; s'il en a
- * plusieurs, la communauté par défaut si elle en fait partie, sinon sa plus
- * ancienne. Aucune : `null` (= communauté par défaut). Provisoire : l'écran de
- * choix explicite du serveur (PR5) remplacera cette heuristique.
+ * Communauté d'une NOUVELLE soirée/tournoi. Salons par communauté ET
+ * isolation éteints : `null` (aucun changement). Sinon (l'un des deux
+ * allumé) : la seule communauté ACTIVE du créateur ; s'il en a plusieurs, la
+ * communauté par défaut si elle en fait partie, sinon sa plus ancienne.
+ * Aucune : `null` — sous isolation l'appelant DOIT alors refuser la création
+ * (une soirée sans communauté serait rattachée à `default` sans que le
+ * créateur en soit membre). Provisoire : l'écran de choix explicite du
+ * serveur (PR5) remplacera cette heuristique.
  */
 export async function pickCreationCommunityId(userId: string): Promise<string | null> {
-  if (!isCommunityChannelsEnabled()) return null;
-  const memberships = await prisma.membership.findMany({
-    where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
-    select: { communityId: true, community: { select: { slug: true } } },
-    orderBy: { joinedAt: "asc" },
-  });
-  if (memberships.length === 0) return null;
-  const preferred = memberships.find((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG) ?? memberships[0];
-  return preferred.communityId;
+  if (!isCommunityChannelsEnabled() && !isCommunityIsolationEnabled()) return null;
+  return resolveActiveCommunityId(userId);
 }

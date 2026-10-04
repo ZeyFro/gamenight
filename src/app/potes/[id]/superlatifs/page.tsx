@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { canViewPote } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { SuperlativesWonGrid } from "@/components/SuperlativesWonGrid";
@@ -16,6 +17,8 @@ export default async function PoteSuperlatifsPage({
   if (!user) redirect("/");
 
   const { id } = await params;
+  // Multi-communautés (PR4) : contrôle répété dans chaque page (voir tierlist).
+  if (!(await canViewPote(user.id, id))) notFound();
 
   // Chantier nettoyage réel du stockage (V2, suite) — `gameName`/
   // `sessionDate` dénormalisés, survivent à la purge de la soirée.
