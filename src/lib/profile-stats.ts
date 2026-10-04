@@ -43,7 +43,6 @@ export async function getProfileStats(
  * de tout le groupe.
  */
 export async function getGlobalRank(
-  userId: string,
   xpTotal: number
 ): Promise<{ position: number; total: number }> {
   const [ahead, total] = await Promise.all([

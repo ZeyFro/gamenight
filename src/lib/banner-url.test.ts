@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bannerUrlSchema } from "@/lib/validations";
-import {
+import { isKnownNonImageBannerUrl,
   BANNER_HOST_MESSAGE,
   BANNER_PAGE_MESSAGE,
   BANNER_HTTPS_MESSAGE,
@@ -79,5 +79,31 @@ describe("bannerUrlSchema", () => {
     for (const bannerUrl of ["https://static.klipy.com/ii/abc/x.webp", "https://i.imgur.com/a.png", ""]) {
       expect(bannerUrlSchema.safeParse({ bannerUrl }).success).toBe(true);
     }
+  });
+});
+
+describe("isKnownNonImageBannerUrl", () => {
+  it.each([
+    "https://klipy.com/gifs/abc",
+    "https://www.klipy.com/gifs/abc",
+    "https://KLIPY.com/gifs/abc",
+    "https://tenor.com/view/abc-1",
+    "https://www.giphy.com/gifs/abc",
+  ])("page connue : %s", (url) => {
+    expect(isKnownNonImageBannerUrl(url)).toBe(true);
+  });
+
+  it.each([
+    "https://static.klipy.com/ii/abc/gif.gif",
+    "https://media.tenor.com/abc/x.gif",
+    "https://i.giphy.com/abc.gif",
+    "https://cdn.discordapp.com/attachments/1/2/x.gif",
+    "https://ancien-hebergeur.example/banniere.png",
+  ])("fichier d'image ou hôte hors liste : %s → chargé comme avant", (url) => {
+    expect(isKnownNonImageBannerUrl(url)).toBe(false);
+  });
+
+  it.each(["", "pas une url", "javascript:alert(1)"])("valeur invalide ou étrangère (%j) : false, jamais d'exception", (value) => {
+    expect(isKnownNonImageBannerUrl(value)).toBe(false);
   });
 });

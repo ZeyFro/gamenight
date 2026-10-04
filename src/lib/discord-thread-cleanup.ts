@@ -269,3 +269,35 @@ export async function runDiscordThreadCleanup(opts: {
   }
   return report;
 }
+
+export type CloseOnEndResult = "enqueued" | "not_eligible" | "not_needed";
+
+/**
+ * Archivage IMMÉDIAT à la fin (drapeau `DISCORD_THREAD_CLOSE_ON_END_ENABLED`,
+ * voir `thread-close-on-end.ts`) : appelée juste APRÈS le commit qui fait
+ * passer une soirée / un tournoi en DONE ou CANCELLED, au lieu d'attendre le
+ * prochain passage du cron. Mêmes règles que le cron — ce n'est que la même
+ * décision (`decideThreadCleanup`) prise plus tôt :
+ *   - jamais sans fil réellement créé (sinon l'archivage serait refusé
+ *     définitivement, et le fil créé ensuite ne serait jamais nettoyé) ;
+ *   - jamais deux archivages (occurrence fixe + garde `none`) ;
+ *   - la suppression à 24 h reste portée par le cron, inchangée.
+ * Relit l'état en base : un événement qui n'est plus terminé, ou sans
+ * annonce bot, n'est pas éligible.
+ */
+export async function closeThreadOnEnd(kind: "session" | "tournament", id: string): Promise<CloseOnEndResult> {
+  const target = kind === "session" ? SESSION_TARGET : TOURNAMENT_TARGET;
+  const row =
+    kind === "session"
+      ? await prisma.session.findUnique({ where: { id }, select: { status: true, announceViaBot: true } })
+      : await prisma.tournament.findUnique({ where: { id }, select: { status: true, announceViaBot: true } });
+  if (!row || !row.announceViaBot || !(TERMINAL_STATUSES as readonly string[]).includes(row.status)) {
+    return "not_eligible";
+  }
+
+  const states = await loadCleanupStates(new Map([[id, target.slots(id)]]));
+  if (decideThreadCleanup(states.get(id)!, wallClockNow()) !== "archive") return "not_needed";
+
+  await target.enqueueArchive(id);
+  return "enqueued";
+}

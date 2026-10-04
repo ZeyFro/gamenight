@@ -3,7 +3,6 @@
 import { useRef, useState, type TouchEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { ButtonLink } from "@/components/ui/Button";
 import { VoterAvatars } from "@/components/VoterAvatars";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
@@ -134,19 +133,5 @@ export function SessionBlock({ session }: { session: CalendarSession }) {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-/** Petit lien texte "→ Session" pour les cellules mois (pas la peine d'ouvrir le panneau depuis une case aussi petite). */
-export function SessionMonthPill({ session }: { session: CalendarSession }) {
-  const statusInfo = SESSION_STATUS_LABELS[session.status];
-  return (
-    <Link
-      href={`/sessions/${session.id}`}
-      title={`${toTimeInputValue(session.date)} · ${session.decidedGameName ?? "Vote en cours"} (${statusInfo.label})`}
-      className={`block truncate rounded px-1 text-[9px] font-medium ${STATUS_BLOCK_CLASSES[session.status]}`}
-    >
-      {toTimeInputValue(session.date)} {session.decidedGameName ?? "Vote"}
-    </Link>
   );
 }
