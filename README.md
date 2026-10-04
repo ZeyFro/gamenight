@@ -2462,6 +2462,18 @@ le client scopé n’existe pas) :
 | `/api/cron/community-guild-sync` | Rattrapage via `GET /users/@me/guilds` : crée en `PENDING` les serveurs manqués par le webhook, marque `LEFT` (+ `leftAt`) les communautés `PENDING`/`ACTIVE` dont le bot est parti. Fail-safe : liste vide, incomplète, en erreur ou création en échec = aucun `LEFT`. La communauté `default` n'est jamais marquée `LEFT` automatiquement. |
 | `src/lib/community-provisioning.ts` | Création idempotente (webhook et cron peuvent se croiser) : serveur déjà connu → nom/icône seulement ; `LEFT` (bot réajouté) → `PENDING` ; `SUSPENDED`/`ARCHIVED` → jamais modifiée. |
 
+### Salons d'annonce par communauté (PR3)
+
+Éteinte par défaut : `COMMUNITY_CHANNELS_ENABLED` doit valoir exactement `true`. Éteinte, **rien ne change** : `DISCORD_BOT_GUILD_ID` et `DISCORD_BOT_*_CHANNEL_ID` restent la seule source et aucune lecture de `CommunityChannelConfig` n'a lieu.
+
+| Élément | Rôle |
+| :-- | :-- |
+| `Session.communityId` / `Tournament.communityId` | Colonnes **nullables** (migration additive, aucun backfill) : `null` = communauté `default` (toutes les lignes historiques). Renseignées à la création seulement si le flag est allumé. |
+| `src/lib/community-channels.ts` | Résolution de la destination (serveur + salon) d'une communauté, fail-closed : communauté non `ACTIVE` ou introuvable = rien ; salon `enabled=false` = rien ; sans salon configuré, repli sur l'environnement **uniquement pour `default`**, jamais pour une autre communauté (une annonce ne part jamais dans le salon d'une autre). Le serveur est `Community.discordGuildId`, vérifié avec le salon avant tout envoi (`verifyChannelDestination`, inchangé). |
+| `pickCreationCommunityId` | Communauté d'une nouvelle soirée/tournoi : la seule communauté ACTIVE du créateur ; s'il en a plusieurs, `default` si elle en fait partie, sinon la plus ancienne. Provisoire : l'écran de choix explicite du serveur (PR5) le remplacera. |
+
+Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. **Aucune interface d'administration** n'écrit encore `CommunityChannelConfig` : les lignes se posent en base tant que l'écran d'activation n'existe pas (le salon doit appartenir au serveur de la communauté, vérifié à l'envoi).
+
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,
 client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,

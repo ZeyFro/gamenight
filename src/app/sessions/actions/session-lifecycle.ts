@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
-import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
   enqueueSessionCreationDeliveries,
@@ -83,7 +83,10 @@ export async function createSession(formData: FormData) {
 
   // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
   // commentaire du champ dans schema.prisma (chantier annonces bot).
-  const announceViaBot = isSessionAnnounceViaBotEnabled();
+  // Multi-communautés (PR3) : sans `COMMUNITY_CHANNELS_ENABLED`, `communityId`
+  // reste `null` et la décision est celle de l'environnement, comme avant.
+  const communityId = await pickCreationCommunityId(user.id);
+  const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
 
   // Création de la session ET enqueue de l'intention de notification bot
   // dans LA MÊME transaction SQL — trouvé lors de la revue ciblée de cette
@@ -110,6 +113,7 @@ export async function createSession(formData: FormData) {
         notifiedUserIds,
         createdById: user.id,
         announceViaBot,
+        communityId,
       },
     });
     // Confidentialité des soirées — `SessionInvite` posée pour EXACTEMENT

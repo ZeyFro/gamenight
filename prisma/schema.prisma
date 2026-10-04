@@ -575,6 +575,15 @@ model Session {
   // backfill nécessaire.
   announceViaBot Boolean @default(false)
 
+  // Multi-communautés, PR3 : communauté de la soirée (salons Discord par
+  // communauté). `null` = communauté par défaut (toutes les soirées créées
+  // avant cette colonne, ou tant que `COMMUNITY_CHANNELS_ENABLED` est éteint).
+  // Additif : jamais NOT NULL tant que l'étape « contract » n'est pas validée.
+  communityId String?
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+
+  @@index([communityId])
+
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]
@@ -1786,6 +1795,14 @@ model Tournament {
   discordGuildId   String?
   discordChannelId String?
 
+  // Multi-communautés, PR3 : communauté du tournoi (même contrat que
+  // `Session.communityId` : `null` = communauté par défaut). La destination
+  // Discord figée ci-dessus est calculée pour CETTE communauté à la création.
+  communityId String?
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+
+  @@index([communityId])
+
   // V2 (notifications maîtrisées + annulation/suppression) — ping sélectif
   // à la création : liste des ids de potes à MENTIONNER dans l'annonce
   // Discord, jamais une liste d'accès ni des participants automatiquement
@@ -2274,6 +2291,8 @@ model Community {
 
   memberships    Membership[]
   channelConfigs CommunityChannelConfig[]
+  sessions       Session[]
+  tournaments    Tournament[]
 
   @@index([status])
 }

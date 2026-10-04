@@ -11,7 +11,7 @@ import {
   enqueueSessionDateChange,
   enqueueSessionValidated,
 } from "@/lib/session-announce";
-import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
 import { inviteToSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
@@ -64,14 +64,16 @@ export async function createRouletteResultSession(data: {
   createdById: string;
   notifiedUserIds: string[];
 }): Promise<{ session: Session; announceViaBot: boolean; proposalId: string }> {
-  const announceViaBot = isSessionAnnounceViaBotEnabled();
+  // Multi-communautés (PR3) : `null` tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
+  const communityId = await pickCreationCommunityId(data.createdById);
+  const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
   logger.info("sessions", "Décision de transport à la création (session issue d'une roulette).", {
     announceViaBot,
   });
 
   const { session, proposalId } = await prisma.$transaction(async (tx) => {
     const created = await tx.session.create({
-      data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot },
+      data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot, communityId },
     });
     // Confidentialité des soirées — mêmes garanties que `createSession`
     // (session-lifecycle.ts) : `SessionInvite` posée pour EXACTEMENT
