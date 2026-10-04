@@ -29,7 +29,7 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | # | Idée | Source | Taille | Risque | Valeur | Statut |
 | - | ---- | ------ | ------ | ------ | ------ | ------ |
 | 11 | **Test garde-fou : toute route cron/backfill passe par `cron-auth`** (fail-closed 503) | Audit du code : une route copiée sans contrôle serait publique, invisible de tsc/lint/build | XS | nul (test seul) | moyenne | PR en cours |
-| 12 | **Test : chaque variable de « Switches d'environnement » (CLAUDE.md) existe dans `.env.example`** | Audit du code : doc des drapeaux dérive | XS | nul (test seul) | faible-moyenne | À faire |
+| 12 | **Test : chaque variable de « Switches d'environnement » (CLAUDE.md) existe dans `.env.example`** | Audit du code : doc des drapeaux dérive | XS | nul (test seul) | faible-moyenne | PR en cours |
 | 13 | **Page `/aide` (FAQ des potes)** : comment rejoindre une soirée, voter, lier Steam | UX : onboarding des nouveaux potes | M | faible (page nouvelle, lien discret) | moyenne | À faire |
 | 14 | **Test : toute route `/api/*` hors cron exige `auth()` ou est listée en exception** | Audit du code (sécurité) | S | nul (test seul) | élevée | À faire |
 
