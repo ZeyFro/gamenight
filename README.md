@@ -12721,3 +12721,7 @@ La CSP est envoyée en `Content-Security-Policy-Report-Only` (`src/lib/csp-polic
 - **Point d'entrée public** (les navigateurs n'ont pas de session) donc borné : corps limité à 16 Ko (413), 60 rapports par minute et par instance (429), aucun stockage en base.
 - **Données minimales** : seuls `document-uri`, `blocked-uri`, `violated-directive`, `effective-directive`, `source-file`, `disposition` et `line-number` sont gardés ; les URI sont tronquées avant `?` et `#`, `script-sample` et la politique d'origine sont ignorés.
 - Étape 1 du plan « CSP bloquante » (`docs/rapport-csp-bloquant.md`) : observer 1 à 2 semaines avant de bloquer.
+
+## Accueil v2 (`/accueil-v2`, drapeau `HOME_V2_ENABLED`)
+
+Page de comparaison de l'accueil : **mêmes requêtes** (`src/lib/home-data.ts`, copie des requêtes de `src/app/page.tsx`, mêmes filtres de confidentialité), **mêmes cartes et mêmes libellés**, même en-tête et même navigation (ceux du layout) ; seules la hiérarchie et l'espacement changent : prochaine soirée en grand, puis les trois actions (« Jouer maintenant » en violet, « Mes dispos », « Soirées »), puis « cette semaine » (dispos, activité), « le groupe » (classement, stats), et le reste dans l'ordre de l'accueil actuel. **Éteint par défaut** : sans `HOME_V2_ENABLED=true` la route répond 404 ; `/` n'est pas modifié. Page en lecture seule : elle ne déclenche ni la clôture automatique d'une soirée ni l'onboarding (que `/` continue de gérer). Captures avant/après : `docs/captures-accueil-v2/`.
