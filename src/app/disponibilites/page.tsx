@@ -19,6 +19,9 @@ import { ActionForm } from "@/components/ActionForm";
 import { Stagger, StaggerItem, PopIn } from "@/components/motion";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Disponibilités");
 
 const ACTION_ERROR_MESSAGES = {
   [RATE_LIMIT_ERROR_KEY]: RATE_LIMIT_MESSAGE,

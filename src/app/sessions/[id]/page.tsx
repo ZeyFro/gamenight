@@ -44,6 +44,9 @@ import {
   resendDiscordAction,
 } from "../actions/session-lifecycle";
 import { completeWeeklyChallengeAction } from "../actions/results";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Soirée");
 
 const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
   // Texte volontairement générique ("l'action") : ce même statut couvre la

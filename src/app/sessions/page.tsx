@@ -30,6 +30,9 @@ import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Soirées");
 
 type SessionParticipant = {
   discordName: string;

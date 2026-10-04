@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { AjouterJeuForm } from "@/components/AjouterJeuForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Ajouter un jeu");
 
 const ERROR_MESSAGES: Record<string, string> = {
   joueurs_invalide:

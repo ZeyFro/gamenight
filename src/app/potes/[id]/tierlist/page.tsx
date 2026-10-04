@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ReadOnlyTierlist, type TierlistRowGame } from "@/components/ReadOnlyTierlist";
 import type { Tier } from "@prisma/client";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Tier list d'un pote");
 
 /** Onglet "Tierlist" — voir `../layout.tsx` pour l'en-tête. */
 export default async function PoteTierlistPage({

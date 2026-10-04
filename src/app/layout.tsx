@@ -28,7 +28,7 @@ const geistMono = Geist_Mono({
 // volontairement PAS de service worker (pas de cache offline, pas de
 // push), juste ce qu'il faut pour l'installation.
 export const metadata: Metadata = {
-  title: "GameNight",
+  title: { default: "GameNight", template: "%s · GameNight" },
   description: "Organise tes soirées jeux avec tes potes.",
   manifest: "/manifest.json",
   appleWebApp: {

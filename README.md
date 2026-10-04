@@ -12689,6 +12689,10 @@ Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'av
 
 **Sonde de santé** : `GET /api/health` (`Authorization: Bearer <CRON_SECRET>`, mêmes codes que les crons : 503 sans `CRON_SECRET`, 401 si mauvais en-tête) répond `200 {"ok":true,"db":"ok"}` si la base répond à un `SELECT 1`, `503 {"ok":false,"db":"error"}` sinon. À brancher sur un monitoring externe (alerte si non-200) ; aucune donnée métier ni secret dans la réponse. Aucun cron n'est configuré par le dépôt.
 
+## Titres de page (drapeau `PAGE_TITLES_ENABLED`)
+
+Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")` (`src/lib/page-title.ts`), affiché `<Titre> · GameNight` (gabarit du layout racine). **Éteint par défaut** : actif uniquement si `PAGE_TITLES_ENABLED` vaut exactement `true` ; sinon les pages n'exportent aucun titre et gardent « GameNight ». La valeur est lue au build pour les pages statiques et à la requête pour les pages dynamiques : après un changement, redéployer. Pour les pages avec identifiant (`/sessions/[id]`, `/jeux/[id]`…) le titre est générique (pas de nom de soirée ou de jeu).
+
 ## Reporté après V2
 
 Hors périmètre de la V2, volontairement. Les colonnes « pourquoi » et « ce que ça demanderait » sont

@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { SuperlativesWonGrid } from "@/components/SuperlativesWonGrid";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Récompenses d'un pote");
 
 /** Onglet "Superlatifs" — voir `../layout.tsx` pour l'en-tête. Lecture seule. */
 export default async function PoteSuperlatifsPage({

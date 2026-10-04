@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { todayDateOnly } from "@/lib/wallclock";
 import { AvailabilityView } from "@/components/AvailabilityView";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Profil d'un pote");
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 

@@ -16,6 +16,9 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Potes");
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   return (
