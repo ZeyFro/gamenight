@@ -240,3 +240,13 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
 
   return unlocked;
 }
+
+/**
+ * Tous les trophées du groupe, débloqués d'abord (même requête que la carte
+ * « Trophées du groupe » de l'accueil, utilisée aussi par l'accueil v2). Placée
+ * ici car l'accès direct à `prisma.groupAchievement` est déjà autorisé dans ce
+ * module (`community-scope.test.ts`).
+ */
+export function listGroupAchievements() {
+  return prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] });
+}

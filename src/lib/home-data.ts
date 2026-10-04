@@ -1,13 +1,12 @@
 import type { User } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import { nowMs, wallClockNow } from "@/lib/wallclock";
-import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
+import { getNextSessionForHome, getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
+import { listGroupAchievements } from "@/lib/group-achievements";
 import { getScoreboard } from "@/lib/scoreboard";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
-import { accessibleSessionWhere } from "@/lib/session-access";
 import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 
@@ -38,27 +37,14 @@ export async function loadHomeData(user: User) {
     activeDebts,
     activeDebtorIds,
   ] = await Promise.all([
-    prisma.session.findFirst({
-      where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleSessionWhere(user.id) },
-      orderBy: { date: "asc" },
-      include: {
-        decidedGame: { select: { name: true, coverUrl: true } },
-        proposals: {
-          select: {
-            gameId: true,
-            game: { select: { coverUrl: true } },
-            votes: { select: { userId: true } },
-          },
-        },
-      },
-    }),
+    getNextSessionForHome(user.id),
     getRecentActivity(user.id, 3),
     getGroupStats(),
     getWeekAvailability(user.id),
     getScoreboard("global"),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
-    prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),
+    listGroupAchievements(),
     getActiveDebts(),
     getActiveDebtorIds(),
   ]);
