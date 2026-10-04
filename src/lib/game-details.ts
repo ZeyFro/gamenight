@@ -57,7 +57,7 @@ export async function getGameDetails(
     | "maxPlayers"
     | "playInfoManual"
   >,
-  { forceRefresh = false }: { forceRefresh?: boolean } = {}
+  { forceRefresh = false, signal }: { forceRefresh?: boolean; signal?: AbortSignal } = {}
 ): Promise<GameDetailsResult> {
   let igdbId = game.igdbId;
 
@@ -120,7 +120,7 @@ export async function getGameDetails(
     const fetched =
       cacheNeedsTranslationRetry && cachedDetails && !forceRefresh
         ? cachedDetails
-        : await fetchIgdbGameDetails(igdbId);
+        : await fetchIgdbGameDetails(igdbId, { signal });
     if (!fetched) {
       // IGDB ne connaît pas cet `igdbId` : marque datée pour que le
       // backfill ne le retente pas à chaque passage.

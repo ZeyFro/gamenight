@@ -2075,6 +2075,26 @@ Vercel :
 [steam-store] Processing 8/48: Terraria...
 ```
 
+**Diagnostic « 25 jeux sur 134 ont `igdbDetailsFetchedAt` »** — le backfill n'a pas
+perdu sa logique : la phase 1 (remplissage des jeux ayant un `igdbId` sans fiche)
+existe, est testée avec 134 jeux, et progresse à chaque passage. Ce qui limitait
+le débit : chaque fiche coûte ≈ 1,5-2 s (IGDB + traduction DeepL + pause anti-limite
+de débit), soit **~28 fiches par passage de 50 s** (134 jeux = 5 passages). La route
+passe donc à `maxDuration = 300` / budget **240 s** (comme `seed-reconcile`) : un
+seul passage remplit ~130 fiches. En plus : chaque appel IGDB est borné à 15 s
+(une requête qui ne répond jamais ne bloque plus tout le passage), et une fiche en
+cache **sans date** (`igdbDetailsFetchedAt` null) est rafraîchie puis datée. Le cron
+externe (cron-job.org) n'a pas à changer : la route répond toujours 202.
+
+Un log de **couverture** est émis à chaque passage, pour suivre sans accès à la base :
+
+```
+[igdb-coop] Couverture IGDB : 25/134 fiche(s) datée(s), 109 restante(s), 0 introuvable(s), 0 en cache sans date.
+```
+
+(`introuvable` = IGDB ne connaît pas l'`igdbId`, retenté après 7 jours ; un nombre élevé
+signale des `igdbId` erronés plutôt qu'un problème de débit.)
+
 **Limite honnête assumée — couverture par bibliothèque, pas par appel**
 Sans marqueur de progression persisté en base (aucune nouvelle migration
 pour ça, comme le reste du chantier coop), un seul appel ne garantit pas
@@ -12637,7 +12657,7 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 03:30 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
 | `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
-| `/api/backfill/igdb-coop` | GET, POST | 60 s (budget 50 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
+| `/api/backfill/igdb-coop` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
 | `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |
 | `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | quotidien à 05:00 | `game-news` |
 
