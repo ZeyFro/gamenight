@@ -9,7 +9,7 @@ interface CachedToken {
 // chaque appel IGDB tant que l'instance serverless reste "chaude".
 let cachedToken: CachedToken | null = null;
 
-async function getIgdbToken(): Promise<string> {
+async function getIgdbToken(signal?: AbortSignal): Promise<string> {
   const clientId = process.env.IGDB_CLIENT_ID?.trim();
   const clientSecret = process.env.IGDB_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
@@ -27,7 +27,7 @@ async function getIgdbToken(): Promise<string> {
   url.searchParams.set("client_secret", clientSecret);
   url.searchParams.set("grant_type", "client_credentials");
 
-  const res = await fetch(url, { method: "POST" });
+  const res = await fetch(url, { method: "POST", signal });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
@@ -343,15 +343,19 @@ export interface IgdbGameDetails {
  * et l'appel à la demande.
  */
 export async function fetchIgdbGameDetails(
-  igdbId: number
+  igdbId: number,
+  // Optionnel : le backfill (cron) impose un délai maximum par appel pour
+  // qu'une requête qui ne répond jamais ne consomme pas tout le passage.
+  options?: { signal?: AbortSignal }
 ): Promise<IgdbGameDetails | null> {
   const [token, clientId] = [
-    await getIgdbToken(),
+    await getIgdbToken(options?.signal),
     process.env.IGDB_CLIENT_ID!.trim(),
   ];
 
   const res = await fetch("https://api.igdb.com/v4/games", {
     method: "POST",
+    signal: options?.signal,
     headers: {
       "Client-ID": clientId,
       Authorization: `Bearer ${token}`,

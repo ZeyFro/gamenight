@@ -16,7 +16,9 @@
  *
  * Deux phases, partageant le même budget de temps :
  *   1. REMPLISSAGE — jeux avec un `igdbId` mais SANS cache
- *      (`igdbDetails` null) : `getGameDetails` récupère et persiste
+ *      (`igdbDetails` null) OU sans date de récupération
+ *      (`igdbDetailsFetchedAt` null, cache incohérent : rafraîchi pour être
+ *      daté) : `getGameDetails` récupère et persiste
  *      `igdbDetails`/`igdbDetailsFetchedAt` (+ isCoop/maxPlayers sauf
  *      `playInfoManual`). Avant ce correctif, seule la phase 2 existait :
  *      un jeu jamais visité sur sa fiche n'était JAMAIS rempli par le cron
@@ -45,13 +47,48 @@ const REQUEST_DELAY_MS = 250;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Marge sous la limite d'exécution serverless (`maxDuration = 60`
- * explicite sur la route, pas le plafond du plan : 300s sur Hobby avec
- * Fluid compute) : on arrête volontairement la
- * boucle avant l'échéance plutôt que de risquer une coupure brutale par
- * la plateforme en plein appel réseau/écriture.
+ * Marge sous la limite d'exécution serverless (`maxDuration = 300` sur la
+ * route, comme `seed-reconcile` et `steam-library-full-sync` : budget 240 s)
+ * : on arrête volontairement la boucle avant l'échéance plutôt que de
+ * risquer une coupure brutale par la plateforme en plein appel
+ * réseau/écriture. Pire cas au-delà du budget : un seul appel IGDB en cours
+ * (au plus `IGDB_CALL_TIMEOUT_MS`), donc bien sous les 300 s.
+ *
+ * Pourquoi 240 s et plus 50 s : chaque fiche coûte ≈ 1,5-2 s (IGDB +
+ * traduction DeepL + pause anti-limite de débit), soit ~28 fiches par
+ * passage de 50 s — 134 jeux sans fiche demandaient 5 passages. Avec 240 s,
+ * un seul passage en remplit ~130.
  */
-const TIME_BUDGET_MS = 50_000;
+export const IGDB_COOP_TIME_BUDGET_MS = 240_000;
+
+/**
+ * Délai maximum d'UN appel IGDB (token Twitch compris). Sans lui, une
+ * requête qui ne répond jamais bloquait le passage jusqu'à la coupure de la
+ * plateforme, sans que le budget de temps — vérifié seulement entre deux
+ * jeux — puisse l'empêcher. Le jeu concerné est compté en échec et repris au
+ * passage suivant (aucune marque « introuvable »).
+ */
+export const IGDB_CALL_TIMEOUT_MS = 15_000;
+
+export interface IgdbCoopBackfillOptions {
+  timeBudgetMs?: number;
+  requestDelayMs?: number;
+  callTimeoutMs?: number;
+}
+
+/** Couverture du cache IGDB, journalisée à chaque passage (suivi sans accès base). */
+export interface IgdbCoverage {
+  /** Jeux ayant un `igdbId`. */
+  withIgdbId: number;
+  /** … dont la fiche est en cache ET datée (`igdbDetailsFetchedAt`). */
+  withDetails: number;
+  /** … sans fiche, marqués introuvables sur IGDB (retentés après `IGDB_NOT_FOUND_RETRY_MS`). */
+  notFound: number;
+  /** … sans fiche et non marqués : ce que les prochains passages doivent encore remplir. */
+  remaining: number;
+  /** Fiches en cache SANS date de récupération : incohérence que la phase 1 répare. */
+  cachedWithoutDate: number;
+}
 
 /**
  * Délai avant de retenter un jeu qu'IGDB ne connaît pas (`igdbNotFoundAt`
@@ -80,9 +117,45 @@ export interface IgdbCoopBackfillSummary {
   skippedNoCredentials: boolean;
   /** Jeux dont le cache IGDB (igdbDetails/igdbDetailsFetchedAt) a été rempli par la phase 1. */
   detailsFilled: number;
+  /** Couverture après le passage ; `null` sans identifiants IGDB (rien n'a été lu). */
+  coverage: IgdbCoverage | null;
 }
 
-export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
+async function loadCoverage(): Promise<IgdbCoverage> {
+  const [withIgdbId, withDetails, notFound, cachedWithoutDate] = await Promise.all([
+    prisma.game.count({ where: { igdbId: { not: null } } }),
+    prisma.game.count({ where: { igdbId: { not: null }, igdbDetailsFetchedAt: { not: null } } }),
+    prisma.game.count({
+      where: { igdbId: { not: null }, igdbDetailsFetchedAt: null, igdbNotFoundAt: { not: null } },
+    }),
+    prisma.game.count({
+      where: { igdbId: { not: null }, igdbDetails: { not: Prisma.DbNull }, igdbDetailsFetchedAt: null },
+    }),
+  ]);
+  return {
+    withIgdbId,
+    withDetails,
+    notFound,
+    remaining: Math.max(0, withIgdbId - withDetails - notFound),
+    cachedWithoutDate,
+  };
+}
+
+async function reportCoverage(): Promise<IgdbCoverage> {
+  const coverage = await loadCoverage();
+  logger.info(
+    "igdb-coop",
+    `Couverture IGDB : ${coverage.withDetails}/${coverage.withIgdbId} fiche(s) datée(s), ${coverage.remaining} restante(s), ${coverage.notFound} introuvable(s), ${coverage.cachedWithoutDate} en cache sans date.`
+  );
+  return coverage;
+}
+
+export async function runIgdbCoopBackfill(
+  options: IgdbCoopBackfillOptions = {}
+): Promise<IgdbCoopBackfillSummary> {
+  const timeBudgetMs = options.timeBudgetMs ?? IGDB_COOP_TIME_BUDGET_MS;
+  const requestDelayMs = options.requestDelayMs ?? REQUEST_DELAY_MS;
+  const callTimeoutMs = options.callTimeoutMs ?? IGDB_CALL_TIMEOUT_MS;
   const startedAt = Date.now();
   const hasCredentials = Boolean(
     process.env.IGDB_CLIENT_ID?.trim() && process.env.IGDB_CLIENT_SECRET?.trim()
@@ -100,6 +173,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       stoppedEarly: false,
       skippedNoCredentials: true,
       detailsFilled: 0,
+      coverage: null,
     };
   }
 
@@ -113,17 +187,23 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   const uncached = shuffle(
     await prisma.game.findMany({
       where: {
-        igdbDetails: { equals: Prisma.DbNull },
         igdbId: { not: null },
-        OR: [
-          { igdbNotFoundAt: null },
-          { igdbNotFoundAt: { lt: new Date(startedAt - IGDB_NOT_FOUND_RETRY_MS) } },
+        // Sans fiche en cache, OU fiche en cache sans date de récupération
+        // (incohérent : jamais corrigé par la phase 2, qui ne date rien).
+        AND: [
+          { OR: [{ igdbDetails: { equals: Prisma.DbNull } }, { igdbDetailsFetchedAt: null }] },
+          {
+            OR: [
+              { igdbNotFoundAt: null },
+              { igdbNotFoundAt: { lt: new Date(startedAt - IGDB_NOT_FOUND_RETRY_MS) } },
+            ],
+          },
         ],
       },
     })
   );
   for (const game of uncached) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+    if (Date.now() - startedAt > timeBudgetMs) {
       detailsStoppedEarly = true;
       logger.warn(
         "igdb-coop",
@@ -134,14 +214,19 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     logger.info("igdb-coop", `Remplissage fiche IGDB: ${game.name}...`);
     // `getGameDetails` journalise lui-même ses erreurs (logger.error) et les
     // renvoie dans `error` — comptées ici, jamais ignorées.
-    const result = await getGameDetails(game);
+    // Fiche déjà en cache mais sans date : `forceRefresh` (sinon le cache
+    // serait renvoyé tel quel, sans jamais être daté).
+    const result = await getGameDetails(game, {
+      forceRefresh: game.igdbDetails !== null,
+      signal: AbortSignal.timeout(callTimeoutMs),
+    });
     if (result.error === "not_found") detailsNotFound += 1;
     else if (result.error) detailsFailed += 1;
     else {
       detailsFilled += 1;
       filledIds.push(game.id);
     }
-    await sleep(REQUEST_DELAY_MS);
+    await sleep(requestDelayMs);
   }
   if (uncached.length > 0) {
     logger.info(
@@ -186,6 +271,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       stoppedEarly: detailsStoppedEarly,
       skippedNoCredentials: false,
       detailsFilled,
+      coverage: await reportCoverage(),
     };
   }
 
@@ -197,7 +283,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
   let stoppedEarly = false;
 
   for (const game of games) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+    if (Date.now() - startedAt > timeBudgetMs) {
       stoppedEarly = true;
       logger.warn(
         "igdb-coop",
@@ -211,7 +297,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
 
     try {
       // `igdbId` non-null garanti par le `where` ci-dessus.
-      const details = await fetchIgdbGameDetails(game.igdbId!);
+      const details = await fetchIgdbGameDetails(game.igdbId!, { signal: AbortSignal.timeout(callTimeoutMs) });
       if (!details) {
         // IGDB ne connaît plus ce jeu : on garde les valeurs actuelles (ne
         // surtout pas écraser isCoop par `false`) et on le marque.
@@ -220,7 +306,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
           data: { igdbNotFoundAt: new Date() },
         });
         notFound += 1;
-        await sleep(REQUEST_DELAY_MS);
+        await sleep(requestDelayMs);
         continue;
       }
       const isCoop = details.isCoop;
@@ -237,7 +323,7 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
       logger.error("igdb-coop", error, { gameId: game.id, gameName: game.name, igdbId: game.igdbId });
     }
 
-    await sleep(REQUEST_DELAY_MS);
+    await sleep(requestDelayMs);
   }
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
@@ -257,5 +343,6 @@ export async function runIgdbCoopBackfill(): Promise<IgdbCoopBackfillSummary> {
     stoppedEarly,
     skippedNoCredentials: false,
     detailsFilled,
+    coverage: await reportCoverage(),
   };
 }

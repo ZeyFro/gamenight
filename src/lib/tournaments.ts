@@ -6,6 +6,7 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
+import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import {
   enqueueTournamentAnnounceDelete,
@@ -434,6 +435,10 @@ export async function declareWinner(
   if (!claimed) return { ok: false, tournamentDone: false };
 
   if (tournamentFinalized) {
+    // Archivage immédiat du fil (drapeau DISCORD_THREAD_CLOSE_ON_END_ENABLED,
+    // éteint par défaut) — le résumé de fin déjà enqueue passe d'abord, le
+    // résolveur d'archivage attend les livraisons encore en cours.
+    await closeThreadOnEndSafely("tournament", match.tournamentId);
     await announceTournamentFinalization(match.tournamentId, winnerId);
   }
 

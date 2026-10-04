@@ -11,7 +11,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 ## Commandes
 - `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` : jamais sans `DATABASE_URL` locale)
 - `npx vitest run <fichier>` : tests unitaires ciblés
-- Tests d'intégration : Postgres Docker local, jamais Neon
+- Tests d'intégration : Postgres Docker local, jamais Neon. En session cloud, le hook SessionStart (`.claude/hooks/session-start.mjs`) fait les étapes 1-2 sans Docker (Postgres 16, 127.0.0.1:55439) et exporte `TEST_DATABASE_URL` : lancer directement l'étape 3.
   1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine`
   2. `DATABASE_URL=<url ci-dessous> npx prisma migrate deploy`
   3. `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test npm run test:postgres`
@@ -33,7 +33,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - Les tests d'intégration partagent une base (TRUNCATE) : `npm run test:postgres` (un fichier à la fois), jamais deux runs en parallèle.
 - `auth()` appelé depuis un composant serveur ou une server action jette les `Set-Cookie` : rien n'y est persisté dans le JWT (`src/auth.ts`).
 - `/api/backfill/igdb-coop` accepte GET et POST (`Authorization: Bearer <CRON_SECRET>`) et répond 202 ; le traitement tourne dans `after()`.
-- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync` : `maxDuration` 300, budget 240 s ; `igdb-coop`, `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
+- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync`, `igdb-coop` : `maxDuration` 300, budget 240 s ; `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
 - klipy : les liens de page (`klipy.com/…`) sont refusés, seuls les liens d'image (`static.klipy.com/…`) fonctionnent (`src/lib/banner-url.ts`).
 
 ## Notifications Discord
@@ -51,6 +51,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
 - `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED` : création de nouveaux MP (les MP déjà en file sont traités) ; les MP de soirée exigent aussi le chemin bot soirées
 - `DISCORD_THREAD_CLEANUP_ENABLED` + `DISCORD_THREAD_CLEANUP_MODE` : archivage/suppression des fils (dry-run sauf `execute`)
+- `DISCORD_THREAD_CLOSE_ON_END_ENABLED` : archive le fil dès la fin (au lieu du cron suivant) ; exige aussi le nettoyage ci-dessus en `execute`
 - `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE` : purge de rétention (dry-run sauf `execute`)
 - `STEAM_NOW_PLAYING_ENABLED` : indicateur « En jeu » sur `/potes` (un appel `GetPlayerSummaries` groupé dans `steam-library-sync`) ; exige la migration `steam_now_playing`
 
@@ -61,6 +62,9 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `/security-review` avant de merger du code sensible (auth, Discord, crons, secrets).
 - Ponytail / Headroom / CodeBurn : économie et suivi des tokens.
 - claude-code-setup : hooks et automatisations.
+- claude-mem : mémoire persistante entre sessions, activée.
+- Session cloud : un hook `SessionStart` (`.claude/hooks/session-start.mjs`) installe les dépendances si besoin, lance `prisma generate`, puis `prisma migrate deploy` sur un Postgres local (127.0.0.1 uniquement, jamais Neon).
+- CI GitHub Actions (`.github/workflows/ci.yml`) : `test:postgres` (service Postgres du job, jamais Neon), `npm test`, `next typegen` + `tsc`, lint, build. Attendre le check vert (`verify`) avant de sortir une PR de Draft.
 - Au début d'une tâche, annonce en une ligne quels outils tu vas utiliser et pourquoi.
 
 ## Style de réponse

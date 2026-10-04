@@ -84,18 +84,23 @@ export async function GET(request: Request) {
   // seulement, un par catégorie possible + erreurs non catégorisées (rejet
   // du worker lui-même, ne devrait jamais arriver puisque `refreshSteamActivity`
   // catch déjà tout en interne, mais couvert par défense en profondeur).
-  const summary: Record<SteamActivityCategory | "rejected", number> = {
+  const summary: Record<SteamActivityCategory | "degraded" | "rejected", number> = {
     precise: 0,
     approximate: 0,
     none: 0,
     private: 0,
     error: 0,
+    // Sous-ensemble d'"approximate" : `getOwnedGames` a échoué (timeout/429/5xx),
+    // l'activité vient du seul `getRecentlyPlayedGames` — signal d'un catalogue
+    // trop lourd ou d'une API Steam dégradée.
+    degraded: 0,
     rejected: 0,
   };
 
   for (const result of results) {
     if (result.status === "fulfilled") {
       summary[result.value.category] += 1;
+      if (result.value.degraded) summary.degraded += 1;
     } else {
       summary.rejected += 1;
       logger.error("cron:steam-library-sync", result.reason);
