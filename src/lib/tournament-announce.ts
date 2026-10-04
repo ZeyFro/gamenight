@@ -3,7 +3,8 @@ import type { Tournament, TournamentMatch, TournamentParticipant, User } from "@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
-import { getTournamentAnnounceConfig, isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { isCommunityChannelsEnabled, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import {
   enqueueDirectMessageEdits,
   enqueueDirectMessageFallback,
@@ -888,7 +889,13 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     // fichier). Si retirée pendant qu'un tournoi bot a des livraisons en
     // attente, celles-ci échouent en `not_configured` (même limite
     // assumée/documentée que pour les soirées, #99).
-    if (!getTournamentAnnounceConfig()) return { eligible: false, reason: "not_configured" };
+    // Multi-communautés (PR3) : porte résolue pour la communauté du tournoi
+    // (`null` = communauté par défaut, lecture évitée si le flag est éteint).
+    const communityId = isCommunityChannelsEnabled()
+      ? ((await prisma.tournament.findUnique({ where: { id: event.sourceId }, select: { communityId: true } }))
+          ?.communityId ?? null)
+      : null;
+    if (!(await resolveTournamentAnnounceConfig(communityId))) return { eligible: false, reason: "not_configured" };
 
     const tournamentId = event.sourceId;
     const role = delivery.targetSlot.split(":").slice(3).join(":");

@@ -20,7 +20,7 @@ import {
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
-import { getTournamentAnnounceConfig } from "@/lib/discord-bot-config";
+import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import {
@@ -105,7 +105,11 @@ export async function createTournamentAction(formData: FormData) {
   // ci-dessus — une variable d'env — ni la vérification réseau du salon,
   // qui n'a lieu que plus tard, au premier SEND réel, voir
   // `tournament-announce.ts`).
-  const tournamentAnnounceConfig = getTournamentAnnounceConfig();
+  // Multi-communautés (PR3) : destination de la communauté du tournoi ; sans
+  // `COMMUNITY_CHANNELS_ENABLED`, `communityId` est `null` et la configuration
+  // est celle de l'environnement, comme avant.
+  const communityId = await pickCreationCommunityId(user.id);
+  const tournamentAnnounceConfig = await resolveTournamentAnnounceConfig(communityId);
   const announceViaBot =
     process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && tournamentAnnounceConfig !== null;
 
@@ -117,6 +121,7 @@ export async function createTournamentAction(formData: FormData) {
         maxPlayers,
         createdById: user.id,
         announceViaBot,
+        communityId,
         discordGuildId: announceViaBot ? tournamentAnnounceConfig!.guildId : null,
         discordChannelId: announceViaBot ? tournamentAnnounceConfig!.channelId : null,
         notifiedUserIds,

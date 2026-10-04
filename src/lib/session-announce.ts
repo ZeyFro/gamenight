@@ -8,7 +8,8 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
-import { getSessionAnnounceConfig, isSessionDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { isSessionDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { isCommunityChannelsEnabled, resolveSessionAnnounceConfig } from "@/lib/community-channels";
 import {
   createNotificationEvent,
   enqueueDelivery,
@@ -1246,6 +1247,18 @@ async function findSentDelivery(targetSlot: string) {
 }
 
 /**
+ * Communauté d'une soirée (multi-communautés, PR3) : `null` = communauté par
+ * défaut, y compris pour une soirée déjà supprimée (rôles `thread-delete` /
+ * `thread-archive`, qui n'utilisent la configuration que comme porte). La
+ * lecture est évitée tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
+ */
+async function sessionCommunityId(sessionId: string): Promise<string | null> {
+  if (!isCommunityChannelsEnabled()) return null;
+  const row = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  return row?.communityId ?? null;
+}
+
+/**
  * Résolveur SESSION — dispatché par le rôle terminal du `targetSlot`
  * (`thread`/`announce`/`thread-reminder-<n>`/`thread-summary`/
  * `invite:<inviteId>`). Chaque dépendance inter-`targetSlot` (tout
@@ -1256,7 +1269,7 @@ async function findSentDelivery(targetSlot: string) {
  */
 export const sessionAnnounceResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
-    const config = getSessionAnnounceConfig();
+    const config = await resolveSessionAnnounceConfig(await sessionCommunityId(event.sourceId));
     if (!config) return { eligible: false, reason: "not_configured" };
 
     const sessionId = event.sourceId;

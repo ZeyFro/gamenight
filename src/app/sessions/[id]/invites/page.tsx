@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { listAllInvites } from "@/lib/session-access";
 import { getSessionInviteSyncStatuses, getSessionThreadReadiness, type SessionThreadReadiness } from "@/lib/session-announce";
-import { isSessionAnnounceViaBotEnabled } from "@/lib/discord-bot-config";
+import { isSessionAnnounceViaBotEnabledFor } from "@/lib/community-channels";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -85,7 +85,7 @@ export default async function SessionInvitesPage({
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, date: true, createdById: true, announceViaBot: true },
+    select: { id: true, date: true, createdById: true, announceViaBot: true, communityId: true },
   });
   // Page de gestion réservée au créateur — un invité (même actif) n'a pas
   // à savoir qui d'autre est invité, ni à modifier la liste (règle
@@ -112,7 +112,7 @@ export default async function SessionInvitesPage({
 
   const creatorThreadReadiness = session.announceViaBot ? await getSessionThreadReadiness(sessionId) : null;
 
-  const botConfigured = isSessionAnnounceViaBotEnabled();
+  const botConfigured = await isSessionAnnounceViaBotEnabledFor(session.communityId);
 
   // Bug remonté en revue — une soirée créée AVANT les correctifs
   // creator-member/enqueueSessionInviteSyncForNewInvite n'a la moindre
