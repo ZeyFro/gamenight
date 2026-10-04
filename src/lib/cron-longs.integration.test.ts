@@ -30,7 +30,7 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
   });
   beforeEach(async () => {
     await db.$executeRawUnsafe(
-      `TRUNCATE "User", "Game", "Badge", "Tag", "MessageTemplate", "GroupAchievement", "Season", "SuperlativeCategory", "XpEvent" CASCADE`
+      `TRUNCATE "User", "Game", "Badge", "Tag", "MessageTemplate", "GroupAchievement", "Season", "SuperlativeCategory", "XpEvent", "Community" CASCADE`
     );
   });
   afterEach(() => {
@@ -53,6 +53,8 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
       gameStatTypes: await db.gameStatType.count(),
       userGames: await db.userGame.count(),
       games: await db.game.count(),
+      communities: await db.community.count(),
+      memberships: await db.membership.count(),
     };
   }
 
@@ -79,6 +81,9 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
       expect(afterOne.badges).toBeGreaterThan(0);
       expect(afterOne.tags).toBeGreaterThan(0);
       expect(afterOne.seasons).toBe(1);
+      // Multi-communautés (PR A) : communauté par défaut + un Membership par utilisateur.
+      expect(afterOne.communities).toBe(1);
+      expect(afterOne.memberships).toBe(2);
 
       const second = await runSeedReconciliation();
       expect(second.stopReason).toBe("completed");

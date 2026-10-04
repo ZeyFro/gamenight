@@ -10,6 +10,7 @@ import { backfillBadges } from "@/lib/backfill-badges";
 import { seedTags } from "@/lib/seed-tags";
 import { seedGroupAchievements } from "@/lib/seed-group-achievements";
 import { seedInitialSeason } from "@/lib/seed-season";
+import { ensureDefaultCommunity } from "@/lib/default-community";
 
 /**
  * PR "build ne fait plus que compiler" — regroupe les 11 anciens scripts
@@ -61,6 +62,9 @@ const TASKS = [
   ["seedTags", seedTags],
   ["seedGroupAchievements", seedGroupAchievements],
   ["seedInitialSeason", seedInitialSeason],
+  // Multi-communautés (PR A) : communauté par défaut + Memberships des
+  // utilisateurs qui n’en ont pas encore (idempotent, voir default-community.ts).
+  ["ensureDefaultCommunity", ensureDefaultCommunity],
 ] as const;
 
 export type SeedTaskName = (typeof TASKS)[number][0];
