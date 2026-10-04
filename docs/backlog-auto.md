@@ -37,3 +37,13 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 - **Récaps et récompenses Discord via le bot** et **multi-serveur Discord** : déjà listés dans « Reporté après V2 » (README) ; touchent aux fonctions et drapeaux `DISCORD_*`, donc hors périmètre autonome.
 - **Page d'état des interrupteurs d'environnement** : utile pour l'exploitation mais lirait les drapeaux `DISCORD_*` ; à décider avec Maxime.
 - **`loading.tsx` sur les routes qui n'en ont pas** (tierlist, tournois, wishlist, roulette, jeux, dettes, saisons, recap) : changement visible pendant le chargement, non gérable derrière un drapeau.
+
+## Quatrième série (générée le 2026-10-04, backlog épuisé : #13 `/aide` écartée, doublon de `/guide`)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 15 | **Test : les nouvelles migrations Prisma sont additives** (pas de DROP/TRUNCATE/DELETE/changement de type) | Audit du code : les migrations partent en prod au build Vercel | XS | nul (test seul) | élevée | PR Draft |
+| 16 | **Test : chaque `page.tsx` exporte un titre (`pageMetadata`)** | UX, suite de #156 | XS | nul (test seul) | faible-moyenne | À faire |
+| 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
+| 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
+| 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | À faire |
