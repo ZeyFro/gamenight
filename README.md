@@ -2452,6 +2452,16 @@ le client scopé n’existe pas) :
 - **`include` imbriqués** (`prisma.user.findMany({ include: { xpEvents: true } })`) ;
 - **scripts hors `src/`** (`prisma/*.mjs`), non analysés.
 
+### Création automatique d'une communauté (PR2)
+
+Éteinte par défaut : `COMMUNITY_AUTO_CREATE_ENABLED` doit valoir exactement `true`. Une communauté créée est **toujours `PENDING`** (aucun accès, aucun Membership avant l'activation par un admin).
+
+| Élément | Rôle |
+| :-- | :-- |
+| `POST /api/discord/webhook-events` | Webhook d'événements Discord (Developer Portal → Webhooks, événement `APPLICATION_AUTHORIZED`). Publique, authentifiée par la signature Ed25519 (`DISCORD_APP_PUBLIC_KEY` ; 503 sans clé, 401 si invalide, vérifiée avant tout parsing). Seule une installation **serveur** avec le scope `bot` crée une communauté ; les installations utilisateur sont ignorées. Répond 204 (PING compris). |
+| `/api/cron/community-guild-sync` | Rattrapage via `GET /users/@me/guilds` : crée en `PENDING` les serveurs manqués par le webhook, marque `LEFT` (+ `leftAt`) les communautés `PENDING`/`ACTIVE` dont le bot est parti. Fail-safe : liste vide, incomplète, en erreur ou création en échec = aucun `LEFT`. La communauté `default` n'est jamais marquée `LEFT` automatiquement. |
+| `src/lib/community-provisioning.ts` | Création idempotente (webhook et cron peuvent se croiser) : serveur déjà connu → nom/icône seulement ; `LEFT` (bot réajouté) → `PENDING` ; `SUSPENDED`/`ARCHIVED` → jamais modifiée. |
+
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,
 client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,
@@ -12729,6 +12739,7 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
 | `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 03:30 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
+| `/api/cron/community-guild-sync` | GET | non déclaré (défaut 300 s ; budget Discord 20 s) | synchrone | quotidien (à configurer sur cron-job.org) | `cron:community-guild-sync` (`Passage terminé.` + résumé) ; `{enabled:false}` si éteint |
 | `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
 | `/api/backfill/igdb-coop` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
 | `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |

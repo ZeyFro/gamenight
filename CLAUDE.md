@@ -49,6 +49,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
 - `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` · `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` : annonces soirées / tournois via le bot ; exigent aussi `DISCORD_BOT_GUILD_ID` et le salon (`…_SESSION_CHANNEL_ID` / `…_TOURNAMENT_CHANNEL_ID`)
 - `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
+- `COMMUNITY_AUTO_CREATE_ENABLED` : création automatique de communautés PENDING (webhook d'événements Discord « application autorisée » + cron `community-guild-sync`) ; exige `DISCORD_APP_PUBLIC_KEY` (signature Ed25519 du webhook)
 - `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED` : création de nouveaux MP (les MP déjà en file sont traités) ; les MP de soirée exigent aussi le chemin bot soirées
 - `DISCORD_THREAD_CLEANUP_ENABLED` + `DISCORD_THREAD_CLEANUP_MODE` : archivage/suppression des fils (dry-run sauf `execute`)
 - `DISCORD_THREAD_CLOSE_ON_END_ENABLED` : archive le fil dès la fin (au lieu du cron suivant) ; exige aussi le nettoyage ci-dessus en `execute`

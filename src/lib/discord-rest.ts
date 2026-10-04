@@ -569,6 +569,40 @@ export async function getChannel(input: GetChannelInput): Promise<DiscordRestRes
   });
 }
 
+const botGuildsResponseSchema = z.array(
+  z.object({ id: z.string(), name: z.string(), icon: z.string().nullable().optional() })
+);
+
+export interface BotGuild {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+export interface ListBotGuildsInput {
+  /** Pagination : id du dernier serveur de la page précédente (tri croissant). */
+  after?: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/** `GET /users/@me/guilds` — serveurs où le bot est présent, 200 par page. */
+export async function listBotGuilds(input: ListBotGuildsInput): Promise<DiscordRestResult<{ guilds: BotGuild[] }>> {
+  const query = new URLSearchParams({ limit: "200" });
+  if (input.after) query.set("after", input.after);
+  return discordRequest({
+    method: "GET",
+    path: `/users/@me/guilds?${query}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = botGuildsResponseSchema.safeParse(json);
+      if (!result.success) return null;
+      return { guilds: result.data.map((g) => ({ id: g.id, name: g.name, icon: g.icon ?? null })) };
+    },
+  });
+}
+
 /** Types de salon Discord acceptant `POST .../messages/{id}/threads`
  * (création de fil public à partir d'un message) — texte de guilde (0) et
  * annonces (5). Voir la doc Discord des types de channel ; tout autre
