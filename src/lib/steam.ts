@@ -339,6 +339,22 @@ export function categorizeActivityOutcome(
 }
 
 /**
+ * Décision PURE du repli DÉGRADÉ de `refreshSteamActivity` : `getOwnedGames`
+ * (appel lourd, catalogue entier avec `include_appinfo`) a échoué
+ * (timeout, 429, 5xx) alors que `getRecentlyPlayedGames` (appel léger,
+ * officiel) peut encore répondre. Une liste NON vide donne l'activité
+ * approximative habituelle. Une liste VIDE est ambiguë (profil privé ?
+ * vraiment aucune partie sur 2 semaines ?) : ce n'est PAS une preuve
+ * d'absence d'activité, donc "error" — l'activité déjà en base n'est jamais
+ * effacée sur la foi d'un appel qui n'a pas pu distinguer les deux cas
+ * (seul `getOwnedGames` sait distinguer un profil privé).
+ */
+export function categorizeRecentOnlyOutcome(games: SteamRecentGame[]): ActivityRefreshOutcome {
+  const best = selectMostRecentByPlaytime(games);
+  return best ? { category: "approximate", lastPlayedGame: best.name } : { category: "error" };
+}
+
+/**
  * Écriture PURE (fix "cron Steam surdimensionné") — traduit une
  * `ActivityRefreshOutcome` en objet `data` pour `prisma.user.update`, sans
  * jamais appeler Prisma elle-même (testable sans mock). Règles validées
@@ -423,7 +439,7 @@ export function buildActivityRefreshWrite(
 export async function refreshSteamActivity(
   userId: string,
   steamId64: string
-): Promise<{ userId: string; category: SteamActivityCategory }> {
+): Promise<{ userId: string; category: SteamActivityCategory; degraded?: boolean }> {
   let ownedGamesResult: GetOwnedGamesResult;
   try {
     ownedGamesResult = await getOwnedGames(steamId64, {
@@ -431,9 +447,27 @@ export async function refreshSteamActivity(
     });
   } catch (error) {
     logger.error("steam-activity", error, { userId, step: "owned-games" });
-    const write = buildActivityRefreshWrite({ category: "error" }, wallClockNow());
-    await prisma.user.update({ where: { id: userId }, data: write });
-    return { userId, category: "error" };
+    // Repli DÉGRADÉ (fix "dernière activité absente de /potes") : l'appel
+    // lourd a échoué, mais l'appel léger officiel peut répondre — avant, ce
+    // cas laissait l'activité vide indéfiniment pour tout compte dont le
+    // catalogue dépassait le timeout de 6 s. Même pire cas qu'avant (au plus
+    // 2 appels Steam séquentiels par compte, voir
+    // STEAM_ACTIVITY_CALL_TIMEOUT_MS) : le repli n'est jamais cumulé avec le
+    // repli habituel ci-dessous (ici `getOwnedGames` n'a pas répondu).
+    let outcome: ActivityRefreshOutcome;
+    try {
+      const games = await getRecentlyPlayedGames(steamId64, {
+        signal: AbortSignal.timeout(STEAM_ACTIVITY_CALL_TIMEOUT_MS),
+      });
+      outcome = categorizeRecentOnlyOutcome(games);
+    } catch (fallbackError) {
+      logger.error("steam-activity", fallbackError, { userId, step: "recently-played-degraded" });
+      outcome = { category: "error" };
+    }
+    await prisma.user.update({ where: { id: userId }, data: buildActivityRefreshWrite(outcome, wallClockNow()) });
+    return outcome.category === "approximate"
+      ? { userId, category: "approximate", degraded: true }
+      : { userId, category: "error" };
   }
 
   let recentGamesOutcome: RecentGamesOutcome | undefined;

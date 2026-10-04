@@ -7984,9 +7984,44 @@ la catégorie `private`.
 
 `precise` (timestamp exact) / `approximate` (repli, nom seul) / `none`
 (aucune activité récente) / `private` (profil privé) / `error` (Steam
-injoignable/timeout — ne touche jamais l'activité déjà en base). Jamais de
+injoignable/timeout — ne touche jamais l'activité déjà en base). Compteur
+supplémentaire `degraded` : sous-ensemble d'`approximate` quand
+`getOwnedGames` a échoué et que seul `getRecentlyPlayedGames` a répondu. Jamais de
 Steam ID ni de nom réel dans les logs, uniquement des compteurs par
 catégorie.
+
+### Diagnostic : « la dernière activité Steam n'apparaît pas sur /potes »
+
+Reproduit avec Steam simulé (`src/lib/steam-activity.integration.test.ts`,
+aucun appel réel). La carte n'affiche une ligne « 🎮 … » que si
+`User.lastPlayedGame` est renseigné ; voici toutes les causes, du code au
+compte Steam :
+
+| Cause | Effet | Corrigeable ici ? |
+| :-- | :-- | :-- |
+| **Détails de jeu privés** sur Steam (`GetOwnedGames` → `{response:{}}`) | catégorie `private`, activité effacée, `steamPublic=false` | Non — réglage du compte (Steam → Confidentialité → *Détails du jeu* : public) |
+| **Aucune partie sur les 2 dernières semaines** | catégorie `none`, rien affiché (fenêtre imposée par `GetRecentlyPlayedGames`) | Non — limite de l'API Steam |
+| **`GetOwnedGames` en échec** (timeout 6 s sur un gros catalogue, 429, 5xx) | **avant ce correctif : catégorie `error`, activité jamais écrite**, même si l'appel léger répondait | **Oui — corrigé** : repli dégradé sur `GetRecentlyPlayedGames` |
+| Cron `steam-library-sync` non appelé ou `STEAM_API_KEY` absente | `steamActivityCheckedAt` jamais posé | Non — configuration (cron-job.org / Vercel) |
+| Votre propre carte | la page `/potes` liste les AUTRES membres (`id: { not: user.id }`) | Voulu — votre activité est en tête de `/profil` |
+
+**Repli dégradé** (`refreshSteamActivity`) : si `getOwnedGames` échoue,
+`getRecentlyPlayedGames` (petit appel, officiel) est tenté. Liste non vide →
+activité « approximative » habituelle (`steamPublic` posé à `true`, la
+liste n'étant renvoyée que si les détails sont publics). Liste vide →
+ambigu (privé ? aucune partie ?) → `error` : l'activité déjà en base n'est
+**jamais** effacée sur un appel qui n'a pas pu distinguer les deux cas. Un
+profil réellement privé (`{response:{}}`) n'utilise jamais ce repli. Au plus
+2 appels Steam par compte : le calcul du pire cas du cron (24 s pour 5
+comptes) est inchangé.
+
+**Comment vérifier en production** (lecture seule) : la ligne de log
+`cron:steam-library-sync` donne un résumé par passage, par exemple
+`{"precise":0,"approximate":4,"none":1,"private":1,"error":0,"degraded":1,"rejected":0}`.
+Beaucoup de `error` ou de `degraded` = API Steam lente ou catalogues
+lourds ; beaucoup de `private` = comptes à régler côté Steam. Par compte :
+`steamPublic`, `steamActivityCheckedAt` (jamais posé = jamais atteint par le
+cron) et `lastPlayedGame`.
 
 ### Fichiers modifiés/ajoutés
 
