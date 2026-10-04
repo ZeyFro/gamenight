@@ -11,7 +11,7 @@ vi.mock("next/server", async (importOriginal) => {
   return { ...actual, after: (cb: () => void) => cb() };
 });
 
-import { GET, POST } from "./route";
+import { GET, POST, maxDuration } from "./route";
 
 function req(method: string, authorization?: string) {
   return new Request("https://example.test/api/backfill/igdb-coop", {
@@ -21,6 +21,10 @@ function req(method: string, authorization?: string) {
 }
 
 describe("/api/backfill/igdb-coop", () => {
+  it("maxDuration 300 s, comme seed-reconcile et steam-library-full-sync (budget de 240 s dans le module)", () => {
+    expect(maxDuration).toBe(300);
+  });
+
   beforeEach(() => {
     runIgdbCoopBackfill.mockReset().mockResolvedValue({});
     vi.stubEnv("CRON_SECRET", "s3cret");
