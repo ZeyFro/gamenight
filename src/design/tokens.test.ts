@@ -110,7 +110,8 @@ describe("variables CSS (css-variables.ts)", () => {
     const expected = renderTokensCss();
     if (process.env.UPDATE_DESIGN_TOKENS === "1") writeFileSync(path, expected);
     expect(
-      readFileSync(path, "utf8"),
+      // `core.autocrlf` (Windows) réécrit le fichier en CRLF au checkout.
+      readFileSync(path, "utf8").replace(/\r\n/g, "\n"),
       "tokens.css périmé — régénérer : UPDATE_DESIGN_TOKENS=1 npx vitest run src/design/tokens.test.ts"
     ).toBe(expected);
   });
