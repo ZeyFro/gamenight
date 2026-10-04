@@ -12712,3 +12712,12 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 ## Lien d'évitement « Aller au contenu » (drapeau `SKIP_LINK_ENABLED`)
 
 Accessibilité clavier (WCAG 2.4.1) : un lien `Aller au contenu` (`src/components/SkipLink.tsx`) est le premier élément focalisable de chaque page ; invisible tant qu'il n'a pas le focus, il s'affiche en haut à gauche (pastille violette) au premier appui sur Tab, et Entrée place le focus sur `<main id="contenu">`. **Éteint par défaut** : actif uniquement si `SKIP_LINK_ENABLED` vaut exactement `true` (lu à chaque requête, le layout étant dynamique) ; éteint, le lien et l'`id` n'existent pas dans le HTML.
+
+## Collecte des violations CSP (drapeau `CSP_REPORT_ENABLED`)
+
+La CSP est envoyée en `Content-Security-Policy-Report-Only` (`src/lib/csp-policy.ts`, utilisée par `next.config.ts`). **Éteint par défaut** : actif uniquement si `CSP_REPORT_ENABLED` vaut exactement `true`, auquel cas la politique ajoute `report-uri /api/csp-report` et la route `POST /api/csp-report` journalise chaque violation signalée par un navigateur (ligne `csp-report` dans les logs Vercel, niveau `warn`). Sans le drapeau, la politique est inchangée et la route répond 404.
+
+- **Redéploiement nécessaire** après un changement du drapeau : les en-têtes sont calculés au démarrage/build.
+- **Point d'entrée public** (les navigateurs n'ont pas de session) donc borné : corps limité à 16 Ko (413), 60 rapports par minute et par instance (429), aucun stockage en base.
+- **Données minimales** : seuls `document-uri`, `blocked-uri`, `violated-directive`, `effective-directive`, `source-file`, `disposition` et `line-number` sont gardés ; les URI sont tronquées avant `?` et `#`, `script-sample` et la politique d'origine sont ignorés.
+- Étape 1 du plan « CSP bloquante » (`docs/rapport-csp-bloquant.md`) : observer 1 à 2 semaines avant de bloquer.
