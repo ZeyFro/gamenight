@@ -11,6 +11,9 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { WishlistProposeForm } from "@/components/wishlist/WishlistProposeForm";
 import { WishlistVoteButtons } from "@/components/wishlist/WishlistVoteButtons";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Wishlist");
 
 const WISHLIST_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

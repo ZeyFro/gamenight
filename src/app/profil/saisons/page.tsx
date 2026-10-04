@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Mes saisons");
 
 /** Onglet "Saisons" du profil — résultats passés de l'utilisateur, saison par saison. */
 export default async function ProfilSaisonsPage() {

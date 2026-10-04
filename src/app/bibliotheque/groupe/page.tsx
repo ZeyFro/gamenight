@@ -7,6 +7,9 @@ import { ButtonLink } from "@/components/ui/Button";
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Bibliothèque du groupe");
 
 export default async function GroupLibraryPage({
   searchParams,

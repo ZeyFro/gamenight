@@ -15,6 +15,9 @@ import { Badge } from "@/components/ui/Badge";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Classement");
 
 const PERIOD_LABELS: Record<ScoreboardPeriod, string> = {
   global: "Global",

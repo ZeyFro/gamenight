@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { TierlistBoard } from "@/components/TierlistBoard";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Ma tier list");
 
 /**
  * Onglet "Tierlist" — voir `../layout.tsx` pour l'en-tête. Fix UX (après

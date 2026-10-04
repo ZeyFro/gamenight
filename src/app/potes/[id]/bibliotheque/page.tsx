@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Bibliothèque d'un pote");
 
 /** Onglet "Bibliothèque" — voir `../layout.tsx` pour l'en-tête. */
 export default async function PoteBibliothequePage({

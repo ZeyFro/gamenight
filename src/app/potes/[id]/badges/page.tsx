@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { BadgeGrid, type BadgeGridItem } from "@/components/BadgeGrid";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Badges d'un pote");
 
 /** Onglet "Badges" — voir `../layout.tsx` pour l'en-tête. Lecture seule. */
 export default async function PoteBadgesPage({

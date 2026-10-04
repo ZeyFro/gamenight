@@ -18,6 +18,9 @@ import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
 import { activeNowPlaying, isNowPlayingEnabled } from "@/lib/steam-now-playing";
 import { NowPlayingBadge } from "@/components/NowPlayingBadge";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Potes");
 
 function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   return (

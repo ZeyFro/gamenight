@@ -12690,6 +12690,12 @@ Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'av
 
 **Sonde de santé** : `GET /api/health` (`Authorization: Bearer <CRON_SECRET>`, mêmes codes que les crons : 503 sans `CRON_SECRET`, 401 si mauvais en-tête) répond `200 {"ok":true,"db":"ok"}` si la base répond à un `SELECT 1`, `503 {"ok":false,"db":"error"}` sinon. À brancher sur un monitoring externe (alerte si non-200) ; aucune donnée métier ni secret dans la réponse. Aucun cron n'est configuré par le dépôt.
 
+## Titres de page (drapeau `PAGE_TITLES_ENABLED`)
+
+Chaque page (sauf l'accueil) déclare un titre d'onglet via `pageMetadata("…")` (`src/lib/page-title.ts`), affiché `<Titre> · GameNight` (gabarit du layout racine). **Éteint par défaut** : actif uniquement si `PAGE_TITLES_ENABLED` vaut exactement `true` ; sinon les pages n'exportent aucun titre et gardent « GameNight ». La valeur est lue au build pour les pages statiques et à la requête pour les pages dynamiques : après un changement, redéployer. Pour les pages avec identifiant (`/sessions/[id]`, `/jeux/[id]`…) le titre est générique (pas de nom de soirée ou de jeu).
+
+**Titres dynamiques** (drapeau supplémentaire `PAGE_TITLES_DYNAMIC_ENABLED`, éteint par défaut, exige aussi `PAGE_TITLES_ENABLED`) : `/jeux/[id]` affiche le nom du jeu et `/potes/[id]` le pseudo du pote (`dynamicPageMetadata`, `src/lib/dynamic-page-title.ts`), seulement pour une session valide (sinon titre générique, aucune requête de nom) ; nom tronqué à 80 caractères. Une requête `select` d'une seule colonne en plus par chargement de ces deux pages, uniquement drapeau activé. Pas de titre dynamique pour les soirées, tournois et roulettes (accès restreints aux invités : le nom ne doit pas fuiter dans l'onglet).
+
 ## Indicateur « 🟢 En jeu » sur /potes (drapeau `STEAM_NOW_PLAYING_ENABLED`)
 
 Demande de Yuichiro. **Éteint par défaut** : sans la variable, aucun appel
@@ -12729,3 +12735,16 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
 | ~~Indicateur « en jeu maintenant » sur `/potes`~~ | **Fait derrière le drapeau `STEAM_NOW_PLAYING_ENABLED`** (éteint par défaut) : `GetPlayerSummaries` en un appel groupé par passage de `steam-library-sync`, deux colonnes nullables sur `User` (migration additive `20261003120000_add_steam_now_playing`). Voir « Indicateur en jeu maintenant » | À activer et vérifier en production |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
+
+## Lien d'évitement « Aller au contenu » (drapeau `SKIP_LINK_ENABLED`)
+
+Accessibilité clavier (WCAG 2.4.1) : un lien `Aller au contenu` (`src/components/SkipLink.tsx`) est le premier élément focalisable de chaque page ; invisible tant qu'il n'a pas le focus, il s'affiche en haut à gauche (pastille violette) au premier appui sur Tab, et Entrée place le focus sur `<main id="contenu">`. **Éteint par défaut** : actif uniquement si `SKIP_LINK_ENABLED` vaut exactement `true` (lu à chaque requête, le layout étant dynamique) ; éteint, le lien et l'`id` n'existent pas dans le HTML.
+
+## Collecte des violations CSP (drapeau `CSP_REPORT_ENABLED`)
+
+La CSP est envoyée en `Content-Security-Policy-Report-Only` (`src/lib/csp-policy.ts`, utilisée par `next.config.ts`). **Éteint par défaut** : actif uniquement si `CSP_REPORT_ENABLED` vaut exactement `true`, auquel cas la politique ajoute `report-uri /api/csp-report` et la route `POST /api/csp-report` journalise chaque violation signalée par un navigateur (ligne `csp-report` dans les logs Vercel, niveau `warn`). Sans le drapeau, la politique est inchangée et la route répond 404.
+
+- **Redéploiement nécessaire** après un changement du drapeau : les en-têtes sont calculés au démarrage/build.
+- **Point d'entrée public** (les navigateurs n'ont pas de session) donc borné : corps limité à 16 Ko (413), 60 rapports par minute et par instance (429), aucun stockage en base.
+- **Données minimales** : seuls `document-uri`, `blocked-uri`, `violated-directive`, `effective-directive`, `source-file`, `disposition` et `line-number` sont gardés ; les URI sont tronquées avant `?` et `#`, `script-sample` et la politique d'origine sont ignorés.
+- Étape 1 du plan « CSP bloquante » (`docs/rapport-csp-bloquant.md`) : observer 1 à 2 semaines avant de bloquer.

@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { SuperlativesWonGrid } from "@/components/SuperlativesWonGrid";
 import { FadeInView } from "@/components/ui/FadeInView";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Mes récompenses");
 
 /** Onglet "Superlatifs gagnés" — voir `../layout.tsx` pour l'en-tête. */
 export default async function ProfilSuperlatifsPage() {

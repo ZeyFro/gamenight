@@ -14,6 +14,9 @@ import {
   updateGameStatType,
   updateSuperlative,
 } from "../actions";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Stats du jeu · Admin");
 
 const TYPE_LABELS: Record<string, string> = {
   INT: "Nombre entier",

@@ -15,6 +15,17 @@ import { GameDescription } from "@/components/GameDescription";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
 import type { Game } from "@prisma/client";
+import type { Metadata } from "next";
+import { dynamicPageMetadata } from "@/lib/dynamic-page-title";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  return dynamicPageMetadata("Fiche du jeu", async () => (await prisma.game.findUnique({ where: { id }, select: { name: true } }))?.name);
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   STEAM: "Steam",

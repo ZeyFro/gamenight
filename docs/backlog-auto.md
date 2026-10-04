@@ -24,6 +24,15 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 9 | **Titres d'onglet dynamiques** (nom du jeu, de la soirée, du pote) pour les pages avec identifiant | UX, suite de #156 | S | faible (une requête de plus par page, derrière `PAGE_TITLES_ENABLED`) | moyenne | À faire, après #156 |
 | 10 | **Lien d'évitement « Aller au contenu »** (visible seulement au focus clavier) | Accessibilité (WCAG 2.4.1) | XS | faible, mais visible au clavier : à valider avec Maxime ou derrière un drapeau | moyenne | À faire |
 
+## Troisième série (générée le 2026-10-04, plus aucune idée libre)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 11 | **Test garde-fou : toute route cron/backfill passe par `cron-auth`** (fail-closed 503) | Audit du code : une route copiée sans contrôle serait publique, invisible de tsc/lint/build | XS | nul (test seul) | moyenne | PR en cours |
+| 12 | **Test : chaque variable de « Switches d'environnement » (CLAUDE.md) existe dans `.env.example`** | Audit du code : doc des drapeaux dérive | XS | nul (test seul) | faible-moyenne | À faire |
+| 13 | **Page `/aide` (FAQ des potes)** : comment rejoindre une soirée, voter, lier Steam | UX : onboarding des nouveaux potes | M | faible (page nouvelle, lien discret) | moyenne | À faire |
+| 14 | **Test : toute route `/api/*` hors cron exige `auth()` ou est listée en exception** | Audit du code (sécurité) | S | nul (test seul) | élevée | À faire |
+
 ## Idées écartées (à discuter)
 - **Récaps et récompenses Discord via le bot** et **multi-serveur Discord** : déjà listés dans « Reporté après V2 » (README) ; touchent aux fonctions et drapeaux `DISCORD_*`, donc hors périmètre autonome.
 - **Page d'état des interrupteurs d'environnement** : utile pour l'exploitation mais lirait les drapeaux `DISCORD_*` ; à décider avec Maxime.
