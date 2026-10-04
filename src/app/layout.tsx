@@ -10,6 +10,8 @@ import { CelebrationConfetti } from "@/components/CelebrationConfetti";
 import { PageTransition } from "@/components/PageTransition";
 import { CursorTrail } from "@/components/CursorTrail";
 import "./globals.css";
+import { SkipLink } from "@/components/SkipLink";
+import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +52,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // `page.tsx`) : BottomNav/GuideFab/confettis ne doivent pas rester
   // affichés par-dessus l'écran de connexion après un déclenchement.
   const user = await getCurrentUser();
+  const skipLink = isSkipLinkEnabled();
 
   return (
     <html
@@ -58,8 +61,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <MotionConfig reducedMotion="user">
+          {skipLink && <SkipLink />}
           <Header />
-          <main className={`flex flex-1 flex-col ${user ? "pb-16 sm:pb-0" : ""}`}>
+          <main
+            id={skipLink ? SKIP_LINK_TARGET_ID : undefined}
+            tabIndex={skipLink ? -1 : undefined}
+            className={`flex flex-1 flex-col ${skipLink ? "focus:outline-none " : ""}${user ? "pb-16 sm:pb-0" : ""}`}
+          >
             <PageTransition>{children}</PageTransition>
           </main>
           {user && <BottomNav />}
