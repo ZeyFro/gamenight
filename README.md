@@ -12358,6 +12358,29 @@ immédiate du fil). Annuler un tournoi verrouille désormais aussi le fil
    `Authorization: Bearer <CRON_SECRET>`. Le cron `notification-executor`
    doit lui aussi tourner.
 
+### Archivage immédiat à la fin (drapeau optionnel)
+
+Sans rien d'autre, le fil est archivé au passage cron **suivant** la fin
+(au plus ~15 min). Le drapeau **`DISCORD_THREAD_CLOSE_ON_END_ENABLED=true`**
+(éteint par défaut, exactement `true`) programme l'archivage **dès** que la
+soirée passe `DONE`/`CANCELLED` ou que le tournoi passe `DONE`
+(`src/lib/thread-close-on-end.ts`). C'est la même décision que le cron
+(`decideThreadCleanup`), prise plus tôt, et rien d'autre ne change :
+
+- le drapeau ne fait **rien tout seul** : il exige aussi
+  `DISCORD_THREAD_CLEANUP_ENABLED=true` et `DISCORD_THREAD_CLEANUP_MODE=execute`
+  (en dry-run ou nettoyage éteint, aucun fil n'est touché) ;
+- **jamais sans fil réellement créé** : l'archivage serait sinon refusé
+  définitivement ; le cron rattrape ce cas plus tard ;
+- appelé **après** le commit de la clôture : une panne est journalisée
+  (`thread-close-on-end`), jamais remontée à la clôture, et le cron reste le
+  filet de sécurité ;
+- la **suppression à 24 h**, les réessais, les échecs Discord (fil déjà
+  supprimé 404 / code 10003, permission manquante 403) et l'idempotence sont
+  ceux du chemin existant. L'annulation d'un tournoi archivait déjà
+  immédiatement le fil (inchangé) ; la suppression manuelle d'une soirée ou
+  d'un tournoi garde son chemin propre.
+
 Au premier passage en `execute`, toutes les soirées/tournois déjà terminés
 avec un fil bot sont archivés ; leur suppression suit 24 h plus tard (les
 tournois annulés avant cette PR, déjà archivés, sont supprimés dès le
@@ -12526,6 +12549,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_DM_ROULETTE_ENABLED` | Création de nouveaux MP de roulette | éteint | `src/lib/discord-bot-config.ts:124` |
 | `DISCORD_THREAD_CLEANUP_ENABLED` | Active `/api/cron/discord-thread-cleanup` (sinon `{enabled:false, dryRun:true, report:null}`) | éteint | `src/app/api/cron/discord-thread-cleanup/route.ts:33` |
 | `DISCORD_THREAD_CLEANUP_MODE` | `execute` = archive/supprime réellement les fils ; toute autre valeur = dry-run (rapport seul) | dry-run | `src/app/api/cron/discord-thread-cleanup/route.ts:37` |
+| `DISCORD_THREAD_CLOSE_ON_END_ENABLED` | `true` = archive le fil dès la fin de la soirée/du tournoi au lieu d'attendre le cron ; sans effet si `DISCORD_THREAD_CLEANUP_ENABLED` n'est pas `true` et `DISCORD_THREAD_CLEANUP_MODE` n'est pas `execute` | éteint | `src/lib/thread-close-on-end.ts` |
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
