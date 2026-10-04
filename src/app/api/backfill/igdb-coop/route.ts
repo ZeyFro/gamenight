@@ -5,16 +5,17 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
- * `maxDuration` explicite de 60s (voir README, § "Rappels drôles avant
- * session" pour le précédent avec `/api/cron/reminders`). Ce n'est pas le
- * plafond du plan : défaut et maximum Vercel sont de 300s sur Hobby avec
- * Fluid compute (doc Vercel, « Duration limits »), comme les routes
- * `seed-reconcile` et `steam-library-full-sync`.
+ * `maxDuration` explicite de 300s, comme `seed-reconcile` et
+ * `steam-library-full-sync` (défaut et maximum Vercel : 300s sur Hobby avec
+ * Fluid compute, doc Vercel, « Duration limits »). Il était de 60s (budget
+ * 50s, ~28 fiches par passage) : 134 jeux sans fiche demandaient 5 passages.
  * `runIgdbCoopBackfill` s'arrête volontairement avant cette échéance
- * (`TIME_BUDGET_MS`), donc cette route ne devrait jamais être coupée en
- * plein milieu d'une écriture.
+ * (`IGDB_COOP_TIME_BUDGET_MS` = 240s, et chaque appel IGDB est borné à
+ * `IGDB_CALL_TIMEOUT_MS`), donc cette route ne devrait jamais être coupée en
+ * plein milieu d'une écriture. Le cron externe n'est pas modifié : la route
+ * répond 202 immédiatement.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * Backfill IGDB déclenché à la demande (extrait de `npm run build`, voir

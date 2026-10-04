@@ -33,7 +33,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - Les tests d'intégration partagent une base (TRUNCATE) : `npm run test:postgres` (un fichier à la fois), jamais deux runs en parallèle.
 - `auth()` appelé depuis un composant serveur ou une server action jette les `Set-Cookie` : rien n'y est persisté dans le JWT (`src/auth.ts`).
 - `/api/backfill/igdb-coop` accepte GET et POST (`Authorization: Bearer <CRON_SECRET>`) et répond 202 ; le traitement tourne dans `after()`.
-- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync` : `maxDuration` 300, budget 240 s ; `igdb-coop`, `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
+- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync`, `igdb-coop` : `maxDuration` 300, budget 240 s ; `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
 - klipy : les liens de page (`klipy.com/…`) sont refusés, seuls les liens d'image (`static.klipy.com/…`) fonctionnent (`src/lib/banner-url.ts`).
 
 ## Notifications Discord
