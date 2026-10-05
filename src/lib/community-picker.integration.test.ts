@@ -338,7 +338,7 @@ describe.skipIf(!TEST_DATABASE_URL)("community-picker (Postgres isolée)", () =>
       await join(other.id, foreign.id);
       const list = await picker.listPickableCommunities(user.id);
       expect(list.map((c) => c.id)).toEqual([first.id, second.id]);
-      expect(Object.keys(list[0]).sort()).toEqual(["iconHash", "id", "name", "slug"]);
+      expect(Object.keys(list[0]).sort()).toEqual(["id", "name", "slug"]);
     });
   });
 });

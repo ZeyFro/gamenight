@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { requireCommunityChosen } from "@/lib/community-picker";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import {
   getScoreboard,
@@ -128,6 +129,7 @@ export default async function ClassementPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  await requireCommunityChosen(user.id, "/classement");
 
   const { periode, communaute } = await searchParams;
   const period: ScoreboardPeriod = isScoreboardPeriod(periode) ? periode : "global";

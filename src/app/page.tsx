@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signIn, signOut } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
+import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
@@ -137,6 +138,8 @@ export default async function Home({
       </div>
     );
   }
+
+  await requireCommunityChosen(user.id, "/");
 
   const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
   const badgeCount = showOnboarding

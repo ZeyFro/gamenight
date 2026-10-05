@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
+import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
 import { closeSessionIfDue, isSessionVisibleInHistory } from "@/lib/sessions";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
@@ -149,6 +150,7 @@ export default async function SessionsPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  await requireCommunityChosen(user.id, "/sessions");
 
   const {
     error,
