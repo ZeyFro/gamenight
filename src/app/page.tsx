@@ -193,8 +193,8 @@ export default async function Home({
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
     prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),
-    getActiveDebts(),
-    getActiveDebtorIds(),
+    getActiveDebts(user.id),
+    getActiveDebtorIds(user.id),
   ]);
 
   // Sprint 4 — card "📊 Recap" (mois dernier, si déjà généré par le cron

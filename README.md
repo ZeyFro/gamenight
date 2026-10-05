@@ -2463,6 +2463,19 @@ Infrastructure seule : **aucun appelant migré**, aucun changement de comporteme
 
 **Bornes** (comme le garde-fou statique) : `include`/`select` imbriqués et SQL brut non filtrés. **À revoir par la PR de chaque domaine** : des clés uniques restent globales (`Season.number`, `GroupAchievement.key`, `GameWishlist.gameId`, `WeeklyChallenge.weekStart`, `MonthlyRecap(year, month)`, et les clés primaires de `GroupSessionStats` / `GroupGameStat` / `GroupActiveWeek`) : deux communautés ne pourraient pas avoir chacune sa ligne tant qu'elles ne sont pas passées en clés composites avec `communityId`.
 
+### Chat, dettes et accueil par communauté (PR8)
+
+Derrière `COMMUNITY_ISOLATION_ENABLED` (éteint = comportement historique, aucune lecture ajoutée, `communityId` laissé à `null` à l'écriture comme en PR3).
+
+| Surface | Règle |
+| :-- | :-- |
+| Chat — canal global | Messages de la communauté **active** de l'utilisateur seulement (`getActiveScopedPrisma`) ; envoi refusé sans communauté. |
+| Chat — canal de soirée | Message rattaché à la communauté **de la soirée** (lue via le client scopé : soirée d'une autre communauté = refus) ; lecture dans le périmètre de toutes les communautés de l'utilisateur. Réaction sur un message hors périmètre : sans effet. |
+| Dettes | `detectDebts` hérite de la communauté de la soirée (`scopedPrismaForCommunity`, quel que soit l'état d'appartenance du créateur). « Dettes du groupe » de l'accueil : communauté active. Badge 💀 (accueil, `/potes`) : toutes les communautés de l'utilisateur. Gage et paiement : une dette hors périmètre est introuvable. |
+| Accueil — flux d'activité | « Soirée jouée » déjà filtrée (PR4). Badges, superlatifs et niveaux : limités aux membres visibles (`memberUserWhereFor`), **filtre provisoire** faute de `communityId` sur XP/badges/superlatifs. |
+
+Reste global sur l'accueil (PR suivantes) : compteurs de groupe (`getGroupStats` : `GroupSessionStats`, `GroupGameStat`, streak, joueurs actifs) et succès de groupe (PR9), défi de la semaine (PR10), récap mensuel et saison (PR11), badges débloqués (PR12). Rétention et audit de stockage lisent `chatMessage`/`debt` en direct jusqu'à PR13.
+
 ### Création automatique d'une communauté (PR2)
 
 Éteinte par défaut : `COMMUNITY_AUTO_CREATE_ENABLED` doit valoir exactement `true`. Une communauté créée est **toujours `PENDING`** (aucun accès, aucun Membership avant l'activation par un admin).

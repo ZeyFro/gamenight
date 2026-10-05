@@ -84,7 +84,7 @@ export default async function PotesPage() {
   );
 
   // Sprint 3 suite (dettes/gage) — badge "💀" à côté du pseudo.
-  const activeDebtorIds = await getActiveDebtorIds();
+  const activeDebtorIds = await getActiveDebtorIds(user.id);
 
   // Sprint 4 (FEATURE 4) — consultation passive uniquement, calculée une
   // fois pour toute la liste plutôt qu'à chaque carte (`nowMs()` dans le

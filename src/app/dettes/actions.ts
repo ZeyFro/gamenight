@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { setDebtGageSchema } from "@/lib/validations";
@@ -27,13 +27,15 @@ export async function setDebtGageAction(formData: FormData) {
   if (!input.success) return;
   const { debtId, gage } = input.data;
 
-  const debt = await prisma.debt.findUnique({
+  // Multi-communautés (PR8) : une dette hors du périmètre de l'utilisateur est introuvable.
+  const scopedDb = await getScopedPrisma(user.id);
+  const debt = await scopedDb.debt.findUnique({
     where: { id: debtId },
     select: { paidAt: true, session: { select: { createdById: true } } },
   });
   if (!debt || debt.paidAt || debt.session.createdById !== user.id) return;
 
-  await prisma.debt.update({ where: { id: debtId }, data: { gage } });
+  await scopedDb.debt.update({ where: { id: debtId }, data: { gage } });
   revalidatePath("/");
 }
 
@@ -46,12 +48,13 @@ export async function markDebtPaidAction(formData: FormData) {
   const debtId = String(formData.get("debtId") ?? "");
   if (!debtId) return;
 
-  const debt = await prisma.debt.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const debt = await scopedDb.debt.findUnique({
     where: { id: debtId },
     select: { paidAt: true, session: { select: { createdById: true } } },
   });
   if (!debt || debt.paidAt || debt.session.createdById !== user.id) return;
 
-  await prisma.debt.update({ where: { id: debtId }, data: { paidAt: wallClockNow() } });
+  await scopedDb.debt.update({ where: { id: debtId }, data: { paidAt: wallClockNow() } });
   revalidatePath("/");
 }

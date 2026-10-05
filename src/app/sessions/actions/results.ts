@@ -166,7 +166,7 @@ export async function submitSessionResultsAction(formData: FormData) {
   }
 
   if (session.decidedGame) {
-    await detectDebts(sessionId, absentIds, session.decidedGame.name, session.date);
+    await detectDebts(sessionId, absentIds, session.decidedGame.name, session.date, session.communityId);
   }
 
   // FEATURE 3 (revanche auto) — best-effort, jamais bloquant pour la
