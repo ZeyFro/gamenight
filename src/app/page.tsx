@@ -14,6 +14,7 @@ import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
+import { listGroupAchievements } from "@/lib/group-achievements";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
@@ -187,12 +188,12 @@ export default async function Home({
       },
     }),
     getRecentActivity(user.id, 3),
-    getGroupStats(),
+    getGroupStats(user.id),
     getWeekAvailability(user.id),
     getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
-    prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] }),
+    listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
   ]);
