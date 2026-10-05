@@ -13,7 +13,13 @@ vi.mock("@/lib/community-isolation", async () => {
   return { ...actual, getIsolationScope: vi.fn() };
 });
 
-import { COMMUNITY_SCOPED_MODELS, CommunityScopeError, scopeQueryArgs, withCommunity } from "./community-scoped-client";
+import {
+  COMMUNITY_REQUIRED_MODELS,
+  COMMUNITY_SCOPED_MODELS,
+  CommunityScopeError,
+  scopeQueryArgs,
+  withCommunity,
+} from "./community-scoped-client";
 
 const SCOPE = { communityIds: ["c1", "c2"], includesDefault: false };
 const SCOPE_DEFAULT = { communityIds: ["c1"], includesDefault: true };
@@ -24,10 +30,36 @@ describe("COMMUNITY_SCOPED_MODELS ↔ schema.prisma", () => {
   it("contient exactement les modèles qui portent `communityId` (hors Membership et salons)", () => {
     const schema = readFileSync(new URL("../../prisma/schema.prisma", import.meta.url), "utf8");
     const withColumn = [...schema.matchAll(/^model (\w+) \{\r?\n([\s\S]*?)^\}/gm)]
-      .filter(([, name, body]) => /^\s+communityId\s+String\?/m.test(body) && !/^(Membership|CommunityChannelConfig)$/.test(name))
+      .filter(([, name, body]) => /^\s+communityId\s+String\??\s*$/m.test(body) && !/^(Membership|CommunityChannelConfig)$/.test(name))
       .map(([, name]) => name)
       .sort();
     expect([...COMMUNITY_SCOPED_MODELS].sort()).toEqual(withColumn);
+  });
+});
+
+describe("COMMUNITY_REQUIRED_MODELS ↔ schema.prisma", () => {
+  it("contient exactement les modèles dont `communityId` est obligatoire (String, sans ?)", () => {
+    const schema = readFileSync(new URL("../../prisma/schema.prisma", import.meta.url), "utf8");
+    const required = [...schema.matchAll(/^model (\w+) \{\r?\n([\s\S]*?)^\}/gm)]
+      .filter(([, name, body]) => /^\s+communityId\s+String\s*$/m.test(body) && !/^(Membership|CommunityChannelConfig)$/.test(name))
+      .map(([, name]) => name)
+      .sort();
+    expect([...COMMUNITY_REQUIRED_MODELS].sort()).toEqual(required);
+  });
+});
+
+describe("scopeQueryArgs — modèle à communityId obligatoire", () => {
+  it("jamais de filtre `communityId: null` (Prisma le refuse), même si la communauté par défaut est dans le périmètre", () => {
+    expect(scopeQueryArgs("GroupAchievement", "findMany", {}, SCOPE_DEFAULT)).toEqual({
+      where: { AND: [{ OR: [{ communityId: { in: ["c1"] } }] }] },
+    });
+  });
+
+  it("création : communityId du périmètre obligatoire", () => {
+    expect(() => scopeQueryArgs("GameWishlist", "create", { data: { gameId: "g" } }, SCOPE)).toThrow(CommunityScopeError);
+    expect(() =>
+      scopeQueryArgs("GameWishlist", "create", { data: { gameId: "g", communityId: "autre" } }, SCOPE)
+    ).toThrow(/hors du périmètre/);
   });
 });
 

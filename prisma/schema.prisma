@@ -368,11 +368,11 @@ model Game {
   // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
   // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
   // plutôt qu'un tableau.
-  wishlistEntry GameWishlist?
+  wishlistEntries GameWishlist[]
 
   // Chantier nettoyage réel du stockage (V2, suite) — compteur durable
   // "Stats du groupe" de la Home, voir `GroupGameStat`.
-  groupStat GroupGameStat?
+  groupStats GroupGameStat[]
 
   @@unique([steamAppId])
   @@unique([igdbId])
@@ -1558,18 +1558,19 @@ model WeeklyChallenge {
 // appelée à chaque clôture de soirée (`markSessionDone`).
 model GroupAchievement {
   id          String    @id @default(cuid())
-  key         String    @unique
+  key         String
   name        String
   description String
   icon        String
   unlockedAt  DateTime?
   createdAt   DateTime  @default(now())
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // Multi-communautés, PR9 : obligatoire (communauté par défaut pour les lignes historiques),
+  // fait partie de la clé.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId, key])
 }
 
 // Dette de gage (Sprint 3 suite, "Dettes/gage") — détectée automatiquement
@@ -1660,14 +1661,15 @@ model UserLifetimeStats {
 model GroupSessionStats {
   // Ligne singleton (mêmes fondations que `CronLock.name`) — un seul
   // compteur global, jamais par utilisateur/par saison.
-  id                  String @id @default("global")
+  id                  String @id @default(cuid())
   totalSessionsPlayed Int    @default(0)
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // Multi-communautés, PR9 : obligatoire (communauté par défaut pour les lignes historiques),
+  // fait partie de la clé.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId])
 }
 
 // Un compteur par jeu — jamais un historique des soirées qui l'ont joué.
@@ -1676,16 +1678,17 @@ model GroupSessionStats {
 // `Game` elle-même n'est jamais purgée par ce chantier, une jointure
 // reste fiable à 100%).
 model GroupGameStat {
-  gameId    String @id
+  gameId    String
   playCount Int    @default(0)
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // Multi-communautés, PR9 : obligatoire (communauté par défaut pour les lignes historiques),
+  // fait partie de la clé.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@id([communityId, gameId])
 }
 
 // Chantier nettoyage réel du stockage (V2, suite — closes #107) — résumé
@@ -1704,13 +1707,14 @@ model GroupGameStat {
 model GroupActiveWeek {
   // Lundi 00:00 UTC de la semaine (même calcul que `getWeekStart`,
   // src/lib/calendar-dates.ts) — clé naturelle, une ligne par semaine.
-  weekStart DateTime @id
+  weekStart DateTime
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // Multi-communautés, PR9 : obligatoire (communauté par défaut pour les lignes historiques),
+  // fait partie de la clé.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@id([communityId, weekStart])
 }
 
 // Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — snapshot figé du mois
@@ -2007,13 +2011,13 @@ model GameWishlist {
   purchasedBy User?              @relation("WishlistPurchasedBy", fields: [purchasedById], references: [id])
   votes       GameWishlistVote[]
 
-  @@unique([gameId])
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // Multi-communautés, PR9 : obligatoire (communauté par défaut pour les lignes historiques),
+  // fait partie de la clé.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId, gameId])
 }
 
 // `interested` : true = "Intéressé 👍", false = "Pas pour moi 👎" —

@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { communityMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { announceGroupAchievementUnlocked } from "@/lib/discord-group-achievement";
 import { logger } from "@/lib/logger";
@@ -123,11 +126,16 @@ export const GROUP_ACHIEVEMENT_DEFS: {
  * par test (`group-achievements` dans `retention.integration.test.ts`)
  * plutôt qu'un nouvel agrégat durable inutile pour ces deux-là.
  */
-export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
-  const locked = await prisma.groupAchievement.findMany({ where: { unlockedAt: null } });
+export async function checkGroupAchievements(communityId: string): Promise<GroupAchievement[]> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  // Communauté sans aucun trophée (nouvelle) : on lui crée les siens ; sinon on ne touche à rien.
+  if ((await scopedDb.groupAchievement.count({ where: { communityId } })) === 0) await ensureGroupAchievements(communityId);
+  const locked = await scopedDb.groupAchievement.findMany({ where: { communityId, unlockedAt: null } });
   if (locked.length === 0) return [];
+  const members = await communityMemberUserWhere(communityId);
+  const announce = !isCommunityIsolationEnabled() || communityId === (await getDefaultCommunityId());
 
-  const doneSessions = await prisma.session.findMany({
+  const doneSessions = await scopedDb.session.findMany({
     where: { status: "DONE" },
     select: {
       date: true,
@@ -138,7 +146,7 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
 
   let hasNightSession = false;
   let fullHouseSessionParticipants = 0;
-  const totalUserCount = await prisma.user.count();
+  const totalUserCount = await prisma.user.count({ where: members });
 
   for (const s of doneSessions) {
     // "full-house" (participants à LA soirée qui vient de clôturer, ou à
@@ -165,26 +173,26 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
       // "marathoniens"/"century"/"premiere-soiree" — total à vie, jamais
       // recalculé depuis les lignes `Session` (voir `GroupSessionStats`,
       // incrémenté UNE FOIS par soirée dans `markSessionDone`).
-      prisma.groupSessionStats.findUnique({ where: { id: "global" }, select: { totalSessionsPlayed: true } }),
+      scopedDb.groupSessionStats.findUnique({ where: { communityId }, select: { totalSessionsPlayed: true } }),
       // "diversité" — un jeu compte tant qu'il a été décidé au moins une
       // fois, MÊME si toutes ses soirées ont depuis été purgées
       // (`GroupGameStat` n'est jamais supprimé par la purge de `Session`,
       // seulement si le `Game` lui-même l'était — ne se produit jamais
       // dans ce chantier).
-      prisma.groupGameStat.count(),
+      scopedDb.groupGameStat.count({ where: { communityId } }),
       // "squad" — même définition EXACTE de "participant" que
       // `allParticipantIds` avant ce lot (voteurs de la proposition
       // gagnante) : `XpEvent` `reason: "PARTICIPATE"` est écrit pour
       // CETTE MÊME population, à la clôture du vote (`closeSession`,
       // src/lib/sessions.ts) — sans FK vers `Session`, déjà à l'abri de
       // toute purge, aucun nouveau schéma nécessaire.
-      prisma.xpEvent.findMany({ where: { reason: "PARTICIPATE" }, distinct: ["userId"], select: { userId: true } }),
+      prisma.xpEvent.findMany({ where: { reason: "PARTICIPATE", user: members }, distinct: ["userId"], select: { userId: true } }),
       // "réguliers" — voir `GroupActiveWeek` (prisma/schema.prisma) : une
       // ligne par semaine calendaire ayant eu ≥1 soirée DONE, écrite dans
       // `markSessionDone`, jamais retouchée par la purge.
-      prisma.groupActiveWeek.findMany({ select: { weekStart: true }, orderBy: { weekStart: "asc" } }),
-      prisma.userGame.groupBy({ by: ["gameId"], where: { owned: true } }),
-      prisma.user.findMany({ select: { xpTotal: true } }),
+      scopedDb.groupActiveWeek.findMany({ where: { communityId }, select: { weekStart: true }, orderBy: { weekStart: "asc" } }),
+      prisma.userGame.groupBy({ by: ["gameId"], where: { owned: true, user: members } }),
+      prisma.user.findMany({ where: members, select: { xpTotal: true } }),
     ]);
 
   const totalDone = sessionStats?.totalSessionsPlayed ?? 0;
@@ -221,7 +229,7 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
   for (const achievement of locked) {
     if (!predicateByKey[achievement.key]) continue;
 
-    const claimed = await prisma.groupAchievement.updateMany({
+    const claimed = await scopedDb.groupAchievement.updateMany({
       where: { id: achievement.id, unlockedAt: null },
       data: { unlockedAt: new Date() },
     });
@@ -229,6 +237,9 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
 
     unlocked.push({ ...achievement, unlockedAt: new Date() });
 
+    // Seule la communauté par défaut a un salon (celui de l'environnement) : les
+    // trophées des autres communautés ne sont pas annoncés (PR9).
+    if (!announce) continue;
     const result = await announceGroupAchievementUnlocked(achievement);
     if (!result.ok) {
       logger.error(
@@ -242,11 +253,32 @@ export async function checkGroupAchievements(): Promise<GroupAchievement[]> {
 }
 
 /**
- * Tous les trophées du groupe, débloqués d'abord (même requête que la carte
- * « Trophées du groupe » de l'accueil, utilisée aussi par l'accueil v2). Placée
- * ici car l'accès direct à `prisma.groupAchievement` est déjà autorisé dans ce
- * module (`community-scope.test.ts`).
+ * Trophées du groupe affichés sur l'accueil (carte « Trophées du groupe » et
+ * accueil v2), débloqués d'abord : ceux de la communauté ACTIVE de `viewerId`
+ * (isolation allumée ; éteinte, tous, comme avant). Une communauté sans trophées
+ * (nouvelle) reçoit les siens à la première lecture.
  */
-export function listGroupAchievements() {
-  return prisma.groupAchievement.findMany({ orderBy: [{ unlockedAt: "desc" }, { createdAt: "asc" }] });
+export async function listGroupAchievements(viewerId: string) {
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const orderBy = [{ unlockedAt: "desc" as const }, { createdAt: "asc" as const }];
+  const rows = await scopedDb.groupAchievement.findMany({ orderBy });
+  if (rows.length >= GROUP_ACHIEVEMENT_DEFS.length || !isCommunityIsolationEnabled()) return rows;
+  const activeId = await resolveActiveCommunityId(viewerId);
+  if (activeId === null) return rows;
+  await ensureGroupAchievements(activeId);
+  return scopedDb.groupAchievement.findMany({ orderBy });
+}
+
+/**
+ * Crée les trophées manquants d'UNE communauté (clé `(communityId, key)`,
+ * idempotent : une ligne existante n'est ni recréée ni modifiée, `unlockedAt`
+ * compris). Appelée à la clôture d'une soirée, à la lecture de l'accueil et par
+ * `seedGroupAchievements`, pour qu'une communauté nouvelle ait ses trophées.
+ */
+export async function ensureGroupAchievements(communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  await scopedDb.groupAchievement.createMany({
+    data: GROUP_ACHIEVEMENT_DEFS.map((def) => ({ ...def, communityId })),
+    skipDuplicates: true,
+  });
 }

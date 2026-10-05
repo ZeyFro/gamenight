@@ -2461,7 +2461,7 @@ Infrastructure seule : **aucun appelant migré**, aucun changement de comporteme
 | `src/lib/community-scoped-client.ts` | `getScopedPrisma(userId)` / `scopedPrisma(scope)` : client `$extends` à nommer **`scopedDb`**. Lectures, `update*`, `delete*`, `upsert`, `count`, `aggregate`, `groupBy` : filtre `communityIdFilter` ajouté dans `AND` (aussi sur les opérations « unique »). Créations : `communityId` scalaire **obligatoire** et dans le périmètre (`null` seulement si `default` en fait partie). Une ligne ne change jamais de communauté. Opération inconnue : refusée. Périmètre vide : rien de visible. |
 | Garde-fou `community-scope.test.ts` | Un accès `scopedDb.<modèle>.<op>(` n'est plus compté comme direct, mais tout fichier qui cite `scopedDb` doit appeler `getScopedPrisma`/`scopedPrisma`. `COMMUNITY_SCOPED_MODELS` est comparé aux modèles de `schema.prisma` portant `communityId`. |
 
-**Bornes** (comme le garde-fou statique) : `include`/`select` imbriqués et SQL brut non filtrés. **À revoir par la PR de chaque domaine** : des clés uniques restent globales (`Season.number`, `GroupAchievement.key`, `GameWishlist.gameId`, `WeeklyChallenge.weekStart`, `MonthlyRecap(year, month)`, et les clés primaires de `GroupSessionStats` / `GroupGameStat` / `GroupActiveWeek`) : deux communautés ne pourraient pas avoir chacune sa ligne tant qu'elles ne sont pas passées en clés composites avec `communityId`.
+**Bornes** (comme le garde-fou statique) : `include`/`select` imbriqués et SQL brut non filtrés. **À revoir par la PR de chaque domaine** : des clés uniques restent globales (`Season.number`, `WeeklyChallenge.weekStart`, `MonthlyRecap(year, month)` ; celles de `GameWishlist`, `GroupAchievement` et des tables `Group*` sont devenues composites en PR9) : deux communautés ne pourraient pas avoir chacune sa ligne tant qu'elles ne sont pas passées en clés composites avec `communityId`.
 
 ### Chat, dettes et accueil par communauté (PR8)
 
@@ -2475,6 +2475,21 @@ Derrière `COMMUNITY_ISOLATION_ENABLED` (éteint = comportement historique, aucu
 | Accueil — flux d'activité | « Soirée jouée » déjà filtrée (PR4). Badges, superlatifs et niveaux : limités aux membres visibles (`memberUserWhereFor`), **filtre provisoire** faute de `communityId` sur XP/badges/superlatifs. |
 
 Reste global sur l'accueil (PR suivantes) : compteurs de groupe (`getGroupStats` : `GroupSessionStats`, `GroupGameStat`, streak, joueurs actifs) et succès de groupe (PR9), défi de la semaine (PR10), récap mensuel et saison (PR11), badges débloqués (PR12). Rétention et audit de stockage lisent `chatMessage`/`debt` en direct jusqu'à PR13.
+
+### Wishlist, trophées et compteurs de groupe par communauté (PR9)
+
+**Migration non purement additive** (`20261005140000_community_scoped_keys`) : `communityId` devient **obligatoire** et entre dans la clé de `GameWishlist` (`@@unique([communityId, gameId])`), `GroupAchievement` (`@@unique([communityId, key])`), `GroupSessionStats` (`@@unique([communityId])`, `id` en `cuid()`), `GroupGameStat` (`@@id([communityId, gameId])`) et `GroupActiveWeek` (`@@id([communityId, weekStart])`). Aucune donnée supprimée : la migration crée la communauté `default` si elle manque (mêmes valeurs que `ensureDefaultCommunityRecord`, qui la retrouve par son slug), y rattache toutes les lignes existantes, puis remplace les clés ; `onDelete` passe de SET NULL à CASCADE. Appliquée à blanc sur une base avec des lignes historiques (zéro dérive `prisma migrate diff`). **Fenêtre de déploiement** : entre la migration (build Vercel) et la mise en ligne du nouveau code, l'ancien code peut échouer à écrire dans ces tables (clôture de soirée, proposition de wishlist) : déployer hors des heures de jeu.
+
+Ces tables n'ont **pas de `null`** : la communauté par défaut a un vrai identifiant (`getDefaultCommunityId`), utilisé aussi **isolation éteinte**. Le client scopé n'émet donc jamais `communityId: null` pour elles (`COMMUNITY_REQUIRED_MODELS`).
+
+| Surface | Règle |
+| :-- | :-- |
+| Compteurs de groupe (`markSessionDone`) | Écrits dans la communauté **de la soirée** (`null` → par défaut), dans la même transaction (accès direct assumé : écriture dérivée). |
+| Accueil (`getGroupStats`) | Compteurs de la communauté **active** + joueurs de cette communauté ; isolation éteinte : somme de toutes les lignes (comportement historique). |
+| Trophées (`checkGroupAchievements(communityId)`) | Calculés sur une communauté (ses soirées, ses compteurs, ses membres). Créés par `ensureGroupAchievements` : seed (communauté par défaut + ACTIVE), première lecture de l'accueil, ou clôture d'une communauté qui n'en a aucun. **Annonce Discord : uniquement la communauté par défaut** (salon de l'environnement) ; les autres ne sont pas annoncées. |
+| Wishlist | Propositions dans la communauté **active** (refusées sans communauté) ; le même jeu peut figurer dans deux communautés ; vote hors périmètre sans effet ; le propriétaire déjà connu d'un jeu est cherché parmi les membres de la communauté ; achat détecté : toutes les communautés de l'utilisateur. |
+
+Le test de rétention (`retention.integration.test.ts`) et l'ordre des clés sont adaptés ; `Game.wishlistEntry` / `Game.groupStat` deviennent des listes (`wishlistEntries`, `groupStats`), sans usage dans le code.
 
 ### Création automatique d'une communauté (PR2)
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import {
   communityIdFilter,
   getIsolationScope,
@@ -42,6 +43,15 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
+]);
+
+/**
+ * Modèles dont `communityId` est OBLIGATOIRE (PR9) : aucune ligne `null` n'existe,
+ * la communauté par défaut y a un vrai identifiant, et Prisma refuse un filtre
+ * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
+ */
+export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
+  "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
 ]);
 
 export class CommunityScopeError extends Error {
@@ -102,7 +112,8 @@ export function scopeQueryArgs(model: string, operation: string, args: Args, sco
     checkCreateRow(model, next.create, scope);
     checkUpdateData(model, next.update);
   }
-  next.where = restrict(next.where, communityIdFilter(scope));
+  const filterScope = COMMUNITY_REQUIRED_MODELS.has(model) ? { ...scope, includesDefault: false } : scope;
+  next.where = restrict(next.where, communityIdFilter(filterScope));
   return next;
 }
 
@@ -153,4 +164,15 @@ export function scopedPrismaForCommunity(communityId: string | null): ScopedPris
  */
 export function withCommunity(communityId: string | null): { communityId?: string | null } {
   return isCommunityIsolationEnabled() ? { communityId } : {};
+}
+
+/**
+ * Client scopé sur UNE communauté identifiée par son id RÉEL (jamais `null`) :
+ * la communauté par défaut y inclut ses lignes historiques `communityId = null`.
+ * Pour les calculs qui portent sur une communauté entière (trophées de groupe).
+ */
+export async function scopedPrismaForCommunityId(communityId: string): Promise<ScopedPrisma> {
+  if (!isCommunityIsolationEnabled()) return scopedPrisma(null);
+  const defaultId = await getDefaultCommunityId();
+  return scopedPrisma({ communityIds: [communityId], includesDefault: communityId === defaultId });
 }

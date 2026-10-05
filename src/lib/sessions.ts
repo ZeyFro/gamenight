@@ -19,6 +19,7 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
@@ -593,6 +594,10 @@ export async function markSessionDone(
   // (`retention.ts`) : aucune re-dérivation depuis des lignes `Session`
   // vivantes après coup, donc aucun double comptage possible entre
   // soirées encore présentes et soirées déjà purgées.
+  // Multi-communautés (PR9) : ces compteurs sont ceux de la communauté de la soirée
+  // (`null` = communauté par défaut). Écritures dérivées d'une ligne existante :
+  // elles héritent de la soirée, jamais de l'acteur (accès direct assumé, `tx`).
+  const defaultCommunityId = await getDefaultCommunityId();
   const decided = await prisma.$transaction(async (tx) => {
     const result = await tx.session.updateMany({
       where: { id: sessionId, status: "SCHEDULED" },
@@ -602,20 +607,21 @@ export async function markSessionDone(
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
-      select: { decidedGameId: true, date: true, announceViaBot: true },
+      select: { decidedGameId: true, date: true, announceViaBot: true, communityId: true },
     });
+    const communityId = updated?.communityId ?? defaultCommunityId;
     // Fin de session : annonce et MP d'invitation ÉDITÉS (statut terminé), sans nouveau message.
     if (updated?.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, tx);
 
     await tx.groupSessionStats.upsert({
-      where: { id: "global" },
-      create: { id: "global", totalSessionsPlayed: 1 },
+      where: { communityId },
+      create: { communityId, totalSessionsPlayed: 1 },
       update: { totalSessionsPlayed: { increment: 1 } },
     });
     if (updated?.decidedGameId) {
       await tx.groupGameStat.upsert({
-        where: { gameId: updated.decidedGameId },
-        create: { gameId: updated.decidedGameId, playCount: 1 },
+        where: { communityId_gameId: { communityId, gameId: updated.decidedGameId } },
+        create: { communityId, gameId: updated.decidedGameId, playCount: 1 },
         update: { playCount: { increment: 1 } },
       });
     }
@@ -626,8 +632,8 @@ export async function markSessionDone(
       // trophée "Réguliers", voir group-achievements.ts).
       const weekStart = getWeekStart(updated.date);
       await tx.groupActiveWeek.upsert({
-        where: { weekStart },
-        create: { weekStart },
+        where: { communityId_weekStart: { communityId, weekStart } },
+        create: { communityId, weekStart },
         update: {},
       });
     }
@@ -648,7 +654,7 @@ export async function markSessionDone(
   // vérifient à chaque appel, manuel (bouton créateur) ou automatique
   // (cron `closeOverdueScheduledSessions`) : les deux passent par cette
   // même fonction, aucun appelant n'a besoin de dupliquer l'appel.
-  const unlockedAchievements = await checkGroupAchievements();
+  const unlockedAchievements = await checkGroupAchievements(decided.communityId ?? defaultCommunityId);
 
   return { unlockedAchievements };
 }
