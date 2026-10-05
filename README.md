@@ -2055,8 +2055,7 @@ l'authentification est validée, sans attendre la fin du backfill — via
 (Next.js) : le code de backfill continue de s'exécuter après l'envoi de
 la réponse, donc l'appelant (cron externe ou `curl` manuel) n'attend
 jamais 14 minutes. `export const maxDuration = 60` sur les deux routes —
-le plafond du plan Vercel Hobby (même contrainte que le cron F7, voir
-plus haut) ; les deux backfills s'arrêtent volontairement avant cette
+un choix de route, pas le plafond Hobby (300 s avec Fluid compute) ; les deux backfills s'arrêtent volontairement avant cette
 échéance (`TIME_BUDGET_MS`, marge de sécurité) plutôt que de risquer une
 coupure brutale par la plateforme en plein appel réseau/écriture.
 
@@ -2461,6 +2460,17 @@ le client scopé n’existe pas) :
 | `POST /api/discord/webhook-events` | Webhook d'événements Discord (Developer Portal → Webhooks, événement `APPLICATION_AUTHORIZED`). Publique, authentifiée par la signature Ed25519 (`DISCORD_APP_PUBLIC_KEY` ; 503 sans clé, 401 si invalide, vérifiée avant tout parsing). Seule une installation **serveur** avec le scope `bot` crée une communauté ; les installations utilisateur sont ignorées. Répond 204 (PING compris). |
 | `/api/cron/community-guild-sync` | Rattrapage via `GET /users/@me/guilds` : crée en `PENDING` les serveurs manqués par le webhook, marque `LEFT` (+ `leftAt`) les communautés `PENDING`/`ACTIVE` dont le bot est parti. Fail-safe : liste vide, incomplète, en erreur ou création en échec = aucun `LEFT`. La communauté `default` n'est jamais marquée `LEFT` automatiquement. |
 | `src/lib/community-provisioning.ts` | Création idempotente (webhook et cron peuvent se croiser) : serveur déjà connu → nom/icône seulement ; `LEFT` (bot réajouté) → `PENDING` ; `SUSPENDED`/`ARCHIVED` → jamais modifiée. |
+
+### Activation par `/gamenight setup` (PR6)
+
+Éteinte par défaut : `COMMUNITY_SETUP_COMMAND_ENABLED` doit valoir exactement `true`. Un membre qui a la permission **Gérer le serveur** (ou Administrateur) tape `/gamenight setup` : la communauté de son serveur passe `ACTIVE` sans validation manuelle (l'onglet admin « Communautés » reste le secours). **Attention** : tant que `COMMUNITY_ISOLATION_ENABLED` est éteint ou partiel (voir PR4), tout serveur activé donne à ses membres l'accès au contenu des autres communautés : n'allumer ce flag qu'après la bascule de l'isolation.
+
+| Élément | Rôle |
+| :-- | :-- |
+| `POST /api/discord/interactions` | Endpoint d'interactions (portail → General Information → Interactions Endpoint URL). Publique, authentifiée par la signature Ed25519 (`DISCORD_APP_PUBLIC_KEY` ; 503 sans clé, 401 si invalide, avant tout parsing). Le PING de validation est toujours acquitté (PONG), flag éteint compris. Réponses éphémères, sans mention. |
+| `src/lib/discord-interactions.ts` | Revérifie `MANAGE_GUILD`/`ADMINISTRATOR` sur `member.permissions` du payload signé (`default_member_permissions` n'est qu'un réglage d'affichage que les admins du serveur peuvent changer). Refuse hors serveur. |
+| `src/lib/community-setup.ts` | Serveur inconnu : création (nom provisoire `Serveur xxxxxx`, corrigé par `community-guild-sync`) puis activation ; `PENDING`/`LEFT` → `ACTIVE` par `updateMany` conditionnel (sans course) ; déjà `ACTIVE` : rien ; `SUSPENDED`/`ARCHIVED` : refusé. Aucun Membership créé (il naît à la connexion). |
+| `scripts/discord-commands.json` + `scripts/register-discord-commands.mjs` | Définition de la commande globale (`default_member_permissions: "32"`, serveurs uniquement). Simulation par défaut ; `--execute` fait un `PUT` qui **remplace toutes les commandes globales** de l'application (`DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN`). |
 
 ### Salons d'annonce par communauté (PR3)
 
@@ -11285,7 +11295,7 @@ elles-mêmes reste à faire dans un chantier séparé.
 volets ci-dessus en un seul passage **borné** :
 - lots de taille fixe (`RETENTION_BATCH_SIZE = 50`) par volet ;
 - budget de temps mur (`RETENTION_MAX_BATCH_DURATION_MS = 45s`, sous le
-  plafond Vercel Hobby) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
+  `maxDuration` de 60 s de la route) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
   sans jamais planter ;
 - **reprenable sans curseur persisté** : chaque volet interroge "que
   reste-t-il à faire MAINTENANT" (ex. sessions DONE/CANCELLED encore
