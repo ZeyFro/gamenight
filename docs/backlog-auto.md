@@ -58,8 +58,8 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | # | Idée | Source | Taille | Risque | Valeur | Statut |
 | - | ---- | ------ | ------ | ------ | ------ | ------ |
 | 25 | **Test : tout drapeau `*_ENABLED` lu dans `src` est cité dans CLAUDE.md** (sens inverse de #12) ; ajoute les deux manquants (`PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`) | Audit du code : 2 drapeaux absents de la doc | XS | nul (test + doc) | moyenne | PR Draft |
-| 26 | **Test : tout drapeau `*_ENABLED` lu dans `src` est éteint par défaut dans `.env.example`** (valeur vide ou commentée) | Audit du code (sécurité) | XS | nul (test seul) | moyenne | À faire |
-| 27 | **Test : chaque `loading.tsx` / `error.tsx` exporte un composant par défaut** | Audit du code | XS | nul (test seul) | faible | À faire |
+| 26 | **Test : tout drapeau `*_ENABLED` lu dans `src` est éteint par défaut dans `.env.example`** (valeur vide ou commentée) | Audit du code (sécurité) | XS | nul (test seul) | moyenne | Déjà couverte par `env-example-no-secrets.test.ts` + `env-example.test.ts` |
+| 27 | **Test : chaque `loading.tsx` / `error.tsx` exporte un composant par défaut** | Audit du code | XS | nul (test seul) | faible | PR Draft |
 | 28 | **Test : les dates de CLAUDE.md « État du projet » citent la dernière PR mergée** | Audit de la doc | S | nul | faible | À faire |
 | 29 | **Test : aucun `dangerouslySetInnerHTML` hors liste blanche** | Audit du code (sécurité, XSS) | XS | nul (test seul) | moyenne | PR Draft |
 | 30 | **Test : pas de prop `whileInView` hors exception listée** | Règle design (Framer Motion sans `whileInView`, bug connu de contenu invisible) | XS | nul (test seul) | moyenne | PR Draft |
