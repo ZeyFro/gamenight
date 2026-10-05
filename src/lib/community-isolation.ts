@@ -132,3 +132,19 @@ export async function resolveActiveCommunityId(userId: string): Promise<string |
   if (memberships.length === 0) return null;
   return (memberships.find((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG) ?? memberships[0]).communityId;
 }
+
+/**
+ * Périmètre de la SEULE communauté « active » de l'utilisateur (voir
+ * `resolveActiveCommunityId`), pour les surfaces qui ne montrent qu'un serveur à
+ * la fois (chat global, dettes de l'accueil). `null` si l'isolation est éteinte ;
+ * périmètre vide (rien de visible) si l'utilisateur n'a aucune communauté. Les
+ * lignes historiques `communityId = null` ne sont visibles que si la communauté
+ * active est `default`.
+ */
+export async function resolveActiveCommunityScope(userId: string): Promise<IsolationScope | null> {
+  if (!isCommunityIsolationEnabled()) return null;
+  const communityId = await resolveActiveCommunityId(userId);
+  if (communityId === null) return { communityIds: [], includesDefault: false };
+  const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true } });
+  return { communityIds: [communityId], includesDefault: community?.slug === DEFAULT_COMMUNITY_SLUG };
+}

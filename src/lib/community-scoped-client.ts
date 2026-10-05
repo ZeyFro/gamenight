@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { communityIdFilter, getIsolationScope, type IsolationScope } from "@/lib/community-isolation";
+import {
+  communityIdFilter,
+  getIsolationScope,
+  isCommunityIsolationEnabled,
+  resolveActiveCommunityScope,
+  type IsolationScope,
+} from "@/lib/community-isolation";
 
 /**
  * Multi-communautés, PR7 — client Prisma SCOPÉ par communauté. Point de passage
@@ -119,4 +125,32 @@ export type ScopedPrisma = ReturnType<typeof scopedPrisma>;
 /** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT) ; aucune lecture isolation éteinte. */
 export async function getScopedPrisma(userId: string): Promise<ScopedPrisma> {
   return scopedPrisma(await getIsolationScope(userId));
+}
+
+/**
+ * Client scopé sur la seule communauté « active » de l'utilisateur (chat global,
+ * dettes de l'accueil) : voir `resolveActiveCommunityScope`.
+ */
+export async function getActiveScopedPrisma(userId: string): Promise<ScopedPrisma> {
+  return scopedPrisma(await resolveActiveCommunityScope(userId));
+}
+
+/**
+ * Client scopé sur UNE communauté connue (`null` = communauté par défaut, lignes
+ * historiques) : pour les écritures DÉRIVÉES d'une ligne existante (ex. dettes
+ * d'une soirée), qui héritent de la communauté de leur parent quel que soit
+ * l'état d'appartenance de l'acteur. Transparent si l'isolation est éteinte.
+ */
+export function scopedPrismaForCommunity(communityId: string | null): ScopedPrisma {
+  if (!isCommunityIsolationEnabled()) return scopedPrisma(null);
+  return scopedPrisma({ communityIds: communityId === null ? [] : [communityId], includesDefault: communityId === null });
+}
+
+/**
+ * Valeur de `communityId` à écrire. Isolation éteinte : vide (colonne laissée à
+ * `null`, comme avant — même règle que la PR3 pour Session et Tournament) ;
+ * allumée : la communauté, que le client scopé exige à la création.
+ */
+export function withCommunity(communityId: string | null): { communityId?: string | null } {
+  return isCommunityIsolationEnabled() ? { communityId } : {};
 }

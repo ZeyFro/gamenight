@@ -3,6 +3,7 @@ import { getCalendarData } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getWeekStart } from "@/lib/calendar-dates";
 import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
+import { memberUserWhereFor } from "@/lib/community-isolation";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -39,12 +40,18 @@ export interface ActivityItem {
  * un nom de jeu et un créateur précis, donc le contenu réel d'une soirée)
  * est restreinte aux soirées visibles par `viewerId`
  * (`accessibleSessionWhere`, src/lib/session-access.ts). Les 3 autres
- * types (badges, superlatifs, niveaux) restent un flux global inchangé :
- * ce sont des accomplissements personnels affichés partout ailleurs dans
- * l'app (profil, classement), pas le contenu d'une soirée précise —
- * périmètre volontairement limité, documenté comme tel dans le README.
+ * types (badges, superlatifs, niveaux) restent un flux sans filtre de
+ * soirée : ce sont des accomplissements personnels affichés partout
+ * ailleurs dans l'app (profil, classement), pas le contenu d'une soirée
+ * précise — périmètre volontairement limité, documenté comme tel dans le README.
+ *
+ * Multi-communautés (PR8, isolation allumée) : ces 3 flux se limitent aux
+ * membres visibles de `viewerId` (`memberUserWhereFor`), faute de colonne
+ * `communityId` sur XP/badges/superlatifs (PR10 et PR12). Filtre provisoire :
+ * un membre de deux serveurs y apparaît dans les deux.
  */
 export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
+  const members = await memberUserWhereFor(viewerId);
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
       where: { status: "DONE", ...(await accessibleSessionWhereFor(viewerId)) },
@@ -58,6 +65,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
       },
     }),
     prisma.userBadge.findMany({
+      where: { user: members },
       orderBy: { unlockedAt: "desc" },
       take: limit,
       select: {
@@ -68,6 +76,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
       },
     }),
     prisma.superlativeAward.findMany({
+      where: { winner: members },
       orderBy: { createdAt: "desc" },
       take: limit,
       select: {
@@ -78,6 +87,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
       },
     }),
     prisma.levelUpEvent.findMany({
+      where: { user: members },
       orderBy: { createdAt: "desc" },
       take: limit,
       select: {
