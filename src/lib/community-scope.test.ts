@@ -133,14 +133,23 @@ const OPERATIONS = [
 ];
 
 const accessor = (model: string) => model[0].toLowerCase() + model.slice(1);
+/** Le client scopé (`getScopedPrisma`, PR7) s'appelle `scopedDb` : ses accès sont autorisés. */
+const SCOPED_RECEIVER = "scopedDb";
 const ACCESS_RE = new RegExp(
-  `\\.\\s*(${COLLECTIVE_MODELS.map(accessor).join("|")})\\s*\\.\\s*(${OPERATIONS.join("|")})\\s*\\(`,
+  `([\\w$]*)\\s*\\.\\s*(${COLLECTIVE_MODELS.map(accessor).join("|")})\\s*\\.\\s*(${OPERATIONS.join("|")})\\s*\\(`,
   "g"
 );
 
 /** Accesseurs de modèles collectifs appelés directement dans `source`, triés. */
 function collectiveAccesses(source: string): string[] {
-  return [...new Set([...source.matchAll(ACCESS_RE)].map((m) => m[1]))].sort();
+  return [
+    ...new Set([...source.matchAll(ACCESS_RE)].filter((m) => m[1] !== SCOPED_RECEIVER).map((m) => m[2])),
+  ].sort();
+}
+
+/** Un fichier qui utilise `scopedDb` doit l'obtenir de `getScopedPrisma` / `scopedPrisma` (borne basse : présence du nom). */
+function usesScopedDbWithoutFactory(source: string): boolean {
+  return /\bscopedDb\b/.test(source) && !/\b(getScopedPrisma|scopedPrisma)\s*\(/.test(source);
 }
 
 const ROOT = join(__dirname, "..", "..");
@@ -158,6 +167,20 @@ describe("collectiveAccesses (détecteur)", () => {
     expect(collectiveAccesses("await prisma.session.findMany({})")).toEqual(["session"]);
     expect(collectiveAccesses("tx.xpEvent\n      .create({ data })")).toEqual(["xpEvent"]);
     expect(collectiveAccesses("db.userBadge.deleteMany(); prisma.badge.count()")).toEqual(["badge", "userBadge"]);
+  });
+
+  it("autorise le client scopé `scopedDb` mais pas un autre receveur", () => {
+    expect(collectiveAccesses("await scopedDb.chatMessage.findMany({})")).toEqual([]);
+    expect(collectiveAccesses("scopedDb.debt\n  .create({})")).toEqual([]);
+    expect(collectiveAccesses("await db.chatMessage.findMany({}); scopedDb.debt.count()")).toEqual(["chatMessage"]);
+    expect(collectiveAccesses("(await getPrisma()).debt.count()")).toEqual(["debt"]);
+    expect(collectiveAccesses("myscopedDb.debt.count()")).toEqual(["debt"]);
+  });
+
+  it("`scopedDb` sans `getScopedPrisma` / `scopedPrisma` dans le fichier est signalé", () => {
+    expect(usesScopedDbWithoutFactory("const scopedDb = prisma; scopedDb.debt.count()")).toBe(true);
+    expect(usesScopedDbWithoutFactory("const scopedDb = await getScopedPrisma(user.id);")).toBe(false);
+    expect(usesScopedDbWithoutFactory("const x = 1")).toBe(false);
   });
 
   it("ignore les modèles personnels / globaux et les noms qui ne sont qu'un préfixe", () => {
@@ -181,6 +204,14 @@ describe("garde-fou : pas d'accès direct aux modèles collectifs hors du point 
         models.filter((m) => !(EXISTING_EXCEPTIONS[file] ?? []).includes(m)).map((m) => `${file} → ${m}`)
       );
     expect(unexpected).toEqual([]);
+  });
+
+  it("tout fichier qui utilise `scopedDb` l'obtient d'une fabrique du client scopé", () => {
+    const offenders = sourceFiles(join(ROOT, "src"))
+      .filter((file) => !file.endsWith("community-scoped-client.ts"))
+      .filter((file) => usesScopedDbWithoutFactory(readFileSync(file, "utf8")))
+      .map((file) => relative(ROOT, file).split(sep).join("/"));
+    expect(offenders).toEqual([]);
   });
 
   it("aucune exception périmée (accès déjà retiré : supprimer la ligne de EXISTING_EXCEPTIONS)", () => {
