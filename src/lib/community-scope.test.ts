@@ -47,7 +47,7 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/api/cron/close-sessions/route.ts": ["session"],
   "src/app/api/cron/reminders/route.ts": ["session"],
   "src/app/chat/actions.ts": ["chatReaction"],
-  "src/app/page.tsx": ["groupAchievement", "session", "userBadge"],
+  "src/app/page.tsx": ["session", "userBadge"],
   "src/app/potes/[id]/badges/page.tsx": ["badge", "userBadge"],
   "src/app/potes/[id]/superlatifs/page.tsx": ["superlativeAward"],
   "src/app/potes/page.tsx": ["xpEvent"],
@@ -74,7 +74,7 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/tournois/[id]/page.tsx": ["tournament"],
   "src/app/tournois/actions.ts": ["tournament", "tournamentMatch", "tournamentParticipant"],
   "src/app/tournois/page.tsx": ["tournament"],
-  "src/app/wishlist/actions.ts": ["gameWishlist", "gameWishlistVote"],
+  "src/app/wishlist/actions.ts": ["gameWishlistVote"],
   "src/components/admin/BadgesTab.tsx": ["badge"],
   "src/components/admin/MessagesTab.tsx": ["messageTemplate"],
   "src/components/admin/SuperlativesTab.tsx": ["superlativeCategory"],
@@ -87,8 +87,8 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/discord-roulette.ts": ["session"],
   "src/lib/discord-thread-cleanup.ts": ["session", "tournament"],
   "src/lib/fix-invalid-templates.ts": ["messageTemplate"],
-  "src/lib/group-achievements.ts": ["groupAchievement", "groupActiveWeek", "groupGameStat", "groupSessionStats", "session", "xpEvent"],
-  "src/lib/home.ts": ["groupGameStat", "groupSessionStats", "levelUpEvent", "session", "superlativeAward", "userBadge"],
+  "src/lib/group-achievements.ts": ["xpEvent"],
+  "src/lib/home.ts": ["levelUpEvent", "session", "superlativeAward", "userBadge"],
   "src/lib/instant-session-announce.ts": ["instantSession"],
   "src/lib/instant-sessions.ts": ["instantSession", "instantSessionPresenceInterval"],
   "src/lib/legacy-discord-announces.ts": ["session"],
@@ -106,7 +106,6 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/seasons.ts": ["season", "seasonSnapshot"],
   "src/lib/seed-badges.ts": ["badge"],
   "src/lib/seed-game-stats.ts": ["gameStatType"],
-  "src/lib/seed-group-achievements.ts": ["groupAchievement"],
   "src/lib/seed-messages.ts": ["messageTemplate"],
   "src/lib/seed-season.ts": ["season"],
   "src/lib/seed-superlatives.ts": ["superlativeCategory"],
@@ -118,7 +117,6 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/tournament-announce.ts": ["tournament", "tournamentParticipant"],
   "src/lib/tournaments.ts": ["tournament", "tournamentMatch", "tournamentParticipant"],
   "src/lib/weekly-challenges.ts": ["session", "weeklyChallenge"],
-  "src/lib/wishlist.ts": ["gameWishlist"],
   "src/lib/xp-actions.ts": ["levelUpEvent", "xpEvent"],
   "src/lib/xp-bets.ts": ["session", "xpBet"],
 };
@@ -146,7 +144,7 @@ function collectiveAccesses(source: string): string[] {
 
 /** Un fichier qui utilise `scopedDb` doit l'obtenir de `getScopedPrisma` / `scopedPrisma` (borne basse : présence du nom). */
 function usesScopedDbWithoutFactory(source: string): boolean {
-  return /\bscopedDb\b/.test(source) && !/\b(getScopedPrisma|scopedPrisma)\s*\(/.test(source);
+  return /\bscopedDb\b/.test(source) && !/\b(getScopedPrisma|getActiveScopedPrisma|scopedPrisma|scopedPrismaForCommunity|scopedPrismaForCommunityId)\s*\(/.test(source);
 }
 
 const ROOT = join(__dirname, "..", "..");

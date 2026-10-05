@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma, getScopedPrisma } from "@/lib/community-scoped-client";
 import { wallClockNow } from "@/lib/wallclock";
 import { fetchSteamStoreDetails } from "@/lib/steam-store";
 import { logger } from "@/lib/logger";
@@ -26,7 +27,9 @@ export interface WishlistEntryDTO {
  * réseau.
  */
 export async function getWishlist(currentUserId: string): Promise<WishlistEntryDTO[]> {
-  const entries = await prisma.gameWishlist.findMany({
+  // Multi-communautés (PR9) : la wishlist de la communauté active (isolation allumée).
+  const scopedDb = await getActiveScopedPrisma(currentUserId);
+  const entries = await scopedDb.gameWishlist.findMany({
     orderBy: { createdAt: "desc" },
     include: {
       game: { select: { id: true, name: true, coverUrl: true, steamAppId: true } },
@@ -101,13 +104,15 @@ export async function checkWishlistPurchases(userId: string): Promise<void> {
   );
   if (ownedGameIds.size === 0) return;
 
-  const pending = await prisma.gameWishlist.findMany({
+  // Multi-communautés (PR9) : toutes les communautés de l'utilisateur (c'est lui qui possède le jeu).
+  const scopedDb = await getScopedPrisma(userId);
+  const pending = await scopedDb.gameWishlist.findMany({
     where: { purchasedById: null, gameId: { in: [...ownedGameIds] } },
     select: { id: true },
   });
   if (pending.length === 0) return;
 
-  await prisma.gameWishlist.updateMany({
+  await scopedDb.gameWishlist.updateMany({
     where: { id: { in: pending.map((p) => p.id) } },
     data: { purchasedById: userId, purchasedAt: wallClockNow() },
   });

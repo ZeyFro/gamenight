@@ -103,3 +103,23 @@ export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityRe
   });
   return { communityId, created, membershipsCreated: count };
 }
+
+let cachedDefaultCommunityId: string | null = null;
+
+/**
+ * Identifiant de la communauté par défaut (créée si elle manque). Mis en cache
+ * pour le processus : la ligne n'est jamais supprimée ni renommée (le slug est
+ * réservé). Sert aux tables dont `communityId` est obligatoire (PR9) quand
+ * l'isolation est éteinte : tout y reste rattaché à la communauté par défaut.
+ */
+export async function getDefaultCommunityId(): Promise<string> {
+  if (cachedDefaultCommunityId) return cachedDefaultCommunityId;
+  const community = await ensureDefaultCommunityRecord();
+  cachedDefaultCommunityId = community.id;
+  return community.id;
+}
+
+/** Pour les tests : oublie l'identifiant mis en cache (la base est vidée entre deux tests). */
+export function resetDefaultCommunityIdCache(): void {
+  cachedDefaultCommunityId = null;
+}

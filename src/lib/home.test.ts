@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prisma, getCalendarData } = vi.hoisted(() => ({
+const { prisma, scopedDb, getCalendarData } = vi.hoisted(() => ({
   prisma: {
-    groupSessionStats: { findUnique: vi.fn() },
-    groupGameStat: { findFirst: vi.fn() },
+    game: { findUnique: vi.fn() },
     user: { findFirst: vi.fn(), count: vi.fn() },
     gameNews: { findMany: vi.fn() },
+  },
+  // PR9 : compteurs de groupe lus via le client scopé (communauté active).
+  scopedDb: {
+    groupSessionStats: { aggregate: vi.fn() },
+    groupGameStat: { groupBy: vi.fn() },
   },
   getCalendarData: vi.fn(),
 }));
@@ -13,6 +17,11 @@ const { prisma, getCalendarData } = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma }));
 vi.mock("@/lib/calendar", () => ({ getCalendarData }));
 vi.mock("@/lib/session-access", () => ({ accessibleSessionWhere: vi.fn() }));
+vi.mock("@/lib/community-scoped-client", () => ({ getActiveScopedPrisma: vi.fn(async () => scopedDb) }));
+vi.mock("@/lib/community-isolation", () => ({
+  creationMemberUserWhere: vi.fn(async () => ({})),
+  memberUserWhereFor: vi.fn(async () => ({})),
+}));
 
 import { getGroupStats, getRecentGameNews, getWeekAvailability } from "./home";
 
@@ -20,13 +29,17 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const emptyStats = () => {
+  scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: null } });
+  scopedDb.groupGameStat.groupBy.mockResolvedValue([]);
+  prisma.user.findFirst.mockResolvedValue(null);
+  prisma.user.count.mockResolvedValue(0);
+};
+
 describe("getGroupStats", () => {
   it("valeurs par défaut sans donnée", async () => {
-    prisma.groupSessionStats.findUnique.mockResolvedValue(null);
-    prisma.groupGameStat.findFirst.mockResolvedValue(null);
-    prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.count.mockResolvedValue(0);
-    expect(await getGroupStats()).toEqual({
+    emptyStats();
+    expect(await getGroupStats("viewer")).toEqual({
       totalSessionsPlayed: 0,
       mostPlayedGame: null,
       bestActiveStreak: null,
@@ -35,42 +48,36 @@ describe("getGroupStats", () => {
   });
 
   it("agrège les compteurs durables, le meilleur streak actif et les joueurs actifs", async () => {
-    prisma.groupSessionStats.findUnique.mockResolvedValue({ totalSessionsPlayed: 12 });
-    prisma.groupGameStat.findFirst.mockResolvedValue({
-      playCount: 4,
-      game: { name: "Mario Kart", coverUrl: "https://img/mk.jpg" },
-    });
+    scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: 12 } });
+    scopedDb.groupGameStat.groupBy.mockResolvedValue([{ gameId: "g1", _sum: { playCount: 4 } }]);
+    prisma.game.findUnique.mockResolvedValue({ name: "Mario Kart", coverUrl: "https://img/mk.jpg" });
     prisma.user.findFirst.mockResolvedValue({ discordName: "Zoé", streakCount: 7 });
     prisma.user.count.mockResolvedValue(5);
 
-    expect(await getGroupStats()).toEqual({
+    expect(await getGroupStats("viewer")).toEqual({
       totalSessionsPlayed: 12,
       mostPlayedGame: { name: "Mario Kart", coverUrl: "https://img/mk.jpg", count: 4 },
       bestActiveStreak: { discordName: "Zoé", streakCount: 7 },
       activePlayers: 5,
     });
+    expect(prisma.game.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "g1" } }));
   });
 
   it("n'utilise jamais les lignes Session (compteurs durables uniquement)", async () => {
-    prisma.groupSessionStats.findUnique.mockResolvedValue(null);
-    prisma.groupGameStat.findFirst.mockResolvedValue(null);
-    prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.count.mockResolvedValue(0);
-    await getGroupStats();
-    expect(prisma.groupSessionStats.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "global" } })
+    emptyStats();
+    await getGroupStats("viewer");
+    expect(scopedDb.groupSessionStats.aggregate).toHaveBeenCalledWith({ _sum: { totalSessionsPlayed: true } });
+    expect(scopedDb.groupGameStat.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ by: ["gameId"], orderBy: { _sum: { playCount: "desc" } }, take: 1 })
     );
   });
 
   it("fenêtres temporelles : streak actif 24 h, joueur actif 7 jours", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-05T12:00:00.000Z"));
-    prisma.groupSessionStats.findUnique.mockResolvedValue(null);
-    prisma.groupGameStat.findFirst.mockResolvedValue(null);
-    prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.count.mockResolvedValue(0);
+    emptyStats();
     try {
-      await getGroupStats();
+      await getGroupStats("viewer");
     } finally {
       vi.useRealTimers();
     }

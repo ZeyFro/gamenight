@@ -40,12 +40,12 @@ export async function loadHomeData(user: User) {
   ] = await Promise.all([
     getNextSessionForHome(user.id),
     getRecentActivity(user.id, 3),
-    getGroupStats(),
+    getGroupStats(user.id),
     getWeekAvailability(user.id),
     getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
-    listGroupAchievements(),
+    listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
   ]);
