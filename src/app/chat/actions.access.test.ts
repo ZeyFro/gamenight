@@ -24,9 +24,24 @@ vi.mock("@/lib/current-user", () => ({ getCurrentUser }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit, RATE_LIMIT_ERROR_KEY: "rate_limited" }));
 vi.mock("@/lib/chat", () => ({ getChatMessages }));
 vi.mock("@/lib/session-access", () => ({ canAccessSession }));
+// PR8 : les messages passent par le client scopé (isolation éteinte ici : transparent).
+vi.mock("@/lib/community-scoped-client", () => {
+  const scopedDb = {
+    chatMessage: { findUnique: chatMessageFindUnique, create: chatMessageCreate },
+    session: { findUnique: vi.fn() },
+  };
+  return {
+    getScopedPrisma: vi.fn().mockResolvedValue(scopedDb),
+    getActiveScopedPrisma: vi.fn().mockResolvedValue(scopedDb),
+    withCommunity: () => ({}),
+  };
+});
+vi.mock("@/lib/community-isolation", () => ({
+  isCommunityIsolationEnabled: () => false,
+  resolveActiveCommunityId: vi.fn(),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    chatMessage: { findUnique: chatMessageFindUnique, create: chatMessageCreate },
     chatReaction: { findUnique: chatReactionFindUnique, delete: vi.fn(), upsert: chatReactionUpsert },
   },
 }));

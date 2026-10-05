@@ -1,6 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma, getScopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
@@ -33,7 +35,7 @@ export async function getChatMessagesAction(
   // cours de soirée doit couper l'accès au chat dès le prochain polling,
   // pas seulement au prochain chargement de page.
   if (sessionId && !(await canAccessSession(user.id, sessionId))) return null;
-  return getChatMessages(sessionId);
+  return getChatMessages(sessionId, user.id);
 }
 
 /**
@@ -57,8 +59,24 @@ export async function sendChatMessageAction(formData: FormData): Promise<SendCha
   const sessionId = input.data.sessionId || null;
   if (sessionId && !(await canAccessSession(user.id, sessionId))) return { ok: false };
 
-  await prisma.chatMessage.create({
-    data: { userId: user.id, sessionId, content: input.data.content },
+  // Multi-communautés (PR8) : un message de soirée appartient à la communauté de
+  // la soirée ; un message du canal global, à la communauté active. Isolation
+  // éteinte : `withCommunity` est vide et aucune lecture n'a lieu (historique).
+  const scopedDb = sessionId ? await getScopedPrisma(user.id) : await getActiveScopedPrisma(user.id);
+  let community: ReturnType<typeof withCommunity> = {};
+  if (isCommunityIsolationEnabled()) {
+    if (sessionId) {
+      const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+      if (!session) return { ok: false };
+      community = withCommunity(session.communityId);
+    } else {
+      const activeId = await resolveActiveCommunityId(user.id);
+      if (activeId === null) return { ok: false };
+      community = withCommunity(activeId);
+    }
+  }
+  await scopedDb.chatMessage.create({
+    data: { userId: user.id, sessionId, content: input.data.content, ...community },
   });
   return { ok: true };
 }
@@ -80,7 +98,9 @@ export async function toggleReactionAction(formData: FormData) {
   if (!input.success) return;
   const { messageId, emoji } = input.data;
 
-  const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: { id: true, sessionId: true } });
+  // Hors du périmètre de l'utilisateur, le message est introuvable (aucune réaction).
+  const scopedDb = await getScopedPrisma(user.id);
+  const message = await scopedDb.chatMessage.findUnique({ where: { id: messageId }, select: { id: true, sessionId: true } });
   if (!message) return;
   if (message.sessionId && !(await canAccessSession(user.id, message.sessionId))) return;
 
