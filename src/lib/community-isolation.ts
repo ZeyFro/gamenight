@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { getActiveCommunityState, isCommunityPickerEnabled } from "@/lib/community-picker";
 
 /**
  * Multi-communautés, PR4 — isolation des données par communauté, derrière
@@ -111,11 +112,18 @@ export async function creationMemberUserWhere(userId: string): Promise<Prisma.Us
 }
 
 /**
- * Communauté « active » d'un utilisateur : la communauté par défaut s'il en
- * est membre, sinon sa plus ancienne. Provisoire : l'écran de choix explicite
- * du serveur (PR5) le remplacera. `null` si aucune.
+ * Communauté « active » d'un utilisateur. Sélecteur allumé
+ * (`COMMUNITY_PICKER_ENABLED`) : son serveur unique, ou le choix enregistré
+ * s'il est encore valide (revalidé en base). Sinon — éteint, ou plusieurs
+ * serveurs sans choix valide — règle provisoire : la communauté par défaut
+ * s'il en est membre, sinon sa plus ancienne. `null` si aucune.
  */
 export async function resolveActiveCommunityId(userId: string): Promise<string | null> {
+  if (isCommunityPickerEnabled()) {
+    const state = await getActiveCommunityState(userId);
+    if (state.kind === "none") return null;
+    if (state.kind === "single" || state.kind === "chosen") return state.communityId;
+  }
   const memberships = await prisma.membership.findMany({
     where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
     select: { communityId: true, community: { select: { slug: true } } },

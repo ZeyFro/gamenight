@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
 import { communityIdFilter, getIsolationScope } from "@/lib/community-isolation";
 import { isTournamentVisibleInHistory } from "@/lib/tournaments";
@@ -36,6 +37,7 @@ export default async function TournoisPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  await requireCommunityChosen(user.id, "/tournois");
 
   const { tab } = await searchParams;
   const activeTab: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "en-cours";

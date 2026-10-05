@@ -2491,8 +2491,25 @@ Branchements : création de soirée (`createSession`), soirée issue d'une roule
 
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,
-client Prisma scopé, sélecteur de communauté. Étape « contract » (NOT NULL,
+client Prisma scopé. Étape « contract » (NOT NULL,
 suppression) : interdite tant qu'elle n'est pas explicitement validée.
+
+### Sélecteur de serveur (PR5)
+
+Éteint par défaut : `COMMUNITY_PICKER_ENABLED` doit valoir exactement `true`. Éteint, `/serveurs` répond 404, aucune redirection, aucune lecture : comportement identique à avant.
+
+Allumé, un utilisateur membre de **plusieurs** serveurs choisit celui que GameNight affiche :
+
+| Situation (Membership ACTIFS, communauté ACTIVE) | Comportement |
+| :-- | :-- |
+| 0 serveur | `/serveurs` affiche « Le bot n'est sur aucun de tes serveurs » ; l'accueil, `/sessions`, `/tournois` et `/classement` y renvoient. |
+| 1 serveur | C'est lui : `/serveurs` redirige vers `?next=` (chemin interne uniquement) ou l'accueil, rien n'est enregistré. |
+| Plusieurs, choix enregistré valide | Le choix est utilisé ; `/serveurs` permet d'en changer. |
+| Plusieurs, aucun choix valide | L'accueil, `/sessions`, `/tournois` et `/classement` renvoient sur `/serveurs?next=…`. |
+
+**Le choix n'est jamais une autorisation.** `User.activeCommunityId` (colonne nullable, sans clé étrangère, migration additive `20261005100000_add_user_active_community`) n'est qu'une préférence d'affichage : elle est relue et revalidée contre les `Membership` ACTIFS (communauté ACTIVE) à **chaque** usage, donc un départ, un retrait ou une suspension la rend caduque à la requête suivante ; l'enregistrer exige le même contrôle (`selectCommunityAction`) ; l'accès reste décidé par `requireMembership` (`community-access.ts`). `resolveActiveCommunityId` suit le choix valide quand le drapeau est allumé (classement par défaut, invités et mentions de la création) ; sans choix valide, la règle provisoire de la PR4 s'applique.
+
+Code : `src/lib/community-picker.ts` (drapeau, état, porte `requireCommunityChosen`, `safeNextPath`), `src/app/serveurs/` (page + action). Le drapeau est indépendant de `COMMUNITY_ISOLATION_ENABLED` : la porte impose le choix, c'est l'isolation qui filtre les données. **Appliquer la migration avant d'allumer.**
 
 ## Structure du projet
 

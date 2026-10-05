@@ -265,6 +265,12 @@ model User {
   steamNowPlaying       String?
   steamNowPlayingSeenAt DateTime?
 
+  // Multi-communautés, PR5 — dernier serveur choisi sur /serveurs (drapeau
+  // COMMUNITY_PICKER_ENABLED). Simple PRÉFÉRENCE d'affichage, sans clé
+  // étrangère : revalidée contre les Membership ACTIVE (communauté ACTIVE) à
+  // chaque usage, jamais une autorisation (voir `src/lib/community-picker.ts`).
+  activeCommunityId String?
+
   // Sprint 4 (Saisons mensuelles) — voir `SeasonSnapshot`.
   seasonSnapshots SeasonSnapshot[]
 
