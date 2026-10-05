@@ -33,6 +33,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
   let sessionsLib: typeof import("./sessions");
   let homeLib: typeof import("./home");
   let achievementsLib: typeof import("./group-achievements");
+  let defaultCommunityLib: typeof import("./default-community");
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
@@ -45,6 +46,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     sessionsLib = await import("./sessions");
     homeLib = await import("./home");
     achievementsLib = await import("./group-achievements");
+    defaultCommunityLib = await import("./default-community");
   });
 
   afterAll(async () => {
@@ -53,7 +55,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
   beforeEach(async () => {
     await db.$executeRawUnsafe(
-      `TRUNCATE "NotificationDelivery", "NotificationEvent", "ChatReaction", "ChatMessage", "SessionInvite", "Vote", "Proposal", "Session", "Notification", "SeasonSnapshot", "Season", "Tournament", "Game", "User", "GroupAchievement", "GroupActiveWeek" CASCADE`
+      `TRUNCATE "NotificationDelivery", "NotificationEvent", "ChatReaction", "ChatMessage", "SessionInvite", "Vote", "Proposal", "Session", "Notification", "SeasonSnapshot", "Season", "Tournament", "Game", "User", "GroupAchievement", "GroupActiveWeek", "GroupSessionStats", "GroupGameStat", "Community" CASCADE`
     );
     await db.$executeRawUnsafe(`UPDATE "CronLock" SET "lockedAt" = NULL, "token" = NULL WHERE name = 'retention-cleanup'`);
     // GroupSessionStats est un singleton SANS FK vers Session/Game/User —
@@ -63,7 +65,9 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     // GroupAchievement/GroupActiveWeek n'ont elles-mêmes AUCUNE FK sortante
     // (contrairement à GroupGameStat) — ajoutées explicitement à la liste
     // TRUNCATE ci-dessus, jamais nettoyées par une CASCADE existante.
-    await db.$executeRawUnsafe(`UPDATE "GroupSessionStats" SET "totalSessionsPlayed" = 0 WHERE id = 'global'`);
+    // PR9 : les compteurs sont par communauté (TRUNCATE ci-dessus) ; l'identifiant mis en cache de la
+    // communauté par défaut doit être oublié avec la table `Community`.
+    defaultCommunityLib.resetDefaultCommunityIdCache();
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
@@ -978,8 +982,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const session = await makeSession(user.id, { status: "SCHEDULED", decidedGameId: game.id });
 
       await sessionsLib.markSessionDone(session.id);
-      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
-      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
 
       // Rappel sur une soirée DÉJÀ DONE (bouton créateur cliqué deux fois,
       // ou passage cron qui retombe sur une soirée déjà clôturée) — le
@@ -987,8 +991,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // rien (`count: 0`), la fonction retourne avant même d'atteindre
       // l'incrément : jamais un second comptage pour la même soirée.
       await sessionsLib.markSessionDone(session.id);
-      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
-      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
     });
 
     it("exécution CONCURRENTE de markSessionDone sur la même soirée — un seul incrément, jamais un double comptage", async () => {
@@ -1002,8 +1006,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // incrémente, l'autre voit `count: 0` et ressort sans rien toucher.
       await Promise.all([sessionsLib.markSessionDone(session.id), sessionsLib.markSessionDone(session.id)]);
 
-      expect((await db.groupSessionStats.findUniqueOrThrow({ where: { id: "global" } })).totalSessionsPlayed).toBe(1);
-      expect((await db.groupGameStat.findUniqueOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
       expect((await db.session.findUniqueOrThrow({ where: { id: session.id } })).status).toBe("DONE");
     });
 
@@ -1032,7 +1036,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       });
       await sessionsLib.markSessionDone(recent.id);
 
-      const before = await homeLib.getGroupStats();
+      const before = await homeLib.getGroupStats("viewer");
       expect(before.totalSessionsPlayed).toBe(4);
       expect(before.mostPlayedGame).toEqual({ name: catan.name, coverUrl: catan.coverUrl, count: 3 });
 
@@ -1040,7 +1044,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       expect(purgeResult.purgedSessionIds).toHaveLength(3); // les 3 soirées Catan, jamais la récente
       expect(await db.session.count()).toBe(1); // seule la soirée Wingspan récente reste
 
-      const after = await homeLib.getGroupStats();
+      const after = await homeLib.getGroupStats("viewer");
       expect(after).toEqual(before); // STRICTEMENT identique — mêmes données, avant et après purge
     });
 
@@ -1058,7 +1062,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         await sessionsLib.markSessionDone(s.id);
       }
 
-      const before = await homeLib.getGroupStats();
+      const before = await homeLib.getGroupStats("viewer");
       expect(before.totalSessionsPlayed).toBe(2);
       expect(before.mostPlayedGame).toEqual({ name: game.name, coverUrl: game.coverUrl, count: 2 });
 
@@ -1068,12 +1072,12 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // donc jamais faire varier ces compteurs.
       const first = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
       expect(first.purgedSessionIds).toHaveLength(1);
-      expect(await homeLib.getGroupStats()).toEqual(before); // stable après le 1er passage (reprise simulée)
+      expect(await homeLib.getGroupStats("viewer")).toEqual(before); // stable après le 1er passage (reprise simulée)
 
       const second = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
       expect(second.purgedSessionIds).toHaveLength(1);
       expect(await db.session.count()).toBe(0);
-      expect(await homeLib.getGroupStats()).toEqual(before); // stable après le 2e passage aussi
+      expect(await homeLib.getGroupStats("viewer")).toEqual(before); // stable après le 2e passage aussi
     });
   });
 
@@ -1204,7 +1208,9 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     async function makeGroupAchievement(key: string) {
       const def = achievementsLib.GROUP_ACHIEVEMENT_DEFS.find((d) => d.key === key);
       if (!def) throw new Error(`définition de trophée inconnue: ${key}`);
-      return db.groupAchievement.create({ data: def });
+      return db.groupAchievement.create({
+        data: { ...def, communityId: await defaultCommunityLib.getDefaultCommunityId() },
+      });
     }
 
     it("« marathoniens » (10 soirées cumulées) se débloque même quand les 9 soirées les plus anciennes ont DÉJÀ été purgées — l'ancien calcul (Session.findMany direct) ne l'aurait jamais vu", async () => {
@@ -1241,9 +1247,9 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const { unlockedAchievements } = await sessionsLib.markSessionDone(tenth.id);
 
       expect(unlockedAchievements.map((a) => a.key)).toEqual(["marathoniens"]); // "century" reste verrouillé (10 < 100)
-      const marathoniens = await db.groupAchievement.findUniqueOrThrow({ where: { key: "marathoniens" } });
+      const marathoniens = await db.groupAchievement.findFirstOrThrow({ where: { key: "marathoniens" } });
       expect(marathoniens.unlockedAt).not.toBeNull();
-      const century = await db.groupAchievement.findUniqueOrThrow({ where: { key: "century" } });
+      const century = await db.groupAchievement.findFirstOrThrow({ where: { key: "century" } });
       expect(century.unlockedAt).toBeNull();
     });
 
@@ -1304,7 +1310,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
       // Aucune nouvelle soirée nécessaire — en production ce serait la
       // clôture de la PROCHAINE soirée qui redéclencherait le check.
-      const unlocked = await achievementsLib.checkGroupAchievements();
+      const unlocked = await achievementsLib.checkGroupAchievements(await defaultCommunityLib.getDefaultCommunityId());
       expect(unlocked.map((a) => a.key)).toContain("squad");
       expect(await db.xpEvent.count({ where: { reason: "PARTICIPATE" } })).toBe(5); // survivent intacts
     });
@@ -1413,18 +1419,18 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       expect(first.map((a) => a.key)).toContain("premiere-soiree");
 
       const unlockedAt1 = (
-        await db.groupAchievement.findUniqueOrThrow({ where: { key: "premiere-soiree" } })
+        await db.groupAchievement.findFirstOrThrow({ where: { key: "premiere-soiree" } })
       ).unlockedAt;
       expect(await db.notification.count({ where: { type: "ACHIEVEMENT" } })).toBe(1); // 1 seul membre du groupe ici
 
       // Rappel explicite (ex. clôture d'une AUTRE soirée juste après) — le
       // trophée n'est plus dans `locked` (unlockedAt déjà posé), jamais
       // réévalué ni réannoncé.
-      const second = await achievementsLib.checkGroupAchievements();
+      const second = await achievementsLib.checkGroupAchievements(await defaultCommunityLib.getDefaultCommunityId());
       expect(second).toEqual([]);
 
       const unlockedAt2 = (
-        await db.groupAchievement.findUniqueOrThrow({ where: { key: "premiere-soiree" } })
+        await db.groupAchievement.findFirstOrThrow({ where: { key: "premiere-soiree" } })
       ).unlockedAt;
       expect(unlockedAt2).toEqual(unlockedAt1); // jamais réécrit
       expect(await db.notification.count({ where: { type: "ACHIEVEMENT" } })).toBe(1); // jamais une 2e notification
@@ -1437,15 +1443,16 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // déjà survenue) pour isoler ce test sur la concurrence de
       // `checkGroupAchievements` lui-même, plutôt que sur `markSessionDone`
       // (déjà testé séparément ci-dessus, "Stats du groupe").
+      const communityId = await defaultCommunityLib.getDefaultCommunityId();
       await db.groupSessionStats.upsert({
-        where: { id: "global" },
-        create: { id: "global", totalSessionsPlayed: 1 },
+        where: { communityId },
+        create: { communityId, totalSessionsPlayed: 1 },
         update: { totalSessionsPlayed: 1 },
       });
 
       const [r1, r2] = await Promise.all([
-        achievementsLib.checkGroupAchievements(),
-        achievementsLib.checkGroupAchievements(),
+        achievementsLib.checkGroupAchievements(await defaultCommunityLib.getDefaultCommunityId()),
+        achievementsLib.checkGroupAchievements(await defaultCommunityLib.getDefaultCommunityId()),
       ]);
       const totalUnlocked = [...r1, ...r2].filter((a) => a.key === "premiere-soiree");
       expect(totalUnlocked).toHaveLength(1); // un seul des deux appels concurrents l'a réellement débloqué

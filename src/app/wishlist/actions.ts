@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { communityMemberUserWhere } from "@/lib/community-isolation";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
@@ -53,6 +56,11 @@ export async function proposeWishlistGameAction(formData: FormData) {
   const { name, coverUrl, reason } = input.data;
   const igdbId = Number(input.data.igdbId);
 
+  // Multi-communautés (PR9) : la proposition appartient à la communauté active ; sans
+  // communauté (isolation allumée), elle est refusée.
+  const communityId = await writeCommunityIdForUser(user.id);
+  if (communityId === null) redirect(`/wishlist?error=${VALIDATION_ERROR_KEY}`);
+
   const game = await prisma.game.upsert({
     where: { igdbId },
     update: {},
@@ -67,13 +75,15 @@ export async function proposeWishlistGameAction(formData: FormData) {
   });
 
   const existingOwner = await prisma.userGame.findFirst({
-    where: { gameId: game.id, owned: true },
+    where: { gameId: game.id, owned: true, user: await communityMemberUserWhere(communityId) },
     select: { userId: true },
   });
 
   try {
-    await prisma.gameWishlist.create({
+    const scopedDb = await getActiveScopedPrisma(user.id);
+    await scopedDb.gameWishlist.create({
       data: {
+        communityId,
         gameId: game.id,
         proposedById: user.id,
         reason: reason || null,
@@ -110,7 +120,8 @@ export async function voteWishlistAction(formData: FormData): Promise<VoteWishli
   if (!input.success) return { ok: true };
   const { wishlistId, interested } = input.data;
 
-  const wishlist = await prisma.gameWishlist.findUnique({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const wishlist = await scopedDb.gameWishlist.findUnique({
     where: { id: wishlistId },
     select: { id: true },
   });

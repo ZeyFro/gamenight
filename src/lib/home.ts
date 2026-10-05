@@ -3,7 +3,8 @@ import { getCalendarData } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getWeekStart } from "@/lib/calendar-dates";
 import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
-import { memberUserWhereFor } from "@/lib/community-isolation";
+import { creationMemberUserWhere, memberUserWhereFor } from "@/lib/community-isolation";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -162,17 +163,24 @@ const ACTIVE_PLAYER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * purgées. `bestActiveStreak`/`activePlayers` restent inchangés : dérivés
  * de `User.streakCount`/`streakLastActiveAt`, jamais de `Session`.
  */
-export async function getGroupStats(): Promise<GroupStats> {
+export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   const now = Date.now();
+  // Multi-communautés (PR9) : compteurs de la communauté ACTIVE de `viewerId` (isolation
+  // allumée ; éteinte, toutes les lignes, comme avant) et joueurs de cette communauté.
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const members = await creationMemberUserWhere(viewerId);
 
-  const [sessionStats, topGameStat, bestStreakUser, activePlayers] = await Promise.all([
-    prisma.groupSessionStats.findUnique({ where: { id: "global" }, select: { totalSessionsPlayed: true } }),
-    prisma.groupGameStat.findFirst({
-      orderBy: { playCount: "desc" },
-      select: { playCount: true, game: { select: { name: true, coverUrl: true } } },
+  const [sessionStats, topGameStats, bestStreakUser, activePlayers] = await Promise.all([
+    scopedDb.groupSessionStats.aggregate({ _sum: { totalSessionsPlayed: true } }),
+    scopedDb.groupGameStat.groupBy({
+      by: ["gameId"],
+      _sum: { playCount: true },
+      orderBy: { _sum: { playCount: "desc" } },
+      take: 1,
     }),
     prisma.user.findFirst({
       where: {
+        ...members,
         streakCount: { gt: 0 },
         streakLastActiveAt: { gte: new Date(now - ACTIVE_STREAK_WINDOW_MS) },
       },
@@ -180,15 +188,20 @@ export async function getGroupStats(): Promise<GroupStats> {
       select: { discordName: true, streakCount: true },
     }),
     prisma.user.count({
-      where: { streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
+      where: { ...members, streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
     }),
   ]);
 
+  const topGame = topGameStats[0]
+    ? await prisma.game.findUnique({ where: { id: topGameStats[0].gameId }, select: { name: true, coverUrl: true } })
+    : null;
+
   return {
-    totalSessionsPlayed: sessionStats?.totalSessionsPlayed ?? 0,
-    mostPlayedGame: topGameStat
-      ? { name: topGameStat.game.name, coverUrl: topGameStat.game.coverUrl, count: topGameStat.playCount }
-      : null,
+    totalSessionsPlayed: sessionStats._sum.totalSessionsPlayed ?? 0,
+    mostPlayedGame:
+      topGame && topGameStats[0]
+        ? { name: topGame.name, coverUrl: topGame.coverUrl, count: topGameStats[0]._sum.playCount ?? 0 }
+        : null,
     bestActiveStreak: bestStreakUser
       ? { discordName: bestStreakUser.discordName, streakCount: bestStreakUser.streakCount }
       : null,
