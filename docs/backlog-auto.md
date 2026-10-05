@@ -20,9 +20,9 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | - | ---- | ------ | ------ | ------ | ------ | ------ |
 | 6 | **Test de cohérence README « routes cron » ↔ routes API** : échoue si une route `/api/cron/*` ou `/api/backfill/*` n'est pas citée dans le tableau de référence du README | Demande déjà exprimée : le tableau des crons est tenu à la main depuis la phase 6 (docs V2) et dérive à chaque nouvelle route | S | nul (test seul) | moyenne | PR #157 |
 | 7 | **Tests unitaires des modules `src/lib` encore sans test** (`superlative-voting`, `storage-audit`, `home`…) | Audit du code : classement de couverture du lot L2 | M | nul (tests seuls) | moyenne | PR en cours (`storage-audit` ; `superlative-voting` et `home` déjà testés) |
-| 8 | **Collecte des violations CSP** : route `/api/csp-report` + `report-to`, derrière un nouveau drapeau `CSP_REPORT_ENABLED` éteint par défaut | Rapport L7 (`docs/rapport-csp-bloquant.md`, étape 1) | M | moyen (point d'entrée public : taille et débit à borner) | élevée | À faire |
-| 9 | **Titres d'onglet dynamiques** (nom du jeu, de la soirée, du pote) pour les pages avec identifiant | UX, suite de #156 | S | faible (une requête de plus par page, derrière `PAGE_TITLES_ENABLED`) | moyenne | À faire, après #156 |
-| 10 | **Lien d'évitement « Aller au contenu »** (visible seulement au focus clavier) | Accessibilité (WCAG 2.4.1) | XS | faible, mais visible au clavier : à valider avec Maxime ou derrière un drapeau | moyenne | À faire |
+| 8 | **Collecte des violations CSP** : route `/api/csp-report` + `report-to`, derrière un nouveau drapeau `CSP_REPORT_ENABLED` éteint par défaut | Rapport L7 (`docs/rapport-csp-bloquant.md`, étape 1) | M | moyen (point d'entrée public : taille et débit à borner) | élevée | Faite (`CSP_REPORT_ENABLED`) |
+| 9 | **Titres d'onglet dynamiques** (nom du jeu, de la soirée, du pote) pour les pages avec identifiant | UX, suite de #156 | S | faible (une requête de plus par page, derrière `PAGE_TITLES_ENABLED`) | moyenne | Faite (`PAGE_TITLES_DYNAMIC_ENABLED`) |
+| 10 | **Lien d'évitement « Aller au contenu »** (visible seulement au focus clavier) | Accessibilité (WCAG 2.4.1) | XS | faible, mais visible au clavier : à valider avec Maxime ou derrière un drapeau | moyenne | Faite (`SkipLink`) |
 
 ## Troisième série (générée le 2026-10-04, plus aucune idée libre)
 
@@ -47,3 +47,13 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
 | 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
 | 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | À faire |
+
+## Cinquième série (générée le 2026-10-05, backlog épuisé)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 20 | **Test : `.env.example` sans secret ni drapeau allumé** | Audit du code (sécurité) : fichier versionné | XS | nul (test seul) | moyenne | PR Draft |
+| 21 | **Test : chaque drapeau `*_ENABLED` lu dans `src` est comparé à `"true"` exactement** | Audit du code : règle « OFF par défaut » | S | nul (test seul) | moyenne | À faire |
+| 22 | **Test : les couleurs hex de `src/components` viennent de `tokens.ts`** | Cohérence design | S | nul (test seul) | faible-moyenne | À faire |
+| 23 | **Test : toute route cron longue (`maxDuration`) répond 202 via `after()`** | Audit du code (coupure 30 s) | S | nul (test seul) | moyenne | À faire |
+| 24 | **Test : pas de `dangerouslySetInnerHTML` hors liste d'exceptions** | Audit du code (XSS) | XS | nul (test seul) | moyenne | À faire |
