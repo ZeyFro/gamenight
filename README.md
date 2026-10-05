@@ -2461,6 +2461,17 @@ le client scopé n’existe pas) :
 | `/api/cron/community-guild-sync` | Rattrapage via `GET /users/@me/guilds` : crée en `PENDING` les serveurs manqués par le webhook, marque `LEFT` (+ `leftAt`) les communautés `PENDING`/`ACTIVE` dont le bot est parti. Fail-safe : liste vide, incomplète, en erreur ou création en échec = aucun `LEFT`. La communauté `default` n'est jamais marquée `LEFT` automatiquement. |
 | `src/lib/community-provisioning.ts` | Création idempotente (webhook et cron peuvent se croiser) : serveur déjà connu → nom/icône seulement ; `LEFT` (bot réajouté) → `PENDING` ; `SUSPENDED`/`ARCHIVED` → jamais modifiée. |
 
+### Activation par `/gamenight setup` (PR6)
+
+Éteinte par défaut : `COMMUNITY_SETUP_COMMAND_ENABLED` doit valoir exactement `true`. Un membre qui a la permission **Gérer le serveur** (ou Administrateur) tape `/gamenight setup` : la communauté de son serveur passe `ACTIVE` sans validation manuelle (l'onglet admin « Communautés » reste le secours). **Attention** : tant que `COMMUNITY_ISOLATION_ENABLED` est éteint ou partiel (voir PR4), tout serveur activé donne à ses membres l'accès au contenu des autres communautés : n'allumer ce flag qu'après la bascule de l'isolation.
+
+| Élément | Rôle |
+| :-- | :-- |
+| `POST /api/discord/interactions` | Endpoint d'interactions (portail → General Information → Interactions Endpoint URL). Publique, authentifiée par la signature Ed25519 (`DISCORD_APP_PUBLIC_KEY` ; 503 sans clé, 401 si invalide, avant tout parsing). Le PING de validation est toujours acquitté (PONG), flag éteint compris. Réponses éphémères, sans mention. |
+| `src/lib/discord-interactions.ts` | Revérifie `MANAGE_GUILD`/`ADMINISTRATOR` sur `member.permissions` du payload signé (`default_member_permissions` n'est qu'un réglage d'affichage que les admins du serveur peuvent changer). Refuse hors serveur. |
+| `src/lib/community-setup.ts` | Serveur inconnu : création (nom provisoire `Serveur xxxxxx`, corrigé par `community-guild-sync`) puis activation ; `PENDING`/`LEFT` → `ACTIVE` par `updateMany` conditionnel (sans course) ; déjà `ACTIVE` : rien ; `SUSPENDED`/`ARCHIVED` : refusé. Aucun Membership créé (il naît à la connexion). |
+| `scripts/discord-commands.json` + `scripts/register-discord-commands.mjs` | Définition de la commande globale (`default_member_permissions: "32"`, serveurs uniquement). Simulation par défaut ; `--execute` fait un `PUT` qui **remplace toutes les commandes globales** de l'application (`DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN`). |
+
 ### Salons d'annonce par communauté (PR3)
 
 Éteinte par défaut : `COMMUNITY_CHANNELS_ENABLED` doit valoir exactement `true`. Éteinte, **rien ne change** : `DISCORD_BOT_GUILD_ID` et `DISCORD_BOT_*_CHANNEL_ID` restent la seule source et aucune lecture de `CommunityChannelConfig` n'a lieu.

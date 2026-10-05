@@ -20,6 +20,8 @@ const PUBLIC_EXCEPTIONS: Record<string, string> = {
   "admin/force-relogin": "protégée par un secret Bearer (CRON_SECRET), pas par session",
   "discord/webhook-events":
     "webhook Discord : authentifiée par signature Ed25519 (discord-signature.ts), 503 sans clé publique, 401 si invalide",
+  "discord/interactions":
+    "interactions Discord (/gamenight setup) : authentifiée par signature Ed25519 (discord-signature.ts), 503 sans clé publique, 401 si invalide",
 };
 
 function walk(dir: string): string[] {
