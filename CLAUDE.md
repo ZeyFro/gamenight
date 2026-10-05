@@ -58,6 +58,8 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `DISCORD_THREAD_CLOSE_ON_END_ENABLED` : archive le fil dès la fin (au lieu du cron suivant) ; exige aussi le nettoyage ci-dessus en `execute`
 - `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE` : purge de rétention (dry-run sauf `execute`)
 - `STEAM_NOW_PLAYING_ENABLED` : indicateur « En jeu » sur `/potes` (un appel `GetPlayerSummaries` groupé dans `steam-library-sync`) ; exige la migration `steam_now_playing`
+- `PAGE_TITLES_ENABLED` : titres d'onglet par page (gabarit `%s · GameNight`) ; éteint = titre global seul
+- `GUIDE_V2_ENABLED` : sections « Jouer maintenant » et « Tournois » dans `/guide`
 
 ## Outils
 - Superpowers : planifier une grosse fonctionnalité.

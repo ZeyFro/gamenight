@@ -44,11 +44,21 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | - | ---- | ------ | ------ | ------ | ------ | ------ |
 | 15 | **Test : les nouvelles migrations Prisma sont additives** (pas de DROP/TRUNCATE/DELETE/changement de type) | Audit du code : les migrations partent en prod au build Vercel | XS | nul (test seul) | élevée | PR Draft |
 | 16 | **Test : chaque `page.tsx` exporte un titre (`pageMetadata`)** | UX, suite de #156 | XS | nul (test seul) | faible-moyenne | PR Draft |
-| 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
-| 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
+| 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | Déjà sur main (`no-console-log.test.ts`) |
+| 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | Déjà sur main (`GUIDE_V2_ENABLED`) |
 | 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | Écartée : déjà couverte par `env-example.test.ts` (aucune `NEXT_PUBLIC_*` dans `src`) |
 | 20 | **Test : `.env.example` sans secret ni drapeau allumé** | Audit du code (sécurité) : fichier versionné | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #177) |
 | 21 | **Test : toute route cron/backfill utilisant `after()` déclare `maxDuration`** | Audit du code : sinon coupure plateforme (`début` sans `fin`) | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #178) |
 | 22 | **Test : aucun `.only` oublié dans les tests** | Audit du code | XS | nul (test seul) | faible-moyenne | PR Draft de regroupement (remplace #179) |
 | 23 | **Test : aucune base hébergée (Neon) en dur dans `src`** | Audit du code (sécurité) : règle « jamais Neon » | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #180) |
 | 24 | **Test : aucun fichier `"use client"` n'importe Prisma, `@/auth` ou `node:*`** (les `import type` restent permis) | Audit du code : fuite serveur dans le bundle navigateur, invisible de tsc/lint | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #181) |
+
+## Cinquième série (générée le 2026-10-05)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 25 | **Test : tout drapeau `*_ENABLED` lu dans `src` est cité dans CLAUDE.md** (sens inverse de #12) ; ajoute les deux manquants (`PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`) | Audit du code : 2 drapeaux absents de la doc | XS | nul (test + doc) | moyenne | PR Draft |
+| 26 | **Test : tout drapeau `*_ENABLED` lu dans `src` est éteint par défaut dans `.env.example`** (valeur vide ou commentée) | Audit du code (sécurité) | XS | nul (test seul) | moyenne | À faire |
+| 27 | **Test : chaque `loading.tsx` / `error.tsx` exporte un composant par défaut** | Audit du code | XS | nul (test seul) | faible | À faire |
+| 28 | **Test : les dates de CLAUDE.md « État du projet » citent la dernière PR mergée** | Audit de la doc | S | nul | faible | À faire |
+| 29 | **Test : aucun `dangerouslySetInnerHTML` hors liste blanche** | Audit du code (sécurité, XSS) | XS | nul (test seul) | moyenne | À faire |
