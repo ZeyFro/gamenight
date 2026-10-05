@@ -2452,6 +2452,18 @@ le client scopé n’existe pas) :
 - **`include` imbriqués** (`prisma.user.findMany({ include: { xpEvents: true } })`) ;
 - **scripts hors `src/`** (`prisma/*.mjs`), non analysés.
 
+### Client Prisma scopé et colonnes `communityId` (PR7)
+
+Infrastructure seule : **aucun appelant migré**, aucun changement de comportement (le client scopé est transparent quand `COMMUNITY_ISOLATION_ENABLED` est éteint). Les PR8 à PR11 migrent les accès un domaine à la fois en retirant les lignes de `EXISTING_EXCEPTIONS`.
+
+| Élément | Rôle |
+| :-- | :-- |
+| Migration `20261005120000_community_id_collective_roots` | `communityId` **nullable** (+ FK `SetNull` + index) sur `ChatMessage`, `Debt`, `GameWishlist`, `Roulette`, `InstantSession`, `WeeklyChallenge`, `MonthlyRecap`, `Season`, `GroupAchievement`, `GroupSessionStats`, `GroupGameStat`, `GroupActiveWeek` (s'ajoutent à `Session` et `Tournament`). Additive, sans backfill : `NULL` = communauté `default`. Les modèles enfants (`Proposal`, `Vote`, `SessionResult`, `TournamentMatch`…) héritent de leur parent et n'ont pas de colonne. `XpEvent`/`LevelUpEvent` (PR12) et les catalogues (`Badge`, `MessageTemplate`…, PR13) sont hors périmètre. |
+| `src/lib/community-scoped-client.ts` | `getScopedPrisma(userId)` / `scopedPrisma(scope)` : client `$extends` à nommer **`scopedDb`**. Lectures, `update*`, `delete*`, `upsert`, `count`, `aggregate`, `groupBy` : filtre `communityIdFilter` ajouté dans `AND` (aussi sur les opérations « unique »). Créations : `communityId` scalaire **obligatoire** et dans le périmètre (`null` seulement si `default` en fait partie). Une ligne ne change jamais de communauté. Opération inconnue : refusée. Périmètre vide : rien de visible. |
+| Garde-fou `community-scope.test.ts` | Un accès `scopedDb.<modèle>.<op>(` n'est plus compté comme direct, mais tout fichier qui cite `scopedDb` doit appeler `getScopedPrisma`/`scopedPrisma`. `COMMUNITY_SCOPED_MODELS` est comparé aux modèles de `schema.prisma` portant `communityId`. |
+
+**Bornes** (comme le garde-fou statique) : `include`/`select` imbriqués et SQL brut non filtrés. **À revoir par la PR de chaque domaine** : des clés uniques restent globales (`Season.number`, `GroupAchievement.key`, `GameWishlist.gameId`, `WeeklyChallenge.weekStart`, `MonthlyRecap(year, month)`, et les clés primaires de `GroupSessionStats` / `GroupGameStat` / `GroupActiveWeek`) : deux communautés ne pourraient pas avoir chacune sa ligne tant qu'elles ne sont pas passées en clés composites avec `communityId`.
+
 ### Création automatique d'une communauté (PR2)
 
 Éteinte par défaut : `COMMUNITY_AUTO_CREATE_ENABLED` doit valoir exactement `true`. Une communauté créée est **toujours `PENDING`** (aucun accès, aucun Membership avant l'activation par un admin).
