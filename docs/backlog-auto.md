@@ -47,3 +47,9 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
 | 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
 | 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | À faire |
+
+## Cinquième série (générée le 2026-10-05, statuts précédents périmés : #8 à #19 réalisés ou en PR)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 20 | **Test : aucun fichier `"use client"` n'importe Prisma, `@/auth` ou `node:*`** (les `import type` restent permis) | Audit du code : fuite serveur dans le bundle navigateur, invisible de tsc/lint | XS | nul (test seul) | moyenne | PR Draft |
