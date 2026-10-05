@@ -62,3 +62,8 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 27 | **Test : chaque `loading.tsx` / `error.tsx` exporte un composant par défaut** | Audit du code | XS | nul (test seul) | faible | À faire |
 | 28 | **Test : les dates de CLAUDE.md « État du projet » citent la dernière PR mergée** | Audit de la doc | S | nul | faible | À faire |
 | 29 | **Test : aucun `dangerouslySetInnerHTML` hors liste blanche** | Audit du code (sécurité, XSS) | XS | nul (test seul) | moyenne | À faire |
+| 30 | **Test : pas de prop `whileInView` hors exception listée** | Règle design (Framer Motion sans `whileInView`, bug connu de contenu invisible) | XS | nul (test seul) | moyenne | PR Draft |
+| 31 | **Migrer `RecapWrapped` hors `whileInView`** puis vider l'exception du test #30 | Suite de #30 | S | faible, visible (animation du récap) : à valider avec Maxime | faible-moyenne | À faire |
+| 32 | **Test : `@dnd-kit` limité aux fichiers connus** (pas de nouvelle lib de drag-and-drop) | Règle design | XS | nul (test seul) | faible | À faire |
+| 33 | **Test : `package.json` sans nouvelle dépendance majeure non déclarée** | Règle de dépendances | S | nul (test seul) | faible-moyenne | À faire |
+| 34 | **Test : `error.tsx` / `not-found.tsx` en français** | UX / i18n | XS | nul (test seul) | faible | À faire |
