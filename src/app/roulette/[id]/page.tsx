@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { spinRouletteIfDue, isRouletteProposalOpen } from "@/lib/roulette";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
@@ -37,9 +38,15 @@ export default async function RouletteDetailPage({
 
   const { id } = await params;
 
+  // Autoriser AVANT le tirage paresseux : même un GET peut produire des écritures.
+  const scopedDb = await getScopedPrisma(user.id);
+  const access = await scopedDb.roulette.findUnique({
+    where: { id }, select: { createdById: true, notifiedUserIds: true },
+  });
+  if (!access || (access.createdById !== user.id && !(resolveNotifiedUserIds(access.notifiedUserIds) ?? []).includes(user.id))) notFound();
   await spinRouletteIfDue(id);
 
-  const roulette = await prisma.roulette.findUnique({
+  const roulette = await scopedDb.roulette.findUnique({
     where: { id },
     select: {
       id: true,

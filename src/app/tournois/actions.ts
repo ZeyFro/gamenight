@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -319,6 +320,7 @@ export async function unregisterFromTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
+  if (!(await canAccessTournament(user.id, tournamentId))) return;
   const unregistered = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
       SELECT id, status FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
@@ -356,7 +358,8 @@ export async function launchTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  const tournament = await prisma.tournament.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const tournament = await scopedDb.tournament.findUnique({
     where: { id: tournamentId },
     select: { createdById: true, status: true },
   });
@@ -512,7 +515,8 @@ export async function resyncTournamentThreadMembersAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  const tournament = await prisma.tournament.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const tournament = await scopedDb.tournament.findUnique({
     where: { id: tournamentId },
     select: { createdById: true, announceViaBot: true },
   });

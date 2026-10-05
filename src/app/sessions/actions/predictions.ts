@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { getCurrentUser } from "@/lib/current-user";
 import { submitPronostic, getPronosticEligibleUsers } from "@/lib/pronostics";
 import { placeBet } from "@/lib/xp-bets";
@@ -39,7 +39,9 @@ export async function submitPronosticAction(formData: FormData): Promise<ToggleV
   if (!input.success) return { ok: true };
   const { sessionId, predictedUserId } = input.data;
 
-  const session = await prisma.session.findUnique({
+  if (!(await canAccessSession(user.id, sessionId))) return { ok: true };
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { status: true, decidedGameId: true },
   });
@@ -79,7 +81,8 @@ export async function placeBetAction(formData: FormData) {
   if (!input.success) return;
   const { sessionId, targetUserId, amount } = input.data;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { status: true, decidedGameId: true },
   });

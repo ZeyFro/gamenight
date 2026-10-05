@@ -61,6 +61,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/community-scoped-client", () => ({
+  getScopedPrisma: async () => ({ session: { findUnique: sessionFindUnique } }),
+}));
+
 import { deleteSessionAction } from "./session-lifecycle";
 
 /**

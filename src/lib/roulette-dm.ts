@@ -1,3 +1,4 @@
+import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
@@ -119,6 +120,7 @@ export const rouletteDmResolver: DeliveryResolver = {
       select: { id: true, discordId: true, silenceReminders: true },
     });
     if (!recipient) return { eligible: false, reason: "unresolvable" };
+    if (!(await isMemberOfCommunity(recipient.id, roulette.communityId))) return { eligible: false, reason: "preference_declined" };
 
     const participantIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
     const isMember = recipient.id === roulette.createdById || participantIds.includes(recipient.id);

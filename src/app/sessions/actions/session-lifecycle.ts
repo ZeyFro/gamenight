@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
@@ -242,7 +243,8 @@ export async function editSessionAction(formData: FormData) {
     deadlineTime: deadlineTimeStr,
   } = input.data;
 
-  const existing = await prisma.session.findUnique({ where: { id: sessionId } });
+  const scopedDb = await getScopedPrisma(user.id);
+  const existing = await scopedDb.session.findUnique({ where: { id: sessionId } });
   if (!existing || existing.createdById !== user.id) return;
   if (existing.status === "DONE" || existing.status === "CANCELLED") return;
   // Chemin figé à la création de CETTE session (jamais relu depuis l'env
@@ -300,7 +302,8 @@ export async function closeSessionAction(formData: FormData) {
   // Clôture manuelle réservée au créateur — la clôture automatique
   // (deadline/heure dépassée, `closeSessionIfDue`) reste accessible à
   // tout le monde puisqu'elle se déclenche à la lecture, sans bouton.
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });
@@ -331,7 +334,8 @@ export async function resendDiscordAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });
@@ -353,7 +357,8 @@ export async function cancelSessionAction(formData: FormData) {
 
   // Annulation manuelle réservée au créateur (même logique que la clôture
   // manuelle ci-dessus).
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });
@@ -395,7 +400,8 @@ export async function deleteSessionAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true, announceViaBot: true },
   });
@@ -424,7 +430,8 @@ export async function markSessionDoneAction(formData: FormData) {
   // famille d'action de gestion du cycle de vie de la soirée que
   // clôturer/annuler — cohérent avec "le créateur gère sa soirée, les
   // autres votent" de restreindre celle-ci aussi.
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });

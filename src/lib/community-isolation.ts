@@ -148,3 +148,32 @@ export async function resolveActiveCommunityScope(userId: string): Promise<Isola
   const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true } });
   return { communityIds: [communityId], includesDefault: community?.slug === DEFAULT_COMMUNITY_SLUG };
 }
+
+/** Périmètre système des crons : communautés actives seulement, sans autorité issue d'un JWT. */
+export async function cronCommunityScope(): Promise<IsolationScope | null> {
+  if (!isCommunityIsolationEnabled()) return null;
+  const communities = await prisma.community.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, slug: true },
+  });
+  return {
+    communityIds: communities.map((c) => c.id),
+    includesDefault: communities.some((c) => c.slug === DEFAULT_COMMUNITY_SLUG),
+  };
+}
+
+/** Clés collectives requises : les crons traitent default seule quand l'isolation est éteinte. */
+export async function listCronCommunityIds(): Promise<string[]> {
+  if (!isCommunityIsolationEnabled()) {
+    const { getDefaultCommunityId } = await import("@/lib/default-community");
+    return [await getDefaultCommunityId()];
+  }
+  return (await cronCommunityScope())!.communityIds;
+}
+
+/** Relu à la livraison : un départ/suspension coupe aussi les MP déjà en attente. */
+export async function isMemberOfCommunity(userId: string, communityId: string | null): Promise<boolean> {
+  const scope = await getIsolationScope(userId);
+  if (!scope) return true;
+  return communityId === null ? scope.includesDefault : scope.communityIds.includes(communityId);
+}

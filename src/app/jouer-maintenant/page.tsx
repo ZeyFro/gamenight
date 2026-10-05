@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { listActiveInstantSessions, getActiveInstantSessionForUser } from "@/lib/instant-sessions";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -40,11 +41,11 @@ export default async function JouerMaintenantPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
 
   const [activeSessions, myActiveSession, games, potesRaw] = await Promise.all([
-    listActiveInstantSessions(),
+    listActiveInstantSessions(user.id),
     getActiveInstantSessionForUser(user.id),
     prisma.game.findMany({ select: { id: true, name: true, igdbId: true }, orderBy: { name: "asc" } }),
     prisma.user.findMany({
-      where: { id: { not: user.id } },
+      where: { id: { not: user.id }, ...(await creationMemberUserWhere(user.id)) },
       select: { id: true, discordName: true, discordAvatar: true, color: true },
       orderBy: { discordName: "asc" },
     }),

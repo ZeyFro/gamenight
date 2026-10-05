@@ -1,4 +1,6 @@
 import { Prisma, type TournamentStatus } from "@prisma/client";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
@@ -331,8 +333,9 @@ export async function generateBracket(tournamentId: string): Promise<void> {
 }
 
 /** Home ("🏆 Tournoi en cours", cf. spec) — le tournoi actif le plus récent, tous statuts hors `DONE`. */
-export async function getActiveTournament(): Promise<{ id: string; name: string; gameName: string } | null> {
-  const tournament = await prisma.tournament.findFirst({
+export async function getActiveTournament(viewerId: string): Promise<{ id: string; name: string; gameName: string } | null> {
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const tournament = await scopedDb.tournament.findFirst({
     where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] } },
     orderBy: { createdAt: "desc" },
     select: { id: true, name: true, game: { select: { name: true } } },
@@ -385,7 +388,7 @@ export async function declareWinner(
     where: { id: matchId },
     include: { tournament: true },
   });
-  if (!match || match.tournament.status !== "IN_PROGRESS") return { ok: false, tournamentDone: false };
+  if (!match || !(await isMemberOfCommunity(actorUserId, match.tournament.communityId)) || match.tournament.status !== "IN_PROGRESS") return { ok: false, tournamentDone: false };
   // Raccourci : évite d'ouvrir une transaction pour un clic manifestement
   // périmé (page pas rafraîchie). Ne garantit rien à lui seul contre la
   // course — la vraie protection est le claim transactionnel plus bas.
@@ -565,9 +568,9 @@ export interface CancelTournamentResult {
 export async function cancelTournament(tournamentId: string, actorUserId: string): Promise<CancelTournamentResult> {
   const tournament = await prisma.tournament.findUnique({
     where: { id: tournamentId },
-    select: { createdById: true, status: true, announceViaBot: true },
+    select: { createdById: true, status: true, announceViaBot: true, communityId: true },
   });
-  if (!tournament) return { ok: false, reason: "not_found" };
+  if (!tournament || !(await isMemberOfCommunity(actorUserId, tournament.communityId))) return { ok: false, reason: "not_found" };
   if (tournament.createdById !== actorUserId) return { ok: false, reason: "not_creator" };
   if (tournament.status !== "IN_PROGRESS") return { ok: false, reason: "not_in_progress" };
 
@@ -636,9 +639,9 @@ export interface DeleteTournamentResult {
 export async function deleteTournament(tournamentId: string, actorUserId: string): Promise<DeleteTournamentResult> {
   const tournament = await prisma.tournament.findUnique({
     where: { id: tournamentId },
-    select: { createdById: true, status: true, announceViaBot: true },
+    select: { createdById: true, status: true, announceViaBot: true, communityId: true },
   });
-  if (!tournament) return { ok: false, reason: "not_found" };
+  if (!tournament || !(await isMemberOfCommunity(actorUserId, tournament.communityId))) return { ok: false, reason: "not_found" };
   if (tournament.createdById !== actorUserId) return { ok: false, reason: "not_creator" };
   if (tournament.status !== "REGISTRATION") return { ok: false, reason: "not_registration" };
 

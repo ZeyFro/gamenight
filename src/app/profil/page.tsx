@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
@@ -35,6 +36,7 @@ const XP_REASON_LABELS: Record<XpReason, string> = {
 export default async function ProfilApercuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const scopedDb = await getActiveScopedPrisma(user.id);
 
   const now = nowMs();
   const xpChartSince = new Date(now - XP_CHART_DAYS * 24 * 60 * 60 * 1000);
@@ -61,7 +63,7 @@ export default async function ProfilApercuPage() {
     // Chantier nettoyage réel du stockage (V2, suite) — `gameName`
     // dénormalisé, survit à la purge de la soirée (jamais de jointure
     // `session.decidedGame` qui deviendrait `null`).
-    prisma.superlativeAward.findMany({
+    scopedDb.superlativeAward.findMany({
       where: { winnerUserId: user.id },
       include: { category: true },
       orderBy: { createdAt: "desc" },
@@ -72,14 +74,14 @@ export default async function ProfilApercuPage() {
     // `DONE`) ne compte ni pour ni contre. `Pronostic` survit désormais à
     // la purge de sa soirée (`onDelete: SetNull`) — ce taux reste exact À
     // VIE, jamais sous-compté au fil des purges.
-    prisma.pronostic.groupBy({
+    scopedDb.pronostic.groupBy({
       by: ["correct"],
       where: { voterId: user.id, correct: { not: null } },
       _count: { _all: true },
     }),
     // Sprint 4 (Paris d'XP) — historique gains/pertes, résolus seulement.
     // `gameName` dénormalisé (voir `XpBet` dans le schéma).
-    prisma.xpBet.findMany({
+    scopedDb.xpBet.findMany({
       where: { voterId: user.id, won: { not: null } },
       include: { target: true },
       orderBy: { createdAt: "desc" },
@@ -92,7 +94,7 @@ export default async function ProfilApercuPage() {
       where: { userId: user.id },
       select: { placement: true, gameId: true, gameName: true },
     }),
-    prisma.xpBet.aggregate({
+    scopedDb.xpBet.aggregate({
       where: { voterId: user.id, won: true },
       _sum: { amount: true },
     }),

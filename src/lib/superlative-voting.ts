@@ -1,3 +1,7 @@
+import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
@@ -56,8 +60,9 @@ export async function openSuperlativeVotingWindow(
   sessionId: string,
   decidedGameId: string | null
 ): Promise<void> {
+  const scopedDb = scopedPrisma(await cronCommunityScope());
   if (!decidedGameId) {
-    await prisma.session.update({
+    await scopedDb.session.update({
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
@@ -67,14 +72,14 @@ export async function openSuperlativeVotingWindow(
   const participants = await getWinningProposalParticipants(sessionId, decidedGameId);
 
   if (participants.length < MIN_PARTICIPANTS_FOR_VOTING) {
-    await prisma.session.update({
+    await scopedDb.session.update({
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
     return;
   }
 
-  await prisma.session.update({
+  await scopedDb.session.update({
     where: { id: sessionId },
     data: { superlativeVotingDeadline: new Date(Date.now() + VOTING_WINDOW_MS) },
   });
@@ -103,12 +108,13 @@ async function haveAllParticipantsVoted(
  * `forceFinalizeSuperlativeVoting` (bouton créateur).
  */
 async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
-  const session = await prisma.session.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     include: { decidedGame: true },
   });
   if (!session?.decidedGame) {
-    await prisma.session.update({
+    await scopedDb.session.update({
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
@@ -145,7 +151,7 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   if (awards.length === 0) {
     // 0 vote au total (ou aucune catégorie active) : session terminée
     // sans awards, silence — pas d'embed, pas d'XP, comme demandé.
-    await prisma.session.update({
+    await scopedDb.session.update({
       where: { id: sessionId },
       data: { superlativeVotingClosed: true },
     });
@@ -161,8 +167,9 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   // purge de la soirée.
   const decidedGameName = session.decidedGame.name;
   const sessionDate = session.date;
-  await prisma.superlativeAward.createMany({
+  await scopedDb.superlativeAward.createMany({
     data: awards.map((a) => ({
+      ...withCommunity(session.communityId),
       sessionId,
       categoryId: a.categoryId,
       winnerUserId: a.winnerUserId,
@@ -184,7 +191,7 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     await checkSuperlativesWonBadges(award.winnerUserId);
   }
 
-  await prisma.session.update({
+  await scopedDb.session.update({
     where: { id: sessionId },
     data: { superlativeVotingClosed: true },
   });
@@ -226,6 +233,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     })
   );
 
+  // Le webhook global ne doit jamais révéler une récompense d’un autre serveur.
+  if (isCommunityIsolationEnabled() && (session.communityId ?? await getDefaultCommunityId()) !== await getDefaultCommunityId()) return;
   await announceSessionAwards(
     session.decidedGame.name,
     awards
@@ -252,7 +261,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
  * 24h est dépassée, whichever comes first.
  */
 export async function finalizeSuperlativeVotingIfDue(sessionId: string): Promise<void> {
-  const session = await prisma.session.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: {
       status: true,
@@ -292,8 +302,10 @@ export async function getPendingSuperlativeVoteSessionIds(
 ): Promise<Set<string>> {
   if (sessionIds.length === 0) return new Set();
 
-  const sessions = await prisma.session.findMany({
+  const scopedDb = await getScopedPrisma(userId);
+  const sessions = await scopedDb.session.findMany({
     where: {
+      ...(await accessibleSessionWhereFor(userId)),
       id: { in: sessionIds },
       status: "DONE",
       superlativeVotingClosed: false,
@@ -327,7 +339,8 @@ export async function getPendingSuperlativeVoteSessionIds(
 
 /** Bouton créateur "Forcer la clôture maintenant" — ignore la deadline et le "tout le monde a voté". */
 export async function forceFinalizeSuperlativeVoting(sessionId: string): Promise<void> {
-  const session = await prisma.session.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { status: true, superlativeVotingClosed: true },
   });

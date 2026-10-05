@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { closeOverdueScheduledSessions, closeSession } from "@/lib/sessions";
 import { processOpenRoulettes } from "@/lib/roulette";
 import { settleAllDueInstantSessions } from "@/lib/instant-sessions";
-import { ensureActiveSeasonExists } from "@/lib/seasons";
+import { ensureActiveSeasonsExist } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -51,13 +51,13 @@ export async function GET(request: Request) {
     );
   }
 
-  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExists`
+  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonsExist`
   // (src/lib/seasons.ts). Best-effort : une panne ici ne doit jamais
   // empêcher la clôture des sessions, seule vraie responsabilité de ce cron.
   try {
-    await ensureActiveSeasonExists();
+    await ensureActiveSeasonsExist();
   } catch (error) {
-    logger.error("cron:close-sessions", error, { task: "ensureActiveSeasonExists" });
+    logger.error("cron:close-sessions", error, { task: "ensureActiveSeasonsExist" });
   }
 
   const now = wallClockNow();

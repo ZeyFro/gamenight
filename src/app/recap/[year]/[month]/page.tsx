@@ -21,7 +21,7 @@ export default async function RecapPage({
     notFound();
   }
 
-  const data = await getMonthlyRecap(year, month);
+  const data = await getMonthlyRecap(year, month, user.id);
   if (!data) notFound();
 
   const monthLabel = new Intl.DateTimeFormat("fr-FR", {

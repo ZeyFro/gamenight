@@ -23,6 +23,9 @@ vi.mock("@/lib/rate-limit", () => ({ checkRateLimit }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/prisma", () => ({ prisma: { tournament: { findUnique: tournamentFindUnique } } }));
+vi.mock("@/lib/community-scoped-client", () => ({
+  getScopedPrisma: async () => ({ tournament: { findUnique: tournamentFindUnique } }),
+}));
 vi.mock("@/lib/tournaments", () => ({
   cancelTournament: vi.fn(),
   deleteTournament: vi.fn(),

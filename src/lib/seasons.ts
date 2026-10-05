@@ -1,3 +1,7 @@
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
 import { levelForXp, rankForLevel } from "@/lib/xp";
@@ -7,12 +11,14 @@ import { logger } from "@/lib/logger";
 
 /**
  * Sprint 4 (FEATURE 3, Saisons mensuelles) — reset mensuel du classement
- * XP. Une seule saison `isActive` à la fois (invariant applicatif). Voir
+ * XP. Une seule saison `isActive` par communauté à la fois (invariant applicatif). Voir
  * le commentaire sur `Season` (prisma/schema.prisma) pour le contexte
  * complet.
  */
-export async function getActiveSeason() {
-  return prisma.season.findFirst({ where: { isActive: true } });
+export async function getActiveSeason(communityId?: string) {
+  const id = communityId ?? await getDefaultCommunityId();
+  const scopedDb = await scopedPrismaForCommunityId(id);
+  return scopedDb.season.findFirst({ where: { communityId: id, isActive: true } });
 }
 
 /** Pure — numéro de la prochaine saison à créer, extrait pour rester testable sans Prisma. `null` = aucune saison n'a jamais existé (tout premier bootstrap). */
@@ -68,7 +74,7 @@ class NoUsersToCloseSeasonError extends Error {}
  * transaction de `finalizeSeasonIfDue` ci-dessous, mais ce garde-fou
  * reste la seule protection pour toute AUTRE cause, ex. une suppression
  * accidentelle en base) : `number: 1` percutait la contrainte unique
- * `Season.number` dès qu'une vraie saison 1 existait déjà dans
+ * `Season(communityId, number)` dès qu'une vraie saison 1 existait déjà dans
  * l'historique, l'erreur était catchée silencieusement par le
  * `isUniqueConstraintViolation` ci-dessous, et l'app restait SANS
  * saison active indéfiniment.
@@ -79,23 +85,26 @@ class NoUsersToCloseSeasonError extends Error {}
  * plein cycle.
  *
  * Idempotent par construction : `getActiveSeason()` retrouve la saison
- * dès qu'une existe, et la contrainte unique sur `Season.number` empêche
+ * dès qu'une existe, et la contrainte unique sur `Season(communityId, number)` empêche
  * une double création en cas d'appels concurrents (retombe
  * silencieusement, même filet de sécurité que `unlockBadge`) — désormais
  * sur le bon numéro dans tous les cas, donc un appel concurrent retombe
  * proprement au lieu de rester bloqué.
  */
-export async function ensureActiveSeasonExists(): Promise<void> {
-  const active = await getActiveSeason();
+export async function ensureActiveSeasonExists(communityId?: string): Promise<void> {
+  const id = communityId ?? await getDefaultCommunityId();
+  const scopedDb = await scopedPrismaForCommunityId(id);
+  const active = await getActiveSeason(id);
   if (active) return;
 
-  const lastSeason = await prisma.season.findFirst({ orderBy: { number: "desc" } });
+  const lastSeason = await scopedDb.season.findFirst({ where: { communityId: id }, orderBy: { number: "desc" } });
   const number = nextSeasonNumber(lastSeason?.number ?? null);
 
   const now = wallClockNow();
   try {
-    await prisma.season.create({
+    await scopedDb.season.create({
       data: {
+        communityId: id,
         number,
         name: `Saison ${number}`,
         startDate: now,
@@ -175,6 +184,12 @@ export async function ensureActiveSeasonExists(): Promise<void> {
  * d'un flag dédié).
  */
 export async function finalizeSeasonIfDue(): Promise<void> {
+  // PR B fournira les soldes par communauté. Aucun reset global sous isolation :
+  // un membre de A+B ne doit jamais perdre son XP de B lors de la clôture de A.
+  if (isCommunityIsolationEnabled()) {
+    logger.warn("seasons", "Clôture suspendue sous isolation en attendant les soldes XP par communauté (PR B).");
+    return;
+  }
   const season = await getActiveSeason();
   if (!season) return; // Bootstrapée par ensureActiveSeasonExists (ci-dessus) ou seedInitialSeason (src/lib/seed-season.ts).
   if (wallClockNow() < season.endDate) return;
@@ -224,6 +239,7 @@ export async function finalizeSeasonIfDue(): Promise<void> {
       await tx.user.updateMany({ data: { xpTotal: 0 } });
       await tx.season.create({
         data: {
+          communityId: season.communityId,
           number: nextNumber,
           name: `Saison ${nextNumber}`,
           startDate: now,
@@ -252,13 +268,15 @@ export async function finalizeSeasonIfDue(): Promise<void> {
 }
 
 /** Home — "Saison X — Jour Y/30" avec barre de progression. `null` si aucune saison active (ne devrait pas arriver post-bootstrap). */
-export async function getSeasonProgress(): Promise<{
+export async function getSeasonProgress(viewerId: string): Promise<{
   number: number;
   name: string;
   dayOfMonth: number;
   totalDays: number;
 } | null> {
-  const season = await getActiveSeason();
+  const communityId = await writeCommunityIdForUser(viewerId);
+  if (communityId === null) return null;
+  const season = await getActiveSeason(communityId);
   if (!season) return null;
 
   const now = wallClockNow();
@@ -266,4 +284,13 @@ export async function getSeasonProgress(): Promise<{
   const totalDays = endOfMonthUTC(now).getUTCDate();
 
   return { number: season.number, name: season.name, dayOfMonth, totalDays };
+}
+
+export async function ensureActiveSeasonExistsForViewer(viewerId: string): Promise<void> {
+  const communityId = await writeCommunityIdForUser(viewerId);
+  if (communityId !== null) await ensureActiveSeasonExists(communityId);
+}
+
+export async function ensureActiveSeasonsExist(): Promise<void> {
+  for (const communityId of await listCronCommunityIds()) await ensureActiveSeasonExists(communityId);
 }

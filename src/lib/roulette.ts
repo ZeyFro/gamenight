@@ -1,3 +1,5 @@
+import { scopedPrisma } from "@/lib/community-scoped-client";
+import { cronCommunityScope, communityMemberUserWhere } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
@@ -25,7 +27,8 @@ export function isRouletteProposalOpen(roulette: Pick<Roulette, "status" | "dead
  * tombent sur la même roulette en même temps.
  */
 async function claimRouletteSpin(rouletteId: string): Promise<boolean> {
-  const result = await prisma.roulette.updateMany({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const result = await scopedDb.roulette.updateMany({
     where: { id: rouletteId, status: "OPEN" },
     data: { status: "SPINNING" },
   });
@@ -45,17 +48,24 @@ async function claimRouletteSpin(rouletteId: string): Promise<boolean> {
  * sur une session classique (`closeSession`).
  */
 export async function spinRoulette(rouletteId: string): Promise<void> {
+  const scopedDb = scopedPrisma(await cronCommunityScope());
   if (!(await claimRouletteSpin(rouletteId))) return;
 
-  const roulette = await prisma.roulette.findUniqueOrThrow({
+  const roulette = await scopedDb.roulette.findUniqueOrThrow({
     where: { id: rouletteId },
     include: { entries: true },
   });
 
-  const participantIds = [...new Set(roulette.entries.map((e) => e.userId))];
+  const members = await prisma.user.findMany({
+    where: { id: { in: roulette.entries.map((e) => e.userId) }, ...(await communityMemberUserWhere(roulette.communityId)) },
+    select: { id: true },
+  });
+  const eligibleIds = new Set(members.map((m) => m.id));
+  const entries = roulette.entries.filter((e) => eligibleIds.has(e.userId));
+  const participantIds = [...new Set(entries.map((e) => e.userId))];
 
   if (participantIds.length < 2) {
-    await prisma.roulette.update({ where: { id: rouletteId }, data: { status: "DONE" } });
+    await scopedDb.roulette.update({ where: { id: rouletteId }, data: { status: "DONE" } });
     // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (annulée), aucun nouveau message.
     await enqueueRouletteDirectMessageEdits(rouletteId);
     await announceRouletteCancelled(roulette);
@@ -63,9 +73,10 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
     return;
   }
 
-  const winnerEntry = roulette.entries[Math.floor(Math.random() * roulette.entries.length)];
+  const winnerEntry = entries[Math.floor(Math.random() * entries.length)];
 
   const { session, announceViaBot } = await createRouletteResultSession({
+    communityId: roulette.communityId,
     date: roulette.scheduledAt,
     decidedGameId: winnerEntry.gameId,
     decidedTime: roulette.scheduledAt,
@@ -73,7 +84,7 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
     notifiedUserIds: participantIds,
   });
 
-  await prisma.roulette.update({
+  await scopedDb.roulette.update({
     where: { id: rouletteId },
     data: { status: "DONE", resultGameId: winnerEntry.gameId, resultSessionId: session.id },
   });
@@ -107,7 +118,8 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
 
 /** Déclenchement paresseux (chargement de page) — même contrat que `closeSessionIfDue`. */
 export async function spinRouletteIfDue(rouletteId: string): Promise<void> {
-  const roulette = await prisma.roulette.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const roulette = await scopedDb.roulette.findUnique({
     where: { id: rouletteId },
     select: { status: true, deadline: true },
   });
@@ -124,7 +136,8 @@ export async function spinRouletteIfDue(rouletteId: string): Promise<void> {
  * pages ouvertes).
  */
 export async function sendRouletteReminderIfDue(rouletteId: string): Promise<void> {
-  const roulette = await prisma.roulette.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const roulette = await scopedDb.roulette.findUnique({
     where: { id: rouletteId },
     include: { entries: { select: { userId: true } } },
   });
@@ -134,7 +147,7 @@ export async function sendRouletteReminderIfDue(rouletteId: string): Promise<voi
   const reminderAt = new Date(roulette.deadline.getTime() - REMINDER_BEFORE_DEADLINE_MS);
   if (now < reminderAt || now >= roulette.deadline) return;
 
-  const claimed = await prisma.roulette.updateMany({
+  const claimed = await scopedDb.roulette.updateMany({
     where: { id: rouletteId, reminderSent: false },
     data: { reminderSent: true },
   });
@@ -154,7 +167,8 @@ export async function sendRouletteReminderIfDue(rouletteId: string): Promise<voi
 
 /** Traite toutes les roulettes `OPEN` — rappel puis tirage si dû, dans cet ordre (cf. cron `/api/cron/close-sessions`). */
 export async function processOpenRoulettes(): Promise<{ checked: number }> {
-  const openRoulettes = await prisma.roulette.findMany({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const openRoulettes = await scopedDb.roulette.findMany({
     where: { status: "OPEN" },
     select: { id: true },
   });

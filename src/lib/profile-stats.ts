@@ -1,3 +1,4 @@
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 
 export interface ProfileStats {
@@ -21,6 +22,7 @@ export async function getProfileStats(
   userId: string,
   streakCount: number
 ): Promise<ProfileStats> {
+  const scopedDb = await getActiveScopedPrisma(userId);
   const [sessionsParticipated, libraryCount, sessionsCreated, superlativesWon] =
     await Promise.all([
       prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } }),
@@ -29,7 +31,7 @@ export async function getProfileStats(
       // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
       // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
       prisma.xpEvent.count({ where: { userId, reason: "CREATE_SESSION" } }),
-      prisma.superlativeAward.count({ where: { winnerUserId: userId } }),
+      scopedDb.superlativeAward.count({ where: { winnerUserId: userId } }),
     ]);
 
   return { sessionsParticipated, libraryCount, sessionsCreated, superlativesWon, streakCount };

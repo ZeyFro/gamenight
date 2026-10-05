@@ -1,3 +1,7 @@
+import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow, startOfMonthUTC, endOfMonthUTC } from "@/lib/wallclock";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
@@ -33,31 +37,38 @@ function topEntry<T>(
  * `year`/`month` (1-12). Toutes les requêtes sont bornées à
  * `[startOfMonthUTC, endOfMonthUTC]` de ce mois — un recap est un
  * instantané figé du mois concerné, jamais recalculé après coup (cf.
- * `MonthlyRecap.@@unique([year, month])`).
+ * `MonthlyRecap.@@unique([communityId, year, month])`).
  */
-async function computeMonthlyRecapData(year: number, month: number): Promise<MonthlyRecapData> {
+async function computeMonthlyRecapData(year: number, month: number, communityId: string): Promise<MonthlyRecapData> {
   const start = startOfMonthUTC(new Date(Date.UTC(year, month - 1, 1)));
   const end = endOfMonthUTC(start);
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  // Avant PR B, limiter les événements XP aux sources de CE serveur.
+  const sourceSessions = await scopedDb.session.findMany({ where: { status: "DONE", date: { gte: start, lte: end } }, select: { id: true } });
+  const sourceInstant = await scopedDb.instantSession.findMany({ where: { createdAt: { gte: start, lte: end } }, select: { id: true } });
+  const xpSources = isCommunityIsolationEnabled() ? { sourceId: { in: [...sourceSessions, ...sourceInstant].map((row) => row.id) } } : {};
 
   const [doneSessions, participateEvents, xpSum, correctPronostics, allUsers] =
     await Promise.all([
-      prisma.session.findMany({
+      scopedDb.session.findMany({
         where: { status: "DONE", date: { gte: start, lte: end } },
         include: { decidedGame: true },
       }),
       prisma.xpEvent.findMany({
-        where: { reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
+        where: { ...xpSources, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
         include: { user: true },
       }),
       prisma.xpEvent.aggregate({
-        where: { createdAt: { gte: start, lte: end } },
+        where: { ...xpSources, createdAt: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
-      prisma.pronostic.findMany({
+      scopedDb.pronostic.findMany({
         where: { correct: true, createdAt: { gte: start, lte: end } },
         include: { voter: true },
       }),
+      // Le streak reste global jusqu’à PR B : ne jamais le publier dans un autre serveur.
       prisma.user.findMany({
+        where: isCommunityIsolationEnabled() ? { id: { in: [] } } : {},
         select: { discordName: true, streakCount: true },
         orderBy: { streakCount: "desc" },
         take: 1,
@@ -73,7 +84,7 @@ async function computeMonthlyRecapData(year: number, month: number): Promise<Mon
   }
   const topGame = topEntry(gameCounts, (id) => gameNames.get(id)!);
 
-  const mvpCategoryAwards = await prisma.superlativeAward.findMany({
+  const mvpCategoryAwards = await scopedDb.superlativeAward.findMany({
     where: {
       createdAt: { gte: start, lte: end },
       category: { name: { contains: "MVP", mode: "insensitive" } },
@@ -137,19 +148,33 @@ export async function generateMonthlyRecapIfDue(): Promise<void> {
   const year = prevMonthDate.getUTCFullYear();
   const month = prevMonthDate.getUTCMonth() + 1;
 
-  const existing = await prisma.monthlyRecap.findUnique({
-    where: { year_month: { year, month } },
+  for (const communityId of await listCronCommunityIds()) {
+    await generateMonthlyRecapForCommunity(communityId, year, month);
+  }
+}
+
+async function generateMonthlyRecapForCommunity(communityId: string, year: number, month: number): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const existing = await scopedDb.monthlyRecap.findUnique({
+    where: { communityId_year_month: { communityId, year, month } },
   });
   if (existing) return;
 
-  const data = await computeMonthlyRecapData(year, month);
+  const data = await computeMonthlyRecapData(year, month, communityId);
   // Rien à raconter (aucune soirée jouée) : pas de recap vide, pas de notif.
   if (data.sessionsPlayed === 0) return;
 
-  await prisma.monthlyRecap.create({
-    data: { year, month, data: data as unknown as object },
-  });
+  try {
+    await scopedDb.monthlyRecap.create({
+      data: { communityId, year, month, data: data as unknown as object },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintViolation(error)) throw error;
+    return; // Un autre cron a créé le snapshot : aucune seconde annonce.
+  }
 
+  // Le webhook historique n’appartient qu’à default. Les autres destinations arrivent en PR B.
+  if (isCommunityIsolationEnabled() && communityId !== await getDefaultCommunityId()) return;
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const result = await postToDiscord({
     title: "📊 Le recap du mois est prêt !",
@@ -164,8 +189,10 @@ export async function generateMonthlyRecapIfDue(): Promise<void> {
 /** Lecture typée d'un recap déjà généré — `/recap/[year]/[month]` et la card Home. */
 export async function getMonthlyRecap(
   year: number,
-  month: number
+  month: number,
+  viewerId: string
 ): Promise<MonthlyRecapData | null> {
-  const recap = await prisma.monthlyRecap.findUnique({ where: { year_month: { year, month } } });
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const recap = await scopedDb.monthlyRecap.findFirst({ where: { year, month } });
   return recap ? (recap.data as unknown as MonthlyRecapData) : null;
 }

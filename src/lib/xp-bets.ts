@@ -1,3 +1,7 @@
+import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { canAccessSession } from "@/lib/session-access";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { awardXp } from "@/lib/xp-actions";
 import { createNotification } from "@/lib/notifications";
@@ -54,6 +58,8 @@ export async function placeBet(
   targetUserId: string,
   amount: number
 ): Promise<boolean> {
+  if (isCommunityIsolationEnabled() && (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(targetUserId, sessionId)))) return false;
+  const scopedDb = await getScopedPrisma(voterId);
   const voter = await prisma.user.findUnique({
     where: { id: voterId },
     select: { xpTotal: true },
@@ -66,15 +72,16 @@ export async function placeBet(
   // ICI, à la pose du pari (le jeu de la soirée est déjà décidé à ce stade)
   // : `/profil` affiche l'historique des paris résolus avec le nom du jeu,
   // qui doit rester lisible même après la purge de la soirée.
-  const session = await prisma.session.findUnique({
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
-    select: { decidedGame: { select: { name: true } } },
+    select: { communityId: true, decidedGame: { select: { name: true } } },
   });
 
+  if (!session) return false;
   try {
     await prisma.$transaction(async (tx) => {
       await tx.xpBet.create({
-        data: { sessionId, voterId, targetUserId, amount, allIn, gameName: session?.decidedGame?.name ?? null },
+        data: { ...withCommunity(session.communityId), sessionId, voterId, targetUserId, amount, allIn, gameName: session?.decidedGame?.name ?? null },
       });
 
       const locked = await tx.$queryRaw<{ xpTotal: number }[]>`
@@ -111,14 +118,18 @@ export async function resolveBets(
   sessionId: string,
   carryMvpWinnerIds: Set<string>
 ): Promise<void> {
-  const bets = await prisma.xpBet.findMany({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  if (!session) return;
+  const canUseLegacyWebhook = !isCommunityIsolationEnabled() || (session.communityId ?? await getDefaultCommunityId()) === await getDefaultCommunityId();
+  const bets = await scopedDb.xpBet.findMany({
     where: { sessionId },
     include: { voter: true, target: true },
   });
 
   for (const bet of bets) {
     const won = carryMvpWinnerIds.has(bet.targetUserId);
-    await prisma.xpBet.update({ where: { id: bet.id }, data: { won } });
+    await scopedDb.xpBet.update({ where: { id: bet.id }, data: { won } });
     if (!won) continue;
 
     await awardXp(bet.voterId, "XP_BET_WON", bet.id, bet.amount * 2, {
@@ -134,6 +145,7 @@ export async function resolveBets(
       relatedSessionId: sessionId,
     });
 
+    if (!canUseLegacyWebhook) continue;
     const result = await postToDiscord({
       title: "🎲 Pari gagné !",
       description: `<@${bet.voter.discordId}> avait misé sur le bon carry — +${bet.amount * 2} XP`,

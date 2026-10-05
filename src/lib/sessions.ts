@@ -60,6 +60,8 @@ import type { Game, GroupAchievement, Session, SessionStatus, User } from "@pris
  * pour l'appelant qui en a besoin (chemin webhook, annonce du résultat).
  */
 export async function createRouletteResultSession(data: {
+  /** Une roulette différée conserve son serveur même si le créateur change de sélection. */
+  communityId?: string | null;
   date: Date;
   decidedGameId: string;
   decidedTime: Date;
@@ -67,10 +69,10 @@ export async function createRouletteResultSession(data: {
   notifiedUserIds: string[];
 }): Promise<{ session: Session; announceViaBot: boolean; proposalId: string }> {
   // Multi-communautés (PR3) : `null` tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
-  const communityId = await pickCreationCommunityId(data.createdById);
+  const communityId = data.communityId !== undefined ? data.communityId : await pickCreationCommunityId(data.createdById);
   // Sous isolation (PR4), sans aucune communauté la soirée serait rattachée à
   // `default` sans que le créateur en soit membre : on refuse.
-  if (isCommunityIsolationEnabled() && communityId === null) {
+  if (isCommunityIsolationEnabled() && data.communityId === undefined && communityId === null) {
     throw new Error("createRouletteResultSession : le créateur n'appartient à aucune communauté active.");
   }
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
