@@ -1,4 +1,6 @@
-import type { InstantSession } from "@prisma/client";
+import type { InstantSession, Prisma } from "@prisma/client";
+import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
@@ -140,6 +142,9 @@ export async function createInstantSession(input: {
   gameId: string;
   notifiedUserIds: string[];
 }): Promise<CreateInstantSessionResult> {
+  const scopedDb = await getScopedPrisma(input.creatorId);
+  const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(input.creatorId) : null;
+  if (isCommunityIsolationEnabled() && communityId === null) return { ok: false, reason: "not_found" };
   // Expiration paresseuse d'abord : une session échue mais pas encore
   // réglée par le cron garde l'intervalle de présence du créateur ouvert, ce
   // qui bloquerait la création (index unique partiel) jusqu'au prochain
@@ -156,12 +161,17 @@ export async function createInstantSession(input: {
   // jamais invité à sa propre session (règle de ping « créateur sans
   // mention »), et un id en double (formulaire forgé) ferait échouer toute
   // la transaction (violation d'unicité → 25P02) au lieu d'être ignoré.
-  const notifiedUserIds = [...new Set(input.notifiedUserIds)].filter((id) => id !== input.creatorId);
+  const candidates = await prisma.user.findMany({
+    where: { id: { in: [...new Set(input.notifiedUserIds)], not: input.creatorId }, ...(await communityMemberUserWhere(communityId)) },
+    select: { id: true },
+  });
+  const notifiedUserIds = candidates.map((u) => u.id);
 
   try {
-    const instantSession = await prisma.$transaction(async (tx) => {
+    const instantSession = await scopedDb.$transaction(async (tx) => {
       const created = await tx.instantSession.create({
         data: {
+          ...withCommunity(communityId),
           createdById: input.creatorId,
           gameId: input.gameId,
           createdAt: now,
@@ -173,7 +183,8 @@ export async function createInstantSession(input: {
         data: { instantSessionId: created.id, userId: input.creatorId, startedAt: now },
       });
       if (notifiedUserIds.length > 0) {
-        await enqueueInstantSessionInvites(created.id, notifiedUserIds, tx);
+        // Le cast adapte les types Prisma étendus ; le client de transaction garde ses filtres.
+        await enqueueInstantSessionInvites(created.id, notifiedUserIds, tx as unknown as Prisma.TransactionClient);
       }
       return created;
     });
@@ -198,10 +209,12 @@ export async function joinInstantSession(
   instantSessionId: string,
   userId: string
 ): Promise<InstantSessionActionResult> {
+  const scopedDb = await getScopedPrisma(userId);
+  if (!(await scopedDb.instantSession.findUnique({ where: { id: instantSessionId }, select: { id: true } }))) return { ok: false, reason: "not_found" };
   await settleInstantSessionIfDue(instantSessionId);
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await scopedDb.$transaction(async (tx) => {
       const session = await tx.instantSession.findUnique({
         where: { id: instantSessionId },
         select: { status: true },
@@ -247,9 +260,11 @@ export async function leaveInstantSession(
   // Expiration paresseuse d'abord (comme join/change) : sans elle, un
   // départ APRÈS l'échéance fermait l'intervalle à l'heure du départ,
   // au-delà des 3 h maximum.
+  const scopedDb = await getScopedPrisma(userId);
+  if (!(await scopedDb.instantSession.findUnique({ where: { id: instantSessionId }, select: { id: true } }))) return { ok: false, reason: "not_found" };
   await settleInstantSessionIfDue(instantSessionId);
 
-  const session = await prisma.instantSession.findUnique({
+  const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { createdById: true, status: true },
   });
@@ -281,9 +296,11 @@ export async function changeInstantSessionGame(
   requestedById: string,
   gameId: string
 ): Promise<InstantSessionActionResult> {
+  const scopedDb = await getScopedPrisma(requestedById);
+  if (!(await scopedDb.instantSession.findUnique({ where: { id: instantSessionId }, select: { id: true } }))) return { ok: false, reason: "not_found" };
   await settleInstantSessionIfDue(instantSessionId);
 
-  const session = await prisma.instantSession.findUnique({
+  const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { createdById: true, status: true },
   });
@@ -291,7 +308,7 @@ export async function changeInstantSessionGame(
   if (session.createdById !== requestedById) return { ok: false, reason: "not_creator" };
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
-  await prisma.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
+  await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
   await enqueueInstantSessionInviteUpdate(instantSessionId);
   return { ok: true };
 }
@@ -324,7 +341,8 @@ export async function endInstantSession(
   requestedById: string | null,
   reason: "creator_left" | "expired"
 ): Promise<InstantSessionActionResult> {
-  const result = await prisma.$transaction(async (tx) => {
+  const scopedDb = requestedById === null ? scopedPrisma(await cronCommunityScope()) : await getScopedPrisma(requestedById);
+  const result = await scopedDb.$transaction(async (tx) => {
     const session = await tx.instantSession.findUnique({
       where: { id: instantSessionId },
       select: { createdById: true, status: true, expiresAt: true },
@@ -351,7 +369,7 @@ export async function endInstantSession(
       where: { instantSessionId, endedAt: null },
       data: { endedAt: now },
     });
-    await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
+    await enqueueInstantSessionInviteUpdate(instantSessionId, tx as unknown as Prisma.TransactionClient);
     return { ok: true as const, alreadyEnded: false as const };
   });
 
@@ -370,7 +388,8 @@ export async function endInstantSession(
  * `closeSessionIfDue`/`spinRouletteIfDue` : le serveur fait autorité,
  * l'expiration est respectée même si le cron n'est pas encore passé. */
 export async function settleInstantSessionIfDue(instantSessionId: string): Promise<void> {
-  const session = await prisma.instantSession.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { status: true, expiresAt: true },
   });
@@ -384,8 +403,9 @@ export async function settleInstantSessionIfDue(instantSessionId: string): Promi
  * l'expiration", que la purge de rétention (opt-in, `retention.ts`) soit
  * activée ou non. */
 export async function settleAllDueInstantSessions(): Promise<string[]> {
+  const scopedDb = scopedPrisma(await cronCommunityScope());
   const now = wallClockNow();
-  const due = await prisma.instantSession.findMany({
+  const due = await scopedDb.instantSession.findMany({
     where: { status: "ACTIVE", expiresAt: { lte: now } },
     select: { id: true },
   });
@@ -428,7 +448,8 @@ export async function settleAllDueInstantSessions(): Promise<string[]> {
  * séparément — l'événement XP EST la garde.
  */
 export async function settleInstantSessionRewards(instantSessionId: string): Promise<void> {
-  const session = await prisma.instantSession.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { status: true, endedAt: true },
   });
@@ -493,9 +514,13 @@ export interface InstantSessionView {
  * paresseusement TOUTES les sessions dues AVANT de lire — jamais une
  * session expirée mais pas encore marquée affichée comme "active".
  */
-export async function listActiveInstantSessions() {
-  await settleAllDueInstantSessions();
-  return prisma.instantSession.findMany({
+export async function listActiveInstantSessions(viewerId: string) {
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const due = await scopedDb.instantSession.findMany({
+    where: { status: "ACTIVE", expiresAt: { lte: wallClockNow() } }, select: { id: true },
+  });
+  for (const { id } of due) await settleInstantSessionIfDue(id);
+  return scopedDb.instantSession.findMany({
     where: { status: "ACTIVE" },
     orderBy: { createdAt: "desc" },
     select: {
@@ -521,10 +546,13 @@ export async function getInstantSessionView(
   instantSessionId: string,
   viewerId: string
 ): Promise<InstantSessionView | null> {
+  const scopedDb = await getScopedPrisma(viewerId);
+  // Refuser avant les règlements : un identifiant deviné ne déclenche aucun effet.
+  if (!(await scopedDb.instantSession.findUnique({ where: { id: instantSessionId }, select: { id: true } }))) return null;
   await settleInstantSessionIfDue(instantSessionId);
   await settleInstantSessionRewards(instantSessionId);
 
-  const session = await prisma.instantSession.findUnique({
+  const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
     select: {
       id: true,
@@ -612,7 +640,7 @@ export function toInstantSessionViewDTO(view: InstantSessionView): InstantSessio
  * garantie réelle, voir l'index unique partiel). */
 export async function getActiveInstantSessionForUser(userId: string): Promise<{ id: string } | null> {
   const open = await prisma.instantSessionPresenceInterval.findFirst({
-    where: { userId, endedAt: null, instantSession: { status: "ACTIVE" } },
+    where: { userId, endedAt: null, instantSession: { status: "ACTIVE", ...communityIdFilter(await getIsolationScope(userId)) } },
     select: { instantSessionId: true },
   });
   return open ? { id: open.instantSessionId } : null;

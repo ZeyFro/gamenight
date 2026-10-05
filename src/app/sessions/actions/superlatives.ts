@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import {
@@ -32,7 +33,9 @@ export async function submitSuperlativeVotesAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  if (!(await canAccessSession(user.id, sessionId))) return;
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: {
       status: true,
@@ -115,7 +118,8 @@ export async function forceCloseSuperlativeVotingAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });

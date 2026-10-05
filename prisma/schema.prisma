@@ -683,6 +683,11 @@ enum SessionInviteStatus {
 // possible ici — voir le commentaire sur `isCarryOrMvpCategory` dans
 // pronostics.ts pour le detail du matching).
 model Pronostic {
+  // Provenance durable : conservée même si la soirée ou la communauté est purgée.
+  // null = données historiques de default, jamais recalculée depuis le membre.
+  communityId String?
+
+  @@index([communityId])
   id              String   @id @default(cuid())
   // Chantier nettoyage réel du stockage (V2, suite) — nullable, `onDelete:
   // SetNull` (PAS Cascade, contrairement au commentaire historique de
@@ -726,6 +731,11 @@ model Pronostic {
 // à partir du seul `amount` serait faux, `xpTotal` ayant pu changer entre
 // temps.
 model XpBet {
+  // Provenance durable : conservée même si la soirée ou la communauté est purgée.
+  // null = données historiques de default, jamais recalculée depuis le membre.
+  communityId String?
+
+  @@index([communityId])
   id           String   @id @default(cuid())
   // Chantier nettoyage réel du stockage (V2, suite) — nullable, `onDelete:
   // SetNull` : `/profil` affiche un historique des 5 paris résolus les
@@ -1107,6 +1117,11 @@ model SuperlativeVote {
 // `@@unique([sessionId, categoryId])` : un seul gagnant par catégorie et
 // par soirée.
 model SuperlativeAward {
+  // Provenance durable : conservée même si la soirée ou la communauté est purgée.
+  // null = données historiques de default, jamais recalculée depuis le membre.
+  communityId String?
+
+  @@index([communityId])
   // Chantier nettoyage réel du stockage (V2, suite) — récompense DURABLE
   // (vitrine "Superlatifs gagnés" sur le profil, `/profil/superlatifs`,
   // `/potes/[id]/superlatifs`, la Home) : `onDelete: SetNull`, même
@@ -1536,13 +1551,12 @@ model WeeklyChallenge {
   completedBySessionId String?
   createdAt            DateTime  @default(now())
 
-  @@unique([weekStart])
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // PR A : communauté requise ; les lignes historiques sont backfillées vers default.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId, weekStart])
 }
 
 // Trophée de GROUPE (Sprint 3 suite) — contrairement à `Badge`/`UserBadge`
@@ -1733,26 +1747,25 @@ model MonthlyRecap {
   data      Json
   createdAt DateTime @default(now())
 
-  @@unique([year, month])
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // PR A : communauté requise ; les lignes historiques sont backfillées vers default.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId, year, month])
 }
 
 // Sprint 4 (FEATURE 3, Saisons mensuelles) — reset mensuel du classement
-// XP. Une seule saison `isActive` à la fois (invariant applicatif, pas de
+// XP. Une seule saison `isActive` par communauté (invariant applicatif, pas de
 // contrainte DB dédiée — `finalizeSeasonIfDue`, src/lib/seasons.ts, est le
-// seul point d'écriture). `number` incrémental (`@unique`), `name`
+// seul point d'écriture). `number` incrémental par communauté, `name`
 // dérivé ("Saison N") mais stocké en dur pour rester affichable même si la
 // formule de nommage change plus tard. Saison 1 bootstrapée par
 // `prisma/seed-season.mjs` au déploiement, SANS reset rétroactif (scores
 // actuels conservés comme tête de départ, cf. spec).
 model Season {
   id        String   @id @default(cuid())
-  number    Int      @unique
+  number    Int
   name      String
   startDate DateTime
   endDate   DateTime
@@ -1760,11 +1773,11 @@ model Season {
 
   snapshots SeasonSnapshot[]
 
-  // Multi-communautés, PR7 : null = communauté par défaut (lignes historiques).
-  communityId String?
-  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  // PR A : communauté requise ; les lignes historiques sont backfillées vers default.
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  @@index([communityId])
+  @@unique([communityId, number])
 }
 
 // Classement figé d'un user à la clôture d'une saison — écrit par

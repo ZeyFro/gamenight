@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { User } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { toDateInputValue, wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
@@ -114,7 +116,8 @@ export default async function RoulettePage({
  * `array_contains` fragile sur `notifiedUserIds`.
  */
 async function EnCoursTab({ userId }: { userId: string }) {
-  const allOpenRoulettes = await prisma.roulette.findMany({
+  const scopedDb = await getActiveScopedPrisma(userId);
+  const allOpenRoulettes = await scopedDb.roulette.findMany({
     where: { status: "OPEN" },
     orderBy: { deadline: "asc" },
     select: {
@@ -201,7 +204,7 @@ async function CreerTab({
   defaultTime: string;
 }) {
   const potesRaw = await prisma.user.findMany({
-    where: { id: { not: userId } },
+    where: { id: { not: userId }, ...(await creationMemberUserWhere(userId)) },
     select: { id: true, discordName: true, discordAvatar: true, color: true },
     orderBy: { discordName: "asc" },
   });
@@ -334,7 +337,7 @@ async function InstantMode({ user }: { user: User }) {
       orderBy: { game: { name: "asc" } },
     }),
     prisma.user.findMany({
-      where: { id: { not: user.id } },
+      where: { id: { not: user.id }, ...(await creationMemberUserWhere(user.id)) },
       select: {
         id: true,
         discordName: true,

@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
 
 /**
@@ -25,12 +26,15 @@ import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
  * saison existe déjà).
  */
 export async function seedInitialSeason(): Promise<void> {
-  const existing = await prisma.season.findFirst();
+  const communityId = await getDefaultCommunityId();
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const existing = await scopedDb.season.findFirst({ where: { communityId } });
   if (existing) return;
 
   const now = wallClockNow();
-  await prisma.season.create({
+  await scopedDb.season.create({
     data: {
+      communityId,
       number: 1,
       name: "Saison 1",
       startDate: now,

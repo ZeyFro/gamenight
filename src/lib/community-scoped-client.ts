@@ -41,7 +41,7 @@ import {
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
-  "WeeklyChallenge", "MonthlyRecap", "Season", "GroupAchievement", "GroupSessionStats",
+  "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
 ]);
 
@@ -52,6 +52,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
+  "WeeklyChallenge", "MonthlyRecap", "Season",
 ]);
 
 export class CommunityScopeError extends Error {

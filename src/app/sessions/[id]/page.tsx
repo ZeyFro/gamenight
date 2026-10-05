@@ -20,6 +20,7 @@ import { getSessionAccessRole, listActiveInvites } from "@/lib/session-access";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
@@ -287,7 +288,7 @@ export default async function SessionDetailPage({
   // toute façon une vieille soirée hors de cette semaine, cf. son
   // commentaire — la requête n'est faite que si elle peut servir).
   const weeklyChallenge =
-    session.status === "DONE" && isCreator ? await getCurrentWeeklyChallenge() : null;
+    session.status === "DONE" && isCreator ? await getCurrentWeeklyChallenge(await statsCommunityIdForSession(session.communityId)) : null;
   const canCompleteWeeklyChallenge =
     weeklyChallenge !== null &&
     !weeklyChallenge.completedAt &&

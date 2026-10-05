@@ -1,4 +1,7 @@
-import { prisma } from "@/lib/prisma";
+import { scopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { cronCommunityScope } from "@/lib/community-isolation";
+import { statsCommunityIdForSession, writeCommunityIdForUser } from "@/lib/community-stats";
+import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { wallClockNow } from "@/lib/wallclock";
 import { getWeekStart } from "@/lib/calendar-dates";
 import { getWinningProposalParticipants } from "@/lib/superlative-voting";
@@ -38,28 +41,31 @@ const CHALLENGE_TEMPLATES: { type: string; description: string }[] = [
  * Défi de la semaine en cours — génération paresseuse au premier appel
  * de la semaine (pas de cron dédié) : si aucune ligne n'existe pour le
  * `weekStart` courant, une est créée en piochant un template au hasard.
- * `catch` sur la contrainte unique `@@unique([weekStart])` plutôt qu'un
+ * `catch` sur la contrainte unique `@@unique([communityId, weekStart])` plutôt qu'un
  * verrou explicite : sous accès concurrents (deux chargements de Home en
  * même temps un lundi matin), un seul `create` gagne, l'autre retombe
  * simplement sur un `findUnique` — même mécanique d'idempotence que
  * `unlockBadge`.
  */
-export async function getCurrentWeeklyChallenge(): Promise<WeeklyChallenge> {
+export async function getCurrentWeeklyChallenge(communityId: string): Promise<WeeklyChallenge> {
   const weekStart = getWeekStart(wallClockNow());
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const key = { communityId_weekStart: { communityId, weekStart } };
 
-  const existing = await prisma.weeklyChallenge.findUnique({ where: { weekStart } });
+  const existing = await scopedDb.weeklyChallenge.findUnique({ where: key });
   if (existing) return existing;
 
   const template = CHALLENGE_TEMPLATES[Math.floor(Math.random() * CHALLENGE_TEMPLATES.length)];
 
   try {
-    return await prisma.weeklyChallenge.create({
-      data: { weekStart, type: template.type, description: template.description },
+    return await scopedDb.weeklyChallenge.create({
+      data: { communityId, weekStart, type: template.type, description: template.description },
     });
-  } catch {
+  } catch (error) {
+    if (!isUniqueConstraintViolation(error)) throw error;
     // Course perdue contre un autre appel concurrent — la ligne existe
     // forcément maintenant.
-    return await prisma.weeklyChallenge.findUniqueOrThrow({ where: { weekStart } });
+    return await scopedDb.weeklyChallenge.findUniqueOrThrow({ where: key });
   }
 }
 
@@ -79,20 +85,21 @@ export async function getCurrentWeeklyChallenge(): Promise<WeeklyChallenge> {
 export async function completeWeeklyChallenge(
   sessionId: string
 ): Promise<{ completed: boolean; badgeUnlockedByUserId: Record<string, boolean> }> {
-  const session = await prisma.session.findUnique({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
-    select: { status: true, date: true, decidedGameId: true },
+    select: { status: true, date: true, decidedGameId: true, communityId: true },
   });
   if (!session || session.status !== "DONE" || !session.decidedGameId) {
     return { completed: false, badgeUnlockedByUserId: {} };
   }
 
-  const challenge = await getCurrentWeeklyChallenge();
+  const challenge = await getCurrentWeeklyChallenge(await statsCommunityIdForSession(session.communityId));
   if (challenge.completedAt || session.date < challenge.weekStart) {
     return { completed: false, badgeUnlockedByUserId: {} };
   }
 
-  const claimed = await prisma.weeklyChallenge.updateMany({
+  const claimed = await scopedDb.weeklyChallenge.updateMany({
     where: { id: challenge.id, completedAt: null },
     data: { completedAt: wallClockNow(), completedBySessionId: sessionId },
   });
@@ -112,4 +119,10 @@ export async function completeWeeklyChallenge(
   }
 
   return { completed: true, badgeUnlockedByUserId };
+}
+
+/** Défi du serveur actif ; aucun défi ni création sans appartenance active. */
+export async function getCurrentWeeklyChallengeForViewer(viewerId: string): Promise<WeeklyChallenge | null> {
+  const communityId = await writeCommunityIdForUser(viewerId);
+  return communityId === null ? null : getCurrentWeeklyChallenge(communityId);
 }

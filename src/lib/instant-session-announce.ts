@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
@@ -242,9 +243,10 @@ export const instantSessionInviteResolver: DeliveryResolver = {
 
     const session = await prisma.instantSession.findUnique({
       where: { id: instantSessionId },
-      select: { id: true, status: true, game: { select: { name: true } } },
+      select: { id: true, communityId: true, status: true, game: { select: { name: true } } },
     });
     if (!session) return { eligible: false, reason: "expired" };
+    if (!(await isMemberOfCommunity(userId, session.communityId))) return { eligible: false, reason: "preference_declined" };
 
     const recipient = await prisma.user.findUnique({
       where: { id: userId },

@@ -53,6 +53,7 @@ export interface ActivityItem {
  */
 export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
   const members = await memberUserWhereFor(viewerId);
+  const scopedDb = await getActiveScopedPrisma(viewerId);
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
       where: { status: "DONE", ...(await accessibleSessionWhereFor(viewerId)) },
@@ -76,7 +77,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
         badge: { select: { name: true, icon: true } },
       },
     }),
-    prisma.superlativeAward.findMany({
+    scopedDb.superlativeAward.findMany({
       where: { winner: members },
       orderBy: { createdAt: "desc" },
       take: limit,

@@ -379,7 +379,8 @@ export default async function AccueilV2Page() {
               </StaggerItem>
             )}
 
-            <StaggerItem>
+            {d.weeklyChallenge && (
+<StaggerItem>
               <Card className="gradient-border">
                 <p className="text-lg font-semibold text-foreground">🎯 Défi de la semaine</p>
                 <p className="mt-3 text-foreground">{d.weeklyChallenge.description}</p>
@@ -390,6 +391,7 @@ export default async function AccueilV2Page() {
                 </p>
               </Card>
             </StaggerItem>
+)}
 
             <StaggerItem>
               <Card className="gradient-border">

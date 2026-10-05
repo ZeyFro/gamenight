@@ -234,7 +234,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     it("notification LUE créée AVANT la saison active : purgée réellement en mode effectif", async () => {
       const user = await makeUser();
       await db.season.create({
-        data: { number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
+        data: {
+          community: { connectOrCreate: { where: { slug: "default" }, create: { slug: "default", name: "GameNight", status: "ACTIVE" } } }, number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
       });
       const oldRead = await db.notification.create({
         data: { userId: user.id, type: "SESSION_CREATED", title: "t", message: "m", read: true, createdAt: new Date("2026-08-15T00:00:00.000Z") },
@@ -252,7 +253,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     it("notification NON LUE, même ancienne : jamais purgée — encore nécessaire tant que l'utilisateur ne l'a pas vue", async () => {
       const user = await makeUser();
       await db.season.create({
-        data: { number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
+        data: {
+          community: { connectOrCreate: { where: { slug: "default" }, create: { slug: "default", name: "GameNight", status: "ACTIVE" } } }, number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
       });
       const unread = await db.notification.create({
         data: { userId: user.id, type: "SESSION_CREATED", title: "t", message: "m", read: false, createdAt: new Date("2026-08-15T00:00:00.000Z") },
@@ -265,7 +267,8 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
     it("notification LUE de la saison ACTIVE elle-même (createdAt >= startDate) : jamais purgée par ce passage", async () => {
       const user = await makeUser();
       await db.season.create({
-        data: { number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
+        data: {
+          community: { connectOrCreate: { where: { slug: "default" }, create: { slug: "default", name: "GameNight", status: "ACTIVE" } } }, number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
       });
       const currentSeasonRead = await db.notification.create({
         data: { userId: user.id, type: "SESSION_CREATED", title: "t", message: "m", read: true, createdAt: new Date("2026-09-10T00:00:00.000Z") },

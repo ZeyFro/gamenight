@@ -12,13 +12,13 @@ import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
-import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
+import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
-import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
+import { ensureActiveSeasonExistsForViewer, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -154,9 +154,9 @@ export default async function Home({
   });
   if (dueSession) await closeSessionIfDue(dueSession.id);
 
-  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExists`
+  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExistsForViewer`
   // (src/lib/seasons.ts).
-  await ensureActiveSeasonExists();
+  await ensureActiveSeasonExistsForViewer(user.id);
 
   const [
     nextSession,
@@ -192,7 +192,7 @@ export default async function Home({
     getWeekAvailability(user.id),
     getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
-    getCurrentWeeklyChallenge(),
+    getCurrentWeeklyChallengeForViewer(user.id),
     listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
@@ -205,9 +205,9 @@ export default async function Home({
   const recapYear = prevMonthDate.getUTCFullYear();
   const recapMonth = prevMonthDate.getUTCMonth() + 1;
   const [lastMonthRecap, seasonProgress, activeTournament] = await Promise.all([
-    getMonthlyRecap(recapYear, recapMonth),
-    getSeasonProgress(),
-    getActiveTournament(),
+    getMonthlyRecap(recapYear, recapMonth, user.id),
+    getSeasonProgress(user.id),
+    getActiveTournament(user.id),
   ]);
 
   // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
@@ -481,7 +481,7 @@ export default async function Home({
 
         {/* Sprint 4 (Saisons mensuelles) — barre de progression de la
             saison en cours, masquée si aucune saison active (ne devrait
-            pas arriver post-bootstrap, cf. ensureActiveSeasonExists dans
+            pas arriver post-bootstrap, cf. ensureActiveSeasonExistsForViewer dans
             src/lib/seasons.ts, appelée juste au-dessus). */}
         {seasonProgress && (
           <StaggerItem>
@@ -582,10 +582,11 @@ export default async function Home({
         )}
 
         {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
-            semaine en cours par `getCurrentWeeklyChallenge` ci-dessus. La
+            semaine en cours par `getCurrentWeeklyChallengeForViewer` ci-dessus. La
             complétion se fait depuis une soirée DONE (bouton créateur),
             jamais directement ici — la Home reste en lecture seule. */}
-        <StaggerItem>
+        {weeklyChallenge && (
+<StaggerItem>
           <Card className="gradient-border">
             <p className="text-lg font-semibold text-foreground">🎯 Défi de la semaine</p>
             <p className="mt-2 text-foreground">{weeklyChallenge.description}</p>
@@ -596,6 +597,7 @@ export default async function Home({
             </p>
           </Card>
         </StaggerItem>
+)}
 
         {/* Trophées du groupe (Sprint 3 suite) — encyclopédique comme
             `BadgeGrid` : les 10 lignes sont toujours affichées, débloquées

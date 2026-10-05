@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { getSeasonProgress } from "@/lib/seasons";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -22,9 +22,10 @@ export default async function SaisonsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
+  const scopedDb = await getActiveScopedPrisma(user.id);
   const [progress, pastSeasons] = await Promise.all([
-    getSeasonProgress(),
-    prisma.season.findMany({
+    getSeasonProgress(user.id),
+    scopedDb.season.findMany({
       where: { isActive: false },
       orderBy: { number: "desc" },
       include: {

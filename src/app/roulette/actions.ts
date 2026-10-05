@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getScopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { creationMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -68,7 +70,7 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   // (même garde défensive que `createSession`/ping sélectif) — le créateur
   // est toujours inclus même s'il a été retiré côté client par erreur.
   const validUsers = await prisma.user.findMany({
-    where: { id: { in: participantIds } },
+    where: { id: { in: participantIds }, ...(await creationMemberUserWhere(user.id)) },
     select: { id: true },
   });
   const finalParticipantIds = [...new Set([user.id, ...validUsers.map((u) => u.id)])];
@@ -149,14 +151,18 @@ export async function createRouletteAction(formData: FormData) {
   // Même garde défensive que `createSession`/ping sélectif — le créateur
   // est toujours inclus même s'il a été retiré côté client par erreur.
   const validUsers = await prisma.user.findMany({
-    where: { id: { in: participantIds } },
+    where: { id: { in: participantIds }, ...(await creationMemberUserWhere(user.id)) },
     select: { id: true },
   });
   const finalParticipantIds = [...new Set([user.id, ...validUsers.map((u) => u.id)])];
 
-  const roulette = await prisma.roulette.create({
+  const scopedDb = await getScopedPrisma(user.id);
+  const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(user.id) : null;
+  if (isCommunityIsolationEnabled() && communityId === null) redirect("/roulette?tab=creer&error=donnees_invalides");
+  const roulette = await scopedDb.roulette.create({
     data: {
       createdById: user.id,
+      ...withCommunity(communityId),
       scheduledAt,
       deadline,
       notifiedUserIds: finalParticipantIds,
@@ -189,7 +195,8 @@ export async function submitRouletteEntriesAction(formData: FormData) {
   if (!input.success) return;
   const { rouletteId, gameIds } = input.data;
 
-  const roulette = await prisma.roulette.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const roulette = await scopedDb.roulette.findUnique({
     where: { id: rouletteId },
     select: { status: true, deadline: true, createdById: true, notifiedUserIds: true },
   });
@@ -230,7 +237,8 @@ export async function forceSpinRouletteAction(formData: FormData) {
   const rouletteId = String(formData.get("rouletteId") ?? "");
   if (!rouletteId) return;
 
-  const roulette = await prisma.roulette.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const roulette = await scopedDb.roulette.findUnique({
     where: { id: rouletteId },
     select: { createdById: true, status: true },
   });

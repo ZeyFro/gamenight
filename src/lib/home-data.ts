@@ -5,10 +5,10 @@ import { listGroupAchievements } from "@/lib/group-achievements";
 import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
-import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
+import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
-import { ensureActiveSeasonExists, getSeasonProgress } from "@/lib/seasons";
+import { ensureActiveSeasonExistsForViewer, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
 
 /**
@@ -23,8 +23,8 @@ import { getActiveTournament } from "@/lib/tournaments";
  * déclenche donc pas ; `/` continue de s'en charger.
  */
 export async function loadHomeData(user: User) {
-  // Garde-fou idempotent identique à `/` (voir `ensureActiveSeasonExists`).
-  await ensureActiveSeasonExists();
+  // Garde-fou idempotent identique à `/` (voir `ensureActiveSeasonExistsForViewer`).
+  await ensureActiveSeasonExistsForViewer(user.id);
 
   const [
     nextSession,
@@ -44,7 +44,7 @@ export async function loadHomeData(user: User) {
     getWeekAvailability(user.id),
     getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
     getRecentGameNews(),
-    getCurrentWeeklyChallenge(),
+    getCurrentWeeklyChallengeForViewer(user.id),
     listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
@@ -55,9 +55,9 @@ export async function loadHomeData(user: User) {
   const recapYear = prevMonthDate.getUTCFullYear();
   const recapMonth = prevMonthDate.getUTCMonth() + 1;
   const [lastMonthRecap, seasonProgress, activeTournament] = await Promise.all([
-    getMonthlyRecap(recapYear, recapMonth),
-    getSeasonProgress(),
-    getActiveTournament(),
+    getMonthlyRecap(recapYear, recapMonth, user.id),
+    getSeasonProgress(user.id),
+    getActiveTournament(user.id),
   ]);
 
   // Cover : jeu décidé si la soirée est SCHEDULED, sinon proposition la plus votée.

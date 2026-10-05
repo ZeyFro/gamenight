@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { awardXp } from "@/lib/xp-actions";
@@ -28,7 +29,8 @@ export async function completeWeeklyChallengeAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true },
   });
@@ -72,7 +74,8 @@ export async function submitSessionResultsAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
 
-  const session = await prisma.session.findUnique({
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({
     where: { id: sessionId },
     include: { decidedGame: true },
   });

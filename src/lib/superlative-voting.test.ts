@@ -9,6 +9,7 @@ const { prisma } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma }));
+vi.mock("@/lib/community-scoped-client", () => ({ scopedPrisma: () => prisma, getScopedPrisma: async () => prisma }));
 vi.mock("@/lib/wallclock", () => ({ wallClockNow: vi.fn() }));
 vi.mock("@/lib/xp-actions", () => ({ awardXp: vi.fn() }));
 vi.mock("@/lib/discord-session-awards", () => ({ announceSessionAwards: vi.fn() }));

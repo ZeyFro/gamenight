@@ -1,5 +1,8 @@
-import { prisma } from "@/lib/prisma";
-import { awardXp } from "@/lib/xp-actions";
+import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { canAccessSession } from "@/lib/session-access";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { checkPronosticBadges } from "@/lib/badges";
@@ -34,12 +37,17 @@ export async function submitPronostic(
   voterId: string,
   predictedUserId: string
 ): Promise<boolean> {
+  if (isCommunityIsolationEnabled() && (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(predictedUserId, sessionId)))) return false;
+  const scopedDb = await getScopedPrisma(voterId);
+  const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  if (!session) return false;
   try {
-    await prisma.pronostic.create({
-      data: { sessionId, voterId, predictedUserId },
+    await scopedDb.pronostic.create({
+      data: { ...withCommunity(session.communityId), sessionId, voterId, predictedUserId },
     });
     return true;
-  } catch {
+  } catch (error) {
+    if (!isUniqueConstraintViolation(error)) throw error;
     // Contrainte unique : déjà pronostiqué pour cette soirée, on ignore.
     return false;
   }
@@ -58,14 +66,18 @@ export async function resolvePronostics(
   sessionId: string,
   carryMvpWinnerIds: Set<string>
 ): Promise<void> {
-  const pronostics = await prisma.pronostic.findMany({
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  if (!session) return;
+  const canUseLegacyWebhook = !isCommunityIsolationEnabled() || (session.communityId ?? await getDefaultCommunityId()) === await getDefaultCommunityId();
+  const pronostics = await scopedDb.pronostic.findMany({
     where: { sessionId },
     include: { voter: true, predictedUser: true },
   });
 
   for (const pronostic of pronostics) {
     const correct = carryMvpWinnerIds.has(pronostic.predictedUserId);
-    await prisma.pronostic.update({
+    await scopedDb.pronostic.update({
       where: { id: pronostic.id },
       data: { correct },
     });
@@ -92,6 +104,7 @@ export async function resolvePronostics(
     // même choix que les autres notifs "personnelles" à un seul user (cf.
     // `discord-level-up.ts`/`discord-badge-unlocked.ts` pour le pendant
     // MessageTemplate, ici volontairement plus léger).
+    if (!canUseLegacyWebhook) continue;
     const result = await postToDiscord({
       title: "🔮 Pronostic correct !",
       description: `<@${pronostic.voter.discordId}> avait prédit juste — +${XP_AMOUNTS.PRONOSTIC_CORRECT} XP`,
