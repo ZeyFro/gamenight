@@ -45,5 +45,15 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 15 | **Test : les nouvelles migrations Prisma sont additives** (pas de DROP/TRUNCATE/DELETE/changement de type) | Audit du code : les migrations partent en prod au build Vercel | XS | nul (test seul) | élevée | PR Draft |
 | 16 | **Test : chaque `page.tsx` exporte un titre (`pageMetadata`)** | UX, suite de #156 | XS | nul (test seul) | faible-moyenne | À faire |
 | 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
-| 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
+| 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | PR Draft (#176) |
 | 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | À faire |
+
+## Cinquième série (générée le 2026-10-05 : #8 à #10 déjà sur `main`, #13 écartée)
+
+| # | Idée | Source | Taille | Risque | Valeur | Statut |
+| - | ---- | ------ | ------ | ------ | ------ | ------ |
+| 20 | **Test : toute route cron/backfill utilisant `after()` déclare `maxDuration`** | Audit du code : sinon coupure plateforme (`début` sans `fin`) | XS | nul (test seul) | moyenne | PR Draft |
+| 21 | **Test : aucun `.only` / `describe.only` oublié dans les tests** | Audit du code | XS | nul (test seul) | faible-moyenne | À faire |
+| 22 | **Test : aucune URL de base hébergée (Neon) en dur dans `src`** | Règles du dépôt : jamais la base Neon en test ni en local | XS | nul (test seul) | faible | À faire |
+| 23 | **Test : chaque drapeau `*_ENABLED` de `.env.example` est éteint** | Règle « tous OFF par défaut » (vérifier le doublon avec #177) | XS | nul (test seul) | moyenne | À faire |
+| 24 | **Test : les méthodes (GET/POST) des routes cron sont citées dans le README** | Audit du code : le tableau README dérive | S | nul (test seul) | faible | À faire |
