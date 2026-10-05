@@ -47,3 +47,8 @@ Plafond de 20 PR Draft ouvertes : les idées 1 à 3 ont été réalisées d'embl
 | 17 | **Test : pas de `console.log` oublié dans `src` hors scripts** | Audit du code | XS | nul (test seul) | faible | À faire |
 | 18 | **Guide : section « Jouer maintenant » et tournois à jour** | UX : `/guide` dérive des nouveautés | S | faible (texte) | moyenne | À faire |
 | 19 | **Test : toute variable `NEXT_PUBLIC_*` utilisée est documentée dans `.env.example`** | Audit du code | XS | nul (test seul) | faible | Écartée : déjà couverte par `env-example.test.ts` (aucune `NEXT_PUBLIC_*` dans `src`) |
+| 20 | **Test : `.env.example` sans secret ni drapeau allumé** | Audit du code (sécurité) : fichier versionné | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #177) |
+| 21 | **Test : toute route cron/backfill utilisant `after()` déclare `maxDuration`** | Audit du code : sinon coupure plateforme (`début` sans `fin`) | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #178) |
+| 22 | **Test : aucun `.only` oublié dans les tests** | Audit du code | XS | nul (test seul) | faible-moyenne | PR Draft de regroupement (remplace #179) |
+| 23 | **Test : aucune base hébergée (Neon) en dur dans `src`** | Audit du code (sécurité) : règle « jamais Neon » | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #180) |
+| 24 | **Test : aucun fichier `"use client"` n'importe Prisma, `@/auth` ou `node:*`** (les `import type` restent permis) | Audit du code : fuite serveur dans le bundle navigateur, invisible de tsc/lint | XS | nul (test seul) | moyenne | PR Draft de regroupement (remplace #181) |
