@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { Card } from "@/components/ui/Card";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
 
 export const metadata = pageMetadata("Guide");
 
-const SECTIONS: { icon: string; title: string; lines: string[] }[] = [
+const SECTIONS: GuideSection[] = [
   {
     icon: "📅",
     title: "Calendrier",
@@ -86,7 +87,7 @@ export default async function GuidePage() {
       </div>
 
       <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {SECTIONS.map((section) => (
+        {guideSections(SECTIONS).map((section) => (
           <StaggerItem key={section.title}>
             <Card className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
