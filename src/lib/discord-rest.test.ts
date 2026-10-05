@@ -5,6 +5,7 @@ import {
   deleteChannelMessage,
   deleteThreadPermanently,
   editChannelMessage,
+  listGuildChannels,
   NO_MENTIONS,
   openDmChannel,
   sendChannelMessage,
@@ -679,6 +680,38 @@ describe("discord-rest", () => {
       const [url, init] = fetchMock.mock.calls[0];
       expect(String(url)).toBe("https://discord.com/api/v10/channels/thread-1/thread-members/user-1");
       expect(init.method).toBe("PUT");
+    });
+  });
+
+  describe("listGuildChannels", () => {
+    it("ne garde que les salons texte/annonces, triés par position, via un GET en lecture seule", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          { id: "3", name: "vocal", type: 2, position: 0 },
+          { id: "2", name: "tournois", type: 0, position: 2 },
+          { id: "1", name: "soirees", type: 5, position: 1 },
+          { id: "4", name: "categorie", type: 4, position: 3 },
+        ])
+      );
+      const result = await listGuildChannels({ guildId: "333", deadline: FAR_FUTURE, now: NOW });
+      expect(result).toEqual({
+        ok: true,
+        data: {
+          channels: [
+            { id: "1", name: "soirees", type: 5 },
+            { id: "2", name: "tournois", type: 0 },
+          ],
+        },
+      });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe("https://discord.com/api/v10/guilds/333/channels");
+      expect(init.method).toBe("GET");
+    });
+
+    it("réponse hors format : échec explicite, jamais une liste vide présentée comme un succès", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { not: "an array" }));
+      const result = await listGuildChannels({ guildId: "333", deadline: FAR_FUTURE, now: NOW });
+      expect(result.ok).toBe(false);
     });
   });
 });

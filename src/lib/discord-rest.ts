@@ -610,6 +610,44 @@ export async function listBotGuilds(input: ListBotGuildsInput): Promise<DiscordR
  * annonce+fil de ce chantier. */
 export const THREAD_CAPABLE_CHANNEL_TYPES: ReadonlySet<number> = new Set([0, 5]);
 
+const guildChannelsResponseSchema = z.array(
+  z.object({ id: z.string(), name: z.string(), type: z.number(), position: z.number().optional() })
+);
+
+export interface GuildChannel {
+  id: string;
+  name: string;
+  type: number;
+}
+
+export interface ListGuildChannelsInput {
+  guildId: string;
+  deadline: Date;
+  now?: Date;
+}
+
+/** `GET /guilds/{id}/channels` — lecture seule : salons du serveur compatibles avec le parcours annonce+fil
+ * (`THREAD_CAPABLE_CHANNEL_TYPES`), triés par position. Sert à proposer un choix à l'écran d'administration. */
+export async function listGuildChannels(
+  input: ListGuildChannelsInput
+): Promise<DiscordRestResult<{ channels: GuildChannel[] }>> {
+  return discordRequest({
+    method: "GET",
+    path: `/guilds/${input.guildId}/channels`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = guildChannelsResponseSchema.safeParse(json);
+      if (!result.success) return null;
+      const channels = result.data
+        .filter((c) => THREAD_CAPABLE_CHANNEL_TYPES.has(c.type))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((c) => ({ id: c.id, name: c.name, type: c.type }));
+      return { channels };
+    },
+  });
+}
+
 /** Type de salon Discord `GUILD_PRIVATE_THREAD` — voir `verifyThreadIsPrivate`. */
 export const PRIVATE_THREAD_TYPE = 12;
 

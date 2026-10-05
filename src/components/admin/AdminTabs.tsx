@@ -7,7 +7,8 @@ export type AdminTabKey =
   | "jeux-stats"
   | "reglages"
   | "confidentialite"
-  | "nettoyage";
+  | "nettoyage"
+  | "communautes";
 
 export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "messages",
@@ -38,10 +39,11 @@ const TABS: { key: AdminTabKey; label: string }[] = [
  * pathname — permet aux anciennes URLs de rediriger proprement vers
  * `/admin?tab=X` sans avoir à recréer une arborescence de routes.
  */
-export function AdminTabs({ active }: { active: AdminTabKey }) {
+/** `showCommunities` : drapeau COMMUNITY_ADMIN_ENABLED (onglet « Communautés » masqué sinon). */
+export function AdminTabs({ active, showCommunities = false }: { active: AdminTabKey; showCommunities?: boolean }) {
   return (
     <div className="flex gap-4 overflow-x-auto border-b border-border">
-      {TABS.map((tab) => (
+      {TABS.filter((tab) => showCommunities || tab.key !== "communautes").map((tab) => (
         <TabLink
           key={tab.key}
           href={`/admin?tab=${tab.key}`}

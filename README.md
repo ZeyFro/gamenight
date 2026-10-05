@@ -2472,7 +2472,7 @@ le client scopé n’existe pas) :
 | `src/lib/community-channels.ts` | Résolution de la destination (serveur + salon) d'une communauté, fail-closed : communauté non `ACTIVE` ou introuvable = rien ; salon `enabled=false` = rien ; sans salon configuré, repli sur l'environnement **uniquement pour `default`**, jamais pour une autre communauté (une annonce ne part jamais dans le salon d'une autre). Le serveur est `Community.discordGuildId`, vérifié avec le salon avant tout envoi (`verifyChannelDestination`, inchangé). |
 | `pickCreationCommunityId` | Communauté d'une nouvelle soirée/tournoi : la seule communauté ACTIVE du créateur ; s'il en a plusieurs, `default` si elle en fait partie, sinon la plus ancienne. Provisoire : l'écran de choix explicite du serveur (PR5) le remplacera. |
 
-Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. **Aucune interface d'administration** n'écrit encore `CommunityChannelConfig` : les lignes se posent en base tant que l'écran d'activation n'existe pas (le salon doit appartenir au serveur de la communauté, vérifié à l'envoi).
+Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. Les lignes de `CommunityChannelConfig` s'écrivent depuis l'onglet « Communautés » de `/admin` (voir « Administration des communautés », drapeau `COMMUNITY_ADMIN_ENABLED`) ; le salon doit appartenir au serveur de la communauté, vérifié à l'enregistrement et à l'envoi.
 
 ### Isolation des données par communauté (PR4)
 
@@ -2510,6 +2510,20 @@ Allumé, un utilisateur membre de **plusieurs** serveurs choisit celui que GameN
 **Le choix n'est jamais une autorisation.** `User.activeCommunityId` (colonne nullable, sans clé étrangère, migration additive `20261005100000_add_user_active_community`) n'est qu'une préférence d'affichage : elle est relue et revalidée contre les `Membership` ACTIFS (communauté ACTIVE) à **chaque** usage, donc un départ, un retrait ou une suspension la rend caduque à la requête suivante ; l'enregistrer exige le même contrôle (`selectCommunityAction`) ; l'accès reste décidé par `requireMembership` (`community-access.ts`). `resolveActiveCommunityId` suit le choix valide quand le drapeau est allumé (classement par défaut, invités et mentions de la création) ; sans choix valide, la règle provisoire de la PR4 s'applique.
 
 Code : `src/lib/community-picker.ts` (drapeau, état, porte `requireCommunityChosen`, `safeNextPath`), `src/app/serveurs/` (page + action). Le drapeau est indépendant de `COMMUNITY_ISOLATION_ENABLED` : la porte impose le choix, c'est l'isolation qui filtre les données. **Appliquer la migration avant d'allumer.**
+
+### Administration des communautés
+
+Éteinte par défaut : `COMMUNITY_ADMIN_ENABLED` doit valoir exactement `true`. Éteinte, l’onglet n’apparaît pas dans `/admin` (`?tab=communautes` retombe sur « Messages »), les actions redirigent sans rien écrire et aucune lecture n’a lieu. **Aucune variable existante, migration ni logique de connexion n’est modifiée** : `Community.activatedAt` / `activatedById` et `CommunityChannelConfig` existaient déjà.
+
+Onglet **Communautés** du hub `/admin`, réservé aux admins (`requireAdmin` : `ADMIN_DISCORD_IDS` ou `User.role = ADMIN`, comme le reste de `/admin`) :
+
+| Action | Règle |
+| :-- | :-- |
+| Liste | Toutes les communautés : statut, serveur Discord, membres ACTIFS, salons configurés. |
+| Activer | `PENDING` → `ACTIVE` uniquement (jamais depuis `SUSPENDED`, `LEFT`, `ARCHIVED`), serveur Discord requis ; `activatedAt` / `activatedById` renseignés ; `updateMany` filtré sur `PENDING` (deux clics simultanés n’écrasent rien). |
+| Salons SESSION / TOURNAMENT | Communautés `PENDING` ou `ACTIVE` seulement. Le choix se fait dans la liste des salons texte du serveur (`GET /guilds/{id}/channels`), puis le salon est **revérifié côté serveur** (`verifyChannelDestination` : il appartient au serveur de la communauté et accepte les fils) avant l’`upsert` de `CommunityChannelConfig` (`enabled = true`). Discord injoignable ou salon étranger : rien n’est écrit. Aucun message n’est envoyé. |
+
+Limites : pas de retrait ni de désactivation d’un salon depuis l’écran (une ligne se remplace), pas de suspension ni d’archivage. Sans `COMMUNITY_CHANNELS_ENABLED`, les salons enregistrés ne sont pas lus à l’envoi. Code : `src/lib/community-admin.ts`, `src/app/admin/communautes/actions.ts`, `src/components/admin/CommunitiesTab.tsx`, `listGuildChannels` dans `src/lib/discord-rest.ts`.
 
 ## Structure du projet
 
