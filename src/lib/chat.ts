@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma, getScopedPrisma } from "@/lib/community-scoped-client";
 
 /**
  * Sprint 5 (FEATURE 2, Chat in-app) — POLLING, pas de websockets (Vercel
@@ -24,9 +24,14 @@ export interface ChatMessageDTO {
  * triés du plus ancien au plus récent pour un affichage direct — jamais
  * supprimés en base, juste plus chargés au-delà de cette limite (cf.
  * commentaire sur `ChatMessage`, prisma/schema.prisma).
+ *
+ * Multi-communautés (PR8) : le canal global ne montre que la communauté ACTIVE
+ * de `viewerId` ; un canal de soirée (accès déjà contrôlé par l'appelant) est
+ * lu dans le périmètre de toutes ses communautés, la soirée portant la sienne.
  */
-export async function getChatMessages(sessionId: string | null): Promise<ChatMessageDTO[]> {
-  const messages = await prisma.chatMessage.findMany({
+export async function getChatMessages(sessionId: string | null, viewerId: string): Promise<ChatMessageDTO[]> {
+  const scopedDb = sessionId ? await getScopedPrisma(viewerId) : await getActiveScopedPrisma(viewerId);
+  const messages = await scopedDb.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "desc" },
     take: CHAT_MAX_MESSAGES,

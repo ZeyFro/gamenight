@@ -294,7 +294,7 @@ export default async function SessionDetailPage({
     session.date >= weeklyChallenge.weekStart;
 
   // Sprint 5 (Chat in-app) — canal dédié à cette soirée.
-  const chatMessages = await getChatMessages(session.id);
+  const chatMessages = await getChatMessages(session.id, user.id);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">

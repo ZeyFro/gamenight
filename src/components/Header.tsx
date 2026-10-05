@@ -35,7 +35,7 @@ export async function Header() {
     const [count, recent, chatMessages] = await Promise.all([
       getUnreadNotificationCount(user.id),
       listRecentNotifications(user.id, 20),
-      getChatMessages(null),
+      getChatMessages(null, user.id),
     ]);
     unreadCount = count;
     notifications = await groupNotifications(recent);

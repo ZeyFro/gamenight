@@ -46,8 +46,8 @@ export async function loadHomeData(user: User) {
     getRecentGameNews(),
     getCurrentWeeklyChallenge(),
     listGroupAchievements(),
-    getActiveDebts(),
-    getActiveDebtorIds(),
+    getActiveDebts(user.id),
+    getActiveDebtorIds(user.id),
   ]);
 
   const wallNow = wallClockNow();

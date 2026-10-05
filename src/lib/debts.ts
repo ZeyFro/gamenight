@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma, getScopedPrisma, scopedPrismaForCommunity, withCommunity } from "@/lib/community-scoped-client";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { createNotifications } from "@/lib/notifications";
 import type { Debt } from "@prisma/client";
@@ -15,18 +15,24 @@ import type { Debt } from "@prisma/client";
  * cette fonction une seule fois par session (même garde
  * `alreadySubmitted` que pour `SessionResult`), donc pas de risque de
  * double dette pour la même absence.
+ *
+ * Multi-communautés (PR8) : une dette hérite de la communauté de sa soirée
+ * (`sessionCommunityId`, `null` = communauté par défaut), quel que soit
+ * l'état d'appartenance du créateur au moment de la saisie.
  */
 export async function detectDebts(
   sessionId: string,
   absentUserIds: string[],
   gameName: string,
-  sessionDate: Date
+  sessionDate: Date,
+  sessionCommunityId: string | null
 ): Promise<void> {
   if (absentUserIds.length === 0) return;
 
   const reason = `A voté pour ${gameName} (soirée du ${formatDateTimeFr(sessionDate)}) mais n'est pas venu.`;
-  await prisma.debt.createMany({
-    data: absentUserIds.map((debtorId) => ({ debtorId, sessionId, reason })),
+  const scopedDb = scopedPrismaForCommunity(sessionCommunityId);
+  await scopedDb.debt.createMany({
+    data: absentUserIds.map((debtorId) => ({ debtorId, sessionId, reason, ...withCommunity(sessionCommunityId) })),
   });
 
   // Notification in-app (Amélioration des features existantes, PR-B, item
@@ -48,9 +54,13 @@ export interface ActiveDebt extends Debt {
   session: { date: Date; createdById: string; decidedGame: { name: string } | null };
 }
 
-/** "Dettes du groupe" sur la Home — dettes non soldées (`paidAt` nul), les plus récentes d'abord. */
-export async function getActiveDebts(): Promise<ActiveDebt[]> {
-  return prisma.debt.findMany({
+/**
+ * "Dettes du groupe" sur la Home — dettes non soldées (`paidAt` nul), les plus
+ * récentes d'abord. Multi-communautés (PR8) : celles de la communauté active de `viewerId`.
+ */
+export async function getActiveDebts(viewerId: string): Promise<ActiveDebt[]> {
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  return scopedDb.debt.findMany({
     where: { paidAt: null },
     orderBy: { createdAt: "desc" },
     include: {
@@ -60,9 +70,13 @@ export async function getActiveDebts(): Promise<ActiveDebt[]> {
   });
 }
 
-/** Ids des débiteurs actifs — badge "💀" sur le pseudo (Home, /potes). */
-export async function getActiveDebtorIds(): Promise<Set<string>> {
-  const debts = await prisma.debt.findMany({
+/**
+ * Ids des débiteurs actifs — badge "💀" sur le pseudo (Home, /potes). Périmètre :
+ * toutes les communautés de `viewerId` (le badge suit la personne, pas un serveur).
+ */
+export async function getActiveDebtorIds(viewerId: string): Promise<Set<string>> {
+  const scopedDb = await getScopedPrisma(viewerId);
+  const debts = await scopedDb.debt.findMany({
     where: { paidAt: null },
     select: { debtorId: true },
     distinct: ["debtorId"],
