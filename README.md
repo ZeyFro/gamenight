@@ -2055,8 +2055,7 @@ l'authentification est validée, sans attendre la fin du backfill — via
 (Next.js) : le code de backfill continue de s'exécuter après l'envoi de
 la réponse, donc l'appelant (cron externe ou `curl` manuel) n'attend
 jamais 14 minutes. `export const maxDuration = 60` sur les deux routes —
-le plafond du plan Vercel Hobby (même contrainte que le cron F7, voir
-plus haut) ; les deux backfills s'arrêtent volontairement avant cette
+un choix de route, pas le plafond Hobby (300 s avec Fluid compute) ; les deux backfills s'arrêtent volontairement avant cette
 échéance (`TIME_BUDGET_MS`, marge de sécurité) plutôt que de risquer une
 coupure brutale par la plateforme en plein appel réseau/écriture.
 
@@ -11271,7 +11270,7 @@ elles-mêmes reste à faire dans un chantier séparé.
 volets ci-dessus en un seul passage **borné** :
 - lots de taille fixe (`RETENTION_BATCH_SIZE = 50`) par volet ;
 - budget de temps mur (`RETENTION_MAX_BATCH_DURATION_MS = 45s`, sous le
-  plafond Vercel Hobby) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
+  `maxDuration` de 60 s de la route) — s'arrête proprement (`stoppedReason: "budget_exhausted"`)
   sans jamais planter ;
 - **reprenable sans curseur persisté** : chaque volet interroge "que
   reste-t-il à faire MAINTENANT" (ex. sessions DONE/CANCELLED encore
