@@ -188,7 +188,11 @@ npx next build
 Les scripts de validation exigent `127.0.0.1`. Le runner de mutations exige aussi
 l'absence de secrets Discord ; les tests ciblés mockent le réseau. Ses tests
 hors cible exclus par `-t` sont enregistrés comme non exécutés, jamais comme
-réussis. `npm run build` n'est pas utilisé : il déploierait les migrations.
+réussis : 1434 occurrences d'exclusion sur les 58 runs, pas 1434 tests distincts.
+Le compteur accepte les statuts Vitest `skipped` et `pending` ; une répétition
+du mutant `profile-season` confirme 1 échec attendu et 9 tests hors cible.
+La suite complète finale n'a aucun test ignoré. `npm run build` n'est pas utilisé :
+il déploierait les migrations.
 
 Les derniers journaux locaux sont conservés dans `%TEMP%` :
 `gamenight-prb-baseline-locked.log`, `gamenight-prb-postgres-delivery.log`,

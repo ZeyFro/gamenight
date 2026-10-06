@@ -107,7 +107,7 @@ for (const item of cases.filter((item) => !filter || new RegExp(filter).test(ite
     // Une assertion échouée ou une erreur métier inattendue tue le mutant.
     // Les erreurs de compilation/import, sans test exécuté, ne le tuent pas.
     const status = result.status !== 0 && failures.length > 0 ? "KILLED" : "SURVIVED";
-    report.push({ name: item.name, status, failures: failures.map((result) => result.fullName), skipped: assertions.filter((result) => result.status === "pending").length });
+    report.push({ name: item.name, status, failures: failures.map((result) => result.fullName), skipped: assertions.filter((result) => result.status === "pending" || result.status === "skipped").length });
     console.log(`${item.name}: ${status}`);
   } catch (error) {
     report.push({ name: item.name, status: "ERROR", error: String(error) }); console.log(`${item.name}: ERROR ${error}`);
