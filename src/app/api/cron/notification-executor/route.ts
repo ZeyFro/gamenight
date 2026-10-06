@@ -7,6 +7,7 @@ import { sessionAnnounceResolver } from "@/lib/session-announce";
 import { tournamentAnnounceResolver } from "@/lib/tournament-announce";
 import { instantSessionInviteResolver } from "@/lib/instant-session-announce";
 import { rouletteDmResolver } from "@/lib/roulette-dm";
+import { communitySystemAnnounceResolver } from "@/lib/community-announce";
 
 /**
  * Dispatche par catégorie d'événement — SESSION vers le résolveur du
@@ -28,6 +29,7 @@ const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "TOURNAMENT") return tournamentAnnounceResolver.resolve(input);
     if (input.event.category === "INSTANT_SESSION") return instantSessionInviteResolver.resolve(input);
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
+    if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
   },
   // MP des soirées (V2) — sans ce relais, la mention de secours d'un MP

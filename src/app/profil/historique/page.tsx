@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -47,19 +48,21 @@ interface HistoryRow {
 export default async function ProfilHistoriquePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const communityId = await writeCommunityIdForUser(user.id);
 
-  const participations = await prisma.xpEvent.findMany({
-    where: { userId: user.id, reason: "PARTICIPATE" },
+  const participations = await scopedDb.xpEvent.findMany({
+    where: { userId: user.id, communityId: { in: communityId ? [communityId] : [] }, reason: "PARTICIPATE" },
     orderBy: { createdAt: "desc" },
   });
   const sessionIds = participations.map((p) => p.sourceId);
 
   const [sessions, results] = await Promise.all([
-    prisma.session.findMany({
+    scopedDb.session.findMany({
       where: { id: { in: sessionIds } },
       include: { decidedGame: true },
     }),
-    prisma.sessionResult.findMany({
+    scopedDb.sessionResult.findMany({
       where: { sessionId: { in: sessionIds }, userId: user.id },
     }),
   ]);

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { enqueueSessionThreadDelete } from "@/lib/session-announce";
 import { enqueueTournamentAnnounceDelete, enqueueTournamentThreadDelete } from "@/lib/tournament-announce";
+import { listFailedDiscordCleanupDeliveries } from "@/lib/discord-cleanup-status";
 
 /**
  * Réessai manuel d'un nettoyage Discord définitif resté en échec terminal
@@ -22,10 +23,10 @@ export async function retryDiscordCleanupAction(formData: FormData) {
   if (!admin) return;
   if (!checkRateLimit(admin.id, "retryDiscordCleanup")) return;
 
-  const category = String(formData.get("category") ?? "");
-  const sourceId = String(formData.get("sourceId") ?? "");
-  const role = String(formData.get("role") ?? "");
-  if (!sourceId) return;
+  const deliveryId = String(formData.get("deliveryId") ?? "");
+  const entry = (await listFailedDiscordCleanupDeliveries(admin.id)).find((row) => row.deliveryId === deliveryId);
+  if (!entry) return;
+  const { category, sourceId, role } = entry;
 
   if (category === "SESSION" && role === "thread-delete") {
     await enqueueSessionThreadDelete(sourceId);

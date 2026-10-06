@@ -1,6 +1,5 @@
 import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
-import { getDefaultCommunityId } from "@/lib/default-community";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
@@ -182,13 +181,12 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   for (const award of awards) {
     const category = categories.find((c) => c.id === award.categoryId);
     if (!category) continue;
-    await awardXp(
-      award.winnerUserId,
+    await awardXp(award.winnerUserId, session.communityId,
       "SUPERLATIVE_AWARD",
       `${sessionId}:${award.categoryId}`,
       category.xpReward
     );
-    await checkSuperlativesWonBadges(award.winnerUserId);
+    await checkSuperlativesWonBadges(award.winnerUserId, session.communityId);
   }
 
   await scopedDb.session.update({
@@ -224,6 +222,7 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     awards.map((a) => {
       const category = categories.find((c) => c.id === a.categoryId);
       return {
+        communityId: session.communityId,
         userId: a.winnerUserId,
         type: "SUPERLATIVE_AWARD" as const,
         title: `${category?.icon ?? "🏆"} ${category?.name ?? "Récompense"}`,
@@ -234,7 +233,6 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   );
 
   // Le webhook global ne doit jamais révéler une récompense d’un autre serveur.
-  if (isCommunityIsolationEnabled() && (session.communityId ?? await getDefaultCommunityId()) !== await getDefaultCommunityId()) return;
   await announceSessionAwards(
     session.decidedGame.name,
     awards
@@ -250,7 +248,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
           voteCount: a.voteCount,
         };
       })
-      .filter((w) => w !== null)
+      .filter((w) => w !== null),
+    session.communityId
   );
 }
 

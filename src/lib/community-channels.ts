@@ -38,13 +38,24 @@ async function resolveAnnounceConfig(
   communityId: string | null,
   legacy: () => AnnounceConfig | null
 ): Promise<AnnounceConfig | null> {
-  if (!isCommunityChannelsEnabled()) return legacy();
+  if (!isCommunityChannelsEnabled()) {
+    // Un parent nondefault reste identifié même après extinction des flags.
+    if (communityId) {
+      const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true, status: true } });
+      return community?.slug === DEFAULT_COMMUNITY_SLUG && community.status === "ACTIVE" ? legacy() : null;
+    }
+    if (isCommunityIsolationEnabled()) {
+      const community = await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG }, select: { status: true } });
+      if (community?.status !== "ACTIVE") return null;
+    }
+    return legacy();
+  }
 
   const include = { channelConfigs: { where: { category } } };
   const community = communityId
     ? await prisma.community.findUnique({ where: { id: communityId }, include })
     : await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG }, include });
-  if (!community) return communityId ? null : legacy();
+  if (!community) return communityId || isCommunityIsolationEnabled() ? null : legacy();
   if (community.status !== "ACTIVE") return null;
 
   const isDefault = community.slug === DEFAULT_COMMUNITY_SLUG;

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import {
   communityIdFilter,
@@ -43,6 +44,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
+  "CommunityMemberStats", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent",
 ]);
 
 /**
@@ -53,6 +55,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
   "WeeklyChallenge", "MonthlyRecap", "Season",
+  "CommunityMemberStats", "XpEvent", "LevelUpEvent", "UserBadge",
 ]);
 
 export class CommunityScopeError extends Error {
@@ -133,6 +136,25 @@ export function scopedPrisma(scope: IsolationScope | null) {
 }
 
 export type ScopedPrisma = ReturnType<typeof scopedPrisma>;
+
+/** Transactions Prisma : appliquer les mêmes règles sans `$extends`, absent du TransactionClient. */
+export function scopedTransactionPrisma(tx: Prisma.TransactionClient, scope: IsolationScope | null): Prisma.TransactionClient {
+  return new Proxy(tx, {
+    get(client, key, receiver) {
+      const delegate = Reflect.get(client, key, receiver);
+      if (typeof key !== "string") return delegate;
+      const model = key.charAt(0).toUpperCase() + key.slice(1);
+      if (!COMMUNITY_SCOPED_MODELS.has(model)) return delegate;
+      return new Proxy(delegate, {
+        get(target, operation) {
+          const method = Reflect.get(target, operation);
+          if (typeof method !== "function" || typeof operation !== "string") return method;
+          return (args: Args) => method.call(target, scopeQueryArgs(model, operation, args, scope));
+        },
+      });
+    },
+  });
+}
 
 /** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT) ; aucune lecture isolation éteinte. */
 export async function getScopedPrisma(userId: string): Promise<ScopedPrisma> {

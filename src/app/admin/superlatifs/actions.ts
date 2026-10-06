@@ -89,12 +89,7 @@ export async function deleteSuperlativeCategory(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  // Cascade automatique via le schéma (onDelete: Cascade sur
-  // SuperlativeVote/SuperlativeAward.category) : les votes et awards déjà
-  // enregistrés pour cette catégorie disparaissent avec elle. Comme pour
-  // `deleteGameStatType`, pas de garde-fou supplémentaire — désactiver
-  // (`toggleSuperlativeCategoryActive`) est l'option non destructive si on
-  // veut garder l'historique.
-  await prisma.superlativeCategory.delete({ where: { id } });
+  // Catalogue partagé : archiver préserve votes et récompenses historiques de tous les serveurs.
+  await prisma.superlativeCategory.update({ where: { id }, data: { active: false, modifiedById: user.id } });
   revalidatePath("/admin/superlatifs");
 }

@@ -1,3 +1,4 @@
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getValidSession } from "@/lib/valid-session";
@@ -76,8 +77,9 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 
-  if (isFirstLink) {
-    await awardXp(user.id, "STEAM_LINK_FIRST", user.id, XP_AMOUNTS.STEAM_LINK_FIRST);
+  const progressCommunityId = await writeCommunityIdForUser(user.id);
+  if (isFirstLink && progressCommunityId !== null) {
+    await awardXp(user.id, progressCommunityId, "STEAM_LINK_FIRST", user.id, XP_AMOUNTS.STEAM_LINK_FIRST);
   }
 
   // Même logique : `importSteamLibrary` appelle Steam GetOwnedGames, pas

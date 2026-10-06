@@ -59,17 +59,35 @@ describe("community-channels", () => {
       expect(isCommunityChannelsEnabled()).toBe(false);
     });
 
-    it("éteint : configuration d'environnement historique, communauté ignorée, aucune lecture en base", async () => {
+    it("éteint : environnement historique seulement pour default, aucun repli d'un serveur identifié", async () => {
       vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
-      await expect(resolveSessionAnnounceConfig("c-b")).resolves.toEqual(ENV_SESSION);
-      await expect(resolveTournamentAnnounceConfig("c-b")).resolves.toEqual(ENV_TOURNAMENT);
+      await expect(resolveSessionAnnounceConfig(null)).resolves.toEqual(ENV_SESSION);
+      await expect(resolveTournamentAnnounceConfig(null)).resolves.toEqual(ENV_TOURNAMENT);
       expect(communityFindUnique).not.toHaveBeenCalled();
+      communityFindUnique.mockResolvedValue(community());
+      await expect(resolveSessionAnnounceConfig("c-b")).resolves.toBeNull();
+      await expect(resolveTournamentAnnounceConfig("c-b")).resolves.toBeNull();
+      communityFindUnique.mockResolvedValue(community({ slug: "default" }));
+      await expect(resolveSessionAnnounceConfig("c-def")).resolves.toEqual(ENV_SESSION);
+      communityFindUnique.mockResolvedValue(community({ slug: "default", status: "SUSPENDED" }));
+      await expect(resolveSessionAnnounceConfig("c-def")).resolves.toBeNull();
     });
 
     it("éteint et environnement incomplet : null (comportement historique)", async () => {
       vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
       vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "");
       await expect(resolveSessionAnnounceConfig(null)).resolves.toBeNull();
+    });
+
+    it("isolation active : default absente ou suspendue refuse tout repli historique", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      for (const enabled of ["", "true"]) {
+        vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", enabled);
+        communityFindUnique.mockResolvedValue(null);
+        await expect(resolveSessionAnnounceConfig(null)).resolves.toBeNull();
+        communityFindUnique.mockResolvedValue(community({ slug: "default", status: "SUSPENDED" }));
+        await expect(resolveTournamentAnnounceConfig(null)).resolves.toBeNull();
+      }
     });
   });
 

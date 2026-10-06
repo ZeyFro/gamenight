@@ -1,11 +1,12 @@
-import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
+import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { listCronCommunityIds } from "@/lib/community-isolation";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
 import { levelForXp, rankForLevel } from "@/lib/xp";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
+import { postToCommunity } from "@/lib/community-announce";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { logger } from "@/lib/logger";
 
@@ -118,153 +119,54 @@ export async function ensureActiveSeasonExists(communityId?: string): Promise<vo
   }
 }
 
-/**
- * Clôture la saison active si sa `endDate` est dépassée : snapshot du
- * classement (`SeasonSnapshot`, AVANT le reset — seule façon de consulter
- * "qui était où" une fois l'XP remis à zéro), reset `xpTotal` à 0 pour
- * TOUT LE MONDE (badges/achievements/streak jamais touchés — cf. spec
- * "conservés"), puis ouverture immédiate de la saison suivante (jamais de
- * trou sans saison active) — annonce Discord du champion après coup.
- *
- * Fix bug remonté (atomicité saisons, PR "Atomicité saisons + tournois")
- * — ces 4 écritures vivent maintenant dans UNE seule transaction, ouverte
- * par un claim atomique (`updateMany` conditionné sur `isActive: true`,
- * même pattern que `claimSessionClose`, `src/lib/sessions.ts`). Avant ce
- * fix : un crash entre le reset XP et la création de la nouvelle saison
- * laissait l'app SANS AUCUNE saison active — `ensureActiveSeasonExists`
- * ne savait pas réparer ce cas précis avant son propre fix ci-dessus
- * (elle retombait toujours sur `number: 1`, en conflit avec l'historique
- * réel). Un crash APRÈS les snapshots mais AVANT l'ancienne transaction
- * partielle faisait aussi replanter le cron TOUS LES JOURS sur la
- * contrainte unique `SeasonSnapshot(seasonId, userId)` en retentant un
- * `createMany` déjà à moitié appliqué. Désormais, un crash en cours de
- * transaction annule TOUT (y compris les snapshots) : un rejeu repart
- * toujours d'un état propre, plus de boucle de replantage possible.
- *
- * Le claim lui-même (`isActive: true → false`) rend une double exécution
- * concurrente du cron inoffensive : la 2e trouve `count !== 1` et
- * s'arrête sans rien lire ni recalculer.
- *
- * Fix bug remonté (perte d'XP concurrente, PR "Fiabilise la clôture des
- * saisons") — la lecture des users pour le snapshot vivait AVANT cette
- * transaction (`prisma.user.findMany`, sans verrou). Tout `awardXp()`
- * (`src/lib/xp-actions.ts`) ou `placeBet()` (`src/lib/xp-bets.ts`) qui
- * commitait entre cette lecture et le `updateMany({xpTotal:0})` plus bas
- * était absent du snapshot ET silencieusement écrasé par le reset — XP
- * perdue sans trace. Désormais, `SELECT ... FOR UPDATE` verrouille TOUTES
- * les lignes `User` dès l'intérieur de la transaction, juste après le
- * claim : tout writer concurrent visant ces lignes (`awardXp`, `placeBet`)
- * attend le commit de CETTE transaction avant d'écrire, et s'applique
- * ensuite proprement sur le solde déjà remis à 0 (attribué à la saison
- * suivante — jamais perdu). Voir `placeBet` (`src/lib/xp-bets.ts`) pour la
- * revérification symétrique côté paris (empêche un solde négatif dans le
- * sens inverse).
- *
- * Limite résiduelle documentée, volontairement non traitée dans cette PR
- * ciblée : un compte Discord créé PENDANT cette transaction (entre le
- * `SELECT ... FOR UPDATE` ci-dessous et le `updateMany` du reset) n'est
- * verrouillé par aucun des deux, puisqu'il n'existait pas encore au moment
- * du `SELECT`. Si ce nouveau user gagne de l'XP dans cette fenêtre précise
- * (ex. badge "premstate connexion" avec `xpReward`, débloqué dès son tout
- * premier `getCurrentUser()` via `checkTemporalBadges` — vérifié dans
- * `src/lib/badges.ts`), cette XP pourrait être perdue par le même
- * mécanisme que le bug corrigé ci-dessus, mais pour une ligne que notre
- * verrou n'a jamais vue. Fenêtre extrêmement étroite (nouvelle inscription
- * ET gain d'XP simultanés, pile pendant l'exécution — quelques dizaines de
- * ms — d'un cron mensuel), jugée négligeable pour la taille de ce groupe,
- * mais réelle : une correction complète nécessiterait de verrouiller la
- * table entière contre les INSERT concurrents (`LOCK TABLE`), hors
- * périmètre de cette PR.
- *
- * Appelée depuis le cron `monthly-tasks` (quotidien) — pas de
- * vérification "déjà traité aujourd'hui" nécessaire : une fois `endDate`
- * dépassée, la saison est immédiatement remplacée par une nouvelle dont
- * `endDate` est dans le futur, donc un second appel le même jour ne
- * retrouve plus rien à clôturer (idempotent par construction, pas besoin
- * d'un flag dédié).
- */
+/** Snapshot, remise à zéro et saison suivante partagent la transaction et le verrou de communauté. */
 export async function finalizeSeasonIfDue(): Promise<void> {
-  // PR B fournira les soldes par communauté. Aucun reset global sous isolation :
-  // un membre de A+B ne doit jamais perdre son XP de B lors de la clôture de A.
-  if (isCommunityIsolationEnabled()) {
-    logger.warn("seasons", "Clôture suspendue sous isolation en attendant les soldes XP par communauté (PR B).");
-    return;
-  }
-  const season = await getActiveSeason();
-  if (!season) return; // Bootstrapée par ensureActiveSeasonExists (ci-dessus) ou seedInitialSeason (src/lib/seed-season.ts).
-  if (wallClockNow() < season.endDate) return;
+  for (const communityId of await listCronCommunityIds()) await finalizeCommunitySeasonIfDue(communityId);
+}
 
+async function finalizeCommunitySeasonIfDue(communityId: string): Promise<void> {
+  const season = await getActiveSeason(communityId);
+  if (!season || wallClockNow() < season.endDate) return;
   const now = wallClockNow();
-  const nextNumber = season.number + 1;
-
-  type FinalizeOutcome =
-    | { claimed: false }
-    | { claimed: true; champion: { discordId: string; discordName: string; xpTotal: number } };
-
-  let outcome: FinalizeOutcome;
-  try {
-    outcome = await prisma.$transaction(async (tx): Promise<FinalizeOutcome> => {
-      const claim = await tx.season.updateMany({
-        where: { id: season.id, isActive: true },
-        data: { isActive: false },
-      });
-      if (claim.count !== 1) return { claimed: false }; // déjà clôturée par une exécution concurrente
-
-      const lockedUsers = await tx.$queryRaw<
-        { id: string; discordId: string; discordName: string; xpTotal: number }[]
-      >`SELECT id, "discordId", "discordName", "xpTotal" FROM "User" FOR UPDATE`;
-
-      if (lockedUsers.length === 0) {
-        // Comportement identique à avant ce fix : rien à clôturer tant
-        // qu'il n'y a aucun user — annule TOUT y compris le claim
-        // ci-dessus (la saison reste active, le cron réessaiera demain).
-        throw new NoUsersToCloseSeasonError();
-      }
-
-      const ranked = rankUsersByXp(lockedUsers);
-      const snapshotRows = ranked.map((u) => {
-        const level = levelForXp(u.xpTotal);
-        return {
-          seasonId: season.id,
-          userId: u.id,
-          xp: u.xpTotal,
-          level,
-          rank: rankForLevel(level).name,
-          position: u.position,
-        };
-      });
-      const champion = ranked[0];
-
-      await tx.seasonSnapshot.createMany({ data: snapshotRows });
-      await tx.user.updateMany({ data: { xpTotal: 0 } });
-      await tx.season.create({
-        data: {
-          communityId: season.communityId,
-          number: nextNumber,
-          name: `Saison ${nextNumber}`,
-          startDate: now,
-          endDate: endOfMonthUTC(now),
-          isActive: true,
-        },
-      });
-
-      return { claimed: true, champion };
+  const outcome = await prisma.$transaction(async (tx) => {
+    // Tous les writers de progression prennent FOR SHARE sur la communauté.
+    // FOR UPDATE couvre aussi un membre dont la ligne stats n'existe pas encore.
+    const communities = await tx.$queryRaw<{ status: string }[]>`
+      SELECT status FROM "Community" WHERE id = ${communityId} FOR UPDATE
+    `;
+    if (communities[0]?.status !== "ACTIVE") return null;
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const claim = await scopedDb.season.updateMany({ where: { id: season.id, isActive: true }, data: { isActive: false } });
+    if (claim.count !== 1) return null;
+    const progress = await scopedDb.communityMemberStats.findMany({
+      where: { communityId }, include: { user: { select: { id: true, discordId: true, discordName: true,
+        memberships: { where: { communityId, status: "ACTIVE" }, select: { userId: true } },
+      } } },
     });
-  } catch (error) {
-    if (error instanceof NoUsersToCloseSeasonError) return;
+    if (progress.length === 0) throw new NoUsersToCloseSeasonError();
+    const ranked = rankUsersByXp(progress.map((p) => ({ ...p.user, xpTotal: p.xpTotal })));
+    await scopedDb.seasonSnapshot.createMany({ data: ranked.map((u) => ({
+      seasonId: season.id, userId: u.id, xp: u.xpTotal,
+      level: levelForXp(u.xpTotal), rank: rankForLevel(levelForXp(u.xpTotal)).name, position: u.position,
+    })) });
+    await scopedDb.communityMemberStats.updateMany({ where: { communityId }, data: { xpTotal: 0 } });
+    await scopedDb.season.create({ data: {
+      communityId, number: season.number + 1, name: `Saison ${season.number + 1}`,
+      startDate: now, endDate: endOfMonthUTC(now), isActive: true,
+    } });
+    // Le snapshot conserve l'historique des départs. Seul un membre encore actif est annoncé.
+    return ranked.find((u) => u.memberships.length > 0) ?? null;
+  }).catch((error: unknown) => {
+    if (error instanceof NoUsersToCloseSeasonError) return null;
     throw error;
-  }
-
-  if (!outcome.claimed) return;
-
-  const result = await postToDiscord({
+  });
+  if (!outcome) return;
+  const result = await postToCommunity(communityId, {
     title: `🏆 ${season.name} terminée !`,
-    description: `Champion : <@${outcome.champion.discordId}> avec ${outcome.champion.xpTotal} XP !\nL'XP de tout le monde repart à 0 — nouvelle saison lancée.`,
+    description: `Champion : <@${outcome.discordId}> avec ${outcome.xpTotal} XP !\nL'XP du serveur repart à 0 — nouvelle saison lancée.`,
     color: ACCENT_COLOR,
   });
-  if (!result.ok) {
-    logger.warn("seasons", "Notif Discord fin de saison non envoyée.", { seasonId: season.id });
-  }
+  if (!result.ok) logger.warn("seasons", "Notif Discord fin de saison non envoyée.", { seasonId: season.id });
 }
 
 /** Home — "Saison X — Jour Y/30" avec barre de progression. `null` si aucune saison active (ne devrait pas arriver post-bootstrap). */

@@ -58,8 +58,8 @@ export default async function AdminPage({
       {tab === "badges" && <BadgesTab />}
       {tab === "jeux-stats" && <JeuxStatsTab />}
       {tab === "reglages" && <ReglagesTab />}
-      {tab === "confidentialite" && <ConfidentialiteTab />}
-      {tab === "nettoyage" && <NettoyageTab />}
+      {tab === "confidentialite" && <ConfidentialiteTab userId={user.id} />}
+      {tab === "nettoyage" && <NettoyageTab userId={user.id} />}
       {tab === "communautes" && <CommunitiesTab result={r} />}
     </div>
   );

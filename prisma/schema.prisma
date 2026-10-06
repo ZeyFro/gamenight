@@ -123,19 +123,11 @@ model User {
   color           String  @default("#8b5cf6")
   colorCustomized Boolean @default(false)
 
-  // Chantier XP/niveaux/rangs — `xpTotal` est un cache dénormalisé (somme
-  // de `XpEvent.amount`), maintenu par `awardXp` à chaque ajout d'XP.
-  // Indexé pour le scoreboard (/classement, PR 9/9) qui trie par XP sur
-  // potentiellement 50+ users. `streakCount`/`streakLastActiveAt` pistent
-  // les jours de connexion consécutifs (mis à jour depuis
-  // `getCurrentUser()`, cf. src/lib/xp.ts) : `streakCount` repart à 1 si
-  // plus de 24h se sont écoulées depuis `streakLastActiveAt`.
+  // PR B : colonnes historiques conservées sans modification pour audit et
+  // backfill. La progression courante est exclusivement CommunityMemberStats.
   xpTotal            Int       @default(0)
   streakCount        Int       @default(0)
   streakLastActiveAt DateTime?
-  // Amélioration profil (stats) — `streakCount` repart à 1 dès qu'un
-  // streak casse, l'historique du meilleur streak est donc perdu sans ce
-  // champ dédié. Mis à jour dans `touchStreak()` (jamais décrémenté).
   bestStreakCount    Int       @default(0)
 
   // Sprint 2 PR-B — onboarding premier login (4 écrans swipe). `false`
@@ -161,6 +153,7 @@ model User {
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
   lifetimeStats         UserLifetimeStats?
+  communityMemberStats CommunityMemberStats[]
 
   // Confidentialité des soirées — voir `SessionInvite` plus bas. Trois
   // relations distinctes vers `User` (invité, invitant, révocateur),
@@ -886,6 +879,10 @@ enum XpReason {
 // est corrigé après coup). `@@unique([sessionId, userId])` : un seul
 // résultat par participant et par session.
 model SessionResult {
+  // Provenance durable, indépendante de la conservation du parent.
+  communityId String?
+
+  @@index([communityId])
   // Chantier nettoyage réel du stockage (V2, suite) — RÉSUMÉ DURABLE du
   // podium d'une soirée, conçu explicitement pour survivre à la purge de
   // celle-ci (`onDelete: SetNull`, PAS Cascade) : `/profil/historique`,
@@ -940,6 +937,7 @@ model SessionResult {
 // un aller-retour vote/dévote/revote sur la même proposition ; l'id du
 // user lui-même pour les XP "une seule fois dans la vie").
 model XpEvent {
+  communityId String
   id        String   @id @default(cuid())
   userId    String
   reason    XpReason
@@ -949,7 +947,8 @@ model XpEvent {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, reason, sourceId])
+  @@unique([communityId, userId, reason, sourceId])
+  @@index([communityId, createdAt])
   @@index([userId])
   @@index([createdAt])
 }
@@ -966,6 +965,7 @@ model XpEvent {
 // raisonnement ici : pas de `LevelUpEvent` rétroactif non plus, seuls les
 // VRAIS passages de niveau à partir de maintenant sont enregistrés).
 model LevelUpEvent {
+  communityId String
   id        String   @id @default(cuid())
   userId    String
   level     Int
@@ -973,6 +973,7 @@ model LevelUpEvent {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([communityId, createdAt])
   @@index([createdAt])
 }
 
@@ -1242,6 +1243,7 @@ model Badge {
 // gagné — cohérent avec le principe déjà appliqué au streak (badge
 // "Marathon" débloqué une fois, jamais retiré si le streak retombe).
 model UserBadge {
+  communityId String
   id         String   @id @default(cuid())
   userId     String
   badgeId    String
@@ -1250,7 +1252,8 @@ model UserBadge {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, badgeId])
+  @@unique([communityId, userId, badgeId])
+  @@index([communityId, unlockedAt])
 }
 
 // Sprint 2 PR-C (U3) — notifications in-app, écrites en parallèle de
@@ -1299,6 +1302,9 @@ enum NotificationType {
 }
 
 model Notification {
+  communityId String?
+
+  @@index([communityId])
   id        String           @id @default(cuid())
   userId    String
   type      NotificationType
@@ -1651,6 +1657,24 @@ model UserLifetimeStats {
   tournamentsParticipatedCount Int    @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// PR B : progression durable propre à un serveur. Aucune FK vers Community :
+// supprimer un serveur ne supprime/réattribue jamais ses récompenses historiques.
+model CommunityMemberStats {
+  communityId String
+  userId String
+  xpTotal Int @default(0)
+  streakCount Int @default(0)
+  streakLastActiveAt DateTime?
+  bestStreakCount Int @default(0)
+  tournamentsParticipatedCount Int @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+  @@index([communityId, xpTotal])
+  @@index([communityId, streakLastActiveAt])
 }
 
 // Chantier nettoyage réel du stockage (V2, suite) — résumé durable MINIMAL
@@ -2186,6 +2210,10 @@ enum DeliveryStatus {
 }
 
 model NotificationEvent {
+  communityId String?
+  payload Json?
+
+  @@index([communityId])
   id String @id @default(cuid())
 
   category   NotificationCategory

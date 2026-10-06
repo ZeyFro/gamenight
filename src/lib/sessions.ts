@@ -360,8 +360,8 @@ export async function closeSession(
   // seule la clôture ET l'intention de notification bot doivent être
   // atomiques ensemble, pas ces effets de bord indépendants.
   for (const vote of winner.votes) {
-    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
-    await checkSessionsParticipatedBadges(vote.userId);
+    await awardXp(vote.userId, session.communityId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+    await checkSessionsParticipatedBadges(vote.userId, session.communityId);
   }
 
   const discord = announceViaBot
@@ -527,8 +527,8 @@ export async function drawSessionGame(
   // une liste vide (jeu tiré sans le moindre vote) — aucun XP à
   // attribuer dans ce cas, jamais une erreur.
   for (const vote of winner.votes) {
-    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
-    await checkSessionsParticipatedBadges(vote.userId);
+    await awardXp(vote.userId, session.communityId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+    await checkSessionsParticipatedBadges(vote.userId, session.communityId);
   }
 
   return { kind: "drawn", winnerGameId: winner.gameId, candidateGameIds };

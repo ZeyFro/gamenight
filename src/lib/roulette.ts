@@ -92,8 +92,8 @@ export async function spinRoulette(rouletteId: string): Promise<void> {
   // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (jeu retenu), aucun nouveau message.
   await enqueueRouletteDirectMessageEdits(rouletteId);
 
-  await awardXp(roulette.createdById, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
-  await checkSessionsCreatedBadges(roulette.createdById);
+  await awardXp(roulette.createdById, roulette.communityId, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
+  await checkSessionsCreatedBadges(roulette.createdById, roulette.communityId);
 
   // Jamais les deux transports à la fois — voir `createRouletteResultSession`
   // (l'enqueue bot a déjà réussi, atomiquement avec la création de la

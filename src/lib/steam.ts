@@ -1,6 +1,6 @@
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { checkLibraryBadges } from "@/lib/badges";
+import { checkLibraryBadgesForActiveCommunity } from "@/lib/badges";
 import { checkWishlistPurchases } from "@/lib/wishlist";
 import { wallClockNow, formatDurationFr } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
@@ -627,7 +627,7 @@ export async function importSteamLibrary(
     });
   }
 
-  await checkLibraryBadges(userId);
+  await checkLibraryBadgesForActiveCommunity(userId);
 
   // Sprint 5 (Wishlist) — dès qu'un membre possède désormais un jeu de la
   // wishlist du groupe, l'entrée se marque "achetée" toute seule.

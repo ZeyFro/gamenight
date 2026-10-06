@@ -20,10 +20,10 @@ const ROLE_LABELS: Record<string, string> = {
  * (`RETENTION_CLEANUP_ENABLED`), voir le README pour la procédure
  * complète.
  */
-export async function NettoyageTab() {
+export async function NettoyageTab({ userId }: { userId: string }) {
   const [audit, failedCleanups] = await Promise.all([
-    generateStorageAuditReport(),
-    listFailedDiscordCleanupDeliveries(),
+    generateStorageAuditReport(userId),
+    listFailedDiscordCleanupDeliveries(userId),
   ]);
 
   return (
@@ -120,6 +120,7 @@ export async function NettoyageTab() {
                   </p>
                 </div>
                 <form action={retryDiscordCleanupAction}>
+                  <input type="hidden" name="deliveryId" value={entry.deliveryId} />
                   <input type="hidden" name="category" value={entry.category} />
                   <input type="hidden" name="sourceId" value={entry.sourceId} />
                   <input type="hidden" name="role" value={entry.role} />

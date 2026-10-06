@@ -6,7 +6,7 @@ import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { importSteamLibrary, type ImportSteamLibraryResult } from "@/lib/steam";
-import { checkLibraryBadges } from "@/lib/badges";
+import { checkLibraryBadgesForActiveCommunity } from "@/lib/badges";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   addManualGameSchema,
@@ -86,7 +86,7 @@ export async function addManualGame(formData: FormData) {
     update: { owned: true },
     create: { userId: user.id, gameId: game.id, owned: true, source: "MANUAL" },
   });
-  await checkLibraryBadges(user.id);
+  await checkLibraryBadgesForActiveCommunity(user.id);
 
   revalidatePath("/bibliotheque");
   redirect("/bibliotheque");

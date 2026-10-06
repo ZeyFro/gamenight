@@ -5,6 +5,7 @@ import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { creationMemberUserWhere, memberUserWhereFor } from "@/lib/community-isolation";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -46,13 +47,13 @@ export interface ActivityItem {
  * ailleurs dans l'app (profil, classement), pas le contenu d'une soirée
  * précise — périmètre volontairement limité, documenté comme tel dans le README.
  *
- * Multi-communautés (PR8, isolation allumée) : ces 3 flux se limitent aux
- * membres visibles de `viewerId` (`memberUserWhereFor`), faute de colonne
- * `communityId` sur XP/badges/superlatifs (PR10 et PR12). Filtre provisoire :
- * un membre de deux serveurs y apparaît dans les deux.
+ * PR B : communauté active et membres autorisés sont filtrés ensemble.
+ * Les badges et niveaux du même membre sur un autre serveur restent invisibles.
  */
 export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
   const members = await memberUserWhereFor(viewerId);
+  const communityId = await writeCommunityIdForUser(viewerId);
+  const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
@@ -66,8 +67,8 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
         createdBy: { select: { discordName: true } },
       },
     }),
-    prisma.userBadge.findMany({
-      where: { user: members },
+    scopedDb.userBadge.findMany({
+      where: { user: members, ...progressCommunity },
       orderBy: { unlockedAt: "desc" },
       take: limit,
       select: {
@@ -88,8 +89,8 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
         category: { select: { name: true, icon: true } },
       },
     }),
-    prisma.levelUpEvent.findMany({
-      where: { user: members },
+    scopedDb.levelUpEvent.findMany({
+      where: { user: members, ...progressCommunity },
       orderBy: { createdAt: "desc" },
       take: limit,
       select: {
@@ -170,6 +171,8 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   // allumée ; éteinte, toutes les lignes, comme avant) et joueurs de cette communauté.
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const members = await creationMemberUserWhere(viewerId);
+  const communityId = await writeCommunityIdForUser(viewerId);
+  const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
 
   const [sessionStats, topGameStats, bestStreakUser, activePlayers] = await Promise.all([
     scopedDb.groupSessionStats.aggregate({ _sum: { totalSessionsPlayed: true } }),
@@ -179,17 +182,18 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
       orderBy: { _sum: { playCount: "desc" } },
       take: 1,
     }),
-    prisma.user.findFirst({
+    scopedDb.communityMemberStats.findFirst({
       where: {
-        ...members,
+        user: members,
+        ...progressCommunity,
         streakCount: { gt: 0 },
         streakLastActiveAt: { gte: new Date(now - ACTIVE_STREAK_WINDOW_MS) },
       },
       orderBy: { streakCount: "desc" },
-      select: { discordName: true, streakCount: true },
+      select: { user: { select: { discordName: true } }, streakCount: true },
     }),
-    prisma.user.count({
-      where: { ...members, streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
+    scopedDb.communityMemberStats.count({
+      where: { user: members, ...progressCommunity, streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
     }),
   ]);
 
@@ -204,7 +208,7 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
         ? { name: topGame.name, coverUrl: topGame.coverUrl, count: topGameStats[0]._sum.playCount ?? 0 }
         : null,
     bestActiveStreak: bestStreakUser
-      ? { discordName: bestStreakUser.discordName, streakCount: bestStreakUser.streakCount }
+      ? { discordName: bestStreakUser.user.discordName, streakCount: bestStreakUser.streakCount }
       : null,
     activePlayers,
   };

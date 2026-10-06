@@ -86,7 +86,7 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     where: { id: proposalId },
     select: {
       sessionId: true,
-      session: { select: { status: true, date: true, votingDeadline: true } },
+      session: { select: { communityId: true, status: true, date: true, votingDeadline: true } },
     },
   });
   if (!proposal || !isVotingOpen(proposal.session)) return { ok: true };
@@ -108,8 +108,8 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     // l'XP à chaque fois (la contrainte unique sur XpEvent l'empêche déjà
     // via awardXp) ; voter sur une AUTRE proposition, en revanche, reste
     // une nouvelle action légitime.
-    await awardXp(user.id, "VOTE", proposalId, XP_AMOUNTS.VOTE);
-    await checkVotesCastBadges(user.id);
+    await awardXp(user.id, proposal.session.communityId, "VOTE", proposalId, XP_AMOUNTS.VOTE);
+    await checkVotesCastBadges(user.id, proposal.session.communityId);
   }
 
   revalidatePath(`/sessions/${sessionId}`);

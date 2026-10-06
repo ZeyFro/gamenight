@@ -1,3 +1,4 @@
+import { postToCommunity } from "@/lib/community-announce";
 import { Prisma, type TournamentStatus } from "@prisma/client";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { isMemberOfCommunity } from "@/lib/community-isolation";
@@ -6,7 +7,7 @@ import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkTournamentBadges } from "@/lib/badges";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
@@ -488,18 +489,16 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
       .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
       .filter((id): id is string => id !== null);
 
-    await awardXp(championId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
+    await awardXp(championId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
     if (runnerUpId) {
-      await awardXp(
-        runnerUpId,
+      await awardXp(runnerUpId, tournament.communityId,
         "TOURNAMENT_RESULT",
         `${tournamentId}:2nd`,
         XP_AMOUNTS.TOURNAMENT_2ND
       );
     }
     for (const loserId of semifinalLoserIds) {
-      await awardXp(
-        loserId,
+      await awardXp(loserId, tournament.communityId,
         "TOURNAMENT_RESULT",
         `${tournamentId}:semi:${loserId}`,
         XP_AMOUNTS.TOURNAMENT_SEMIFINALIST
@@ -511,7 +510,7 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
       select: { userId: true },
     });
     for (const p of participantIds) {
-      await checkTournamentBadges(p.userId);
+      await checkTournamentBadges(p.userId, tournament.communityId);
     }
 
     // Chantier annonces tournois (étend #99) — transport figé À LA
@@ -523,7 +522,7 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
     if (!tournament.announceViaBot) {
       const champion = await prisma.user.findUnique({ where: { id: championId } });
       if (champion) {
-        const result = await postToDiscord({
+        const result = await postToCommunity(tournament.communityId, {
           title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
           description: `Sur ${tournament.game.name} — GG à tous les participants !`,
           color: ACCENT_COLOR,

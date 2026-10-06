@@ -137,11 +137,12 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect(await db.groupAchievement.count({ where: { communityId: ids.c1 } })).toBe(10);
     });
 
-    it("annonce Discord : seulement pour la communauté par défaut (salon de l'environnement)", async () => {
+    it("annonce de trophée : transmet la communauté source au résolveur de destination", async () => {
       await closedSession(ids.c1);
-      expect(announceMock).not.toHaveBeenCalled();
+      expect(announceMock).toHaveBeenCalledWith(expect.anything(), ids.c1);
       await closedSession(null);
-      expect(announceMock).toHaveBeenCalledTimes(1);
+      expect(announceMock).toHaveBeenCalledTimes(2);
+      expect(announceMock).toHaveBeenLastCalledWith(expect.anything(), await defaultCommunity.getDefaultCommunityId());
     });
 
     it("isolation éteinte : annonce comme avant, même pour une soirée rattachée à une communauté", async () => {

@@ -10,6 +10,9 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 /**
  * Même vérification que `isUniqueConstraintViolation` (`src/lib/xp-actions.ts`),
@@ -135,11 +138,49 @@ export function hasSufficientLeaseRemaining(
 export type NotificationDb = Pick<typeof prisma, "notificationEvent" | "notificationDelivery">;
 
 export interface CreateEventInput {
+  /** Provenance durable, explicite pour les annonces sans parent métier. */
+  communityId?: string | null;
+  payload?: Prisma.InputJsonValue;
   category: NotificationCategory;
   eventType: string;
   sourceId: string;
   /** Chaîne vide par défaut — voir le commentaire sur le modèle Prisma. */
   occurrence?: string;
+}
+
+async function eventCommunityId(input: CreateEventInput, db: NotificationDb): Promise<string | null> {
+  if (input.communityId !== undefined) return input.communityId;
+  // Une transaction doit lire son propre parent non committé. Aucun appel au client global ici.
+  const scopedDb = db === prisma ? scopedPrisma(null) : scopedTransactionPrisma(db as Prisma.TransactionClient, null);
+  const source = input.category === "SESSION"
+    ? await scopedDb.session.findUnique({ where: { id: input.sourceId }, select: { communityId: true } })
+    : input.category === "TOURNAMENT"
+      ? await scopedDb.tournament.findUnique({ where: { id: input.sourceId }, select: { communityId: true } })
+      : input.category === "ROULETTE"
+        ? await scopedDb.roulette.findUnique({ where: { id: input.sourceId }, select: { communityId: true } })
+        : input.category === "INSTANT_SESSION"
+          ? await scopedDb.instantSession.findUnique({ where: { id: input.sourceId }, select: { communityId: true } })
+          : null;
+  if (source) return source.communityId;
+  // Après purge, la provenance vient du journal durable, jamais du slot ni du serveur choisi.
+  const previous = await db.notificationEvent.findFirst({
+    where: { category: input.category, sourceId: input.sourceId },
+    orderBy: { createdAt: "asc" },
+    select: { communityId: true },
+  });
+  if (previous) return previous.communityId;
+  return db === prisma ? await getDefaultCommunityId() : (await (db as Prisma.TransactionClient).community.upsert({
+    where: { slug: "default" }, update: {}, create: { slug: "default", name: "GameNight", status: "ACTIVE" }, select: { id: true },
+  })).id;
+}
+
+/** Un parent purgé ne transforme jamais son événement en autorité du serveur default. */
+export async function isNotificationEventCommunityActive(event: Pick<NotificationEvent, "communityId">): Promise<boolean> {
+  if (!isCommunityIsolationEnabled()) return true;
+  const community = await prisma.community.findFirst({ where: {
+    ...(event.communityId === null ? { slug: "default" } : { id: event.communityId }), status: "ACTIVE",
+  }, select: { id: true } });
+  return community !== null;
 }
 
 /**
@@ -162,6 +203,7 @@ export async function createNotificationEvent(
   db: NotificationDb = prisma
 ): Promise<NotificationEvent> {
   const occurrence = input.occurrence ?? "";
+  const communityId = await eventCommunityId(input, db);
   try {
     return await db.notificationEvent.create({
       data: {
@@ -169,6 +211,8 @@ export async function createNotificationEvent(
         eventType: input.eventType,
         sourceId: input.sourceId,
         occurrence,
+        communityId,
+        ...(input.payload === undefined ? {} : { payload: input.payload }),
       },
     });
   } catch (error) {

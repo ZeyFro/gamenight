@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { scopedPrisma } from "@/lib/community-scoped-client";
+import { communityIdFilter, resolveActiveCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 /**
  * Chantier confidentialité des soirées — inventaire EN LECTURE SEULE des
@@ -58,11 +60,14 @@ export interface LegacyPublicAnnounceInventory {
 }
 
 export async function listLegacyPublicSessionAnnounces(
-  options: { sentBefore?: Date } = {}
+  options: { sentBefore?: Date; userId?: string } = {}
 ): Promise<LegacyPublicAnnounceInventory> {
+  const scope = options.userId ? await resolveActiveCommunityScope(options.userId) : isCommunityIsolationEnabled() ? { communityIds: [], includesDefault: false } : null;
+  const scopedDb = scopedPrisma(scope);
   const deliveries = await prisma.notificationDelivery.findMany({
     where: {
       status: "SENT",
+      event: communityIdFilter(scope),
       targetSlot: { startsWith: "default-guild:SESSION:" },
       ...(options.sentBefore ? { sentAt: { lt: options.sentBefore } } : {}),
     },
@@ -86,7 +91,7 @@ export async function listLegacyPublicSessionAnnounces(
     .filter((d) => isLegacyPublicRole(d.role));
 
   const sessionIds = [...new Set(relevant.map((d) => d.sessionId))];
-  const sessions = await prisma.session.findMany({
+  const sessions = await scopedDb.session.findMany({
     where: { id: { in: sessionIds } },
     select: { id: true, status: true, date: true, createdById: true },
   });

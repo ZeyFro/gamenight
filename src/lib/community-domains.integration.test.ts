@@ -183,13 +183,20 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     expect((await db.weeklyChallenge.findUniqueOrThrow({ where: { id: b.id } })).completedAt).toBeNull();
   });
 
-  it("saisons : même numéro par serveur ; aucun reset global sous isolation avant PR B", async () => {
+  it("saisons : snapshot et reset dans A seulement, soldes B et colonnes historiques conservés", async () => {
     await Promise.all([seasons.ensureActiveSeasonExists(ids.a), seasons.ensureActiveSeasonExists(ids.b)]);
     expect((await db.season.findMany()).map((s) => s.number)).toEqual([1, 1]);
-    await db.season.updateMany({ data: { endDate: new Date("2026-01-01") } });
+    await db.communityMemberStats.createMany({ data: [
+      { communityId: ids.a, userId: ids.carol, xpTotal: 75 },
+      { communityId: ids.b, userId: ids.carol, xpTotal: 999 },
+    ] });
+    await db.season.updateMany({ where: { communityId: ids.a }, data: { endDate: new Date("2026-01-01") } });
     await seasons.finalizeSeasonIfDue();
     expect(await db.user.count({ where: { xpTotal: 100 } })).toBe(5);
-    expect(await db.seasonSnapshot.count()).toBe(0);
+    expect(await db.seasonSnapshot.count()).toBe(1);
+    expect((await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.a, userId: ids.carol } } })).xpTotal).toBe(0);
+    expect((await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.b, userId: ids.carol } } })).xpTotal).toBe(999);
+    expect((await db.seasonSnapshot.findFirstOrThrow()).xp).toBe(75);
     expect(await seasons.getSeasonProgress(ids.none)).toBeNull();
   });
 

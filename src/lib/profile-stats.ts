@@ -1,5 +1,8 @@
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
+import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardCommunityId } from "@/lib/community-access";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 export interface ProfileStats {
   sessionsParticipated: number;
@@ -23,14 +26,16 @@ export async function getProfileStats(
   streakCount: number
 ): Promise<ProfileStats> {
   const scopedDb = await getActiveScopedPrisma(userId);
+  const communityId = await writeCommunityIdForUser(userId);
+  const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
   const [sessionsParticipated, libraryCount, sessionsCreated, superlativesWon] =
     await Promise.all([
-      prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } }),
+      scopedDb.xpEvent.count({ where: { userId, ...progressCommunity, reason: "PARTICIPATE" } }),
       prisma.userGame.count({ where: { userId, owned: true } }),
       // Chantier nettoyage réel du stockage (V2, suite) — même correctif
       // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
       // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
-      prisma.xpEvent.count({ where: { userId, reason: "CREATE_SESSION" } }),
+      scopedDb.xpEvent.count({ where: { userId, ...progressCommunity, reason: "CREATE_SESSION" } }),
       scopedDb.superlativeAward.count({ where: { winnerUserId: userId } }),
     ]);
 
@@ -45,11 +50,9 @@ export async function getProfileStats(
  * de tout le groupe.
  */
 export async function getGlobalRank(
-  xpTotal: number
+  xpTotal: number,
+  viewerId: string,
 ): Promise<{ position: number; total: number }> {
-  const [ahead, total] = await Promise.all([
-    prisma.user.count({ where: { xpTotal: { gt: xpTotal } } }),
-    prisma.user.count(),
-  ]);
-  return { position: ahead + 1, total };
+  const users = await getScoreboard("global", { communityId: await getScoreboardCommunityId(viewerId) });
+  return { position: users.filter((u) => u.periodXp > xpTotal).length + 1, total: users.length };
 }

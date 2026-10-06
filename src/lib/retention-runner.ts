@@ -1,6 +1,7 @@
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import {
   RETENTION_BATCH_SIZE,
   RETENTION_CRON_LOCK_LEASE_MS,
@@ -76,6 +77,7 @@ export async function runRetentionCleanup(opts: {
   const budgetMs = opts.budgetMs ?? RETENTION_MAX_BATCH_DURATION_MS;
   const deadlineMs = Date.now() + budgetMs;
   const limit = opts.batchSize ?? RETENTION_BATCH_SIZE;
+  const scope = await cronCommunityScope();
   const errors: string[] = [];
 
   const report: RetentionRunReport = {
@@ -112,7 +114,7 @@ export async function runRetentionCleanup(opts: {
 
   try {
     try {
-      report.chat = await purgeEligibleChatMessagesBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.chat = await purgeEligibleChatMessagesBatch({ limit, dryRun: opts.dryRun, now: startedAt, scope });
     } catch (error) {
       errors.push(`chat: ${String(error)}`);
       logger.error("retention-runner", error, { step: "chat" });
@@ -128,6 +130,7 @@ export async function runRetentionCleanup(opts: {
         limit,
         dryRun: opts.dryRun,
         now: startedAt,
+        scope,
       });
     } catch (error) {
       errors.push(`discordCleanup: ${String(error)}`);
@@ -140,7 +143,7 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.sessionRowPurge = await purgeEligibleSessionsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.sessionRowPurge = await purgeEligibleSessionsBatch({ limit, dryRun: opts.dryRun, now: startedAt, scope });
     } catch (error) {
       errors.push(`sessionRowPurge: ${String(error)}`);
       logger.error("retention-runner", error, { step: "sessionRowPurge" });
@@ -152,7 +155,7 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.tournamentRowPurge = await purgeEligibleTournamentsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.tournamentRowPurge = await purgeEligibleTournamentsBatch({ limit, dryRun: opts.dryRun, now: startedAt, scope });
     } catch (error) {
       errors.push(`tournamentRowPurge: ${String(error)}`);
       logger.error("retention-runner", error, { step: "tournamentRowPurge" });
@@ -168,6 +171,7 @@ export async function runRetentionCleanup(opts: {
         limit,
         dryRun: opts.dryRun,
         now: startedAt,
+        scope,
       });
     } catch (error) {
       errors.push(`instantSessionRowPurge: ${String(error)}`);
@@ -180,7 +184,7 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.notifications = await purgeClosedSeasonNotificationsBatch({ limit, dryRun: opts.dryRun });
+      report.notifications = await purgeClosedSeasonNotificationsBatch({ limit, dryRun: opts.dryRun, scope });
     } catch (error) {
       errors.push(`notifications: ${String(error)}`);
       logger.error("retention-runner", error, { step: "notifications" });
@@ -192,7 +196,7 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.technicalData = await purgeTechnicalDeliveriesBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.technicalData = await purgeTechnicalDeliveriesBatch({ limit, dryRun: opts.dryRun, now: startedAt, scope });
     } catch (error) {
       errors.push(`technicalData: ${String(error)}`);
       logger.error("retention-runner", error, { step: "technicalData" });

@@ -26,6 +26,7 @@ const COLLECTIVE_MODELS = [
   "GameWishlist", "GameWishlistVote", "XpEvent", "LevelUpEvent", "Season", "SeasonSnapshot",
   "MonthlyRecap", "WeeklyChallenge", "GroupAchievement", "GroupSessionStats", "GroupGameStat",
   "GroupActiveWeek",
+  "CommunityMemberStats",
   // Décision 3 (catalogues copiés par communauté) : le catalogue de badges et
   // les badges gagnés deviennent collectifs.
   "Badge", "UserBadge",
@@ -47,12 +48,10 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/api/cron/close-sessions/route.ts": ["session"],
   "src/app/api/cron/reminders/route.ts": ["session"],
   "src/app/chat/actions.ts": ["chatReaction"],
-  "src/app/page.tsx": ["session", "userBadge"],
-  "src/app/potes/[id]/badges/page.tsx": ["badge", "userBadge"],
-  "src/app/potes/page.tsx": ["xpEvent"],
-  "src/app/profil/badges/page.tsx": ["badge", "userBadge"],
-  "src/app/profil/historique/page.tsx": ["session", "sessionResult", "xpEvent"],
-  "src/app/profil/page.tsx": ["session", "sessionResult", "xpEvent"],
+  "src/app/page.tsx": ["session"],
+  "src/app/potes/[id]/badges/page.tsx": ["badge"],
+  "src/app/profil/badges/page.tsx": ["badge"],
+  "src/app/profil/page.tsx": ["session"],
   "src/app/profil/saisons/page.tsx": ["seasonSnapshot"],
   "src/app/roulette/[id]/page.tsx": ["rouletteEntry"],
   "src/app/roulette/actions.ts": ["proposal", "rouletteEntry"],
@@ -74,30 +73,20 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/components/admin/BadgesTab.tsx": ["badge"],
   "src/components/admin/MessagesTab.tsx": ["messageTemplate"],
   "src/components/admin/SuperlativesTab.tsx": ["superlativeCategory"],
-  "src/lib/backfill-badges.ts": ["badge", "superlativeAward", "userBadge", "xpEvent"],
+  "src/lib/backfill-badges.ts": ["badge"],
   "src/lib/backfill-game-news.ts": ["session"],
-  "src/lib/backfill-xp.ts": ["proposal", "session", "vote", "xpEvent"],
-  "src/lib/badges.ts": ["badge", "pronostic", "superlativeAward", "userBadge", "xpBet", "xpEvent"],
+  "src/lib/backfill-xp.ts": ["proposal", "vote"],
+  "src/lib/badges.ts": ["badge"],
   "src/lib/calendar.ts": ["session"],
   "src/lib/discord-reminder.ts": ["proposal"],
   "src/lib/discord-roulette.ts": ["session"],
-  "src/lib/discord-thread-cleanup.ts": ["session", "tournament"],
   "src/lib/fix-invalid-templates.ts": ["messageTemplate"],
-  "src/lib/group-achievements.ts": ["xpEvent"],
-  "src/lib/home.ts": ["levelUpEvent", "session", "userBadge"],
+  "src/lib/home.ts": ["session"],
   "src/lib/instant-session-announce.ts": ["instantSession"],
   "src/lib/instant-sessions.ts": ["instantSession", "instantSessionPresenceInterval"],
-  "src/lib/legacy-discord-announces.ts": ["session"],
   "src/lib/message-templates.ts": ["messageTemplate"],
-  "src/lib/monthly-recap.ts": ["xpEvent"],
-  "src/lib/notifications.ts": ["session"],
-  "src/lib/onboarding.ts": ["xpEvent"],
-  "src/lib/profile-stats.ts": ["xpEvent"],
-  "src/lib/retention.ts": ["chatMessage", "debt", "instantSession", "session", "tournament"],
-  "src/lib/revanche.ts": ["session", "sessionResult"],
+  "src/lib/revanche.ts": ["session"],
   "src/lib/roulette-dm.ts": ["roulette", "session"],
-  "src/lib/scoreboard.ts": ["xpEvent"],
-  "src/lib/seasons.ts": ["season", "seasonSnapshot"],
   "src/lib/seed-badges.ts": ["badge"],
   "src/lib/seed-game-stats.ts": ["gameStatType"],
   "src/lib/seed-messages.ts": ["messageTemplate"],
@@ -105,12 +94,9 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/session-access.ts": ["session", "sessionInvite"],
   "src/lib/session-announce.ts": ["session", "sessionInvite"],
   "src/lib/sessions.ts": ["groupActiveWeek", "groupGameStat", "groupSessionStats", "proposal", "session", "vote"],
-  "src/lib/storage-audit.ts": ["chatMessage", "instantSession", "levelUpEvent", "proposal", "seasonSnapshot", "session", "sessionResult", "tournament", "tournamentMatch", "userBadge", "vote", "xpEvent"],
   "src/lib/superlative-voting.ts": ["proposal", "superlativeCategory", "superlativeVote"],
   "src/lib/tournament-announce.ts": ["tournament", "tournamentParticipant"],
   "src/lib/tournaments.ts": ["tournament", "tournamentMatch", "tournamentParticipant"],
-  "src/lib/xp-actions.ts": ["levelUpEvent", "xpEvent"],
-  "src/lib/xp-bets.ts": ["xpBet"],
 };
 
 const OPERATIONS = [
@@ -136,7 +122,7 @@ function collectiveAccesses(source: string): string[] {
 
 /** Un fichier qui utilise `scopedDb` doit l'obtenir de `getScopedPrisma` / `scopedPrisma` (borne basse : présence du nom). */
 function usesScopedDbWithoutFactory(source: string): boolean {
-  return /\bscopedDb\b/.test(source) && !/\b(getScopedPrisma|getActiveScopedPrisma|scopedPrisma|scopedPrismaForCommunity|scopedPrismaForCommunityId)\s*\(/.test(source);
+  return /\bscopedDb\b/.test(source) && !/\b(getScopedPrisma|getActiveScopedPrisma|scopedPrisma|scopedTransactionPrisma|scopedPrismaForCommunity|scopedPrismaForCommunityId)\s*\(/.test(source);
 }
 
 const ROOT = join(__dirname, "..", "..");

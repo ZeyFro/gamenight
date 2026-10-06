@@ -1,4 +1,5 @@
 "use server";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -56,9 +57,9 @@ export async function addWeeklySlot(formData: FormData): Promise<DispoActionResu
     data: { userId: user.id, dayOfWeek, startTime, endTime },
   });
 
-  if (!hadSlotsBefore) {
-    await awardXp(
-      user.id,
+  const progressCommunityId = await writeCommunityIdForUser(user.id);
+  if (!hadSlotsBefore && progressCommunityId !== null) {
+    await awardXp(user.id, progressCommunityId,
       "AVAILABILITY_FIRST",
       user.id,
       XP_AMOUNTS.AVAILABILITY_FIRST
