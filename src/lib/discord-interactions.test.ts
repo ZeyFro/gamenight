@@ -9,9 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * défaut) et permission `MANAGE_GUILD` revérifiée côté serveur.
  */
 
-const { verify, setup } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn() }));
+const { verify, setup, edit } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn(), edit: vi.fn() }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: verify }));
 vi.mock("@/lib/community-setup", () => ({ setupCommunityFromGuild: setup }));
+vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: edit }));
 
 import { handleDiscordInteraction } from "./discord-interactions";
 
@@ -22,6 +23,8 @@ const SEND_MESSAGES = String(1 << 11);
 const command = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     type: 2,
+    application_id: "555",
+    token: "simulated-interaction-token",
     guild_id: "123456789012345678",
     member: { permissions: MANAGE_GUILD, user: { id: "777" } },
     data: { name: "gamenight", options: [{ name: "setup", type: 1 }] },
@@ -29,19 +32,29 @@ const command = (over: Record<string, unknown> = {}) =>
   });
 const PING = JSON.stringify({ type: 1 });
 
-const handle = (rawBody: string, headers: { signature?: string | null; timestamp?: string | null } = {}) =>
-  handleDiscordInteraction({
+const handle = async (rawBody: string, headers: { signature?: string | null; timestamp?: string | null } = {}) => {
+  const out = await handleDiscordInteraction({
     rawBody,
     signature: headers.signature === undefined ? "sig" : headers.signature,
     timestamp: headers.timestamp === undefined ? "123" : headers.timestamp,
   });
+  if (out.runSetup) {
+    expect(setup).not.toHaveBeenCalled();
+    expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
+    await out.runSetup();
+  }
+  return out;
+};
 
-const content = (out: { body?: unknown }) => (out.body as { data: { content: string } }).data.content;
+const content = (out: { body?: unknown }) => (out.body as { type: number }).type === 5
+  ? edit.mock.calls.at(-1)?.[0].content as string
+  : (out.body as { data: { content: string } }).data.content;
 
 describe("handleDiscordInteraction", () => {
   beforeEach(() => {
     verify.mockReset().mockReturnValue(true);
     setup.mockReset().mockResolvedValue({ action: "activated", communityId: "c1" });
+    edit.mockReset().mockResolvedValue({ ok: true, data: { messageId: "666" } });
     vi.stubEnv("DISCORD_APP_PUBLIC_KEY", "ab".repeat(32));
     vi.stubEnv("COMMUNITY_SETUP_COMMAND_ENABLED", "true");
   });
@@ -91,7 +104,8 @@ describe("handleDiscordInteraction", () => {
       const out = await handle(command());
       expect(setup).toHaveBeenCalledWith("123456789012345678", "777");
       expect(out.status).toBe(200);
-      expect(out.body).toMatchObject({ type: 4, data: { flags: 64, allowed_mentions: { parse: [] } } });
+      expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
+      expect(edit).toHaveBeenCalledWith(expect.objectContaining({ applicationId: "555", token: "simulated-interaction-token" }));
       expect(content(out)).toContain("activé");
     });
 
@@ -133,8 +147,10 @@ describe("handleDiscordInteraction", () => {
     it.each([
       ["already_active", "déjà activé"],
       ["blocked", "suspendu ou archivé"],
+      ["incomplete", "Créer des fils privés"],
+      ["in_progress", "déjà en cours"],
     ])("résultat %s : message adapté", async (action, text) => {
-      setup.mockResolvedValue({ action, communityId: "c1" });
+      setup.mockResolvedValue({ action, communityId: "c1", message: text });
       expect(content(await handle(command()))).toContain(text);
     });
 

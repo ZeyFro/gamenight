@@ -21,6 +21,7 @@ import {
   resyncTournamentThreadMembers,
 } from "@/lib/tournament-announce";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import { canAccessTournament } from "@/lib/community-access";
@@ -123,6 +124,7 @@ export async function createTournamentAction(formData: FormData) {
   const tournamentAnnounceConfig = await resolveTournamentAnnounceConfig(communityId);
   const announceViaBot =
     process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && tournamentAnnounceConfig !== null;
+  await requireCommunityBotAnnouncement(communityId, announceViaBot);
 
   const tournament = await prisma.$transaction(async (tx) => {
     const created = await tx.tournament.create({

@@ -6,6 +6,8 @@ import { Logo } from "@/components/Logo";
 import { HeaderNavLinks } from "@/components/HeaderNavLinks";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { CommunitySwitcher } from "@/components/CommunitySwitcher";
+import { getActiveCommunityState, isCommunityPickerEnabled, listPickableCommunities } from "@/lib/community-picker";
 
 export async function Header() {
   // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
@@ -14,6 +16,10 @@ export async function Header() {
   // `auth()` seul, sinon les liens de nav/cloche resteraient visibles
   // par-dessus l'écran de connexion après un déclenchement.
   const user = await getCurrentUser();
+  const pickerEnabled = user && isCommunityPickerEnabled();
+  const communities = pickerEnabled ? await listPickableCommunities(user.id) : [];
+  const state = pickerEnabled ? await getActiveCommunityState(user.id) : null;
+  const communityId = state?.kind === "single" || state?.kind === "chosen" ? state.communityId : null;
 
   // Cloche de notifications (Sprint 2 PR-C, U3) — dans le header plutôt
   // que la BottomNav mobile (dont la grille à 6 cases est dédiée aux
@@ -55,6 +61,7 @@ export async function Header() {
             </nav>
             {currentUser && (
               <ChatPanel
+                key={communityId ?? "none"}
                 currentUserId={currentUser.id}
                 currentUserName={currentUser.discordName}
                 currentUserAvatar={currentUser.discordAvatar}
@@ -62,10 +69,11 @@ export async function Header() {
                 initialMessages={initialChatMessages}
               />
             )}
-            <NotificationBell initialUnreadCount={unreadCount} notifications={notifications} />
+            <NotificationBell key={communityId ?? "none"} initialUnreadCount={unreadCount} notifications={notifications} />
           </div>
         )}
       </div>
+      {pickerEnabled && <CommunitySwitcher communities={communities} currentId={communityId} />}
     </header>
   );
 }

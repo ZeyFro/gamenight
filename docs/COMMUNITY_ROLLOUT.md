@@ -1,11 +1,73 @@
 # Bascule multi-serveurs et ouverture à The Tower
 
 Ce document est une procédure opérateur, **pas un compte rendu d'activation**.
-Les flags `COMMUNITY_*` sont encore OFF en production d'après le contexte fourni.
+Constat fourni par le mainteneur le 7 octobre 2026 : The Tower est déjà ACTIVE
+via setup et les XP sont distincts, mais les noms, la navigation et les salons
+automatiques manquaient. Les valeurs actuelles des flags n’ont pas été consultées
+ni modifiées dans ce chantier.
 PR A #196, PR B #197 et OAuth #198 sont acquis ; l'application de
 `20261006190000_community_progression` en production a été confirmée par le
 mainteneur, sans accès à cette base pendant ce chantier. The Tower n'est pas
-déclaré prêt tant que les essais réels et la bascule ci-dessous ne sont pas faits.
+déclaré prêt sur la seule base des tests simulés ci-dessous.
+
+## Installation automatique et reprise
+
+`/gamenight setup` signé vérifie les droits Gérer le serveur/Administrateur de
+l’appelant, acquitte immédiatement la commande avec une réponse différée
+éphémère, puis travaille dans `after()` (route 120 s, budget 90 s). Il lit le
+vrai nom et l’icône du guild, y compris sur une communauté déjà ACTIVE et sur
+default ; la synchronisation quotidienne existante actualise ensuite ces
+métadonnées sans changer les slugs, appartenances ou XP.
+
+Avant toute création, le bot doit avoir Gérer les salons, Voir les salons,
+Envoyer des messages, Intégrer des liens, Voir l’historique, Gérer les fils,
+Créer des fils publics et privés, Envoyer des messages dans les fils.
+Le diagnostic liste précisément les droits absents du rôle ou d’un salon
+déjà configuré. Aucun rôle Administrateur n’est exigé.
+Sources : [création de salons Discord](https://docs.discord.com/developers/resources/guild#create-guild-channel),
+[permissions](https://docs.discord.com/developers/topics/permissions),
+[réponses différées](https://docs.discord.com/developers/interactions/receiving-and-responding).
+
+L’installation crée la catégorie GameNight puis les salons texte soirées et
+tournois avec des overwrites explicites : membres du serveur peuvent voir
+l’historique et participer aux fils ; le bot publie et gère les fils. Les
+soirées publient leur annonce dans un fil privé non invitable, avec accès du
+créateur et des invités actifs seulement (administrateurs/modérateurs Discord
+avec Gérer les fils gardent leurs droits). Les tournois utilisent une annonce
+et un fil public du serveur. Un non-membre de la communauté ou un non-invité
+ne gagne aucun accès applicatif.
+
+Les deux CommunityChannelConfig sont enregistrées séparément et la communauté
+est activée après validation des destinations. Relancer sur ACTIVE complète
+les manques. Les IDs existants, permissions de salons manuels et configurations
+désactivées sont conservés. Pour default, les salons historiques d’environnement
+du même guild sont enregistrés sans en créer d’autres ; une config absente de Discord ou incompatible
+nécessite sa correction explicite, sans remplacement silencieux.
+Sans destination bot valide, une nouvelle soirée/tournoi nondefault est refusée
+avant création : aucun repli vers le webhook historique.
+
+Les verrous nommés de la table existante CronLock évitent les installations
+concurrentes sans migration : `community-setup:<guild>`, bail 180 s (supérieur
+à la durée de route). Les salons créés sont retrouvés par leur topic
+`GameNight:<guild>:SESSION|TOURNAMENT` ; une catégorie GameNight unique est
+réutilisée. Une catégorie homonyme multiple ou plusieurs topics identiques
+sont signalés pour arbitrage.
+
+Une erreur partielle garde les salons/configs acquis. Un 429 ou refus explicite
+permet de retenter ; un POST dont le résultat est incertain (timeout, 5xx ou
+réponse illisible) conserve le verrou `community-setup-create:<guild>:<slot>`.
+Relancer retrouve la ressource visible et reprend sans second POST. Si aucune
+ressource n’apparaît, setup explique l’incertitude et reste fermé : un opérateur
+doit confirmer l’absence et la fin de la requête précédente avant de supprimer
+uniquement ce verrou de création et relancer. C’est une limite de l’API Discord
+sans clé d’idempotence, pas une garantie « exactement une fois ».
+Aucune intervention de ce type n’a été effectuée ici.
+
+Le sélecteur permanent du header (ordinateur/mobile) montre le vrai nom et
+l’icône du serveur choisi. Changer revalide l’appartenance, sauvegarde la
+préférence User, invalide le cache des pages et revient à l’accueil ; aucune
+déconnexion. Les panneaux chat/notifications repartent avec les données du
+serveur choisi. Un serveur accessible unique est choisi automatiquement.
 
 ## Implémentation et règles de connexion
 
@@ -116,11 +178,9 @@ Ces opérations sont **à vérifier réellement**, aucune exécutée dans cette 
 5. Installer le même bot sur le serveur d'essai/The Tower via le lien Guild
    Install. Ne pas remplacer `DISCORD_BOT_GUILD_ID` par l'ID The Tower.
    Vérifier l'installation dans le bon guild, webhook ou cron → PENDING.
-6. Préparer des salons texte dédiés pour SESSION et TOURNAMENT. Donner au bot
-   Voir le salon, Envoyer des messages, Intégrer des liens, Voir l'historique,
-   Envoyer des messages dans les fils et Créer des fils privés pour les soirées.
-   Gérer les fils est requis pour le nettoyage et les opérations administratives
-   prévues ; limiter ces permissions aux salons utilisés, sans Administrateur.
+6. Donner au rôle du bot les permissions listées dans « Installation
+   automatique et reprise ». Setup crée les salons texte dédiés et leurs
+   overwrites ; aucune préparation manuelle de salons n’est requise.
    Les fils de soirées sont privés ; vérifier leur confidentialité, et les
    permissions effectives/overwrites du serveur. Les salons acceptés par le
    resolver sont les types 0/5 ; préférer un salon texte type 0 et vérifier que
@@ -129,10 +189,11 @@ Ces opérations sont **à vérifier réellement**, aucune exécutée dans cette 
    la bascule sécurisée ci-dessous, ou un admin plateforme active PENDING dans
    `/admin?tab=communautes`. Setup active ce guild, pas les autres ; il ne crée
    pas de Membership ni de rôle admin. SUSPENDED/ARCHIVED ne se réactivent pas.
-8. Un admin plateforme configure les deux salons dans l'application. L'écran
+8. La configuration admin des salons existants reste disponible. L'écran
    actuel n'est pas une délégation admin à chaque gestionnaire Discord :
-   `/gamenight setup` active seulement, il ne configure pas encore les salons.
-   Chaque salon est vérifié à l'enregistrement et à l'envoi ; salon absent,
+   `/gamenight setup` configure désormais automatiquement les deux salons ;
+   l’écran admin sert à conserver ou corriger une destination personnalisée.
+   Chaque salon est vérifié à l'installation et à l'envoi ; salon absent,
    mauvais guild ou mauvais type : aucun repli vers default ou un autre serveur.
    L'absence d'UI de suspension/retrait de salon est une limite administrative
    existante, pas une obligation de créer une PR par serveur.
@@ -152,7 +213,7 @@ que la frontière d'accès soit opérationnelle.
 | 5 | Utiliser **une seule fois**, après validation des étapes précédentes, le mécanisme existant `forceReloginAt` via Réglages admin/route admin autorisée. | Un ancien JWT est refusé ; nouvelle connexion autorise `guilds`, peuple/revalide les Membership et évite une boucle. Cette action globale peut annoncer la reconnexion sur Discord : opération réelle distincte, non exécutée ici. |
 | 6 | `AUTH_REQUIRE_GUILD_MEMBER=true` si la porte des nouveaux comptes doit être fermée. | Nouveau sans guild autorisé refusé ; ancien/admin sans guild ne reçoit aucun accès collectif. |
 | 7 | `COMMUNITY_AUTO_CREATE_ENABLED=true`, webhook et cron `community-guild-sync`, puis `COMMUNITY_SETUP_COMMAND_ENABLED=true`. | Guilds nouveaux seulement PENDING tant qu'aucun setup/admin autorisé n'a activé ; setup OFF n'agit pas. |
-| 8 | Installation et activation The Tower, configuration via l'app, connexions fraîches de la cohorte limitée. | Deux serveurs en parallèle satisfont la matrice réelle suivante. |
+| 8 | Installer ou relancer setup sur The Tower, puis connexions fraîches de la cohorte limitée. | Setup complète ACTIVE sans doublons ; deux serveurs en parallèle satisfont la matrice réelle suivante. |
 
 Les flags MP (`DISCORD_DM_*`) restent des choix globaux séparés ; activer
 uniquement les catégories voulues après essai réel. Les guilds/salons The Tower
@@ -202,8 +263,8 @@ production ne découle du benchmark local ci-dessous.
 
 Les prérequis globaux et les commandes étant déjà installés : installer le bot,
 laisser webhook/cron créer PENDING, faire setup avec les droits requis (ou
-activation admin), configurer SESSION/TOURNAMENT dans l'app, puis faire une
-connexion fraîche des membres. Choisir le serveur dans `/serveurs`, vérifier
+activation admin de secours), laisser setup enregistrer SESSION/TOURNAMENT, puis
+faire une connexion fraîche des membres. Choisir le serveur dans le header, vérifier
 un événement et sa destination. Aucune PR, migration, variable serveur, liste
 d'IDs codée ou nouvel enregistrement global de commande n'est requis.
 Un utilisateur déjà connecté doit se reconnecter pour découvrir sa nouvelle
@@ -237,6 +298,20 @@ appartenance ; ne déclencher aucune reconnexion globale par ajout de serveur.
    une décision DBA séparée, avec perte des données postérieures à traiter.
 
 ## Preuves locales et reproduction
+
+Installation automatique (7 octobre 2026) : suite finale `npm run test:postgres`
+en série sur la base locale jetable `gamenight_installation_test`,
+**2 040 tests, 170 fichiers, 0 échec, 0 ignoré**. Les nouveaux scénarios couvrent
+setup ACTIVE/default, noms/icônes et cron suivant, salons historiques/manuels,
+permissions effectives, concurrence Postgres, 429, réponse perdue, échec SQL
+partiel et bail expiré. Le parcours avec deux guilds simulés exerce les vraies
+actions de sélection/création puis l’executor : annonces/fils dans le bon guild,
+soirées privées non invitables, invitations isolées, aucun webhook historique.
+Tests DOM du sélecteur : sauvegarde avant navigation, état d’attente, refus
+d’appartenance et serveur unique. TypeScript, ESLint et `next build` direct
+passent avec une DATABASE_URL locale ; aucune migration ajoutée ou de production,
+aucune dépendance nouvelle ni appel Discord réel. Les essais physiques sur
+ordinateur/mobile et sur Discord restent à réaliser par l’opérateur.
 
 Versions réellement installées et consultées le 7 octobre 2026 : Next
 16.3.8, next-auth 5.0.0-beta.32, @auth/core 0.41.3, Prisma 6.19.3,

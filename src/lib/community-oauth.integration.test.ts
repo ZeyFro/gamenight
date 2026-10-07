@@ -144,16 +144,26 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
     expect(shouldForceRelogin(oldUser.forceReloginAt, token!.sessionCreatedAt as number)).toBe(false);
     expect((await membership("a"))?.status).toBe("ACTIVE");
   });
-  it("server C added through existing setup and channel configuration, no code/env IDs", async () => {
+  it("server C added through automatic setup and channel configuration, no production IDs", async () => {
     const guildId = "666666666666666666";
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot");
+    const channels = [
+      { id: "777777777777777770", name: "GameNight", type: 4 },
+      { id: "777777777777777777", name: "soirées", type: 0, topic: `GameNight:${guildId}:SESSION` },
+      { id: "777777777777777778", name: "tournois", type: 0, topic: `GameNight:${guildId}:TOURNAMENT` },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url).pathname;
+      if (path === `/api/v10/guilds/${guildId}`) return Response.json({ id: guildId, name: "Nouveau serveur C", icon: null, roles: [{ id: "role-bot", permissions: "8" }] });
+      if (path === "/api/v10/users/@me") return Response.json({ id: "999" });
+      if (path === `/api/v10/guilds/${guildId}/members/999`) return Response.json({ roles: ["role-bot"] });
+      if (path === `/api/v10/guilds/${guildId}/channels`) return Response.json(channels);
+      throw new Error("Unexpected simulated setup HTTP");
+    }));
     const setup = await (await import("./community-setup")).setupCommunityFromGuild(guildId, "123");
     expect(setup.action).toBe("activated");
     await reconcile([guildId]);
-    const http = vi.fn().mockImplementation(async () => Response.json({ id: "777777777777777777", guild_id: guildId, type: 0 }));
-    vi.stubGlobal("fetch", http);
-    vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot");
-    const configured = await (await import("./community-admin")).setCommunityChannel({ communityId: setup.communityId!, category: "SESSION", channelId: "777777777777777777" });
-    expect(configured).toEqual({ ok: true });
+    expect(await db.communityChannelConfig.count({ where: { communityId: setup.communityId! } })).toBe(2);
     vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "true");
     expect(await (await import("./community-channels")).resolveSessionAnnounceConfig(setup.communityId)).toEqual({ guildId, channelId: "777777777777777777" });
   });

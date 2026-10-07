@@ -2,6 +2,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { verifyDiscordSignature } from "@/lib/discord-signature";
 import { setupCommunityFromGuild } from "@/lib/community-setup";
+import { editSetupResponse } from "@/lib/discord-rest";
 
 /**
  * Multi-communautés, PR6 — endpoint d'interactions Discord
@@ -23,6 +24,8 @@ const EPHEMERAL = 64;
 
 const interactionSchema = z.object({
   type: z.number(),
+  application_id: z.string().optional(),
+  token: z.string().optional(),
   guild_id: z.string().optional(),
   member: z
     .object({
@@ -47,6 +50,7 @@ export interface InteractionInput {
 export interface InteractionOutput {
   status: number;
   body?: unknown;
+  runSetup?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -107,18 +111,33 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     return reply("Il faut la permission « Gérer le serveur » pour configurer GameNight.");
   }
 
-  try {
-    const result = await setupCommunityFromGuild(guildId, invokerId);
-    logger.info("discord-interactions", `/gamenight setup traité (${result.action}).`, {
-      communityId: result.communityId,
-    });
-    if (result.action === "activated") {
-      return reply("✅ Ce serveur est activé : les membres peuvent maintenant se connecter à GameNight.");
-    }
-    if (result.action === "already_active") return reply("Ce serveur est déjà activé.");
-    return reply("Ce serveur ne peut pas être activé (suspendu ou archivé). Contacte un admin GameNight.");
-  } catch (error) {
-    logger.error("discord-interactions", error, { guildId });
-    return reply("Une erreur est survenue, réessaie dans un instant.");
-  }
+  const applicationId = interaction.application_id;
+  const token = interaction.token;
+  if (!applicationId || !/^\d+$/.test(applicationId) || !token) return { status: 400 };
+  // ACK within Discord's 3 s window; the route runs this with Next after().
+  return {
+    status: 200,
+    body: { type: 5, data: { flags: EPHEMERAL } },
+    runSetup: async () => {
+      let content: string;
+      try {
+        const result = await setupCommunityFromGuild(guildId, invokerId);
+        logger.info("discord-interactions", `/gamenight setup traité (${result.action}).`, { communityId: result.communityId });
+        if (result.action === "activated") {
+          content = "✅ Ce serveur est activé et ses salons sont configurés : les membres peuvent se connecter à GameNight.";
+        } else if (result.action === "already_active") {
+          content = "✅ Ce serveur est déjà activé ; les noms et la configuration des salons sont à jour.";
+        } else if (result.action === "incomplete" || result.action === "in_progress") {
+          content = result.message ?? "Installation incomplète. Relance /gamenight setup.";
+        } else {
+          content = "Ce serveur ne peut pas être activé (suspendu ou archivé). Contacte un admin GameNight.";
+        }
+      } catch (error) {
+        logger.error("discord-interactions", error, { guildId });
+        content = "Une erreur est survenue. Les salons déjà créés sont conservés ; relance /gamenight setup.";
+      }
+      const sent = await editSetupResponse({ applicationId, token, content, deadline: new Date(Date.now() + 10_000) });
+      if (!sent.ok) logger.error("discord-interactions", "Réponse de setup non livrée.", { guildId, kind: sent.kind });
+    },
+  };
 }

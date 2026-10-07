@@ -43,13 +43,15 @@ export interface PickableCommunity {
   id: string;
   name: string;
   slug: string;
+  discordGuildId?: string | null;
+  iconHash?: string | null;
 }
 
 /** Serveurs (communautés ACTIVE) où `userId` a un Membership ACTIVE, du plus ancien au plus récent. */
 export async function listPickableCommunities(userId: string): Promise<PickableCommunity[]> {
   const memberships = await prisma.membership.findMany({
     where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
-    select: { community: { select: { id: true, name: true, slug: true } } },
+    select: { community: { select: { id: true, name: true, slug: true, discordGuildId: true, iconHash: true } } },
     orderBy: { joinedAt: "asc" },
   });
   return memberships.map((m) => m.community);

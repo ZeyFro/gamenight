@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
 import { getWeekStart } from "@/lib/calendar-dates";
@@ -76,6 +77,7 @@ export async function createRouletteResultSession(data: {
     throw new Error("createRouletteResultSession : le créateur n'appartient à aucune communauté active.");
   }
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
+  await requireCommunityBotAnnouncement(communityId, announceViaBot);
   logger.info("sessions", "Décision de transport à la création (session issue d'une roulette).", {
     announceViaBot,
   });

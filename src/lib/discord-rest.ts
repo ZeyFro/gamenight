@@ -261,6 +261,7 @@ function classifyRateLimit(headers: Headers, body: unknown): DiscordRestFailure 
 
 interface RequestOptions<T> {
   webhook?: boolean;
+  interaction?: { applicationId: string; token: string };
   method: string;
   path: string;
   body?: unknown;
@@ -309,8 +310,8 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
     };
   }
 
-  const token = opts.webhook ? null : getBotToken();
-  if (!opts.webhook && !token) {
+  const token = opts.webhook || opts.interaction ? null : getBotToken();
+  if (!opts.webhook && !opts.interaction && !token) {
     logger.warn("discord-rest", "DISCORD_BOT_TOKEN non configurée — appel non tenté.");
     return {
       ok: false,
@@ -327,10 +328,13 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
   const abortSignal = AbortSignal.timeout(timeoutMs);
 
   async function fetchAndReadBody(): Promise<RawHttpResult> {
-    const res = await fetch(opts.webhook ? process.env.DISCORD_WEBHOOK_URL! : `${API_BASE}${opts.path}`, {
+    const url = opts.interaction
+      ? `${API_BASE}/webhooks/${opts.interaction.applicationId}/${encodeURIComponent(opts.interaction.token)}/messages/@original`
+      : opts.webhook ? process.env.DISCORD_WEBHOOK_URL! : `${API_BASE}${opts.path}`;
+    const res = await fetch(url, {
       method: opts.method,
       headers: {
-        ...(opts.webhook ? {} : { Authorization: `Bot ${token}` }),
+        ...(opts.webhook || opts.interaction ? {} : { Authorization: `Bot ${token}` }),
         "Content-Type": "application/json",
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -596,6 +600,46 @@ export interface BotGuild {
   id: string;
   name: string;
   icon: string | null;
+}
+
+const permissionBits = z.string().regex(/^\d+$/);
+const setupChannelSchema = z.object({
+  id: z.string(), name: z.string(), type: z.number(), guild_id: z.string().optional(),
+  parent_id: z.string().nullable().optional(), topic: z.string().nullable().optional(),
+  permission_overwrites: z.array(z.object({ id: z.string(), type: z.number(), allow: permissionBits, deny: permissionBits })).default([]),
+});
+export type SetupChannel = z.infer<typeof setupChannelSchema>;
+const setupGuildSchema = z.object({
+  id: z.string(), name: z.string().min(1), icon: z.string().nullable(),
+  roles: z.array(z.object({ id: z.string(), permissions: permissionBits })),
+});
+
+export async function getSetupGuild(input: { guildId: string; deadline: Date }) {
+  return discordRequest({ method: "GET", path: `/guilds/${input.guildId}`, deadline: input.deadline,
+    parse: (json) => { const r = setupGuildSchema.safeParse(json); return r.success ? r.data : null; } });
+}
+
+export async function getSetupBot(input: { guildId: string; deadline: Date }): Promise<DiscordRestResult<{ id: string; roles: string[] }>> {
+  const self = await discordRequest({ method: "GET", path: "/users/@me", deadline: input.deadline,
+    parse: (json) => { const r = z.object({ id: z.string() }).safeParse(json); return r.success ? r.data : null; } });
+  if (!self.ok) return self;
+  return discordRequest({ method: "GET", path: `/guilds/${input.guildId}/members/${self.data.id}`, deadline: input.deadline,
+    parse: (json) => { const r = z.object({ roles: z.array(z.string()) }).safeParse(json); return r.success ? { id: self.data.id, roles: r.data.roles } : null; } });
+}
+
+export async function listSetupChannels(input: { guildId: string; deadline: Date }) {
+  return discordRequest({ method: "GET", path: `/guilds/${input.guildId}/channels`, deadline: input.deadline,
+    parse: (json) => { const r = z.array(setupChannelSchema).safeParse(json); return r.success ? r.data : null; } });
+}
+
+export async function createSetupChannel(input: { guildId: string; channel: Omit<SetupChannel, "id" | "guild_id">; deadline: Date }) {
+  return discordRequest({ method: "POST", path: `/guilds/${input.guildId}/channels`, body: input.channel, deadline: input.deadline,
+    parse: (json) => { const r = setupChannelSchema.safeParse(json); return r.success && r.data.guild_id === input.guildId ? r.data : null; } });
+}
+
+export async function editSetupResponse(input: { applicationId: string; token: string; content: string; deadline: Date }) {
+  return discordRequest({ interaction: input, method: "PATCH", path: "", deadline: input.deadline,
+    body: { content: input.content, allowed_mentions: { parse: [] } }, parse: parseMessage });
 }
 
 export interface ListBotGuildsInput {
