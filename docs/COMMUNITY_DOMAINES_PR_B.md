@@ -87,8 +87,10 @@ si la participation change réellement.
 - Les reprises live vérifient les gains historiques conservés dans default.
   Pour les paris et pronostics, le crédit XP, la notification in-app et
   l'intention Discord partagent désormais une transaction. La clé durable
-  `xp-reward:<XpEvent.id>` permet aussi de réparer un crédit sans intention,
-  sans recréditer le solde. Les replays concurrents ne multiplient pas les
+  `xp-reward:<XpEvent.id>` distingue les nouveaux crédits transactionnels.
+  Un crédit existant sans intention est conservé sans renotification : son
+  historique ne prouve pas si une notification a été envoyée puis purgée.
+  Les replays concurrents ne multiplient pas les
   notifications ; une notification in-app purgée n'est pas recréée au replay.
 - Une désinscription historique hors `default`, sans compteur attribuable,
   ne crée pas de valeur négative.
@@ -110,12 +112,15 @@ destinataires personnels encore membres ACTIVE, salon résolu à nouveau, puis
 vérification que le salon appartient réellement au guild attendu avant POST.
 Le webhook historique est réservé à `default` avec bot inactif ; ses mentions
 personnelles sont également revalidées. Pour les gains de paris et pronostics,
-ce webhook passe lui aussi par l'outbox et requiert donc l'executor et son flag
-maître. Il n'est plus appelé directement après le crédit. Le client REST
+ce webhook passe lui aussi par l'outbox. Une tentative ciblée est faite après
+commit avec le même mécanisme de réservation que le cron, y compris lorsque
+le flag maître est OFF. Les reprises automatiques après interruption ou échec
+nécessitent le cron/executor actif ; voir les règles détaillées ci-dessous. Le client REST
 partage les délais/reprises du bot, sans envoyer son en-tête Authorization
 au webhook. Les autres usages historiques de `postToCommunity` restent inchangés.
 `ok` côté bot signifie **mis en file**,
-pas livré. Le flag maître OFF empêche toute livraison.
+pas livré. Le flag maître OFF arrête le cron ; il n'arrête pas la tentative
+historique ciblée du webhook de default.
 
 Un serveur nondefault sans salon ou guild configuré n'emprunte jamais les
 variables d'environnement de `default`, même si les flags de salons sont OFF.
@@ -223,7 +228,7 @@ de vérifications ciblées et du passage complet ci-dessus.
 Le rapport Claude « 1861 tests tous verts » n'a pas été pris comme baseline.
 Ces tests ne sont ni supprimés, ni ignorés, ni affaiblis pour publier la PR.
 
-## Correctifs de revue du 7 octobre 2026
+## Première correction de revue du 7 octobre 2026 (supersédée ci-dessous)
 
 La lecture des badges d'un pote vérifie désormais les deux Membership ACTIVE
 dans la communauté sélectionnée lorsque l'isolation est active. Le scénario
@@ -292,6 +297,92 @@ committer automatiques à un compte. Le commit de documentation suivant
 reprend l'identité déjà utilisée sur cette branche pour vérifier à nouveau
 la preview, sans réécrire l'historique ni modifier les droits Vercel.
 Les sources applicatives testées restent identiques.
+
+## Correction finale des trois P2
+
+### Default et flags OFF
+
+Le crédit, la notification in-app et l'intention Discord sont toujours
+persistés dans la même transaction. Après le commit, `awardXp` tente uniquement
+la livraison WEBHOOK liée à ce crédit via `attemptDefaultRewardDelivery`.
+`claimNextDelivery` accepte un identifiant cible et conserve ses verrous de
+ligne, verrou advisory de cible, bail et token de réservation. La tentative
+immédiate et le cron ne peuvent donc pas traiter simultanément la même ligne.
+Le chemin immédiat ne réclame aucune autre livraison lorsque le maître est OFF.
+
+La tentative historique requiert uniquement un webhook Discord valide,
+une communauté default ACTIVE et un destinataire encore membre ACTIVE.
+`COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, les flags bot et
+`NOTIFICATION_EXECUTOR_ENABLED` peuvent être OFF. Aucun cron n'est nécessaire
+pour cette première tentative. Une erreur HTTP n'annule jamais le crédit acquis.
+
+Pour les reprises automatiques après échec ou interruption :
+`NOTIFICATION_EXECUTOR_ENABLED=true`, `CRON_SECRET` et un GET authentifié
+sur `/api/cron/notification-executor` (fréquence documentée : chaque minute).
+Le cron récupère aussi les réservations expirées. Sans lui, l'intention reste
+durable ; un replay explicite d'un nouveau gain peut retenter son WEBHOOK
+PENDING lorsqu'il est dû. Une session déjà finalisée ne garantit pas un tel
+replay automatique. Les reprises admin remettent la ligne dans la file et
+requièrent ensuite l'executor actif. Aucun flag ni cron réel modifié ici.
+
+### Transport enregistré et configuration temporaire
+
+Le transport enregistré au commit reste autoritaire : un WEBHOOK de default
+reste WEBHOOK après activation du bot ; un BOT ne se rabat jamais sur le webhook.
+La configuration webhook doit donc rester disponible jusqu'à livraison des
+intentions WEBHOOK restantes, ou être rétablie pour les reprendre.
+Le webhook utilise la configuration actuelle de default, jamais celle d'un autre
+serveur. Le bot requiert son flag de catégorie, token et destination configurée ;
+les contrôles de communauté ACTIVE, Membership ACTIVE et guild du salon restent
+appliqués à chaque livraison.
+
+Une configuration absente/invalide ou un flag bot désactivé renvoie
+`configuration_unavailable` : PENDING, délai de deux minutes et remboursement
+de la tentative réservée (aucun HTTP tenté). Ces attentes n'épuisent pas les
+huit tentatives HTTP. Les 429/5xx/erreurs réseau gardent la politique de reprise
+existante ; les erreurs HTTP terminales et destinataires/communautés expirés
+restent FAILED. Un guild incohérent ne devient jamais un repli interserveurs.
+
+L'onglet admin « Nettoyage » expose les annonces REWARD en échec. L'action
+`retryRewardDeliveryAction` exige `requireAdmin`, un rate limit et la communauté
+sélectionnée autorisée ; ses Membership et statut sont revalidés sous verrou.
+Elle remet uniquement une ligne FAILED en PENDING, sans événement, notification
+ou transport neuf. Une ligne SENT n'est jamais réarmée. Le retrait ou la
+suspension du destinataire sera encore vérifié par le resolver à la reprise.
+
+### Crédits historiques et purge
+
+Seule une insertion réellement nouvelle de XpEvent crée l'intention et la
+notification. Un crédit existant sans intention liée ne peut pas être identifié
+avec certitude comme « jamais notifié » : les anciennes notifications ont des
+IDs indépendants et peuvent avoir été purgées, les annonces peuvent déjà avoir
+été envoyées. Le replay conserve donc ce crédit silencieusement, avec ou sans
+notification existante. Il ne rapproche pas les gains par user/session/texte.
+Cette stratégie peut laisser un ancien gain jamais annoncé sans annonce ; elle
+évite les doublons historiques sans inventer une correspondance.
+
+Pour les nouveaux crédits, une intention existante reste livrable sans crédit
+supplémentaire. Après purge in-app, la notification n'est pas recréée. Le journal
+et la livraison à occurrence vide sont conservés par la rétention technique.
+L'exactement-une-fois côté HTTP Discord reste impossible si le processus tombe
+après acceptation du POST et avant finalisation ; la base n'a pas de doublon.
+
+### Validation finale
+
+Huit fichiers ciblés : 168 tests réussis, puis l'outbox finale 18/18 après
+ajout du scénario BOT et du contrôle de suspension entre sélection et verrou.
+Les 18 protections mutées ont été détectées ; le générateur de la mutation
+guild a été corrigé (syntaxe invalide après extraction du resolver), puis ce
+cas a été rejoué et détecté par assertion. Sources restaurées avec SHA-256.
+Rapports : `gamenight-prb-mutations-3Vft7r/report.json` et
+`gamenight-prb-mutations-52UVRB/report.json`.
+
+Suite complète Postgres en série sur les sources finales : **163 fichiers,
+1982/1982 tests réussis, aucun skipped**, 344,69 s. Next typegen, TypeScript,
+ESLint et `next build` 16.3.8 réussis sur les sources restaurées/finales.
+`npm run build` n'a pas été utilisé, aucun déploiement de migration local.
+Anciennes migrations et migration additive B inchangées ; aucune nouvelle
+dépendance. Journaux `%TEMP%/gamenight-prb-third-*`.
 
 ## Revue du diff et limites
 

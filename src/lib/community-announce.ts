@@ -8,6 +8,7 @@ import { postToDiscord, webhookAllowedMentions, type DiscordEmbed, type PostToDi
 import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
 import type { DeliveryResolver } from "@/lib/notification-executor";
 import { logger } from "@/lib/logger";
+import { isRewardWebhookConfigured } from "@/lib/discord-rest";
 
 /** Annonces système : la destination dépend du serveur, jamais du lecteur ni d'un repli interserveurs. */
 export async function postToCommunity(
@@ -74,8 +75,9 @@ const announcePayload = z.object({
 });
 
 /** Le serveur et ses flags sont relus à la livraison, après toute suspension/reconfiguration. */
-export const communitySystemAnnounceResolver: DeliveryResolver = {
-  async resolve({ event, delivery }) {
+async function resolveCommunityReward(
+  { event, delivery }: Parameters<DeliveryResolver["resolve"]>[0], immediateDefaultWebhook = false,
+): ReturnType<DeliveryResolver["resolve"]> {
     if (event.category !== "REWARD" || event.eventType !== "COMMUNITY_SYSTEM_ANNOUNCE" || !event.communityId ||
       !["BOT", "WEBHOOK"].includes(delivery.transport) || delivery.channel !== "DISCORD_CHANNEL" || delivery.operation !== "SEND") {
       return { eligible: false, reason: "unresolvable" };
@@ -84,32 +86,41 @@ export const communitySystemAnnounceResolver: DeliveryResolver = {
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
     const category = payload.data.channelCategory;
     const botEnabled = process.env[category === "SESSION" ? "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED" : "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED"] === "true";
-    if (process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true" || (delivery.transport === "BOT" && !botEnabled)) {
+    if ((!immediateDefaultWebhook && process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true") ||
+      (immediateDefaultWebhook && delivery.transport !== "WEBHOOK")) {
       return { eligible: false, reason: "not_configured" };
     }
     const community = await prisma.community.findUnique({
       where: { id: event.communityId }, select: { status: true, slug: true, discordGuildId: true },
     });
     if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
-    if (!isCommunityChannelsEnabled() && community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "not_configured" };
+    if (!isCommunityChannelsEnabled() && community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "configuration_unavailable" };
     const recipientDiscordIds = payload.data.recipientDiscordIds ?? [];
     if (!(await recipientsAreActive(event.communityId, recipientDiscordIds))) return { eligible: false, reason: "expired" };
     if (delivery.transport === "WEBHOOK") {
-      if (community.slug !== DEFAULT_COMMUNITY_SLUG || botEnabled || !process.env.DISCORD_WEBHOOK_URL) {
-        return { eligible: false, reason: "not_configured" };
-      }
+      // Le transport choisi au commit reste autoritaire, même après activation du bot.
+      if (community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "not_configured" };
+      if (!isRewardWebhookConfigured()) return { eligible: false, reason: "configuration_unavailable" };
       return { eligible: true, action: { kind: "send_reward_webhook",
         message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions: webhookAllowedMentions(payload.data.content) },
       } };
     }
+    if (!botEnabled) return { eligible: false, reason: "configuration_unavailable" };
     const destination = category === "TOURNAMENT"
       ? await resolveTournamentAnnounceConfig(event.communityId)
       : await resolveSessionAnnounceConfig(event.communityId);
-    if (!destination || (community.slug !== DEFAULT_COMMUNITY_SLUG && destination.guildId !== community.discordGuildId)) {
-      return { eligible: false, reason: "not_configured" };
-    }
+    if (!destination || !process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
+    if (community.slug !== DEFAULT_COMMUNITY_SLUG && destination.guildId !== community.discordGuildId) return { eligible: false, reason: "not_configured" };
     return { eligible: true, action: { kind: "send_channel_message_verified", ...destination,
       message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions: webhookAllowedMentions(payload.data.content) },
     } };
-  },
+}
+
+export const communitySystemAnnounceResolver: DeliveryResolver = {
+  resolve: (input) => resolveCommunityReward(input),
+};
+
+/** Seule la livraison WEBHOOK de default peut tenter le chemin historique sans flag maître. */
+export const immediateDefaultRewardResolver: DeliveryResolver = {
+  resolve: (input) => resolveCommunityReward(input, true),
 };

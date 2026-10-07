@@ -215,14 +215,15 @@ export type ResolvedAction =
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
- * traitement (retryable ou terminal). `dependency_not_ready` est la SEULE
- * retryable : les autres sont des refus définitifs pour cette livraison
+ * traitement (retryable ou terminal). Les dépendances et la configuration
+ * temporairement indisponible sont retryables ; les autres sont des refus définitifs pour cette livraison
  * telle qu'elle existe (pas de sens à retenter sans qu'un humain ou un
  * futur événement ne change la donnée source). */
 export type ResolutionReason =
   | "preference_declined"
   | "expired"
   | "not_configured"
+  | "configuration_unavailable"
   | "dependency_not_ready"
   | "unresolvable";
 
@@ -359,6 +360,11 @@ export function classifyDiscordFailure(
  * voir le commentaire de `ResolutionReason` pour la distinction retryable/
  * terminal. */
 function classifyResolutionFailure(reason: ResolutionReason, attempts: number, now: Date): FinalizeFailureInput {
+  if (reason === "configuration_unavailable") {
+    return { retryable: true, refundAttempt: true, errorClass: "resolver:configuration_unavailable",
+      lastError: "Configuration temporairement indisponible, transport enregistré conservé.",
+      nextAttemptAt: new Date(now.getTime() + DEPENDENCY_RETRY_BACKOFF_MS) };
+  }
   if (reason === "dependency_not_ready" && attempts < MAX_DELIVERY_ATTEMPTS) {
     return {
       retryable: true,
@@ -632,6 +638,7 @@ export type ProcessedDeliveryOutcome =
   | { deliveryId: string; outcome: "lost_reservation_after_success" };
 
 export interface ProcessDeliveryOptions {
+  deliveryId?: string;
   resolver: DeliveryResolver;
   owner: string;
   now?: Date;
@@ -662,7 +669,7 @@ export interface ProcessDeliveryOptions {
  */
 export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise<ProcessedDeliveryOutcome | null> {
   const now = opts.now ?? new Date();
-  const claimed = await claimNextDelivery(opts.owner, { now, leaseMs: opts.leaseMs });
+  const claimed = await claimNextDelivery(opts.owner, { now, leaseMs: opts.leaseMs, deliveryId: opts.deliveryId });
   if (!claimed) return null;
 
   // Invariant post-claim : une ligne RESERVED a toujours un

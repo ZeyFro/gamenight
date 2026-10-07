@@ -9,7 +9,7 @@ import { announceLevelUp } from "@/lib/discord-level-up";
 import { computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
-import { persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
+import { attemptDefaultRewardDelivery, persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
 
 export function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -43,12 +43,16 @@ export async function awardXp(
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: id, userId } } });
       const amount = computeAwardedAmount(baseAmount, stats.streakCount, applyStreak);
+      let rewardCreditId: string | undefined;
       if (rewardNotice) {
         const created = await scopedDb.xpEvent.createMany({ data: [{ communityId: id, userId, reason, sourceId, amount }], skipDuplicates: true });
         const credit = await scopedDb.xpEvent.findUniqueOrThrow({ where: { communityId_userId_reason_sourceId: { communityId: id, userId, reason, sourceId } } });
-        // Crédit et intentions partagent le commit ; un ancien crédit peut être réparé sans incrément.
+        rewardCreditId = credit.id;
+        // Sans intention liée au crédit, l'historique ne prouve pas si une annonce a déjà été envoyée.
+        // Un crédit existant n'est jamais renotifié ; une intention existante peut encore être livrée.
+        if (created.count === 0) return { leveledUp: false, beforeLevel: 0, afterLevel: 0,
+          discordId: user.discordId, awarded: false, rewardCreditId };
         await persistRewardNotice(tx, credit, rewardNotice);
-        if (created.count === 0) return null;
       } else {
         await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
       }
@@ -59,9 +63,10 @@ export async function awardXp(
       const afterLevel = levelForXp(updated.xpTotal);
       const leveledUp = didLevelUp(updated.xpTotal - amount, updated.xpTotal);
       if (leveledUp) await scopedDb.levelUpEvent.create({ data: { communityId: id, userId, level: afterLevel } });
-      return { leveledUp, beforeLevel, afterLevel, discordId: user.discordId };
+      return { leveledUp, beforeLevel, afterLevel, discordId: user.discordId, awarded: true, rewardCreditId };
     });
     if (!result) return { leveledUp: false, awarded: false };
+    if (result.rewardCreditId) await attemptDefaultRewardDelivery(result.rewardCreditId);
     if (result.leveledUp) {
       try {
         await announceLevelUp({ discordId: result.discordId }, result.beforeLevel, result.afterLevel, id);
@@ -73,7 +78,7 @@ export async function awardXp(
         message: "Niveau " + result.beforeLevel + " → " + result.afterLevel + " · " + titleForLevel(result.afterLevel) + " · " + rankForLevel(result.afterLevel).name,
       });
     }
-    return { leveledUp: result.leveledUp, awarded: true };
+    return { leveledUp: result.leveledUp, awarded: result.awarded };
   } catch (error) {
     if (isUniqueConstraintViolation(error)) return { leveledUp: false, awarded: false };
     throw error;

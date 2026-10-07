@@ -507,14 +507,18 @@ interface MessageContentInput {
 }
 
 /** Webhook historique de default, livré par l'outbox avec le même budget et les mêmes reprises que le bot. */
-export async function sendRewardWebhook(input: MessageContentInput & { deadline: Date; now?: Date }): Promise<DiscordRestResult<object>> {
+export function isRewardWebhookConfigured(): boolean {
   let valid = false;
   try {
     const url = new URL(process.env.DISCORD_WEBHOOK_URL ?? "");
     valid = url.protocol === "https:" && ["discord.com", "discordapp.com"].includes(url.hostname) &&
       /^\/api\/(?:v\d+\/)?webhooks\/\d+\/[^/]+$/.test(url.pathname) && !url.username && !url.password;
   } catch { /* Configuration absente ou invalide : aucun appel réseau. */ }
-  if (!valid) return { ok: false, kind: "not_configured", message: "Webhook Discord absent ou invalide.", retryable: false };
+  return valid;
+}
+
+export async function sendRewardWebhook(input: MessageContentInput & { deadline: Date; now?: Date }): Promise<DiscordRestResult<object>> {
+  if (!isRewardWebhookConfigured()) return { ok: false, kind: "not_configured", message: "Webhook Discord absent ou invalide.", retryable: false };
   return discordRequest({ webhook: true, method: "POST", path: "", body: buildMessageBody(input),
     deadline: input.deadline, now: input.now, allowEmptyBody: true, parse: () => ({}),
   });

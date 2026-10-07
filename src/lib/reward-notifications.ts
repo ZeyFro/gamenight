@@ -3,6 +3,10 @@ import type { DiscordEmbed } from "@/lib/discord";
 import { webhookAllowedMentions } from "@/lib/discord";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { immediateDefaultRewardResolver } from "@/lib/community-announce";
+import { processNextDelivery } from "@/lib/notification-executor";
 
 export interface RewardNotice {
   type: Extract<NotificationType, "PRONOSTIC" | "XP_BET">;
@@ -10,6 +14,22 @@ export interface RewardNotice {
   message: string;
   relatedSessionId: string;
   embed: DiscordEmbed;
+}
+
+/** Après commit uniquement : même bail/token que le cron, une seule livraison ciblée. */
+export async function attemptDefaultRewardDelivery(creditId: string): Promise<void> {
+  try {
+    const delivery = await prisma.notificationDelivery.findFirst({ where: {
+      eventId: `xp-reward:${creditId}`, transport: "WEBHOOK", status: "PENDING",
+      event: { category: "REWARD", eventType: "COMMUNITY_SYSTEM_ANNOUNCE" },
+    }, select: { id: true } });
+    if (!delivery) return;
+    await processNextDelivery({ owner: `reward:${creditId}`, deliveryId: delivery.id,
+      resolver: immediateDefaultRewardResolver });
+  } catch (error) {
+    // Le commit XP est acquis ; la file durable permet la reprise après interruption.
+    logger.error("reward-notifications", error, { creditId, effect: "immediate-delivery" });
+  }
 }
 
 /** Le journal durable est la clé de reprise, même après purge de la notification in-app. */

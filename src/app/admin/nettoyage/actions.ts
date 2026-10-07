@@ -6,6 +6,14 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { enqueueSessionThreadDelete } from "@/lib/session-announce";
 import { enqueueTournamentAnnounceDelete, enqueueTournamentThreadDelete } from "@/lib/tournament-announce";
 import { listFailedDiscordCleanupDeliveries } from "@/lib/discord-cleanup-status";
+import { retryRewardDelivery } from "@/lib/reward-delivery-retry";
+
+export async function retryRewardDeliveryAction(formData: FormData) {
+  const admin = await requireAdmin();
+  if (!admin || !checkRateLimit(admin.id, "retryRewardDelivery")) return;
+  await retryRewardDelivery(admin.id, String(formData.get("deliveryId") ?? ""));
+  revalidatePath("/admin");
+}
 
 /**
  * Réessai manuel d'un nettoyage Discord définitif resté en échec terminal

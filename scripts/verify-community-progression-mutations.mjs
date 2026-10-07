@@ -31,9 +31,16 @@ add("xp-first-global", core, "premier geste global", [edits(lib("xp-actions"), '
 add("backfill-first-global", core, "backfill Steam :", [edits(lib("backfill-xp"), 'if (reason === "STEAM_LINK_FIRST" || reason === "AVAILABILITY_FIRST") {', 'if (false) {')]);
 const reward = integration("reward-notifications");
 add("reward-intention", reward, "interruption après commit|échec du contrôle", [edits(lib("xp-actions"), 'await persistRewardNotice(tx, credit, rewardNotice);', '// mutation : crédit sans intention durable')]);
-add("reward-repair", reward, "réparation d'un ancien crédit", [edits(lib("xp-actions"), 'await persistRewardNotice(tx, credit, rewardNotice);\n        if (created.count === 0) return null;', 'if (created.count === 0) return null;\n        await persistRewardNotice(tx, credit, rewardNotice);')]);
+add("reward-legacy-silence", reward, "ancien crédit", [edits(lib("xp-actions"), 'if (created.count === 0) return { leveledUp:', 'if (false) return { leveledUp:')]);
 add("reward-atomicity", reward, "panne de persistance", [edits(lib("xp-actions"), 'await persistRewardNotice(tx, credit, rewardNotice);', 'await persistRewardNotice(prisma as unknown as Prisma.TransactionClient, credit, rewardNotice);')]);
-add("reward-retention-replay", reward, "réparation d'un ancien crédit", [edits(lib("reward-notifications"), 'if (created.count === 0) return;', 'if (created.count === 0) {\n    await scopedDb.notification.createMany({ data: [{ id: `duplicate:${Date.now()}`, communityId: credit.communityId, userId: credit.userId, type: notice.type, title: notice.title, message: notice.message }], skipDuplicates: true });\n    return;\n  }')]);
+add("reward-retention-replay", reward, "notification purgée", [edits(lib("xp-actions"), 'if (created.count === 0) return { leveledUp:', 'if (created.count === 0 && !await scopedDb.notificationEvent.findUnique({ where: { id: `xp-reward:${credit.id}` } })) return { leveledUp:')]);
+add("reward-immediate", reward, "flags OFF et executor OFF", [edits(lib("xp-actions"), 'if (result.rewardCreditId) await attemptDefaultRewardDelivery(result.rewardCreditId);', '// mutation : aucun chemin immédiat')]);
+add("reward-targeted-claim", reward, "flags OFF et executor OFF", [edits(lib("notification-delivery"), 'AND (${opts.deliveryId ?? null}::text IS NULL OR id = ${opts.deliveryId ?? null})', '')]);
+add("reward-transport", reward, "WEBHOOK en attente", [edits(lib("community-announce"), 'if (!isRewardWebhookConfigured()) return', 'if (botEnabled || !isRewardWebhookConfigured()) return')]);
+add("reward-configuration-retry", reward, "WEBHOOK en attente", [edits(lib("notification-executor"), 'if (reason === "configuration_unavailable") {', 'if (false) {')]);
+add("reward-configuration-budget", reward, "WEBHOOK en attente", [edits(lib("notification-delivery"), '...(input.refundAttempt ? { attempts: { decrement: 1 } } : {}),', '// mutation : les attentes épuisent les tentatives HTTP')]);
+add("reward-admin-scope", reward, "admin REWARD", [edits(lib("reward-delivery-retry"), 'if (!row?.event.communityId || !(await lockCommunityProgress(tx, row.event.communityId, userId))) return false;', 'if (!row?.event.communityId) return false;')]);
+add("reward-admin-selection", reward, "admin REWARD", [edits(lib("reward-delivery-retry"), 'id: deliveryId, status: "FAILED",\n      event: { category: "REWARD", eventType: "COMMUNITY_SYSTEM_ANNOUNCE", ...communityIdFilter(scope) },', 'id: deliveryId, status: "FAILED",\n      event: { category: "REWARD", eventType: "COMMUNITY_SYSTEM_ANNOUNCE" },')]);
 add("friend-badge-membership", views, "badges d'un pote retiré", [edits("src/app/potes/[id]/badges/page.tsx", '!(await isMemberOfCommunity(user.id, communityId)) || !(await isMemberOfCommunity(id, communityId))', '!(await isMemberOfCommunity(user.id, communityId))')]);
 add("delivery-timezone", integration("notification-delivery"), "fuseau", [edits(lib("notification-delivery"), '("nextAttemptAt" IS NULL OR "nextAttemptAt" <= (${now}::timestamptz AT TIME ZONE \'UTC\'))', '("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})')]);
 add("badge-xp-filter", core, "badge participation", [bypassModel("XpEvent"), edits(lib("badges"), 'where: { communityId: id, userId, reason: "PARTICIPATE" }', 'where: { userId, reason: "PARTICIPATE" }')]);
@@ -81,7 +88,7 @@ add("provenance-journal", admin, "provenance event", [edits(lib("notification-de
 add("notification-mark-read", admin, "notifications :", [bypassModel("Notification")]);
 for (const [name, before, after] of [
   ["community", 'if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };', 'if (!community) return { eligible: false, reason: "expired" };'],
-  ["guild", '(community.slug !== DEFAULT_COMMUNITY_SLUG && destination.guildId !== community.discordGuildId)', 'false'],
+  ["guild", 'community.slug !== DEFAULT_COMMUNITY_SLUG && destination.guildId !== community.discordGuildId', 'false'],
   ["recipient", 'return discordIds.every((id) => activeIds.has(id));', 'return true;'],
 ]) add(`announce-${name}`, test("community-announce"), "refuse|membre retiré", [edits(lib("community-announce"), before, after)]);
 add("channel-off-fallback", test("community-channels"), undefined, [edits(lib("community-channels"), 'return community?.slug === DEFAULT_COMMUNITY_SLUG && community.status === "ACTIVE" ? legacy() : null;', 'return legacy();')]);

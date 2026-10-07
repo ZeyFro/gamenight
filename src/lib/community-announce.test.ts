@@ -26,6 +26,7 @@ const input = (): ResolveInput => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
   for (const flag of ["COMMUNITY_CHANNELS_ENABLED", "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "NOTIFICATION_EXECUTOR_ENABLED"])
     vi.stubEnv(flag, "true");
   community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b" });
@@ -87,7 +88,7 @@ describe("annonces système : file communautaire sans réseau depuis l'action", 
 });
 
 describe("résolveur : droit et destination relus à la livraison", () => {
-  it("outbox webhook : default seulement, bot éteint et maître actif", async () => {
+  it("outbox webhook : default seulement, transport conservé après activation du bot", async () => {
     community.mockResolvedValue({ slug: "default", status: "ACTIVE" });
     vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
     vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/test");
@@ -97,7 +98,7 @@ describe("résolveur : droit et destination relus à la livraison", () => {
     await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
     community.mockResolvedValue({ slug: "default", status: "ACTIVE" });
     vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
-    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toMatchObject({ eligible: true, action: { kind: "send_reward_webhook" } });
     vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
     vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
     await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
@@ -111,7 +112,8 @@ describe("résolveur : droit et destination relus à la livraison", () => {
   });
   it.each(["COMMUNITY_CHANNELS_ENABLED", "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "NOTIFICATION_EXECUTOR_ENABLED"])("refuse une livraison quand %s est éteint", async (flag) => {
     vi.stubEnv(flag, "false");
-    await expect(communitySystemAnnounceResolver.resolve(input())).resolves.toEqual({ eligible: false, reason: "not_configured" });
+    await expect(communitySystemAnnounceResolver.resolve(input())).resolves.toEqual({ eligible: false,
+      reason: flag === "NOTIFICATION_EXECUTOR_ENABLED" ? "not_configured" : "configuration_unavailable" });
   });
   it("refuse le serveur suspendu depuis l'enqueue", async () => {
     community.mockResolvedValue({ slug: "b", status: "SUSPENDED" });

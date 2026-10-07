@@ -339,6 +339,8 @@ export async function supersedeStaleDeliveries(): Promise<number> {
 }
 
 export interface ClaimOptions {
+  /** Réservation ciblée pour une tentative après commit, avec les mêmes verrous que le cron. */
+  deliveryId?: string;
   leaseMs?: number;
   now?: Date;
 }
@@ -456,6 +458,7 @@ export async function claimNextDelivery(
         SELECT id, "targetSlot", operation, sequence
         FROM "NotificationDelivery"
         WHERE status = 'PENDING'
+          AND (${opts.deliveryId ?? null}::text IS NULL OR id = ${opts.deliveryId ?? null})
           -- Prisma transmet Date en timestamptz ; la colonne stocke l'instant UTC en timestamp.
           -- Sans conversion explicite, PostgreSQL interprète la colonne dans son TimeZone de session.
           AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= (${now}::timestamptz AT TIME ZONE 'UTC'))
@@ -607,6 +610,8 @@ export async function finalizeDeliverySuccess(
 }
 
 export interface FinalizeFailureInput {
+  /** Une configuration indisponible n'est pas une tentative HTTP. */
+  refundAttempt?: boolean;
   /** `true` pour un échec transitoire (réseau, 5xx, 429) → retour à PENDING
    * avec backoff. `false` pour un échec non-retryable (token invalide,
    * permission refusée) ou des tentatives épuisées → FAILED terminal. */
@@ -635,6 +640,7 @@ export async function finalizeDeliveryFailure(
     data: input.retryable
       ? {
           status: "PENDING",
+          ...(input.refundAttempt ? { attempts: { decrement: 1 } } : {}),
           reservedBy: null,
           reservationToken: null,
           reservedUntil: null,
