@@ -1,16 +1,13 @@
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
-import { postToCommunity } from "@/lib/community-announce";
 import { getScopedPrisma, scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { canAccessSession } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { awardXp } from "@/lib/xp-actions";
-import { createNotification } from "@/lib/notifications";
 import { checkBetBadges } from "@/lib/badges";
 import { ACCENT_COLOR } from "@/lib/discord";
-import { logger } from "@/lib/logger";
 
 /** Mise minimale, et pas de mise au-delà de 50% du solde actuel — par tranches de 10 (spec). */
 export const XP_BET_MIN = 10;
@@ -117,28 +114,16 @@ export async function resolveBets(
     await scopedDb.xpBet.update({ where: { id: bet.id }, data: { won } });
     if (!won) continue;
 
-    const reward = await awardXp(bet.voterId, session.communityId, "XP_BET_WON", bet.id, bet.amount * 2, {
+    await awardXp(bet.voterId, session.communityId, "XP_BET_WON", bet.id, bet.amount * 2, {
       applyStreak: false,
+      rewardNotice: {
+        type: "XP_BET", title: "🎲 Pari gagné !",
+        message: `Ton pari sur ${bet.target.discordName} était le bon — +${bet.amount * 2} XP`,
+        relatedSessionId: sessionId,
+        embed: { title: "🎲 Pari gagné !",
+          description: `<@${bet.voter.discordId}> avait misé sur le bon carry — +${bet.amount * 2} XP`, color: ACCENT_COLOR },
+      },
     });
     await checkBetBadges(bet.voterId, session.communityId);
-    if (!reward.awarded) continue;
-
-    await createNotification({
-      communityId: session.communityId,
-      userId: bet.voterId,
-      type: "XP_BET",
-      title: "🎲 Pari gagné !",
-      message: `Ton pari sur ${bet.target.discordName} était le bon — +${bet.amount * 2} XP`,
-      relatedSessionId: sessionId,
-    });
-
-    const result = await postToCommunity(session.communityId, {
-      title: "🎲 Pari gagné !",
-      description: `<@${bet.voter.discordId}> avait misé sur le bon carry — +${bet.amount * 2} XP`,
-      color: ACCENT_COLOR,
-    });
-    if (!result.ok) {
-      logger.warn("xp-bets", "Notif Discord pari gagné non envoyée.", { betId: bet.id });
-    }
   }
 }

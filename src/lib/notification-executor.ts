@@ -26,6 +26,7 @@ import {
   sendDirectMessage,
   sendThreadMessage,
   sendThreadMessageVerified,
+  sendRewardWebhook,
   startPrivateThread,
   startThreadFromMessage,
   type AllowedMentions,
@@ -126,6 +127,7 @@ export interface ResolvedMessageContent {
  * intentionnel, voir le commentaire de fichier.
  */
 export type ResolvedAction =
+  | { kind: "send_reward_webhook"; message: ResolvedMessageContent }
   | { kind: "send_channel_message"; channelId: string; message: ResolvedMessageContent }
   | {
       /** Vérifie via un GET réel que `channelId` appartient à `guildId`
@@ -397,6 +399,9 @@ export async function performDiscordAction(
   now: Date
 ): Promise<DiscordRestResult<DiscordActionSuccess>> {
   switch (action.kind) {
+    case "send_reward_webhook": {
+      return mapDiscordResult(await sendRewardWebhook({ ...action.message, deadline, now }), () => ({}));
+    }
     case "send_channel_message": {
       const result = await sendChannelMessage({
         channelId: action.channelId,
@@ -685,11 +690,10 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
   const reservedUntil = claimed.reservedUntil;
 
   // Une opération inconnue ou non prise en charge ne doit jamais être
-  // considérée comme envoyée. `WEBHOOK` n'est aujourd'hui jamais produit
-  // par `enqueueDelivery` (rien ne le branche), mais reste représentable
-  // par le schéma — garde défensive explicite plutôt qu'un dispatch
-  // silencieusement incorrect si un futur appelant s'y trompait.
-  if (claimed.transport !== "BOT") {
+  // considérée comme envoyée. Le webhook des gains ne prend en charge
+  // que SEND vers DISCORD_CHANNEL ; le couple action/transport est aussi
+  // vérifié après résolution, avant tout appel réseau.
+  if (claimed.transport !== "BOT" && !(claimed.transport === "WEBHOOK" && claimed.channel === "DISCORD_CHANNEL" && claimed.operation === "SEND")) {
     await finalizeDeliveryFailure(claimed.id, reservationToken, {
       retryable: false,
       errorClass: "unsupported_transport",
@@ -737,6 +741,15 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
       outcome: failure.retryable ? "retrying" : "failed",
       errorClass: failure.errorClass,
     };
+  }
+
+  // Le webhook est réservé à l'outbox des gains, jamais à une action bot arbitraire.
+  if ((claimed.transport === "WEBHOOK") !== (resolution.action.kind === "send_reward_webhook") ||
+    (claimed.transport === "WEBHOOK" && (event.category !== "REWARD" || event.eventType !== "COMMUNITY_SYSTEM_ANNOUNCE"))) {
+    await finalizeDeliveryFailure(claimed.id, reservationToken, {
+      retryable: false, errorClass: "unsupported_transport", lastError: "Transport et action incompatibles.",
+    });
+    return { deliveryId: claimed.id, outcome: "failed", errorClass: "unsupported_transport" };
   }
 
   // Budget vérifié AVANT tout appel réseau, contre la PLUS PROCHE des deux

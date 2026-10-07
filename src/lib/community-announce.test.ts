@@ -87,6 +87,22 @@ describe("annonces système : file communautaire sans réseau depuis l'action", 
 });
 
 describe("résolveur : droit et destination relus à la livraison", () => {
+  it("outbox webhook : default seulement, bot éteint et maître actif", async () => {
+    community.mockResolvedValue({ slug: "default", status: "ACTIVE" });
+    vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
+    vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/test");
+    const request = input(); request.delivery.transport = "WEBHOOK";
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toMatchObject({ eligible: true, action: { kind: "send_reward_webhook" } });
+    community.mockResolvedValue({ slug: "b", status: "ACTIVE" });
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
+    community.mockResolvedValue({ slug: "default", status: "ACTIVE" });
+    vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
+    vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
+    vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "not_configured" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("demande une vérification du guild avant le POST", async () => {
     await expect(communitySystemAnnounceResolver.resolve(input())).resolves.toMatchObject({ eligible: true,
       action: { kind: "send_channel_message_verified", guildId: "guild-b", channelId: "channel-b",

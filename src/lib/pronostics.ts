@@ -1,14 +1,11 @@
-import { postToCommunity } from "@/lib/community-announce";
 import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
 import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { canAccessSession } from "@/lib/session-access";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
-import { createNotification } from "@/lib/notifications";
 import { checkPronosticBadges } from "@/lib/badges";
 import { ACCENT_COLOR } from "@/lib/discord";
 import { getWinningProposalParticipants } from "@/lib/superlative-voting";
-import { logger } from "@/lib/logger";
 
 /**
  * Sprint 4 (FEATURE 1, Pronostics) — participants éligibles à prédire "qui
@@ -82,37 +79,16 @@ export async function resolvePronostics(
     });
     if (!correct) continue;
 
-    const reward = await awardXp(pronostic.voterId, session.communityId,
-      "PRONOSTIC_CORRECT",
-      pronostic.id,
-      XP_AMOUNTS.PRONOSTIC_CORRECT
-    );
-    await checkPronosticBadges(pronostic.voterId, session.communityId);
-    if (!reward.awarded) continue;
-
-    await createNotification({
-      communityId: session.communityId,
-      userId: pronostic.voterId,
-      type: "PRONOSTIC",
-      title: "🔮 Pronostic correct !",
-      message: `Tu avais prédit juste pour ${pronostic.predictedUser.discordName} — +${XP_AMOUNTS.PRONOSTIC_CORRECT} XP`,
-      relatedSessionId: sessionId,
-    });
-
-    // Notif Discord (spec) — embed direct, pas de passage par
-    // `MessageTemplate` : le texte est fixe et déjà entièrement spécifié,
-    // même choix que les autres notifs "personnelles" à un seul user (cf.
-    // `discord-level-up.ts`/`discord-badge-unlocked.ts` pour le pendant
-    // MessageTemplate, ici volontairement plus léger).
-    const result = await postToCommunity(session.communityId, {
-      title: "🔮 Pronostic correct !",
-      description: `<@${pronostic.voter.discordId}> avait prédit juste — +${XP_AMOUNTS.PRONOSTIC_CORRECT} XP`,
-      color: ACCENT_COLOR,
-    });
-    if (!result.ok) {
-      logger.warn("pronostics", "Notif Discord pronostic correct non envoyée.", {
-        pronosticId: pronostic.id,
+    await awardXp(pronostic.voterId, session.communityId,
+      "PRONOSTIC_CORRECT", pronostic.id, XP_AMOUNTS.PRONOSTIC_CORRECT, {
+        rewardNotice: {
+          type: "PRONOSTIC", title: "🔮 Pronostic correct !",
+          message: `Tu avais prédit juste pour ${pronostic.predictedUser.discordName} — +${XP_AMOUNTS.PRONOSTIC_CORRECT} XP`,
+          relatedSessionId: sessionId,
+          embed: { title: "🔮 Pronostic correct !",
+            description: `<@${pronostic.voter.discordId}> avait prédit juste — +${XP_AMOUNTS.PRONOSTIC_CORRECT} XP`, color: ACCENT_COLOR },
+        },
       });
-    }
+    await checkPronosticBadges(pronostic.voterId, session.communityId);
   }
 }

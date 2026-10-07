@@ -106,6 +106,28 @@ describe.skipIf(!TEST_DATABASE_URL)("progression : vues et système de deux serv
     const percentages = elements(tree).map((element) => element.props.children).filter((child) => typeof child === "string" && /^\d+%$/.test(child));
     expect(percentages).toEqual(["0%"]);
   });
+  it("badges d'un pote retiré de A mais encore dans B : refus dans A, même avec un lecteur A/B", async () => {
+    await db.membership.create({ data: { userId: ids.alice, communityId: ids.b, status: "ACTIVE" } });
+    await db.user.update({ where: { id: ids.alice }, data: { activeCommunityId: ids.a } });
+    await db.membership.update({ where: { communityId_userId: { communityId: ids.a, userId: ids.shared } }, data: { status: "REMOVED" } });
+    currentUser.mockResolvedValue(await db.user.findUniqueOrThrow({ where: { id: ids.alice } }));
+    const page = (await import("@/app/potes/[id]/badges/page")).default;
+    await expect(page({ params: Promise.resolve({ id: ids.shared }) })).rejects.toThrow("NOT_FOUND");
+    await db.user.update({ where: { id: ids.alice }, data: { activeCommunityId: ids.b } });
+    const tree = await page({ params: Promise.resolve({ id: ids.shared }) });
+    const badges = elements(tree).find((e) => Array.isArray(e.props.badges))!.props.badges as Array<{ id: string; unlockedAt: Date | null }>;
+    expect(badges.find((b) => b.id === ids["badge-b"])?.unlockedAt).not.toBeNull();
+    expect(badges.find((b) => b.id === ids["badge-a"])?.unlockedAt).toBeNull();
+  });
+  it("badges flags OFF : default seulement, sans exigence d'appartenance", async () => {
+    await db.userBadge.create({ data: { communityId: ids.default, userId: ids.shared, badgeId: ids["badge-a"] } });
+    await db.membership.updateMany({ where: { userId: ids.shared }, data: { status: "REMOVED" } });
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    const tree = await (await import("@/app/potes/[id]/badges/page")).default({ params: Promise.resolve({ id: ids.shared }) });
+    const badges = elements(tree).find((e) => Array.isArray(e.props.badges))!.props.badges as Array<{ id: string; unlockedAt: Date | null }>;
+    expect(badges.find((b) => b.id === ids["badge-a"])?.unlockedAt).not.toBeNull();
+    expect(badges.find((b) => b.id === ids["badge-b"])?.unlockedAt).toBeNull();
+  });
   it("accueil : feed et streak ne mélangent pas le membre commun A+B", async () => {
     const home = await import("./home");
     const feed = (await home.getRecentActivity(ids.shared, 20)).map((e) => e.text).join("|");

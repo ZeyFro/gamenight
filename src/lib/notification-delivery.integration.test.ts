@@ -70,6 +70,28 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-delivery (intégration Postgre
   });
 
   let eventCounter = 0;
+  it("claim : le fuseau PostgreSQL ne rend pas une échéance UTC future éligible", async () => {
+    const now = new Date("2026-10-06T12:00:00Z");
+    const event = await makeEvent();
+    const delivery = await makeDelivery(event.id);
+    await db.notificationDelivery.update({ where: { id: delivery.id }, data: { nextAttemptAt: new Date(now.getTime() + 12_000) } });
+    const original = await db.$queryRawUnsafe<Array<{ TimeZone: string }>>("SHOW TimeZone");
+    const [database] = await db.$queryRaw<Array<{ name: string }>>`SELECT current_database() AS name`;
+    expect(new URL(TEST_DATABASE_URL!).hostname).toBe("127.0.0.1");
+    expect(database.name).toMatch(/^[a-zA-Z0-9_]+$/);
+    // Toutes les connexions du pool utilisent le même fuseau non UTC, puis restauration.
+    await db.$executeRawUnsafe(`ALTER DATABASE "${database.name}" SET timezone TO 'Europe/Paris'`);
+    await db.$disconnect();
+    try {
+      const zone = await db.$queryRawUnsafe<Array<{ TimeZone: string }>>("SHOW TimeZone");
+      expect(zone[0].TimeZone).toBe("Europe/Paris");
+      expect(await lib.claimNextDelivery("early", { now: new Date(now.getTime() + 5_000) })).toBeNull();
+      expect((await lib.claimNextDelivery("due", { now: new Date(now.getTime() + 13_000) }))?.id).toBe(delivery.id);
+    } finally {
+      await db.$executeRawUnsafe(`ALTER DATABASE "${database.name}" SET timezone TO '${original[0].TimeZone.replaceAll("'", "''")}'`);
+      await db.$disconnect();
+    }
+  });
   async function makeEvent(overrides: Partial<Parameters<typeof lib.createNotificationEvent>[0]> = {}) {
     eventCounter += 1;
     return lib.createNotificationEvent({

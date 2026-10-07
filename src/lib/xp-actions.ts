@@ -9,6 +9,7 @@ import { announceLevelUp } from "@/lib/discord-level-up";
 import { computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
+import { persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
 
 export function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -18,7 +19,7 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
 export async function awardXp(
   userId: string, communityId: string | null, reason: XpReason,
   sourceId: string, baseAmount: number,
-  { applyStreak = true }: { applyStreak?: boolean } = {},
+  { applyStreak = true, rewardNotice }: { applyStreak?: boolean; rewardNotice?: RewardNotice } = {},
 ): Promise<{ leveledUp: boolean; awarded: boolean }> {
   const id = await statsCommunityIdForSession(communityId);
   const defaultId = await getDefaultCommunityId();
@@ -42,7 +43,15 @@ export async function awardXp(
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: id, userId } } });
       const amount = computeAwardedAmount(baseAmount, stats.streakCount, applyStreak);
-      await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
+      if (rewardNotice) {
+        const created = await scopedDb.xpEvent.createMany({ data: [{ communityId: id, userId, reason, sourceId, amount }], skipDuplicates: true });
+        const credit = await scopedDb.xpEvent.findUniqueOrThrow({ where: { communityId_userId_reason_sourceId: { communityId: id, userId, reason, sourceId } } });
+        // Crédit et intentions partagent le commit ; un ancien crédit peut être réparé sans incrément.
+        await persistRewardNotice(tx, credit, rewardNotice);
+        if (created.count === 0) return null;
+      } else {
+        await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
+      }
       const updated = await scopedDb.communityMemberStats.update({
         where: { communityId_userId: { communityId: id, userId } }, data: { xpTotal: { increment: amount } },
       });

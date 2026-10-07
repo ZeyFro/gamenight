@@ -456,7 +456,9 @@ export async function claimNextDelivery(
         SELECT id, "targetSlot", operation, sequence
         FROM "NotificationDelivery"
         WHERE status = 'PENDING'
-          AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
+          -- Prisma transmet Date en timestamptz ; la colonne stocke l'instant UTC en timestamp.
+          -- Sans conversion explicite, PostgreSQL interprète la colonne dans son TimeZone de session.
+          AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= (${now}::timestamptz AT TIME ZONE 'UTC'))
           AND id <> ALL(${excludedIds}::text[])
         ORDER BY sequence ASC
         FOR UPDATE SKIP LOCKED

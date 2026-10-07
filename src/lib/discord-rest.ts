@@ -260,6 +260,7 @@ function classifyRateLimit(headers: Headers, body: unknown): DiscordRestFailure 
 }
 
 interface RequestOptions<T> {
+  webhook?: boolean;
   method: string;
   path: string;
   body?: unknown;
@@ -308,8 +309,8 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
     };
   }
 
-  const token = getBotToken();
-  if (!token) {
+  const token = opts.webhook ? null : getBotToken();
+  if (!opts.webhook && !token) {
     logger.warn("discord-rest", "DISCORD_BOT_TOKEN non configurée — appel non tenté.");
     return {
       ok: false,
@@ -326,10 +327,10 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
   const abortSignal = AbortSignal.timeout(timeoutMs);
 
   async function fetchAndReadBody(): Promise<RawHttpResult> {
-    const res = await fetch(`${API_BASE}${opts.path}`, {
+    const res = await fetch(opts.webhook ? process.env.DISCORD_WEBHOOK_URL! : `${API_BASE}${opts.path}`, {
       method: opts.method,
       headers: {
-        Authorization: `Bot ${token}`,
+        ...(opts.webhook ? {} : { Authorization: `Bot ${token}` }),
         "Content-Type": "application/json",
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -503,6 +504,20 @@ interface MessageContentInput {
   content?: string;
   embeds?: DiscordRestEmbed[];
   allowedMentions: AllowedMentions;
+}
+
+/** Webhook historique de default, livré par l'outbox avec le même budget et les mêmes reprises que le bot. */
+export async function sendRewardWebhook(input: MessageContentInput & { deadline: Date; now?: Date }): Promise<DiscordRestResult<object>> {
+  let valid = false;
+  try {
+    const url = new URL(process.env.DISCORD_WEBHOOK_URL ?? "");
+    valid = url.protocol === "https:" && ["discord.com", "discordapp.com"].includes(url.hostname) &&
+      /^\/api\/(?:v\d+\/)?webhooks\/\d+\/[^/]+$/.test(url.pathname) && !url.username && !url.password;
+  } catch { /* Configuration absente ou invalide : aucun appel réseau. */ }
+  if (!valid) return { ok: false, kind: "not_configured", message: "Webhook Discord absent ou invalide.", retryable: false };
+  return discordRequest({ webhook: true, method: "POST", path: "", body: buildMessageBody(input),
+    deadline: input.deadline, now: input.now, allowEmptyBody: true, parse: () => ({}),
+  });
 }
 
 function buildMessageBody(input: MessageContentInput) {

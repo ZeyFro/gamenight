@@ -85,8 +85,11 @@ si la participation change réellement.
 - Un badge déjà persisté dont le gain XP manque est réparé idempotemment,
   même si son catalogue est désactivé ou si son ancien seuil de streak est perdu.
 - Les reprises live vérifient les gains historiques conservés dans default.
-  Les paris et pronostics n'annoncent un gain que si leur crédit a réellement
-  été créé ; les replays concurrents ne multiplient pas leurs notifications.
+  Pour les paris et pronostics, le crédit XP, la notification in-app et
+  l'intention Discord partagent désormais une transaction. La clé durable
+  `xp-reward:<XpEvent.id>` permet aussi de réparer un crédit sans intention,
+  sans recréditer le solde. Les replays concurrents ne multiplient pas les
+  notifications ; une notification in-app purgée n'est pas recréée au replay.
 - Une désinscription historique hors `default`, sans compteur attribuable,
   ne crée pas de valeur négative.
 
@@ -106,7 +109,12 @@ Seul l'executor appelle Discord. À la livraison : flags relus, communauté ACTI
 destinataires personnels encore membres ACTIVE, salon résolu à nouveau, puis
 vérification que le salon appartient réellement au guild attendu avant POST.
 Le webhook historique est réservé à `default` avec bot inactif ; ses mentions
-personnelles sont également revalidées. `ok` côté bot signifie **mis en file**,
+personnelles sont également revalidées. Pour les gains de paris et pronostics,
+ce webhook passe lui aussi par l'outbox et requiert donc l'executor et son flag
+maître. Il n'est plus appelé directement après le crédit. Le client REST
+partage les délais/reprises du bot, sans envoyer son en-tête Authorization
+au webhook. Les autres usages historiques de `postToCommunity` restent inchangés.
+`ok` côté bot signifie **mis en file**,
 pas livré. Le flag maître OFF empêche toute livraison.
 
 Un serveur nondefault sans salon ou guild configuré n'emprunte jamais les
@@ -144,7 +152,7 @@ Les livraisons fixes ou non terminales gardent leur politique de conservation.
 `NotificationEvent` reste un journal durable ; ses nouveaux payloads peuvent
 contenir contenu et destinataires, ils ne sont pas présentés comme anonymes.
 
-## Validation locale
+## Validation locale initiale (avant correctifs de revue)
 
 Environnement : Windows, Node 24.19.0, Prisma 6.19.3, Next.js **16.3.8** et
 Vitest 4.1.11. Un `npm ci --ignore-scripts` a remis les dépendances au niveau du
@@ -214,6 +222,69 @@ de vérifications ciblées et du passage complet ci-dessus.
 
 Le rapport Claude « 1861 tests tous verts » n'a pas été pris comme baseline.
 Ces tests ne sont ni supprimés, ni ignorés, ni affaiblis pour publier la PR.
+
+## Correctifs de revue du 7 octobre 2026
+
+La lecture des badges d'un pote vérifie désormais les deux Membership ACTIVE
+dans la communauté sélectionnée lorsque l'isolation est active. Le scénario
+lecteur dans A/B, pote retiré de A mais encore dans B, sélection A, renvoie
+`notFound` ; sélectionner B permet la lecture. Flags OFF conserve la lecture
+historique de default sans exiger de Membership.
+
+Les gains de paris et pronostics utilisent l'intention durable décrite plus
+haut. Les tests couvrent une interruption immédiatement après commit, un
+échec du contrôle des badges, la réparation d'un ancien crédit, les replays
+concurrents, le rollback si la persistance échoue et le replay après purge
+in-app. Les deux transports sont simulés, sans appel Discord réel. Le journal
+à occurrence vide reste conservé par la rétention technique : il porte la
+preuve d'idempotence après purge du parent ou de la notification in-app.
+
+### Diagnostic des quatre échecs locaux
+
+Les quatre tests ci-dessus ont été exécutés réellement, en série, sur la même
+base PostgreSQL 16.15 locale isolée, avec des connexions neuves pour chaque
+fuseau. Avant correction : 4/4 réussis sous UTC, les quatre échecs reproduits
+sous Europe/Paris. Après correction : 4/4 réussis sous chaque fuseau, avec
+les attentes d'origine. Les 115 tests hors cible par passage sont des exclusions,
+pas des tests réussis.
+
+| Mesure SQL | UTC | Europe/Paris |
+| --- | --- | --- |
+| `SHOW TimeZone` | `UTC` | `Europe/Paris` |
+| Type de `NotificationDelivery.nextAttemptAt` | `timestamp without time zone` | Identique |
+| `pg_typeof` du paramètre Prisma `Date` | `timestamp with time zone` | Identique |
+| Échéance stockée 12:00:12 UTC, comparaison implicite à 12:00:05 UTC | Future | Éligible à tort |
+| Même comparaison avec paramètre converti `AT TIME ZONE 'UTC'` | Future | Future |
+
+La cause est donc démontrée par la mesure SQL et la reproduction, et non
+déduite du fuseau de la machine. `claimNextDelivery` convertit explicitement
+son paramètre en timestamp UTC avant comparaison. Une régression intégration
+force Europe/Paris sur la base locale puis restaure son réglage. Le script
+`node scripts/diagnose-notification-timezone.mjs --expect-pass` reproduit les
+mesures et les quatre tests ; il exige une base `gamenight_prb_*` sur 127.0.0.1.
+
+### Validation des correctifs
+
+- Tests ciblés : 169 tests réussis dans huit fichiers (le test webhook 429
+  a été relancé après correction de sa fixture `allowedMentions`).
+- Mutations pertinentes : 11/11 détectées, sources restaurées avec SHA-256
+  (intention, reprise, atomicité, rétention/replay, pote retiré, fuseau,
+  suspension, guild, destinataire et deux replis de salon).
+- Les 72 migrations restent inchangées. La répétition historique depuis main
+  avec puis sans default confirme à nouveau conservation, solde exact,
+  clés séparées, provenance durable et absence de dérive Prisma.
+- Suite complète Postgres en série : 163 fichiers, 1973/1973 tests réussis,
+  aucun skipped. Dernière passe répétée après restauration des textes UTF-8.
+- Next typegen, TypeScript et ESLint réussis ; `next build` 16.3.8 réussi
+  sur les sources finales. L'accès réseau aux polices Google a été requis ;
+  aucun appel Discord ni migration lancé par le build.
+
+Journaux : `%TEMP%/gamenight-prb-timezones-before.log`,
+`gamenight-prb-timezones-after.log`, `gamenight-prb-fixes-targeted-final.log`,
+`gamenight-prb-fixes-webhook.log`, `gamenight-prb-fixes-migration.log`,
+`gamenight-prb-fixes-mutations.log`, `gamenight-prb-fixes-postgres-final.log`
+et `gamenight-prb-fixes-build-final.log`. Rapport des mutations :
+`gamenight-prb-mutations-Vhr2UV/report.json`.
 
 ## Revue du diff et limites
 

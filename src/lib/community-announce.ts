@@ -77,14 +77,14 @@ const announcePayload = z.object({
 export const communitySystemAnnounceResolver: DeliveryResolver = {
   async resolve({ event, delivery }) {
     if (event.category !== "REWARD" || event.eventType !== "COMMUNITY_SYSTEM_ANNOUNCE" || !event.communityId ||
-      delivery.transport !== "BOT" || delivery.channel !== "DISCORD_CHANNEL" || delivery.operation !== "SEND") {
+      !["BOT", "WEBHOOK"].includes(delivery.transport) || delivery.channel !== "DISCORD_CHANNEL" || delivery.operation !== "SEND") {
       return { eligible: false, reason: "unresolvable" };
     }
     const payload = announcePayload.safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
     const category = payload.data.channelCategory;
-    if (process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true" ||
-      process.env[category === "SESSION" ? "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED" : "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED"] !== "true") {
+    const botEnabled = process.env[category === "SESSION" ? "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED" : "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED"] === "true";
+    if (process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true" || (delivery.transport === "BOT" && !botEnabled)) {
       return { eligible: false, reason: "not_configured" };
     }
     const community = await prisma.community.findUnique({
@@ -94,6 +94,14 @@ export const communitySystemAnnounceResolver: DeliveryResolver = {
     if (!isCommunityChannelsEnabled() && community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "not_configured" };
     const recipientDiscordIds = payload.data.recipientDiscordIds ?? [];
     if (!(await recipientsAreActive(event.communityId, recipientDiscordIds))) return { eligible: false, reason: "expired" };
+    if (delivery.transport === "WEBHOOK") {
+      if (community.slug !== DEFAULT_COMMUNITY_SLUG || botEnabled || !process.env.DISCORD_WEBHOOK_URL) {
+        return { eligible: false, reason: "not_configured" };
+      }
+      return { eligible: true, action: { kind: "send_reward_webhook",
+        message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions: webhookAllowedMentions(payload.data.content) },
+      } };
+    }
     const destination = category === "TOURNAMENT"
       ? await resolveTournamentAnnounceConfig(event.communityId)
       : await resolveSessionAnnounceConfig(event.communityId);

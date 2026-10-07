@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { canViewPote } from "@/lib/community-isolation";
+import { canViewPote, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
@@ -23,6 +23,8 @@ export default async function PoteBadgesPage({
   if (!(await canViewPote(user.id, id))) notFound();
   const scopedDb = await getActiveScopedPrisma(user.id);
   const communityId = await writeCommunityIdForUser(user.id);
+  if (isCommunityIsolationEnabled() && (communityId === null ||
+    !(await isMemberOfCommunity(user.id, communityId)) || !(await isMemberOfCommunity(id, communityId)))) notFound();
 
   const [badges, unlocked] = await Promise.all([
     prisma.badge.findMany({ orderBy: { createdAt: "asc" } }),
