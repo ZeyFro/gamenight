@@ -4,6 +4,7 @@ import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { closeSessionIfDue, isSessionVisibleInHistory } from "@/lib/sessions";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { creationMemberUserWhere } from "@/lib/community-isolation";
@@ -187,13 +188,14 @@ export default async function SessionsPage({
   const potes = potesRaw.map((p) => ({ ...p, tagIds: p.userTags.map((t) => t.tagId) }));
   const tagOptions = tags.map((t) => ({ id: t.id, name: t.name, color: tagColor(t.name) }));
 
-  const dueSessions = await prisma.session.findMany({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const dueSessions = await scopedDb.session.findMany({
     where: { status: "VOTING", date: { lte: wallClockNow() } },
     select: { id: true },
   });
   await Promise.all(dueSessions.map((s) => closeSessionIfDue(s.id)));
 
-  const dueSuperlativeVotings = await prisma.session.findMany({
+  const dueSuperlativeVotings = await scopedDb.session.findMany({
     where: { status: "DONE", superlativeVotingClosed: false },
     select: { id: true },
   });
@@ -204,7 +206,7 @@ export default async function SessionsPage({
   // Confidentialité des soirées — seules les soirées créées par l'utilisateur
   // ou auxquelles il est activement invité apparaissent ici (voir
   // src/lib/session-access.ts, source de vérité unique du contrôle d'accès).
-  const sessions = await prisma.session.findMany({
+  const sessions = await scopedDb.session.findMany({
     where: await accessibleSessionWhereFor(user.id),
     include: {
       decidedGame: true,

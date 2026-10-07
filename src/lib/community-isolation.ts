@@ -122,6 +122,7 @@ export async function resolveActiveCommunityId(userId: string): Promise<string |
   if (isCommunityPickerEnabled()) {
     const state = await getActiveCommunityState(userId);
     if (state.kind === "none") return null;
+    if (state.kind === "needs-choice") return null;
     if (state.kind === "single" || state.kind === "chosen") return state.communityId;
   }
   const memberships = await prisma.membership.findMany({

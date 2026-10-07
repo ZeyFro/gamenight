@@ -236,12 +236,14 @@ describe.skipIf(!TEST_DATABASE_URL)("community-picker (Postgres isolée)", () =>
       expect(await isolation.resolveActiveCommunityId(user.id)).toBe(other.id);
     });
 
-    it("sans choix valide, resolveActiveCommunityId garde la règle provisoire (défaut d'abord)", async () => {
+    it("sélecteur ON sans choix valide : aucun repli ; OFF garde default d'abord", async () => {
       const user = await newUser();
       const def = await newCommunity({ slug: "default" });
       const other = await newCommunity();
       await join(user.id, other.id, "ACTIVE", new Date("2026-01-01"));
       await join(user.id, def.id, "ACTIVE", new Date("2026-02-01"));
+      expect(await isolation.resolveActiveCommunityId(user.id)).toBeNull();
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
       expect(await isolation.resolveActiveCommunityId(user.id)).toBe(def.id);
     });
   });

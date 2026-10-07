@@ -56,7 +56,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
   const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
-    prisma.session.findMany({
+    scopedDb.session.findMany({
       where: { status: "DONE", ...(await accessibleSessionWhereFor(viewerId)) },
       orderBy: { date: "desc" },
       take: limit,
@@ -321,7 +321,8 @@ export async function getWeekAvailability(viewerId: string): Promise<WeekAvailab
  * (`accessibleSessionWhereFor`).
  */
 export async function getNextSessionForHome(viewerId: string) {
-  return prisma.session.findFirst({
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  return scopedDb.session.findFirst({
     where: { status: { in: ["VOTING", "SCHEDULED"] }, ...(await accessibleSessionWhereFor(viewerId)) },
     orderBy: { date: "asc" },
     include: {

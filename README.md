@@ -125,7 +125,7 @@ Puis remplir chaque variable :
 | `DEEPL_API_KEY` | *(Optionnelle)* [deepl.com/pro-api](https://www.deepl.com/pro-api) → créer un compte gratuit (plan **Free**, 500k caractères/mois) → clé dans le compte, onglet API. Traduit en français la description IGDB de la fiche jeu. Sans cette variable : description affichée en anglais (VO), aucun crash. |
 | `CRON_SECRET` | *(Recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège toutes les routes `/api/cron/*`/`/api/backfill/*` — **absente = routes désactivées (503)**, voir la section dédiée pour la configuration du cron externe. |
 | `ADMIN_DISCORD_IDS` | Ton `discordId` (mode développeur Discord → clic droit sur ton profil → **Copier l'ID utilisateur**), et ceux d'autres admins si besoin, séparés par des virgules. Donne accès à `/admin` — voir la section « Rôle admin » ci-dessous. |
-| `AUTH_REQUIRE_GUILD_MEMBER` | *(Optionnelle)* `true` exact = un **nouveau** compte Discord doit être membre du serveur `DISCORD_BOT_GUILD_ID` (vérifié avec `DISCORD_BOT_TOKEN`, `GET /guilds/{id}/members/{user}`). Comptes déjà en base et `ADMIN_DISCORD_IDS` passent toujours ; erreur de vérification = refus (fail-closed). Le bot doit être dans le serveur. Absente = tout compte Discord peut se connecter. |
+| `AUTH_REQUIRE_GUILD_MEMBER` | *(Optionnelle)* `true` exact = un **nouveau** compte doit avoir un Membership autorisé dans une communauté ACTIVE, confirmé par OAuth `guilds` (`/users/@me/guilds`, paginé). Existants/admins exemptés de cette admission, jamais de la frontière communautaire. Erreur ou liste partielle = connexion fraîche refusée sans révoquer les Membership. Isolation/picker ON synchronisent également les comptes existants ; tous trois OFF = login historique sans appel guilds. Voir [rollout](docs/COMMUNITY_ROLLOUT.md). |
 
 Le tableau complet (variables V2, interrupteurs, défauts, fichier de lecture) est dans « V2 — Référence : variables d'environnement », en fin de document.
 
@@ -2420,7 +2420,7 @@ obligatoire sur l'existant).
 | `Community` | Une communauté : `slug` unique (futur `/c/[slug]/…`), `discordGuildId` unique, statut `PENDING` (bot ajouté, en attente d'activation) / `ACTIVE` / `SUSPENDED` / `LEFT` (bot retiré, `leftAt` = départ des 30 jours de conservation) / `ARCHIVED`. |
 | `CommunityChannelConfig` | Salon Discord par communauté et par catégorie (`SESSION`, `TOURNAMENT`) ; remplacera `DISCORD_BOT_*_CHANNEL_ID`. |
 | `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. Un seul OWNER actif (garanti en code). |
-| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de `/api/backfill/seed-reconcile`, idempotente) : crée la communauté `default` (ACTIVE, `discordGuildId` repris de `DISCORD_BOT_GUILD_ID` tant qu'il est vide) et un Membership pour chaque utilisateur qui n'a AUCUN Membership (un compte confirmé sur un autre serveur n'y est pas rattaché). `ensureDefaultCommunityRecord` (ligne `Community` seule) est aussi appelée par la porte de connexion `AUTH_REQUIRE_GUILD_MEMBER`, qui vérifie l'appartenance à chaque serveur des communautés ACTIVE (en parallèle, au moins un confirmé, sinon refus) et crée un Membership ACTIVE par serveur confirmé (LEFT réactivé, REMOVED jamais). Ne modifie jamais un Membership existant. Rôles : premier `ADMIN_DISCORD_IDS` présent en base → OWNER, autres admins → ADMIN, le reste → MEMBER. |
+| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de seed-reconcile) crée/conserve default et son guild historique. Isolation/picker/porte AUTH OFF : rattachement historique des comptes sans aucun Membership, rôles OWNER/ADMIN/MEMBER acquis. Dès que l'un est ON : aucun rattachement automatique ; OAuth `guilds` est la source d'admission. Les statuts/rôles existants ne sont pas écrasés par le seed. |
 | `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
 | `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. `EXISTING_EXCEPTIONS` fige **185 couples fichier/modèle** (84 fichiers, 37 modèles collectifs), à vider au fil des PR de filtrage (jamais allonger). |
 
@@ -2481,6 +2481,31 @@ Reste global sur l'accueil (PR suivantes) : compteurs de groupe (`getGroupStats`
 **Migration non purement additive** (`20261005140000_community_scoped_keys`) : `communityId` devient **obligatoire** et entre dans la clé de `GameWishlist` (`@@unique([communityId, gameId])`), `GroupAchievement` (`@@unique([communityId, key])`), `GroupSessionStats` (`@@unique([communityId])`, `id` en `cuid()`), `GroupGameStat` (`@@id([communityId, gameId])`) et `GroupActiveWeek` (`@@id([communityId, weekStart])`). Aucune donnée supprimée : la migration crée la communauté `default` si elle manque (mêmes valeurs que `ensureDefaultCommunityRecord`, qui la retrouve par son slug), y rattache toutes les lignes existantes, puis remplace les clés ; `onDelete` passe de SET NULL à CASCADE. Appliquée à blanc sur une base avec des lignes historiques (zéro dérive `prisma migrate diff`). **Fenêtre de déploiement** : entre la migration (build Vercel) et la mise en ligne du nouveau code, l'ancien code peut échouer à écrire dans ces tables (clôture de soirée, proposition de wishlist) : déployer hors des heures de jeu.
 
 Ces tables n'ont **pas de `null`** : la communauté par défaut a un vrai identifiant (`getDefaultCommunityId`), utilisé aussi **isolation éteinte**. Le client scopé n'émet donc jamais `communityId: null` pour elles (`COMMUNITY_REQUIRED_MODELS`).
+
+### Connexion OAuth multi-serveurs et bascule
+
+Les domaines PR A #196 et PR B #197 et le correctif issuer #198 sont acquis.
+Le login demande `identify email guilds` et lit `/users/@me/guilds` uniquement
+dans le callback OAuth frais : une page courte = un appel, pagination après
+200 résultats. Aucun appel d'appartenance Discord dans `jwt`, `session` ou les
+pages. Le matcher ne parcourt pas toutes les communautés : guilds de
+l'utilisateur intersectés avec les communautés connues ACTIVE en base.
+
+Isolation, picker ou porte AUTH actifs : profil/Membership transactionnels,
+comptes existants compris, LEFT réactivé, REMOVED préservé, communauté suspendue
+exclue. Départ constaté à la prochaine connexion fraîche, préférence invalide
+effacée ; erreur/page partielle = aucun changement d'appartenance. Sans serveur
+autorisé : aucune donnée collective. Plusieurs serveurs sans choix valide avec
+picker ON : aucune résolution de repli ; accueil et liste des soirées suivent
+le serveur choisi. Les droits de setup restent ceux du payload Discord signé.
+
+La [procédure de rollout](docs/COMMUNITY_ROLLOUT.md) contient sauvegarde,
+seed-reconcile, ordre des flags, `forceReloginAt`, portail/commandes, bot/salons,
+essai The Tower et rollback compatible A/B. Ajouter C ensuite demande uniquement
+installation/configuration et connexion fraîche, aucune PR/migration/env serveur.
+Les [mesures locales à 100/1 000 communautés](docs/COMMUNITY_LOAD_RESULTS.json)
+ne valident pas une performance de production. **Flags production toujours OFF ;
+The Tower n'est pas ouvert ni déclaré prêt par ces tests.**
 
 | Surface | Règle |
 | :-- | :-- |
@@ -2559,7 +2584,7 @@ Allumé, un utilisateur membre de **plusieurs** serveurs choisit celui que GameN
 | Plusieurs, choix enregistré valide | Le choix est utilisé ; `/serveurs` permet d'en changer. |
 | Plusieurs, aucun choix valide | L'accueil, `/sessions`, `/tournois` et `/classement` renvoient sur `/serveurs?next=…`. |
 
-**Le choix n'est jamais une autorisation.** `User.activeCommunityId` (colonne nullable, sans clé étrangère, migration additive `20261005100000_add_user_active_community`) n'est qu'une préférence d'affichage : elle est relue et revalidée contre les `Membership` ACTIFS (communauté ACTIVE) à **chaque** usage, donc un départ, un retrait ou une suspension la rend caduque à la requête suivante ; l'enregistrer exige le même contrôle (`selectCommunityAction`) ; l'accès reste décidé par `requireMembership` (`community-access.ts`). `resolveActiveCommunityId` suit le choix valide quand le drapeau est allumé (classement par défaut, invités et mentions de la création) ; sans choix valide, la règle provisoire de la PR4 s'applique.
+**Le choix n'est jamais une autorisation.** `User.activeCommunityId` est revalidé contre les Membership ACTIVE et communautés ACTIVE à chaque usage. Un retrait/suspension en base coupe l'accès à la requête suivante ; un départ Discord est synchronisé à la prochaine connexion OAuth fraîche. Avec picker ON, plusieurs serveurs sans choix valide donnent `null` et exigent le sélecteur, sans repli silencieux. Picker OFF conserve la règle historique default/premier Membership valide. L'enregistrement exige le même contrôle ; l'accès reste décidé par `requireMembership` et les droits du parent.
 
 Code : `src/lib/community-picker.ts` (drapeau, état, porte `requireCommunityChosen`, `safeNextPath`), `src/app/serveurs/` (page + action). Le drapeau est indépendant de `COMMUNITY_ISOLATION_ENABLED` : la porte impose le choix, c'est l'isolation qui filtre les données. **Appliquer la migration avant d'allumer.**
 
@@ -10398,14 +10423,9 @@ consulté.
   qui en a un dès le tirage effectué). Un vrai mécanisme privé pour la
   roulette elle-même (fil privé dès la création, pas seulement au
   résultat) reste à construire dans une future PR dédiée.
-- **Séparation multi-communauté/multi-serveur Discord** — non implémentée
-  (l'app suppose toujours un seul serveur Discord partagé, une seule
-  configuration `DISCORD_BOT_GUILD_ID`/`DISCORD_BOT_SESSION_CHANNEL_ID`).
-  Ce chantier n'introduit rien qui empêcherait cette évolution plus tard
-  (les fils privés sont déjà scopés par soirée, pas par serveur), mais ne
-  prétend pas non plus fournir une isolation multi-communauté — un besoin
-  futur à concevoir séparément si plusieurs groupes doivent un jour
-  partager la même instance sans jamais se voir.
+- **Séparation multi-communauté** — implémentée derrière les flags acquis
+  par PR A/B ; destinations par configuration et login OAuth guilds. Les
+  contrôles réels et l'activation restent distincts : voir le rollout.
 - **Soirées instantanées** (mode roulette instantané) — respectent déjà
   la confidentialité (même `createRouletteResultSession` que le mode
   async), aucune UI/flux supplémentaire construit spécifiquement pour
@@ -12310,9 +12330,8 @@ règle existante des soirées.
 ### Accès
 
 Authentification obligatoire pour tout le parcours. Le modèle
-« frontière de communauté » n'existe pas dans cette app (une seule
-guilde Discord servie), donc aucune isolation multi-serveur n'est
-prétendue — limite documentée, pas contournée. Les invitations rapides
+de frontière communautaire suit les Membership/communautés ACTIVE sous
+`COMMUNITY_ISOLATION_ENABLED` (PR A/B). Les invitations rapides
 préviennent uniquement, elles n'inscrivent jamais automatiquement qui
 que ce soit à la session.
 
@@ -12782,7 +12801,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
-| `AUTH_REQUIRE_GUILD_MEMBER` | Porte d'accès : refuse un nouveau compte non membre du serveur `DISCORD_BOT_GUILD_ID` (exige aussi `DISCORD_BOT_TOKEN`) ; existants et admins exemptés, fail-closed | éteint | `src/auth.ts`, `src/lib/guild-member.ts` |
+| `AUTH_REQUIRE_GUILD_MEMBER` | Porte OAuth `guilds` : nouveau compte sans communauté ACTIVE autorisée refusé ; existants/admins exemptés de l'admission uniquement. Snapshot partiel/en erreur refusé sans révocation. | éteint | `src/auth.ts`, `src/lib/discord-user-guilds.ts`, `src/lib/community-oauth.ts` |
 | `DISCORD_BOT_SESSION_CHANNEL_ID` | Salon des soirées | absent | `src/lib/discord-bot-config.ts:34` |
 | `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | Salon des tournois | absent | `src/lib/discord-bot-config.ts:66` |
 | `DISCORD_BOT_TOKEN` | Jeton du bot (REST : fils, MP, rafraîchissement de profils en repli) | absent (⇒ `null`, bot inutilisable) | `src/lib/discord-rest.ts:162`, `src/lib/discord-profile.ts:380` |
@@ -12904,7 +12923,7 @@ des estimations tirées de l'état actuel du code, pas des décisions déjà doc
 | Item | Pourquoi reporté | Ce que ça demanderait |
 | :-- | :-- | :-- |
 | Récaps et récompenses Discord | Le recap mensuel existe déjà, via le webhook (`src/lib/monthly-recap.ts:3`, `postToDiscord`) ; la V2 s'est concentrée sur le chemin bot (fils, MP, nettoyage, « Jouer maintenant ») | Porter recap/récompenses sur le chemin bot (nouvelle catégorie `NotificationCategory` → migration additive, résolveur dans l'executor, interrupteur dédié) |
-| Multi-serveur Discord | Un seul serveur est supposé partout : `DISCORD_BOT_GUILD_ID` unique (`discord-bot-config.ts:33`, `:65`) et préfixe de slot figé `default-guild` (`session-announce.ts`, `tournament-announce.ts`, `discord-dm.ts`) | Config serveur/salon par groupe (modèle + migration), `targetSlot` par serveur, permissions bot par serveur, rattachement utilisateur → serveur |
+| Multi-serveur Discord | Infrastructure et isolation PR A/B acquises, login OAuth paginé, destinations en base ; flags production OFF | [Rollout](docs/COMMUNITY_ROLLOUT.md), contrôles Discord réels et essai limité The Tower avant ouverture. Le préfixe technique historique de slot contient aussi l'ID globalement unique du parent, pas une autorisation de guild. |
 | Application Expo / mobile | L'app est une web app mobile-first (App Router), sans client natif | Projet Expo séparé, API authentifiée pour mobile (aujourd'hui : Auth.js avec session JWT en cookie + server actions), notifications push |
 | ~~Indicateur « en jeu maintenant » sur `/potes`~~ | **Fait derrière le drapeau `STEAM_NOW_PLAYING_ENABLED`** (éteint par défaut) : `GetPlayerSummaries` en un appel groupé par passage de `steam-library-sync`, deux colonnes nullables sur `User` (migration additive `20261003120000_add_steam_now_playing`). Voir « Indicateur en jeu maintenant » | À activer et vérifier en production |
 | Suivi par curseur des crons longs | Décision explicite Phase 5 : sans migration, sans curseur, sans `CronLock` ; un passage `time_budget` repart de zéro | Seulement si les logs montrent des `time_budget` répétés : PR dédiée avec curseur persistant + migration (README Phase 5 ; `seed-reconcile` : « signal pour passer à un traitement avec curseur ») |
