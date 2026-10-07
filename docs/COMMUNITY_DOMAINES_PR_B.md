@@ -286,6 +286,13 @@ Journaux : `%TEMP%/gamenight-prb-timezones-before.log`,
 et `gamenight-prb-fixes-build-final.log`. Rapport des mutations :
 `gamenight-prb-mutations-Vhr2UV/report.json`.
 
+Le premier push des correctifs (`0ff6822`) a déclenché GitHub CI, mais Vercel
+a signalé `Deployment was blocked`. GitHub ne rattache ni son auteur ni son
+committer automatiques à un compte. Le commit de documentation suivant
+reprend l'identité déjà utilisée sur cette branche pour vérifier à nouveau
+la preview, sans réécrire l'historique ni modifier les droits Vercel.
+Les sources applicatives testées restent identiques.
+
 ## Revue du diff et limites
 
 Un snapshot des fichiers modifiés **et non suivis**, dont `.codex/` et `AGENTS.md`,
