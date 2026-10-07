@@ -4,63 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
 import { parseAdminDiscordIds } from "@/lib/admin-rules";
-import { isGuildMember } from "@/lib/guild-member";
+import { listOAuthUserGuildIds } from "@/lib/discord-user-guilds";
+import { shouldSyncOAuthMemberships, syncOAuthMemberships } from "@/lib/community-oauth";
 import { ensureDefaultCommunityRecord } from "@/lib/default-community";
-import type { Prisma } from "@prisma/client";
-
-/**
- * Ids des communautés ACTIVE (avec un serveur Discord) dont `discordId` est
- * membre, vérifiées en parallèle. Une vérification indécise (erreur, 5xx,
- * timeout) ne confirme rien : elle n'ouvre ni l'accès ni un Membership, mais
- * ne bloque pas un serveur confirmé par ailleurs. Liste vide = refus.
- */
-async function confirmedCommunities(discordId: string): Promise<string[]> {
-  // Cas 0 communauté : sans passage préalable de `seed-reconcile`, la
-  // communauté par défaut n'existe pas ou n'a pas son serveur.
-  await ensureDefaultCommunityRecord();
-  const communities = await prisma.community.findMany({
-    where: { status: "ACTIVE", discordGuildId: { not: null } },
-    select: { id: true, discordGuildId: true },
-  });
-  const results = await Promise.allSettled(
-    communities.map((c) => isGuildMember(discordId, c.discordGuildId as string))
-  );
-  const confirmed: string[] = [];
-  results.forEach((result, i) => {
-    if (result.status === "fulfilled") {
-      if (result.value) confirmed.push(communities[i].id);
-    } else {
-      appLogger.error("auth", result.reason, { discordId, communityId: communities[i].id });
-    }
-  });
-  return confirmed;
-}
-
-/**
- * Membership ACTIVE pour chaque communauté confirmée. `createMany` +
- * `skipDuplicates` ne réécrit jamais un Membership existant (REMOVED reste
- * REMOVED, ACTIVE inchangé) ; seule la réactivation ciblée d'un LEFT passe par
- * `updateMany` filtré sur ce statut.
- */
-async function activateMemberships(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  communityIds: string[]
-): Promise<void> {
-  await tx.membership.createMany({
-    data: communityIds.map((communityId) => ({ communityId, userId })),
-    skipDuplicates: true,
-  });
-  await tx.membership.updateMany({
-    where: { userId, communityId: { in: communityIds }, status: "LEFT" },
-    data: { status: "ACTIVE", leftAt: null },
-  });
-}
-
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Discord({
       issuer: "https://discord.com",
+      authorization: { params: { scope: "identify email guilds" } },
       clientId: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
     }),
@@ -70,29 +21,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // peut rejeter certaines requêtes selon comment l'hôte est détecté.
   trustHost: true,
   callbacks: {
-    async signIn({ user, profile }) {
+    async signIn({ user, profile, account }) {
       if (!profile?.id) return false;
 
-      // Porte d'accès (opt-in, `true` exact) : un NOUVEAU compte doit être
-      // membre d'au moins un serveur Discord d'une communauté ACTIVE. Comptes
-      // existants et admins passent toujours ; aucun serveur confirmé ou
-      // toute erreur de vérification refuse (fail-closed).
-      let confirmedCommunityIds: string[] = [];
-      if (process.env.AUTH_REQUIRE_GUILD_MEMBER === "true") {
+      const verifiedAt = new Date();
+      const sync = shouldSyncOAuthMemberships();
+      let guildIds: string[] = [];
+      let known = false;
+      if (sync) {
         try {
-          const discordId = profile.id as string;
-          const known =
-            parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS).has(discordId) ||
-            (await prisma.user.findUnique({ where: { discordId }, select: { id: true } })) !== null;
-          if (!known) {
-            confirmedCommunityIds = await confirmedCommunities(discordId);
-            if (confirmedCommunityIds.length === 0) {
-              appLogger.warn("auth", "Connexion refusée : nouveau compte confirmé sur aucun serveur.");
-              return false;
-            }
+          if (!account?.access_token || !account.scope?.split(/\s+/).includes("guilds")) {
+            throw new Error("OAuth guilds scope missing");
           }
-        } catch (error) {
-          appLogger.error("auth", error, { discordId: profile.id });
+          guildIds = await listOAuthUserGuildIds(account.access_token);
+          await ensureDefaultCommunityRecord();
+          known = parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS).has(profile.id as string) ||
+            (await prisma.user.findUnique({ where: { discordId: profile.id as string }, select: { id: true } })) !== null;
+        } catch {
+          // Never log API bodies, OAuth tokens or network error messages.
+          appLogger.warn("auth", "OAuth guild snapshot unavailable; login denied, memberships unchanged.");
           return false;
         }
       }
@@ -110,14 +57,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             select: { id: true },
           });
 
-        if (confirmedCommunityIds.length === 0) {
+        if (!sync) {
           await upsertUser(prisma);
         } else {
-          // Un seul bloc : un compte créé sans ses Membership deviendrait
-          // « existant » et contournerait la porte à la connexion suivante.
           await prisma.$transaction(async (tx) => {
             const { id: userId } = await upsertUser(tx);
-            await activateMemberships(tx, userId, confirmedCommunityIds);
+            const activeIds = await syncOAuthMemberships(tx, userId, guildIds, verifiedAt);
+            if (process.env.AUTH_REQUIRE_GUILD_MEMBER === "true" && !known && activeIds.length === 0) {
+              throw new Error("No authorized community");
+            }
           });
         }
       } catch (error) {
@@ -182,8 +130,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                   : null,
               },
             });
-          } catch (error) {
-            appLogger.error("auth", error, { discordId: profile.id });
+          } catch {
+            appLogger.warn("auth", "Discord token persistence failed.");
           }
         }
       }
@@ -215,15 +163,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   logger: {
     error(error) {
-      // error=Configuration masque volontairement la vraie cause à
-      // l'utilisateur (CallbackRouteError, InvalidCheck, etc. l'enveloppent).
-      // On log ici le type + la stack de l'erreur d'origine (`cause.err`)
-      // pour pouvoir la retrouver dans les logs Vercel.
-      appLogger.error("auth", error);
-      const cause = (error as { cause?: { err?: unknown } }).cause;
-      if (cause?.err instanceof Error) {
-        appLogger.error("auth:cause", cause.err);
-      }
+      // Auth.js causes can contain callback parameters: no code/token/body.
+      appLogger.warn("auth", "Auth.js authentication failed.", { type: error.name });
     },
   },
 });

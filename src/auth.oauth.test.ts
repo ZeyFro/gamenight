@@ -66,6 +66,7 @@ describe("Discord OAuth issuer (real Auth.js callback, simulated HTTP)", () => {
     });
     const location = new URL(authorization.headers.get("location")!);
     expect(location.origin).toBe("https://discord.com");
+    expect(location.searchParams.get("scope")?.split(" ")).toEqual(["identify", "email", "guilds"]);
     expect(location.searchParams.get("code_challenge_method")).toBe("S256");
     const params = new URLSearchParams({ code: "simulated-code" });
     if (issuer !== undefined) params.set("iss", issuer);

@@ -1,5 +1,10 @@
 # Isolation des domaines — PR A
 
+État actuel : PR #196 et PR B #197 mergées. Le bilan ci-dessous est historique.
+La préparation OAuth, les preuves locales complémentaires et les contrôles
+réels avant The Tower sont détaillés dans [COMMUNITY_ROLLOUT.md](COMMUNITY_ROLLOUT.md).
+Les flags de production restent OFF ; aucune ouverture n'est déclarée.
+
 Base : `main`, commit `8e430cc` (PR #195). Cette PR regroupe les anciens lots
 PR10 et PR11. Tous les flags `COMMUNITY_*` restent éteints en production.
 Elle ne suffit pas à autoriser l'ajout d'un second serveur réel.

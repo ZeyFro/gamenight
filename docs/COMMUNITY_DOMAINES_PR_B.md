@@ -1,6 +1,12 @@
 # Progression et rétention par communauté — PR B
 
-Base = main, à vérifier avant de merger
+État actuel : PR #197 mergée ; migration `20261006190000_community_progression`
+confirmée appliquée en production par le mainteneur (sans inspection distante
+pendant le chantier suivant). Le bilan de validation ci-dessous conserve son
+historique ; les quatre échecs initiaux ont été corrigés dans la validation finale.
+Flags de production toujours OFF. La préparation login `guilds`, les preuves
+locales supplémentaires et l'ordre d'activation sont dans
+[COMMUNITY_ROLLOUT.md](COMMUNITY_ROLLOUT.md).
 
 Base de travail : `3b484ed` (PR #196 déjà mergée). Branche :
 `feat/communautes-progression-pr-b`. PR7–PR9 et PR A restent acquis ; cette PR

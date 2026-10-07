@@ -75,6 +75,16 @@ export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityRe
   const created = justCreated === true;
   const communityId = community.id;
 
+  // After rollout, a zero-membership account is not a legacy default member.
+  // Only a fresh complete OAuth guild snapshot may grant that membership.
+  if (
+    process.env.AUTH_REQUIRE_GUILD_MEMBER === "true" ||
+    process.env.COMMUNITY_ISOLATION_ENABLED === "true" ||
+    process.env.COMMUNITY_PICKER_ENABLED === "true"
+  ) {
+    return { communityId, created, membershipsCreated: 0 };
+  }
+
   // Seuls les utilisateurs SANS AUCUN Membership (comptes historiques) sont
   // rattachés à la communauté par défaut : un compte confirmé uniquement sur
   // un autre serveur (porte de connexion multi-serveurs) n'y entre pas.
