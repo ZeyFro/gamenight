@@ -60,6 +60,7 @@ async function activateMemberships(
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Discord({
+      issuer: "https://discord.com",
       clientId: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
     }),
