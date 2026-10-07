@@ -29,3 +29,11 @@ export async function selectCommunityAction(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
   redirect(safeNextPath(typeof next === "string" ? next : null));
 }
+
+export async function changeCommunityAction(communityId: string): Promise<boolean> {
+  if (!isCommunityPickerEnabled()) notFound();
+  const user = await getCurrentUser();
+  if (!user || !communityId || !(await setActiveCommunity(user.id, communityId))) return false;
+  revalidatePath("/", "layout");
+  return true;
+}

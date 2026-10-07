@@ -26,6 +26,7 @@ vi.mock("next/navigation", () => ({
     throw new Error(`REDIRECT:${url}`);
   },
 }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) {
@@ -327,6 +328,24 @@ describe.skipIf(!TEST_DATABASE_URL)("community-picker (Postgres isolée)", () =>
   });
 
   describe("listPickableCommunities", () => {
+    it("action de navigation : conserve le choix, invalide toutes les pages, refuse ensuite un Membership retiré", async () => {
+      const { changeCommunityAction } = await import("@/app/serveurs/actions");
+      const { revalidatePath } = await import("next/cache");
+      const user = await newUser();
+      const a = await newCommunity();
+      const b = await newCommunity();
+      await join(user.id, a.id); await join(user.id, b.id);
+      currentUserMock.mockResolvedValue(user);
+      expect(await changeCommunityAction(b.id)).toBe(true);
+      expect(await stored(user.id)).toBe(b.id);
+      expect(await picker.getActiveCommunityState(user.id)).toEqual({ kind: "chosen", communityId: b.id });
+      expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+      await db.membership.updateMany({ where: { userId: user.id, communityId: a.id }, data: { status: "REMOVED" } });
+      expect(await changeCommunityAction(a.id)).toBe(false);
+      expect(await stored(user.id)).toBe(b.id);
+      currentUserMock.mockResolvedValue(null);
+      expect(await changeCommunityAction(b.id)).toBe(false);
+    });
     it("liste uniquement les serveurs ACTIFS de l'utilisateur, du plus ancien au plus récent", async () => {
       const user = await newUser();
       const other = await newUser();
@@ -340,7 +359,7 @@ describe.skipIf(!TEST_DATABASE_URL)("community-picker (Postgres isolée)", () =>
       await join(other.id, foreign.id);
       const list = await picker.listPickableCommunities(user.id);
       expect(list.map((c) => c.id)).toEqual([first.id, second.id]);
-      expect(Object.keys(list[0]).sort()).toEqual(["id", "name", "slug"]);
+      expect(Object.keys(list[0]).sort()).toEqual(["discordGuildId", "iconHash", "id", "name", "slug"]);
     });
   });
 });

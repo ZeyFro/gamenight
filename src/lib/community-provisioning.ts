@@ -52,10 +52,16 @@ async function reconcileExisting(existing: Community, guild: GuildInfo): Promise
   }
   if (existing.status === "LEFT") {
     // Bot réajouté : il faut qu'un admin réactive la communauté.
-    await prisma.community.update({
-      where: { id: existing.id },
+    const changed = await prisma.community.updateMany({
+      where: { id: existing.id, status: "LEFT" },
       data: { name: guild.name, iconHash: guild.icon, status: "PENDING", leftAt: null },
     });
+    if (!changed.count) {
+      // A concurrent setup/admin may have activated or suspended this guild.
+      const current = await prisma.community.findUnique({ where: { id: existing.id } });
+      if (!current) throw new Error("La communauté a disparu pendant son provisionnement.");
+      return reconcileExisting(current, guild);
+    }
     return { action: "reset_pending", communityId: existing.id };
   }
   if (existing.name === guild.name && existing.iconHash === guild.icon) {

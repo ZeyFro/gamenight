@@ -1,0 +1,43 @@
+"use client";
+
+import Image from "next/image";
+import { useId, useTransition, useState } from "react";
+import { useRouter } from "next/navigation";
+import { changeCommunityAction } from "@/app/serveurs/actions";
+import type { PickableCommunity } from "@/lib/community-picker";
+
+export function CommunitySwitcher({ communities, currentId }: { communities: PickableCommunity[]; currentId: string | null }) {
+  const id = useId();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const current = communities.find((c) => c.id === currentId);
+  const icon = current?.discordGuildId && current.iconHash
+    ? `https://cdn.discordapp.com/icons/${current.discordGuildId}/${current.iconHash}.png?size=64` : null;
+  return (
+    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 pb-2 sm:px-6">
+      {icon && <Image src={icon} alt="" width={24} height={24} unoptimized className="rounded-full" />}
+      <label htmlFor={id} className="text-xs text-muted">Serveur actuel</label>
+      <select id={id} aria-label="Changer de serveur" value={currentId ?? ""} disabled={pending || communities.length < 2}
+        className="min-w-0 max-w-full flex-1 rounded border border-border bg-background px-2 py-1 text-sm sm:max-w-xs"
+        onChange={(event) => {
+          const communityId = event.target.value;
+          setError("");
+          startTransition(async () => {
+            try {
+              const accepted = await changeCommunityAction(communityId);
+              if (!accepted) { setError("Ce serveur n’est plus accessible."); router.refresh(); return; }
+              // Leave detail/form routes tied to the previous server; reload collective data.
+              router.replace("/");
+              router.refresh();
+            } catch { setError("Le changement a échoué. Réessaie."); }
+          });
+        }}>
+        {!currentId && <option value="">{communities.length ? "Choisir un serveur" : "Aucun serveur accessible"}</option>}
+        {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      {pending && <span role="status" className="text-xs text-muted">Changement…</span>}
+      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
+    </div>
+  );
+}

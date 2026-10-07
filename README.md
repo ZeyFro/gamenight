@@ -2534,7 +2534,7 @@ Le test de rétention (`retention.integration.test.ts`) et l'ordre des clés son
 | :-- | :-- |
 | `POST /api/discord/interactions` | Endpoint d'interactions (portail → General Information → Interactions Endpoint URL). Publique, authentifiée par la signature Ed25519 (`DISCORD_APP_PUBLIC_KEY` ; 503 sans clé, 401 si invalide, avant tout parsing). Le PING de validation est toujours acquitté (PONG), flag éteint compris. Réponses éphémères, sans mention. |
 | `src/lib/discord-interactions.ts` | Revérifie `MANAGE_GUILD`/`ADMINISTRATOR` sur `member.permissions` du payload signé (`default_member_permissions` n'est qu'un réglage d'affichage que les admins du serveur peuvent changer). Refuse hors serveur. |
-| `src/lib/community-setup.ts` | Serveur inconnu : création (nom provisoire `Serveur xxxxxx`, corrigé par `community-guild-sync`) puis activation ; `PENDING`/`LEFT` → `ACTIVE` par `updateMany` conditionnel (sans course) ; déjà `ACTIVE` : rien ; `SUSPENDED`/`ARCHIVED` : refusé. Aucun Membership créé (il naît à la connexion). |
+| `src/lib/community-setup.ts` | Lit le vrai nom et l’icône Discord (y compris ACTIVE/default), vérifie les permissions du bot, crée une catégorie GameNight et les salons texte soirées/tournois manquants, enregistre CommunityChannelConfig puis active. Relance sur ACTIVE : complète sans écraser la configuration existante ; SUSPENDED/ARCHIVED : refusé. Verrou par guild et reprise des créations partielles, aucune migration. Aucun Membership créé (il naît à la connexion). |
 | `scripts/discord-commands.json` + `scripts/register-discord-commands.mjs` | Définition de la commande globale (`default_member_permissions: "32"`, serveurs uniquement). Simulation par défaut ; `--execute` fait un `PUT` qui **remplace toutes les commandes globales** de l'application (`DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN`). |
 
 ### Salons d'annonce par communauté (PR3)
@@ -2574,6 +2574,8 @@ suppression) : interdite tant qu'elle n'est pas explicitement validée.
 ### Sélecteur de serveur (PR5)
 
 Éteint par défaut : `COMMUNITY_PICKER_ENABLED` doit valoir exactement `true`. Éteint, `/serveurs` répond 404, aucune redirection, aucune lecture : comportement identique à avant.
+
+Allumé, le header affiche en permanence le serveur actuel et son sélecteur, sur ordinateur et mobile. Le choix reste en base, sans déconnexion ; l’action revalide les Memberships et invalide les données de toutes les pages avant de revenir à l’accueil du serveur choisi. Un seul serveur est choisi automatiquement. Noms et icônes proviennent de Discord via setup puis le cron `community-guild-sync`, historique `default` compris.
 
 Allumé, un utilisateur membre de **plusieurs** serveurs choisit celui que GameNight affiche :
 

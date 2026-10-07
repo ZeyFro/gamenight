@@ -7,12 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Membership avant l'activation par un admin.
  */
 
-const { findUnique, create, update } = vi.hoisted(() => ({
+const { findUnique, create, update, updateMany } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  updateMany: vi.fn(),
 }));
-vi.mock("@/lib/prisma", () => ({ prisma: { community: { findUnique, create, update } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { community: { findUnique, create, update, updateMany } } }));
 
 import { communitySlug, provisionCommunityFromGuild } from "./community-provisioning";
 
@@ -37,6 +38,7 @@ describe("communitySlug", () => {
 
 describe("provisionCommunityFromGuild", () => {
   beforeEach(() => {
+    updateMany.mockReset().mockResolvedValue({ count: 1 });
     findUnique.mockReset().mockResolvedValue(null);
     create.mockReset().mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
     update.mockReset().mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
@@ -82,11 +84,18 @@ describe("provisionCommunityFromGuild", () => {
   it("bot réajouté après un départ (LEFT) : repasse en PENDING, leftAt effacé (réactivation par un admin)", async () => {
     findUnique.mockResolvedValue({ id: "c1", status: "LEFT", name: "Ancien", iconHash: null });
     const result = await provisionCommunityFromGuild(GUILD, "777");
-    expect(update).toHaveBeenCalledWith({
-      where: { id: "c1" },
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "c1", status: "LEFT" },
       data: { name: "Les Potes de Lyon", iconHash: "abc123", status: "PENDING", leftAt: null },
     });
     expect(result).toEqual({ action: "reset_pending", communityId: "c1" });
+  });
+  it.each(["ACTIVE", "SUSPENDED", "ARCHIVED"])("LEFT relu pendant un setup/admin concurrent devenu %s : aucun retour en PENDING", async (status) => {
+    findUnique.mockResolvedValueOnce({ id: "c1", status: "LEFT", name: "Ancien", iconHash: null })
+      .mockResolvedValueOnce({ id: "c1", status, name: GUILD.name, iconHash: GUILD.icon });
+    updateMany.mockResolvedValue({ count: 0 });
+    expect(await provisionCommunityFromGuild(GUILD, null)).toEqual({ action: status === "ACTIVE" ? "unchanged" : "ignored", communityId: "c1" });
+    expect(update).not.toHaveBeenCalled();
   });
 
   it.each(["SUSPENDED", "ARCHIVED"])("%s : jamais modifiée (une suspension ne se contourne pas)", async (status) => {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
+import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
@@ -95,6 +96,7 @@ export async function createSession(formData: FormData) {
   // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
   // commentaire du champ dans schema.prisma (chantier annonces bot).
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
+  await requireCommunityBotAnnouncement(communityId, announceViaBot);
 
   // Création de la session ET enqueue de l'intention de notification bot
   // dans LA MÊME transaction SQL — trouvé lors de la revue ciblée de cette

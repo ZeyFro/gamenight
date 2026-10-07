@@ -105,6 +105,10 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
   });
 
   it("roulette : la soirée garde A quand le créateur sélectionne B entre-temps", async () => {
+    vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "true");
+    vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "true");
+    await db.community.update({ where: { id: ids.a }, data: { discordGuildId: "111111111111111111" } });
+    await db.communityChannelConfig.create({ data: { communityId: ids.a, category: "SESSION", discordChannelId: "simulated-a" } });
     const r = await makeRoulette(ids.a, ids.carol);
     await db.rouletteEntry.createMany({ data: [ids.alice, ids.carol, ids.bob].map((userId) => ({ rouletteId: r.id, userId, gameId: ids.game })) });
     await db.user.update({ where: { id: ids.carol }, data: { activeCommunityId: ids.b } });
