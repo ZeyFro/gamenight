@@ -9,11 +9,12 @@ import { filterUsersByNotificationPreference } from "@/lib/notification-preferen
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
 import { isSessionDirectMessageEnabled } from "@/lib/discord-bot-config";
-import { isCommunityChannelsEnabled, resolveSessionAnnounceConfig } from "@/lib/community-channels";
+import { resolveSessionAnnounceConfig } from "@/lib/community-channels";
 import {
   createNotificationEvent,
   enqueueDelivery,
   hasUnsettledDeliveriesWithPrefix,
+  isNotificationEventCommunityActive,
   type ClaimedDelivery,
   type NotificationDb,
 } from "@/lib/notification-delivery";
@@ -1252,12 +1253,6 @@ async function findSentDelivery(targetSlot: string) {
  * `thread-archive`, qui n'utilisent la configuration que comme porte). La
  * lecture est évitée tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
  */
-async function sessionCommunityId(sessionId: string): Promise<string | null> {
-  if (!isCommunityChannelsEnabled()) return null;
-  const row = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
-  return row?.communityId ?? null;
-}
-
 /**
  * Résolveur SESSION — dispatché par le rôle terminal du `targetSlot`
  * (`thread`/`announce`/`thread-reminder-<n>`/`thread-summary`/
@@ -1269,7 +1264,8 @@ async function sessionCommunityId(sessionId: string): Promise<string | null> {
  */
 export const sessionAnnounceResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
-    const config = await resolveSessionAnnounceConfig(await sessionCommunityId(event.sourceId));
+    if (!(await isNotificationEventCommunityActive(event))) return { eligible: false, reason: "expired" };
+    const config = await resolveSessionAnnounceConfig(event.communityId);
     if (!config) return { eligible: false, reason: "not_configured" };
 
     const sessionId = event.sourceId;

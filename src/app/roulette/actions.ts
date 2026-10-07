@@ -86,13 +86,12 @@ export async function createSessionFromRouletteAction(formData: FormData) {
     notifiedUserIds: finalParticipantIds,
   });
 
-  const xpResult = await awardXp(
-    user.id,
+  const xpResult = await awardXp(user.id, session.communityId,
     "CREATE_SESSION",
     session.id,
     XP_AMOUNTS.CREATE_SESSION
   );
-  const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
+  const badgeUnlocked = await checkSessionsCreatedBadges(user.id, session.communityId);
 
   // Jamais les deux transports à la fois — voir `createRouletteResultSession`
   // (l'enqueue bot a déjà réussi, atomiquement avec la création de la

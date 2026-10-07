@@ -10,13 +10,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * ses membres sur leur XP personnelle.
  */
 
-const { userFindMany, xpGroupBy } = vi.hoisted(() => ({
+const { userFindMany, xpGroupBy, statsFindMany } = vi.hoisted(() => ({
   userFindMany: vi.fn(),
   xpGroupBy: vi.fn(),
+  statsFindMany: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { user: { findMany: userFindMany }, xpEvent: { groupBy: xpGroupBy } },
+  prisma: { user: { findMany: userFindMany }, community: { findUnique: vi.fn(async () => ({ status: "ACTIVE" })) } },
 }));
+vi.mock("@/lib/default-community", () => ({ getDefaultCommunityId: vi.fn(async () => "default-id") }));
+vi.mock("@/lib/community-scoped-client", () => ({ scopedPrismaForCommunityId: vi.fn(async () => ({
+  xpEvent: { groupBy: xpGroupBy }, communityMemberStats: { findMany: statsFindMany },
+})) }));
 
 import { getScoreboard } from "./scoreboard";
 
@@ -32,13 +37,14 @@ describe("getScoreboard — communauté", () => {
   beforeEach(() => {
     userFindMany.mockReset().mockResolvedValue([user("a", 50), user("b", 10)]);
     xpGroupBy.mockReset().mockResolvedValue([]);
+    statsFindMany.mockReset().mockResolvedValue([{ userId: "a", xpTotal: 50 }, { userId: "b", xpTotal: 10 }]);
   });
 
-  it("sans option : aucune restriction (requêtes historiques)", async () => {
+  it("sans option : roster historique mais progression dans default", async () => {
     await getScoreboard("global");
     expect(userFindMany.mock.calls[0][0]).not.toHaveProperty("where");
     for (const call of xpGroupBy.mock.calls) {
-      expect(JSON.stringify(call[0].where)).not.toContain("userId");
+      expect(call[0].where.communityId).toBe("default-id");
     }
   });
 
@@ -51,7 +57,7 @@ describe("getScoreboard — communauté", () => {
     await getScoreboard("global", { communityId: "c-b" });
     expect(userFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { memberships: { some: { communityId: "c-b", status: "ACTIVE" } } },
+        where: { memberships: { some: { communityId: "c-b", status: "ACTIVE", community: { status: "ACTIVE" } } } },
       })
     );
   });
@@ -61,6 +67,7 @@ describe("getScoreboard — communauté", () => {
     expect(xpGroupBy).toHaveBeenCalled();
     for (const call of xpGroupBy.mock.calls) {
       expect(call[0].where.userId).toEqual({ in: ["a", "b"] });
+      expect(call[0].where.communityId).toBe("c-b");
     }
   });
 

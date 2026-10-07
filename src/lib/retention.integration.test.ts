@@ -88,7 +88,11 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: {
+      communityId: await defaultCommunityLib.getDefaultCommunityId(), userId: user.id, status: "ACTIVE",
+    } });
+    return user;
   }
 
   async function makeSession(
@@ -369,7 +373,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const user = await makeUser();
       const oldSession = await makeSession(user.id, { date: new Date("2026-09-01T00:00:00.000Z") });
       await db.chatMessage.create({ data: { sessionId: oldSession.id, userId: user.id, content: "salut" } });
-      await db.xpEvent.create({ data: { userId: user.id, reason: "CREATE_SESSION", sourceId: oldSession.id, amount: 20 } });
+      await db.xpEvent.create({ data: { communityId: await defaultCommunityLib.getDefaultCommunityId(), userId: user.id, reason: "CREATE_SESSION", sourceId: oldSession.id, amount: 20 } });
       await db.sessionResult.create({ data: { sessionId: oldSession.id, userId: user.id, placement: 1 } });
 
       await retention.purgeEligibleChatMessagesBatch({ dryRun: false, now });
@@ -709,15 +713,16 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
         const s1 = await makeSession(user.id, { date: new Date("2026-08-01T00:00:00.000Z") });
         const s2 = await makeSession(user.id, { date: new Date("2026-08-02T00:00:00.000Z") });
+        const communityId = await defaultCommunityLib.getDefaultCommunityId();
         await db.xpEvent.createMany({
           data: [
-            { userId: user.id, reason: "CREATE_SESSION", sourceId: s1.id, amount: 20 },
-            { userId: user.id, reason: "CREATE_SESSION", sourceId: s2.id, amount: 20 },
+            { communityId, userId: user.id, reason: "CREATE_SESSION", sourceId: s1.id, amount: 20 },
+            { communityId, userId: user.id, reason: "CREATE_SESSION", sourceId: s2.id, amount: 20 },
           ],
         });
 
         // AVANT toute purge — le badge (seuil 2) doit déjà se débloquer.
-        await badgesLib.checkSessionsCreatedBadges(user.id);
+        await badgesLib.checkSessionsCreatedBadges(user.id, communityId);
         expect(await db.userBadge.count({ where: { userId: user.id, badgeId: badge.id } })).toBe(1);
 
         // Purge des deux soirées créées — le badge reste débloqué (jamais
@@ -726,7 +731,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         await retention.purgeEligibleSessionsBatch({ dryRun: false, now });
         expect(await db.session.count()).toBe(0);
         expect(await db.xpEvent.count({ where: { userId: user.id, reason: "CREATE_SESSION" } })).toBe(2);
-        await badgesLib.checkSessionsCreatedBadges(user.id); // rappel — toujours cohérent, aucune erreur
+        await badgesLib.checkSessionsCreatedBadges(user.id, communityId); // rappel — toujours cohérent, aucune erreur
         expect(await db.userBadge.count({ where: { userId: user.id, badgeId: badge.id } })).toBe(1);
       });
     });
@@ -896,20 +901,21 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       });
       // Simule ce que `announceTournamentFinalization`/`registerForTournamentAction`
       // ont déjà écrit durablement AVANT que ce test ne purge le tournoi.
+      const communityId = await defaultCommunityLib.getDefaultCommunityId();
       await db.xpEvent.create({
-        data: { userId: champion.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:1st`, amount: 200 },
+        data: { communityId, userId: champion.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:1st`, amount: 200 },
       });
       await db.xpEvent.create({
-        data: { userId: runnerUp.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:2nd`, amount: 100 },
+        data: { communityId, userId: runnerUp.id, reason: "TOURNAMENT_RESULT", sourceId: `${tournament.id}:2nd`, amount: 100 },
       });
-      await db.userLifetimeStats.createMany({
+      await db.communityMemberStats.createMany({
         data: [
-          { userId: champion.id, tournamentsParticipatedCount: 1 },
-          { userId: runnerUp.id, tournamentsParticipatedCount: 1 },
+          { communityId, userId: champion.id, tournamentsParticipatedCount: 1 },
+          { communityId, userId: runnerUp.id, tournamentsParticipatedCount: 1 },
         ],
       });
 
-      await badgesLib.checkTournamentBadges(champion.id);
+      await badgesLib.checkTournamentBadges(champion.id, communityId);
       expect(await db.userBadge.count({ where: { userId: champion.id, badgeId: wonBadge.id } })).toBe(1);
       expect(await db.userBadge.count({ where: { userId: champion.id, badgeId: participatedBadge.id } })).toBe(1);
 
@@ -921,11 +927,11 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
 
       // Les résumés durables, eux, survivent intégralement.
       expect(await db.xpEvent.count({ where: { reason: "TOURNAMENT_RESULT" } })).toBe(2);
-      const stats = await db.userLifetimeStats.findUniqueOrThrow({ where: { userId: champion.id } });
+      const stats = await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId, userId: champion.id } } });
       expect(stats.tournamentsParticipatedCount).toBe(1);
 
       // Rappel de checkTournamentBadges APRÈS la purge — toujours cohérent.
-      await badgesLib.checkTournamentBadges(runnerUp.id);
+      await badgesLib.checkTournamentBadges(runnerUp.id, communityId);
       expect(await db.userBadge.count({ where: { userId: runnerUp.id, badgeId: participatedBadge.id } })).toBe(1);
       expect(await db.userBadge.count({ where: { userId: runnerUp.id, badgeId: wonBadge.id } })).toBe(0); // jamais champion
     });
@@ -1304,7 +1310,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         });
         await sessionsLib.markSessionDone(s.id);
         await db.xpEvent.create({
-          data: { userId: participants[i].id, reason: "PARTICIPATE", sourceId: s.id, amount: 20 },
+          data: { communityId: await defaultCommunityLib.getDefaultCommunityId(), userId: participants[i].id, reason: "PARTICIPATE", sourceId: s.id, amount: 20 },
         });
       }
       const purgeOld = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });

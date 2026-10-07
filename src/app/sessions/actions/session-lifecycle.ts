@@ -152,13 +152,12 @@ export async function createSession(formData: FormData) {
     return created;
   });
 
-  const xpResult = await awardXp(
-    user.id,
+  const xpResult = await awardXp(user.id, session.communityId,
     "CREATE_SESSION",
     session.id,
     XP_AMOUNTS.CREATE_SESSION
   );
-  const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
+  const badgeUnlocked = await checkSessionsCreatedBadges(user.id, session.communityId);
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de

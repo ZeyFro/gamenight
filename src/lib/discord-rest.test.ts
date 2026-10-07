@@ -9,6 +9,7 @@ import {
   NO_MENTIONS,
   openDmChannel,
   sendChannelMessage,
+  sendRewardWebhook,
   sendDirectMessage,
   sendThreadMessage,
   startThreadFromMessage,
@@ -40,6 +41,31 @@ describe("discord-rest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  describe("webhook de récompense", () => {
+    it("accepte 204 sans token bot ni en-tête Authorization", async () => {
+      vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/fake-token");
+      vi.stubEnv("DISCORD_BOT_TOKEN", "");
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+      const result = await sendRewardWebhook({ content: "gain", allowedMentions: NO_MENTIONS, deadline: FAR_FUTURE, now: NOW });
+      expect(result.ok).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(new Headers(fetchMock.mock.calls[0][1].headers).has("Authorization")).toBe(false);
+    });
+
+    it("conserve retry_after du 429 pour la reprise durable", async () => {
+      vi.stubEnv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/fake-token");
+      fetchMock.mockResolvedValue(jsonResponse(429, { retry_after: 12 }));
+      const result = await sendRewardWebhook({ content: "gain", allowedMentions: NO_MENTIONS, deadline: FAR_FUTURE, now: NOW });
+      expect(result).toMatchObject({ ok: false, retryable: true, retryAfterMs: 12000 });
+    });
+
+    it.each(["https://example.com/api/webhooks/123/token", "http://discord.com/api/webhooks/123/token", "https://discord.com/api/channels/123/messages"])("refuse une URL hors webhook Discord : %s", async (url) => {
+      vi.stubEnv("DISCORD_WEBHOOK_URL", url);
+      expect(await sendRewardWebhook({ content: "gain", allowedMentions: NO_MENTIONS, deadline: FAR_FUTURE, now: NOW })).toMatchObject({ ok: false, kind: "not_configured" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("configuration manquante", () => {

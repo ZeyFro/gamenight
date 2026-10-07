@@ -1,8 +1,10 @@
 "use server";
+import { lockCommunityProgress } from "@/lib/member-stats";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -18,7 +20,6 @@ import {
   enqueueTournamentThreadMember,
   resyncTournamentThreadMembers,
 } from "@/lib/tournament-announce";
-import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
@@ -234,12 +235,15 @@ export async function registerForTournamentAction(formData: FormData) {
 
   const registered = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<
-      { id: string; status: string; maxPlayers: number; announceViaBot: boolean }[]
+      { id: string; status: string; maxPlayers: number; announceViaBot: boolean; communityId: string | null }[]
     >`
-      SELECT id, status, "maxPlayers", "announceViaBot" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+      SELECT id, status, "maxPlayers", "announceViaBot", "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
     `;
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
+    const communityId = await statsCommunityIdForSession(tournament.communityId);
+    if (!(await lockCommunityProgress(tx, communityId, user.id))) return false;
+    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
 
     const participants = await tx.tournamentParticipant.findMany({
       where: { tournamentId },
@@ -268,17 +272,17 @@ export async function registerForTournamentAction(formData: FormData) {
     }
 
     // Chantier nettoyage réel du stockage (V2, suite) — résumé durable
-    // MINIMAL (`UserLifetimeStats.tournamentsParticipatedCount`) maintenu
+    // MINIMAL (`CommunityMemberStats.tournamentsParticipatedCount`) maintenu
     // ICI, à l'inscription, DANS CETTE MÊME TRANSACTION : ce compteur
     // remplace un `tournamentParticipant.count({userId})` qui deviendrait
     // faux dès qu'un tournoi ancien est purgé (voir badges.ts,
     // `checkTournamentBadges`) — jamais recalculé par un `count()` sur des
     // lignes vouées à disparaître.
-    await tx.userLifetimeStats.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, tournamentsParticipatedCount: 1 },
-      update: { tournamentsParticipatedCount: { increment: 1 } },
-    });
+    await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId: user.id }], skipDuplicates: true });
+      await scopedDb.communityMemberStats.update({
+        where: { communityId_userId: { communityId, userId: user.id } },
+        data: { tournamentsParticipatedCount: { increment: 1 } },
+      });
 
     // Places pleines → lancement automatique du bracket (spec), dans
     // CETTE transaction (voir docstring ci-dessus).
@@ -322,21 +326,24 @@ export async function unregisterFromTournamentAction(formData: FormData) {
 
   if (!(await canAccessTournament(user.id, tournamentId))) return;
   const unregistered = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
-      SELECT id, status FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    const locked = await tx.$queryRaw<{ id: string; status: string; communityId: string | null }[]>`
+      SELECT id, status, "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
     `;
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
+    const communityId = await statsCommunityIdForSession(tournament.communityId);
+    if (!(await lockCommunityProgress(tx, communityId, user.id))) return false;
+    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
 
     const deleted = await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
     // Décrémente le compteur durable SEULEMENT si une inscription a
     // réellement été retirée (jamais sur un double appel/une inscription
     // déjà absente) — voir le commentaire de `registerForTournamentAction`.
     if (deleted.count > 0) {
-      await tx.userLifetimeStats.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, tournamentsParticipatedCount: 0 },
-        update: { tournamentsParticipatedCount: { decrement: 1 } },
+      // Les inscriptions historiques hors default n'ont pas de compteur attribuable.
+      await scopedDb.communityMemberStats.updateMany({
+        where: { communityId, userId: user.id, tournamentsParticipatedCount: { gt: 0 } },
+        data: { tournamentsParticipatedCount: { decrement: 1 } },
       });
     }
     return true;
@@ -394,9 +401,6 @@ export async function declareWinnerAction(formData: FormData) {
   const result = await declareWinner(input.data.matchId, input.data.winnerId, user.id);
   if (!result.ok) return;
 
-  if (result.tournamentDone) {
-    await checkTournamentBadges(user.id);
-  }
 
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: input.data.matchId },

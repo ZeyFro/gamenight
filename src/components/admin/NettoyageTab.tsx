@@ -3,7 +3,8 @@ import { listFailedDiscordCleanupDeliveries } from "@/lib/discord-cleanup-status
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { retryDiscordCleanupAction } from "@/app/admin/nettoyage/actions";
+import { retryDiscordCleanupAction, retryRewardDeliveryAction } from "@/app/admin/nettoyage/actions";
+import { listFailedRewardDeliveries } from "@/lib/reward-delivery-retry";
 
 const ROLE_LABELS: Record<string, string> = {
   "thread-delete": "Suppression du fil",
@@ -20,14 +21,26 @@ const ROLE_LABELS: Record<string, string> = {
  * (`RETENTION_CLEANUP_ENABLED`), voir le README pour la procédure
  * complète.
  */
-export async function NettoyageTab() {
-  const [audit, failedCleanups] = await Promise.all([
-    generateStorageAuditReport(),
-    listFailedDiscordCleanupDeliveries(),
+export async function NettoyageTab({ userId }: { userId: string }) {
+  const [audit, failedCleanups, failedRewards] = await Promise.all([
+    generateStorageAuditReport(userId),
+    listFailedDiscordCleanupDeliveries(userId),
+    listFailedRewardDeliveries(userId),
   ]);
 
   return (
     <div className="flex flex-col gap-6">
+      <Card className="flex flex-col gap-3">
+        <h2 className="font-semibold text-foreground">Annonces de gains en échec ({failedRewards.length})</h2>
+        <p className="text-sm text-muted">Après correction de la configuration, remettre l’annonce dans la file. Le transport enregistré reste conservé ; le cron de notifications doit tourner pour la reprise.</p>
+        {failedRewards.map((row) => (
+          <form key={row.id} action={retryRewardDeliveryAction} className="flex items-center gap-3">
+            <input type="hidden" name="deliveryId" value={row.id} />
+            <span className="text-sm text-muted">{row.transport} : {row.errorClass}</span>
+            <Button type="submit" variant="secondary" size="sm">Réessayer l’annonce</Button>
+          </form>
+        ))}
+      </Card>
       <Card className="flex flex-col gap-2">
         <h2 className="font-semibold text-foreground">Configuration du nettoyage automatique</h2>
         <p className="text-sm text-muted">
@@ -120,6 +133,7 @@ export async function NettoyageTab() {
                   </p>
                 </div>
                 <form action={retryDiscordCleanupAction}>
+                  <input type="hidden" name="deliveryId" value={entry.deliveryId} />
                   <input type="hidden" name="category" value={entry.category} />
                   <input type="hidden" name="sourceId" value={entry.sourceId} />
                   <input type="hidden" name="role" value={entry.role} />

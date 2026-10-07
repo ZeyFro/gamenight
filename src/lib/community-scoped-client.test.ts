@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Client Prisma scopé par communauté (PR7). Les règles vivent dans la fonction
@@ -18,6 +19,7 @@ import {
   COMMUNITY_SCOPED_MODELS,
   CommunityScopeError,
   scopeQueryArgs,
+  scopedTransactionPrisma,
   withCommunity,
 } from "./community-scoped-client";
 
@@ -221,5 +223,20 @@ describe("withCommunity", () => {
 describe("scopeQueryArgs — fail-closed", () => {
   it("opération inconnue sur un modèle scopé : refusée", () => {
     expect(() => scopeQueryArgs("Session", "findRaw", {}, SCOPE)).toThrow(/non prise en charge/);
+  });
+});
+
+describe("transaction scopée — même filtre sur chaque modèle PR B", () => {
+  it.each(["CommunityMemberStats", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent", "ChatMessage", "Debt"])("%s : lecture et mutation ne sortent pas de la communauté", async (model) => {
+    const key = model.charAt(0).toLowerCase() + model.slice(1);
+    const findMany = vi.fn().mockResolvedValue([]);
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    const tx = { [key]: { findMany, deleteMany } } as unknown as Prisma.TransactionClient;
+    const client = scopedTransactionPrisma(tx, SCOPE_DEFAULT) as unknown as Record<string, { findMany: (args: object) => Promise<unknown>; deleteMany: (args: object) => Promise<unknown> }>;
+    await client[key].findMany({ where: { userId: "u" } });
+    await client[key].deleteMany({ where: { id: "étranger" } });
+    const filter = { OR: [{ communityId: { in: ["c1"] } }, ...(!COMMUNITY_REQUIRED_MODELS.has(model) ? [{ communityId: null }] : [])] };
+    expect(findMany).toHaveBeenCalledWith({ where: { userId: "u", AND: [filter] } });
+    expect(deleteMany).toHaveBeenCalledWith({ where: { id: "étranger", AND: [filter] } });
   });
 });

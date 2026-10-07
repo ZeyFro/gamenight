@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
@@ -37,6 +38,8 @@ export default async function ProfilApercuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const scopedDb = await getActiveScopedPrisma(user.id);
+  const communityId = await writeCommunityIdForUser(user.id);
+  const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
 
   const now = nowMs();
   const xpChartSince = new Date(now - XP_CHART_DAYS * 24 * 60 * 60 * 1000);
@@ -56,8 +59,8 @@ export default async function ProfilApercuPage() {
       include: { decidedGame: true },
       orderBy: { date: "asc" },
     }),
-    prisma.xpEvent.findFirst({
-      where: { userId: user.id },
+    scopedDb.xpEvent.findFirst({
+      where: { userId: user.id, ...progressCommunity },
       orderBy: { createdAt: "desc" },
     }),
     // Chantier nettoyage réel du stockage (V2, suite) — `gameName`
@@ -90,7 +93,7 @@ export default async function ProfilApercuPage() {
     // Amélioration profil (stats) — sert à la fois le win rate et le jeu
     // le plus joué, une seule requête pour les deux. `gameId`/`gameName`
     // dénormalisés sur `SessionResult` (survit à la purge de sa soirée).
-    prisma.sessionResult.findMany({
+    scopedDb.sessionResult.findMany({
       where: { userId: user.id },
       select: { placement: true, gameId: true, gameName: true },
     }),
@@ -98,8 +101,8 @@ export default async function ProfilApercuPage() {
       where: { voterId: user.id, won: true },
       _sum: { amount: true },
     }),
-    prisma.xpEvent.findMany({
-      where: { userId: user.id, createdAt: { gte: xpChartSince } },
+    scopedDb.xpEvent.findMany({
+      where: { userId: user.id, ...progressCommunity, createdAt: { gte: xpChartSince } },
       select: { amount: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),

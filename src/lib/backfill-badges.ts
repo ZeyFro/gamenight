@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { getMemberStats, lockCommunityProgress, durableProgressWhere } from "@/lib/member-stats";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { STAT_KEY_FOR_CRITERIA_TYPE, type BadgeCriteria, type BadgeStats } from "@/lib/badges";
 import type { Badge } from "@prisma/client";
@@ -36,26 +40,21 @@ import type { Badge } from "@prisma/client";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Écriture idempotente d'un UserBadge + XP, sans notif Discord (voir décision ci-dessus). */
-async function unlockBadgeRaw(userId: string, badge: Badge): Promise<void> {
+async function unlockBadgeRaw(userId: string, communityId: string, badge: Badge): Promise<void> {
   try {
-    await prisma.userBadge.create({ data: { userId, badgeId: badge.id } });
+    await prisma.$transaction(async (tx) => {
+      if (!(await lockCommunityProgress(tx, communityId, userId))) return;
+      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+      await scopedDb.userBadge.createMany({ data: [{ communityId, userId, badgeId: badge.id }], skipDuplicates: true });
+      if (!badge.xpReward) return;
+      // La récompense peut être manquante après un ancien crash, même si le badge existe.
+      const event = await scopedDb.xpEvent.createMany({ data: [{ communityId, userId, reason: "BADGE_UNLOCKED", sourceId: badge.id, amount: badge.xpReward }], skipDuplicates: true });
+      if (event.count === 0) return;
+      await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
+      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpTotal: { increment: badge.xpReward } } });
+    });
   } catch (error) {
-    if (isUniqueConstraintViolation(error)) return; // déjà débloqué
-    throw error;
-  }
-
-  if (badge.xpReward) {
-    try {
-      await prisma.xpEvent.create({
-        data: { userId, reason: "BADGE_UNLOCKED", sourceId: badge.id, amount: badge.xpReward },
-      });
-      await prisma.user.update({
-        where: { id: userId },
-        data: { xpTotal: { increment: badge.xpReward } },
-      });
-    } catch (error) {
-      if (!isUniqueConstraintViolation(error)) throw error; // XpEvent déjà présent (chemin live entre-temps) — UserBadge suffit
-    }
+    if (!isUniqueConstraintViolation(error)) throw error;
   }
 }
 
@@ -63,16 +62,17 @@ async function computeStats(user: {
   id: string;
   createdAt: Date;
   streakCount: number;
-}): Promise<BadgeStats> {
+}, communityId: string): Promise<BadgeStats> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   const [sessionsCreated, sessionsParticipated, votesCast, superlativesWon, libraryCount] =
     await Promise.all([
       // Chantier nettoyage réel du stockage (V2, suite) — même correctif
       // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
       // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "CREATE_SESSION" } }),
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "PARTICIPATE" } }),
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "VOTE" } }),
-      prisma.superlativeAward.count({ where: { winnerUserId: user.id } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "CREATE_SESSION" } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "PARTICIPATE" } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "VOTE" } }),
+      scopedDb.superlativeAward.count({ where: { winnerUserId: user.id, ...await durableProgressWhere(communityId) } }),
       prisma.userGame.count({ where: { userId: user.id, owned: true } }),
     ]);
 
@@ -93,25 +93,18 @@ export async function backfillBadges(): Promise<void> {
   const badges = await prisma.badge.findMany({ where: { active: true } });
   if (badges.length === 0) return; // seedBadges pas encore passé — reporté au prochain passage
 
+  const communityId = await getDefaultCommunityId();
+  // Réconciliation historique seulement : pas de duplication automatique des
+  // acquis globaux dans chaque serveur rejoint ultérieurement.
   const users = await prisma.user.findMany();
-  if (users.length === 0) return;
-
   for (const user of users) {
-    const stats = await computeStats(user);
-    const alreadyUnlocked = await prisma.userBadge.findMany({
-      where: { userId: user.id },
-      select: { badgeId: true },
-    });
-    const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
-
+    const member = await getMemberStats(user.id, communityId);
+    const stats = await computeStats({ ...user, streakCount: member.streakCount }, communityId);
     for (const badge of badges) {
-      if (unlockedIds.has(badge.id)) continue;
       const criteria = badge.criteria as unknown as BadgeCriteria;
-      const key = STAT_KEY_FOR_CRITERIA_TYPE[criteria.type];
-      const value = stats[key];
+      const value = stats[STAT_KEY_FOR_CRITERIA_TYPE[criteria.type]];
       if (value === undefined || value < criteria.count) continue;
-
-      await unlockBadgeRaw(user.id, badge);
+      await unlockBadgeRaw(user.id, communityId, badge);
     }
   }
 }

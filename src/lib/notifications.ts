@@ -1,8 +1,11 @@
-import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { Notification, NotificationType } from "@prisma/client";
+import { getActiveScopedPrisma, scopedPrisma } from "@/lib/community-scoped-client";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 export interface CreateNotificationInput {
+  communityId?: string | null;
   userId: string;
   type: NotificationType;
   title: string;
@@ -10,6 +13,18 @@ export interface CreateNotificationInput {
   relatedSessionId?: string;
   relatedBadgeId?: string;
   relatedGameId?: string;
+}
+
+async function notificationData(input: CreateNotificationInput) {
+  if (input.communityId !== undefined) return input;
+  // Autorité dérivée de la source métier, jamais de la sélection courante du destinataire.
+  const scopedDb = scopedPrisma(null);
+  const parent = input.relatedSessionId
+    ? input.type === "INSTANT_SESSION_INVITE"
+      ? await scopedDb.instantSession.findUnique({ where: { id: input.relatedSessionId }, select: { communityId: true } })
+      : await scopedDb.session.findUnique({ where: { id: input.relatedSessionId }, select: { communityId: true } })
+    : null;
+  return { ...input, communityId: parent?.communityId ?? await getDefaultCommunityId() };
 }
 
 /**
@@ -26,7 +41,9 @@ export interface CreateNotificationInput {
  */
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
   try {
-    await prisma.notification.create({ data: input });
+    const data = await notificationData(input);
+    const scopedDb = scopedPrisma(null);
+    await scopedDb.notification.create({ data });
   } catch (error) {
     logger.error("notifications", error, { userId: input.userId, type: input.type });
   }
@@ -35,21 +52,25 @@ export async function createNotification(input: CreateNotificationInput): Promis
 export async function createNotifications(inputs: CreateNotificationInput[]): Promise<void> {
   if (inputs.length === 0) return;
   try {
-    await prisma.notification.createMany({ data: inputs });
+    const data = await Promise.all(inputs.map(notificationData));
+    const scopedDb = scopedPrisma(null);
+    await scopedDb.notification.createMany({ data });
   } catch (error) {
     logger.error("notifications", error, { count: inputs.length });
   }
 }
 
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
-  return prisma.notification.count({ where: { userId, read: false } });
+  const scopedDb = await getActiveScopedPrisma(userId);
+  return scopedDb.notification.count({ where: { userId, read: false } });
 }
 
 export async function listRecentNotifications(
   userId: string,
   limit = 20
 ): Promise<Notification[]> {
-  return prisma.notification.findMany({
+  const scopedDb = await getActiveScopedPrisma(userId);
+  return scopedDb.notification.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -103,8 +124,16 @@ export async function groupNotifications(
   items: Pick<
     Notification,
     "id" | "type" | "title" | "message" | "read" | "createdAt" | "relatedSessionId" | "relatedBadgeId" | "relatedGameId"
-  >[]
+  >[],
+  viewerId?: string
 ): Promise<GroupedNotificationItem[]> {
+  if (isCommunityIsolationEnabled() && !viewerId) return [];
+  const scopedDb = viewerId ? await getActiveScopedPrisma(viewerId) : scopedPrisma(null);
+  if (isCommunityIsolationEnabled()) {
+    const visible = await scopedDb.notification.findMany({ where: { userId: viewerId, id: { in: items.map((item) => item.id) } }, select: { id: true } });
+    const visibleIds = new Set(visible.map((item) => item.id));
+    items = items.filter((item) => visibleIds.has(item.id));
+  }
   const awardSessionIds = [
     ...new Set(
       items
@@ -113,7 +142,7 @@ export async function groupNotifications(
     ),
   ];
   const sessions = awardSessionIds.length
-    ? await prisma.session.findMany({
+    ? await scopedDb.session.findMany({
         where: { id: { in: awardSessionIds } },
         select: { id: true, decidedGame: { select: { name: true } } },
       })

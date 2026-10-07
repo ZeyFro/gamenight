@@ -38,7 +38,7 @@ export async function Header() {
       getChatMessages(null, user.id),
     ]);
     unreadCount = count;
-    notifications = await groupNotifications(recent);
+    notifications = await groupNotifications(recent, user.id);
     initialChatMessages = chatMessages;
   }
 

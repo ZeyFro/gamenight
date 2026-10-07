@@ -3,7 +3,10 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { memberUserWhereFor } from "@/lib/community-isolation";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
@@ -36,10 +39,11 @@ export default async function PotesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const potes = await prisma.user.findMany({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const rawPotes = await prisma.user.findMany({
     // Multi-communautés (PR4) : uniquement les membres de mes communautés
     // (aucun filtre si l'isolation est éteinte).
-    where: { AND: [{ id: { not: user.id } }, await memberUserWhereFor(user.id)] },
+    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id)] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,
@@ -47,8 +51,6 @@ export default async function PotesPage() {
       discordAvatar: true,
       color: true,
       bannerUrl: true,
-      xpTotal: true,
-      streakCount: true,
       steamId64: true,
       lastPlayedGame: true,
       lastPlayedAt: true,
@@ -58,13 +60,17 @@ export default async function PotesPage() {
       userTags: { select: { tag: { select: { id: true, name: true } } } },
     },
   });
+  const communityId = await writeCommunityIdForUser(user.id);
+  const progress = await scopedDb.communityMemberStats.findMany({ where: { communityId: { in: communityId ? [communityId] : [] }, userId: { in: rawPotes.map((p) => p.id) } } });
+  const progressById = new Map(progress.map((p) => [p.userId, p]));
+  const potes = rawPotes.map((pote) => projectUserProgress(pote, progressById.get(pote.id) ?? ZERO_MEMBER_STATS));
 
   // Une seule requête groupée pour "soirées jouées" plutôt que N requêtes
   // (une par pote) — même info que `getProfileStats`, mais cette page a
   // besoin de toutes les cartes d'un coup.
-  const sessionsPlayedRows = await prisma.xpEvent.groupBy({
+  const sessionsPlayedRows = await scopedDb.xpEvent.groupBy({
     by: ["userId"],
-    where: { userId: { in: potes.map((p) => p.id) }, reason: "PARTICIPATE" },
+    where: { communityId: { in: communityId ? [communityId] : [] }, userId: { in: potes.map((p) => p.id) }, reason: "PARTICIPATE" },
     _count: { _all: true },
   });
   const sessionsPlayedByUser = new Map(

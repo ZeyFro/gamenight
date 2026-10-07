@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { checkLibraryBadges } from "@/lib/badges";
+import { checkLibraryBadgesForActiveCommunity } from "@/lib/badges";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   FAMILY_IMPORT_BATCH_SIZE,
@@ -163,7 +163,7 @@ export async function matchFamilyImportBatch(
     });
   }
 
-  if (importedCount > 0) await checkLibraryBadges(user.id);
+  if (importedCount > 0) await checkLibraryBadgesForActiveCommunity(user.id);
 
   return results;
 }

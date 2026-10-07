@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { XP_AMOUNTS } from "@/lib/xp";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { lockCommunityProgress } from "@/lib/member-stats";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import type { XpReason } from "@prisma/client";
 
@@ -31,43 +36,50 @@ import type { XpReason } from "@prisma/client";
  * aucune trace.
  */
 
-async function awardXpRaw(
-  userId: string,
-  reason: XpReason,
-  sourceId: string,
-  amount: number
-): Promise<void> {
+async function awardXpRaw(userId: string, communityId: string | null, reason: XpReason, sourceId: string, amount: number): Promise<void> {
+  const id = await statsCommunityIdForSession(communityId);
+  const defaultId = await getDefaultCommunityId();
+  // Steam et disponibilités sont des premiers gestes globaux historiques.
+  // Une récompense live sur B ne doit pas être recréditée dans default par cron.
   try {
-    await prisma.xpEvent.create({ data: { userId, reason, sourceId, amount } });
+    await prisma.$transaction(async (tx) => {
+      if (!(await lockCommunityProgress(tx, id, userId))) return;
+      if (reason === "STEAM_LINK_FIRST" || reason === "AVAILABILITY_FIRST") {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+        if (await tx.user.findFirst({ where: { id: userId, xpEvents: { some: { reason, sourceId } } }, select: { id: true } })) return;
+      }
+      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [...new Set([id, defaultId])], includesDefault: false } : null);
+      // Les événements pré-migration ont été conservés dans default. Ne pas
+      // recréer ailleurs le même gain historique lors d'une réconciliation.
+      if (id !== defaultId && await scopedDb.xpEvent.findFirst({ where: { communityId: defaultId, userId, reason, sourceId }, select: { id: true } })) return;
+      await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
+      await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
+      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId: id, userId } }, data: { xpTotal: { increment: amount } } });
+    });
   } catch (error) {
-    if (isUniqueConstraintViolation(error)) return; // déjà attribué (backfill précédent, ou déjà crédité en live)
-    throw error;
+    if (!isUniqueConstraintViolation(error)) throw error;
   }
-  await prisma.user.update({
-    where: { id: userId },
-    data: { xpTotal: { increment: amount } },
-  });
 }
 
 async function backfillCreateSession(
-  sessions: { id: string; createdById: string }[]
+  sessions: { id: string; createdById: string; communityId: string | null }[]
 ): Promise<void> {
   for (const s of sessions) {
-    await awardXpRaw(s.createdById, "CREATE_SESSION", s.id, XP_AMOUNTS.CREATE_SESSION);
+    await awardXpRaw(s.createdById, s.communityId, "CREATE_SESSION", s.id, XP_AMOUNTS.CREATE_SESSION);
   }
 }
 
 async function backfillVotes(): Promise<void> {
-  const votes = await prisma.vote.findMany({ select: { userId: true, proposalId: true } });
+  const votes = await prisma.vote.findMany({ select: { userId: true, proposalId: true, proposal: { select: { session: { select: { communityId: true } } } } } });
   for (const v of votes) {
     // sourceId = proposalId (pas l'id du Vote) : même convention que le
     // chemin live, cf. src/app/sessions/actions.ts.
-    await awardXpRaw(v.userId, "VOTE", v.proposalId, XP_AMOUNTS.VOTE);
+    await awardXpRaw(v.userId, v.proposal.session.communityId, "VOTE", v.proposalId, XP_AMOUNTS.VOTE);
   }
 }
 
 async function backfillParticipation(
-  sessions: { id: string; status: string; decidedGameId: string | null }[]
+  sessions: { id: string; status: string; decidedGameId: string | null; communityId: string | null }[]
 ): Promise<void> {
   const decided = sessions.filter(
     (s) => (s.status === "SCHEDULED" || s.status === "DONE") && s.decidedGameId
@@ -84,7 +96,7 @@ async function backfillParticipation(
       select: { userId: true },
     });
     for (const v of winnerVotes) {
-      await awardXpRaw(v.userId, "PARTICIPATE", s.id, XP_AMOUNTS.PARTICIPATE);
+      await awardXpRaw(v.userId, s.communityId, "PARTICIPATE", s.id, XP_AMOUNTS.PARTICIPATE);
     }
   }
 }
@@ -95,7 +107,7 @@ async function backfillAvailabilityFirst(): Promise<void> {
     select: { userId: true },
   });
   for (const { userId } of rows) {
-    await awardXpRaw(userId, "AVAILABILITY_FIRST", userId, XP_AMOUNTS.AVAILABILITY_FIRST);
+    await awardXpRaw(userId, await getDefaultCommunityId(), "AVAILABILITY_FIRST", userId, XP_AMOUNTS.AVAILABILITY_FIRST);
   }
 }
 
@@ -105,13 +117,14 @@ async function backfillSteamLinkFirst(): Promise<void> {
     select: { id: true },
   });
   for (const { id } of users) {
-    await awardXpRaw(id, "STEAM_LINK_FIRST", id, XP_AMOUNTS.STEAM_LINK_FIRST);
+    await awardXpRaw(id, await getDefaultCommunityId(), "STEAM_LINK_FIRST", id, XP_AMOUNTS.STEAM_LINK_FIRST);
   }
 }
 
 export async function backfillXp(): Promise<void> {
-  const sessions = await prisma.session.findMany({
-    select: { id: true, createdById: true, status: true, decidedGameId: true },
+  const scopedDb = scopedPrisma(await cronCommunityScope());
+  const sessions = await scopedDb.session.findMany({
+    select: { id: true, communityId: true, createdById: true, status: true, decidedGameId: true },
   });
 
   await backfillCreateSession(sessions);

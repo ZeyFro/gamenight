@@ -1,10 +1,9 @@
 import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
-import { getDefaultCommunityId } from "@/lib/default-community";
+import { listCronCommunityIds } from "@/lib/community-isolation";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
-import { prisma } from "@/lib/prisma";
 import { wallClockNow, startOfMonthUTC, endOfMonthUTC } from "@/lib/wallclock";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
+import { postToCommunity } from "@/lib/community-announce";
 import { logger } from "@/lib/logger";
 
 export interface MonthlyRecapData {
@@ -43,10 +42,6 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
   const start = startOfMonthUTC(new Date(Date.UTC(year, month - 1, 1)));
   const end = endOfMonthUTC(start);
   const scopedDb = await scopedPrismaForCommunityId(communityId);
-  // Avant PR B, limiter les événements XP aux sources de CE serveur.
-  const sourceSessions = await scopedDb.session.findMany({ where: { status: "DONE", date: { gte: start, lte: end } }, select: { id: true } });
-  const sourceInstant = await scopedDb.instantSession.findMany({ where: { createdAt: { gte: start, lte: end } }, select: { id: true } });
-  const xpSources = isCommunityIsolationEnabled() ? { sourceId: { in: [...sourceSessions, ...sourceInstant].map((row) => row.id) } } : {};
 
   const [doneSessions, participateEvents, xpSum, correctPronostics, allUsers] =
     await Promise.all([
@@ -54,22 +49,21 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
         where: { status: "DONE", date: { gte: start, lte: end } },
         include: { decidedGame: true },
       }),
-      prisma.xpEvent.findMany({
-        where: { ...xpSources, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
+      scopedDb.xpEvent.findMany({
+        where: { communityId, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
         include: { user: true },
       }),
-      prisma.xpEvent.aggregate({
-        where: { ...xpSources, createdAt: { gte: start, lte: end } },
+      scopedDb.xpEvent.aggregate({
+        where: { communityId, createdAt: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
       scopedDb.pronostic.findMany({
         where: { correct: true, createdAt: { gte: start, lte: end } },
         include: { voter: true },
       }),
-      // Le streak reste global jusqu’à PR B : ne jamais le publier dans un autre serveur.
-      prisma.user.findMany({
-        where: isCommunityIsolationEnabled() ? { id: { in: [] } } : {},
-        select: { discordName: true, streakCount: true },
+      scopedDb.communityMemberStats.findMany({
+        where: { communityId, user: { memberships: { some: { communityId, status: "ACTIVE", community: { status: "ACTIVE" } } } } },
+        select: { user: { select: { discordName: true } }, streakCount: true },
         orderBy: { streakCount: "desc" },
         take: 1,
       }),
@@ -124,7 +118,7 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
     mostActive: topActive ? { discordName: topActive.label, count: topActive.count } : null,
     bestStreak:
       bestStreakUser && bestStreakUser.streakCount > 0
-        ? { discordName: bestStreakUser.discordName, streak: bestStreakUser.streakCount }
+        ? { discordName: bestStreakUser.user.discordName, streak: bestStreakUser.streakCount }
         : null,
     bestPronostiqueur: topPronostiqueur
       ? { discordName: topPronostiqueur.label, count: topPronostiqueur.count }
@@ -173,10 +167,8 @@ async function generateMonthlyRecapForCommunity(communityId: string, year: numbe
     return; // Un autre cron a créé le snapshot : aucune seconde annonce.
   }
 
-  // Le webhook historique n’appartient qu’à default. Les autres destinations arrivent en PR B.
-  if (isCommunityIsolationEnabled() && communityId !== await getDefaultCommunityId()) return;
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  const result = await postToDiscord({
+  const result = await postToCommunity(communityId, {
     title: "📊 Le recap du mois est prêt !",
     description: `${data.sessionsPlayed} soirée${data.sessionsPlayed > 1 ? "s" : ""} jouée${data.sessionsPlayed > 1 ? "s" : ""} le mois dernier — va voir ton Wrapped !\n${base}/recap/${year}/${month}`,
     color: ACCENT_COLOR,

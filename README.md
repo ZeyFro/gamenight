@@ -2526,7 +2526,7 @@ Branchements : création de soirée (`createSession`), soirée issue d'une roule
 
 ### Isolation des données par communauté (PR4)
 
-Éteinte par défaut : `COMMUNITY_ISOLATION_ENABLED` doit valoir exactement `true`. Éteinte, **aucun filtre**, aucune lecture de `Membership`, requêtes strictement inchangées. Allumée, l'utilisateur ne voit que les données des communautés `ACTIVE` où il a un `Membership` `ACTIVE` (relu en base à chaque requête) ; `communityId = null` désigne `default`. Fail-closed : sans aucune communauté, rien n'est visible.
+Éteinte par défaut : `COMMUNITY_ISOLATION_ENABLED` doit valoir exactement `true`. Allumée, l'utilisateur ne voit que les données des communautés `ACTIVE` où il a un `Membership` `ACTIVE` (relu en base à chaque requête) ; les anciens `communityId = null` désignent `default`. Fail-closed : sans aucune communauté, rien n'est visible. Éteinte, le client collectif reste transparent ; la progression PR B utilise néanmoins explicitement `default` pour les vues et la communauté du parent pour les récompenses dérivées.
 
 | Couvert | Comment |
 | :-- | :-- |
@@ -2537,7 +2537,9 @@ Branchements : création de soirée (`createSession`), soirée issue d'une roule
 | Classement | `getScoreboard(période, { communityId })` : membres de la communauté demandée (`/classement?communaute=<id>`, `requireMembership` → 404 si non membre), sinon communauté active (`default` si membre, sinon la plus ancienne ; provisoire jusqu'à PR5). |
 | Création | Sous isolation, une soirée/un tournoi reçoit toujours un `communityId` ; sans aucune communauté, la création est refusée. |
 
-**Non couvert (backlog, ne pas activer en production avant)** : XP, badges, saisons, superlatifs, chat, dettes, pronostics, paris d'XP, défis, bibliothèque de groupe, statistiques de groupe et accueil (`getGroupStats`, `getRecentActivity`, trophées de groupe), roulette (hors page), « Jouer maintenant », admin, retention. Ces lectures restent globales ; la liste exacte est celle de `EXISTING_EXCEPTIONS` dans `community-scope.test.ts`. **Limite du classement** : l'XP n'est pas rattachée à une communauté (`XpEvent` sans `communityId`) — une communauté classe ses membres sur leur XP personnelle ; un XP réellement par communauté exige une migration et la modification des 19 appelants de `awardXp`.
+PR7–PR9 et [PR A](docs/COMMUNITY_DOMAINES_PR_A.md) couvrent les domaines collectifs, chat/dettes, roulette, « Jouer maintenant », superlatifs, pronostics, paris, défis, récaps et clés de saisons/tournois. [PR B](docs/COMMUNITY_DOMAINES_PR_B.md) ajoute XP, niveaux, badges et streaks par communauté, clôtures de saisons, récaps XP complets, annonces via les salons du serveur, administration métier et rétention filtrées. `CommunityMemberStats` remplace les anciennes colonnes de progression `User` dans les lectures et écritures vivantes. Les colonnes historiques restent conservées.
+
+Les catalogues de jeux, définitions de badges/superlatifs, bibliothèques personnelles et administration de l'installation restent partagés. Les exceptions statiques restantes décrivent des accès système ou des enfants dont le parent doit être contrôlé ; elles ne constituent pas seules une preuve d'isolation. Aucun flag n'est activé par PR B : validations locales, échecs de baseline, limites historiques et contrôles avant production sont détaillés dans son document. Ajouter un serveur exige configuration, Membership et installation du bot, sans migration ou code spécifique à ce serveur.
 
 Hors PR A (PR suivantes) : routes `/c/[slug]`, webhook d'événements Discord,
 colonne `communityId` sur les modèles collectifs, filtrage des lectures,

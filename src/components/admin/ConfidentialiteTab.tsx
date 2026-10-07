@@ -23,8 +23,8 @@ function roleLabel(role: string): string {
  * ni renvoi : ce chantier prépare le terrain pour une décision humaine
  * ultérieure, il ne l'exécute jamais lui-même.
  */
-export async function ConfidentialiteTab() {
-  const { entries, sessionCount } = await listLegacyPublicSessionAnnounces();
+export async function ConfidentialiteTab({ userId }: { userId: string }) {
+  const { entries, sessionCount } = await listLegacyPublicSessionAnnounces({ userId });
 
   return (
     <div className="flex flex-col gap-6">

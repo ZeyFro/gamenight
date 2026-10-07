@@ -21,6 +21,7 @@ import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wallclock";
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { getMemberStats } from "@/lib/member-stats";
 import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
@@ -107,6 +108,7 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const sessionProgress = await getMemberStats(user.id, await statsCommunityIdForSession(session.communityId));
 
   // Badge "🏆 Vote les superlatifs !" — même définition de participant que
   // partout ailleurs dans le chantier (users ayant voté pour la
@@ -403,7 +405,7 @@ export default async function SessionDetailPage({
             <XpBetForm
               sessionId={session.id}
               voterId={user.id}
-              xpTotal={user.xpTotal}
+              xpTotal={sessionProgress.xpTotal}
               targets={pronosticData.participants}
             />
           </div>

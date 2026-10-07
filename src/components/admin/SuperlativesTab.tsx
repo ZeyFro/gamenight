@@ -79,7 +79,7 @@ export async function SuperlativesTab() {
                   <form action={deleteSuperlativeCategory} className="flex-1">
                     <input type="hidden" name="id" value={category.id} />
                     <Button type="submit" variant="destructive" size="sm" fullWidthOnMobile>
-                      Supprimer
+                      Archiver
                     </Button>
                   </form>
                 </div>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -16,7 +16,8 @@ export async function markAllNotificationsReadAction() {
   if (!user) return;
   if (!checkRateLimit(user.id, "markAllNotificationsRead")) return;
 
-  await prisma.notification.updateMany({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  await scopedDb.notification.updateMany({
     where: { userId: user.id, read: false },
     data: { read: true },
   });

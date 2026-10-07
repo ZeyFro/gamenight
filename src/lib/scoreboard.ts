@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel, type Rank } from "@/lib/xp";
 
 const WEEK_DELTA_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -30,7 +32,7 @@ export interface ScoreboardEntry {
 
 /**
  * Début de la période pour "Ce mois"/"Cette semaine" — `null` pour
- * "Global" (pas de borne, on utilise directement `User.xpTotal`). Semaine
+ * "Global" (solde `CommunityMemberStats.xpTotal` du serveur). Semaine
  * calée sur lundi (même convention que `DAY_LABELS_MON_FIRST` dans
  * wallclock.ts, cohérent avec le planning de dispos).
  */
@@ -70,33 +72,37 @@ export async function getScoreboard(
   period: ScoreboardPeriod,
   options: { communityId?: string | null } = {}
 ): Promise<ScoreboardEntry[]> {
-  // Multi-communautés (PR4) : `undefined` = tous les utilisateurs (isolation
-  // éteinte, requêtes historiques) ; `null` = aucune communauté, classement
-  // vide ; sinon uniquement les membres ACTIVE de cette communauté. Limite
-  // assumée : l'XP n'est pas rattachée à une communauté (`XpEvent` sans
-  // `communityId`) — on classe les membres sur leur XP personnelle.
-  const { communityId } = options;
-  if (communityId === null) return [];
+  // PR B : undefined choisit default, null refuse le classement.
+  // Une communauté explicite limite aussi les utilisateurs aux membres ACTIVE.
+  const requestedId = options.communityId;
+  if (requestedId === null) return [];
+  const communityId = requestedId ?? await getDefaultCommunityId();
+  const community = await prisma.community.findUnique({ where: { id: communityId }, select: { status: true } });
+  if (community?.status !== "ACTIVE") return [];
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
 
   const start = periodStart(period);
 
-  const users = await prisma.user.findMany({
-    ...(communityId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const } } } } : {}),
-    select: { id: true, discordName: true, discordAvatar: true, color: true, xpTotal: true },
+  const usersRaw = await prisma.user.findMany({
+    ...(requestedId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const, community: { status: "ACTIVE" as const } } } } } : {}),
+    select: { id: true, discordName: true, discordAvatar: true, color: true },
   });
+  const stats = await scopedDb.communityMemberStats.findMany({ where: { communityId, userId: { in: usersRaw.map((u) => u.id) } }, select: { userId: true, xpTotal: true } });
+  const statsById = new Map(stats.map((s) => [s.userId, s.xpTotal]));
+  const users = usersRaw.map((user) => ({ ...user, xpTotal: statsById.get(user.id) ?? 0 }));
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
-  const memberFilter = communityId ? { userId: { in: users.map((u) => u.id) } } : {};
+  const memberFilter = { communityId, userId: { in: users.map((u) => u.id) } };
 
   const [xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
     period === "global"
       ? null
-      : prisma.xpEvent.groupBy({
+      : scopedDb.xpEvent.groupBy({
           by: ["userId"],
           where: { ...createdAtFilter, ...memberFilter },
           _sum: { amount: true },
         }),
-    prisma.xpEvent.groupBy({
+    scopedDb.xpEvent.groupBy({
       by: ["userId"],
       where: { reason: "PARTICIPATE", ...createdAtFilter, ...memberFilter },
       _count: { _all: true },
@@ -109,7 +115,7 @@ export async function getScoreboard(
     // en base — aucune table de snapshot hebdomadaire n'existe, et cette
     // approche donne exactement le même résultat sans migration.
     period === "global"
-      ? prisma.xpEvent.groupBy({
+      ? scopedDb.xpEvent.groupBy({
           by: ["userId"],
           where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter },
           _sum: { amount: true },

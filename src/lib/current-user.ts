@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { touchStreak } from "@/lib/xp-actions";
 import { checkTemporalBadges } from "@/lib/badges";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
 import { shouldForceRelogin } from "@/lib/force-relogin";
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -26,26 +28,11 @@ export async function getCurrentUser(): Promise<User | null> {
     return null;
   }
 
-  // Chantier XP : tient le streak de connexion à jour à chaque page
-  // protégée — `touchStreak` throttle lui-même ses écritures (pas de
-  // requête supplémentaire tant que < 12h se sont écoulées depuis le
-  // dernier passage), donc appelable ici sans coût perf notable.
-  const streak = await touchStreak(user);
-
-  // PR 7/9 — badges "temporels" (streak, ancienneté du compte) : on ne
-  // relance le check que si `touchStreak` a réellement écrit cette
-  // fois-ci (une vraie nouvelle visite, pas un rechargement de page dans
-  // les 12h). Sans ce garde-fou, chaque page protégée ferait une requête
-  // badges en plus — négligeable une fois par visite, pas à chaque nav.
-  const streakActuallyTouched =
-    streak.streakLastActiveAt.getTime() !== (user.streakLastActiveAt?.getTime() ?? -1);
-  if (streakActuallyTouched) {
-    await checkTemporalBadges({
-      id: user.id,
-      streakCount: streak.streakCount,
-      createdAt: user.createdAt,
-    });
+  const communityId = await writeCommunityIdForUser(user.id);
+  if (communityId === null) return projectUserProgress(user, ZERO_MEMBER_STATS);
+  const stats = await touchStreak(user.id, communityId);
+  if (stats.touched) {
+    await checkTemporalBadges({ id: user.id, streakCount: stats.streakCount, createdAt: user.createdAt }, communityId);
   }
-
-  return { ...user, ...streak };
+  return projectUserProgress(user, stats);
 }

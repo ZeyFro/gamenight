@@ -4,6 +4,8 @@ import { signIn, signOut } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
@@ -141,14 +143,16 @@ export default async function Home({
   }
 
   await requireCommunityChosen(user.id, "/");
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const communityId = await writeCommunityIdForUser(user.id);
 
   const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
   const badgeCount = showOnboarding
-    ? await prisma.userBadge.count({ where: { userId: user.id } })
+    ? await scopedDb.userBadge.count({ where: { userId: user.id, communityId: { in: communityId ? [communityId] : [] } } })
     : 0;
 
-  const dueSession = await prisma.session.findFirst({
-    where: { status: "VOTING", date: { lte: wallClockNow() } },
+  const dueSession = await scopedDb.session.findFirst({
+    where: { status: "VOTING", date: { lte: wallClockNow() }, ...(await accessibleSessionWhereFor(user.id)) },
     select: { id: true },
     orderBy: { date: "asc" },
   });

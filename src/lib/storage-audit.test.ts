@@ -21,6 +21,8 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockDb }));
+vi.mock("@/lib/community-scoped-client", () => ({ scopedPrisma: () => mockDb }));
+vi.mock("@/lib/default-community", () => ({ getDefaultCommunityId: async () => "default" }));
 vi.mock("@/lib/wallclock", () => ({ wallClockNow: () => NOW }));
 vi.mock("@/lib/seasons", () => ({ getActiveSeason: vi.fn().mockResolvedValue(null) }));
 

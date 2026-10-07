@@ -10,6 +10,7 @@ import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
 import { ensureActiveSeasonExistsForViewer, getSeasonProgress } from "@/lib/seasons";
 import { getActiveTournament } from "@/lib/tournaments";
+import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats";
 
 /**
  * Données de l'accueil v2 (`/accueil-v2`) : mêmes requêtes que l'accueil
@@ -22,7 +23,8 @@ import { getActiveTournament } from "@/lib/tournaments";
  * (`closeSessionIfDue`) et l'affichage de l'onboarding. Cette page ne les
  * déclenche donc pas ; `/` continue de s'en charger.
  */
-export async function loadHomeData(user: User) {
+export async function loadHomeData(rawUser: User) {
+  const user = projectUserProgress(rawUser, await getMemberStatsForViewer(rawUser.id, rawUser.id));
   // Garde-fou idempotent identique à `/` (voir `ensureActiveSeasonExistsForViewer`).
   await ensureActiveSeasonExistsForViewer(user.id);
 

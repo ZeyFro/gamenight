@@ -84,7 +84,7 @@ export async function BadgesTab() {
                     <form action={deleteBadge} className="flex-1">
                       <input type="hidden" name="id" value={badge.id} />
                       <Button type="submit" variant="destructive" size="sm" fullWidthOnMobile>
-                        Supprimer
+                        Archiver
                       </Button>
                     </form>
                   </div>

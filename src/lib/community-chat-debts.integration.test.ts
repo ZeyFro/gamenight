@@ -60,6 +60,8 @@ describe.skipIf(!TEST_DATABASE_URL)("chat et dettes par communauté (Postgres is
   beforeEach(async () => {
     vi.unstubAllEnvs();
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+    const defaults = await import("./default-community");
+    defaults.resetDefaultCommunityIdCache();
     await db.$executeRawUnsafe(
       `TRUNCATE "ChatReaction", "ChatMessage", "Debt", "Notification", "UserBadge", "Badge", "LevelUpEvent", "Session", "Membership", "Community", "User" CASCADE`
     );
@@ -219,22 +221,26 @@ describe.skipIf(!TEST_DATABASE_URL)("chat et dettes par communauté (Postgres is
   });
 
   describe("flux d'activité de l'accueil", () => {
-    it("badges, niveaux : seulement ceux des membres visibles du spectateur", async () => {
+    it("badges, niveaux : seulement ceux du serveur actif, même pour un membre commun", async () => {
       const badge = await db.badge.create({
         data: { name: "Premier", description: "d", icon: "🏅", category: "PARTICIPATION", rarity: "COMMON", criteria: {}, modifiedById: ids.alice },
       });
       for (const u of ["alice", "bob"]) {
-        await db.userBadge.create({ data: { userId: ids[u], badgeId: badge.id } });
-        await db.levelUpEvent.create({ data: { userId: ids[u], level: 2 } });
+        const communityId = u === "alice" ? ids.c1 : ids.c2;
+        await db.userBadge.create({ data: { communityId, userId: ids[u], badgeId: badge.id } });
+        await db.levelUpEvent.create({ data: { communityId, userId: ids[u], level: 2 } });
       }
+      await db.levelUpEvent.create({ data: { communityId: ids.c2, userId: ids.carol, level: 99 } });
       const feed = async (viewer: string) => (await home.getRecentActivity(ids[viewer], 10)).map((i) => i.text).join("|");
       expect(await feed("alice")).toContain("alice");
       expect(await feed("alice")).not.toContain("bob");
       expect(await feed("bob")).not.toContain("alice");
       expect(await feed("carol")).toContain("alice");
-      expect(await feed("carol")).toContain("bob");
+      expect(await feed("carol")).not.toContain("bob");
+      expect(await feed("carol")).not.toContain("99");
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      expect(await feed("alice")).toContain("bob");
+      expect(await feed("alice")).not.toContain("bob");
+      expect(await feed("alice")).not.toContain("99");
     });
   });
 });

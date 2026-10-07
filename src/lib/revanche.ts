@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createNotifications, type CreateNotificationInput } from "@/lib/notifications";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 
 const REVANCHE_THRESHOLD = 3;
 
@@ -27,11 +29,16 @@ export async function checkRevancheAfterSessionResults(sessionId: string): Promi
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: {
+      communityId: true,
       decidedGame: { select: { id: true, name: true, isCoop: true } },
       results: { select: { userId: true } },
     },
   });
   if (!session?.decidedGame || session.decidedGame.isCoop) return;
+  const communityId = await statsCommunityIdForSession(session.communityId);
+  const community = await prisma.community.findUnique({ where: { id: communityId }, select: { status: true } });
+  if (community?.status !== "ACTIVE") return;
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   const game = session.decidedGame;
 
   const notifications: CreateNotificationInput[] = [];
@@ -47,7 +54,7 @@ export async function checkRevancheAfterSessionResults(sessionId: string): Promi
     // `SessionResult` implique déjà une soirée `DONE` au moment de sa
     // création (`submitSessionResultsAction` le vérifie) — le filtre
     // `status: "DONE"` d'origine était donc redondant, jamais perdu ici.
-    const history = await prisma.sessionResult.findMany({
+    const history = await scopedDb.sessionResult.findMany({
       where: { userId, gameId: game.id },
       select: { placement: true },
     });
@@ -62,12 +69,13 @@ export async function checkRevancheAfterSessionResults(sessionId: string): Promi
     if (!pote) continue;
 
     const others = await prisma.user.findMany({
-      where: { id: { not: userId } },
+      where: { id: { not: userId }, memberships: { some: { communityId, status: "ACTIVE", community: { status: "ACTIVE" } } } },
       select: { id: true },
     });
     for (const { id: otherId } of others) {
       notifications.push({
         userId: otherId,
+        communityId,
         type: "REVANCHE",
         title: "🔄 Revanche possible",
         message: `${pote.discordName} n'a jamais gagné à ${game.name} en ${REVANCHE_THRESHOLD} parties — proposer une revanche ?`,

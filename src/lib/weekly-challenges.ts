@@ -109,13 +109,12 @@ export async function completeWeeklyChallenge(
 
   const badgeUnlockedByUserId: Record<string, boolean> = {};
   for (const participant of participants) {
-    await awardXp(
-      participant.id,
+    await awardXp(participant.id, challenge.communityId,
       "CHALLENGE_COMPLETE",
       challenge.id,
       XP_AMOUNTS.CHALLENGE_COMPLETE
     );
-    badgeUnlockedByUserId[participant.id] = await checkChallengeBadges(participant.id);
+    badgeUnlockedByUserId[participant.id] = await checkChallengeBadges(participant.id, challenge.communityId);
   }
 
   return { completed: true, badgeUnlockedByUserId };

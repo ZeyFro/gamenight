@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { wallClockNow } from "@/lib/wallclock";
+import { scopedPrisma } from "@/lib/community-scoped-client";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import {
   enqueueSessionThreadArchive,
   enqueueSessionThreadAutoDelete,
@@ -165,15 +167,17 @@ const TERMINAL_STATUSES = ["DONE", "CANCELLED"] as const;
 
 const SESSION_TARGET: CleanupTarget = {
   label: "session",
-  loadPage: async (cursor) =>
-    (
-      await prisma.session.findMany({
+  loadPage: async (cursor) => {
+    const scopedDb = scopedPrisma(await cronCommunityScope());
+    return (
+      await scopedDb.session.findMany({
         where: { status: { in: [...TERMINAL_STATUSES] }, announceViaBot: true, ...(cursor ? { id: { gt: cursor } } : {}) },
         select: { id: true },
         orderBy: { id: "asc" },
         take: THREAD_CLEANUP_PAGE_SIZE,
       })
-    ).map((row) => row.id),
+    ).map((row) => row.id);
+  },
   slots: sessionThreadCleanupSlots,
   enqueueArchive: (id) => enqueueSessionThreadArchive(id),
   enqueueDelete: (id) => enqueueSessionThreadAutoDelete(id),
@@ -181,15 +185,17 @@ const SESSION_TARGET: CleanupTarget = {
 
 const TOURNAMENT_TARGET: CleanupTarget = {
   label: "tournament",
-  loadPage: async (cursor) =>
-    (
-      await prisma.tournament.findMany({
+  loadPage: async (cursor) => {
+    const scopedDb = scopedPrisma(await cronCommunityScope());
+    return (
+      await scopedDb.tournament.findMany({
         where: { status: { in: [...TERMINAL_STATUSES] }, announceViaBot: true, ...(cursor ? { id: { gt: cursor } } : {}) },
         select: { id: true },
         orderBy: { id: "asc" },
         take: THREAD_CLEANUP_PAGE_SIZE,
       })
-    ).map((row) => row.id),
+    ).map((row) => row.id);
+  },
   slots: tournamentThreadCleanupSlots,
   enqueueArchive: (id) => enqueueTournamentThreadClose(id),
   enqueueDelete: (id) => enqueueTournamentThreadAutoDelete(id),
@@ -286,11 +292,12 @@ export type CloseOnEndResult = "enqueued" | "not_eligible" | "not_needed";
  * annonce bot, n'est pas éligible.
  */
 export async function closeThreadOnEnd(kind: "session" | "tournament", id: string): Promise<CloseOnEndResult> {
+  const scopedDb = scopedPrisma(await cronCommunityScope());
   const target = kind === "session" ? SESSION_TARGET : TOURNAMENT_TARGET;
   const row =
     kind === "session"
-      ? await prisma.session.findUnique({ where: { id }, select: { status: true, announceViaBot: true } })
-      : await prisma.tournament.findUnique({ where: { id }, select: { status: true, announceViaBot: true } });
+      ? await scopedDb.session.findUnique({ where: { id }, select: { status: true, announceViaBot: true } })
+      : await scopedDb.tournament.findUnique({ where: { id }, select: { status: true, announceViaBot: true } });
   if (!row || !row.announceViaBot || !(TERMINAL_STATUSES as readonly string[]).includes(row.status)) {
     return "not_eligible";
   }

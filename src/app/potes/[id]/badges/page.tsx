@@ -1,7 +1,9 @@
 import { notFound, redirect } from "next/navigation";
-import { canViewPote } from "@/lib/community-isolation";
+import { canViewPote, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { BadgeGrid, type BadgeGridItem } from "@/components/BadgeGrid";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -19,10 +21,14 @@ export default async function PoteBadgesPage({
   const { id } = await params;
   // Multi-communautés (PR4) : contrôle répété dans chaque page (voir tierlist).
   if (!(await canViewPote(user.id, id))) notFound();
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const communityId = await writeCommunityIdForUser(user.id);
+  if (isCommunityIsolationEnabled() && (communityId === null ||
+    !(await isMemberOfCommunity(user.id, communityId)) || !(await isMemberOfCommunity(id, communityId)))) notFound();
 
   const [badges, unlocked] = await Promise.all([
     prisma.badge.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.userBadge.findMany({ where: { userId: id } }),
+    scopedDb.userBadge.findMany({ where: { userId: id, communityId: { in: communityId ? [communityId] : [] } } }),
   ]);
   const unlockedAtByBadgeId = new Map(unlocked.map((u) => [u.badgeId, u.unlockedAt]));
 

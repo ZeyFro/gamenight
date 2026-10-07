@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
+import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { cronCommunityScope, communityIdFilter, isCommunityIsolationEnabled, type IsolationScope } from "@/lib/community-isolation";
+import { DEFAULT_COMMUNITY_SLUG, getDefaultCommunityId } from "@/lib/default-community";
 import { wallClockNow } from "@/lib/wallclock";
 import { HISTORY_VISIBILITY_WINDOW_DAYS, isWithinHistoryWindow } from "@/lib/history-visibility";
 import { getActiveSeason } from "@/lib/seasons";
@@ -9,6 +13,27 @@ import {
   getTournamentCleanupStatus,
   isTournamentAnnounceSent,
 } from "@/lib/tournament-announce";
+
+/** Les scopes système sont relus avant chaque mutation ; aucune autorité provenant d'un JWT. */
+export async function activeRetentionScope(scope?: IsolationScope | null): Promise<IsolationScope | null> {
+  const active = await cronCommunityScope();
+  if (active === null) return null;
+  if (scope === undefined) return active;
+  if (scope === null) return { communityIds: [], includesDefault: false };
+  return { communityIds: active.communityIds.filter((id) => scope.communityIds.includes(id)), includesDefault: active.includesDefault && scope.includesDefault };
+}
+
+type RetentionOptions = { limit?: number; dryRun: boolean; now?: Date; scope?: IsolationScope | null };
+
+/** FOR SHARE empêche une suspension pendant la mutation, y compris après sa sélection initiale. */
+async function lockedRetentionScope(tx: Prisma.TransactionClient, scope: IsolationScope | null): Promise<IsolationScope | null> {
+  if (!isCommunityIsolationEnabled()) return null;
+  const rows = await tx.$queryRaw<{ id: string; slug: string }[]>`
+    SELECT id, slug FROM "Community" WHERE status = 'ACTIVE'
+      AND id = ANY(${scope?.communityIds ?? []}::text[]) FOR SHARE
+  `;
+  return { communityIds: rows.map((row) => row.id), includesDefault: Boolean(scope?.includesDefault && rows.some((row) => row.slug === DEFAULT_COMMUNITY_SLUG)) };
+}
 
 // V2 ("Jouer maintenant" — closes le volet rétention de ce chantier) :
 // `purgeEligibleInstantSessionsBatch`/`instantSessionPurgeEligibility`
@@ -193,13 +218,15 @@ export interface ChatPurgeBatchResult {
  * jamais exécuter `deleteMany`.
  */
 export async function purgeEligibleChatMessagesBatch(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<ChatPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
   const cutoff = new Date(now.getTime() - RETENTION_CHAT_PURGE_DELAY_DAYS * 24 * 60 * 60 * 1000);
 
-  const sessions = await prisma.session.findMany({
+  const sessions = await scopedDb.session.findMany({
     where: {
       status: { in: ["DONE", "CANCELLED"] },
       date: { lt: cutoff },
@@ -214,14 +241,15 @@ export async function purgeEligibleChatMessagesBatch(
   }
 
   if (opts.dryRun) {
-    const count = await prisma.chatMessage.count({ where: { sessionId: { in: candidateSessionIds } } });
+    const count = await scopedDb.chatMessage.count({ where: { sessionId: { in: candidateSessionIds } } });
     return { candidateSessionIds, messagesAffected: count, dryRun: true };
   }
 
   // `ChatReaction` cascade via `onDelete: Cascade` sur `ChatMessage` —
   // rien à supprimer séparément.
-  const deleted = await prisma.chatMessage.deleteMany({
-    where: { sessionId: { in: candidateSessionIds } },
+  const deleted = await prisma.$transaction(async (tx) => {
+    const scopedDb = scopedTransactionPrisma(tx, await lockedRetentionScope(tx, scope));
+    return scopedDb.chatMessage.deleteMany({ where: { sessionId: { in: candidateSessionIds } } });
   });
   return { candidateSessionIds, messagesAffected: deleted.count, dryRun: false };
 }
@@ -253,13 +281,15 @@ export interface DiscordCleanupBatchResult {
  * sans référence de fil PERSISTÉE et VÉRIFIÉE (voir les résolveurs).
  */
 export async function scheduleDiscordCleanupForEligibleEvents(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<DiscordCleanupBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
 
   const sessionsEnqueued: string[] = [];
-  const candidateSessions = await prisma.session.findMany({
+  const candidateSessions = await scopedDb.session.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] }, announceViaBot: true },
     select: { id: true, status: true, date: true },
     take: limit * 4, // sur-échantillonne, filtré ensuite par éligibilité réelle — reste borné
@@ -275,7 +305,7 @@ export async function scheduleDiscordCleanupForEligibleEvents(
   }
 
   const tournamentsEnqueued: string[] = [];
-  const candidateTournaments = await prisma.tournament.findMany({
+  const candidateTournaments = await scopedDb.tournament.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] }, announceViaBot: true },
     select: { id: true, status: true, cancelledAt: true, matches: { select: { completedAt: true } } },
     take: limit * 4,
@@ -332,12 +362,15 @@ export async function sessionPurgeBlockReason(session: {
   id: string;
   superlativeVotingClosed: boolean;
 }): Promise<SessionPurgeBlockReason | null> {
+  const scopedDb = scopedPrisma(await activeRetentionScope());
   if (!session.superlativeVotingClosed) return "superlative_voting_pending";
-  const unpaidDebt = await prisma.debt.findFirst({
-    where: { sessionId: session.id, paidAt: null },
-    select: { id: true },
-  });
-  return unpaidDebt ? "debt_unpaid" : null;
+  const parent = await scopedDb.session.findUnique({ where: { id: session.id }, select: { id: true } });
+  if (!parent) return null;
+  // Le parent est autorisé ; toute dette sous sa cascade bloque, même une provenance historique incohérente.
+  const unpaidDebt = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Debt" WHERE "sessionId" = ${parent.id} AND "paidAt" IS NULL LIMIT 1
+  `;
+  return unpaidDebt.length ? "debt_unpaid" : null;
 }
 
 export interface SessionRowPurgeBatchResult {
@@ -371,12 +404,14 @@ export interface SessionRowPurgeBatchResult {
  * si l'état a changé, jamais une suppression sur un état périmé.
  */
 export async function purgeEligibleSessionsBatch(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<SessionRowPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
 
-  const candidates = await prisma.session.findMany({
+  const candidates = await scopedDb.session.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
     select: { id: true, status: true, date: true, superlativeVotingClosed: true, announceViaBot: true },
     take: limit * 4,
@@ -414,17 +449,23 @@ export async function purgeEligibleSessionsBatch(
     }
 
     const deleted = await prisma.$transaction(async (tx) => {
+      const mutationScope = await lockedRetentionScope(tx, scope);
+      const scopedDb = scopedTransactionPrisma(tx, mutationScope);
       const locked = await tx.$queryRaw<{ id: string; status: string; superlativeVotingClosed: boolean }[]>`
-        SELECT id, status, "superlativeVotingClosed" FROM "Session" WHERE id = ${session.id} FOR UPDATE
+        SELECT s.id, s.status, s."superlativeVotingClosed" FROM "Session" s WHERE s.id = ${session.id}
+          AND (${!isCommunityIsolationEnabled()} OR EXISTS (SELECT 1 FROM "Community" c
+            WHERE c.status = 'ACTIVE' AND c.id = ANY(${mutationScope?.communityIds ?? []}::text[])
+              AND (c.id = s."communityId" OR (s."communityId" IS NULL AND ${mutationScope?.includesDefault ?? false} AND c.slug = ${DEFAULT_COMMUNITY_SLUG})))) FOR UPDATE
       `;
       const current = locked[0];
       if (!current) return false; // déjà purgée par un passage concurrent
       if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // ne devrait jamais arriver (statut terminal irréversible), garde défensive
       if (!current.superlativeVotingClosed) return false; // course perdue — résolu entre-temps
-      const stillUnpaid = await tx.debt.findFirst({ where: { sessionId: session.id, paidAt: null }, select: { id: true } });
-      if (stillUnpaid) return false; // course perdue — nouvelle dette détectée entre-temps
+      // Parent autorisé et verrouillé : même une dette mal rattachée bloque sa cascade.
+      const stillUnpaid = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Debt" WHERE "sessionId" = ${session.id} AND "paidAt" IS NULL LIMIT 1`;
+      if (stillUnpaid.length) return false;
 
-      await tx.session.delete({ where: { id: session.id } });
+      await scopedDb.session.delete({ where: { id: session.id } });
       return true;
     });
 
@@ -456,12 +497,14 @@ export interface TournamentRowPurgeBatchResult {
  * perte de badge/XP possible.
  */
 export async function purgeEligibleTournamentsBatch(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<TournamentRowPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
 
-  const candidates = await prisma.tournament.findMany({
+  const candidates = await scopedDb.tournament.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
     select: {
       id: true,
@@ -498,13 +541,18 @@ export async function purgeEligibleTournamentsBatch(
     }
 
     const deleted = await prisma.$transaction(async (tx) => {
+      const mutationScope = await lockedRetentionScope(tx, scope);
+      const scopedDb = scopedTransactionPrisma(tx, mutationScope);
       const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
-        SELECT id, status FROM "Tournament" WHERE id = ${tournament.id} FOR UPDATE
+        SELECT t.id, t.status FROM "Tournament" t WHERE t.id = ${tournament.id}
+          AND (${!isCommunityIsolationEnabled()} OR EXISTS (SELECT 1 FROM "Community" c
+            WHERE c.status = 'ACTIVE' AND c.id = ANY(${mutationScope?.communityIds ?? []}::text[])
+              AND (c.id = t."communityId" OR (t."communityId" IS NULL AND ${mutationScope?.includesDefault ?? false} AND c.slug = ${DEFAULT_COMMUNITY_SLUG})))) FOR UPDATE
       `;
       const current = locked[0];
       if (!current) return false; // déjà purgé par un passage concurrent
       if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // garde défensive
-      await tx.tournament.delete({ where: { id: tournament.id } });
+      await scopedDb.tournament.delete({ where: { id: tournament.id } });
       return true;
     });
     if (deleted) purgedTournamentIds.push(tournament.id);
@@ -540,27 +588,35 @@ export interface NotificationPurgeBatchResult {
  * (bornage strict `createdAt < startDate`).
  */
 export async function purgeClosedSeasonNotificationsBatch(
-  opts: { limit?: number; dryRun: boolean }
+  opts: RetentionOptions
 ): Promise<NotificationPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
-  const activeSeason = await getActiveSeason();
-  if (!activeSeason) {
+  const defaultId = await getDefaultCommunityId();
+  const seasons = scope ? await Promise.all(scope.communityIds.map((id) => getActiveSeason(id))) : [await getActiveSeason()];
+  const activeSeasons = seasons.filter((season) => season !== null);
+  if (activeSeasons.length === 0) {
     return { notificationsAffected: 0, dryRun: opts.dryRun, seasonCycleAvailable: false };
   }
 
-  const where = { read: true, createdAt: { lt: activeSeason.startDate } };
+  const where: Prisma.NotificationWhereInput = { read: true, OR: activeSeasons.map((season) => ({
+    ...(scope ? communityIdFilter({ communityIds: [season.communityId], includesDefault: scope.includesDefault && season.communityId === defaultId }) : {}),
+    createdAt: { lt: season.startDate },
+  })) };
 
   if (opts.dryRun) {
-    const candidates = await prisma.notification.findMany({ where, select: { id: true }, take: limit });
+    const candidates = await scopedDb.notification.findMany({ where, select: { id: true }, take: limit });
     return { notificationsAffected: candidates.length, dryRun: true, seasonCycleAvailable: true };
   }
 
-  const candidates = await prisma.notification.findMany({ where, select: { id: true }, take: limit });
+  const candidates = await scopedDb.notification.findMany({ where, select: { id: true }, take: limit });
   if (candidates.length === 0) {
     return { notificationsAffected: 0, dryRun: false, seasonCycleAvailable: true };
   }
-  const deleted = await prisma.notification.deleteMany({
-    where: { id: { in: candidates.map((c) => c.id) } },
+  const deleted = await prisma.$transaction(async (tx) => {
+    const scopedDb = scopedTransactionPrisma(tx, await lockedRetentionScope(tx, scope));
+    return scopedDb.notification.deleteMany({ where: { AND: [where, { id: { in: candidates.map((c) => c.id) } }] } });
   });
   return { notificationsAffected: deleted.count, dryRun: false, seasonCycleAvailable: true };
 }
@@ -595,12 +651,13 @@ export interface TechnicalDataPurgeBatchResult {
  *     qui reste `null` pour un `SKIPPED`).
  *
  * La ligne `NotificationEvent` parente n'est JAMAIS supprimée par cette
- * fonction (empreinte négligeable, aucune donnée personnelle/contenu de
- * message) — seules les lignes `NotificationDelivery`, plus nombreuses.
+ * fonction (journal durable ; les annonces système PR B y conservent aussi
+ * leur payload et leurs destinataires) — seules les livraisons sont purgées.
  */
 export async function purgeTechnicalDeliveriesBatch(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<TechnicalDataPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
   const cutoff = new Date(now.getTime() - RETENTION_TECHNICAL_DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -608,7 +665,7 @@ export async function purgeTechnicalDeliveriesBatch(
   const where = {
     status: { in: ["SENT", "SKIPPED"] as ("SENT" | "SKIPPED")[] },
     createdAt: { lt: cutoff },
-    event: { occurrence: { not: "" } },
+    event: { occurrence: { not: "" }, ...communityIdFilter(scope) },
   };
 
   const candidates = await prisma.notificationDelivery.findMany({ where, select: { id: true }, take: limit });
@@ -618,8 +675,11 @@ export async function purgeTechnicalDeliveriesBatch(
   if (candidates.length === 0) {
     return { deliveriesAffected: 0, dryRun: false };
   }
-  const deleted = await prisma.notificationDelivery.deleteMany({
-    where: { id: { in: candidates.map((c) => c.id) } },
+  const deleted = await prisma.$transaction(async (tx) => {
+    const mutationScope = await lockedRetentionScope(tx, scope);
+    return tx.notificationDelivery.deleteMany({
+      where: { ...where, id: { in: candidates.map((c) => c.id) }, event: { occurrence: { not: "" }, ...communityIdFilter(mutationScope) } },
+    });
   });
   return { deliveriesAffected: deleted.count, dryRun: false };
 }
@@ -672,12 +732,14 @@ export interface InstantSessionRowPurgeBatchResult {
  * nécessaire à cette fonction pour cette nouvelle catégorie.
  */
 export async function purgeEligibleInstantSessionsBatch(
-  opts: { limit?: number; dryRun: boolean; now?: Date }
+  opts: RetentionOptions
 ): Promise<InstantSessionRowPurgeBatchResult> {
+  const scope = await activeRetentionScope(opts.scope);
+  const scopedDb = scopedPrisma(scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
   const now = opts.now ?? wallClockNow();
 
-  const candidates = await prisma.instantSession.findMany({
+  const candidates = await scopedDb.instantSession.findMany({
     where: { status: "ENDED" },
     select: { id: true, status: true, endedAt: true },
     take: limit * 4,
@@ -701,8 +763,9 @@ export async function purgeEligibleInstantSessionsBatch(
     // `delete`) — protège contre une course improbable où la ligne aurait
     // déjà disparu entre la sélection et l'exécution (jamais un crash sur
     // "enregistrement introuvable").
-    const deleted = await prisma.instantSession.deleteMany({
-      where: { id: instantSession.id, status: "ENDED" },
+    const deleted = await prisma.$transaction(async (tx) => {
+      const scopedDb = scopedTransactionPrisma(tx, await lockedRetentionScope(tx, scope));
+      return scopedDb.instantSession.deleteMany({ where: { id: instantSession.id, status: "ENDED" } });
     });
     if (deleted.count > 0) purgedInstantSessionIds.push(instantSession.id);
   }

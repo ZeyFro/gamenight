@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { postToDiscord, ACCENT_COLOR, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
+import { ACCENT_COLOR, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
+import { postToCommunity } from "@/lib/community-announce";
 import { createNotifications } from "@/lib/notifications";
 import type { GroupAchievement } from "@prisma/client";
 
@@ -12,13 +13,18 @@ import type { GroupAchievement } from "@prisma/client";
  * annulation…).
  */
 export async function announceGroupAchievementUnlocked(
-  achievement: Pick<GroupAchievement, "name" | "icon" | "description">
+  achievement: Pick<GroupAchievement, "name" | "icon" | "description">,
+  communityId: string,
 ): Promise<PostToDiscordResult> {
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({
+    where: { memberships: { some: { communityId, status: "ACTIVE", community: { status: "ACTIVE" } } } },
+    select: { id: true },
+  });
 
   await createNotifications(
     users.map((u) => ({
       userId: u.id,
+      communityId,
       type: "ACHIEVEMENT" as const,
       title: `${achievement.icon} ${achievement.name}`,
       message: achievement.description,
@@ -31,5 +37,5 @@ export async function announceGroupAchievementUnlocked(
     color: ACCENT_COLOR,
   };
 
-  return postToDiscord(embed);
+  return postToCommunity(communityId, embed);
 }

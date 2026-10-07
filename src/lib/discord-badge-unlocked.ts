@@ -1,5 +1,4 @@
 import {
-  postToDiscord,
   ACCENT_COLOR,
   type DiscordEmbed,
   type PostToDiscordResult,
@@ -7,6 +6,7 @@ import {
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { RARITY_LABELS } from "@/lib/badge-rarity";
 import type { Badge, User } from "@prisma/client";
+import { postToCommunity } from "@/lib/community-announce";
 
 /**
  * Notifie Discord quand un user débloque un badge (PR 7/9) — même schéma
@@ -17,7 +17,8 @@ import type { Badge, User } from "@prisma/client";
  */
 export async function announceBadgeUnlocked(
   user: Pick<User, "discordId">,
-  badge: Pick<Badge, "name" | "icon" | "description" | "rarity">
+  badge: Pick<Badge, "name" | "icon" | "description" | "rarity">,
+  communityId: string | null,
 ): Promise<PostToDiscordResult> {
   const rarity = RARITY_LABELS[badge.rarity];
 
@@ -37,5 +38,5 @@ export async function announceBadgeUnlocked(
     fields: [{ name: "Rareté", value: rarity, inline: true }],
   };
 
-  return postToDiscord(embed, message);
+  return postToCommunity(communityId, embed, message);
 }

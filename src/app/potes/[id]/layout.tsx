@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { canViewPote } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats";
 import { Badge } from "@/components/ui/Badge";
 import { PoteTabs } from "@/components/PoteTabs";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -44,8 +45,9 @@ export default async function PoteLayout({
   // Multi-communautés (PR4) : fiche d'un membre d'une autre communauté =
   // indistinct d'un pote inexistant (contrôle aussi répété dans chaque page).
   if (!(await canViewPote(user.id, id))) notFound();
-  const pote = await prisma.user.findUnique({ where: { id } });
-  if (!pote) notFound();
+  const rawPote = await prisma.user.findUnique({ where: { id } });
+  if (!rawPote) notFound();
+  const pote = projectUserProgress(rawPote, await getMemberStatsForViewer(id, user.id));
 
   const level = levelForXp(pote.xpTotal);
   const rank = rankForLevel(level);

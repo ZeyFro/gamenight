@@ -136,11 +136,7 @@ export async function deleteBadge(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  // Cascade automatique via le schéma (onDelete: Cascade sur
-  // UserBadge.badge) : les attributions déjà faites disparaissent avec
-  // le badge — même rationale documentée que `deleteSuperlativeCategory`.
-  // Désactiver (`toggleBadgeActive`) est l'option non destructive si on
-  // veut garder l'historique.
-  await prisma.badge.delete({ where: { id } });
+  // Catalogue partagé : archiver préserve les attributions historiques de tous les serveurs.
+  await prisma.badge.update({ where: { id }, data: { active: false, modifiedById: user.id } });
   revalidatePath("/admin");
 }

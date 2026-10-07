@@ -422,7 +422,7 @@ export async function settleAllDueInstantSessions(): Promise<string[]> {
  * l'historique complet des intervalles, jamais seulement les présents
  * actuels) et attribue l'XP de participation à quiconque atteint 15 min
  * cumulées — RÉUTILISE la règle XP existante des soirées planifiées
- * (`XP_AMOUNTS.PARTICIPATE`, `awardXp(..., "PARTICIPATE", ...)`) à
+ * (`XP_AMOUNTS.PARTICIPATE`, `awardXp(..., session.communityId, "PARTICIPATE", ...)`) à
  * dessein, MAIS n'appelle JAMAIS `checkGroupAchievements()` ni aucune
  * fonction qui recalculerait un trophée de GROUPE défini en termes de
  * `Session` planifiées (`GroupSessionStats`/`GroupGameStat`/
@@ -451,7 +451,7 @@ export async function settleInstantSessionRewards(instantSessionId: string): Pro
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
-    select: { status: true, endedAt: true },
+    select: { communityId: true, status: true, endedAt: true },
   });
   if (!session) return;
 
@@ -467,8 +467,8 @@ export async function settleInstantSessionRewards(instantSessionId: string): Pro
   for (const [userId, ms] of totals) {
     if (ms < INSTANT_SESSION_ELIGIBLE_PRESENCE_MS) continue;
     try {
-      await awardXp(userId, "PARTICIPATE", instantSessionId, XP_AMOUNTS.PARTICIPATE);
-      await checkSessionsParticipatedBadges(userId);
+      await awardXp(userId, session.communityId, "PARTICIPATE", instantSessionId, XP_AMOUNTS.PARTICIPATE);
+      await checkSessionsParticipatedBadges(userId, session.communityId);
     } catch (error) {
       // Best-effort par utilisateur — un échec pour l'un ne doit jamais
       // empêcher le règlement des autres (même philosophie que les effets

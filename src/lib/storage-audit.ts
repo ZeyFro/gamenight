@@ -9,6 +9,9 @@ import {
   isPastRetentionWindow,
 } from "@/lib/retention";
 import { getActiveSeason } from "@/lib/seasons";
+import { scopedPrisma } from "@/lib/community-scoped-client";
+import { communityIdFilter, resolveActiveCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
 
 /**
  * Chantier nettoyage réel du stockage (V2) — inventaire EN LECTURE SEULE
@@ -89,8 +92,14 @@ export interface StorageAuditReport {
   scopeNote: string;
 }
 
-export async function generateStorageAuditReport(): Promise<StorageAuditReport> {
+export async function generateStorageAuditReport(userId?: string): Promise<StorageAuditReport> {
   const now = wallClockNow();
+  const scope = userId ? await resolveActiveCommunityScope(userId) : isCommunityIsolationEnabled() ? { communityIds: [], includesDefault: false } : null;
+  const scopedDb = scopedPrisma(scope);
+  const communityId = scope ? scope.communityIds[0] : await getDefaultCommunityId();
+  const progressionWhere = { communityId: communityId ?? "__no_community__" };
+  const parentWhere = communityIdFilter(scope);
+  const deliveryWhere = { event: parentWhere };
 
   const [
     notificationTotal,
@@ -111,23 +120,23 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
     seasonSnapshotTotal,
     userBadgeTotal,
   ] = await Promise.all([
-    prisma.notification.count(),
-    prisma.notification.count({ where: { read: true } }),
-    getActiveSeason(),
-    prisma.notificationDelivery.count(),
-    prisma.notificationDelivery.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.chatMessage.count(),
-    prisma.chatMessage.count({ where: { sessionId: null } }),
-    prisma.session.count(),
-    prisma.tournament.count(),
-    prisma.sessionResult.count(),
-    prisma.proposal.count(),
-    prisma.vote.count(),
-    prisma.tournamentMatch.count(),
-    prisma.xpEvent.count(),
-    prisma.levelUpEvent.count(),
-    prisma.seasonSnapshot.count(),
-    prisma.userBadge.count(),
+    scopedDb.notification.count(),
+    scopedDb.notification.count({ where: { read: true } }),
+    communityId ? getActiveSeason(communityId) : Promise.resolve(null),
+    prisma.notificationDelivery.count({ where: deliveryWhere }),
+    prisma.notificationDelivery.groupBy({ where: deliveryWhere, by: ["status"], _count: { _all: true } }),
+    scopedDb.chatMessage.count(),
+    scopedDb.chatMessage.count({ where: { sessionId: null } }),
+    scopedDb.session.count(),
+    scopedDb.tournament.count(),
+    scopedDb.sessionResult.count(),
+    scopedDb.proposal.count({ where: { session: parentWhere } }),
+    scopedDb.vote.count({ where: { proposal: { session: parentWhere } } }),
+    scopedDb.tournamentMatch.count({ where: { tournament: parentWhere } }),
+    scopedDb.xpEvent.count({ where: progressionWhere }),
+    scopedDb.levelUpEvent.count({ where: progressionWhere }),
+    scopedDb.seasonSnapshot.count({ where: { season: { communityId: progressionWhere.communityId } } }),
+    scopedDb.userBadge.count({ where: progressionWhere }),
   ]);
 
   const byStatus: Record<string, number> = {};
@@ -136,13 +145,13 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
   const terminalRetrySafe = await prisma.notificationDelivery.count({
     where: {
       status: { in: ["SENT", "SKIPPED"] as ("SENT" | "SKIPPED")[] },
-      event: { occurrence: { not: "" } },
+      event: { occurrence: { not: "" }, ...parentWhere },
     },
   });
 
   const notificationsEligible =
     activeSeason !== null
-      ? await prisma.notification.count({ where: { read: true, createdAt: { lt: activeSeason.startDate } } })
+      ? await scopedDb.notification.count({ where: { read: true, createdAt: { lt: activeSeason.startDate } } })
       : null;
 
   // Éligibilité chat — même critère EXACT que `purgeEligibleChatMessagesBatch`
@@ -150,7 +159,7 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
   // en une requête agrégée plutôt que de réutiliser la fonction batchée
   // (bornée par `limit`, impropre à un total).
   const chatCutoff = new Date(now.getTime() - RETENTION_CHAT_PURGE_DELAY_DAYS * 24 * 60 * 60 * 1000);
-  const chatEligible = await prisma.chatMessage.count({
+  const chatEligible = await scopedDb.chatMessage.count({
     where: { session: { status: { in: ["DONE", "CANCELLED"] }, date: { lt: chatCutoff } } },
   });
 
@@ -160,7 +169,7 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
   // par date, hors périmètre de cette PR (l'app ne vise pas des volumes
   // nécessitant ça — voir le README pour la limite assumée).
   const AUDIT_SAMPLE_SIZE = 2000;
-  const terminalSessions = await prisma.session.findMany({
+  const terminalSessions = await scopedDb.session.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
     select: { id: true, status: true, date: true, superlativeVotingClosed: true },
     take: AUDIT_SAMPLE_SIZE,
@@ -185,9 +194,9 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
       sessionsNoDate++;
     }
   }
-  const activeSessions = await prisma.session.count({ where: { status: { in: ["VOTING", "SCHEDULED"] } } });
+  const activeSessions = await scopedDb.session.count({ where: { status: { in: ["VOTING", "SCHEDULED"] } } });
 
-  const terminalTournaments = await prisma.tournament.findMany({
+  const terminalTournaments = await scopedDb.tournament.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
     select: { status: true, cancelledAt: true, matches: { select: { completedAt: true } } },
     take: AUDIT_SAMPLE_SIZE,
@@ -202,7 +211,7 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
       tournamentsNoDate++;
     }
   }
-  const activeTournaments = await prisma.tournament.count({
+  const activeTournaments = await scopedDb.tournament.count({
     where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] } },
   });
 
@@ -210,9 +219,9 @@ export async function generateStorageAuditReport(): Promise<StorageAuditReport> 
   // sessions/tournois ci-dessus, même raison (limite assumée documentée
   // dans le README).
   const [instantSessionTotal, activeInstantSessions, terminalInstantSessions] = await Promise.all([
-    prisma.instantSession.count(),
-    prisma.instantSession.count({ where: { status: "ACTIVE" } }),
-    prisma.instantSession.findMany({
+    scopedDb.instantSession.count(),
+    scopedDb.instantSession.count({ where: { status: "ACTIVE" } }),
+    scopedDb.instantSession.findMany({
       where: { status: "ENDED" },
       select: { status: true, endedAt: true },
       take: AUDIT_SAMPLE_SIZE,

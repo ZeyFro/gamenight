@@ -1,5 +1,4 @@
 import {
-  postToDiscord,
   ACCENT_COLOR,
   type DiscordEmbed,
   type PostToDiscordResult,
@@ -7,6 +6,7 @@ import {
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { rankForLevel, titleForLevel } from "@/lib/xp";
 import type { User } from "@prisma/client";
+import { postToCommunity } from "@/lib/community-announce";
 
 /**
  * Notifie Discord quand un user passe un niveau (chantier XP, PR 2/9).
@@ -22,7 +22,8 @@ import type { User } from "@prisma/client";
 export async function announceLevelUp(
   user: Pick<User, "discordId">,
   beforeLevel: number,
-  afterLevel: number
+  afterLevel: number,
+  communityId: string | null,
 ): Promise<PostToDiscordResult> {
   const beforeRank = rankForLevel(beforeLevel);
   const afterRank = rankForLevel(afterLevel);
@@ -48,5 +49,5 @@ export async function announceLevelUp(
     ],
   };
 
-  return postToDiscord(embed, message);
+  return postToCommunity(communityId, embed, message);
 }

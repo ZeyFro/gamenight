@@ -10,6 +10,7 @@ const { prisma, scopedDb, getCalendarData } = vi.hoisted(() => ({
   scopedDb: {
     groupSessionStats: { aggregate: vi.fn() },
     groupGameStat: { groupBy: vi.fn() },
+    communityMemberStats: { findFirst: vi.fn(), count: vi.fn() },
   },
   getCalendarData: vi.fn(),
 }));
@@ -18,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({ prisma }));
 vi.mock("@/lib/calendar", () => ({ getCalendarData }));
 vi.mock("@/lib/session-access", () => ({ accessibleSessionWhere: vi.fn() }));
 vi.mock("@/lib/community-scoped-client", () => ({ getActiveScopedPrisma: vi.fn(async () => scopedDb) }));
+vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: vi.fn(async () => "community") }));
 vi.mock("@/lib/community-isolation", () => ({
   creationMemberUserWhere: vi.fn(async () => ({})),
   memberUserWhereFor: vi.fn(async () => ({})),
@@ -32,8 +34,8 @@ beforeEach(() => {
 const emptyStats = () => {
   scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: null } });
   scopedDb.groupGameStat.groupBy.mockResolvedValue([]);
-  prisma.user.findFirst.mockResolvedValue(null);
-  prisma.user.count.mockResolvedValue(0);
+  scopedDb.communityMemberStats.findFirst.mockResolvedValue(null);
+  scopedDb.communityMemberStats.count.mockResolvedValue(0);
 };
 
 describe("getGroupStats", () => {
@@ -51,8 +53,8 @@ describe("getGroupStats", () => {
     scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: 12 } });
     scopedDb.groupGameStat.groupBy.mockResolvedValue([{ gameId: "g1", _sum: { playCount: 4 } }]);
     prisma.game.findUnique.mockResolvedValue({ name: "Mario Kart", coverUrl: "https://img/mk.jpg" });
-    prisma.user.findFirst.mockResolvedValue({ discordName: "Zoé", streakCount: 7 });
-    prisma.user.count.mockResolvedValue(5);
+    scopedDb.communityMemberStats.findFirst.mockResolvedValue({ user: { discordName: "Zoé" }, streakCount: 7 });
+    scopedDb.communityMemberStats.count.mockResolvedValue(5);
 
     expect(await getGroupStats("viewer")).toEqual({
       totalSessionsPlayed: 12,
@@ -81,10 +83,11 @@ describe("getGroupStats", () => {
     } finally {
       vi.useRealTimers();
     }
-    const streakWhere = prisma.user.findFirst.mock.calls[0][0].where;
+    const streakWhere = scopedDb.communityMemberStats.findFirst.mock.calls[0][0].where;
+    expect(streakWhere.communityId).toEqual({ in: ["community"] });
     expect(streakWhere.streakCount).toEqual({ gt: 0 });
     expect(streakWhere.streakLastActiveAt.gte).toEqual(new Date("2026-10-04T12:00:00.000Z"));
-    const activeWhere = prisma.user.count.mock.calls[0][0].where;
+    const activeWhere = scopedDb.communityMemberStats.count.mock.calls[0][0].where;
     expect(activeWhere.streakLastActiveAt.gte).toEqual(new Date("2026-09-28T12:00:00.000Z"));
   });
 });

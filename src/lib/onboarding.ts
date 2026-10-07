@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 /**
  * Déclenchement de l'onboarding premier login (Sprint 2 PR-B, U1) :
@@ -16,9 +18,11 @@ export async function shouldShowOnboarding(
   onboardingCompleted: boolean
 ): Promise<boolean> {
   if (onboardingCompleted) return false;
+  const scopedDb = await getActiveScopedPrisma(userId);
+  const communityId = await writeCommunityIdForUser(userId);
 
   const [sessionsParticipated, weeklySlots, overrides] = await Promise.all([
-    prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } }),
+    scopedDb.xpEvent.count({ where: { userId, communityId: { in: communityId ? [communityId] : [] }, reason: "PARTICIPATE" } }),
     prisma.weeklyAvailability.count({ where: { userId } }),
     prisma.availabilityOverride.count({ where: { userId } }),
   ]);

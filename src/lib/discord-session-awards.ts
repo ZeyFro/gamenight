@@ -1,10 +1,10 @@
 import {
-  postToDiscord,
   ACCENT_COLOR,
   type DiscordEmbed,
   type PostToDiscordResult,
 } from "@/lib/discord";
 import { pickMessageTemplate } from "@/lib/message-templates";
+import { postToCommunity } from "@/lib/community-announce";
 
 export interface SessionAwardWinner {
   icon: string;
@@ -33,7 +33,8 @@ export interface SessionAwardWinner {
  */
 export async function announceSessionAwards(
   gameName: string,
-  winners: SessionAwardWinner[]
+  winners: SessionAwardWinner[],
+  communityId: string | null,
 ): Promise<PostToDiscordResult> {
   const gagnants = winners
     .map((w) => `${w.icon} ${w.categoryName} : <@${w.winnerDiscordId}>`)
@@ -51,5 +52,5 @@ export async function announceSessionAwards(
     })),
   };
 
-  return postToDiscord(embed, message);
+  return postToCommunity(communityId, embed, message);
 }

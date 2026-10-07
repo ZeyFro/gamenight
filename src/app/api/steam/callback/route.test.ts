@@ -21,6 +21,7 @@ const {
 vi.mock("@/lib/valid-session", () => ({ getValidSession }));
 vi.mock("@/lib/steam", () => ({ verifySteamOpenId, importSteamLibrary }));
 vi.mock("@/lib/xp-actions", () => ({ awardXp }));
+vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: vi.fn(async () => "community-active") }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { user: { findUnique: userFindUnique, update: userUpdate } },
 }));
@@ -69,6 +70,7 @@ describe("GET /api/steam/callback", () => {
       "http://localhost/api/steam/callback?state=abc"
     );
     expect(response.headers.get("location")).toBe("http://localhost/profil/parametres?steam=prive");
+    expect(awardXp).toHaveBeenCalledWith("user-1", "community-active", "STEAM_LINK_FIRST", "user-1", expect.any(Number));
   });
 
   it("cookie state absent → erreur, Steam jamais appelé, rien lié", async () => {

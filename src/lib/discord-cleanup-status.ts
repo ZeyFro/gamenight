@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { communityIdFilter, resolveActiveCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 /**
  * Chantier nettoyage réel du stockage (V2) — expose un état HONNÊTE des
@@ -45,10 +46,12 @@ function roleFromTargetSlot(targetSlot: string): CleanupRole | null {
  * l'état réel visé — même garde que `getSessionInviteSyncStatuses`,
  * session-announce.ts).
  */
-export async function listFailedDiscordCleanupDeliveries(): Promise<FailedCleanupDelivery[]> {
+export async function listFailedDiscordCleanupDeliveries(userId?: string): Promise<FailedCleanupDelivery[]> {
+  const scope = userId ? await resolveActiveCommunityScope(userId) : isCommunityIsolationEnabled() ? { communityIds: [], includesDefault: false } : null;
   const rows = await prisma.notificationDelivery.findMany({
     where: {
       operation: "SEND",
+      event: communityIdFilter(scope),
       OR: CLEANUP_ROLES.map((role) => ({ targetSlot: { endsWith: `:${role}` } })),
     },
     orderBy: { sequence: "desc" },

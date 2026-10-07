@@ -83,7 +83,7 @@ export async function submitSessionResultsAction(formData: FormData) {
   if (session.status !== "DONE" || !session.decidedGameId) return;
 
   const alreadySubmitted =
-    (await prisma.sessionResult.count({ where: { sessionId } })) > 0;
+    (await scopedDb.sessionResult.count({ where: { sessionId } })) > 0;
   if (alreadySubmitted) return;
 
   const winningProposal = await prisma.proposal.findFirst({
@@ -142,6 +142,7 @@ export async function submitSessionResultsAction(formData: FormData) {
     await prisma.sessionResult.create({
       data: {
         sessionId,
+        communityId: session.communityId,
         userId: participantId,
         placement,
         gameId: session.decidedGameId,
@@ -152,10 +153,9 @@ export async function submitSessionResultsAction(formData: FormData) {
 
     let xpResult: { leveledUp: boolean } | null = null;
     if (isCoop) {
-      xpResult = await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
+      xpResult = await awardXp(participantId, session.communityId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
     } else if (placement) {
-      xpResult = await awardXp(
-        participantId,
+      xpResult = await awardXp(participantId, session.communityId,
         "SESSION_RESULT",
         sessionId,
         placementAmounts[placement]

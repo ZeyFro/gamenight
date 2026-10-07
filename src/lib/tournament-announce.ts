@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
 import { isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
-import { isCommunityChannelsEnabled, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
+import { resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import {
   enqueueDirectMessageEdits,
   enqueueDirectMessageFallback,
@@ -17,6 +17,7 @@ import {
   createNotificationEvent,
   enqueueDelivery,
   hasUnsettledDeliveriesWithPrefix,
+  isNotificationEventCommunityActive,
   type ClaimedDelivery,
   type NotificationDb,
 } from "@/lib/notification-delivery";
@@ -891,10 +892,8 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     // assumée/documentée que pour les soirées, #99).
     // Multi-communautés (PR3) : porte résolue pour la communauté du tournoi
     // (`null` = communauté par défaut, lecture évitée si le flag est éteint).
-    const communityId = isCommunityChannelsEnabled()
-      ? ((await prisma.tournament.findUnique({ where: { id: event.sourceId }, select: { communityId: true } }))
-          ?.communityId ?? null)
-      : null;
+    if (!(await isNotificationEventCommunityActive(event))) return { eligible: false, reason: "expired" };
+    const communityId = event.communityId;
     if (!(await resolveTournamentAnnounceConfig(communityId))) return { eligible: false, reason: "not_configured" };
 
     const tournamentId = event.sourceId;
