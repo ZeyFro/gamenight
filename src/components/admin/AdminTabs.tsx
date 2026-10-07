@@ -18,6 +18,7 @@ export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "reglages",
   "confidentialite",
   "nettoyage",
+  "communautes",
 ];
 
 const TABS: { key: AdminTabKey; label: string }[] = [
@@ -28,6 +29,7 @@ const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "reglages", label: "Réglages" },
   { key: "confidentialite", label: "Confidentialité" },
   { key: "nettoyage", label: "Nettoyage" },
+  { key: "communautes", label: "Communautés" },
 ];
 
 /**
