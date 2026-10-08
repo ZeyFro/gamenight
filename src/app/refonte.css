@@ -1,6 +1,7 @@
 /* Refonte approuvée : sombre, violet/lime, ombres franches et bento.
    Décoration isolée : aucun changement des GIFs ou animations de badges. */
 :root { --gn-lime:#d4ef80; --gn-gold:#f4c96b; --gn-shadow:4px 4px 0 #070709; }
+h1,h2,h3,.gn-sidebar-brand { font-family:var(--font-display),var(--font-sans),sans-serif; }
 @theme {
   --animate-meteor: meteor 8s linear infinite;
   --animate-shine: shine var(--duration) infinite linear;
@@ -107,4 +108,5 @@
   .gn-calendar-day{min-height:70px;padding:5px 3px}.gn-calendar-date{margin:auto}.gn-calendar-chips,.gn-calendar-availability{display:none}.gn-calendar-mobile-dots{display:flex;justify-content:center;gap:3px;margin-top:7px}.gn-calendar-grid.week .gn-calendar-day{min-height:100px}
   .gn-calendar-agenda{display:block;padding:20px}.gn-calendar-detail{grid-template-columns:1fr}.gn-calendar-legend{font-size:11px;padding:12px;gap:10px}.gn-aurora{animation:none}
 }
+@media(max-width:1023px) { .gn-authenticated .gn-main { padding-bottom:calc(72px + env(safe-area-inset-bottom)); } }
 @media(prefers-reduced-motion:reduce) { .gn-ambient *, .animate-aurora,.motion-safe\:animate-shine { animation:none!important; }.gn-xp-panel * { transition:none!important; }.gn-quick-action{transition:none}.gn-quick-action:hover{transform:none} }

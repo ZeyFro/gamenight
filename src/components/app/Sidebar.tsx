@@ -64,7 +64,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           <MotionToggle />
         </div>
       </div>
-      {link("/profil", <><Avatar src={user.avatar} alt="" size={38} /><span className="min-w-0"><b className="block truncate">{user.name}</b><small className="text-muted">Niveau {user.level} · {user.xp.toLocaleString("fr-FR")} XP</small></span></>, "gn-sidebar-profile")}
+      {link("/profil", <><span aria-hidden="true"><Avatar src={user.avatar} alt={user.name} size={38} /></span><span className="min-w-0"><b className="block truncate">{user.name}</b><small className="text-muted">Niveau {user.level} · {user.xp.toLocaleString("fr-FR")} XP</small></span></>, "gn-sidebar-profile")}
     </>;
   }
   return <>

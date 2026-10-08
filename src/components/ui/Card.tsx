@@ -1,15 +1,9 @@
 import type { ComponentProps } from "react";
 
 /**
- * Card partagée — glassmorphism subtil (design de fond) : fond semi-
- * transparent (`bg-surface/70`) + bordure claire type "verre"
- * (`border-white/10`) + flou seulement à partir de `sm:` (`backdrop-blur-
- * sm`, coûteux au scroll sur mobile — désactivé en dessous, se contente
- * du fond semi-transparent uni). Sans support `backdrop-filter`, le
- * navigateur ignore simplement la classe et garde ce fond semi-
- * transparent — pas de `@supports` nécessaire pour un fallback correct.
- * Le contenu (texte `--foreground`/`--muted`) reste 100% lisible, le
- * verre n'affecte que le fond derrière la card.
+ * Carte commune de la refonte : fond sombre opaque, bordure et ombre
+ * franche. Les pages gardent leurs contenus/actions ; aucun flou continu
+ * au défilement, notamment sur mobile.
  */
 export function Card({
   className = "",

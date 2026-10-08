@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 import { getCurrentUser } from "@/lib/current-user";
@@ -14,10 +14,12 @@ import "./globals.css";
 import { SkipLink } from "@/components/SkipLink";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
 
-const geistSans = Geist({
+const geistSans = DM_Sans({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
+
+const display = Space_Grotesk({ variable: "--font-display", subsets: ["latin"] });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -58,7 +60,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="fr"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
       <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""}`}>
         <MotionConfig reducedMotion="user">

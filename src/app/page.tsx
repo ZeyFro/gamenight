@@ -279,14 +279,14 @@ async function HomeContent({
         />
         <div className="min-w-0">
           <p className="text-sm text-muted">Salut,</p>
-          <h1 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
+          <h2 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
             {user.discordName}
             {activeDebtorIds.has(user.id) && (
               <span className="ml-1" title="Dette de gage active">
                 💀
               </span>
             )}
-          </h1>
+          </h2>
           <p className="mt-0.5 text-xs text-muted">
             Niveau {level} · {title} · {rank.name}
           </p>

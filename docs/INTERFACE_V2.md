@@ -11,6 +11,8 @@ et actions existantes de GameNight. Le prototype séparé n'est pas la productio
 - Sélecteur de serveur permanent : même action vérifiée, blocage pendant la
   sauvegarde, messages de refus et retour à l'accueil conservés.
 - Palette sombre violet/lime, ombres franches, cartes et onglets communs.
+- Polices DM Sans et Space Grotesk du prototype, servies localement par
+  `next/font` (pas de chargement Google Fonts côté navigateur).
 - Accueil avec raccourcis réels et progression XP du serveur actif ; toutes
   les sections existantes restent présentes (dettes, trophées, classement,
   actus, saisons, défis, onboarding, guide).
