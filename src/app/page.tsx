@@ -32,6 +32,7 @@ import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { LoginLanding } from "@/components/app/LoginLanding";
 import { XpProgress } from "@/components/app/XpProgress";
+import { EmptySessionHero, HomePlanningLinks, HomeInstantLink } from "@/components/app/HomePlanning";
 import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -249,7 +250,7 @@ async function HomeContent({
 
   return (
     <PullToRefresh>
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
+    <div className="gn-home-shell mx-auto flex w-full flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       {showOnboarding && (
         <OnboardingFlow
           discordName={user.discordName}
@@ -268,7 +269,7 @@ async function HomeContent({
         <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
         <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
       </nav>
-      <ParallaxHeader className="relative flex items-center gap-4">
+      <ParallaxHeader className="gn-home-greeting relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
           src={user.discordAvatar}
@@ -302,12 +303,12 @@ async function HomeContent({
         </ButtonLink>
       </ParallaxHeader>
 
-      <Stagger className="flex flex-col gap-4" staggerDelay={0.1}>
+      <Stagger className="gn-home-sections" staggerDelay={0.04}>
         {/* Prochaine soirée + Stats du groupe côte à côte sur desktop —
             l'espace vide à gauche/droite était le retour le plus fréquent
             en desktop (cf. README, section dédiée). */}
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
-        <StaggerItem>
+        <div className="gn-home-overview">
+        <StaggerItem className="gn-home-play-column">
           {nextSession ? (
             <Link href={`/sessions/${nextSession.id}`}>
               {/* Pas de `Card` ici : `Card` impose son propre padding via
@@ -358,16 +359,10 @@ async function HomeContent({
               </div>
             </Link>
           ) : (
-            <EmptyState
-              icon="🎮"
-              title="Pas encore de soirée — crée la première 🎮"
-              action={
-                <ButtonLink href="/sessions" variant="primary">
-                  Proposer une soirée
-                </ButtonLink>
-              }
-            />
+            <EmptySessionHero />
           )}
+          <HomePlanningLinks />
+          <HomeInstantLink />
         </StaggerItem>
 
         {/* Stats du groupe */}
@@ -435,17 +430,26 @@ async function HomeContent({
         </StaggerItem>
         </div>
 
-        {/* V2 — "Jouer maintenant" : CTA plein-large, distinct de "Prochaine
-            soirée" (planifiée) ci-dessus — démarrer une session spontanée
-            ne demande aucune planification. */}
-        <StaggerItem>
-          <ButtonLink href="/jouer-maintenant" variant="secondary" fullWidthOnMobile className="w-full justify-center">
-            🎮 Jouer maintenant
-          </ButtonLink>
+        {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
+            semaine en cours par `getCurrentWeeklyChallengeForViewer` ci-dessus. La
+            complétion se fait depuis une soirée DONE (bouton créateur),
+            jamais directement ici — la Home reste en lecture seule. */}
+        {weeklyChallenge && (
+          <StaggerItem className="gn-home-wide">
+          <Card className="gn-home-challenge gradient-border">
+            <p className="text-lg font-semibold text-foreground">🎯 Défi de la semaine</p>
+            <p className="mt-2 text-foreground">{weeklyChallenge.description}</p>
+            <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
+              {weeklyChallenge.completedAt
+                ? "✅ Complété !"
+                : "Complète-le depuis une soirée terminée cette semaine."}
+            </p>
+          </Card>
         </StaggerItem>
+        )}
 
         {/* Activité récente + Dispos de la semaine côte à côte sur desktop */}
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
+        <div className="gn-home-pair">
         <StaggerItem>
           <Card className="gradient-border">
             <p className="text-lg font-semibold text-foreground">Activité récente</p>
@@ -597,24 +601,6 @@ async function HomeContent({
           </StaggerItem>
         )}
 
-        {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
-            semaine en cours par `getCurrentWeeklyChallengeForViewer` ci-dessus. La
-            complétion se fait depuis une soirée DONE (bouton créateur),
-            jamais directement ici — la Home reste en lecture seule. */}
-        {weeklyChallenge && (
-<StaggerItem>
-          <Card className="gradient-border">
-            <p className="text-lg font-semibold text-foreground">🎯 Défi de la semaine</p>
-            <p className="mt-2 text-foreground">{weeklyChallenge.description}</p>
-            <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
-              {weeklyChallenge.completedAt
-                ? "✅ Complété !"
-                : "Complète-le depuis une soirée terminée cette semaine."}
-            </p>
-          </Card>
-        </StaggerItem>
-)}
-
         {/* Trophées du groupe (Sprint 3 suite) — encyclopédique comme
             `BadgeGrid` : les 10 lignes sont toujours affichées, débloquées
             en couleur, verrouillées grisées. */}
@@ -731,7 +717,7 @@ async function HomeContent({
           </Card>
         </StaggerItem>
 
-        <StaggerItem className="grid grid-cols-2 gap-4">
+        <StaggerItem className="gn-home-wide grid grid-cols-2 gap-4">
           <ButtonLink href="/disponibilites" variant="secondary" size="sm">
             Mes dispos
           </ButtonLink>
