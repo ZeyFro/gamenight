@@ -39,30 +39,32 @@ export function NotifyRecipientsField({
   tags = [],
   fieldName = "notifyUserId",
   label = "Qui prévenir ?",
+  onSelectionChange,
 }: {
   potes: NotifyRecipientCandidate[];
   tags?: NotifyTagOption[];
   /** Roulette async (Sprint 3) réutilise ce même composant pour choisir les participants invités (`participantId`) plutôt que des destinataires de notif — le nom du champ posté doit donc rester paramétrable. */
   fieldName?: string;
   label?: string;
+  /** Création de soirée : synchronise les destinataires avec les suggestions. */
+  onSelectionChange?: (ids: string[]) => void;
 }) {
   const [checked, setChecked] = useState<string[]>(() => potes.map((p) => p.id));
 
+  function select(ids: string[]) {
+    setChecked(ids);
+    onSelectionChange?.(ids);
+  }
+
   function toggle(id: string) {
-    setChecked((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    );
+    select(checked.includes(id) ? checked.filter((c) => c !== id) : [...checked, id]);
   }
 
   function toggleTag(tagId: string) {
     const memberIds = potes.filter((p) => p.tagIds.includes(tagId)).map((p) => p.id);
     if (memberIds.length === 0) return;
     const allChecked = memberIds.every((id) => checked.includes(id));
-    setChecked((prev) =>
-      allChecked
-        ? prev.filter((id) => !memberIds.includes(id))
-        : [...new Set([...prev, ...memberIds])]
-    );
+    select(allChecked ? checked.filter((id) => !memberIds.includes(id)) : [...new Set([...checked, ...memberIds])]);
   }
 
   if (potes.length === 0) return null;
@@ -76,14 +78,14 @@ export function NotifyRecipientsField({
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => setChecked(potes.map((p) => p.id))}
+            onClick={() => select(potes.map((p) => p.id))}
             className="text-xs font-medium text-accent hover:underline"
           >
             Tout sélectionner
           </button>
           <button
             type="button"
-            onClick={() => setChecked([])}
+            onClick={() => select([])}
             className="text-xs font-medium text-accent hover:underline"
           >
             Tout désélectionner

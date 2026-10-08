@@ -31,7 +31,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
-import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
+import { SessionPlanningFields } from "@/components/sessions/SessionPlanningFields";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
@@ -299,35 +299,7 @@ export default async function SessionsPage({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted" htmlFor="session-date">
-                  Date
-                </label>
-                <input
-                  id="session-date"
-                  type="date"
-                  name="date"
-                  required
-                  min={toDateInputValue(todayDateOnly())}
-                  defaultValue={prefillDate}
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted" htmlFor="session-time">
-                  Heure
-                </label>
-                <input
-                  id="session-time"
-                  type="time"
-                  name="time"
-                  required
-                  defaultValue={prefillTime}
-                  className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                />
-              </div>
-            </div>
+            <SessionPlanningFields potes={potes} tags={tagOptions} minDate={toDateInputValue(todayDateOnly())} initialDate={prefillDate} initialTime={prefillTime} />
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="deadline-offset">
@@ -380,8 +352,6 @@ export default async function SessionsPage({
             </details>
 
             <ReminderTimingsField />
-
-            <NotifyRecipientsField potes={potes} tags={tagOptions} />
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="custom-reminder">
