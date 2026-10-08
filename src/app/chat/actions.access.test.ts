@@ -69,7 +69,17 @@ describe("actions de chat — canal de soirée réservé aux invités actifs", (
     const result = await getChatMessagesAction(null);
 
     expect(canAccessSession).not.toHaveBeenCalled();
+    expect(getCurrentUser).toHaveBeenCalledWith({ recordActivity: false });
     expect(result).toEqual([]);
+  });
+
+  it("revérifie l'accès au polling suivant après révocation", async () => {
+    getCurrentUser.mockResolvedValue({ id: "invite-actif" });
+    canAccessSession.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    getChatMessages.mockResolvedValue([{ id: "msg-1" }]);
+    expect(await getChatMessagesAction("session-reelle")).toEqual([{ id: "msg-1" }]);
+    expect(await getChatMessagesAction("session-reelle")).toBeNull();
+    expect(getChatMessages).toHaveBeenCalledTimes(1);
   });
 
   it("getChatMessagesAction : canal de soirée refusé à un non-invité (sessionId réel et valide)", async () => {
@@ -119,6 +129,7 @@ describe("actions de chat — canal de soirée réservé aux invités actifs", (
     expect(canAccessSession).not.toHaveBeenCalled();
     expect(chatMessageCreate).toHaveBeenCalled();
     expect(result).toEqual({ ok: true });
+    expect(getCurrentUser).toHaveBeenCalledWith();
   });
 
   it("toggleReactionAction : refuse une réaction sur un message d'une soirée à laquelle l'appelant n'a pas accès", async () => {

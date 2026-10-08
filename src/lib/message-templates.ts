@@ -141,8 +141,9 @@ const GENERIC_VARIABLE_FALLBACKS: Record<string, string> = {
 };
 
 /**
- * Remplace chaque `{clé}` de `vars` dans `template` (substitution simple,
- * pas d'échappement). Bug corrigé (texte "à trous" remonté en prod, ex.
+ * Remplace les variables du modèle en un seul passage. Les valeurs (noms,
+ * jeux…) sont littérales : ni `$&`, ni `{jeu}` contenu dans un pseudo ne
+ * déclenchent de remplacement supplémentaire. Bug corrigé (texte "à trous", ex.
  * "c'est  à 20h" avec {jeu} substitué par du vide) : toute variable
  * restante après la substitution normale — typiquement `{jeu}` utilisée
  * par erreur dans un message coché `SESSION_CREATED`, qui n'a pas cette
@@ -158,12 +159,8 @@ export function substituteVariables(
   template: string,
   vars: MessageVariables
 ): string {
-  const substituted = Object.entries(vars).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, value),
-    template
-  );
-
-  return substituted.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => {
+    if (Object.hasOwn(vars, key)) return vars[key];
     logger.warn(
       "message-templates",
       `Variable {${key}} non fournie pour ce message — remplacée par un texte générique. Ce message est probablement coché pour une catégorie où {${key}} n'existe pas (voir /admin?tab=messages).`,

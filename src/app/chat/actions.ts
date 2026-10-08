@@ -8,6 +8,7 @@ import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
 import { getChatMessages, type ChatMessageDTO } from "@/lib/chat";
 import { canAccessSession } from "@/lib/session-access";
+import { withCommunityReadContext } from "@/lib/community-read-context";
 
 /** Même contrat que `ToggleVoteResult` — la bulle affichée en optimiste (ChatMessages) doit pouvoir se retirer si l'envoi échoue. */
 export interface SendChatMessageResult {
@@ -25,17 +26,15 @@ export interface SendChatMessageResult {
 export async function getChatMessagesAction(
   sessionId: string | null
 ): Promise<ChatMessageDTO[] | null> {
-  const user = await getCurrentUser();
-  if (!user) return null;
-  // Confidentialité des soirées — canal `sessionId` non nul : réservé au
-  // créateur et aux invités actifs (le canal global, `sessionId: null`,
-  // reste ouvert à tous, inchangé). Vérifié à CHAQUE appel : ce composant
-  // interroge cette action toutes les 10s en polling direct, jamais
-  // seulement au chargement de la page qui l'héberge — une révocation en
-  // cours de soirée doit couper l'accès au chat dès le prochain polling,
-  // pas seulement au prochain chargement de page.
-  if (sessionId && !(await canAccessSession(user.id, sessionId))) return null;
-  return getChatMessages(sessionId, user.id);
+  return withCommunityReadContext(async () => {
+    const user = await getCurrentUser({ recordActivity: false });
+    if (!user) return null;
+    // Confidentialité des soirées — canal `sessionId` non nul : réservé au
+    // créateur et aux invités actifs. Vérifié à CHAQUE polling : une
+    // révocation coupe l'accès dès le prochain appel, sans rechargement.
+    if (sessionId && !(await canAccessSession(user.id, sessionId))) return null;
+    return getChatMessages(sessionId, user.id);
+  });
 }
 
 /**

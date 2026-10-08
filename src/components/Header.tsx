@@ -10,14 +10,21 @@ import { NotificationBell, type NotificationItem } from "@/components/Notificati
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { CommunitySwitcher } from "@/components/CommunitySwitcher";
 import { getActiveCommunityState, isCommunityPickerEnabled, listPickableCommunities } from "@/lib/community-picker";
+import { withCommunityReadContext } from "@/lib/community-read-context";
 
 export async function Header() {
+  // Mutations et livraisons Discord hors de ce contexte. Le layout et les
+  // pages conservent l'enregistrement d'activité ; le header ne fait que lire.
+  return withCommunityReadContext(renderHeader);
+}
+
+async function renderHeader() {
   // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
   // est la seule source de vérité "vraiment connecté" (voir commentaire
   // dans `page.tsx`) ; le gate du header s'appuie dessus plutôt que sur
   // `auth()` seul, sinon les liens de nav/cloche resteraient visibles
   // par-dessus l'écran de connexion après un déclenchement.
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ recordActivity: false });
   const pickerEnabled = user && isCommunityPickerEnabled();
   const communities = pickerEnabled ? await listPickableCommunities(user.id) : [];
   const state = pickerEnabled ? await getActiveCommunityState(user.id) : null;
