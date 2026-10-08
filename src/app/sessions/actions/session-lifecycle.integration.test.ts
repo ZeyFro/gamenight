@@ -81,6 +81,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession â€” invitations exactes (intÃ
 
   function formData(fields: Record<string, string | string[]>): FormData {
     const fd = new FormData();
+    fd.set("creationKey", crypto.randomUUID());
     for (const [key, value] of Object.entries(fields)) {
       if (Array.isArray(value)) {
         for (const v of value) fd.append(key, v);

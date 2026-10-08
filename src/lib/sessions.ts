@@ -1,3 +1,4 @@
+import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
 import { prisma } from "@/lib/prisma";
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { isAvailableAt } from "@/lib/availability";
@@ -62,13 +63,16 @@ import type { Game, GroupAchievement, Session, SessionStatus, User } from "@pris
  */
 export async function createRouletteResultSession(data: {
   /** Une roulette différée conserve son serveur même si le créateur change de sélection. */
+  transaction?: import("@prisma/client").Prisma.TransactionClient;
+  sourceRouletteId?: string;
+  creationKey?: string;
   communityId?: string | null;
   date: Date;
   decidedGameId: string;
   decidedTime: Date;
   createdById: string;
   notifiedUserIds: string[];
-}): Promise<{ session: Session; announceViaBot: boolean; proposalId: string }> {
+}): Promise<{ session: Session; announceViaBot: boolean; proposalId: string; replayed: boolean }> {
   // Multi-communautés (PR3) : `null` tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
   const communityId = data.communityId !== undefined ? data.communityId : await pickCreationCommunityId(data.createdById);
   // Sous isolation (PR4), sans aucune communauté la soirée serait rattachée à
@@ -82,9 +86,11 @@ export async function createRouletteResultSession(data: {
     announceViaBot,
   });
 
-  const { session, proposalId } = await prisma.$transaction(async (tx) => {
+  const { transaction, creationKey, sourceRouletteId, ...sessionData } = data;
+  const { result: { session, proposalId }, replayed } = await createOnce(data.createdById, "ROULETTE_SESSION", creationKey, async (tx) => {
+    await lockCreationMembers(tx, communityId, [data.createdById, ...data.notifiedUserIds]);
     const created = await tx.session.create({
-      data: { ...data, status: "SCHEDULED", createdViaRoulette: true, announceViaBot, communityId },
+      data: { ...sessionData, status: "SCHEDULED", createdViaRoulette: true, announceViaBot, communityId },
     });
     // Confidentialité des soirées — mêmes garanties que `createSession`
     // (session-lifecycle.ts) : `SessionInvite` posée pour EXACTEMENT
@@ -96,7 +102,7 @@ export async function createRouletteResultSession(data: {
       if (invite) createdInviteIds.push(invite.id);
     }
     if (announceViaBot) {
-      await enqueueSessionCreationDeliveries(created.id, tx);
+      await enqueueSessionCreationDeliveries(created.id, tx, sourceRouletteId);
       // Même correctif que `createSession` (session-lifecycle.ts) : un
       // participant Roulette n'était jusqu'ici jamais synchronisé vers le
       // fil Discord tant qu'il n'était pas réinvité manuellement — voir le
@@ -113,9 +119,13 @@ export async function createRouletteResultSession(data: {
       data: data.notifiedUserIds.map((userId) => ({ proposalId: proposal.id, userId })),
     });
     return { session: created, proposalId: proposal.id };
-  });
+  }, (result) => result.session.id, async (tx, id) => {
+    const session = await tx.session.findUniqueOrThrow({ where: { id } });
+    const proposal = await tx.proposal.findFirstOrThrow({ where: { sessionId: id, gameId: session.decidedGameId! } });
+    return { session, proposalId: proposal.id };
+  }, transaction);
 
-  return { session, announceViaBot, proposalId };
+  return { session, announceViaBot, proposalId, replayed };
 }
 
 /**
@@ -195,7 +205,7 @@ export async function updateSessionSchedule(
       // dans le fil et un nouveau MP « Date modifiée ».
       await enqueueSessionAnnounceUpdate(sessionId, tx);
       if (before && before.date.getTime() !== data.date.getTime()) {
-        await enqueueSessionDateChange(sessionId, tx);
+        await enqueueSessionDateChange(sessionId, tx, before.date);
       }
     }
   });

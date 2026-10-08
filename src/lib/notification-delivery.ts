@@ -11,7 +11,6 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { getDefaultCommunityId } from "@/lib/default-community";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 /**
@@ -169,9 +168,8 @@ async function eventCommunityId(input: CreateEventInput, db: NotificationDb): Pr
     select: { communityId: true },
   });
   if (previous) return previous.communityId;
-  return db === prisma ? await getDefaultCommunityId() : (await (db as Prisma.TransactionClient).community.upsert({
-    where: { slug: "default" }, update: {}, create: { slug: "default", name: "GameNight", status: "ACTIVE" }, select: { id: true },
-  })).id;
+  // Provenance inconnue : ne jamais inventer un rattachement à default.
+  return null;
 }
 
 /** Un parent purgé ne transforme jamais son événement en autorité du serveur default. */
@@ -181,6 +179,15 @@ export async function isNotificationEventCommunityActive(event: Pick<Notificatio
     ...(event.communityId === null ? { slug: "default" } : { id: event.communityId }), status: "ACTIVE",
   }, select: { id: true } });
   return community !== null;
+}
+
+/** Compatibilité nullable historique seulement avec la vraie communauté
+ * default ; un événement sans provenance n'autorise jamais un parent de B. */
+export async function notificationEventMatchesSource(eventCommunityId: string | null, sourceCommunityId: string | null): Promise<boolean> {
+  if (eventCommunityId === sourceCommunityId) return true;
+  if (eventCommunityId !== null && sourceCommunityId !== null) return false;
+  const community = await prisma.community.findUnique({ where: { slug: "default" }, select: { id: true } });
+  return community?.id === (eventCommunityId ?? sourceCommunityId);
 }
 
 /**
@@ -527,6 +534,20 @@ export async function claimNextDelivery(
           LIMIT 1
         `;
         if (!sent || !sent.discordMessageId) {
+          // Un SEND terminal sans message ne peut plus être édité. Ne ferme
+          // jamais une reprise programmée, une réservation ou une dépendance
+          // encore absente (elle peut être mise en file dans une transaction).
+          const sends = await tx.notificationDelivery.findMany({
+            where: { targetSlot: candidate.targetSlot, operation: "SEND" },
+            select: { status: true, discordMessageId: true },
+          });
+          if (sends.length > 0 && sends.every((send) =>
+            send.status === "FAILED" || send.status === "SKIPPED")) {
+            await tx.notificationDelivery.update({
+              where: { id: candidate.id },
+              data: { status: "SKIPPED", errorClass: "dependency:send_terminal_without_message" },
+            });
+          }
           // Dépendance non remplie — PAS une erreur : différé, laissé
           // PENDING, retenté au prochain claim une fois le SEND terminé.
           excludedIds.push(candidate.id);
@@ -555,6 +576,25 @@ export async function claimNextDelivery(
 
     return null;
   });
+}
+
+/** Lecture légère avant les transactions de récupération/réservation.
+ * Une file vide ne tient aucune transaction. Une arrivée après cette lecture
+ * sera traitée au passage suivant ; les reprises et les échéances restent
+ * sélectionnées avec la même horloge UTC et la même cadence. */
+export async function hasDeliveryWork(now: Date): Promise<boolean> {
+  const [row] = await prisma.$queryRaw<Array<{ work: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM "NotificationDelivery"
+      WHERE status = 'PENDING'
+        AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= (${now}::timestamptz AT TIME ZONE 'UTC'))
+      UNION ALL
+      SELECT 1 FROM "NotificationDelivery"
+      WHERE status = 'RESERVED'
+        AND "reservedUntil" <= (${now}::timestamptz AT TIME ZONE 'UTC')
+    ) AS work
+  `;
+  return row.work;
 }
 
 export interface FinalizeSuccessInput {

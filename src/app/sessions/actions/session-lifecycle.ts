@@ -1,5 +1,9 @@
 "use server";
 
+import { resumeCreation } from "@/lib/creation-resume";
+
+import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
@@ -41,6 +45,8 @@ import {
 export async function createSession(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const resumed = await resumeCreation(user.id, "SESSION", formData);
+  if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createSession")) {
     redirect(`/sessions?error=${RATE_LIMIT_ERROR_KEY}`);
   }
@@ -113,7 +119,8 @@ export async function createSession(formData: FormData) {
   // annulée — préféré à une session silencieusement jamais annoncée :
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
-  const session = await prisma.$transaction(async (tx) => {
+  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
+    await lockCreationMembers(tx, communityId, [user.id, ...notifiedUserIds]);
     const created = await tx.session.create({
       data: {
         date,
@@ -152,7 +159,7 @@ export async function createSession(formData: FormData) {
       }
     }
     return created;
-  });
+  }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
 
   const xpResult = await awardXp(user.id, session.communityId,
     "CREATE_SESSION",
@@ -183,7 +190,7 @@ export async function createSession(formData: FormData) {
   // et cette ligne ne serait jamais atteinte) — rien de plus à tenter ici.
   const announceResult = announceViaBot
     ? { ok: true as const }
-    : await announceSessionCreated(session, user);
+    : replayed ? { ok: true as const } : await announceSessionCreated(session, user);
 
   revalidatePath("/sessions");
 

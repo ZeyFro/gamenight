@@ -1179,8 +1179,10 @@ export async function sendThreadMessageVerified(
  * membres (`resolveInviteSync`, session-announce.ts). */
 export async function addThreadMemberVerified(input: ThreadMemberInput): Promise<DiscordRestResult<ThreadMemberOpResult>> {
   const verified = await verifyThreadIsPrivate({ threadId: input.threadId, deadline: input.deadline, now: input.now });
-  if (!verified.ok) return verified;
-  return addThreadMember({ ...input, threadId: verified.data.threadId });
+  if (!verified.ok) return { ...verified, message: `Vérification du fil ${input.threadId} : ${verified.message}` };
+  const result = await addThreadMember({ ...input, threadId: verified.data.threadId });
+  if (!result.ok) return { ...result, message: `Ajout du membre ${input.discordUserId} au fil ${input.threadId} : ${result.message}` };
+  return result;
 }
 
 /** `verifyThreadIsPrivate` PUIS retrait — même raisonnement. */

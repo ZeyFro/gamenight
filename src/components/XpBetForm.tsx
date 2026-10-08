@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { placeBetAction } from "@/app/sessions/actions/predictions";
-import { XP_BET_MIN, XP_BET_STEP, maxBetAmount } from "@/lib/xp-bets";
+import { XP_BET_MIN, XP_BET_STEP, maxBetAmount } from "@/lib/xp-bet-rules";
 
 export interface XpBetTarget {
   id: string;

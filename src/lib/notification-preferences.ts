@@ -54,10 +54,11 @@ export function isPersonalNotificationEnabled(
 /** Filtre central partagé par les webhooks actuels et les futurs résolveurs de l'exécuteur. */
 export async function filterUsersByNotificationPreference<T extends { id: string; silenceReminders: boolean }>(
   users: T[],
-  category: AvailableNotificationCategory
+  category: AvailableNotificationCategory,
+  db: Pick<typeof prisma, "userNotificationPreference"> = prisma,
 ): Promise<T[]> {
   if (users.length === 0) return [];
-  const preferences = await prisma.userNotificationPreference.findMany({
+  const preferences = await db.userNotificationPreference.findMany({
     where: { userId: { in: users.map((user) => user.id) }, category },
     select: { userId: true, enabled: true },
   });

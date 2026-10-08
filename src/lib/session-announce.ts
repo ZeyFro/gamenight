@@ -1,3 +1,6 @@
+import { sessionMessage } from "@/lib/session-message";
+import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
+import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { randomUUID } from "crypto";
 import type { Game, Proposal, Session, SessionInvite, User, Vote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +11,7 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
-import { isSessionDirectMessageEnabled } from "@/lib/discord-bot-config";
+import { isSessionDirectMessageEnabled, isRouletteDirectMessageEnabled } from "@/lib/discord-bot-config";
 import { resolveSessionAnnounceConfig } from "@/lib/community-channels";
 import {
   createNotificationEvent,
@@ -266,7 +269,8 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
  * préférence personnelle (`SESSION`, ou `ROULETTE` pour une soirée issue
  * d'une roulette) reste appliquée, comme pour tout le monde.
  */
-async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | "createdViaRoulette">) {
+async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | "createdViaRoulette" | "communityId">) {
+  if (!(await isMemberOfCommunity(session.createdById, session.communityId))) return null;
   const creator = await prisma.user.findUnique({ where: { id: session.createdById } });
   if (!creator) return null;
   const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
@@ -278,7 +282,7 @@ async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | 
  * n'est soumis qu'à sa préférence, tout autre pote à la règle complète
  * des mentions (sélection, invitation active, préférence). */
 async function isDmRecipientEligible(
-  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette">,
+  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette" | "communityId">,
   recipient: User
 ): Promise<boolean> {
   if (recipient.id === session.createdById) return (await resolveCreatorDmRecipient(session)) !== null;
@@ -349,12 +353,13 @@ async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput):
  * des écritures — voir le commentaire de fichier de notification-delivery.ts
  * sur l'interdiction d'appel Discord dans une transaction SQL).
  */
-export async function enqueueSessionCreationDeliveries(sessionId: string, db?: NotificationDb): Promise<void> {
+export async function enqueueSessionCreationDeliveries(sessionId: string, db?: NotificationDb, sourceRouletteId?: string): Promise<void> {
   const event = await createNotificationEvent(
     {
       category: "SESSION",
       eventType: "SESSION_CREATED",
       sourceId: sessionId,
+      ...(sourceRouletteId ? { payload: { sourceRouletteId } } : {}),
     },
     db
   );
@@ -555,10 +560,10 @@ export async function enqueueSessionValidated(sessionId: string, db?: Notificati
  * ligne par changement. L'annonce et le MP d'invitation sont édités à part
  * (`enqueueSessionAnnounceUpdate`, à appeler aussi).
  */
-export async function enqueueSessionDateChange(sessionId: string, db?: NotificationDb): Promise<void> {
+export async function enqueueSessionDateChange(sessionId: string, db?: NotificationDb, previousDate?: Date): Promise<void> {
   const changeId = randomUUID();
   const event = await createNotificationEvent(
-    { category: "SESSION", eventType: "SESSION_DATE_CHANGED", sourceId: sessionId, occurrence: changeId },
+    { category: "SESSION", eventType: "SESSION_DATE_CHANGED", sourceId: sessionId, occurrence: changeId, ...(previousDate ? { payload: { previousDate: previousDate.toISOString() } } : {}) },
     db
   );
   await enqueueDelivery(
@@ -1002,6 +1007,8 @@ export async function getSessionThreadDeleteStatus(
 /* -------------------------------------------------------------------- */
 
 type SessionWithVotes = Session & {
+  deferredRoulette?: boolean;
+  createdBy: User;
   proposals: (Proposal & { game: Game; votes: (Vote & { user: User })[] })[];
   invites: (SessionInvite & { user: User })[];
 };
@@ -1010,6 +1017,7 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
   return prisma.session.findUnique({
     where: { id: sessionId },
     include: {
+      createdBy: true,
       proposals: {
         include: { game: true, votes: { include: { user: true } } },
         orderBy: { createdAt: "asc" },
@@ -1090,14 +1098,18 @@ export function resolveInvitedCandidates<U extends { id: string }>(
 async function resolveEligibleMentions<
   T extends { id: string; discordId: string; silenceReminders: boolean },
 >(
-  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette">,
+  session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette" | "communityId">,
   candidates: T[]
 ): Promise<T[]> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
   const invited = await filterByActiveSessionInvite(session.id, session.createdById, restricted);
+  const members = isCommunityIsolationEnabled() && invited.length ? await prisma.user.findMany({
+    where: { id: { in: invited.map((u) => u.id) }, ...(await communityMemberUserWhere(session.communityId)) }, select: { id: true },
+  }) : invited;
+  const current = new Set(members.map((u) => u.id));
   const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
-  return filterUsersByNotificationPreference(invited, category);
+  return filterUsersByNotificationPreference(invited.filter((u) => current.has(u.id)), category);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
@@ -1203,7 +1215,8 @@ async function buildMessageContent(
   // Le créateur est destinataire de MP en plus des invités (jamais mentionné
   // dans le fil, sauf en secours si son MP est fermé) — pas pour un état sans
   // mention (annulation : `candidateMentions === null`).
-  const dmActive = Boolean(dmKind) && isSessionDirectMessageEnabled();
+  const dmActive = Boolean(dmKind) && !session.deferredRoulette &&
+    (session.createdViaRoulette ? isRouletteDirectMessageEnabled() : isSessionDirectMessageEnabled());
   const creatorRecipient =
     dmActive && candidateMentions !== null && !eligible.some((u) => u.id === session.createdById)
       ? await resolveCreatorDmRecipient(session)
@@ -1211,9 +1224,9 @@ async function buildMessageContent(
   const dmTargets = creatorRecipient ? [...eligible, creatorRecipient] : eligible;
   const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(session.id, dmKind, dmTargets) : null;
   // Double ping : TOUS les invités éligibles restent mentionnés, MP ou non.
-  const mentioned = [...eligible];
+  const mentioned = session.createdViaRoulette ? [] : [...eligible];
   // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
-  if (creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) mentioned.push(creatorRecipient);
+  if (!session.createdViaRoulette && creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) mentioned.push(creatorRecipient);
   const { text, userIds } = mentionContent(mentioned);
 
   // Notification interne (#98, même philosophie que le chemin webhook) —
@@ -1285,6 +1298,14 @@ export const sessionAnnounceResolver: DeliveryResolver = {
 
     const session = await loadSession(sessionId);
     if (!session) return { eligible: false, reason: "expired" };
+    if (!(await notificationEventMatchesSource(event.communityId, session.communityId))) return { eligible: false, reason: "expired" };
+    if (session.createdViaRoulette) {
+      const initial = await prisma.notificationEvent.findUnique({
+        where: { category_eventType_sourceId_occurrence: { category: "SESSION", eventType: "SESSION_CREATED", sourceId: sessionId, occurrence: "" } },
+        select: { payload: true },
+      });
+      session.deferredRoulette = Boolean((initial?.payload as { sourceRouletteId?: string } | null)?.sourceRouletteId);
+    }
 
     if (role === "thread") {
       return resolveThreadCreation(sessionId, config.channelId);
@@ -1308,7 +1329,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     }
     if (role.startsWith("invite:")) {
       const inviteId = role.slice("invite:".length);
-      return resolveInviteSync(sessionId, inviteId);
+      return resolveInviteSync(sessionId, inviteId, session.communityId);
     }
     if (role === "creator-member") {
       return resolveCreatorThreadMembership(sessionId, session);
@@ -1397,6 +1418,7 @@ async function resolveSessionDirectMessage(
   const parsed = parseDmRole(role, "dm:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
   const operation = delivery.operation === "EDIT" ? "EDIT" : "SEND";
+  if (session.deferredRoulette && operation === "SEND") return { eligible: false, reason: "expired" };
   if (operation === "EDIT" && parsed.base !== "announce") return { eligible: false, reason: "unresolvable" };
   if (operation === "SEND" && session.status !== "VOTING" && session.status !== "SCHEDULED") {
     return { eligible: false, reason: "expired" };
@@ -1409,7 +1431,12 @@ async function resolveSessionDirectMessage(
   if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
 
   const rendering = resolveAnnounceRendering(session);
-  const message = { content: subject, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE };
+  let body = subject;
+  if (operation === "SEND" && (parsed.base === "reminder" || parsed.base === "date" || (parsed.base === "announce" && session.status === "VOTING"))) {
+    const previousDate = parsed.base === "date" ? await previousDateForChange(session.id, parsed.kind.slice("date:".length)) : undefined;
+    body = `${subject} — ${await sessionMessage(session, parsed.base === "announce" ? "created" : parsed.base, { creatorName: session.createdBy.discordName, recipientName: recipient.discordName, previousDate, gameName: session.proposals.find((p) => p.gameId === session.decidedGameId)?.game.name })}`;
+  }
+  const message = { content: body, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE };
 
   if (operation === "EDIT") {
     const sent = await findSentDelivery(delivery.targetSlot);
@@ -1434,6 +1461,7 @@ async function resolveSessionDirectMessage(
  * le salon public). Ne mentionne que ce pote.
  */
 async function resolveSessionDirectMessageFallback(role: string, session: SessionWithVotes): Promise<Resolution> {
+  if (session.createdViaRoulette) return { eligible: false, reason: "expired" };
   const parsed = parseDmRole(role, "dm-fallback:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
   const thread = await findSentDelivery(threadSlot(session.id));
@@ -1502,6 +1530,7 @@ async function resolveAnnounceDelivery(
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
   const rendering = resolveAnnounceRendering(session);
+  if (session.status === "VOTING" && delivery.operation === "SEND") rendering.embed.description = await sessionMessage(session, "created", { creatorName: session.createdBy.discordName });
 
   if (delivery.operation === "SEND") {
     const { notifType, notifTitle } = resolveSendNotificationMeta(session, rendering);
@@ -1611,18 +1640,18 @@ async function resolveThreadCreation(sessionId: string, channelId: string): Prom
  * `expired` (définitif, jamais retenté) si l'invitation elle-même a
  * disparu (session supprimée entre-temps, cascade sur `SessionInvite`).
  */
-async function resolveInviteSync(sessionId: string, inviteId: string): Promise<Resolution> {
+async function resolveInviteSync(sessionId: string, inviteId: string, communityId: string | null): Promise<Resolution> {
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
   const invite = await prisma.sessionInvite.findUnique({
     where: { id: inviteId },
-    select: { status: true, user: { select: { discordId: true } } },
+    select: { status: true, user: { select: { id: true, discordId: true } } },
   });
   if (!invite) return { eligible: false, reason: "expired" };
 
   const action: ResolvedAction =
-    invite.status === "ACTIVE"
+    invite.status === "ACTIVE" && await isMemberOfCommunity(invite.user.id, communityId)
       ? { kind: "add_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId }
       : { kind: "remove_thread_member_verified", threadId: thread.discordThreadId, discordUserId: invite.user.discordId };
   return { eligible: true, action };
@@ -1636,6 +1665,7 @@ async function resolveInviteSync(sessionId: string, inviteId: string): Promise<R
  * fil dans ce module.
  */
 async function resolveCreatorThreadMembership(sessionId: string, session: SessionWithVotes): Promise<Resolution> {
+  if (!(await isMemberOfCommunity(session.createdById, session.communityId))) return { eligible: false, reason: "expired" };
   const thread = await findSentDelivery(threadSlot(sessionId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
@@ -1709,6 +1739,15 @@ async function resolveThreadValidated(sessionId: string, session: SessionWithVot
  * personne) ET nouveau MP « Date modifiée » à chaque pote ayant reçu
  * l'invitation (double ping). Créneau relu au traitement, jamais figé.
  */
+async function previousDateForChange(sessionId: string, changeId: string): Promise<Date | undefined> {
+  const event = await prisma.notificationEvent.findUnique({
+    where: { category_eventType_sourceId_occurrence: { category: "SESSION", sourceId: sessionId, eventType: "SESSION_DATE_CHANGED", occurrence: changeId } }, select: { payload: true },
+  });
+  const payload = event?.payload as { previousDate?: string } | null;
+  const date = payload?.previousDate ? new Date(payload.previousDate) : undefined;
+  return date && !Number.isNaN(date.getTime()) ? date : undefined;
+}
+
 async function resolveThreadDateChange(
   sessionId: string,
   session: SessionWithVotes,
@@ -1719,7 +1758,8 @@ async function resolveThreadDateChange(
   if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
 
   const rendering = resolveAnnounceRendering(session);
-  const body = `📅 Date modifiée : ${formatDateTimeFr(session.date)} — ${absoluteSessionUrl(session.id)}`;
+  const previousDate = await previousDateForChange(sessionId, changeId);
+  const body = `📅 Date modifiée — ${await sessionMessage(session, "date", { creatorName: session.createdBy.discordName, previousDate })} — ${absoluteSessionUrl(session.id)}`;
   const message = await buildMessageContent(
     session,
     rendering.candidateMentions,
@@ -1866,13 +1906,14 @@ async function resolveThreadReminder(
   }
 
   const reminderTitle = `⏰ Rappel — dans ${formatReminderTimingShort(Math.round(minutesRemaining))} !`;
+  const reminderBody = await sessionMessage(session, "reminder", { creatorName: session.createdBy.discordName, gameName: session.proposals.find((p) => p.gameId === session.decidedGameId)?.game.name });
   const message = await buildMessageContent(
     session,
     candidates,
     "SESSION_CREATED",
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
-    reminderTitle,
+    `${reminderTitle} ${reminderBody}`,
     `reminder:${minutes}`
     // Rappel : mention dans le fil ET MP à chaque invité, créateur inclus (MP, pas de mention).
   );

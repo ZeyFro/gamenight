@@ -1,5 +1,7 @@
 "use client";
 
+import { CreationForm } from "@/components/CreationForm";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { LocalGameOption } from "@/lib/game-search";
@@ -37,7 +39,7 @@ export function TournamentCreateForm({
   const [selected, setSelected] = useState<SelectedGame | null>(null);
 
   return (
-    <form action={createTournamentAction} className="flex flex-col gap-4">
+    <CreationForm action={createTournamentAction} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <label className="text-xs text-muted" htmlFor="tournament-name">
           Nom du tournoi
@@ -91,6 +93,6 @@ export function TournamentCreateForm({
       <Button type="submit" variant="primary" fullWidthOnMobile disabled={!selected}>
         Créer le tournoi 🏆
       </Button>
-    </form>
+    </CreationForm>
   );
 }

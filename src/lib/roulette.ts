@@ -1,4 +1,4 @@
-import { scopedPrisma } from "@/lib/community-scoped-client";
+import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { cronCommunityScope, communityMemberUserWhere } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
@@ -19,21 +19,9 @@ export function isRouletteProposalOpen(roulette: Pick<Roulette, "status" | "dead
 }
 
 /**
- * Réclame atomiquement le droit de tirer une roulette — même mécanique que
- * `claimSessionClose` (src/lib/sessions.ts) : un seul `updateMany`
- * conditionné sur `status: "OPEN"`, dont Postgres garantit l'exécution
- * atomique. Évite un double tirage si le cron et un chargement de page
- * paresseux (`spinRouletteIfDue`, appelé depuis `/roulette/[id]`)
- * tombent sur la même roulette en même temps.
+ * Le verrou de ligne sérialise cron et chargement paresseux ; le tirage,
+ * la soirée et les intentions de livraison partagent la transaction.
  */
-async function claimRouletteSpin(rouletteId: string): Promise<boolean> {
-  const scopedDb = scopedPrisma(await cronCommunityScope());
-  const result = await scopedDb.roulette.updateMany({
-    where: { id: rouletteId, status: "OPEN" },
-    data: { status: "SPINNING" },
-  });
-  return result.count === 1;
-}
 
 /**
  * Calcule le gagnant et crée la session — même invariant final que le
@@ -48,72 +36,46 @@ async function claimRouletteSpin(rouletteId: string): Promise<boolean> {
  * sur une session classique (`closeSession`).
  */
 export async function spinRoulette(rouletteId: string): Promise<void> {
-  const scopedDb = scopedPrisma(await cronCommunityScope());
-  if (!(await claimRouletteSpin(rouletteId))) return;
-
-  const roulette = await scopedDb.roulette.findUniqueOrThrow({
-    where: { id: rouletteId },
-    include: { entries: true },
-  });
-
-  const members = await prisma.user.findMany({
-    where: { id: { in: roulette.entries.map((e) => e.userId) }, ...(await communityMemberUserWhere(roulette.communityId)) },
-    select: { id: true },
-  });
-  const eligibleIds = new Set(members.map((m) => m.id));
-  const entries = roulette.entries.filter((e) => eligibleIds.has(e.userId));
-  const participantIds = [...new Set(entries.map((e) => e.userId))];
-
-  if (participantIds.length < 2) {
-    await scopedDb.roulette.update({ where: { id: rouletteId }, data: { status: "DONE" } });
-    // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (annulée), aucun nouveau message.
-    await enqueueRouletteDirectMessageEdits(rouletteId);
-    await announceRouletteCancelled(roulette);
-    logger.info("roulette", `Roulette ${rouletteId} annulée — moins de 2 participants.`);
-    return;
-  }
-
-  const winnerEntry = entries[Math.floor(Math.random() * entries.length)];
-
-  const { session, announceViaBot } = await createRouletteResultSession({
-    communityId: roulette.communityId,
-    date: roulette.scheduledAt,
-    decidedGameId: winnerEntry.gameId,
-    decidedTime: roulette.scheduledAt,
-    createdById: roulette.createdById,
-    notifiedUserIds: participantIds,
-  });
-
-  await scopedDb.roulette.update({
-    where: { id: rouletteId },
-    data: { status: "DONE", resultGameId: winnerEntry.gameId, resultSessionId: session.id },
-  });
-
-  // Fin : le MP d'invitation déjà envoyé est ÉDITÉ (jeu retenu), aucun nouveau message.
-  await enqueueRouletteDirectMessageEdits(rouletteId);
-
-  await awardXp(roulette.createdById, roulette.communityId, "CREATE_SESSION", session.id, XP_AMOUNTS.CREATE_SESSION);
-  await checkSessionsCreatedBadges(roulette.createdById, roulette.communityId);
-
-  // Jamais les deux transports à la fois — voir `createRouletteResultSession`
-  // (l'enqueue bot a déjà réussi, atomiquement avec la création de la
-  // session, si `announceViaBot` est vrai) et le commentaire de fichier de
-  // `session-lifecycle.ts` (même garde pour `createSession`).
-  if (!announceViaBot) {
-    const game = await prisma.game.findUnique({
-      where: { id: winnerEntry.gameId },
-      select: { name: true, coverUrl: true },
+  const scope = await cronCommunityScope();
+  const outcome = await prisma.$transaction(async (tx) => {
+    const scopedDb = scopedTransactionPrisma(tx, scope);
+    // Le tirage, sa soirée et les éditions sont un seul commit. Un crash ne
+    // laisse plus SPINNING sans résultat ; concurrence cron/page sérialisée.
+    await tx.$queryRaw`SELECT id FROM "Roulette" WHERE id = ${rouletteId} FOR UPDATE`;
+    const roulette = await scopedDb.roulette.findUnique({ where: { id: rouletteId }, include: { entries: true } });
+    if (!roulette || roulette.status !== "OPEN") return null;
+    const members = await tx.user.findMany({
+      where: { id: { in: roulette.entries.map((e) => e.userId) }, ...(await communityMemberUserWhere(roulette.communityId)) }, select: { id: true },
     });
-    await announceRouletteResult(
-      roulette,
-      game?.name ?? "?",
-      game?.coverUrl ?? null,
-      participantIds,
-      session.id
-    );
+    const eligible = new Set(members.map((m) => m.id));
+    const entries = roulette.entries.filter((e) => eligible.has(e.userId));
+    const participantIds = [...new Set(entries.map((e) => e.userId))];
+    if (participantIds.length < 2) {
+      await scopedDb.roulette.update({ where: { id: rouletteId }, data: { status: "DONE" } });
+      await enqueueRouletteDirectMessageEdits(rouletteId, tx);
+      return { roulette, result: null, participantIds };
+    }
+    const winner = entries[Math.floor(Math.random() * entries.length)];
+    const result = await createRouletteResultSession({
+      transaction: tx, creationKey: `roulette-result-${rouletteId}`, sourceRouletteId: rouletteId,
+      communityId: roulette.communityId, date: roulette.scheduledAt,
+      decidedGameId: winner.gameId, decidedTime: roulette.scheduledAt,
+      createdById: roulette.createdById, notifiedUserIds: participantIds,
+    });
+    await scopedDb.roulette.update({ where: { id: rouletteId }, data: { status: "DONE", resultGameId: result.session.decidedGameId, resultSessionId: result.session.id } });
+    await enqueueRouletteDirectMessageEdits(rouletteId, tx);
+    return { roulette, result, participantIds };
+  }, { timeout: 15_000 });
+  if (!outcome) return;
+  const { roulette, result, participantIds } = outcome;
+  if (!result) { await announceRouletteCancelled(roulette); return; }
+  await awardXp(roulette.createdById, roulette.communityId, "CREATE_SESSION", result.session.id, XP_AMOUNTS.CREATE_SESSION);
+  await checkSessionsCreatedBadges(roulette.createdById, roulette.communityId);
+  if (!result.announceViaBot && !result.replayed) {
+    const game = await prisma.game.findUnique({ where: { id: result.session.decidedGameId! }, select: { name: true, coverUrl: true } });
+    await announceRouletteResult(roulette, game?.name ?? "?", game?.coverUrl ?? null, participantIds, result.session.id);
   }
-
-  logger.info("roulette", `Roulette ${rouletteId} tirée — jeu gagnant ${winnerEntry.gameId}.`, { announceViaBot });
+  logger.info("roulette", "Roulette tirée.", { rouletteId, announceViaBot: result.announceViaBot });
 }
 
 /** Déclenchement paresseux (chargement de page) — même contrat que `closeSessionIfDue`. */

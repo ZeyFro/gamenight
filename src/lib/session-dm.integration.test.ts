@@ -187,7 +187,9 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       const dmPosts = calls("POST", /\/channels\/dm-[^/]+\/messages$/);
       expect(dmPosts).toHaveLength(3);
       const dmBody = JSON.parse(String(dmPosts[0][1].body));
-      expect(dmBody.content).toBe("📣 Nouvelle soirée");
+      expect(dmBody.content).toContain("📣 Nouvelle soirée");
+      expect(dmBody.content).toContain("Nouvelle soirée créée pour");
+      expect(dmBody.content).not.toMatch(/\{[a-z_]+\}/);
       expect(dmBody.embeds).toHaveLength(1);
       expect(dmBody.allowed_mentions).toEqual({ parse: [] });
     });
@@ -525,7 +527,12 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       // MP d'invitation édités (a + créateur) ET un nouveau MP « Date modifiée » chacun.
       expect(calls("PATCH", /\/channels\/dm-[^/]+\/messages\/dm-msg$/)).toHaveLength(2);
       const newDms = calls("POST", /\/channels\/dm-[^/]+\/messages$/).map(([, init]) => JSON.parse(String(init.body)).content);
-      expect(newDms).toEqual(["📅 Date modifiée", "📅 Date modifiée"]);
+      expect(newDms).toHaveLength(2);
+      for (const message of newDms) {
+        expect(message).toContain("📅 Date modifiée");
+        expect(message).toContain("nouveau créneau");
+        expect(message).not.toMatch(/\{[a-z_]+\}/);
+      }
     });
 
     it("changement de date : aucun nouveau MP pour un pote jamais prévenu par MP, mais il est mentionné dans le fil", async () => {

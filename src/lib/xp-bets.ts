@@ -9,22 +9,8 @@ import { awardXp } from "@/lib/xp-actions";
 import { checkBetBadges } from "@/lib/badges";
 import { ACCENT_COLOR } from "@/lib/discord";
 
-/** Mise minimale, et pas de mise au-delà de 50% du solde actuel — par tranches de 10 (spec). */
-export const XP_BET_MIN = 10;
-export const XP_BET_STEP = 10;
-export const XP_BET_MAX_RATIO = 0.5;
-
-/** Mise max autorisée pour un solde donné, arrondie au multiple de 10 inférieur. */
-export function maxBetAmount(xpTotal: number): number {
-  return Math.floor((xpTotal * XP_BET_MAX_RATIO) / XP_BET_STEP) * XP_BET_STEP;
-}
-
-export function isValidBetAmount(amount: number, xpTotal: number): boolean {
-  if (!Number.isInteger(amount)) return false;
-  if (amount < XP_BET_MIN) return false;
-  if (amount % XP_BET_STEP !== 0) return false;
-  return amount <= maxBetAmount(xpTotal);
-}
+import { isValidBetAmount, maxBetAmount } from "@/lib/xp-bet-rules";
+export { XP_BET_MIN, XP_BET_STEP, XP_BET_MAX_RATIO, maxBetAmount, isValidBetAmount } from "@/lib/xp-bet-rules";
 
 /** Débit refusé faute de solde suffisant AU MOMENT du débit — voir `placeBet`. */
 class InsufficientBalanceError extends Error {}

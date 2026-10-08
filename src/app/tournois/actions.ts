@@ -1,4 +1,8 @@
 "use server";
+
+import { resumeCreation } from "@/lib/creation-resume";
+
+import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 
@@ -56,6 +60,8 @@ import {
 export async function createTournamentAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const resumed = await resumeCreation(user.id, "TOURNAMENT", formData);
+  if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createTournament")) {
     redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
   }
@@ -126,7 +132,8 @@ export async function createTournamentAction(formData: FormData) {
     process.env.DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED === "true" && tournamentAnnounceConfig !== null;
   await requireCommunityBotAnnouncement(communityId, announceViaBot);
 
-  const tournament = await prisma.$transaction(async (tx) => {
+  const { result: tournament, replayed } = await createOnce(user.id, "TOURNAMENT", creationKey(formData.get("creationKey"), true), async (tx) => {
+    await lockCreationMembers(tx, communityId, [user.id, ...notifiedUserIds]);
     const created = await tx.tournament.create({
       data: {
         name,
@@ -157,13 +164,13 @@ export async function createTournamentAction(formData: FormData) {
       }
     }
     return created;
-  });
+  }, (created) => created.id, (tx, id) => tx.tournament.findUniqueOrThrow({ where: { id } }));
 
   // Webhook existant — UNIQUEMENT pour un tournoi resté sur ce chemin
   // (`announceViaBot=false`) : un tournoi bot a déjà enqueue son SEND ci-
   // dessus, jamais les deux transports à la fois (voir le commentaire de
   // fichier de `tournament-announce.ts`).
-  if (!announceViaBot) {
+  if (!announceViaBot && !replayed) {
     const tournamentUrl = resolveAbsoluteUrl(`/tournois/${tournament.id}`, {
       VERCEL_ENV: process.env.VERCEL_ENV,
       VERCEL_URL: process.env.VERCEL_URL,

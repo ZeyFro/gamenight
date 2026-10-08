@@ -1,3 +1,4 @@
+import { withCommunityReadContext } from "@/lib/community-read-context";
 import Image from "next/image";
 import Link from "next/link";
 import { signIn, signOut } from "@/auth";
@@ -64,7 +65,11 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 // jamais devenir un open redirect, même avant la vérification en base.
 const POTE_REDIRECT_PATTERN = /^\/potes\/([a-zA-Z0-9]+)$/;
 
-export default async function Home({
+export default function Home(props: { searchParams: Promise<{ error?: string; redirect?: string }> }) {
+  return withCommunityReadContext(() => HomeContent(props));
+}
+
+async function HomeContent({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; redirect?: string }>;

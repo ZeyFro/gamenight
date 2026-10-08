@@ -1,5 +1,9 @@
 "use server";
 
+import { resumeCreation } from "@/lib/creation-resume";
+
+import { creationKey } from "@/lib/creation-intent";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -41,6 +45,8 @@ import {
 export async function createInstantSessionAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const resumed = await resumeCreation(user.id, "INSTANT_SESSION", formData);
+  if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createInstantSession")) {
     redirect(`/jouer-maintenant?error=${VALIDATION_ERROR_KEY}`);
   }
@@ -67,7 +73,7 @@ export async function createInstantSessionAction(formData: FormData) {
       )
     : [];
 
-  const result = await createInstantSession({ creatorId: user.id, gameId, notifiedUserIds });
+  const result = await createInstantSession({ creatorId: user.id, gameId, notifiedUserIds, creationKey: creationKey(formData.get("creationKey"), true) });
   if (!result.ok) {
     redirect(`/jouer-maintenant?error=${result.reason}`);
   }

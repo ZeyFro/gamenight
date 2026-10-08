@@ -88,6 +88,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createInstantSessionAction (vraie server ac
   /** Forme exacte du `<form>` : `gameId` caché + une entrée `notifyUserId` par case cochée. */
   function formData(gameId: string, notifyUserIds: string[]) {
     const fd = new FormData();
+    fd.set("creationKey", crypto.randomUUID());
     fd.set("gameId", gameId);
     for (const id of notifyUserIds) fd.append("notifyUserId", id);
     return fd;
@@ -169,6 +170,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createInstantSessionAction (vraie server ac
       const ids = guests.map((g) => g.id);
       const empty = formData("", ids);
       const missing = new FormData();
+      missing.set("creationKey", crypto.randomUUID());
       for (const id of ids) missing.append("notifyUserId", id);
       for (const fd of [empty, missing, formData("n-existe-pas", ids)]) {
         expect(await runAndGetRedirect(actions.createInstantSessionAction(fd))).toMatch(/^\/jouer-maintenant\?error=/);

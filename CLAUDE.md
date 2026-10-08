@@ -9,7 +9,7 @@ V1 terminée (périmètre `SPEC` §6). V2 (bot Discord : fils, MP, nettoyage, «
 Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon · Auth.js v5 (Discord OAuth) · Vercel Hobby (pas de cron < 1/jour : crons externes) · Vitest.
 
 ## Commandes
-- `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` : jamais sans `DATABASE_URL` locale)
+- `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` hors `VERCEL_ENV=preview` : jamais sans `DATABASE_URL` locale pour la validation)
 - `npx vitest run <fichier>` : tests unitaires ciblés
 - Tests d'intégration : Postgres Docker local, jamais Neon. En session cloud, le hook SessionStart (`.claude/hooks/session-start.mjs`) fait les étapes 1-2 sans Docker (Postgres 16, 127.0.0.1:55439) et exporte `TEST_DATABASE_URL` : lancer directement l'étape 3.
   1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine`
@@ -24,7 +24,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - PR en Draft ; s'arrêter à « PR ouverte, build vert » (check Vercel). Pas de merge/déploiement sans demande.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
-- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée par `prisma migrate deploy` au build Vercel). Changement Prisma seulement si justifié.
+- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée par `prisma migrate deploy` au build de production ; jamais au build Preview). Changement Prisma seulement si justifié.
 - Pas de refactor large, pas de try/catch silencieux.
 - Commits/PR en français, style `type(scope): …`.
 

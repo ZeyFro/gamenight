@@ -1,5 +1,7 @@
 "use client";
 
+import { CreationForm } from "@/components/CreationForm";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { LocalGameOption } from "@/lib/game-search";
@@ -27,7 +29,7 @@ export function InstantSessionCreateForm({
   const [selected, setSelected] = useState<SelectedGame | null>(null);
 
   return (
-    <form action={createInstantSessionAction} className="flex flex-col gap-4">
+    <CreationForm action={createInstantSessionAction} className="flex flex-col gap-4">
       <TournamentGameField localGames={localGames} selected={selected} onSelectedChange={setSelected} />
 
       {potes.length > 0 && (
@@ -44,6 +46,6 @@ export function InstantSessionCreateForm({
       <Button type="submit" variant="primary" fullWidthOnMobile disabled={!selected}>
         Démarrer 🎮
       </Button>
-    </form>
+    </CreationForm>
   );
 }

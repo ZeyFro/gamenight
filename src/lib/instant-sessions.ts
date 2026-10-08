@@ -1,5 +1,6 @@
+import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
 import type { InstantSession, Prisma } from "@prisma/client";
-import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
 import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
@@ -11,6 +12,8 @@ import {
   enqueueInstantSessionInvites,
 } from "@/lib/instant-session-announce";
 import { logger } from "@/lib/logger";
+import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
+export { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
 
 /**
  * V2 — "Jouer maintenant" : sessions spontanées. Voir le commentaire de
@@ -35,7 +38,6 @@ import { logger } from "@/lib/logger";
  */
 
 export const INSTANT_SESSION_MAX_DURATION_MS = 3 * 60 * 60 * 1000;
-export const INSTANT_SESSION_ELIGIBLE_PRESENCE_MS = 15 * 60 * 1000;
 
 /* -------------------------------------------------------------------- */
 /* Calcul de présence conjointe — pur, testable indépendamment de la DB  */
@@ -138,11 +140,11 @@ export type CreateInstantSessionResult =
  * message d'erreur clair dans le cas courant, jamais la seule protection.
  */
 export async function createInstantSession(input: {
+  creationKey?: string;
   creatorId: string;
   gameId: string;
   notifiedUserIds: string[];
 }): Promise<CreateInstantSessionResult> {
-  const scopedDb = await getScopedPrisma(input.creatorId);
   const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(input.creatorId) : null;
   if (isCommunityIsolationEnabled() && communityId === null) return { ok: false, reason: "not_found" };
   // Expiration paresseuse d'abord : une session échue mais pas encore
@@ -168,8 +170,10 @@ export async function createInstantSession(input: {
   const notifiedUserIds = candidates.map((u) => u.id);
 
   try {
-    const instantSession = await scopedDb.$transaction(async (tx) => {
-      const created = await tx.instantSession.create({
+    const { result: instantSession } = await createOnce(input.creatorId, "INSTANT_SESSION", input.creationKey, async (tx) => {
+      await lockCreationMembers(tx, communityId, [input.creatorId, ...notifiedUserIds]);
+      const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(input.creatorId));
+      const created = await scopedDb.instantSession.create({
         data: {
           ...withCommunity(communityId),
           createdById: input.creatorId,
@@ -187,7 +191,7 @@ export async function createInstantSession(input: {
         await enqueueInstantSessionInvites(created.id, notifiedUserIds, tx as unknown as Prisma.TransactionClient);
       }
       return created;
-    });
+    }, (created) => created.id, (tx, id) => tx.instantSession.findUniqueOrThrow({ where: { id } }));
     return { ok: true, instantSession };
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {

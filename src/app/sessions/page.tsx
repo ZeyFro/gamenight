@@ -1,3 +1,5 @@
+
+import { CreationForm } from "@/components/CreationForm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Game, Session } from "@prisma/client";
@@ -286,7 +288,7 @@ export default async function SessionsPage({
           la liste. */}
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[380px_1fr] lg:items-start">
         <Card>
-          <form action={createSession} className="flex flex-col gap-3">
+          <CreationForm action={createSession} className="flex flex-col gap-3">
             <h2 className="font-semibold text-foreground">Nouvelle soirée</h2>
 
             {preselectedGame && (
@@ -397,7 +399,7 @@ export default async function SessionsPage({
             <Button type="submit" variant="primary" fullWidthOnMobile>
               Créer la soirée
             </Button>
-          </form>
+          </CreationForm>
         </Card>
 
         <div className="flex flex-col gap-4">
