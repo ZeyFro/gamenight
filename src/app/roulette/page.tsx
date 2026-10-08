@@ -61,7 +61,7 @@ export default async function RoulettePage({
 
   return (
     <PullToRefresh>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎰 Roulette</h1>
 
         {errorMessage && (
@@ -74,10 +74,11 @@ export default async function RoulettePage({
           groupId="roulette-mode"
           activeKey={isInstant ? "instant" : "async"}
           options={[
-            { key: "async", label: "Mode async", href: "/roulette" },
-            { key: "instant", label: "Mode instant", href: "/roulette?mode=instant" },
+            { key: "async", label: "Pour plus tard", href: "/roulette" },
+            { key: "instant", label: "Instantanée", href: "/roulette?mode=instant" },
           ]}
         />
+        <p className="text-sm text-muted">{isInstant ? "On tire un jeu maintenant. Pour démarrer une partie avec les potes, utilise Jouer maintenant." : "Chacun propose ses jeux avant la date choisie. Le tirage lancera une soirée planifiée."}</p>
         {isInstant ? (
           <InstantMode user={user} />
         ) : (

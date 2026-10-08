@@ -3,7 +3,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getUnreadNotificationCount, listRecentNotifications, groupNotifications } from "@/lib/notifications";
 import { getChatMessages } from "@/lib/chat";
 import { Logo } from "@/components/Logo";
-import { HeaderNavLinks } from "@/components/HeaderNavLinks";
+import { Sidebar } from "@/components/app/Sidebar";
+import { Avatar } from "@/components/ui/Avatar";
+import { levelForXp } from "@/lib/xp";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { CommunitySwitcher } from "@/components/CommunitySwitcher";
@@ -49,16 +51,17 @@ export async function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="shrink-0">
-          <Logo />
-        </Link>
+    <header className={`gn-topbar ${user ? "gn-topbar-authenticated" : ""} ${pickerEnabled ? "gn-topbar-with-picker" : ""}`}>
+      <div className="gn-topbar-inner">
+        <div className="flex min-w-0 items-center gap-3">
+          {user && <Sidebar user={{ name: user.discordName, avatar: user.discordAvatar, level: levelForXp(user.xpTotal), xp: user.xpTotal }} />}
+          <Link href="/" className={`shrink-0 ${user ? "lg:hidden" : ""}`} aria-label="GameNight — accueil"><Logo /></Link>
+          {pickerEnabled && <CommunitySwitcher communities={communities} currentId={communityId} />}
+          {user && !pickerEnabled && <span className="gn-eyebrow hidden lg:block">Ton prochain bon moment</span>}
+        </div>
         {user && (
-          <div className="flex items-center gap-1">
-            <nav className="hidden items-center gap-1 sm:flex">
-              <HeaderNavLinks />
-            </nav>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+            <Link href="/profil" className="gn-header-xp hidden xl:flex">✦ Niveau {levelForXp(user.xpTotal)} <span className="text-muted">· {user.xpTotal.toLocaleString("fr-FR")} XP</span></Link>
             {currentUser && (
               <ChatPanel
                 key={communityId ?? "none"}
@@ -70,10 +73,10 @@ export async function Header() {
               />
             )}
             <NotificationBell key={communityId ?? "none"} initialUnreadCount={unreadCount} notifications={notifications} />
+            <Link href="/profil" aria-label="Ouvrir mon profil" className="hidden sm:block"><Avatar src={user.discordAvatar} alt="" size={32} /></Link>
           </div>
         )}
       </div>
-      {pickerEnabled && <CommunitySwitcher communities={communities} currentId={communityId} />}
     </header>
   );
 }

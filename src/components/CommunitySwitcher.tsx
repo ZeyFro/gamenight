@@ -15,11 +15,11 @@ export function CommunitySwitcher({ communities, currentId }: { communities: Pic
   const icon = current?.discordGuildId && current.iconHash
     ? `https://cdn.discordapp.com/icons/${current.discordGuildId}/${current.iconHash}.png?size=64` : null;
   return (
-    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 pb-2 sm:px-6">
+    <div className="gn-community-switcher">
       {icon && <Image src={icon} alt="" width={24} height={24} unoptimized className="rounded-full" />}
-      <label htmlFor={id} className="text-xs text-muted">Serveur actuel</label>
+      <label htmlFor={id} className="gn-eyebrow hidden xl:block">Serveur actuel</label>
       <select id={id} aria-label="Changer de serveur" value={currentId ?? ""} disabled={pending || communities.length < 2}
-        className="min-w-0 max-w-full flex-1 rounded border border-border bg-background px-2 py-1 text-sm sm:max-w-xs"
+        className="gn-server-select"
         onChange={(event) => {
           const communityId = event.target.value;
           setError("");

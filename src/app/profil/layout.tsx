@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { levelForXp, rankForLevel, titleForLevel, xpForLevel } from "@/lib/xp";
+import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
 import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
@@ -14,6 +14,8 @@ import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
 import { StreakFlame } from "@/components/StreakFlame";
 import { ButtonLink } from "@/components/ui/Button";
 import { CountUp } from "@/components/ui/CountUp";
+import { XpProgress } from "@/components/app/XpProgress";
+import { ShineBorder } from "@/components/magicui/shine-border";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 
 function formatMemberSince(date: Date): string {
@@ -22,7 +24,7 @@ function formatMemberSince(date: Date): string {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-surface p-3 text-center">
+    <div className="flex flex-col items-center gap-1 gn-stat-card rounded-xl border-2 border-border bg-surface p-3 text-center">
       <CountUp value={value} className="text-xl font-bold tabular-nums text-foreground" />
       <span className="text-[11px] text-muted">{label}</span>
     </div>
@@ -62,8 +64,6 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
   const level = levelForXp(user.xpTotal);
   const rank = rankForLevel(level);
   const title = titleForLevel(level);
-  const xpIntoLevel = user.xpTotal - xpForLevel(level);
-  const xpForNextLevel = xpForLevel(level + 1) - xpForLevel(level);
   const steamActivityLabel = formatSteamActivityLabel(
     user.lastPlayedGame,
     user.lastPlayedAt,
@@ -76,8 +76,9 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
   ]);
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8 sm:pb-12">
-      <div className="relative overflow-hidden">
+    <div className="mx-auto flex w-full gn-profile-shell max-w-6xl flex-col gap-6 pb-8 sm:pb-12">
+      <div className="gn-profile-cover relative overflow-hidden mx-4 sm:mx-6">
+        <ShineBorder shineColor={["#b99aff", "#d4ef80"]} aria-hidden="true" />
         <BannerImage
           url={user.bannerUrl}
           color={user.color}
@@ -122,18 +123,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
           <p className="text-xs text-muted">🎮 {steamActivityLabel}</p>
         )}
 
-        <div className="flex flex-col gap-1.5">
-          <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-            <div
-              className="h-full rounded-full bg-accent"
-              style={{ width: `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%` }}
-            />
-          </div>
-          <p className="text-xs tabular-nums text-muted">
-            {user.xpTotal} XP au total — {xpIntoLevel} / {xpForNextLevel} vers le niveau{" "}
-            {level + 1}
-          </p>
-        </div>
+        <XpProgress xp={user.xpTotal} />
 
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
           <StatCard label="Soirées jouées" value={stats.sessionsParticipated} />

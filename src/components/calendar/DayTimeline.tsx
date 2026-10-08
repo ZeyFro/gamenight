@@ -116,6 +116,7 @@ export function DayTimeline({
   today,
   pote,
   potes,
+  view,
   canEdit,
   ownWeeklySlots,
   ownOverrideForDay,
@@ -129,6 +130,7 @@ export function DayTimeline({
   today: Date;
   pote?: string;
   potes?: string;
+  view?: "mois" | "semaine";
   /** SA PROPRE dispo — jamais vrai pour la dispo d'un pote. */
   canEdit?: boolean;
   ownWeeklySlots?: WeeklySlot[];
@@ -188,9 +190,9 @@ export function DayTimeline({
   }, [isToday]);
   const prevDate = addDays(date, -1);
   const nextDate = addDays(date, 1);
-  const prevHref = buildCalendarHref({ date: toDateInputValue(prevDate), mode, pote, potes });
-  const nextHref = buildCalendarHref({ date: toDateInputValue(nextDate), mode, pote, potes });
-  const todayHref = buildCalendarHref({ mode, pote, potes });
+  const prevHref = buildCalendarHref({ date: toDateInputValue(prevDate), mode, pote, potes, vue: view });
+  const nextHref = buildCalendarHref({ date: toDateInputValue(nextDate), mode, pote, potes, vue: view });
+  const todayHref = buildCalendarHref({ mode, pote, potes, vue: view });
 
   const bestHour = mode === "collectif" ? bestHourOfDay(day) : null;
 

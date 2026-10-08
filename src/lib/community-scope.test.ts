@@ -76,7 +76,6 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/backfill-game-news.ts": ["session"],
   "src/lib/backfill-xp.ts": ["proposal", "vote"],
   "src/lib/badges.ts": ["badge"],
-  "src/lib/calendar.ts": ["session"],
   "src/lib/discord-reminder.ts": ["proposal"],
   "src/lib/discord-roulette.ts": ["session"],
   "src/lib/fix-invalid-templates.ts": ["messageTemplate"],
