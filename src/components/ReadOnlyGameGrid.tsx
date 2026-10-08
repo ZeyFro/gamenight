@@ -118,7 +118,7 @@ function ReadOnlyGameCard({
   const owners = game.owners ?? [];
 
   return (
-    <div className="card-glow relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200">
+    <div className="gn-game-card card-glow relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200">
       <Link href={`/jeux/${game.id}`} className="flex flex-col">
         <div className="relative aspect-[2/3] w-full bg-surface-hover">
           {game.coverUrl && (

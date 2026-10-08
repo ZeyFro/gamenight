@@ -5,7 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { getCalendarData, type CalendarDay } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getMonthGridRange, type CalendarMode } from "@/lib/calendar-dates";
 import { parseDateOnly, sameUtcDate, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
-import { MiniMonthCalendar } from "@/components/calendar/MiniMonthCalendar";
+import { EventCalendar } from "@/components/calendar/EventCalendar";
+import { AuroraText } from "@/components/magicui/aurora-text";
+import { requireCommunityChosen } from "@/lib/community-picker";
+import { withCommunityReadContext } from "@/lib/community-read-context";
 import { DayTimeline } from "@/components/calendar/DayTimeline";
 import { PoteFilterDrawer } from "@/components/calendar/PoteFilterDrawer";
 import { ColorDot } from "@/components/ColorDot";
@@ -20,33 +23,33 @@ interface CalendrierSearchParams {
   mode?: string;
   pote?: string;
   potes?: string;
+  vue?: string;
 }
 
 /**
- * `/calendrier` — pattern "Outlook mobile" : mini-mois compact en haut
- * (tap une date pour la sélectionner) + timeline verticale de la journée
- * sélectionnée en dessous. Remplace l'ancienne vue Semaine/Mois (grilles
- * pleine page) — refonte suite retour terrain : pas assez lisible sur
- * mobile. Toute la navigation (`?date=`, `?mode=`, `?pote=`, `?potes=`)
- * reste dans l'URL, même philosophie que `/classement?periode=`.
- *
- * Une seule requête `getCalendarData` sur toute la grille du mois affiché
- * (mêmes données consommées par le mini-mois ET par la timeline du jour
- * sélectionné, qui est un simple `find` dedans) — pas de requête séparée
- * par jour.
+ * Grille mois/semaine + agenda du jour + timeline éditable conservée.
+ * Un chargement borné au mois, jamais une requête par cellule. Dates UTC
+ * « horloge murale », paramètres de filtre et de vue partageables dans l'URL.
  */
-export default async function CalendrierPage({
+export default function CalendrierPage(props: { searchParams: Promise<CalendrierSearchParams> }) {
+  return withCommunityReadContext(() => CalendrierContent(props));
+}
+
+async function CalendrierContent({
   searchParams,
 }: {
   searchParams: Promise<CalendrierSearchParams>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  await requireCommunityChosen(user.id, "/calendrier");
 
   const sp = await searchParams;
   const mode: CalendarMode = sp.mode === "individuel" ? "individuel" : "collectif";
+  const view = sp.vue === "semaine" ? "semaine" : "mois";
   const today = todayDateOnly();
-  const selectedDate = sp.date ? parseDateOnly(sp.date) : today;
+  const parsed = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? parseDateOnly(sp.date) : today;
+  const selectedDate = Number.isFinite(parsed.getTime()) && (!sp.date || toDateInputValue(parsed) === sp.date) ? parsed : today;
 
   const visibleUserIds = sp.potes ? sp.potes.split(",").filter(Boolean) : null;
   const selectedUserId = mode === "individuel" ? (sp.pote ?? user.id) : undefined;
@@ -89,20 +92,19 @@ export default async function CalendrierPage({
 
   return (
     <PullToRefresh>
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-5xl">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-4 py-8 sm:px-6 sm:py-12">
       <div>
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">📅 Calendrier</h1>
+        <p className="gn-eyebrow mb-3">Les bons moments se préparent ici</p>
+        <h1 className="text-3xl font-semibold tracking-tight"><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Le calendrier</AuroraText></h1>
         <p className="mt-1 text-sm text-muted">
-          Dispos, sessions et votes en cours, superposés en un seul coup
-          d&apos;œil.
+          Soirées, roulettes et disponibilités de ton serveur, en un coup d’œil.
         </p>
       </div>
 
-      {/* Colonne mini-mois/filtres à gauche, timeline du jour à droite sur
-          desktop — sur mobile (< lg), tout reste empilé dans le même
-          ordre qu'avant. */}
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-6">
-        <div className="flex flex-col gap-5">
+      <EventCalendar days={data.days} selectedDate={selectedDate} today={today} mode={mode} pote={sp.pote} potes={sp.potes} view={view} totalUsers={visibleUserIds ? data.users.filter((member) => visibleUserIds.includes(member.id)).length : data.users.length} />
+      <div className="gn-calendar-detail" id="disponibilites-du-jour">
+        <div className="gn-calendar-filters">
+          <p className="gn-eyebrow">Disponibilités du jour</p>
           <SegmentedControl
             groupId="calendrier-mode"
             activeKey={mode}
@@ -110,26 +112,17 @@ export default async function CalendrierPage({
               {
                 key: "collectif",
                 label: "Collectif",
-                href: buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes }),
+                href: buildCalendarHref({ date: sp.date, mode: "collectif", potes: sp.potes, vue: view }),
               },
               {
                 key: "individuel",
                 label: "Individuel",
-                href: buildCalendarHref({ date: sp.date, mode: "individuel", pote: sp.pote }),
+                href: buildCalendarHref({ date: sp.date, mode: "individuel", vue: view, pote: sp.pote }),
               },
             ]}
           />
 
-          <MiniMonthCalendar
-            days={data.days}
-            selectedDate={selectedDate}
-            today={today}
-            currentMonth={selectedDate.getUTCMonth()}
-            mode={mode}
-            totalUsers={data.users.length}
-            pote={sp.pote}
-            potes={sp.potes}
-          />
+
 
           {mode === "collectif" ? (
             <PoteFilterDrawer users={data.users} visibleUserIds={visibleUserIds} />
@@ -138,7 +131,7 @@ export default async function CalendrierPage({
               {data.users.map((u) => (
                 <Link
                   key={u.id}
-                  href={buildCalendarHref({ mode: "individuel", pote: u.id, date: sp.date })}
+                  href={buildCalendarHref({ mode: "individuel", pote: u.id, date: sp.date, vue: view })}
                   className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     selectedUserId === u.id
                       ? "border-accent bg-accent/10 text-accent"
@@ -157,13 +150,14 @@ export default async function CalendrierPage({
           <DayTimeline
             key={toDateInputValue(selectedDate)}
             day={selectedDay}
-            users={data.users}
+            users={mode === "collectif" && visibleUserIds ? data.users.filter((member) => visibleUserIds.includes(member.id)) : data.users}
             mode={mode}
             selectedUserId={selectedUserId}
             date={selectedDate}
             today={today}
             pote={sp.pote}
             potes={sp.potes}
+            view={view}
             canEdit={canEdit}
             ownWeeklySlots={ownWeeklySlots}
             ownOverrideForDay={ownOverrideForDay}

@@ -9,7 +9,7 @@ const MotionLink = motion.create(Link);
 const VARIANT_CLASSES = {
   primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
   secondary:
-    "border border-border bg-surface text-foreground hover:bg-surface-hover hover:border-border-hover",
+    "border-2 border-border bg-surface text-foreground hover:bg-surface-hover hover:border-border-hover",
   destructive:
     "border border-destructive/40 text-destructive hover:bg-destructive/10",
   ghost: "text-muted hover:text-foreground",
@@ -38,7 +38,7 @@ function buildClassName({
   className = "",
 }: SharedProps) {
   return [
-    "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
+    `gn-button gn-button-${variant} inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none`,
     VARIANT_CLASSES[variant],
     SIZE_CLASSES[size],
     fullWidthOnMobile ? "w-full sm:w-auto" : "",

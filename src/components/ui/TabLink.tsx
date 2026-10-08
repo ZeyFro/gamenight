@@ -29,7 +29,8 @@ export function TabLink({
   return (
     <Link
       href={href}
-      className={`relative shrink-0 px-1 pb-3 text-sm font-medium transition-colors ${
+      aria-current={active ? "page" : undefined}
+      className={`gn-tab relative shrink-0 px-3 py-3 text-sm font-medium transition-colors ${
         active ? "text-foreground" : "text-muted hover:text-foreground"
       } ${className}`}
     >

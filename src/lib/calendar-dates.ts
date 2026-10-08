@@ -87,12 +87,14 @@ export function buildCalendarHref(params: {
   mode: CalendarMode;
   pote?: string;
   potes?: string;
+  vue?: "mois" | "semaine";
 }): string {
   const search = new URLSearchParams();
   if (params.date) search.set("date", params.date);
   if (params.mode !== "collectif") search.set("mode", params.mode);
   if (params.mode === "individuel" && params.pote) search.set("pote", params.pote);
   if (params.mode === "collectif" && params.potes) search.set("potes", params.potes);
+  if (params.vue === "semaine") search.set("vue", "semaine");
   const qs = search.toString();
   return `/calendrier${qs ? `?${qs}` : ""}`;
 }

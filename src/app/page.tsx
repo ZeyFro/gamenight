@@ -30,7 +30,10 @@ import { CountUp } from "@/components/ui/CountUp";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 import { Avatar } from "@/components/ui/Avatar";
-import { Logo } from "@/components/Logo";
+import { LoginLanding } from "@/components/app/LoginLanding";
+import { XpProgress } from "@/components/app/XpProgress";
+import { AuroraText } from "@/components/magicui/aurora-text";
+import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
@@ -102,9 +105,7 @@ async function HomeContent({
     }
 
     return (
-      <div className="bg-hero-gradient flex flex-1 flex-col items-center justify-center px-4 sm:px-6">
-        <Card className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-          <Logo className="text-xl" />
+      <LoginLanding>
 
           {errorMessage && (
             <p className="w-full rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
@@ -112,10 +113,6 @@ async function HomeContent({
             </p>
           )}
 
-          <p className="text-muted">
-            Connecte-toi avec ton compte Discord pour organiser la
-            prochaine soirée jeux.
-          </p>
 
           {redirectTarget && (
             <p className="w-full rounded-lg bg-accent/10 p-3 text-sm text-accent">
@@ -137,13 +134,12 @@ async function HomeContent({
               type="submit"
               variant="primary"
               fullWidthOnMobile
-              className="w-full gap-2 bg-[#5865F2] hover:bg-[#4752c4]"
+              className="w-full gap-2"
             >
               Se connecter avec Discord
             </Button>
           </form>
-        </Card>
-      </div>
+      </LoginLanding>
     );
   }
 
@@ -263,6 +259,15 @@ async function HomeContent({
         />
       )}
 
+      <div className="gn-page-heading">
+        <div><p className="gn-eyebrow mb-3">Ensemble, c’est toujours mieux</p><h1><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Ce soir, on joue à quoi ?</AuroraText></h1><p>Un jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.</p></div>
+        <ButtonLink href="/sessions" variant="primary" className="hidden sm:inline-flex">+ Créer une soirée</ButtonLink>
+      </div>
+      <nav className="gn-quick-actions" aria-label="Lancer une partie">
+        <Link href="/sessions" prefetch={false} className="gn-quick-action"><span aria-hidden="true">☾</span><div><b>Créer une soirée</b><small>Un rendez-vous avec les potes</small></div></Link>
+        <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
+        <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
+      </nav>
       <ParallaxHeader className="relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
@@ -312,7 +317,7 @@ async function HomeContent({
                   récente dans le JSX) — mêmes classes visuelles que `Card
                   glow` reproduites à la main pour pouvoir placer l'image de
                   fond en position absolue derrière un padding interne. */}
-              <div className="relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200 hover:card-glow">
+              <div className="gn-home-feature relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200 hover:card-glow">
                 {nextSessionCoverUrl && (
                   <>
                     <Image
@@ -325,6 +330,7 @@ async function HomeContent({
                     <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/80 to-surface/40" />
                   </>
                 )}
+                <ShineBorder shineColor={["#b99aff", "#d4ef80"]} aria-hidden="true" />
                 <div className="relative flex items-start justify-between gap-3 p-6 sm:p-8">
                   <div className="min-w-0">
                     <p className="text-sm text-muted">Prochaine soirée</p>
@@ -365,7 +371,8 @@ async function HomeContent({
         </StaggerItem>
 
         {/* Stats du groupe */}
-        <StaggerItem>
+        <StaggerItem className="flex flex-col gap-4">
+          <XpProgress xp={user.xpTotal} />
           <Card className="gradient-border">
             <p className="text-lg font-semibold text-foreground">Stats du groupe</p>
             <div className="mt-3 grid grid-cols-2 gap-4">

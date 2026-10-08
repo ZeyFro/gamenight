@@ -4,6 +4,9 @@ import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate } from "@/lib/wallclock";
 import { addDays, findBestSlot, type BestSlot, type HourSlot } from "@/lib/calendar-dates";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
+import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -52,8 +55,15 @@ export interface CalendarDay {
   date: Date;
   hours: HourSlot[];
   sessions: CalendarSession[];
+  roulettes?: CalendarRoulette[];
   /** Max de `availableUserIds.length` sur les heures du jour — résumé rapide pour la vue Mois. */
   maxAvailableCount: number;
+}
+
+export interface CalendarRoulette {
+  id: string;
+  scheduledAt: Date;
+  deadline: Date;
 }
 
 export interface CalendarData {
@@ -111,16 +121,19 @@ export async function getCalendarData(
   /** Filtre "potes affichés" (panneau collectif) — `undefined` = tout le monde. */
   visibleUserIds?: string[]
 ): Promise<CalendarData> {
-  const [allUsers, weeklySlots, overrides, sessions] = await Promise.all([
-    prisma.user.findMany({
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const allUsers = await prisma.user.findMany({
+      where: await creationMemberUserWhere(viewerId),
       select: { id: true, discordName: true, discordAvatar: true, color: true },
       orderBy: { discordName: "asc" },
-    }),
-    prisma.weeklyAvailability.findMany(),
+  });
+  const memberIds = allUsers.map((user) => user.id);
+  const [weeklySlots, overrides, sessions, roulettes] = await Promise.all([
+    prisma.weeklyAvailability.findMany({ where: { userId: { in: memberIds } } }),
     prisma.availabilityOverride.findMany({
-      where: { date: { gte: rangeStart, lt: rangeEndExclusive } },
+      where: { userId: { in: memberIds }, date: { gte: rangeStart, lt: rangeEndExclusive } },
     }),
-    prisma.session.findMany({
+    scopedDb.session.findMany({
       where: { date: { gte: rangeStart, lt: rangeEndExclusive }, ...(await accessibleSessionWhereFor(viewerId)) },
       include: {
         proposals: {
@@ -138,10 +151,16 @@ export async function getCalendarData(
       },
       orderBy: { date: "asc" },
     }),
+    scopedDb.roulette.findMany({
+      where: { status: "OPEN", scheduledAt: { gte: rangeStart, lt: rangeEndExclusive } },
+      select: { id: true, scheduledAt: true, deadline: true, createdById: true, notifiedUserIds: true },
+      orderBy: { scheduledAt: "asc" },
+    }),
   ]);
 
   const visibleSet = visibleUserIds ? new Set(visibleUserIds) : null;
-  const users = visibleSet ? allUsers.filter((u) => visibleSet.has(u.id)) : allUsers;
+  const users = allUsers;
+  const visibleUsers = visibleSet ? allUsers.filter((u) => visibleSet.has(u.id)) : allUsers;
 
   const weeklyByUser = new Map<string, typeof weeklySlots>();
   for (const slot of weeklySlots) {
@@ -161,7 +180,9 @@ export async function getCalendarData(
   for (const session of sessions) {
     const key = session.date.toISOString().slice(0, 10);
     const list = sessionsByDay.get(key) ?? [];
-    list.push(toCalendarSession(session));
+    const summary = toCalendarSession(session);
+    summary.players = summary.players.filter((player) => memberIds.includes(player.id));
+    list.push(summary);
     sessionsByDay.set(key, list);
   }
 
@@ -180,7 +201,7 @@ export async function getCalendarData(
       const instant = new Date(dayDate);
       instant.setUTCHours(hour, 0, 0, 0);
 
-      const availableUserIds = users
+      const availableUserIds = visibleUsers
         .filter((user) => {
           const userOverride = overridesByUser
             .get(user.id)
@@ -197,6 +218,12 @@ export async function getCalendarData(
       date: new Date(dayDate),
       hours,
       sessions: sessionsByDay.get(dayKey) ?? [],
+      // Une roulette ne révèle ni les jeux proposés ni un événement auquel
+      // le lecteur n'est pas invité. Les règles sont celles de /roulette.
+      roulettes: roulettes.filter((roulette) =>
+        sameUtcDate(roulette.scheduledAt, dayDate) &&
+        (roulette.createdById === viewerId || (resolveNotifiedUserIds(roulette.notifiedUserIds) ?? []).includes(viewerId))
+      ).map(({ id, scheduledAt, deadline }) => ({ id, scheduledAt, deadline })),
       maxAvailableCount,
     });
   }

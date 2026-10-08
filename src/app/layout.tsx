@@ -9,6 +9,7 @@ import { GuideFab } from "@/components/GuideFab";
 import { CelebrationConfetti } from "@/components/CelebrationConfetti";
 import { PageTransition } from "@/components/PageTransition";
 import { CursorTrail } from "@/components/CursorTrail";
+import { MotionBackground } from "@/components/app/MotionBackground";
 import "./globals.css";
 import { SkipLink } from "@/components/SkipLink";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
@@ -59,14 +60,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background text-foreground">
+      <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""}`}>
         <MotionConfig reducedMotion="user">
+          <MotionBackground />
           {skipLink && <SkipLink />}
           <Header />
           <main
             id={skipLink ? SKIP_LINK_TARGET_ID : undefined}
             tabIndex={skipLink ? -1 : undefined}
-            className={`flex flex-1 flex-col ${skipLink ? "focus:outline-none " : ""}${user ? "pb-16 sm:pb-0" : ""}`}
+            className={`gn-main flex flex-1 flex-col ${skipLink ? "focus:outline-none " : ""}${user ? "pb-16 lg:pb-0" : ""}`}
           >
             <PageTransition>{children}</PageTransition>
           </main>

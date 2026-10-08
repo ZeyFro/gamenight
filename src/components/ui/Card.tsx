@@ -19,7 +19,7 @@ export function Card({
 }: ComponentProps<"div"> & { glow?: boolean }) {
   return (
     <div
-      className={`rounded-xl border border-white/10 bg-surface/70 p-6 sm:p-8 sm:backdrop-blur-sm ${
+      className={`gn-card rounded-xl border-2 border-border bg-surface p-6 sm:p-8 ${
         glow ? "transition-all duration-200 hover:card-glow" : ""
       } ${className}`}
       {...rest}

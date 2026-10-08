@@ -71,7 +71,7 @@ export default async function TournoisPage({
 
   return (
     <PullToRefresh>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🏆 Tournois</h1>
           <ButtonLink href="/tournois/creer" variant="primary" size="sm">

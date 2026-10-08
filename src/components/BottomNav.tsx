@@ -9,7 +9,8 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-sm sm:hidden"
+      aria-label="Accès rapides"
+      className="gn-bottom-nav fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-sm lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="grid grid-cols-6">
@@ -19,6 +20,8 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
+              prefetch={false}
+              aria-current={active ? "page" : undefined}
               className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors ${
                 active ? "text-accent" : "text-muted"
               }`}

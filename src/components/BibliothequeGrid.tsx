@@ -81,7 +81,7 @@ export function BibliothequeGrid({ games }: { games: BibliothequeGame[] }) {
 
 function GameCard({ game }: { game: BibliothequeGame }) {
   return (
-    <div className="card-glow relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200">
+    <div className="gn-game-card card-glow relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all duration-200">
       <Link href={`/jeux/${game.id}`} className="flex flex-1 flex-col">
         <div className="relative aspect-[2/3] w-full bg-surface-hover">
           {game.coverUrl && (
