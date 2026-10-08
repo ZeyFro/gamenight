@@ -103,3 +103,24 @@ Aucune dépendance ni lockfile modifié.
    pas exécutés sur Discord/Neon par cette PR.
 
 Validation automatique locale et CI détaillée dans la description de PR.
+
+## Finitions après la PR #203
+
+La PR #203 a été fusionnée sur `main` (`52b1c8f`). La nouvelle page de
+connexion a été observée dans le navigateur en production le 08/10/2026 :
+mise en page, bouton visible, pas de débordement horizontal et pas d'erreur
+console de l'application dans cette observation desktop.
+
+- La vue Individuel applique désormais le même pote sélectionné à la grille
+  mois/semaine et à la timeline. Sans pote, elle montre ses propres dispos.
+  Un ancien paramètre `potes` collectif ne change pas ce choix. Le roster
+  du serveur reste complet dans les contrôles de sélection.
+- La barre d'actions de la page Soirées accepte le retour à la ligne sur
+  petit écran, notamment pour « Jouer maintenant ».
+- Une soirée sans jeu décidé affiche son vrai statut dans la grille, y
+  compris si elle est terminée ou annulée, au lieu de « vote ouvert ».
+
+Les parcours connectés n'ont pas encore été observés dans ce navigateur :
+Discord y demande une vérification humaine. Ce blocage ne prouve aucun
+défaut de connexion de GameNight. Aucun contournement ni modification de
+l'authentification n'est introduit pour faire la vérification visuelle.

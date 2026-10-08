@@ -53,6 +53,9 @@ async function CalendrierContent({
 
   const visibleUserIds = sp.potes ? sp.potes.split(",").filter(Boolean) : null;
   const selectedUserId = mode === "individuel" ? (sp.pote ?? user.id) : undefined;
+  // Le résumé mensuel et la timeline doivent montrer les mêmes personnes.
+  // Le roster complet reste disponible dans le panneau de sélection.
+  const availabilityUserIds = mode === "individuel" ? [sp.pote ?? user.id] : visibleUserIds ?? undefined;
 
   const { start: rangeStart, end: lastWeekStart } = getMonthGridRange(selectedDate);
   const rangeEndExclusive = addDays(lastWeekStart, 7);
@@ -61,8 +64,11 @@ async function CalendrierContent({
     rangeStart,
     rangeEndExclusive,
     user.id,
-    mode === "collectif" && visibleUserIds ? visibleUserIds : undefined
+    availabilityUserIds
   );
+  const availabilityUsers = availabilityUserIds
+    ? data.users.filter((member) => availabilityUserIds.includes(member.id))
+    : data.users;
 
   const selectedDay: CalendarDay =
     data.days.find((d) => sameUtcDate(d.date, selectedDate)) ??
@@ -101,7 +107,7 @@ async function CalendrierContent({
         </p>
       </div>
 
-      <EventCalendar days={data.days} selectedDate={selectedDate} today={today} mode={mode} pote={sp.pote} potes={sp.potes} view={view} totalUsers={visibleUserIds ? data.users.filter((member) => visibleUserIds.includes(member.id)).length : data.users.length} />
+      <EventCalendar days={data.days} selectedDate={selectedDate} today={today} mode={mode} pote={sp.pote} potes={sp.potes} view={view} totalUsers={availabilityUsers.length} />
       <div className="gn-calendar-detail" id="disponibilites-du-jour">
         <div className="gn-calendar-filters">
           <p className="gn-eyebrow">Disponibilités du jour</p>
@@ -150,7 +156,7 @@ async function CalendrierContent({
           <DayTimeline
             key={toDateInputValue(selectedDate)}
             day={selectedDay}
-            users={mode === "collectif" && visibleUserIds ? data.users.filter((member) => visibleUserIds.includes(member.id)) : data.users}
+            users={mode === "collectif" ? availabilityUsers : data.users}
             mode={mode}
             selectedUserId={selectedUserId}
             date={selectedDate}

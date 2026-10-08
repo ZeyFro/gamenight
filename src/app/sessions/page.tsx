@@ -256,11 +256,11 @@ export default async function SessionsPage({
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           Soirées
         </h1>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2">
           {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
           <ButtonLink href="/roulette" variant="secondary" size="sm">
             🎰 Roulette
