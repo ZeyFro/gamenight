@@ -44,8 +44,12 @@ export async function getWinningProposalParticipants(
 ): Promise<User[]> {
   const winningProposal = await prisma.proposal.findFirst({
     where: { sessionId, gameId: decidedGameId },
-    include: { votes: { include: { user: true } } },
+    include: {
+      votes: { include: { user: true } },
+      session: { select: { attendanceCapacity: true, seats: { where: { status: "CONFIRMED" }, include: { user: true } } } },
+    },
   });
+  if (winningProposal?.session?.attendanceCapacity != null) return winningProposal.session.seats.map(seat => seat.user);
   return winningProposal?.votes.map((v) => v.user) ?? [];
 }
 

@@ -11,6 +11,7 @@ import { checkRevancheAfterSessionResults } from "@/lib/revanche";
 import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
 import { detectDebts } from "@/lib/debts";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getWinningProposalParticipants } from "@/lib/superlative-voting";
 
 /**
  * Marque le défi hebdo de la semaine en cours comme complété par CETTE
@@ -86,16 +87,7 @@ export async function submitSessionResultsAction(formData: FormData) {
     (await scopedDb.sessionResult.count({ where: { sessionId } })) > 0;
   if (alreadySubmitted) return;
 
-  const winningProposal = await prisma.proposal.findFirst({
-    where: { sessionId, gameId: session.decidedGameId },
-    select: { id: true },
-  });
-  if (!winningProposal) return;
-
-  const participantVotes = await prisma.vote.findMany({
-    where: { proposalId: winningProposal.id },
-    select: { userId: true },
-  });
+  const participantVotes = (await getWinningProposalParticipants(sessionId, session.decidedGameId)).map(person => ({ userId: person.id }));
   if (participantVotes.length === 0) return;
 
   const isCoop = session.decidedGame?.isCoop ?? false;

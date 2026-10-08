@@ -19,7 +19,7 @@ import { join, relative, sep } from "node:path";
  */
 
 const COLLECTIVE_MODELS = [
-  "Session", "SessionInvite", "Proposal", "Vote", "SessionResult", "Pronostic", "XpBet", "Debt",
+  "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",
   "Tournament", "TournamentParticipant", "TournamentMatch", "ChatMessage", "ChatReaction",
@@ -58,11 +58,11 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/roulette/page.tsx": ["session"],
   "src/app/sessions/[id]/invites/page.tsx": ["session"],
   "src/app/sessions/[id]/page.tsx": ["pronostic", "session", "sessionResult", "superlativeAward", "superlativeVote", "xpBet"],
-  "src/app/sessions/[id]/resultats/page.tsx": ["proposal", "session"],
+  "src/app/sessions/[id]/resultats/page.tsx": ["session"],
   "src/app/sessions/[id]/vote-superlatifs/page.tsx": ["session", "superlativeAward", "superlativeCategory", "superlativeVote"],
   "src/app/sessions/actions/invites.ts": ["session", "sessionInvite"],
   "src/app/sessions/actions/proposals-votes.ts": ["proposal", "session", "vote"],
-  "src/app/sessions/actions/results.ts": ["proposal", "sessionResult", "vote"],
+  "src/app/sessions/actions/results.ts": ["sessionResult"],
   "src/app/sessions/actions/session-lifecycle.ts": ["proposal", "session"],
   "src/app/sessions/actions/superlatives.ts": ["superlativeCategory", "superlativeVote"],
   "src/app/tournois/[id]/page.tsx": ["tournament"],

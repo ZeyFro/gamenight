@@ -18,7 +18,7 @@ import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { inviteToSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
-import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
+import { openSuperlativeVotingWindow, getWinningProposalParticipants } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { getDefaultCommunityId } from "@/lib/default-community";
@@ -621,7 +621,7 @@ export async function markSessionDone(
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
-      select: { decidedGameId: true, date: true, announceViaBot: true, communityId: true },
+      select: { decidedGameId: true, date: true, announceViaBot: true, communityId: true, attendanceCapacity: true },
     });
     const communityId = updated?.communityId ?? defaultCommunityId;
     // Fin de session : annonce et MP d'invitation ÉDITÉS (statut terminé), sans nouveau message.
@@ -655,6 +655,15 @@ export async function markSessionDone(
     return updated;
   });
   if (!decided) return { unlockedAchievements: [] };
+
+  // Les nouveaux inscrits n'ont pas forcément voté. Le ledger PARTICIPATE
+  // garde la même clé : les anciens votants ne sont jamais crédités deux fois.
+  if (decided.attendanceCapacity != null && decided.decidedGameId) {
+    for (const person of await getWinningProposalParticipants(sessionId, decided.decidedGameId)) {
+      await awardXp(person.id, decided.communityId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
+      await checkSessionsParticipatedBadges(person.id, decided.communityId);
+    }
+  }
 
   // Archivage immédiat du fil (drapeau DISCORD_THREAD_CLOSE_ON_END_ENABLED,
   // éteint par défaut) — voir src/lib/thread-close-on-end.ts.

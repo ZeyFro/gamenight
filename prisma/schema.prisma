@@ -171,6 +171,7 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  sessionSeats SessionSeat[]
   sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
   sessionInvitesRevoked  SessionInvite[] @relation("SessionInviteRevokedBy")
 
@@ -499,6 +500,11 @@ model Session {
   decidedTime    DateTime?
   createdAt      DateTime      @default(now())
 
+  // Gestion des places activée explicitement par le créateur après décision.
+  // null conserve les participants historiques issus des votes.
+  attendanceCapacity Int?
+  seats SessionSeat[]
+
   // Créateur de la session — introduit après coup (les sessions créées
   // avant cette migration ont été backfillées, voir la migration SQL pour
   // la stratégie exacte). Détermine qui peut modifier/supprimer/clôturer
@@ -768,6 +774,26 @@ model XpBet {
   target  User    @relation("XpBetTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, voterId])
+}
+
+enum SessionSeatStatus {
+  CONFIRMED
+  WAITLIST
+  DECLINED
+}
+
+// La communauté et les droits privés sont hérités de Session, comme Vote.
+model SessionSeat {
+  id String @id @default(cuid())
+  sessionId String
+  userId String
+  status SessionSeatStatus @default(WAITLIST)
+  requestedAt DateTime @default(now())
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([sessionId, status, requestedAt])
 }
 
 model Proposal {

@@ -2,8 +2,9 @@ import { sessionMessage } from "@/lib/session-message";
 import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { randomUUID } from "crypto";
-import type { Game, Proposal, Session, SessionInvite, User, Vote } from "@prisma/client";
+import type { Game, Proposal, Session, SessionInvite, SessionSeat, User, Vote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isSeatReminderRecipient } from "@/lib/session-seat-plan";
 import { logger } from "@/lib/logger";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { formatReminderTimingShort } from "@/lib/reminder-timings";
@@ -1011,6 +1012,7 @@ type SessionWithVotes = Session & {
   createdBy: User;
   proposals: (Proposal & { game: Game; votes: (Vote & { user: User })[] })[];
   invites: (SessionInvite & { user: User })[];
+  seats?: (SessionSeat & { user: User })[];
 };
 
 async function loadSession(sessionId: string): Promise<SessionWithVotes | null> {
@@ -1023,6 +1025,7 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
         orderBy: { createdAt: "asc" },
       },
       invites: { include: { user: true } },
+      seats: { where: { status: "CONFIRMED" }, include: { user: true } },
     },
   });
 }
@@ -1161,12 +1164,12 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
         description: formatDateTimeFr(session.date),
         color: 0x8b5cf6,
         fields: [
-          { name: "Joueurs", value: String(winner.votes.length), inline: true },
+          { name: "Joueurs", value: session.attendanceCapacity != null ? `${session.seats?.length ?? 0}/${session.attendanceCapacity}` : String(winner.votes.length), inline: true },
           ...(tie ? [{ name: "Note", value: "Égalité de votes — choisi par ancienneté de proposition.", inline: false }] : []),
           { name: "Lien", value: absoluteSessionUrl(session.id) },
         ],
       },
-      candidateMentions: winner.votes.map((v) => v.user),
+      candidateMentions: session.attendanceCapacity != null ? (session.seats ?? []).map(seat => seat.user) : winner.votes.map((v) => v.user),
     };
   }
 
@@ -1417,6 +1420,7 @@ async function resolveSessionDirectMessage(
 ): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
+  if (parsed.base === "reminder" && !isSeatReminderRecipient(session.attendanceCapacity, session.createdById, parsed.userId, (session.seats ?? []).map(seat => seat.userId))) return { eligible: false, reason: "preference_declined" };
   const operation = delivery.operation === "EDIT" ? "EDIT" : "SEND";
   if (session.deferredRoulette && operation === "SEND") return { eligible: false, reason: "expired" };
   if (operation === "EDIT" && parsed.base !== "announce") return { eligible: false, reason: "unresolvable" };
@@ -1897,6 +1901,8 @@ async function resolveThreadReminder(
   let candidates: (User & { silenceReminders: boolean })[];
   if (session.status === "VOTING") {
     candidates = resolveInvitedCandidates(session.invites, session.createdById);
+  } else if (session.attendanceCapacity != null) {
+    candidates = (session.seats ?? []).map(seat => seat.user);
   } else {
     const voters = new Map<string, User & { silenceReminders: boolean }>();
     for (const proposal of session.proposals) {
