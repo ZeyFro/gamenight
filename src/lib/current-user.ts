@@ -4,10 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { touchStreak } from "@/lib/xp-actions";
 import { checkTemporalBadges } from "@/lib/badges";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
-import { projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
+import { getMemberStats, projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
 import { shouldForceRelogin } from "@/lib/force-relogin";
 
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser(
+  options: { recordActivity?: boolean } = {}
+): Promise<User | null> {
   const session = await auth();
   if (!session?.user?.discordId) return null;
 
@@ -30,6 +32,12 @@ export async function getCurrentUser(): Promise<User | null> {
 
   const communityId = await writeCommunityIdForUser(user.id);
   if (communityId === null) return projectUserProgress(user, ZERO_MEMBER_STATS);
+  // Les lectures de fond (chat, header) ne sont pas une nouvelle visite :
+  // aucun verrou, INSERT de stats ou attribution de badge à chaque polling.
+  // Le gate JWT/reconnexion et l'appartenance restent relus à chaque appel.
+  if (options.recordActivity === false) {
+    return projectUserProgress(user, await getMemberStats(user.id, communityId));
+  }
   const stats = await touchStreak(user.id, communityId);
   if (stats.touched) {
     await checkTemporalBadges({ id: user.id, streakCount: stats.streakCount, createdAt: user.createdAt }, communityId);

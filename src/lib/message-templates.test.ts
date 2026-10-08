@@ -59,6 +59,20 @@ describe("substituteVariables", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("conserve littéralement les noms et jeux contenant des marqueurs de remplacement", () => {
+    expect(substituteVariables("{pote} joue à {jeu}", {
+      pote: "Zoé $& {jeu}", jeu: "Portal {$`} $$",
+    })).toBe("Zoé $& {jeu} joue à Portal {$`} $$");
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("ne développe pas une variable à l'intérieur d'une valeur, quel que soit l'ordre", () => {
+    for (const vars of [{ pote: "{jeu}", jeu: "Portal" }, { jeu: "Portal", pote: "{jeu}" }]) {
+      expect(substituteVariables("Salut {pote}, {jeu}", vars)).toBe("Salut {jeu}, Portal");
+    }
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("remplace une variable connue manquante par un texte générique et logue", () => {
     expect(substituteVariables("Partie de {jeu} à {heure}", { heure: "20h" })).toBe(
       "Partie de le jeu à 20h"
