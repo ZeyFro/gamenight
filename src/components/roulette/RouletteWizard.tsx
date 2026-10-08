@@ -1,5 +1,7 @@
 "use client";
 
+import { CreationForm } from "@/components/CreationForm";
+
 import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
@@ -222,7 +224,7 @@ export function RouletteWizard({
               </div>
             </div>
 
-            <form action={createSessionFromRouletteAction} className="flex w-full flex-col gap-3">
+            <CreationForm action={createSessionFromRouletteAction} className="flex w-full flex-col gap-3">
               <input type="hidden" name="gameId" value={winnerGame.id} />
               {participants.map((p) => (
                 <input key={p.id} type="hidden" name="participantId" value={p.id} />
@@ -260,7 +262,7 @@ export function RouletteWizard({
               <Button type="submit" variant="primary" fullWidthOnMobile>
                 Créer la soirée
               </Button>
-            </form>
+            </CreationForm>
 
             <Button type="button" variant="secondary" fullWidthOnMobile onClick={spin}>
               🔄 Relancer

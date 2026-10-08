@@ -1,3 +1,5 @@
+
+import { CreationForm } from "@/components/CreationForm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { User } from "@prisma/client";
@@ -212,7 +214,7 @@ async function CreerTab({
 
   return (
     <Card>
-      <form action={createRouletteAction} className="flex flex-col gap-4">
+      <CreationForm action={createRouletteAction} className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted" htmlFor="roulette-scheduled-date">
@@ -267,7 +269,7 @@ async function CreerTab({
         <Button type="submit" variant="primary" fullWidthOnMobile>
           Créer la roulette 🎰
         </Button>
-      </form>
+      </CreationForm>
     </Card>
   );
 }

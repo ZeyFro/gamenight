@@ -8,6 +8,7 @@ import {
   hasSufficientLeaseRemaining,
   MIN_CALL_MARGIN_MS,
   recoverExpiredReservations,
+  hasDeliveryWork,
   type ClaimedDelivery,
   type FinalizeFailureInput,
   type FinalizeSuccessInput,
@@ -340,7 +341,7 @@ export function classifyDiscordFailure(
     attemptsExhausted && result.retryable ? `discord:${result.kind}:max_attempts_exceeded` : `discord:${result.kind}`;
 
   if (!retryable) {
-    return { retryable: false, errorClass, lastError: result.message };
+    return { retryable: false, errorClass, lastError: `${result.message}${result.discordCode !== undefined ? ` (Discord ${result.discordCode})` : ""}` };
   }
 
   const backoffMs =
@@ -897,7 +898,8 @@ export async function runExecutorBatch(opts: RunExecutorBatchOptions): Promise<E
   const batchDeadlineMs = startedAt.getTime() + budgetMs;
   const batchDeadline = new Date(batchDeadlineMs);
 
-  const recovered = await recoverExpiredReservations(startedAt);
+  const work = await hasDeliveryWork(startedAt);
+  const recovered = work ? await recoverExpiredReservations(startedAt) : 0;
 
   const summary: ExecutorBatchSummary = {
     recovered,
@@ -908,6 +910,8 @@ export async function runExecutorBatch(opts: RunExecutorBatchOptions): Promise<E
     lostReservation: 0,
     stoppedReason: "no_more_deliveries",
   };
+
+  if (!work) return summary;
 
   for (;;) {
     if (summary.processed >= maxDeliveries) {

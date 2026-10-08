@@ -1,3 +1,4 @@
+import { communityRead } from "@/lib/community-read-context";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
@@ -49,12 +50,14 @@ export interface PickableCommunity {
 
 /** Serveurs (communautés ACTIVE) où `userId` a un Membership ACTIVE, du plus ancien au plus récent. */
 export async function listPickableCommunities(userId: string): Promise<PickableCommunity[]> {
-  const memberships = await prisma.membership.findMany({
-    where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
-    select: { community: { select: { id: true, name: true, slug: true, discordGuildId: true, iconHash: true } } },
-    orderBy: { joinedAt: "asc" },
+  return communityRead(`listPickableCommunities:${userId}`, async () => {
+    const memberships = await prisma.membership.findMany({
+      where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
+      select: { community: { select: { id: true, name: true, slug: true, discordGuildId: true, iconHash: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    return memberships.map((m) => m.community);
   });
-  return memberships.map((m) => m.community);
 }
 
 export type ActiveCommunityState =
@@ -71,14 +74,16 @@ export type ActiveCommunityState =
 
 /** État du choix de serveur, choix enregistré revalidé contre les Membership ACTIVE. */
 export async function getActiveCommunityState(userId: string): Promise<ActiveCommunityState> {
-  if (!isCommunityPickerEnabled()) return { kind: "disabled" };
-  const communities = await listPickableCommunities(userId);
-  if (communities.length === 0) return { kind: "none" };
-  if (communities.length === 1) return { kind: "single", communityId: communities[0].id };
-  const row = await prisma.user.findUnique({ where: { id: userId }, select: { activeCommunityId: true } });
-  const stored = row?.activeCommunityId;
-  if (stored && communities.some((c) => c.id === stored)) return { kind: "chosen", communityId: stored };
-  return { kind: "needs-choice", communityIds: communities.map((c) => c.id) };
+  return communityRead(`getActiveCommunityState:${userId}`, async () => {
+    if (!isCommunityPickerEnabled()) return { kind: "disabled" };
+    const communities = await listPickableCommunities(userId);
+    if (communities.length === 0) return { kind: "none" };
+    if (communities.length === 1) return { kind: "single", communityId: communities[0].id };
+    const row = await prisma.user.findUnique({ where: { id: userId }, select: { activeCommunityId: true } });
+    const stored = row?.activeCommunityId;
+    if (stored && communities.some((c) => c.id === stored)) return { kind: "chosen", communityId: stored };
+    return { kind: "needs-choice", communityIds: communities.map((c) => c.id) };
+  });
 }
 
 /**

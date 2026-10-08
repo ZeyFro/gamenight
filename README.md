@@ -149,11 +149,14 @@ npx prisma migrate deploy
 - Le client Prisma se régénère automatiquement après chaque `npm install`
   grâce au script `postinstall` (`prisma generate`) — utile en local comme
   sur Vercel.
-- La commande `npm run build` lance `prisma migrate deploy` avant `next
-  build` : toute migration ajoutée au repo est donc appliquée
-  automatiquement à chaque déploiement Vercel (voir §5).
+- La commande `npm run build` conserve `prisma migrate deploy` avant `next
+  build` en production. Avec `VERCEL_ENV=preview`, elle exécute uniquement
+  `prisma generate` puis `next build` : migrer séparément une base Preview
+  isolée, jamais la production depuis une Preview. Voir
+  [le bilan de stabilisation V2](docs/STABILISATION_V2.md).
 - **PR "build ne fait plus que compiler"** : `npm run build` ne fait
-  désormais QUE `prisma migrate deploy && next build` — aucune écriture de
+  désormais QUE migrations de production puis compilation (Preview : génération
+  Prisma et compilation) — aucune écriture de
   données métier (seeds/backfills) au build. Ces 11 tâches (seed des
   messages Discord, badges, tags, trophées de groupe, superlatifs,
   stats jeux, saison 1 ; backfills XP, couleurs, badges, templates

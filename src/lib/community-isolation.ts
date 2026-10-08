@@ -1,3 +1,4 @@
+import { communityRead } from "@/lib/community-read-context";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
@@ -35,15 +36,17 @@ export interface IsolationScope {
 
 /** `null` si l'isolation est éteinte (aucun filtre à appliquer). */
 export async function getIsolationScope(userId: string): Promise<IsolationScope | null> {
-  if (!isCommunityIsolationEnabled()) return null;
-  const memberships = await prisma.membership.findMany({
-    where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
-    select: { communityId: true, community: { select: { slug: true } } },
+  return communityRead(`getIsolationScope:${userId}`, async () => {
+    if (!isCommunityIsolationEnabled()) return null;
+    const memberships = await prisma.membership.findMany({
+      where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
+      select: { communityId: true, community: { select: { slug: true } } },
+    });
+    return {
+      communityIds: memberships.map((m) => m.communityId),
+      includesDefault: memberships.some((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG),
+    };
   });
-  return {
-    communityIds: memberships.map((m) => m.communityId),
-    includesDefault: memberships.some((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG),
-  };
 }
 
 /** Filtre des lignes `Session` / `Tournament` (colonne `communityId` nullable). */
@@ -119,19 +122,21 @@ export async function creationMemberUserWhere(userId: string): Promise<Prisma.Us
  * s'il en est membre, sinon sa plus ancienne. `null` si aucune.
  */
 export async function resolveActiveCommunityId(userId: string): Promise<string | null> {
-  if (isCommunityPickerEnabled()) {
-    const state = await getActiveCommunityState(userId);
-    if (state.kind === "none") return null;
-    if (state.kind === "needs-choice") return null;
-    if (state.kind === "single" || state.kind === "chosen") return state.communityId;
-  }
-  const memberships = await prisma.membership.findMany({
-    where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
-    select: { communityId: true, community: { select: { slug: true } } },
-    orderBy: { joinedAt: "asc" },
+  return communityRead(`resolveActiveCommunityId:${userId}`, async () => {
+    if (isCommunityPickerEnabled()) {
+      const state = await getActiveCommunityState(userId);
+      if (state.kind === "none") return null;
+      if (state.kind === "needs-choice") return null;
+      if (state.kind === "single" || state.kind === "chosen") return state.communityId;
+    }
+    const memberships = await prisma.membership.findMany({
+      where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
+      select: { communityId: true, community: { select: { slug: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    if (memberships.length === 0) return null;
+    return (memberships.find((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG) ?? memberships[0]).communityId;
   });
-  if (memberships.length === 0) return null;
-  return (memberships.find((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG) ?? memberships[0]).communityId;
 }
 
 /**
@@ -143,11 +148,13 @@ export async function resolveActiveCommunityId(userId: string): Promise<string |
  * active est `default`.
  */
 export async function resolveActiveCommunityScope(userId: string): Promise<IsolationScope | null> {
-  if (!isCommunityIsolationEnabled()) return null;
-  const communityId = await resolveActiveCommunityId(userId);
-  if (communityId === null) return { communityIds: [], includesDefault: false };
-  const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true } });
-  return { communityIds: [communityId], includesDefault: community?.slug === DEFAULT_COMMUNITY_SLUG };
+  return communityRead(`resolveActiveCommunityScope:${userId}`, async () => {
+    if (!isCommunityIsolationEnabled()) return null;
+    const communityId = await resolveActiveCommunityId(userId);
+    if (communityId === null) return { communityIds: [], includesDefault: false };
+    const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true } });
+    return { communityIds: [communityId], includesDefault: community?.slug === DEFAULT_COMMUNITY_SLUG };
+  });
 }
 
 /** Périmètre système des crons : communautés actives seulement, sans autorité issue d'un JWT. */

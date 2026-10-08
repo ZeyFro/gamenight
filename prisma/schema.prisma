@@ -6,6 +6,18 @@
 // F5 (proposition + vote de soirée) : Session, Proposal, Vote.
 // Les autres modèles seront ajoutés au fil des features F6 à F8.
 
+// Reçu d'une tentative utilisateur ; conservé même après purge de l'événement.
+model CreationIntent {
+  id         String   @id @default(cuid())
+  actorId    String
+  kind       String
+  key        String
+  resourceId String
+  createdAt  DateTime @default(now())
+
+  @@unique([actorId, kind, key])
+}
+
 generator client {
   provider = "prisma-client-js"
 }

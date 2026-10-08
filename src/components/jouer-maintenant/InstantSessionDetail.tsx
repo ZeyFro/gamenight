@@ -7,7 +7,7 @@ import { EndInstantSessionDialog } from "@/components/jouer-maintenant/EndInstan
 import { ChangeInstantSessionGameControl } from "@/components/jouer-maintenant/ChangeInstantSessionGameControl";
 import type { LocalGameOption } from "@/lib/game-search";
 import type { InstantSessionViewDTO } from "@/lib/instant-sessions";
-import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-sessions";
+import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
 import {
   getInstantSessionViewAction,
   joinInstantSessionAction,
@@ -74,14 +74,20 @@ export function InstantSessionDetail({
     INITIAL_INSTANT_SESSION_ACTION_STATE
   );
 
+  const refreshRef = useRef(false);
   async function refresh() {
-    const fresh = await getInstantSessionViewAction(instantSessionId);
-    if (fresh) {
-      setView(fresh);
-      setPollError(false);
-    } else {
-      setPollError(true);
-    }
+    if (refreshRef.current || document.hidden) return;
+    refreshRef.current = true;
+    try {
+      const fresh = await getInstantSessionViewAction(instantSessionId);
+      if (fresh) {
+        setView(fresh);
+        setPollError(false);
+      } else {
+        setPollError(true);
+      }
+    } catch { setPollError(true); }
+    finally { refreshRef.current = false; }
   }
 
   // Rafraîchit immédiatement après une action réussie (rejoindre/quitter)
@@ -100,7 +106,7 @@ export function InstantSessionDetail({
       } else {
         setPollError(true);
       }
-    });
+    }).catch(() => { if (!cancelled) setPollError(true); });
     return () => {
       cancelled = true;
     };
@@ -113,7 +119,7 @@ export function InstantSessionDetail({
     let interval: ReturnType<typeof setInterval> | null = null;
 
     function startPolling() {
-      if (interval) return;
+      if (interval || view.status !== "ACTIVE") return;
       interval = setInterval(refresh, POLL_INTERVAL_MS);
     }
     function stopPolling() {
@@ -125,7 +131,7 @@ export function InstantSessionDetail({
     function syncWithVisibility() {
       if (document.hidden) {
         stopPolling();
-      } else {
+      } else if (view.status === "ACTIVE") {
         refresh();
         startPolling();
       }
@@ -138,7 +144,7 @@ export function InstantSessionDetail({
       document.removeEventListener("visibilitychange", syncWithVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instantSessionId]);
+  }, [instantSessionId, view.status]);
 
   // Tick visuel du countdown — 1x/s, purement affichage, ne modifie jamais
   // `view` (source de vérité serveur seule).

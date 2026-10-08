@@ -64,12 +64,13 @@ export interface EnqueueDirectMessagesInput<T extends { id: string }> {
  *     en secours dans le fil, pour les tournois).
  */
 export async function enqueueDirectMessages<T extends { id: string }>(
-  input: EnqueueDirectMessagesInput<T>
+  input: EnqueueDirectMessagesInput<T>,
+  db: NotificationDb = prisma,
 ): Promise<{ covered: T[]; blocked: T[] }> {
   const { category, sourceId, eventType, kind, users } = input;
   if (users.length === 0) return { covered: [], blocked: [] };
 
-  const failed = await prisma.notificationDelivery.findMany({
+  const failed = await db.notificationDelivery.findMany({
     where: {
       targetSlot: { startsWith: `${GUILD_SLOT_PREFIX}:${category}:${sourceId}:dm:` },
       recipientKey: { in: users.map((u) => `user:${u.id}`) },
@@ -82,7 +83,7 @@ export async function enqueueDirectMessages<T extends { id: string }>(
   const covered = users.filter((u) => !blockedKeys.has(`user:${u.id}`));
   if (covered.length === 0) return { covered, blocked };
 
-  const event = await createNotificationEvent({ category, eventType, sourceId, occurrence: kind });
+  const event = await createNotificationEvent({ category, eventType, sourceId, occurrence: kind }, db);
   for (const user of covered) {
     await enqueueDelivery({
       eventId: event.id,
@@ -91,7 +92,7 @@ export async function enqueueDirectMessages<T extends { id: string }>(
       operation: "SEND",
       recipientKey: `user:${user.id}`,
       targetSlot: dmSlot(category, sourceId, kind, user.id),
-    });
+    }, db);
   }
   return { covered, blocked };
 }

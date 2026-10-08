@@ -1,9 +1,14 @@
 "use server";
 
+import { resumeCreation } from "@/lib/creation-resume";
+
+import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getScopedPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { creationMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { getScopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
+import { getIsolationScope, creationMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -50,6 +55,8 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 export async function createSessionFromRouletteAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const resumed = await resumeCreation(user.id, "ROULETTE_SESSION", formData);
+  if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createSessionFromRoulette")) {
     redirect("/roulette?error=rate_limited");
   }
@@ -78,7 +85,8 @@ export async function createSessionFromRouletteAction(formData: FormData) {
 
   const date = parseDateAndTime(dateStr, timeStr);
 
-  const { session, announceViaBot, proposalId } = await createRouletteResultSession({
+  const { session, announceViaBot, proposalId, replayed } = await createRouletteResultSession({
+    creationKey: creationKey(formData.get("creationKey"), true),
     date,
     decidedGameId: gameId,
     decidedTime: date,
@@ -97,7 +105,7 @@ export async function createSessionFromRouletteAction(formData: FormData) {
   // (l'enqueue bot a déjà réussi, atomiquement avec la création de la
   // session, si `announceViaBot` est vrai).
   let announceResult: PostToDiscordResult = { ok: true };
-  if (!announceViaBot) {
+  if (!announceViaBot && !replayed) {
     const winner = await prisma.proposal.findUniqueOrThrow({
       where: { id: proposalId },
       include: { game: true, votes: { include: { user: true } } },
@@ -128,6 +136,8 @@ export async function createSessionFromRouletteAction(formData: FormData) {
 export async function createRouletteAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const resumed = await resumeCreation(user.id, "ROULETTE", formData);
+  if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createRoulette")) {
     redirect("/roulette?tab=creer&error=rate_limited");
   }
@@ -155,10 +165,12 @@ export async function createRouletteAction(formData: FormData) {
   });
   const finalParticipantIds = [...new Set([user.id, ...validUsers.map((u) => u.id)])];
 
-  const scopedDb = await getScopedPrisma(user.id);
   const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(user.id) : null;
   if (isCommunityIsolationEnabled() && communityId === null) redirect("/roulette?tab=creer&error=donnees_invalides");
-  const roulette = await scopedDb.roulette.create({
+  const { result: roulette, replayed } = await createOnce(user.id, "ROULETTE", creationKey(formData.get("creationKey"), true), async (tx) => {
+  await lockCreationMembers(tx, communityId, finalParticipantIds);
+  const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id));
+  const created = await scopedDb.roulette.create({
     data: {
       createdById: user.id,
       ...withCommunity(communityId),
@@ -168,7 +180,14 @@ export async function createRouletteAction(formData: FormData) {
     },
   });
 
-  await announceRouletteCreated(roulette, user);
+  await enqueueRouletteDirectMessages(created.id, "created", finalParticipantIds, tx);
+  return created;
+  }, (created) => created.id, async (tx, id) => {
+    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id));
+    return scopedDb.roulette.findUniqueOrThrow({ where: { id } });
+  });
+
+  if (!replayed) await announceRouletteCreated(roulette, user);
 
   revalidatePath("/roulette");
   redirect(`/roulette/${roulette.id}`);

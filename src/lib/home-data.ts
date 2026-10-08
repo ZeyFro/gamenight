@@ -1,3 +1,4 @@
+import { withCommunityReadContext } from "@/lib/community-read-context";
 import type { User } from "@prisma/client";
 import { nowMs, wallClockNow } from "@/lib/wallclock";
 import { getNextSessionForHome, getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
@@ -23,7 +24,11 @@ import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats
  * (`closeSessionIfDue`) et l'affichage de l'onboarding. Cette page ne les
  * déclenche donc pas ; `/` continue de s'en charger.
  */
-export async function loadHomeData(rawUser: User) {
+export function loadHomeData(rawUser: User) {
+  return withCommunityReadContext(() => loadHomeDataUncached(rawUser));
+}
+
+async function loadHomeDataUncached(rawUser: User) {
   const user = projectUserProgress(rawUser, await getMemberStatsForViewer(rawUser.id, rawUser.id));
   // Garde-fou idempotent identique à `/` (voir `ensureActiveSeasonExistsForViewer`).
   await ensureActiveSeasonExistsForViewer(user.id);

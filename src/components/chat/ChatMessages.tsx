@@ -49,12 +49,21 @@ export function ChatMessages({
   const listRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const refreshingRef = useRef(false);
   async function refresh() {
+    if (refreshingRef.current || document.hidden) return;
+    refreshingRef.current = true;
     setRefreshing(true);
-    const fresh = await getChatMessagesAction(sessionId);
-    setNow(Date.now());
-    if (fresh) setMessages(fresh);
-    setRefreshing(false);
+    try {
+      const fresh = await getChatMessagesAction(sessionId);
+      setNow(Date.now());
+      if (fresh) setMessages(fresh);
+    } catch {
+      toast.error("Le chat n’a pas pu être actualisé. Le prochain passage réessaiera.");
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
   }
 
   // Fix urgent (perf) — le polling tournait même onglet en arrière-plan,

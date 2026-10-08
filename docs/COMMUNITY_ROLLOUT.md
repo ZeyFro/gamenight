@@ -1,5 +1,9 @@
 # Bascule multi-serveurs et ouverture à The Tower
 
+Complément du 8 octobre : [stabilisation V2, mesures et diagnostics opérateur](STABILISATION_V2.md).
+Les builds Preview ne lancent plus de migration ; la procédure de production
+est conservée. Aucun flag ni réglage distant n’a été changé par ce chantier.
+
 Ce document est une procédure opérateur, **pas un compte rendu d'activation**.
 Constat fourni par le mainteneur le 7 octobre 2026 : The Tower est déjà ACTIVE
 via setup et les XP sont distincts, mais les noms, la navigation et les salons

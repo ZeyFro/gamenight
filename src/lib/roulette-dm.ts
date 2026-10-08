@@ -1,4 +1,5 @@
 import { isMemberOfCommunity } from "@/lib/community-isolation";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
@@ -36,14 +37,14 @@ export type RouletteDmKind = "created" | "reminder";
  * Fin de roulette : ÉDITE les MP d'invitation déjà envoyés (aucun nouveau MP,
  * aucune mention). Ne fait rien si l'interrupteur est éteint.
  */
-export async function enqueueRouletteDirectMessageEdits(rouletteId: string): Promise<void> {
+export async function enqueueRouletteDirectMessageEdits(rouletteId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<void> {
   if (!isRouletteDirectMessageEnabled()) return;
   await enqueueDirectMessageEdits({
     category: "ROULETTE",
     sourceId: rouletteId,
     eventType: "ROULETTE_DM_EDIT",
     kind: "created",
-  });
+  }, db);
 }
 
 /**
@@ -56,10 +57,11 @@ export async function enqueueRouletteDirectMessageEdits(rouletteId: string): Pro
 export async function enqueueRouletteDirectMessages(
   rouletteId: string,
   kind: RouletteDmKind,
-  userIds: string[]
+  userIds: string[],
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<void> {
   if (!isRouletteDirectMessageEnabled() || userIds.length === 0) return;
-  const users = await prisma.user.findMany({
+  const users = await db.user.findMany({
     where: { id: { in: [...new Set(userIds)] } },
     select: { id: true, discordId: true, silenceReminders: true },
   });
@@ -70,7 +72,7 @@ export async function enqueueRouletteDirectMessages(
     eventType: "ROULETTE_DM",
     kind,
     users: allowed,
-  });
+  }, db);
 }
 
 function rouletteUrl(rouletteId: string): string | null {

@@ -1657,8 +1657,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         const [, init] = fetchMock.mock.calls[2];
         const body = JSON.parse(String(init.body));
-        expect(body.content).not.toContain(`<@${roulettePrefOff.discordId}>`);
-        expect(body.content).toContain(`<@${sessionPrefOff.discordId}>`);
+        // Roulette différée : résultat par édition du MP initial, jamais
+        // une nouvelle mention ni un nouveau MP de la soirée dérivée.
+        expect(body.content ?? "").not.toContain("<@");
+        expect(body.allowed_mentions.users ?? []).toEqual([]);
+        expect(await db.notificationEvent.count({ where: { sourceId: stored.id, eventType: "SESSION_DM" } })).toBe(0);
 
         const notifiedUserIds = (
           await db.notification.findMany({ where: { relatedSessionId: stored.id } })

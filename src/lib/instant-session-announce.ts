@@ -1,3 +1,4 @@
+import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import type { Prisma } from "@prisma/client";
 import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
@@ -5,9 +6,8 @@ import { logger } from "@/lib/logger";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
-import { createNotifications } from "@/lib/notifications";
 import { isInstantSessionInviteViaBotEnabled } from "@/lib/discord-bot-config";
-import { createNotificationEvent, enqueueDelivery, type NotificationDb } from "@/lib/notification-delivery";
+import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
 import type { DeliveryResolver, Resolution, ResolvedAction, ResolveInput } from "@/lib/notification-executor";
 import { ACCENT_COLOR } from "@/lib/discord";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
@@ -88,7 +88,7 @@ const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
 export async function enqueueInstantSessionInvites(
   instantSessionId: string,
   userIds: string[],
-  db: NotificationDb = prisma
+  db: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<void> {
   if (userIds.length === 0) return;
 
@@ -115,34 +115,17 @@ export async function enqueueInstantSessionInvites(
     );
   }
 
-  // Notification interne — synchrone, jamais passée par la file (voir le
-  // commentaire de fichier), filtrée par préférence AVANT écriture
-  // (jamais après, jamais un `read: true` pour masquer une préférence
-  // refusée : la ligne n'existe simplement pas pour ce destinataire).
-  try {
-    const recipients = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, silenceReminders: true },
-    });
-    const allowed = await filterUsersByNotificationPreference(recipients, "INSTANT_SESSION");
-    const session = await prisma.instantSession.findUnique({
-      where: { id: instantSessionId },
-      select: { game: { select: { name: true } } },
-    });
-    await createNotifications(
-      allowed.map((u) => ({
-        userId: u.id,
-        type: "INSTANT_SESSION_INVITE" as const,
-        title: "🎮 Jouer maintenant",
-        message: `Une session instantanée démarre${session ? ` sur ${session.game.name}` : ""} — rejoins-la si tu es dispo.`,
-      }))
-    );
-  } catch (error) {
-    // Best-effort — jamais bloquant pour la création de la session
-    // elle-même (même garantie que les autres notifications internes de
-    // cette app, voir xp-actions.ts).
-    logger.error("instant-session-announce", error, { instantSessionId, effect: "in-app-notification" });
-  }
+  // Lecture du parent non committé et notification dans la transaction de
+  // création : lien et provenance viennent de cette session, pas de default.
+  const recipients = await db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, silenceReminders: true } });
+  const allowed = await filterUsersByNotificationPreference(recipients, "INSTANT_SESSION", db);
+  const session = await db.instantSession.findUniqueOrThrow({ where: { id: instantSessionId }, select: { communityId: true, game: { select: { name: true } } } });
+  const scopedDb = scopedTransactionPrisma(db as Prisma.TransactionClient, null);
+  await scopedDb.notification.createMany({ data: allowed.map((user) => ({
+    userId: user.id, communityId: session.communityId, relatedSessionId: instantSessionId,
+    type: "INSTANT_SESSION_INVITE" as const, title: "🎮 Jouer maintenant",
+    message: `Une session instantanée démarre sur ${session.game.name} — rejoins-la si tu es dispo.`,
+  })) });
 }
 
 /**

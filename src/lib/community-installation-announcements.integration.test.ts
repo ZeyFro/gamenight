@@ -118,6 +118,7 @@ describe.skipIf(!TEST_DATABASE_URL)("installation → choix → création → an
     for (const [index, communityId] of ids.entries()) {
       expect(await changeCommunityAction(communityId)).toBe(true);
       const form = new FormData();
+      form.set("creationKey", crypto.randomUUID());
       form.set("date", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
       form.set("time", "20:00");
       form.append("notifyUserId", a.id); form.append("notifyUserId", b.id);
@@ -131,6 +132,7 @@ describe.skipIf(!TEST_DATABASE_URL)("installation → choix → création → an
       expect(await canAccessSession(outsider.id, session.id)).toBe(false);
       await deliver(session.id, "SESSION");
       const tournamentForm = new FormData();
+      tournamentForm.set("creationKey", crypto.randomUUID());
       tournamentForm.set("name", "Tournoi"); tournamentForm.set("gameId", game.id); tournamentForm.set("maxPlayers", "4");
       tournamentForm.append("notifyUserId", invited.id);
       await expect(createTournamentAction(tournamentForm)).rejects.toThrow(/^REDIRECT:\/tournois\//);
@@ -158,11 +160,13 @@ describe.skipIf(!TEST_DATABASE_URL)("installation → choix → création → an
     await db.communityChannelConfig.deleteMany({ where: { communityId: ids[1] } });
     const { createTournamentAction } = await import("@/app/tournois/actions");
     const form = new FormData();
+    form.set("creationKey", crypto.randomUUID());
     form.set("name", "Refusé"); form.set("gameId", game.id); form.set("maxPlayers", "4");
     await expect(createTournamentAction(form)).rejects.toThrow("ne sont pas configurées");
     vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");
     const { createSession } = await import("@/app/sessions/actions/session-lifecycle");
     const sessionForm = new FormData();
+    sessionForm.set("creationKey", crypto.randomUUID());
     sessionForm.set("date", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)); sessionForm.set("time", "20:00");
     await expect(createSession(sessionForm)).rejects.toThrow("ne sont pas configurées");
     expect(await db.session.count()).toBe(0); expect(await db.tournament.count()).toBe(0);

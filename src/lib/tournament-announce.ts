@@ -1,3 +1,5 @@
+import { communityMemberUserWhere, isMemberOfCommunity } from "@/lib/community-isolation";
+import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { randomUUID } from "crypto";
 import type { Tournament, TournamentMatch, TournamentParticipant, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -708,11 +710,12 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches | 
  * la sélection explicite du créateur compte.
  */
 async function resolveEligibleTournamentMentions(
-  candidateMentionIds: string[]
+  candidateMentionIds: string[],
+  communityId: string | null,
 ): Promise<{ id: string; discordId: string; silenceReminders: boolean }[]> {
   if (candidateMentionIds.length === 0) return [];
   const candidates = await prisma.user.findMany({
-    where: { id: { in: candidateMentionIds } },
+    where: { id: { in: candidateMentionIds }, ...(await communityMemberUserWhere(communityId)) },
     select: { id: true, discordId: true, silenceReminders: true },
   });
   return filterUsersByNotificationPreference(candidates, "TOURNAMENT");
@@ -724,8 +727,10 @@ async function resolveEligibleTournamentMentions(
  * `TOURNAMENT` s'applique (relue à chaque appel), comme pour tout le monde.
  */
 async function resolveTournamentCreatorDmRecipient(
-  creatorId: string
+  creatorId: string,
+  communityId: string | null,
 ): Promise<{ id: string; discordId: string; silenceReminders: boolean } | null> {
+  if (!(await isMemberOfCommunity(creatorId, communityId))) return null;
   const creator = await prisma.user.findUnique({
     where: { id: creatorId },
     select: { id: true, discordId: true, silenceReminders: true },
@@ -739,13 +744,14 @@ async function resolveTournamentCreatorDmRecipient(
  * soumis qu'à sa préférence ; tout autre pote doit toujours figurer dans la
  * sélection du créateur ET avoir la préférence `TOURNAMENT` active. */
 async function isTournamentDmRecipientEligible(
-  tournament: Pick<Tournament, "createdById" | "notifiedUserIds">,
+  tournament: Pick<Tournament, "createdById" | "notifiedUserIds" | "communityId">,
   userId: string
 ): Promise<boolean> {
-  if (userId === tournament.createdById) return (await resolveTournamentCreatorDmRecipient(userId)) !== null;
+  if (!(await isMemberOfCommunity(userId, tournament.communityId))) return false;
+  if (userId === tournament.createdById) return (await resolveTournamentCreatorDmRecipient(userId, tournament.communityId)) !== null;
   const selected = resolveNotifiedUserIds(tournament.notifiedUserIds) ?? [];
   if (!selected.includes(userId)) return false;
-  return (await resolveEligibleTournamentMentions([userId])).length > 0;
+  return (await resolveEligibleTournamentMentions([userId], tournament.communityId)).length > 0;
 }
 
 /**
@@ -915,6 +921,7 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     }
 
     const tournament = await loadTournament(tournamentId);
+    if (tournament && !(await notificationEventMatchesSource(event.communityId, tournament.communityId))) return { eligible: false, reason: "expired" };
 
     if (role === "announce") {
       if (!tournament) {
@@ -952,7 +959,7 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     }
     if (role.startsWith("member:")) {
       const userId = role.slice("member:".length);
-      return resolveThreadMembership(tournamentId, userId);
+      return resolveThreadMembership(tournamentId, userId, tournament.communityId);
     }
 
     logger.error("tournament-announce", `targetSlot de rôle inconnu : ${delivery.targetSlot}`, {
@@ -991,7 +998,7 @@ async function resolveThreadInvite(tournamentId: string, tournament: TournamentW
 
   const rendering = resolveTournamentAnnounceRendering(tournament);
   const eligible = rendering.candidateMentionIds
-    ? (await resolveEligibleTournamentMentions(rendering.candidateMentionIds)).filter(
+    ? (await resolveEligibleTournamentMentions(rendering.candidateMentionIds, tournament.communityId)).filter(
         (u) => u.id !== tournament.createdById
       )
     : [];
@@ -1021,7 +1028,8 @@ async function resolveThreadInvite(tournamentId: string, tournament: TournamentW
  * supprimé : `member:<userId>` retombe alors sur `expired` via le
  * dispatcher, avant même d'atteindre cette fonction).
  */
-async function resolveThreadMembership(tournamentId: string, userId: string): Promise<Resolution> {
+async function resolveThreadMembership(tournamentId: string, userId: string, communityId: string | null): Promise<Resolution> {
+  if (!(await isMemberOfCommunity(userId, communityId))) return { eligible: false, reason: "expired" };
   const thread = await findSentDelivery(threadSlot(tournamentId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
@@ -1083,12 +1091,12 @@ async function resolveAnnounceDelivery(
     // Préférence TOURNAMENT relue MAINTENANT (traitement réel), jamais un
     // instantané figé à l'enqueue. Secours (créateur seulement) si son MP est fermé.
     const eligible = rendering.candidateMentionIds
-      ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds)
+      ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds, tournament.communityId)
       : [];
     if (isTournamentDirectMessageEnabled()) {
       const creator = eligible.some((u) => u.id === tournament.createdById)
         ? null
-        : await resolveTournamentCreatorDmRecipient(tournament.createdById);
+        : await resolveTournamentCreatorDmRecipient(tournament.createdById, tournament.communityId);
       await enqueueDirectMessages({
         category: "TOURNAMENT",
         sourceId: tournament.id,

@@ -47,8 +47,10 @@ describe.skipIf(!TEST_DATABASE_URL)("jouer maintenant — bout en bout (Postgres
 
   beforeEach(async () => {
     await db.$executeRawUnsafe(
-      `TRUNCATE "NotificationDelivery", "NotificationEvent", "Notification", "InstantSessionPresenceInterval", "InstantSession", "Game", "User", "GroupSessionStats", "GroupGameStat", "GroupAchievement", "GroupActiveWeek" CASCADE`
+      `TRUNCATE "Community", "NotificationDelivery", "NotificationEvent", "Notification", "InstantSessionPresenceInterval", "InstantSession", "Game", "User", "GroupSessionStats", "GroupGameStat", "GroupAchievement", "GroupActiveWeek" CASCADE`
     );
+    // Le statut default d'une suite précédente ne fait pas partie du scénario.
+    (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
