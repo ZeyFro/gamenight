@@ -35,6 +35,7 @@ vi.mock("@/lib/discord", () => ({ isRealDiscordFailure: vi.fn(() => false) }));
 vi.mock("@/lib/session-announce", () => ({
   enqueueSessionCreationDeliveries: vi.fn(),
   enqueueSessionInviteSyncForNewInvite: vi.fn(),
+  enqueueSessionInviteSyncForNewInvites: vi.fn(),
   enqueueSessionThreadDelete,
 }));
 vi.mock("@/lib/xp-actions", () => ({ awardXp: vi.fn() }));

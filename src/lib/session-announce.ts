@@ -719,6 +719,43 @@ export async function enqueueSessionInviteSyncForNewInvite(
   await enqueueInviteSyncDelivery(sessionId, inviteId, db);
 }
 
+/**
+ * Même effet que `enqueueSessionInviteSyncForNewInvite` appelé pour chaque
+ * invitation, en deux écritures groupées quel que soit le nombre d'invités
+ * (au lieu de 3 requêtes par invité : lecture de la communauté, événement,
+ * livraison). Réservé aux invitations qui viennent d'être créées : chaque
+ * événement porte une occurrence neuve, donc aucun doublon ni relecture à gérer.
+ */
+export async function enqueueSessionInviteSyncForNewInvites(
+  session: { id: string; communityId: string | null },
+  inviteIds: string[],
+  db: NotificationDb
+): Promise<void> {
+  if (inviteIds.length === 0) return;
+  const occurrences = inviteIds.map(() => randomUUID());
+  const events = await db.notificationEvent.createManyAndReturn({
+    data: occurrences.map((occurrence) => ({
+      category: "SESSION" as const,
+      eventType: "SESSION_INVITE_SYNC" as const,
+      sourceId: session.id,
+      occurrence,
+      communityId: session.communityId,
+    })),
+    select: { id: true, occurrence: true },
+  });
+  const eventIdByOccurrence = new Map(events.map((event) => [event.occurrence, event.id]));
+  await db.notificationDelivery.createMany({
+    data: inviteIds.map((inviteId, index) => ({
+      eventId: eventIdByOccurrence.get(occurrences[index])!,
+      channel: "DISCORD_CHANNEL" as const,
+      transport: "BOT" as const,
+      operation: "SEND" as const,
+      recipientKey: `user:${inviteId}`,
+      targetSlot: inviteSlot(session.id, inviteId),
+    })),
+  });
+}
+
 async function enqueueInviteSyncDelivery(sessionId: string, inviteId: string, db?: NotificationDb): Promise<void> {
   const event = await createNotificationEvent(
     {

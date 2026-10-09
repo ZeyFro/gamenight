@@ -236,6 +236,34 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
         expect(sessionDeliveries).toHaveLength(5); // thread + announce + creator-member + 2 invite-sync
       });
 
+      it("neuf invités : neuf livraisons invite-sync, chacune avec son événement et la communauté de la soirée", async () => {
+        const creator = await makeUser();
+        const guests = [];
+        for (let i = 0; i < 9; i++) guests.push(await makeUser());
+        currentUserMock.mockResolvedValue(creator);
+
+        await expect(
+          createSession(formData({ date: "2026-11-01", time: "20:00", notifyUserId: guests.map((g) => g.id) }))
+        ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+
+        const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+        const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+        expect(invites).toHaveLength(9);
+        const syncEvents = await db.notificationEvent.findMany({
+          where: { eventType: "SESSION_INVITE_SYNC", sourceId: session.id },
+        });
+        expect(syncEvents).toHaveLength(9);
+        expect(new Set(syncEvents.map((e) => e.occurrence)).size).toBe(9);
+        expect(syncEvents.every((e) => e.communityId === session.communityId)).toBe(true);
+        const prefix = `default-guild:SESSION:${session.id}:invite:`;
+        const deliveries = (await db.notificationDelivery.findMany({})).filter((d) => d.targetSlot.startsWith(prefix));
+        expect(deliveries.map((d) => d.targetSlot.slice(prefix.length)).sort()).toEqual(invites.map((i) => i.id).sort());
+        for (const delivery of deliveries) {
+          expect(delivery).toMatchObject({ status: "PENDING", operation: "SEND", transport: "BOT", channel: "DISCORD_CHANNEL" });
+          expect(syncEvents.some((e) => e.id === delivery.eventId)).toBe(true);
+        }
+      });
+
       it("aucun invité coché — aucune livraison invite-sync, seulement thread/announce/creator-member", async () => {
         const creator = await makeUser();
         currentUserMock.mockResolvedValue(creator);

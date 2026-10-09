@@ -4,7 +4,7 @@ import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
-import { lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
+import { getMemberStats, lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
 import { computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
@@ -88,8 +88,18 @@ export async function awardXp(
 const STREAK_MIN_GAP_MS = 12 * 60 * 60 * 1000;
 const STREAK_BREAK_MS = 24 * 60 * 60 * 1000;
 
-/** Relit la ligne verrouillée : deux navigations concurrentes ne doublent pas le streak. */
+/**
+ * Relit la ligne verrouillée : deux navigations concurrentes ne doublent pas le streak.
+ * Voie rapide : un streak déjà enregistré il y a moins de 12 h (cas de presque toutes
+ * les pages) ne change rien — une seule lecture, sans transaction ni verrou. Le
+ * contrôle d'appartenance reste celui de `getMemberStats` (membre ACTIVE d'une
+ * communauté ACTIVE) ; hors de cette voie, la transaction verrouillée relit tout.
+ */
 export async function touchStreak(userId: string, communityId: string): Promise<CommunityProgress & { touched: boolean }> {
+  const known = await getMemberStats(userId, communityId);
+  if (known.streakLastActiveAt && Date.now() - known.streakLastActiveAt.getTime() < STREAK_MIN_GAP_MS) {
+    return { ...known, touched: false };
+  }
   return prisma.$transaction(async (tx) => {
     if (!(await lockCommunityProgress(tx, communityId, userId))) return { ...ZERO_MEMBER_STATS, touched: false };
     const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
