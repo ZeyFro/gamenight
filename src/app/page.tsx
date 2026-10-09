@@ -144,17 +144,69 @@ async function HomeContent({
   await requireCommunityChosen(user.id, "/");
   const scopedDb = await getActiveScopedPrisma(user.id);
 
-  const dueSession = await scopedDb.session.findFirst({
-    where: { status: "VOTING", date: { lte: wallClockNow() }, ...(await accessibleSessionWhereFor(user.id)) },
-    select: { id: true },
-    orderBy: { date: "asc" },
-  });
+  // Sprint 4 — card "📊 Recap" (mois dernier, si déjà généré par le cron
+  // `monthly-tasks`) : mois calculé une fois pour les deux passes de lecture.
+  const wallNow = wallClockNow();
+  const prevMonthDate = new Date(Date.UTC(wallNow.getUTCFullYear(), wallNow.getUTCMonth() - 1, 1));
+  const recapYear = prevMonthDate.getUTCFullYear();
+  const recapMonth = prevMonthDate.getUTCMonth() + 1;
+
+  // Toutes les lectures d'affichage partent ENSEMBLE (une seule vague d'allers-
+  // retours), au lieu d'une file d'étapes enchaînées. Les filtres de
+  // confidentialité et la communauté du classement sont résolus à l'intérieur :
+  // chaque lecture n'attend que ce dont elle dépend, jamais les autres.
+  const loadHomeReads = () => Promise.all([
+    accessibleSessionWhereFor(user.id).then((accessibleWhere) =>
+      prisma.session.findFirst({
+        // Confidentialité des soirées — "Prochaine soirée" ne doit jamais
+        // révéler une soirée privée à laquelle l'utilisateur n'est ni
+        // créateur ni invité (voir src/lib/session-access.ts).
+        where: { status: { in: ["VOTING", "SCHEDULED"] }, ...accessibleWhere },
+        orderBy: { date: "asc" },
+        include: {
+          decidedGame: { select: { name: true, coverUrl: true } },
+          proposals: {
+            select: {
+              gameId: true,
+              game: { select: { coverUrl: true } },
+              votes: { select: { userId: true } },
+            },
+          },
+        },
+      })
+    ),
+    getRecentActivity(user.id, 3),
+    getGroupStats(user.id),
+    getWeekAvailability(user.id),
+    getScoreboardCommunityId(user.id).then((communityId) => getScoreboard("global", { communityId })),
+    getRecentGameNews(),
+    getCurrentWeeklyChallengeForViewer(user.id),
+    listGroupAchievements(user.id),
+    getActiveDebts(user.id),
+    getActiveDebtorIds(user.id),
+    getMonthlyRecap(recapYear, recapMonth, user.id),
+    // La barre de saison lit la saison active : créée d'abord si elle manque
+    // (garde-fou idempotent, voir `ensureActiveSeasonExistsForViewer`,
+    // src/lib/seasons.ts), sans retarder les autres lectures.
+    ensureActiveSeasonExistsForViewer(user.id).then(() => getSeasonProgress(user.id)),
+    getActiveTournament(user.id),
+  ]);
+
+  // Une soirée au vote échu est clôturée AVANT l'affichage. La vérification part
+  // en même temps que les lectures : dans le cas courant (aucune soirée échue,
+  // le cron `close-sessions` passe toutes les 15 minutes) elles sont déjà
+  // prêtes ; sinon on clôture puis on relit, pour ne jamais afficher l'état d'avant.
+  const [dueSession, firstReads] = await Promise.all([
+    accessibleSessionWhereFor(user.id).then((accessibleWhere) =>
+      scopedDb.session.findFirst({
+        where: { status: "VOTING", date: { lte: wallClockNow() }, ...accessibleWhere },
+        select: { id: true },
+        orderBy: { date: "asc" },
+      })
+    ),
+    loadHomeReads(),
+  ]);
   if (dueSession) await closeSessionIfDue(dueSession.id);
-
-  // Garde-fou idempotent — voir le commentaire sur `ensureActiveSeasonExistsForViewer`
-  // (src/lib/seasons.ts).
-  await ensureActiveSeasonExistsForViewer(user.id);
-
   const [
     nextSession,
     activity,
@@ -166,46 +218,10 @@ async function HomeContent({
     groupAchievements,
     activeDebts,
     activeDebtorIds,
-  ] = await Promise.all([
-    prisma.session.findFirst({
-      // Confidentialité des soirées — "Prochaine soirée" ne doit jamais
-      // révéler une soirée privée à laquelle l'utilisateur n'est ni
-      // créateur ni invité (voir src/lib/session-access.ts).
-      where: { status: { in: ["VOTING", "SCHEDULED"] }, ...(await accessibleSessionWhereFor(user.id)) },
-      orderBy: { date: "asc" },
-      include: {
-        decidedGame: { select: { name: true, coverUrl: true } },
-        proposals: {
-          select: {
-            gameId: true,
-            game: { select: { coverUrl: true } },
-            votes: { select: { userId: true } },
-          },
-        },
-      },
-    }),
-    getRecentActivity(user.id, 3),
-    getGroupStats(user.id),
-    getWeekAvailability(user.id),
-    getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
-    getRecentGameNews(),
-    getCurrentWeeklyChallengeForViewer(user.id),
-    listGroupAchievements(user.id),
-    getActiveDebts(user.id),
-    getActiveDebtorIds(user.id),
-  ]);
-
-  // Sprint 4 — card "📊 Recap" (mois dernier, si déjà généré par le cron
-  // `monthly-tasks`) et barre de progression de la saison en cours.
-  const wallNow = wallClockNow();
-  const prevMonthDate = new Date(Date.UTC(wallNow.getUTCFullYear(), wallNow.getUTCMonth() - 1, 1));
-  const recapYear = prevMonthDate.getUTCFullYear();
-  const recapMonth = prevMonthDate.getUTCMonth() + 1;
-  const [lastMonthRecap, seasonProgress, activeTournament] = await Promise.all([
-    getMonthlyRecap(recapYear, recapMonth, user.id),
-    getSeasonProgress(user.id),
-    getActiveTournament(user.id),
-  ]);
+    lastMonthRecap,
+    seasonProgress,
+    activeTournament,
+  ] = dueSession ? await loadHomeReads() : firstReads;
 
   // Refonte home : cover du jeu décidé si la soirée est SCHEDULED, sinon
   // celle de la proposition la plus votée (VOTING) — même logique que

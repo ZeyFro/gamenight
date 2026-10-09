@@ -77,24 +77,28 @@ export async function getScoreboard(
   const requestedId = options.communityId;
   if (requestedId === null) return [];
   const communityId = requestedId ?? await getDefaultCommunityId();
-  const community = await prisma.community.findUnique({ where: { id: communityId }, select: { status: true } });
-  if (community?.status !== "ACTIVE") return [];
-  const scopedDb = await scopedPrismaForCommunityId(communityId);
-
   const start = periodStart(period);
 
-  const usersRaw = await prisma.user.findMany({
-    ...(requestedId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const, community: { status: "ACTIVE" as const } } } } } : {}),
-    select: { id: true, discordName: true, discordAvatar: true, color: true },
-  });
-  const stats = await scopedDb.communityMemberStats.findMany({ where: { communityId, userId: { in: usersRaw.map((u) => u.id) } }, select: { userId: true, xpTotal: true } });
-  const statsById = new Map(stats.map((s) => [s.userId, s.xpTotal]));
-  const users = usersRaw.map((user) => ({ ...user, xpTotal: statsById.get(user.id) ?? 0 }));
+  // Statut de la communauté, client scopé et liste des utilisateurs sont
+  // indépendants : une seule vague (avant, trois allers-retours enchaînés). Une
+  // communauté non ACTIVE renvoie toujours [] ; la liste lue en trop est jetée.
+  const [community, scopedDb, usersRaw] = await Promise.all([
+    prisma.community.findUnique({ where: { id: communityId }, select: { status: true } }),
+    scopedPrismaForCommunityId(communityId),
+    prisma.user.findMany({
+      ...(requestedId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const, community: { status: "ACTIVE" as const } } } } } : {}),
+      select: { id: true, discordName: true, discordAvatar: true, color: true },
+    }),
+  ]);
+  if (community?.status !== "ACTIVE") return [];
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
-  const memberFilter = { communityId, userId: { in: users.map((u) => u.id) } };
+  const memberFilter = { communityId, userId: { in: usersRaw.map((u) => u.id) } };
 
-  const [xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
+  // Soldes et agrégats d'XP ne dépendent que de la liste des utilisateurs :
+  // lus ensemble (avant, les soldes puis les agrégats, l'un après l'autre).
+  const [stats, xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
+    scopedDb.communityMemberStats.findMany({ where: memberFilter, select: { userId: true, xpTotal: true } }),
     period === "global"
       ? null
       : scopedDb.xpEvent.groupBy({
@@ -122,6 +126,8 @@ export async function getScoreboard(
         })
       : null,
   ]);
+  const statsById = new Map(stats.map((s) => [s.userId, s.xpTotal]));
+  const users = usersRaw.map((user) => ({ ...user, xpTotal: statsById.get(user.id) ?? 0 }));
 
   const xpMap = new Map(xpByUser?.map((row) => [row.userId, row._sum.amount ?? 0]));
   const sessionsMap = new Map(sessionsByUser.map((row) => [row.userId, row._count._all]));
