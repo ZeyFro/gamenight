@@ -11,6 +11,7 @@ import {
   type ResultParticipant,
 } from "@/components/SessionResultsForm";
 import { pageMetadata } from "@/lib/page-title";
+import { getWinningProposalParticipants } from "@/lib/superlative-voting";
 
 export const metadata = pageMetadata("Résultats de la soirée");
 
@@ -59,16 +60,8 @@ export default async function SessionResultsPage({
 
   let participants: ResultParticipant[] = [];
   if (!alreadySubmitted) {
-    const winningProposal = await prisma.proposal.findFirst({
-      where: { sessionId: id, gameId: session.decidedGameId },
-      include: { votes: { include: { user: true } } },
-    });
-    participants =
-      winningProposal?.votes.map((v) => ({
-        id: v.user.id,
-        discordName: v.user.discordName,
-        discordAvatar: v.user.discordAvatar,
-      })) ?? [];
+    const users = await getWinningProposalParticipants(id, session.decidedGameId);
+    participants = users.map(person => ({ id: person.id, discordName: person.discordName, discordAvatar: person.discordAvatar }));
   }
 
   return (

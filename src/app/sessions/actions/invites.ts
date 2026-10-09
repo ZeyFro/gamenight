@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { inviteToSession, revokeSessionInvite } from "@/lib/session-access";
+import { changeSessionSeat } from "@/lib/session-seats";
 import {
   enqueueSessionInviteSync,
   enqueueSessionCreatorThreadMembership,
@@ -24,7 +25,7 @@ import {
 async function assertOwnsSession(sessionId: string, userId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { createdById: true, announceViaBot: true },
+    select: { createdById: true, announceViaBot: true, attendanceCapacity: true },
   });
   if (!session || session.createdById !== userId) return null;
   return session;
@@ -81,6 +82,7 @@ export async function revokeSessionInviteAction(formData: FormData) {
   if (!session) return;
 
   const revoked = await revokeSessionInvite(sessionId, guestUserId, user.id);
+  if (session.attendanceCapacity != null) await changeSessionSeat(user.id, sessionId, { kind: "refresh" });
   if (revoked && session.announceViaBot) {
     const invite = await prisma.sessionInvite.findUnique({
       where: { sessionId_userId: { sessionId, userId: guestUserId } },
@@ -90,6 +92,7 @@ export async function revokeSessionInviteAction(formData: FormData) {
   }
 
   revalidatePath(`/sessions/${sessionId}/invites`);
+  revalidatePath(`/sessions/${sessionId}`);
 }
 
 /**

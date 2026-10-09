@@ -7,6 +7,7 @@ import type { Game, Session } from "@prisma/client";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
+import { getWinningProposalParticipants } from "@/lib/superlative-voting";
 
 /**
  * Chantier confidentialité des soirées — voir le commentaire de fonction
@@ -42,8 +43,7 @@ export async function sendSessionReminder(
   });
 
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
-  const selectedPlayers = (proposal?.votes ?? [])
-    .map((v) => v.user)
+  const selectedPlayers = (session.attendanceCapacity != null ? await getWinningProposalParticipants(session.id, session.decidedGame.id) : (proposal?.votes ?? []).map(v => v.user))
     .filter((u) => !notifiedUserIds || notifiedUserIds.includes(u.id));
   const eligibleByPreference = await filterUsersByNotificationPreference(selectedPlayers, "SESSION");
   const players = await filterByActiveSessionInvite(session.id, session.createdById, eligibleByPreference);

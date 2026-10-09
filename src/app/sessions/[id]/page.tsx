@@ -47,6 +47,9 @@ import {
 } from "../actions/session-lifecycle";
 import { completeWeeklyChallengeAction } from "../actions/results";
 import { pageMetadata } from "@/lib/page-title";
+import { readSessionSeats } from "@/lib/session-seats";
+import { wallClockNow } from "@/lib/wallclock";
+import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -108,6 +111,7 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const seatState = session.status === "SCHEDULED" ? await readSessionSeats(user.id, session.id) : null;
   const sessionProgress = await getMemberStats(user.id, await statsCommunityIdForSession(session.communityId));
 
   // Badge "🏆 Vote les superlatifs !" — même définition de participant que
@@ -325,6 +329,8 @@ export default async function SessionDetailPage({
           {errorMessage}
         </p>
       )}
+
+      {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
