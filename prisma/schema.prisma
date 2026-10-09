@@ -905,6 +905,10 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
+  // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
+  // Garde les classements par période cohérents avec le solde corrigé.
+  ADMIN_ADJUSTMENT
 }
 
 // Résultat "générique" d'une soirée (Axe 2) : podium 1er/2e/3e facultatif
@@ -988,6 +992,26 @@ model XpEvent {
   @@unique([communityId, userId, reason, sourceId])
   @@index([communityId, createdAt])
   @@index([userId])
+  @@index([createdAt])
+}
+
+// Journal des corrections manuelles d'XP (onglet « Joueurs » de /admin) : qui, quand,
+// ancienne et nouvelle valeur, raison. Volontairement sans clé étrangère vers
+// User : l'historique d'audit survit à la suppression d'un compte, d'où les noms
+// copiés (`userName`, `adminName`) à la date de la correction.
+model XpAdjustment {
+  id          String   @id @default(cuid())
+  communityId String
+  userId      String
+  userName    String
+  adminId     String
+  adminName   String
+  oldXp       Int
+  newXp       Int
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([communityId, userId, createdAt])
   @@index([createdAt])
 }
 

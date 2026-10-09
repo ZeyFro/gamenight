@@ -21,3 +21,16 @@ describe("AdminTabs — Communautés", () => {
     expect(screen.queryByRole("link", { name: "Communautés" })).toBeNull();
   });
 });
+
+describe("AdminTabs — Joueurs", () => {
+  it("affiche l'onglet « Joueurs » sans dépendre d'un drapeau, sans retirer les autres onglets", () => {
+    expect(ADMIN_TAB_KEYS).toContain("joueurs");
+
+    render(<AdminTabs active="joueurs" />);
+
+    expect(screen.getByRole("link", { name: "Joueurs" }).getAttribute("href")).toBe("/admin?tab=joueurs");
+    for (const label of ["Messages Discord", "Récompenses", "Badges", "Jeux-stats", "Réglages", "Confidentialité", "Nettoyage"]) {
+      expect(screen.getByRole("link", { name: label })).toBeTruthy();
+    }
+  });
+});
