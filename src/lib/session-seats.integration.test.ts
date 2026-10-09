@@ -87,6 +87,15 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     expect(await db.sessionSeat.count()).toBe(0); expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(0);
     expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });
   });
+  it("compatibilité d'un message historique sans communityId uniquement pour default", async () => {
+    const origin = await discordOrigin(); await db.notificationEvent.updateMany({ data: { communityId: null } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true });
+  });
+  it("aucun message sans provenance ne devient une autorité dans un autre serveur", async () => {
+    const origin = await discordOrigin(); await db.community.update({ where: { id: "a" }, data: { slug: "another" } });
+    await db.notificationEvent.updateMany({ data: { communityId: null } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toEqual({ ok: false, error: "access" });
+  });
   it("une dernière place n'est prise qu'une fois, même par des clics simultanés", async () => {
     await db.sessionSeat.deleteMany({});
     const results = await Promise.all([join("alice"), join("bob"), join("alice"), join("bob")]);

@@ -53,13 +53,13 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       if (!communityId) return { ok: false, error: "access" };
       // Ces contrôles s'appliquent même flags OFF. Aucune préférence de serveur
       // active n'autorise une réponse ; seul le parent et ses membres comptent.
-      const [community] = await scopedDb.$queryRaw<Array<{ status: string; discordGuildId: string | null }>>`SELECT status, "discordGuildId" FROM "Community" WHERE id = ${communityId} FOR SHARE`;
+      const [community] = await scopedDb.$queryRaw<Array<{ status: string; slug: string; discordGuildId: string | null }>>`SELECT status, slug, "discordGuildId" FROM "Community" WHERE id = ${communityId} FOR SHARE`;
       const [member] = await scopedDb.$queryRaw<Array<{ status: string }>>`SELECT status FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR SHARE`;
       const actor = await scopedDb.user.findUnique({ where: { id: userId }, select: { discordId: true } });
       if (community?.status !== "ACTIVE" || member?.status !== "ACTIVE" || actor?.discordId !== origin.discordId || (origin.guildId !== undefined && community.discordGuildId !== origin.guildId)) return { ok: false, error: "access" };
       const delivered = await scopedDb.notificationDelivery.findFirst({ where: {
         status: "SENT", operation: "SEND", transport: "BOT", discordMessageId: origin.messageId,
-        event: { category: "SESSION", sourceId: sessionId, communityId: session.communityId },
+        event: { category: "SESSION", sourceId: sessionId, OR: community.slug === "default" ? [{ communityId }, { communityId: null }] : [{ communityId }] },
         ...(origin.guildId ? { channel: "DISCORD_CHANNEL", discordThreadId: origin.channelId }
           : { channel: "DISCORD_DM", discordChannelId: origin.channelId, recipientKey: `user:${userId}` }),
       }, select: { id: true } });
