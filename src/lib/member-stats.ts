@@ -19,9 +19,15 @@ export const ZERO_MEMBER_STATS: CommunityProgress = {
 
 /** Lecture sans création ni repli sur les colonnes historiques User. */
 export async function getMemberStats(userId: string, communityId: string): Promise<CommunityProgress> {
-  if (!(await isMemberOfCommunity(userId, communityId))) return { ...ZERO_MEMBER_STATS };
-  const scopedDb = await scopedPrismaForCommunityId(communityId);
-  return (await scopedDb.communityMemberStats.findUnique({ where: { communityId_userId: { communityId, userId } } })) ?? { ...ZERO_MEMBER_STATS };
+  // Appartenance et ligne de stats sont indépendantes : lues ensemble. Pour un
+  // non-membre, la ligne lue en trop est jetée (jamais renvoyée).
+  const [isMember, stats] = await Promise.all([
+    isMemberOfCommunity(userId, communityId),
+    scopedPrismaForCommunityId(communityId).then((scopedDb) =>
+      scopedDb.communityMemberStats.findUnique({ where: { communityId_userId: { communityId, userId } } })
+    ),
+  ]);
+  return isMember ? stats ?? { ...ZERO_MEMBER_STATS } : { ...ZERO_MEMBER_STATS };
 }
 export async function getMemberStatsForViewer(userId: string, viewerId: string): Promise<CommunityProgress> {
   const communityId = await writeCommunityIdForUser(viewerId);
