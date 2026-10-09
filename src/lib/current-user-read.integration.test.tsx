@@ -80,6 +80,25 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     expect(queries.some((q) => /FOR UPDATE/i.test(q))).toBe(true);
   });
 
+  it("visite ordinaire déjà comptée il y a moins de 12 h : une lecture, ni transaction ni verrou", async () => {
+    await db.communityMemberStats.updateMany({ where: { userId }, data: { streakLastActiveAt: new Date(Date.now() - 60 * 60 * 1000) } });
+    const before = await db.communityMemberStats.findMany({ where: { userId }, orderBy: { communityId: "asc" } });
+    queries.length = 0;
+    expect(await getCurrentUser()).toMatchObject({ xpTotal: 30, streakCount: 2 });
+    expect(queries.length).toBeLessThanOrEqual(8); // 11 avant la voie rapide (transaction + verrou)
+    expectReadOnly();
+    expect(await db.communityMemberStats.findMany({ where: { userId }, orderBy: { communityId: "asc" } })).toEqual(before);
+  });
+
+  it("serveur retiré : une visite récente ne montre aucune progression", async () => {
+    await db.communityMemberStats.updateMany({ where: { userId }, data: { streakLastActiveAt: new Date(Date.now() - 60 * 60 * 1000) } });
+    await db.membership.update({ where: { communityId_userId: { communityId: communities.a, userId } }, data: { status: "REMOVED" } });
+    await db.user.update({ where: { id: userId }, data: { activeCommunityId: communities.b } });
+    expect(await getCurrentUser()).toMatchObject({ xpTotal: 800 });
+    await db.membership.update({ where: { communityId_userId: { communityId: communities.b, userId } }, data: { status: "REMOVED" } });
+    expect(await getCurrentUser()).toMatchObject({ xpTotal: 0, streakCount: 0 });
+  });
+
   it("chaque polling prend le nouveau choix A/B sans prolonger le streak", async () => {
     expect((await poll(null))?.map((m) => m.content)).toEqual(["chat-a"]);
     expectReadOnly();
