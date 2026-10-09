@@ -29,7 +29,7 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     const agenda = within(screen.getByRole("complementary", { name: "Programme du jour" }));
     expect(agenda.getByRole("link", { name: /Jeu réel/ }).getAttribute("href")).toBe("/sessions/soirée-a");
     expect(agenda.getByRole("link", { name: /Le hasard choisira/ }).getAttribute("href")).toBe("/roulette/roulette-a");
-    expect(agenda.getByRole("link", { name: /Proposer une soirée/ }).getAttribute("href")).toBe("/sessions?date=2026-10-08");
+    expect(agenda.getByRole("link", { name: /Proposer une soirée/ }).getAttribute("href")).toBe("/sessions?date=2026-10-08#nouvelle-soiree");
   });
   it("une soirée annulée sans jeu choisi n'est pas affichée comme un vote ouvert", () => {
     const data = days.map((day) => day.date.getTime() === selectedDate.getTime() ? { ...day, sessions: [{ id: "cancelled", date: selectedDate, status: "CANCELLED" as const, createdById: "me", votingDeadline: null, decidedGameName: null, decidedGameCoverUrl: null, proposals: [], players: [] }] } : day);

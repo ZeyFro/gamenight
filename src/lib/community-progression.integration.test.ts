@@ -48,6 +48,30 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
   const setStats = (c: string, data: { xpTotal?: number; streakCount?: number; streakLastActiveAt?: Date; bestStreakCount?: number }) => db.communityMemberStats.create({ data: { communityId: ids[c], userId: ids.both, ...data } });
   const session = (c: string) => db.session.create({ data: { communityId: ids[c], createdById: ids.both, date: new Date(), status: "SCHEDULED", decidedGameId: ids.game } });
 
+  it("20 badges crédités ne reprennent aucune transaction ; un crédit manquant reste réparable", async () => {
+    const badgeIds = Array.from({ length: 20 }, (_, i) => `earned-${i}`);
+    await db.badge.createMany({ data: badgeIds.map((id) => ({ id, name: id,
+      category: "ENGAGEMENT" as const, rarity: "COMMON" as const, modifiedById: ids.both,
+      icon: "B", description: "Historique", active: false, criteria: { type: "SESSIONS_CREATED", count: 1 }, xpReward: 10,
+    })) });
+    await db.userBadge.createMany({ data: badgeIds.map((badgeId) => ({ userId: ids.both, communityId: ids.a, badgeId })) });
+    await db.xpEvent.createMany({ data: badgeIds.map((sourceId) => ({ userId: ids.both, communityId: ids.a, reason: "BADGE_UNLOCKED" as const, sourceId, amount: 10 })) });
+    await setStats("a", { xpTotal: 200 });
+    const transaction = vi.spyOn(db, "$transaction");
+    try {
+      await badges.checkSessionsCreatedBadges(ids.both, ids.a);
+      expect(transaction).not.toHaveBeenCalled();
+      expect((await stats("a"))?.xpTotal).toBe(200);
+      await db.xpEvent.deleteMany({ where: { communityId: ids.a, sourceId: badgeIds[0] } });
+      await db.communityMemberStats.updateMany({ where: { communityId: ids.a, userId: ids.both }, data: { xpTotal: 190 } });
+      await badges.checkSessionsCreatedBadges(ids.both, ids.a);
+      expect(transaction).toHaveBeenCalledOnce();
+      expect((await stats("a"))?.xpTotal).toBe(200);
+      expect(await db.xpEvent.count({ where: { communityId: ids.a, reason: "BADGE_UNLOCKED" } })).toBe(20);
+      expect(await stats("b")).toBeNull();
+    } finally { transaction.mockRestore(); }
+  });
+
   it("même source dans deux communautés : deux gains indépendants, User historique intact", async () => {
     await xp.awardXp(ids.both, ids.a, "VOTE", "same-source", 30, { applyStreak: false });
     await xp.awardXp(ids.both, ids.b, "VOTE", "same-source", 10, { applyStreak: false });

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
 import { getCalendarData, type CalendarDay } from "@/lib/calendar";
-import { addDays, buildCalendarHref, getMonthGridRange, type CalendarMode } from "@/lib/calendar-dates";
+import { addDays, buildCalendarHref, getMonthGridRange, getWeekStart, type CalendarMode } from "@/lib/calendar-dates";
 import { parseDateOnly, sameUtcDate, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
 import { EventCalendar } from "@/components/calendar/EventCalendar";
 import { AuroraText } from "@/components/magicui/aurora-text";
@@ -57,8 +56,9 @@ async function CalendrierContent({
   // Le roster complet reste disponible dans le panneau de sélection.
   const availabilityUserIds = mode === "individuel" ? [sp.pote ?? user.id] : visibleUserIds ?? undefined;
 
-  const { start: rangeStart, end: lastWeekStart } = getMonthGridRange(selectedDate);
-  const rangeEndExclusive = addDays(lastWeekStart, 7);
+  const monthRange = getMonthGridRange(selectedDate);
+  const rangeStart = view === "semaine" ? getWeekStart(selectedDate) : monthRange.start;
+  const rangeEndExclusive = addDays(view === "semaine" ? rangeStart : monthRange.end, 7);
 
   const data = await getCalendarData(
     rangeStart,
@@ -83,18 +83,10 @@ async function CalendrierContent({
   // Individuel sur SA PROPRE fiche — jamais en Individuel sur un pote.
   // Requêtes supplémentaires gated : aucun coût en Individuel sur un pote.
   const canEdit = mode === "collectif" || selectedUserId === user.id;
-  const [ownWeeklySlots, ownOverrideForDay] = canEdit
-    ? await Promise.all([
-        prisma.weeklyAvailability.findMany({
-          where: { userId: user.id },
-          select: { dayOfWeek: true, startTime: true, endTime: true },
-        }),
-        prisma.availabilityOverride.findUnique({
-          where: { userId_date: { userId: user.id, date: selectedDate } },
-          select: { available: true, startTime: true, endTime: true },
-        }),
-      ])
-    : [undefined, undefined];
+  const ownWeeklySlots = canEdit ? data.ownWeeklySlots : undefined;
+  const ownOverrideForDay = canEdit
+    ? data.ownOverrides.find((override) => sameUtcDate(override.date, selectedDate)) ?? null
+    : undefined;
 
   return (
     <PullToRefresh>

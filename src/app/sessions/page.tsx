@@ -289,7 +289,7 @@ export default async function SessionsPage({
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[380px_1fr] lg:items-start">
         <Card>
           <CreationForm action={createSession} className="flex flex-col gap-3">
-            <h2 className="font-semibold text-foreground">Nouvelle soirée</h2>
+            <h2 id="nouvelle-soiree" className="scroll-mt-24 font-semibold text-foreground">Nouvelle soirée</h2>
 
             {preselectedGame && (
               <div className="flex items-center gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">

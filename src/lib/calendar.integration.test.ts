@@ -91,5 +91,19 @@ describe.skipIf(!TEST_DATABASE_URL)("calendrier : isolation et invitations (Post
     expect(data.users).toEqual([]);
     expect(data.days[0].sessions).toEqual([]);
     expect(data.days[0].roulettes).toEqual([]);
+    expect(data.ownWeeklySlots).toEqual([]);
+    expect(data.ownOverrides).toEqual([]);
+  });
+
+  it("réutilise seulement les disponibilités du lecteur pour l'édition, même si le filtre l'exclut", async () => {
+    await db.weeklyAvailability.create({ data: { userId: "viewer", dayOfWeek: 4, startTime: "20:00", endTime: "22:00" } });
+    await db.availabilityOverride.createMany({ data: [
+      { userId: "viewer", date: start, available: false },
+      { userId: "friend-a", date: start, available: true, startTime: "19:00", endTime: "23:00" },
+    ] });
+    const data = await calendar.getCalendarData(start, end, "viewer", ["friend-a"]);
+    expect(data.ownWeeklySlots).toEqual([{ dayOfWeek: 4, startTime: "20:00", endTime: "22:00" }]);
+    expect(data.ownOverrides).toEqual([{ date: start, available: false, startTime: null, endTime: null }]);
+    expect(data.days[0].hours[20].availableUserIds).toEqual(["friend-a"]);
   });
 });
