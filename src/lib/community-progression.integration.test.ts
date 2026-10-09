@@ -99,6 +99,50 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
     await xp.awardXp(ids.both, ids.a, "VOTE", "a", 10); await xp.awardXp(ids.both, ids.b, "VOTE", "b", 10);
     expect((await stats("a"))?.xpTotal).toBe(15); expect((await stats("b"))?.xpTotal).toBe(10);
   });
+  describe("plafond anti-farm des gains « soirée créée » (3 par 24 h et par serveur)", () => {
+    const create = (sourceId: string, community = "a") => xp.awardXp(ids.both, ids[community], "CREATE_SESSION", sourceId, 30);
+    const paid = (community = "a") => db.xpEvent.count({ where: { userId: ids.both, communityId: ids[community], reason: "CREATE_SESSION" } });
+
+    it("la 4e création en 24 h ne rapporte rien, même si les soirées ont été supprimées", async () => {
+      // Aucune ligne Session n'existe pour ces sourceId : équivaut à des soirées supprimées aussitôt.
+      const results = [];
+      for (const id of ["s1", "s2", "s3", "s4", "s5"]) results.push(await create(id));
+      expect(results.map((r) => r.awarded)).toEqual([true, true, true, false, false]);
+      expect(await paid()).toBe(3);
+      expect((await stats("a"))?.xpTotal).toBe(90);
+    });
+
+    it("les gains de plus de 24 h ne comptent plus : la fenêtre est glissante", async () => {
+      await create("old1"); await create("old2"); await create("old3");
+      await db.xpEvent.updateMany({ where: { userId: ids.both, reason: "CREATE_SESSION", sourceId: { in: ["old1", "old2"] } }, data: { createdAt: new Date(Date.now() - 25 * 3600_000) } });
+      // Il reste 1 gain récent (old3) : deux places se libèrent, la troisième est refusée.
+      expect((await create("new1")).awarded).toBe(true);
+      expect((await create("new2")).awarded).toBe(true);
+      expect((await create("new3")).awarded).toBe(false);
+      expect(await paid()).toBe(5);
+    });
+
+    it("créations simultanées : jamais plus de 3 gains", async () => {
+      const results = await Promise.all(Array.from({ length: 8 }, (_, i) => create(`race-${i}`)));
+      expect(results.filter((r) => r.awarded)).toHaveLength(3);
+      expect(await paid()).toBe(3);
+      expect((await stats("a"))?.xpTotal).toBe(90);
+    });
+
+    it("le plafond est propre au serveur et ne touche pas les autres gains", async () => {
+      for (const id of ["s1", "s2", "s3"]) await create(id);
+      expect((await create("s4")).awarded).toBe(false);
+      expect((await create("b1", "b")).awarded).toBe(true);
+      expect((await xp.awardXp(ids.both, ids.a, "VOTE", "vote-1", 5)).awarded).toBe(true);
+      expect((await xp.awardXp(ids.both, ids.a, "PARTICIPATE", "p-1", 20)).awarded).toBe(true);
+    });
+
+    it("rejouer un gain déjà versé ne le double pas et ne consomme rien de plus", async () => {
+      await create("same"); await create("same"); await create("same");
+      expect(await paid()).toBe(1);
+      expect((await create("other")).awarded).toBe(true);
+    });
+  });
   it("membre absent ou révoqué : aucun XP, badge ou streak", async () => {
     await db.membership.update({ where: { communityId_userId: { communityId: ids.a, userId: ids.both } }, data: { status: "REMOVED" } });
     for (const u of [ids.both, ids.none]) {
