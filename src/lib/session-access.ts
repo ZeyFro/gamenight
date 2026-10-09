@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma, SessionInvite } from "@prisma/client";
+import type { Prisma, Session, SessionInvite } from "@prisma/client";
 import {
   communityIdFilter,
   communityMemberUserWhere,
@@ -149,6 +149,26 @@ export async function inviteToSession(
     where: { sessionId_userId: { sessionId, userId: guestUserId } },
     create: { sessionId, userId: guestUserId, invitedById, status: "ACTIVE" },
     update: { status: "ACTIVE", invitedById, revokedAt: null, revokedById: null },
+  });
+}
+
+/** Création initiale uniquement : l'appelant fournit le parent qu'il vient de
+ * créer dans tx, après filtrage et lockCreationMembers de tous les destinataires.
+ * Les contrôles d'appartenance sont conservés sous verrou jusqu'au commit ;
+ * aucune relecture du même parent pour chacun des invités. Ne pas utiliser
+ * pour réinviter dans une soirée existante (inviteToSession garde ce rôle). */
+export async function createInitialSessionInvites(
+  session: Pick<Session, "id" | "createdById">,
+  invitedById: string,
+  validatedUserIds: string[],
+  tx: Prisma.TransactionClient,
+): Promise<Array<{ id: string }>> {
+  if (session.createdById !== invitedById) throw new Error("Seul le créateur peut inviter.");
+  const guestIds = [...new Set(validatedUserIds)].filter((id) => id !== session.createdById);
+  if (!guestIds.length) return [];
+  return tx.sessionInvite.createManyAndReturn({
+    data: guestIds.map((userId) => ({ sessionId: session.id, userId, invitedById, status: "ACTIVE" as const })),
+    select: { id: true },
   });
 }
 

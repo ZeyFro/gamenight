@@ -141,6 +141,20 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     expect(await access.canAccessSession(someoneElse.id, session.id)).toBe(false);
   });
 
+  it("l'écriture groupée exclut le créateur et déduplique les destinataires sans élargir l'accès", async () => {
+    const creator = await makeUser();
+    const friend = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+    await expect(createSession(formData({ date: "2026-11-01", time: "20:00",
+      notifyUserId: [creator.id, friend.id, friend.id],
+    }))).rejects.toThrow(/^REDIRECT:\/sessions\//);
+    const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
+    const invites = await db.sessionInvite.findMany({ where: { sessionId: session.id } });
+    expect(invites.map((invite) => invite.userId)).toEqual([friend.id]);
+    expect(invites[0].invitedById).toBe(creator.id);
+    expect(currentUserMock).toHaveBeenCalledWith({ recordActivity: false });
+  });
+
   it("un id de pote forgé/inexistant dans la sélection est silencieusement ignoré — jamais une ligne SessionInvite orpheline", async () => {
     const creator = await makeUser();
     const real = await makeUser();

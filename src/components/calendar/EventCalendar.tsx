@@ -64,7 +64,7 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
         </Link>)}
         {selectedDay?.roulettes?.map((roulette) => <Link prefetch={false} key={roulette.id} href={`/roulette/${roulette.id}`} className="gn-agenda-event roulette"><span className="text-xs" style={{ color: "var(--gn-lime)" }}>Roulette · {TIME.format(roulette.scheduledAt)}</span><h4>Le hasard choisira le jeu</h4><p>Propositions jusqu’à {TIME.format(roulette.deadline)}</p><small className="mt-3 block">Ouvrir la roulette →</small></Link>)}
         {!selectedDay?.sessions.length && !selectedDay?.roulettes?.length && <div className="gn-agenda-empty"><span className="mb-3 block text-3xl" aria-hidden="true">☾</span>Une soirée libre.<br />À vous de jouer !</div>}
-        <ButtonLink href={`/sessions?date=${toDateInputValue(selectedDate)}`} variant="primary" size="sm" className="w-full">+ Proposer une soirée</ButtonLink>
+        <ButtonLink href={`/sessions?date=${toDateInputValue(selectedDate)}#nouvelle-soiree`} variant="primary" size="sm" className="w-full">+ Proposer une soirée</ButtonLink>
         <Link prefetch={false} href="/tournois" className="mt-4 block text-xs text-muted">Voir les tournois du serveur →</Link>
       </aside>
     </div>

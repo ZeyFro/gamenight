@@ -7,6 +7,7 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { creationMemberUserWhere } from "@/lib/community-isolation";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import type { WeeklySlot, OverrideForDate } from "@/lib/availability";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -71,6 +72,9 @@ export interface CalendarData {
   days: CalendarDay[];
   /** `null` si personne n'est dispo une seule heure sur toute la plage affichée. */
   bestSlot: BestSlot | null;
+  /** Réutilisation des lectures du roster, seulement pour le lecteur courant. */
+  ownWeeklySlots: WeeklySlot[];
+  ownOverrides: (OverrideForDate & { date: Date })[];
 }
 
 const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
@@ -232,5 +236,7 @@ export async function getCalendarData(
     users,
     days,
     bestSlot: findBestSlot(days),
+    ownWeeklySlots: (weeklyByUser.get(viewerId) ?? []).map(({ dayOfWeek, startTime, endTime }) => ({ dayOfWeek, startTime, endTime })),
+    ownOverrides: (overridesByUser.get(viewerId) ?? []).map(({ date, available, startTime, endTime }) => ({ date, available, startTime, endTime })),
   };
 }

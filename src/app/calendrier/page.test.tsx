@@ -30,11 +30,16 @@ beforeEach(() => {
       { id: "other", discordName: "Autre", discordAvatar: null, color: "#aabbcc" },
     ];
     const availableUserIds = visibleIds ? ["friend", "other"].filter(id => visibleIds.includes(id)) : ["friend", "other"];
-    return { users, days: [{ date: new Date("2026-10-08T00:00:00Z"), sessions: [], hours: [{ hour: 20, availableUserIds }], maxAvailableCount: availableUserIds.length }], bestSlot: null };
+    return { users, days: [{ date: new Date("2026-10-08T00:00:00Z"), sessions: [], hours: [{ hour: 20, availableUserIds }], maxAvailableCount: availableUserIds.length }], bestSlot: null, ownWeeklySlots: [], ownOverrides: [] };
   });
 });
 
 describe("calendrier : la grille suit le mode de disponibilité sélectionné", () => {
+  it("en semaine, ne charge que les sept jours affichés, pas tout le mois", async () => {
+    render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08", vue: "semaine" }) }));
+    expect(getCalendarData.mock.calls[0][0]).toEqual(new Date("2026-10-05T00:00:00Z"));
+    expect(getCalendarData.mock.calls[0][1]).toEqual(new Date("2026-10-12T00:00:00Z"));
+  });
   it("en individuel, affiche le pote choisi plutôt que les disponibilités du groupe", async () => {
     render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08", mode: "individuel", pote: "friend", potes: "other,me" }) }));
     expect(getCalendarData.mock.calls[0][3]).toEqual(["friend"]);

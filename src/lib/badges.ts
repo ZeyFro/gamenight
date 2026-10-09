@@ -109,8 +109,18 @@ async function unlockMatchingBadges(userId: string, communityId: string | null, 
   const scopedDb = await scopedPrismaForCommunityId(id);
   // Les badges déjà gagnés restent dus, même désactivés ou si le streak casse.
   const earned = await scopedDb.userBadge.findMany({ where: { communityId: id, userId }, include: { badge: true } });
+  // Le ledger est immuable : un gain déjà présent n'a pas à reprendre une
+  // transaction et ses verrous à chaque visite/création. Les badges dont la
+  // récompense manque restent réparés (interruption entre badge et crédit).
+  const rewarded = earned.some((row) => row.badge.xpReward)
+    ? await scopedDb.xpEvent.findMany({
+        where: { communityId: id, userId, reason: "BADGE_UNLOCKED", sourceId: { in: earned.map((row) => row.badgeId) } },
+        select: { sourceId: true },
+      })
+    : [];
+  const rewardedIds = new Set(rewarded.map((event) => event.sourceId));
   for (const row of earned) {
-    if (row.badge.xpReward) await awardXp(userId, id, "BADGE_UNLOCKED", row.badgeId, row.badge.xpReward);
+    if (row.badge.xpReward && !rewardedIds.has(row.badgeId)) await awardXp(userId, id, "BADGE_UNLOCKED", row.badgeId, row.badge.xpReward);
   }
   const earnedIds = new Set(earned.map((row) => row.badgeId));
   const badges = await prisma.badge.findMany({ where: { active: true } });

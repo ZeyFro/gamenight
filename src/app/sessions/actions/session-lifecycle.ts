@@ -34,7 +34,8 @@ import {
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
-import { inviteToSession } from "@/lib/session-access";
+import { logger } from "@/lib/logger";
+import { createInitialSessionInvites } from "@/lib/session-access";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   createSessionSchema,
@@ -43,8 +44,19 @@ import {
 } from "@/lib/validations";
 
 export async function createSession(formData: FormData) {
-  const user = await getCurrentUser();
+  const startedAt = performance.now();
+  let previousAt = startedAt;
+  const durations: Record<string, number> = {};
+  const measure = (phase: string) => {
+    const now = performance.now();
+    durations[phase] = Math.round(now - previousAt);
+    previousAt = now;
+  };
+  // L'activité est enregistrée par la page ; l'action garde les contrôles
+  // de session/appartenance sans reprendre les verrous de streak.
+  const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
+  measure("authentication");
   const resumed = await resumeCreation(user.id, "SESSION", formData);
   if (resumed) redirect(resumed);
   if (!checkRateLimit(user.id, "createSession")) {
@@ -103,6 +115,7 @@ export async function createSession(formData: FormData) {
   // commentaire du champ dans schema.prisma (chantier annonces bot).
   const announceViaBot = await isSessionAnnounceViaBotEnabledFor(communityId);
   await requireCommunityBotAnnouncement(communityId, announceViaBot);
+  measure("validation");
 
   // Création de la session ET enqueue de l'intention de notification bot
   // dans LA MÊME transaction SQL — trouvé lors de la revue ciblée de cette
@@ -139,13 +152,12 @@ export async function createSession(formData: FormData) {
     // transaction que la création de la session : un crash entre les deux
     // laisserait sinon une session sans le moindre invité accessible,
     // visible du seul créateur en silence. Créateur jamais inclus ici
-    // (`inviteToSession` l'exclut lui-même), il garde accès via
-    // `createdById`.
-    const createdInviteIds: string[] = [];
-    for (const guestId of notifiedUserIds) {
-      const invite = await inviteToSession(created.id, user.id, guestId, tx);
-      if (invite) createdInviteIds.push(invite.id);
-    }
+    // (`createInitialSessionInvites` l'exclut), il garde accès via
+    // `createdById`. Les destinataires sont déjà filtrés et leur appartenance
+    // verrouillée ci-dessus. Le parent vient d'être créé : aucun upsert ou
+    // relecture du parent/par invité nécessaire. Une écriture groupée, dans
+    // la même transaction, conserve les ids pour la synchronisation du fil.
+    const createdInvites = await createInitialSessionInvites(created, user.id, notifiedUserIds, tx);
     if (announceViaBot) {
       await enqueueSessionCreationDeliveries(created.id, tx);
       // Bug remonté en test réel — un invité sélectionné ICI (au
@@ -154,12 +166,13 @@ export async function createSession(formData: FormData) {
       // session-announce.ts) : sans cet enqueue, il n'était jamais ajouté
       // au fil privé tant que le créateur ne le réinvitait pas
       // manuellement depuis la page invités.
-      for (const inviteId of createdInviteIds) {
-        await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
+      for (const invite of createdInvites) {
+        await enqueueSessionInviteSyncForNewInvite(created.id, invite.id, tx);
       }
     }
     return created;
   }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
+  measure("creationTransaction");
 
   const xpResult = await awardXp(user.id, session.communityId,
     "CREATE_SESSION",
@@ -167,6 +180,7 @@ export async function createSession(formData: FormData) {
     XP_AMOUNTS.CREATE_SESSION
   );
   const badgeUnlocked = await checkSessionsCreatedBadges(user.id, session.communityId);
+  measure("rewards");
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de
@@ -191,6 +205,7 @@ export async function createSession(formData: FormData) {
   const announceResult = announceViaBot
     ? { ok: true as const }
     : replayed ? { ok: true as const } : await announceSessionCreated(session, user);
+  measure("proposalAndLegacyNotice");
 
   revalidatePath("/sessions");
 
@@ -202,6 +217,10 @@ export async function createSession(formData: FormData) {
   if (badgeUnlocked) params.set("celebrate", "badge");
   else if (xpResult.leveledUp) params.set("celebrate", "levelup");
   const query = params.toString();
+  logger.info("perf:create-session", "Création confirmée avant navigation", {
+    durationsMs: durations, totalMs: Math.round(performance.now() - startedAt),
+    guestCount: notifiedUserIds.length, announceViaBot, replayed,
+  });
   redirect(`/sessions/${session.id}${query ? `?${query}` : ""}`);
 }
 

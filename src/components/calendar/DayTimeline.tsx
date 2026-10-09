@@ -38,7 +38,7 @@ function bestHourOfDay(day: CalendarDay): number | null {
 /**
  * Timeline verticale d'une journée complète (24h, pas de fenêtre
  * réduite) — remplace l'ancien strip horizontal 18h de `WeekGrid`.
- * Auto-scroll vers ~18h à CHAQUE changement de jour (pas juste au tout
+ * Auto-scroll du panneau desktop vers ~18h à CHAQUE changement de jour (pas juste au tout
  * premier chargement de la page) : le composant est remonté à chaque
  * navigation (`key={date}` posé par la page), donc un simple
  * `useEffect` sans dépendances suffit à relancer le scroll "au
@@ -205,7 +205,13 @@ export function DayTimeline({
   }
 
   useEffect(() => {
-    highlightRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+    const timeline = scrollRef.current;
+    const evening = highlightRef.current;
+    // Seulement le panneau desktop : sur mobile le scroll appartient à la
+    // page. Ne jamais déplacer la page entière à 18 h à son ouverture.
+    if (timeline && evening && timeline.scrollHeight > timeline.clientHeight) {
+      timeline.scrollTop += evening.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
+    }
   }, []);
 
   function handleTouchStart(e: TouchEvent<HTMLDivElement>) {
@@ -320,8 +326,11 @@ export function DayTimeline({
 
   const createSessionHref =
     createPromptHour !== null
-      ? `/sessions?date=${toDateInputValue(date)}&time=${pad2(createPromptHour)}:00`
+      ? `/sessions?date=${toDateInputValue(date)}&time=${pad2(createPromptHour)}:00#nouvelle-soiree`
       : null;
+  const avatarCreateHref = avatarSheetHour !== null
+    ? `/sessions?date=${toDateInputValue(date)}&time=${pad2(avatarSheetHour)}:00#nouvelle-soiree`
+    : null;
 
   const avatarSheetIds =
     avatarSheetHour !== null
@@ -398,7 +407,7 @@ export function DayTimeline({
         ref={scrollRef}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex max-h-[65vh] flex-col overflow-y-auto rounded-xl border border-border bg-surface"
+        className="flex flex-col rounded-xl border border-border bg-surface sm:max-h-[65vh] sm:overflow-y-auto"
       >
         {HOURS_OF_DAY.map((hour) => {
           const hourData = day.hours.find((h) => h.hour === hour);
@@ -451,11 +460,11 @@ export function DayTimeline({
           // Ronds de couleur perso par pote dispo (retour terrain "qui est
           // dispo ?" pas visible d'un coup d'œil en vue Collectif) — prend
           // le pas sur le tap "créer une soirée" quand 2+ potes sont
-          // dispo sur ce créneau : voir qui est libre est plus utile ici
-          // qu'un raccourci de création, qui reste inchangé pour 0/1 pote.
+          // dispo sur ce créneau : leur panneau propose aussi de créer à
+          // cette heure, sans retour au bouton en haut de page.
           const showAvailabilityDots = mode === "collectif" && !editable && availableIds.length >= 2;
           const canPromptCreate = !editMode && !showAvailabilityDots && sessionsAtHour.length === 0;
-          const cellClassName = `h-7 rounded-md transition-transform ${
+          const cellClassName = `min-h-11 sm:min-h-7 rounded-md transition-transform ${
             isBestHour ? "ring-2 ring-accent" : ""
           } ${editable || canPromptCreate ? "active:scale-95" : ""} ${
             isPendingAnchor ? "opacity-60" : ""
@@ -629,6 +638,13 @@ export function DayTimeline({
                   );
                 })}
               </ul>
+              {avatarCreateHref && (
+                <Dialog.Close asChild>
+                  <ButtonLink href={avatarCreateHref} variant="primary" className="mt-5 w-full">
+                    Créer une soirée à {pad2(avatarSheetHour!)}h00
+                  </ButtonLink>
+                </Dialog.Close>
+              )}
               <Dialog.Close asChild>
                 <button
                   type="button"
