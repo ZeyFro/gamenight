@@ -92,6 +92,20 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     return fd;
   }
 
+  it("plafond anti-farm : la 4e soirée créée en 24 h existe mais ne rapporte pas d'XP de création", async () => {
+    await db.community.upsert({ where: { slug: "default" }, update: { status: "ACTIVE" }, create: { slug: "default", name: "default", status: "ACTIVE" } });
+    (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
+    const creator = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+    for (let day = 1; day <= 4; day++) {
+      await expect(
+        createSession(formData({ date: `2026-11-0${day}`, time: "20:00" }))
+      ).rejects.toThrow(/^REDIRECT:\/sessions\//);
+    }
+    expect(await db.session.count({ where: { createdById: creator.id } })).toBe(4);
+    expect(await db.xpEvent.count({ where: { userId: creator.id, reason: "CREATE_SESSION" } })).toBe(3);
+  });
+
   it("persiste EXACTEMENT les potes cochés — jamais plus, jamais moins, jamais 'tout le monde'", async () => {
     const creator = await makeUser();
     const invitedA = await makeUser();

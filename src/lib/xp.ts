@@ -31,6 +31,17 @@ export const XP_AMOUNTS = {
 } as const;
 
 /**
+ * Plafond anti-farm des gains « soirée créée » : au plus
+ * `CREATE_SESSION_DAILY_XP_CAP` gains `CREATE_SESSION` par membre, par
+ * communauté, sur une fenêtre glissante de 24 h (pas un jour calendaire, qui
+ * autoriserait deux séries rapprochées autour de minuit). Compté dans le
+ * ledger `XpEvent` lui-même : une soirée supprimée juste après sa création
+ * garde son gain dans le ledger, donc continue de compter.
+ */
+export const CREATE_SESSION_DAILY_XP_CAP = 3;
+export const CREATE_SESSION_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Formules pures du chantier XP/niveaux/rangs — aucune I/O ici
  * volontairement (ni Prisma, ni Discord), pour que `discord-level-up.ts`
  * puisse les utiliser sans créer de dépendance circulaire avec
