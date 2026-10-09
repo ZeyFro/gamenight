@@ -20,7 +20,11 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        # Miroir Amazon ECR Public de l'image officielle (Docker Official Images) : le
+        # pull anonyme depuis Docker Hub échoue parfois (limite de 100 pulls / 6 h par IP
+        # partagée des runners, ou délai dépassé sur auth.docker.io). Même image
+        # (PostgreSQL 16), sans compte ni secret.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: gamenight_test
