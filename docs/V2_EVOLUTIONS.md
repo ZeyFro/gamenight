@@ -9,9 +9,9 @@ Les validations réelles restent séparées des tests et des builds.
 | Interface, navigation, calendrier et fond animé | PR précédentes #203–206 ; rendu réel à suivre avec le mainteneur |
 | Proposer des créneaux selon les disponibilités et invités | PR #207 fusionnée ; 3 propositions sur 7 jours |
 | Sondage où chacun vote sur des dates propres à une soirée | À faire ; distinct des disponibilités hebdomadaires |
-| Liste d'attente et remplacement | Ce lot : soirées planifiées avec capacité activée par le créateur ; voir SESSION_PLACES.md |
-| Réponses « je viens / je viens pas » dans Discord | Prochain lot ; pas dans la PR des places |
-| Rappels automatiques Discord | Existant ; compléter les réponses interactives et revalider les messages |
+| Liste d'attente et remplacement | PR #208 fusionnée : soirées planifiées avec capacité activée par le créateur ; voir SESSION_PLACES.md |
+| Réponses « je viens / je viens pas » dans Discord | Ce lot : soirées planifiées avec capacité, fil/MP/rappels ; voir DISCORD_REPONSES_SOIREES.md. Tournois et instantanées restent à compléter |
+| Rappels automatiques Discord | Existant ; boutons ajoutés pour les soirées avec capacité, messages de création SCHEDULED et exclusion du créateur des mentions corrigés ; rendu réel à valider |
 | Vote de jeu et veto individuel limité | Propositions/votes existants ; veto à ajouter |
 | Jeux possédés en commun par les personnes choisies | Steam/bibliothèque de groupe existants ; intersection ciblée à compléter |
 | Roulette pondérée par tierlist et historique | À ajouter après audit du tirage existant |

@@ -8,7 +8,16 @@ import { wallClockNow } from "@/lib/wallclock";
 import { planSessionSeats, type SeatStatus } from "@/lib/session-seat-plan";
 
 export type SeatCommand = { kind: "join" | "leave" | "refresh" } | { kind: "capacity"; capacity: number };
-export type SeatResult = { ok: true; status?: SeatStatus } | { ok: false; error: "access" | "closed" | "disabled" | "capacity" };
+export type SeatResult = { ok: true; status?: SeatStatus; replayed?: boolean } | { ok: false; error: "access" | "closed" | "disabled" | "capacity" };
+
+/** Origine signée par Discord, jamais fournie par une action du navigateur. */
+export interface DiscordSeatOrigin {
+  interactionId: string;
+  discordId: string;
+  guildId?: string;
+  channelId: string;
+  messageId: string;
+}
 
 export async function readSessionSeats(userId: string, sessionId: string) {
   const scope = await getIsolationScope(userId);
@@ -28,7 +37,7 @@ export async function readSessionSeats(userId: string, sessionId: string) {
 /** L'accès privé et la communauté sont relus dans la transaction ; le verrou
  * de Session sérialise capacité, désistement et admission de la dernière place.
  * SessionSeat hérite de ce parent validé, aucune requête par id de siège reçu. */
-export async function changeSessionSeat(userId: string, sessionId: string, command: SeatCommand): Promise<SeatResult> {
+export async function changeSessionSeat(userId: string, sessionId: string, command: SeatCommand, origin?: DiscordSeatOrigin): Promise<SeatResult> {
   const scope = await getIsolationScope(userId);
   return prisma.$transaction(async tx => {
     const scopedDb = scopedTransactionPrisma(tx, scope);
@@ -37,6 +46,31 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
     await scopedDb.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
     const session = await scopedDb.session.findFirst({ where, include: { decidedGame: { select: { maxPlayers: true } } } });
     if (!session) return { ok: false, error: "access" };
+    let receiptWhere;
+    if (origin) {
+      if (command.kind !== "join" && command.kind !== "leave") return { ok: false, error: "access" };
+      const communityId = session.communityId ?? (await scopedDb.community.findUnique({ where: { slug: "default" }, select: { id: true } }))?.id;
+      if (!communityId) return { ok: false, error: "access" };
+      // Ces contrôles s'appliquent même flags OFF. Aucune préférence de serveur
+      // active n'autorise une réponse ; seul le parent et ses membres comptent.
+      const [community] = await scopedDb.$queryRaw<Array<{ status: string; discordGuildId: string | null }>>`SELECT status, "discordGuildId" FROM "Community" WHERE id = ${communityId} FOR SHARE`;
+      const [member] = await scopedDb.$queryRaw<Array<{ status: string }>>`SELECT status FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR SHARE`;
+      const actor = await scopedDb.user.findUnique({ where: { id: userId }, select: { discordId: true } });
+      if (community?.status !== "ACTIVE" || member?.status !== "ACTIVE" || actor?.discordId !== origin.discordId || (origin.guildId !== undefined && community.discordGuildId !== origin.guildId)) return { ok: false, error: "access" };
+      const delivered = await scopedDb.notificationDelivery.findFirst({ where: {
+        status: "SENT", operation: "SEND", transport: "BOT", discordMessageId: origin.messageId,
+        event: { category: "SESSION", sourceId: sessionId, communityId: session.communityId },
+        ...(origin.guildId ? { channel: "DISCORD_CHANNEL", discordThreadId: origin.channelId }
+          : { channel: "DISCORD_DM", discordChannelId: origin.channelId, recipientKey: `user:${userId}` }),
+      }, select: { id: true } });
+      if (!delivered) return { ok: false, error: "access" };
+      receiptWhere = { category_eventType_sourceId_occurrence: { category: "SESSION" as const, eventType: "SESSION_RSVP", sourceId: sessionId, occurrence: origin.interactionId } };
+      const receipt = await scopedDb.notificationEvent.findUnique({ where: receiptWhere, select: { payload: true } });
+      if (receipt) {
+        const payload = receipt.payload as { userId?: string; kind?: string; status?: SeatStatus } | null;
+        return payload?.userId === userId && payload.kind === command.kind ? { ok: true, status: payload.status, replayed: true } : { ok: false, error: "access" };
+      }
+    }
     if (session.status !== "SCHEDULED" || session.date <= wallClockNow()) return { ok: false, error: "closed" };
     if (command.kind === "capacity" || command.kind === "refresh") {
       if (session.createdById !== userId) return { ok: false, error: "access" };
@@ -83,6 +117,7 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       if (status === "CONFIRMED") await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
     }
     if (changed && session.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, scopedDb);
+    if (receiptWhere) await scopedDb.notificationEvent.create({ data: { ...receiptWhere.category_eventType_sourceId_occurrence, communityId: session.communityId, payload: { userId, kind: command.kind, status: plan.get(userId) ?? "DECLINED" } } });
     return { ok: true, status: plan.get(userId) };
   }, { timeout: 15_000 });
 }

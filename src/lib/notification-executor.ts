@@ -32,6 +32,7 @@ import {
   startThreadFromMessage,
   type AllowedMentions,
   type DiscordRestEmbed,
+  type DiscordActionRow,
   type DiscordRestFailure,
   type DiscordRestResult,
 } from "@/lib/discord-rest";
@@ -111,6 +112,7 @@ export const DEFAULT_BATCH_BUDGET_MS = 50_000;
 export interface ResolvedMessageContent {
   content?: string;
   embeds?: DiscordRestEmbed[];
+  components?: DiscordActionRow[];
   allowedMentions: AllowedMentions;
 }
 
@@ -414,6 +416,7 @@ export async function performDiscordAction(
         channelId: action.channelId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         deadline,
         now,
@@ -429,6 +432,7 @@ export async function performDiscordAction(
         guildId: action.guildId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         deadline,
         now,
@@ -444,6 +448,7 @@ export async function performDiscordAction(
         messageId: action.messageId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         isDirectMessage: action.isDirectMessage,
         deadline,
@@ -463,6 +468,7 @@ export async function performDiscordAction(
         userId: action.userId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         deadline,
         now,
@@ -493,6 +499,7 @@ export async function performDiscordAction(
         threadId: action.threadId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         deadline,
         now,
@@ -542,6 +549,7 @@ export async function performDiscordAction(
         threadId: action.threadId,
         content: action.message.content,
         embeds: action.message.embeds,
+        components: action.message.components,
         allowedMentions: action.message.allowedMentions,
         deadline,
         now,

@@ -504,9 +504,15 @@ function normalizeThreadName(name: string): string {
   return name.slice(0, THREAD_NAME_MAX_LENGTH);
 }
 
+export interface DiscordActionRow {
+  type: 1;
+  components: { type: 2; style: 1 | 2 | 3 | 4; label: string; custom_id: string; disabled?: boolean }[];
+}
+
 interface MessageContentInput {
   content?: string;
   embeds?: DiscordRestEmbed[];
+  components?: DiscordActionRow[];
   allowedMentions: AllowedMentions;
 }
 
@@ -532,6 +538,7 @@ function buildMessageBody(input: MessageContentInput) {
   return {
     content: input.content,
     embeds: input.embeds,
+    components: input.components,
     allowed_mentions: toDiscordAllowedMentions(input.allowedMentions),
   };
 }
@@ -817,6 +824,7 @@ export async function sendChannelMessageVerified(
     channelId: verified.data.channelId,
     content: input.content,
     embeds: input.embeds,
+    components: input.components,
     allowedMentions: input.allowedMentions,
     deadline: input.deadline,
     now: input.now,
@@ -894,6 +902,7 @@ export async function sendThreadMessage(input: SendThreadMessageInput): Promise<
     channelId: input.threadId,
     content: input.content,
     embeds: input.embeds,
+    components: input.components,
     allowedMentions: input.allowedMentions,
     deadline: input.deadline,
     now: input.now,
@@ -987,6 +996,7 @@ export async function sendDirectMessage(input: SendDirectMessageInput): Promise<
     channelId: channel.data.channelId,
     content: input.content,
     embeds: input.embeds,
+    components: input.components,
     allowedMentions: input.allowedMentions,
     isDirectMessage: true,
     deadline: input.deadline,
@@ -1168,6 +1178,7 @@ export async function sendThreadMessageVerified(
     threadId: verified.data.threadId,
     content: input.content,
     embeds: input.embeds,
+    components: input.components,
     allowedMentions: input.allowedMentions,
     deadline: input.deadline,
     now: input.now,

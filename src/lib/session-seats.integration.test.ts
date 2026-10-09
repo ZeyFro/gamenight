@@ -30,6 +30,63 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
   });
   const join = (userId: string) => change(userId, "s", { kind: "join" });
   const leave = (userId: string) => change(userId, "s", { kind: "leave" });
+  async function discordOrigin(userId = "alice", dm = false) {
+    await db.community.update({ where: { id: "a" }, data: { discordGuildId: "111" } });
+    const event = await db.notificationEvent.create({ data: { category: "SESSION", eventType: dm ? "SESSION_DM" : "SESSION_CREATED", communityId: "a", sourceId: "s", occurrence: userId } });
+    await db.notificationDelivery.create({ data: { eventId: event.id, channel: dm ? "DISCORD_DM" : "DISCORD_CHANNEL", transport: "BOT", status: "SENT", recipientKey: dm ? `user:${userId}` : "channel", targetSlot: `default-guild:SESSION:s:${dm ? "dm:" + userId : "announce"}`, discordMessageId: `message-${userId}`, ...(dm ? { discordChannelId: "222" } : { discordThreadId: "222" }) } });
+    return { interactionId: `click-${userId}`, discordId: userId, guildId: dm ? undefined : "111", channelId: "222", messageId: `message-${userId}` };
+  }
+  it("Discord et site partagent la dernière place et la promotion FIFO", async () => {
+    const origin = await discordOrigin();
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "WAITLIST" });
+    await leave("host");
+    expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
+    expect(await db.notification.count({ where: { userId: "alice" } })).toBe(1);
+  });
+  it("deux retries Discord ne rejouent pas une ancienne réponse après un désistement", async () => {
+    await db.sessionSeat.deleteMany({}); const origin = await discordOrigin();
+    const results = await Promise.all([change("alice", "s", { kind: "join" }, origin), change("alice", "s", { kind: "join" }, origin)]);
+    expect(results.filter(result => result.ok && result.replayed)).toHaveLength(1);
+    expect(await db.notification.count({ where: { userId: "alice" } })).toBe(1);
+    await leave("alice");
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, replayed: true });
+    expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "DECLINED" });
+    expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(1);
+  });
+  it("le serveur sélectionné sur le site ne change pas l'origine d'une réponse Discord", async () => {
+    const origin = await discordOrigin("host"); await db.user.update({ where: { id: "host" }, data: { activeCommunityId: "b" } });
+    expect(await change("host", "s", { kind: "leave" }, origin)).toMatchObject({ ok: true });
+  });
+  it("refuse mauvais serveur, canal, message ou identité, sans marqueur ni siège", async () => {
+    const origin = await discordOrigin();
+    for (const over of [{ guildId: "999" }, { channelId: "999" }, { messageId: "999" }, { discordId: "bob" }]) expect(await change("alice", "s", { kind: "join" }, { ...origin, ...over })).toEqual({ ok: false, error: "access" });
+    expect(await db.sessionSeat.count()).toBe(1); expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(0);
+  });
+  it("un message pas confirmé SENT ou une invitation révoquée ne donne aucun accès", async () => {
+    const origin = await discordOrigin(); await db.notificationDelivery.updateMany({ data: { status: "FAILED" } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toEqual({ ok: false, error: "access" });
+    await db.notificationDelivery.updateMany({ data: { status: "SENT" } }); await db.sessionInvite.updateMany({ where: { userId: "alice" }, data: { status: "REVOKED" } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toEqual({ ok: false, error: "access" });
+  });
+  it("MP : vérifie le destinataire, même si un autre invité connaît l'id du message", async () => {
+    const origin = await discordOrigin("alice", true);
+    expect(await change("bob", "s", { kind: "join" }, { ...origin, discordId: "bob" })).toEqual({ ok: false, error: "access" });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true });
+  });
+  it("Discord revalide Membership et Community même lorsque les flags d'isolation sont OFF", async () => {
+    const origin = await discordOrigin(); vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    await db.membership.updateMany({ where: { userId: "alice" }, data: { status: "REMOVED" } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toEqual({ ok: false, error: "access" });
+    await db.membership.updateMany({ where: { userId: "alice" }, data: { status: "ACTIVE" } }); await db.community.update({ where: { id: "a" }, data: { status: "SUSPENDED" } });
+    expect(await change("alice", "s", { kind: "join" }, origin)).toEqual({ ok: false, error: "access" });
+  });
+  it("le reçu de réponse fait partie du commit, et disparaît en cas de rollback", async () => {
+    const origin = await discordOrigin(); await db.sessionSeat.deleteMany({}); await db.session.update({ where: { id: "s" }, data: { announceViaBot: true } });
+    mocks.enqueue.mockRejectedValueOnce(new Error("enqueue failure"));
+    await expect(change("alice", "s", { kind: "join" }, origin)).rejects.toThrow("enqueue failure");
+    expect(await db.sessionSeat.count()).toBe(0); expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(0);
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });
+  });
   it("une dernière place n'est prise qu'une fois, même par des clics simultanés", async () => {
     await db.sessionSeat.deleteMany({});
     const results = await Promise.all([join("alice"), join("bob"), join("alice"), join("bob")]);
