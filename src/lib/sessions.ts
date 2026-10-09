@@ -8,7 +8,7 @@ import { announceSessionResult } from "@/lib/discord-announce";
 import {
   enqueueSessionAnnounceUpdate,
   enqueueSessionCreationDeliveries,
-  enqueueSessionInviteSyncForNewInvite,
+  enqueueSessionInviteSyncForNewInvites,
   enqueueSessionResultThreadSummary,
   enqueueSessionDateChange,
   enqueueSessionValidated,
@@ -108,9 +108,7 @@ export async function createRouletteResultSession(data: {
       // fil Discord tant qu'il n'était pas réinvité manuellement — voir le
       // commentaire de `enqueueSessionInviteSyncForNewInvite`,
       // session-announce.ts.
-      for (const inviteId of createdInviteIds) {
-        await enqueueSessionInviteSyncForNewInvite(created.id, inviteId, tx);
-      }
+      await enqueueSessionInviteSyncForNewInvites(created, createdInviteIds, tx);
     }
     const proposal = await tx.proposal.create({
       data: { sessionId: created.id, gameId: data.decidedGameId, proposedById: data.createdById },

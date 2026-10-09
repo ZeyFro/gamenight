@@ -19,7 +19,7 @@ import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/com
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
   enqueueSessionCreationDeliveries,
-  enqueueSessionInviteSyncForNewInvite,
+  enqueueSessionInviteSyncForNewInvites,
   enqueueSessionThreadDelete,
 } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
@@ -166,9 +166,7 @@ export async function createSession(formData: FormData) {
       // session-announce.ts) : sans cet enqueue, il n'était jamais ajouté
       // au fil privé tant que le créateur ne le réinvitait pas
       // manuellement depuis la page invités.
-      for (const invite of createdInvites) {
-        await enqueueSessionInviteSyncForNewInvite(created.id, invite.id, tx);
-      }
+      await enqueueSessionInviteSyncForNewInvites(created, createdInvites.map((invite) => invite.id), tx);
     }
     return created;
   }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
