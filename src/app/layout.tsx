@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
+import { after } from "next/server";
+import { getOnboardingProgress, missingOnboardingSteps } from "@/lib/onboarding";
+import { enqueueOnboardingReminder } from "@/lib/onboarding-reminder";
+import { OnboardingPrompt } from "@/components/onboarding/OnboardingPrompt";
+import { logger } from "@/lib/logger";
 import { Toaster } from "sonner";
 import { getCurrentUser } from "@/lib/current-user";
 import { Header } from "@/components/Header";
@@ -55,6 +60,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // `page.tsx`) : BottomNav/GuideFab/confettis ne doivent pas rester
   // affichés par-dessus l'écran de connexion après un déclenchement.
   const user = await getCurrentUser();
+  const onboarding = user ? await getOnboardingProgress(user.id) : null;
+  if (user && onboarding && missingOnboardingSteps(onboarding).length) {
+    after(async () => {
+      try { await enqueueOnboardingReminder(user.id); }
+      catch (error) { logger.error("onboarding-reminder", error, { userId: user.id }); }
+    });
+  }
   const skipLink = isSkipLinkEnabled();
 
   return (
@@ -76,6 +88,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </main>
           {user && <BottomNav />}
           {user && <GuideFab />}
+          {user && onboarding && <OnboardingPrompt userId={user.id} progress={onboarding} />}
           {user && <CelebrationConfetti soundEnabled={user.soundEnabled} />}
           <Toaster theme="dark" position="bottom-center" richColors />
           <CursorTrail />

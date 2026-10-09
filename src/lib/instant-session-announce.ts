@@ -1,4 +1,8 @@
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { scopedPrismaForCommunity } from "@/lib/community-scoped-client";
+import { resolveSessionAnnounceConfig } from "@/lib/community-channels";
+import { wallClockNow } from "@/lib/wallclock";
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +11,7 @@ import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { isInstantSessionInviteViaBotEnabled } from "@/lib/discord-bot-config";
-import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
+import { createNotificationEvent, enqueueDelivery, notificationEventMatchesSource } from "@/lib/notification-delivery";
 import type { DeliveryResolver, Resolution, ResolvedAction, ResolveInput } from "@/lib/notification-executor";
 import { ACCENT_COLOR } from "@/lib/discord";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
@@ -69,6 +73,31 @@ function inviteSlot(instantSessionId: string, userId: string): string {
 }
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
+
+const announceSlot = (id: string) => `${GUILD_SLOT_PREFIX}:INSTANT_SESSION:${id}:announce`;
+
+/** La partie immédiate est ouverte aux membres du serveur. Une annonce
+ * publique sans mention existe même si le créateur n'a choisi aucun MP. */
+export async function enqueueInstantSessionAnnouncement(
+  instantSessionId: string, db: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<void> {
+  if (process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED !== "true") return;
+  const event = await createNotificationEvent({ category: "INSTANT_SESSION", eventType: "INSTANT_SESSION_ANNOUNCE", sourceId: instantSessionId }, db);
+  await enqueueDelivery({ eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND",
+    recipientKey: "channel", targetSlot: announceSlot(instantSessionId) }, db);
+}
+
+async function enqueueAnnouncementUpdate(id: string, db: Prisma.TransactionClient | typeof prisma) {
+  const initial = await db.notificationEvent.findUnique({ where: { category_eventType_sourceId_occurrence: {
+    category: "INSTANT_SESSION", eventType: "INSTANT_SESSION_ANNOUNCE", sourceId: id, occurrence: "",
+  } }, select: { communityId: true } });
+  // Pas de publication tardive pour les parties historiques jamais annoncées.
+  if (!initial) return;
+  const event = await createNotificationEvent({ communityId: initial.communityId, category: "INSTANT_SESSION",
+    eventType: "INSTANT_SESSION_ANNOUNCE_UPDATED", sourceId: id, occurrence: randomUUID() }, db);
+  await enqueueDelivery({ eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "EDIT",
+    recipientKey: "channel", targetSlot: announceSlot(id) }, db);
+}
 
 /* -------------------------------------------------------------------- */
 /* Enqueue                                                               */
@@ -139,6 +168,7 @@ export async function enqueueInstantSessionInviteUpdate(
   instantSessionId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<void> {
+  await enqueueAnnouncementUpdate(instantSessionId, db);
   const session = await db.instantSession.findUnique({
     where: { id: instantSessionId },
     select: { notifiedUserIds: true },
@@ -212,6 +242,7 @@ async function buildInviteMessage(session: InstantSessionForMessage) {
 
 export const instantSessionInviteResolver: DeliveryResolver = {
   async resolve({ delivery, event }: ResolveInput): Promise<Resolution> {
+    if (delivery.targetSlot === announceSlot(event.sourceId)) return resolveAnnouncement({ delivery, event });
     if (!isInstantSessionInviteViaBotEnabled()) return { eligible: false, reason: "not_configured" };
 
     const instantSessionId = event.sourceId;
@@ -281,3 +312,43 @@ export const instantSessionInviteResolver: DeliveryResolver = {
     return { eligible: true, action };
   },
 };
+
+/** Destination du parent, pas de la communauté actuellement sélectionnée.
+ * Le salon est vérifié côté Discord par l'action SEND de l'executor. */
+async function resolveAnnouncement({ event, delivery }: Pick<ResolveInput, "event" | "delivery">): Promise<Resolution> {
+  if (event.category !== "INSTANT_SESSION" || !["INSTANT_SESSION_ANNOUNCE", "INSTANT_SESSION_ANNOUNCE_UPDATED"].includes(event.eventType) ||
+    delivery.channel !== "DISCORD_CHANNEL" || delivery.transport !== "BOT" || delivery.recipientKey !== "channel") return { eligible: false, reason: "unresolvable" };
+  if (process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED !== "true") return { eligible: false, reason: "configuration_unavailable" };
+  const scopedDb = scopedPrismaForCommunity(event.communityId);
+  const session = await scopedDb.instantSession.findUnique({ where: { id: event.sourceId }, select: {
+    id: true, communityId: true, status: true, expiresAt: true, game: { select: { name: true } },
+    createdById: true, createdBy: { select: { discordName: true } },
+  } });
+  if (!session || !(await notificationEventMatchesSource(event.communityId, session.communityId))) return { eligible: false, reason: "expired" };
+  // Ce nouveau message public exige un serveur et un créateur encore actifs,
+  // même si les flags d'isolation sont momentanément OFF.
+  const community = await prisma.community.findUnique({ where: session.communityId ? { id: session.communityId } : { slug: "default" }, select: { id: true, status: true } });
+  if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
+  const member = await prisma.membership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: session.createdById } }, select: { status: true } });
+  if (member?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
+  const active = session.status === "ACTIVE" && session.expiresAt > wallClockNow();
+  if (delivery.operation === "SEND" && !active) return { eligible: false, reason: "expired" };
+  const config = await resolveSessionAnnounceConfig(session.communityId);
+  const link = resolveAbsoluteUrl(`/jouer-maintenant/${session.id}`, {
+    VERCEL_ENV: process.env.VERCEL_ENV, VERCEL_URL: process.env.VERCEL_URL, VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  });
+  if (!config || !link) return { eligible: false, reason: "configuration_unavailable" };
+  const message = { allowedMentions: NO_MENTIONS_PARSE, embeds: [{
+    title: active ? "🎮 On joue maintenant !" : "🎮 Partie terminée",
+    description: active ? `**${session.createdBy.discordName}** lance une partie de **${session.game.name}**.\nLes membres de ce serveur peuvent participer.\n\n👉 [Rejoindre la partie](${link})`
+      : `La partie sur **${session.game.name}** est terminée.`, color: ACCENT_COLOR,
+  }] };
+  if (delivery.operation === "SEND") return { eligible: true, action: { kind: "send_channel_message_verified", ...config, message } };
+  const sent = await findSentDelivery(delivery.targetSlot);
+  if (!sent?.discordChannelId || !sent.discordMessageId) {
+    const initial = await prisma.notificationDelivery.findFirst({ where: { targetSlot: delivery.targetSlot, operation: "SEND" }, select: { status: true } });
+    return { eligible: false, reason: initial?.status === "FAILED" || initial?.status === "SKIPPED" ? "expired" : "dependency_not_ready" };
+  }
+  if (sent.discordChannelId !== config.channelId) return { eligible: false, reason: "configuration_unavailable" };
+  return { eligible: true, action: { kind: "edit_channel_message", channelId: sent.discordChannelId, messageId: sent.discordMessageId, message } };
+}

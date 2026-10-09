@@ -1,31 +1,41 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
-import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { todayDateOnly } from "@/lib/wallclock";
 
-/**
- * Déclenchement de l'onboarding premier login (Sprint 2 PR-B, U1) :
- * `onboardingCompleted` coupe court dès qu'il est passé à `true` (vu ou
- * skippé une fois, ne se réaffiche plus jamais). Tant qu'il est `false`
- * (comptes déjà existants avant cette PR inclus — migration additive), on
- * ne montre l'écran que si le compte n'a strictement rien fait encore :
- * aucune soirée jouée (même définition que `getProfileStats`, `XpEvent`
- * PARTICIPATE) et aucune dispo réglée (ni créneau récurrent, ni
- * exception ponctuelle) — un compte plus ancien qui a déjà de l'activité
- * ne se voit jamais imposer ce tutoriel après coup.
- */
-export async function shouldShowOnboarding(
-  userId: string,
-  onboardingCompleted: boolean
-): Promise<boolean> {
-  if (onboardingCompleted) return false;
-  const scopedDb = await getActiveScopedPrisma(userId);
-  const communityId = await writeCommunityIdForUser(userId);
+// Réglage de compte commun à ses serveurs. Le journal ADMIN conserve ce
+// choix explicite ; occurrence vide = reçu durable, conservé par rétention.
+export const ONBOARDING_CHOICE = "ONBOARDING_STEAM_CHOICE";
+export const ONBOARDING_REMINDER = "ONBOARDING_REMINDER";
+export const onboardingEventKey = (userId: string, eventType: string) => ({
+  category_eventType_sourceId_occurrence: { category: "ADMIN" as const, eventType, sourceId: userId, occurrence: "" },
+});
 
-  const [sessionsParticipated, weeklySlots, overrides] = await Promise.all([
-    scopedDb.xpEvent.count({ where: { userId, communityId: { in: communityId ? [communityId] : [] }, reason: "PARTICIPATE" } }),
-    prisma.weeklyAvailability.count({ where: { userId } }),
-    prisma.availabilityOverride.count({ where: { userId } }),
-  ]);
-
-  return sessionsParticipated === 0 && weeklySlots === 0 && overrides === 0;
+export interface OnboardingProgress {
+  steamLinked: boolean;
+  steamSkipped: boolean;
+  planningReady: boolean;
+  guideCompleted: boolean;
 }
+
+export function missingOnboardingSteps(progress: OnboardingProgress): Array<"steam" | "planning"> {
+  return [
+    ...(!progress.steamLinked && !progress.steamSkipped ? ["steam" as const] : []),
+    ...(!progress.planningReady ? ["planning" as const] : []),
+  ];
+}
+
+/** Au plus deux lectures ciblées, mémoïsées par rendu ; aucun comptage XP/badge. */
+export const getOnboardingProgress = cache(async (userId: string): Promise<OnboardingProgress | null> => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: {
+      steamId64: true, onboardingCompleted: true,
+      _count: { select: { weeklyAvailability: true, availabilityOverrides: { where: { date: { gte: todayDateOnly() } } } } },
+    } });
+  if (!user) return null;
+  const choice = user.steamId64 ? null : await prisma.notificationEvent.findUnique({ where: onboardingEventKey(userId, ONBOARDING_CHOICE), select: { payload: true } });
+  return {
+    steamLinked: Boolean(user.steamId64),
+    steamSkipped: (choice?.payload as { skipped?: boolean } | null)?.skipped === true,
+    planningReady: user._count.weeklyAvailability > 0 || user._count.availabilityOverrides > 0,
+    guideCompleted: user.onboardingCompleted,
+  };
+});

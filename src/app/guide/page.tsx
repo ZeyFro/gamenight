@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
+import { ButtonLink } from "@/components/ui/Button";
 
 export const metadata = pageMetadata("Guide");
 
@@ -86,6 +87,7 @@ export default async function GuidePage() {
         </p>
       </div>
 
+      <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
       <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {guideSections(SECTIONS).map((section) => (
           <StaggerItem key={section.title}>

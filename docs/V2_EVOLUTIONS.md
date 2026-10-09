@@ -10,7 +10,9 @@ Les validations réelles restent séparées des tests et des builds.
 | Proposer des créneaux selon les disponibilités et invités | PR #207 fusionnée ; 3 propositions sur 7 jours |
 | Sondage où chacun vote sur des dates propres à une soirée | À faire ; distinct des disponibilités hebdomadaires |
 | Liste d'attente et remplacement | PR #208 fusionnée : soirées planifiées avec capacité activée par le créateur ; voir SESSION_PLACES.md |
-| Réponses « je viens / je viens pas » dans Discord | Ce lot : soirées planifiées avec capacité, fil/MP/rappels ; voir DISCORD_REPONSES_SOIREES.md. Tournois et instantanées restent à compléter |
+| Réponses « je viens / je viens pas » dans Discord | PR #209 fusionnée : soirées planifiées avec capacité, fil/MP/rappels ; voir DISCORD_REPONSES_SOIREES.md. Tournois et instantanées restent à compléter |
+| Accueil Steam/planning et guide assisté | Ce lot : popup reprenable, état réel, choix sans Steam, MP unique ciblé et liens après OAuth ; voir ACCUEIL_ET_PARTIES_IMMEDIATES.md |
+| Annonce publique « Jouer maintenant » | Ce lot : salon du serveur d'origine, lien de participation même sans invité, éditions à la fin/changement de jeu ; aucun RSVP Discord instantané ajouté |
 | Rappels automatiques Discord | Existant ; boutons ajoutés pour les soirées avec capacité, messages de création SCHEDULED et exclusion du créateur des mentions corrigés ; rendu réel à valider |
 | Vote de jeu et veto individuel limité | Propositions/votes existants ; veto à ajouter |
 | Jeux possédés en commun par les personnes choisies | Steam/bibliothèque de groupe existants ; intersection ciblée à compléter |
