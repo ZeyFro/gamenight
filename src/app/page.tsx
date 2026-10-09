@@ -6,7 +6,6 @@ import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
-import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { closeSessionIfDue } from "@/lib/sessions";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
@@ -14,7 +13,6 @@ import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNew
 import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
-import { shouldShowOnboarding } from "@/lib/onboarding";
 import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { listGroupAchievements } from "@/lib/group-achievements";
@@ -37,7 +35,6 @@ import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
-import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 
@@ -146,12 +143,6 @@ async function HomeContent({
 
   await requireCommunityChosen(user.id, "/");
   const scopedDb = await getActiveScopedPrisma(user.id);
-  const communityId = await writeCommunityIdForUser(user.id);
-
-  const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
-  const badgeCount = showOnboarding
-    ? await scopedDb.userBadge.count({ where: { userId: user.id, communityId: { in: communityId ? [communityId] : [] } } })
-    : 0;
 
   const dueSession = await scopedDb.session.findFirst({
     where: { status: "VOTING", date: { lte: wallClockNow() }, ...(await accessibleSessionWhereFor(user.id)) },
@@ -251,15 +242,6 @@ async function HomeContent({
   return (
     <PullToRefresh>
     <div className="gn-home-shell mx-auto flex w-full flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
-      {showOnboarding && (
-        <OnboardingFlow
-          discordName={user.discordName}
-          discordAvatar={user.discordAvatar}
-          xpTotal={user.xpTotal}
-          badgeCount={badgeCount}
-        />
-      )}
-
       <div className="gn-page-heading">
         <div><p className="gn-eyebrow mb-3">Ensemble, c’est toujours mieux</p><h1><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Ce soir, on joue à quoi ?</AuroraText></h1><p>Un jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.</p></div>
         <ButtonLink href="/sessions" variant="primary" className="hidden sm:inline-flex">+ Créer une soirée</ButtonLink>

@@ -10,6 +10,7 @@ import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import {
   enqueueInstantSessionInviteUpdate,
   enqueueInstantSessionInvites,
+  enqueueInstantSessionAnnouncement,
 } from "@/lib/instant-session-announce";
 import { logger } from "@/lib/logger";
 import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
@@ -190,6 +191,7 @@ export async function createInstantSession(input: {
         // Le cast adapte les types Prisma étendus ; le client de transaction garde ses filtres.
         await enqueueInstantSessionInvites(created.id, notifiedUserIds, tx as unknown as Prisma.TransactionClient);
       }
+      await enqueueInstantSessionAnnouncement(created.id, tx as unknown as Prisma.TransactionClient);
       return created;
     }, (created) => created.id, (tx, id) => tx.instantSession.findUniqueOrThrow({ where: { id } }));
     return { ok: true, instantSession };
@@ -312,8 +314,11 @@ export async function changeInstantSessionGame(
   if (session.createdById !== requestedById) return { ok: false, reason: "not_creator" };
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
-  await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
-  await enqueueInstantSessionInviteUpdate(instantSessionId);
+  await prisma.$transaction(async tx => {
+    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById));
+    await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
+    await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
+  });
   return { ok: true };
 }
 

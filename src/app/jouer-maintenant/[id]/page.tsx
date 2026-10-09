@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getInstantSessionView, toInstantSessionViewDTO } from "@/lib/instant-sessions";
 import { InstantSessionDetail } from "@/components/jouer-maintenant/InstantSessionDetail";
 import { pageMetadata } from "@/lib/page-title";
+import { signIn } from "@/auth";
+import { LoginLanding } from "@/components/app/LoginLanding";
+import { Button } from "@/components/ui/Button";
 
 export const metadata = pageMetadata("Jouer maintenant");
 
@@ -18,10 +21,13 @@ export default async function InstantSessionPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/");
-
   const { id } = await params;
+  const user = await getCurrentUser();
+  if (!user) return <LoginLanding><form action={async () => {
+    "use server";
+    // Chemin interne encodé : aucune URL de redirection fournie par le client.
+    await signIn("discord", { redirectTo: `/jouer-maintenant/${encodeURIComponent(id)}` });
+  }}><Button type="submit" variant="primary">Se connecter pour rejoindre la partie</Button></form></LoginLanding>;
   const view = await getInstantSessionView(id, user.id);
   if (!view) redirect("/jouer-maintenant");
 

@@ -1,243 +1,67 @@
 "use client";
 
-import { useRef, useState, type TouchEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Avatar } from "@/components/ui/Avatar";
+import Link from "next/link";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { completeOnboardingAction } from "@/app/onboarding-actions";
+import { completeOnboardingAction, skipSteamOnboardingAction } from "@/app/onboarding-actions";
+import type { OnboardingProgress } from "@/lib/onboarding";
 
-const SWIPE_MIN_DISTANCE_PX = 50;
-const SCREEN_COUNT = 4;
+const TOUR = [
+  { title: "Ton planning", icon: "📅", text: "Indique tes créneaux habituels et tes exceptions. Le calendrier du groupe aide ensuite à choisir une date commune.", href: "/disponibilites", label: "Renseigner mon planning" },
+  { title: "Tes jeux et ceux du groupe", icon: "🎮", text: "Steam importe les jeux accessibles de ta bibliothèque. Tu peux aussi ajouter des jeux à la main, consulter la bibliothèque du groupe et organiser ta tierlist.", href: "/bibliotheque/groupe", label: "Voir les jeux du groupe", secondHref: "/profil/tierlist", secondLabel: "Ma tierlist" },
+  { title: "Soirées et calendrier", icon: "🌙", text: "Crée une soirée pour plus tard, invite tes potes et vote pour le jeu. Avec des places activées, les inscriptions supplémentaires passent en liste d’attente.", href: "/sessions", label: "Voir les soirées", secondHref: "/calendrier", secondLabel: "Le calendrier" },
+  { title: "Roulette ou partie immédiate", icon: "🎲", text: "La roulette choisit un jeu : maintenant pour partir directement, ou plus tard pour organiser une soirée. Jouer maintenant ouvre une partie que les membres de ton serveur peuvent rejoindre.", href: "/roulette?mode=instant", label: "Roulette maintenant", secondHref: "/jouer-maintenant", secondLabel: "Jouer maintenant" },
+  { title: "Tournois et progression", icon: "🏆", text: "Inscris-toi aux tournois et suis les matchs. XP, badges et classement sont propres au serveur choisi : tu peux changer de communauté dans la navigation.", href: "/tournois", label: "Voir les tournois", secondHref: "/classement", secondLabel: "Le classement" },
+] as const;
 
-const slideVariants = {
-  enter: (direction: number) => ({ x: direction > 0 ? 60 : -60, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (direction: number) => ({ x: direction > 0 ? -60 : 60, opacity: 0 }),
-};
-
-/**
- * Onboarding premier login (Sprint 2 PR-B, U1) — 4 écrans plein écran,
- * navigation par swipe horizontal (mêmes seuils que le swipe jour de
- * `DayTimeline`) ou boutons, "Passer" toujours visible. Monté
- * inconditionnellement par la home (jamais côté serveur si
- * `shouldShowOnboarding` est faux — ce composant ne fait QUE l'affichage
- * une fois qu'on sait déjà qu'il faut le montrer), état local `open`
- * fermé immédiatement au clic plutôt que d'attendre la réponse serveur de
- * `completeOnboardingAction` — l'action est silencieuse (garde
- * `revalidatePath`), pas besoin de bloquer l'UI dessus.
- */
-export function OnboardingFlow({
-  discordName,
-  discordAvatar,
-  xpTotal,
-  badgeCount,
-}: {
-  discordName: string;
-  discordAvatar: string | null;
-  xpTotal: number;
-  badgeCount: number;
-}) {
-  const [open, setOpen] = useState(true);
-  const [screen, setScreen] = useState(0);
-  const [direction, setDirection] = useState(1);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-
+export function OnboardingFlow({ progress, initialStep }: { progress: OnboardingProgress; initialStep?: string }) {
+  const router = useRouter();
+  const needsSteam = !progress.steamLinked && !progress.steamSkipped;
+  const [screen, setScreen] = useState(initialStep === "planning" ? 1 : initialStep === "steam" || needsSteam ? 0 : !progress.planningReady ? 1 : 2);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const completed = Number(!needsSteam) + Number(progress.planningReady);
+  const current = screen > 0 ? TOUR[screen - 1] : null;
+  function skipSteam() {
+    setError("");
+    startTransition(async () => {
+      if (await skipSteamOnboardingAction()) { setScreen(1); router.refresh(); }
+      else setError("Ton choix n’a pas été enregistré. Réessaie dans un instant.");
+    });
+  }
   function finish() {
-    setOpen(false);
-    completeOnboardingAction();
+    setError("");
+    startTransition(async () => {
+      if (await completeOnboardingAction()) router.push("/");
+      else { setError("Il reste un réglage à terminer. Ton avancée est conservée."); router.refresh(); }
+    });
   }
-
-  function goTo(next: number) {
-    if (next < 0 || next >= SCREEN_COUNT) return;
-    setDirection(next > screen ? 1 : -1);
-    setScreen(next);
-  }
-
-  function handleTouchStart(e: TouchEvent<HTMLDivElement>) {
-    const t = e.touches[0];
-    touchStart.current = { x: t.clientX, y: t.clientY };
-  }
-
-  function handleTouchEnd(e: TouchEvent<HTMLDivElement>) {
-    if (!touchStart.current) return;
-    const t = e.changedTouches[0];
-    const deltaX = t.clientX - touchStart.current.x;
-    const deltaY = t.clientY - touchStart.current.y;
-    touchStart.current = null;
-
-    if (Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX) return;
-    if (Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
-
-    goTo(deltaX < 0 ? screen + 1 : screen - 1);
-  }
-
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-background">
-      <div className="flex items-center justify-end p-4">
-        <button
-          type="button"
-          onClick={finish}
-          className="rounded-full px-3 py-1.5 text-sm text-muted transition-colors hover:text-foreground"
-        >
-          Passer
-        </button>
-      </div>
-
-      <div
-        className="relative flex-1 overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        <AnimatePresence custom={direction} mode="wait">
-          {screen === 0 && (
-            <motion.div
-              key="0"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ type: "spring", stiffness: 320, damping: 30 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center"
-            >
-              <Avatar src={discordAvatar} alt={discordName} size={96} />
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">
-                  Bienvenue sur GameNight 🎮
-                </h2>
-                <p className="mt-3 max-w-xs text-sm text-muted">
-                  Salut {discordName} ! Prêt à organiser plein de soirées
-                  jeux avec tes potes ?
-                </p>
-              </div>
-            </motion.div>
-          )}
-          {screen === 1 && (
-            <motion.div
-              key="1"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ type: "spring", stiffness: 320, damping: 30 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center"
-            >
-              <span className="text-6xl" aria-hidden>
-                📅
-              </span>
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">Règle tes dispos</h2>
-                <p className="mt-3 max-w-xs text-sm text-muted">
-                  Indique quand tu es dispo pour jouer — le calendrier
-                  montre en un coup d&apos;œil les meilleurs créneaux avec
-                  le groupe.
-                </p>
-              </div>
-              <ButtonLink href="/calendrier" variant="secondary" onClick={finish}>
-                Aller au calendrier
-              </ButtonLink>
-            </motion.div>
-          )}
-          {screen === 2 && (
-            <motion.div
-              key="2"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ type: "spring", stiffness: 320, damping: 30 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center"
-            >
-              <span className="text-6xl" aria-hidden>
-                🎯
-              </span>
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">Propose une soirée</h2>
-                <p className="mt-3 max-w-xs text-sm text-muted">
-                  Choisis une date, tes potes votent pour le jeu — la
-                  soirée s&apos;organise toute seule.
-                </p>
-              </div>
-              <ButtonLink href="/sessions" variant="secondary" onClick={finish}>
-                Voir les soirées
-              </ButtonLink>
-            </motion.div>
-          )}
-          {screen === 3 && (
-            <motion.div
-              key="3"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ type: "spring", stiffness: 320, damping: 30 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center"
-            >
-              <span className="text-6xl" aria-hidden>
-                🔥
-              </span>
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">C&apos;est parti !</h2>
-                <p className="mt-3 max-w-xs text-sm text-muted">
-                  Tu gagnes de l&apos;XP, débloques des rangs et des
-                  badges à chaque soirée.
-                </p>
-              </div>
-              <div className="flex gap-4">
-                <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-surface px-4 py-3">
-                  <span className="text-lg font-bold text-foreground">{xpTotal}</span>
-                  <span className="text-[11px] text-muted">XP</span>
-                </div>
-                <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-surface px-4 py-3">
-                  <span className="text-lg font-bold text-foreground">{badgeCount}</span>
-                  <span className="text-[11px] text-muted">
-                    badge{badgeCount === 1 ? "" : "s"}
-                  </span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      <div className="flex flex-col items-center gap-4 p-6">
-        <div className="flex gap-2">
-          {Array.from({ length: SCREEN_COUNT }).map((_, i) => (
-            <span
-              key={i}
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                i === screen ? "bg-accent" : "bg-surface-hover"
-              }`}
-            />
-          ))}
-        </div>
-        <div className="flex w-full max-w-xs gap-3">
-          {screen > 0 && (
-            <Button variant="secondary" size="sm" className="flex-1" onClick={() => goTo(screen - 1)}>
-              Précédent
-            </Button>
-          )}
-          {screen < SCREEN_COUNT - 1 ? (
-            <Button
-              variant="primary"
-              size="sm"
-              className="flex-1"
-              onClick={() => goTo(screen + 1)}
-            >
-              Suivant
-            </Button>
-          ) : (
-            <Button variant="primary" size="sm" className="flex-1" onClick={finish}>
-              Commencer
-            </Button>
-          )}
-        </div>
-      </div>
+  return <section className="flex flex-col gap-6" aria-label="Guide de démarrage">
+    <div><p className="gn-eyebrow">Ton aventure commence ici</p><h1 className="mt-2 text-2xl font-bold">Bienvenue sur GameNight</h1><p className="mt-3 text-muted">Deux réglages pour jouer ensemble, puis une visite guidée. Ils restent valables quand tu changes de serveur.</p></div>
+    <div className="rounded-xl border border-border bg-background/60 p-4">
+      <p className="text-sm font-semibold">Profil prêt : {completed}/2</p>
+      <div role="progressbar" aria-label="Réglages du profil" aria-valuemin={0} aria-valuemax={2} aria-valuenow={completed} className="mt-3 h-2 overflow-hidden rounded-full bg-surface-hover"><div className="h-full bg-accent transition-all" style={{ width: `${completed * 50}%` }} /></div>
+      <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm"><li>{needsSteam ? "○" : "✓"} Steam {progress.steamSkipped && !progress.steamLinked ? "(non utilisé)" : progress.steamLinked ? "lié" : "à lier"}</li><li>{progress.planningReady ? "✓ Planning renseigné" : "○ Planning à renseigner"}</li></ul>
     </div>
-  );
+    <nav className="flex flex-wrap gap-2" aria-label="Étapes du guide">
+      {["Steam", ...TOUR.map(step => step.title)].map((label, i) => <button key={label} type="button" onClick={() => setScreen(i)} aria-current={screen === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 text-xs ${screen === i ? "border-accent bg-accent/10 text-foreground" : "border-border text-muted"}`}>{i + 1}. {label}</button>)}
+    </nav>
+    <div className="rounded-2xl border-2 border-border bg-surface p-5 sm:p-7" aria-live="polite">
+      <span className="text-4xl" aria-hidden>{current?.icon ?? "🎮"}</span>
+      <h2 className="mt-4 text-xl font-bold">{current?.title ?? "Lie ton compte Steam"}</h2>
+      <p className="mt-3 text-sm leading-relaxed text-muted">{current?.text ?? "Retrouve tes jeux sans les saisir un par un. Connecte-toi sur Steam pour autoriser la liaison ; GameNight ne demande jamais ton mot de passe. Une bibliothèque privée peut demander un réglage de visibilité ou un ajout manuel."}</p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        {screen === 0 ? <><a className="gn-button gn-button-primary rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground" href="/api/steam/link">{progress.steamLinked ? "Changer mon compte Steam" : "Lier mon compte Steam"}</a>{needsSteam && <Button variant="secondary" disabled={pending} onClick={skipSteam}>Je n’utilise pas Steam</Button>}</> : current && <><ButtonLink href={current.href}>{current.label}</ButtonLink>{"secondHref" in current && <ButtonLink variant="ghost" href={current.secondHref}>{current.secondLabel}</ButtonLink>}</>}
+      </div>
+      {screen <= 1 && <p className="mt-4 text-xs text-muted">Cette étape se valide quand le réglage est enregistré. <button type="button" onClick={() => router.refresh()} className="underline">Vérifier mon avancée</button></p>}
+    </div>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    <div className="flex flex-wrap justify-between gap-3">
+      <Button variant="ghost" disabled={screen === 0 || pending} onClick={() => setScreen(screen - 1)}>Précédent</Button>
+      {screen < TOUR.length ? <Button variant="primary" onClick={() => setScreen(screen + 1)}>Suivant</Button> : <Button variant="primary" disabled={pending || completed !== 2} onClick={finish}>Terminer le guide</Button>}
+    </div>
+    {completed !== 2 && <p className="text-sm text-muted">À terminer : {needsSteam && <Link className="underline" href="/bienvenue?step=steam">Steam</Link>}{needsSteam && !progress.planningReady && " et "}{!progress.planningReady && <Link className="underline" href="/disponibilites">tes disponibilités</Link>}.</p>}
+    <Link className="text-center text-sm text-muted underline" href="/">Revenir à l’application — mes étapes restent à terminer</Link>
+  </section>;
 }

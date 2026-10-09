@@ -4,25 +4,27 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getOnboardingProgress, missingOnboardingSteps, onboardingEventKey, ONBOARDING_CHOICE } from "@/lib/onboarding";
 
-/**
- * Marque l'onboarding premier login comme vu — appelée directement depuis
- * `OnboardingFlow` (pas de `<form>`, juste un clic sur "Passer"/"Commencer"
- * ou une des CTA intermédiaires) plutôt que via FormData. Aucune entrée
- * utilisateur à valider (zod non nécessaire ici). Garde silencieuse comme
- * les autres actions "toggle" du profil : rien à afficher côté client si
- * elle échoue, le pire cas est de revoir l'écran à la prochaine visite.
- */
-export async function completeOnboardingAction() {
-  const user = await getCurrentUser();
-  if (!user) return;
-  if (!checkRateLimit(user.id, "completeOnboardingAction")) return;
-  if (user.onboardingCompleted) return;
+export async function completeOnboardingAction(): Promise<boolean> {
+  const user = await getCurrentUser({ recordActivity: false });
+  if (!user || !checkRateLimit(user.id, "completeOnboardingAction")) return false;
+  const progress = await getOnboardingProgress(user.id);
+  if (!progress || missingOnboardingSteps(progress).length) return false;
+  await prisma.user.update({ where: { id: user.id }, data: { onboardingCompleted: true } });
+  revalidatePath("/", "layout");
+  return true;
+}
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { onboardingCompleted: true },
+/** Le client ne peut changer que le choix du compte réellement connecté. */
+export async function skipSteamOnboardingAction(): Promise<boolean> {
+  const user = await getCurrentUser({ recordActivity: false });
+  if (!user || !checkRateLimit(user.id, "skipSteamOnboardingAction")) return false;
+  const key = onboardingEventKey(user.id, ONBOARDING_CHOICE);
+  await prisma.notificationEvent.upsert({ where: key,
+    create: { ...key.category_eventType_sourceId_occurrence, communityId: null, payload: { skipped: true } },
+    update: { payload: { skipped: true } },
   });
-
-  revalidatePath("/");
+  revalidatePath("/", "layout");
+  return true;
 }

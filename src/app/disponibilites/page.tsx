@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import {
@@ -20,6 +19,8 @@ import { Stagger, StaggerItem, PopIn } from "@/components/motion";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { pageMetadata } from "@/lib/page-title";
+import { signIn } from "@/auth";
+import { LoginLanding } from "@/components/app/LoginLanding";
 
 export const metadata = pageMetadata("Disponibilités");
 
@@ -30,7 +31,10 @@ const ACTION_ERROR_MESSAGES = {
 
 export default async function DisponibilitesPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/");
+  if (!user) return <LoginLanding><form action={async () => {
+    "use server";
+    await signIn("discord", { redirectTo: "/disponibilites" });
+  }}><Button type="submit" variant="primary">Se connecter pour renseigner mes disponibilités</Button></form></LoginLanding>;
 
   const [weeklySlots, overrides] = await Promise.all([
     prisma.weeklyAvailability.findMany({
@@ -45,6 +49,7 @@ export default async function DisponibilitesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
+      <ButtonLink href="/bienvenue?step=planning" variant="ghost">Reprendre le guide pas à pas</ButtonLink>
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           Mes disponibilités
