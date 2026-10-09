@@ -4,6 +4,7 @@ export type AdminTabKey =
   | "messages"
   | "superlatifs"
   | "badges"
+  | "joueurs"
   | "jeux-stats"
   | "reglages"
   | "confidentialite"
@@ -14,6 +15,7 @@ export const ADMIN_TAB_KEYS: AdminTabKey[] = [
   "messages",
   "superlatifs",
   "badges",
+  "joueurs",
   "jeux-stats",
   "reglages",
   "confidentialite",
@@ -25,6 +27,7 @@ const TABS: { key: AdminTabKey; label: string }[] = [
   { key: "messages", label: "Messages Discord" },
   { key: "superlatifs", label: "Récompenses" },
   { key: "badges", label: "Badges" },
+  { key: "joueurs", label: "Joueurs" },
   { key: "jeux-stats", label: "Jeux-stats" },
   { key: "reglages", label: "Réglages" },
   { key: "confidentialite", label: "Confidentialité" },

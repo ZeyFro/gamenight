@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { XpReason } from "@prisma/client";
+import { XP_REASON_LABELS } from "@/lib/xp-reason-labels";
 import { getCurrentUser } from "@/lib/current-user";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
@@ -17,21 +17,6 @@ import { pageMetadata } from "@/lib/page-title";
 export const metadata = pageMetadata("Mon profil");
 
 const XP_CHART_DAYS = 30;
-
-const XP_REASON_LABELS: Record<XpReason, string> = {
-  CREATE_SESSION: "a créé une soirée",
-  VOTE: "a voté pour un jeu",
-  PARTICIPATE: "a participé à une soirée",
-  AVAILABILITY_FIRST: "a réglé ses disponibilités",
-  STEAM_LINK_FIRST: "a lié son compte Steam",
-  SESSION_RESULT: "a reçu un bonus de résultats",
-  SUPERLATIVE_AWARD: "a gagné une récompense",
-  BADGE_UNLOCKED: "a débloqué un badge",
-  CHALLENGE_COMPLETE: "a complété le défi de la semaine",
-  PRONOSTIC_CORRECT: "a fait un pronostic correct",
-  XP_BET_WON: "a gagné un pari d'XP",
-  TOURNAMENT_RESULT: "a marqué en tournoi",
-};
 
 /** Onglet "Aperçu" (route par défaut de /profil) — voir `layout.tsx` pour l'en-tête. */
 export default async function ProfilApercuPage() {
@@ -286,7 +271,7 @@ export default async function ProfilApercuPage() {
           {lastActivity ? (
             <p className="text-sm text-foreground">
               {XP_REASON_LABELS[lastActivity.reason]} · {formatDateTimeFr(lastActivity.createdAt)}{" "}
-              <span className="text-muted">(+{lastActivity.amount} XP)</span>
+              <span className="text-muted">({lastActivity.amount > 0 ? `+${lastActivity.amount}` : lastActivity.amount} XP)</span>
             </p>
           ) : (
             <p className="text-sm text-muted">Aucune activité pour l&apos;instant.</p>

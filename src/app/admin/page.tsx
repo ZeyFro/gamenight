@@ -4,6 +4,7 @@ import { AdminTabs, ADMIN_TAB_KEYS, type AdminTabKey } from "@/components/admin/
 import { MessagesTab } from "@/components/admin/MessagesTab";
 import { SuperlativesTab } from "@/components/admin/SuperlativesTab";
 import { BadgesTab } from "@/components/admin/BadgesTab";
+import { PlayersTab } from "@/components/admin/PlayersTab";
 import { JeuxStatsTab } from "@/components/admin/JeuxStatsTab";
 import { ReglagesTab } from "@/components/admin/ReglagesTab";
 import { ConfidentialiteTab } from "@/components/admin/ConfidentialiteTab";
@@ -29,12 +30,12 @@ function isAdminTabKey(value: string | undefined): value is AdminTabKey {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; r?: string }>;
+  searchParams: Promise<{ tab?: string; r?: string; q?: string; u?: string }>;
 }) {
   const user = await requireAdmin();
   if (!user) redirect("/");
 
-  const { tab: tabRaw, r } = await searchParams;
+  const { tab: tabRaw, r, q, u } = await searchParams;
   const communitiesEnabled = isCommunityAdminEnabled();
   // Onglet « Communautés » : absent (retour à « Messages ») tant que le drapeau est éteint.
   const tab: AdminTabKey =
@@ -56,6 +57,7 @@ export default async function AdminPage({
       {tab === "messages" && <MessagesTab />}
       {tab === "superlatifs" && <SuperlativesTab />}
       {tab === "badges" && <BadgesTab />}
+      {tab === "joueurs" && <PlayersTab adminId={user.id} query={q} playerId={u} />}
       {tab === "jeux-stats" && <JeuxStatsTab />}
       {tab === "reglages" && <ReglagesTab />}
       {tab === "confidentialite" && <ConfidentialiteTab userId={user.id} />}
