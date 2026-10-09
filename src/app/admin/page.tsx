@@ -29,12 +29,12 @@ function isAdminTabKey(value: string | undefined): value is AdminTabKey {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; r?: string }>;
+  searchParams: Promise<{ tab?: string; r?: string; communaute?: string }>;
 }) {
   const user = await requireAdmin();
   if (!user) redirect("/");
 
-  const { tab: tabRaw, r } = await searchParams;
+  const { tab: tabRaw, r, communaute } = await searchParams;
   const communitiesEnabled = isCommunityAdminEnabled();
   // Onglet « Communautés » : absent (retour à « Messages ») tant que le drapeau est éteint.
   const tab: AdminTabKey =
@@ -59,7 +59,7 @@ export default async function AdminPage({
       {tab === "jeux-stats" && <JeuxStatsTab />}
       {tab === "reglages" && <ReglagesTab />}
       {tab === "confidentialite" && <ConfidentialiteTab />}
-      {tab === "nettoyage" && <NettoyageTab />}
+      {tab === "nettoyage" && <NettoyageTab communityId={communaute} />}
       {tab === "communautes" && <CommunitiesTab result={r} />}
     </div>
   );

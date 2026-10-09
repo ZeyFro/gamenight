@@ -1,10 +1,10 @@
 import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
-import { getDefaultCommunityId } from "@/lib/default-community";
+import { listCronCommunityIds } from "@/lib/community-isolation";
+import { postCommunityEmbed } from "@/lib/community-announce";
+import { communityMemberUserWhere } from "@/lib/community-isolation";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
-import { prisma } from "@/lib/prisma";
 import { wallClockNow, startOfMonthUTC, endOfMonthUTC } from "@/lib/wallclock";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 
 export interface MonthlyRecapData {
@@ -43,35 +43,33 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
   const start = startOfMonthUTC(new Date(Date.UTC(year, month - 1, 1)));
   const end = endOfMonthUTC(start);
   const scopedDb = await scopedPrismaForCommunityId(communityId);
-  // Avant PR B, limiter les événements XP aux sources de CE serveur.
-  const sourceSessions = await scopedDb.session.findMany({ where: { status: "DONE", date: { gte: start, lte: end } }, select: { id: true } });
-  const sourceInstant = await scopedDb.instantSession.findMany({ where: { createdAt: { gte: start, lte: end } }, select: { id: true } });
-  const xpSources = isCommunityIsolationEnabled() ? { sourceId: { in: [...sourceSessions, ...sourceInstant].map((row) => row.id) } } : {};
+  const members = await communityMemberUserWhere(communityId);
 
-  const [doneSessions, participateEvents, xpSum, correctPronostics, allUsers] =
+  // PR B : les événements XP portent leur communauté — le total XP du serveur est exhaustif
+  // (toutes les sources : soirées, sessions instantanées, défis, superlatifs, tournois, badges…).
+  const [doneSessions, participateEvents, xpSum, correctPronostics, bestStreakRow] =
     await Promise.all([
       scopedDb.session.findMany({
         where: { status: "DONE", date: { gte: start, lte: end } },
         include: { decidedGame: true },
       }),
-      prisma.xpEvent.findMany({
-        where: { ...xpSources, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
+      scopedDb.xpEvent.findMany({
+        where: { communityId, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
         include: { user: true },
       }),
-      prisma.xpEvent.aggregate({
-        where: { ...xpSources, createdAt: { gte: start, lte: end } },
+      scopedDb.xpEvent.aggregate({
+        where: { communityId, createdAt: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
       scopedDb.pronostic.findMany({
         where: { correct: true, createdAt: { gte: start, lte: end } },
         include: { voter: true },
       }),
-      // Le streak reste global jusqu’à PR B : ne jamais le publier dans un autre serveur.
-      prisma.user.findMany({
-        where: isCommunityIsolationEnabled() ? { id: { in: [] } } : {},
-        select: { discordName: true, streakCount: true },
+      // PR B : meilleur streak (actuel) parmi les membres de CETTE communauté.
+      scopedDb.communityMemberStats.findFirst({
+        where: { communityId, user: members },
+        select: { streakCount: true, user: { select: { discordName: true } } },
         orderBy: { streakCount: "desc" },
-        take: 1,
       }),
     ]);
 
@@ -115,16 +113,14 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
   }
   const topPronostiqueur = topEntry(pronosticCounts, (id) => pronosticNames.get(id)!);
 
-  const bestStreakUser = allUsers[0];
-
   return {
     sessionsPlayed: doneSessions.length,
     mostPlayedGame: topGame ? { name: topGame.label, count: topGame.count } : null,
     mvpOfMonth: topMvp ? { discordName: topMvp.label, count: topMvp.count } : null,
     mostActive: topActive ? { discordName: topActive.label, count: topActive.count } : null,
     bestStreak:
-      bestStreakUser && bestStreakUser.streakCount > 0
-        ? { discordName: bestStreakUser.discordName, streak: bestStreakUser.streakCount }
+      bestStreakRow && bestStreakRow.streakCount > 0
+        ? { discordName: bestStreakRow.user.discordName, streak: bestStreakRow.streakCount }
         : null,
     bestPronostiqueur: topPronostiqueur
       ? { discordName: topPronostiqueur.label, count: topPronostiqueur.count }
@@ -173,10 +169,10 @@ async function generateMonthlyRecapForCommunity(communityId: string, year: numbe
     return; // Un autre cron a créé le snapshot : aucune seconde annonce.
   }
 
-  // Le webhook historique n’appartient qu’à default. Les autres destinations arrivent en PR B.
-  if (isCommunityIsolationEnabled() && communityId !== await getDefaultCommunityId()) return;
+  // PR B : annonce dans le salon de CETTE communauté (webhook historique pour default ; sinon salon
+  // d'annonce configuré, et rien n'est envoyé s'il n'y en a pas).
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  const result = await postToDiscord({
+  const result = await postCommunityEmbed(communityId, {
     title: "📊 Le recap du mois est prêt !",
     description: `${data.sessionsPlayed} soirée${data.sessionsPlayed > 1 ? "s" : ""} jouée${data.sessionsPlayed > 1 ? "s" : ""} le mois dernier — va voir ton Wrapped !\n${base}/recap/${year}/${month}`,
     color: ACCENT_COLOR,

@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { isVotingOpen } from "@/lib/sessions";
 import { canAccessSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkVotesCastBadges } from "@/lib/badges";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
@@ -86,7 +87,7 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     where: { id: proposalId },
     select: {
       sessionId: true,
-      session: { select: { status: true, date: true, votingDeadline: true } },
+      session: { select: { status: true, date: true, votingDeadline: true, communityId: true } },
     },
   });
   if (!proposal || !isVotingOpen(proposal.session)) return { ok: true };
@@ -108,8 +109,9 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     // l'XP à chaque fois (la contrainte unique sur XpEvent l'empêche déjà
     // via awardXp) ; voter sur une AUTRE proposition, en revanche, reste
     // une nouvelle action légitime.
-    await awardXp(user.id, "VOTE", proposalId, XP_AMOUNTS.VOTE);
-    await checkVotesCastBadges(user.id);
+    const xpCommunityId = await statsCommunityIdForSession(proposal.session.communityId);
+    await awardXp(user.id, "VOTE", proposalId, XP_AMOUNTS.VOTE, { communityId: xpCommunityId });
+    await checkVotesCastBadges(user.id, xpCommunityId);
   }
 
   revalidatePath(`/sessions/${sessionId}`);

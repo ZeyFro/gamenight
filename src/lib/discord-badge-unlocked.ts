@@ -1,9 +1,5 @@
-import {
-  postToDiscord,
-  ACCENT_COLOR,
-  type DiscordEmbed,
-  type PostToDiscordResult,
-} from "@/lib/discord";
+import { ACCENT_COLOR, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
+import { postCommunityEmbed } from "@/lib/community-announce";
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { RARITY_LABELS } from "@/lib/badge-rarity";
 import type { Badge, User } from "@prisma/client";
@@ -14,9 +10,13 @@ import type { Badge, User } from "@prisma/client";
  * un mention `<@id>`, pas de condition de silence : ce n'est pas un
  * rappel dont on peut se couper, c'est l'identité de la personne dont on
  * parle).
+ *
+ * PR B : le badge est gagné dans `communityId` ; l'annonce part dans le salon de
+ * CETTE communauté (webhook historique pour `default`).
  */
 export async function announceBadgeUnlocked(
   user: Pick<User, "discordId">,
+  communityId: string,
   badge: Pick<Badge, "name" | "icon" | "description" | "rarity">
 ): Promise<PostToDiscordResult> {
   const rarity = RARITY_LABELS[badge.rarity];
@@ -37,5 +37,5 @@ export async function announceBadgeUnlocked(
     fields: [{ name: "Rareté", value: rarity, inline: true }],
   };
 
-  return postToDiscord(embed, message);
+  return postCommunityEmbed(communityId, embed, message);
 }

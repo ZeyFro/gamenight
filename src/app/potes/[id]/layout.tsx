@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { canViewPote } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { EMPTY_MEMBER_STATS, getCurrentMemberStats, getMemberStats } from "@/lib/member-stats";
 import { Badge } from "@/components/ui/Badge";
 import { PoteTabs } from "@/components/PoteTabs";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -47,7 +48,10 @@ export default async function PoteLayout({
   const pote = await prisma.user.findUnique({ where: { id } });
   if (!pote) notFound();
 
-  const level = levelForXp(pote.xpTotal);
+  // PR B : niveau de ce pote dans la communauté COURANTE du spectateur.
+  const { communityId } = await getCurrentMemberStats(user.id);
+  const poteStats = communityId === null ? EMPTY_MEMBER_STATS : await getMemberStats(pote.id, communityId);
+  const level = levelForXp(poteStats.xpTotal);
   const rank = rankForLevel(level);
 
   return (

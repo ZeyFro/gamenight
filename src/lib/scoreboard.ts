@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { getMemberStatsMap } from "@/lib/member-stats";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel, type Rank } from "@/lib/xp";
 
 const WEEK_DELTA_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -70,33 +73,38 @@ export async function getScoreboard(
   period: ScoreboardPeriod,
   options: { communityId?: string | null } = {}
 ): Promise<ScoreboardEntry[]> {
-  // Multi-communautés (PR4) : `undefined` = tous les utilisateurs (isolation
-  // éteinte, requêtes historiques) ; `null` = aucune communauté, classement
-  // vide ; sinon uniquement les membres ACTIVE de cette communauté. Limite
-  // assumée : l'XP n'est pas rattachée à une communauté (`XpEvent` sans
-  // `communityId`) — on classe les membres sur leur XP personnelle.
+  // Multi-communautés : `undefined` = tous les utilisateurs (isolation éteinte,
+  // requêtes historiques, XP de la communauté par défaut) ; `null` = aucune
+  // communauté, classement vide ; sinon uniquement les membres ACTIVE de cette
+  // communauté. PR B : le solde (`CommunityMemberStats.xpTotal`) ET les
+  // événements XP sont ceux de CETTE communauté — gagner de l'XP dans un autre
+  // serveur ne change jamais le classement ici.
   const { communityId } = options;
   if (communityId === null) return [];
+  const statsCommunityId = communityId ?? (await getDefaultCommunityId());
+  const scopedDb = await scopedPrismaForCommunityId(statsCommunityId);
 
   const start = periodStart(period);
 
-  const users = await prisma.user.findMany({
+  const baseUsers = await prisma.user.findMany({
     ...(communityId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const } } } } : {}),
-    select: { id: true, discordName: true, discordAvatar: true, color: true, xpTotal: true },
+    select: { id: true, discordName: true, discordAvatar: true, color: true },
   });
+  const statsByUser = await getMemberStatsMap(statsCommunityId, baseUsers.map((u) => u.id));
+  const users = baseUsers.map((u) => ({ ...u, xpTotal: statsByUser.get(u.id)?.xpTotal ?? 0 }));
 
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
-  const memberFilter = communityId ? { userId: { in: users.map((u) => u.id) } } : {};
+  const memberFilter = { communityId: statsCommunityId, userId: { in: users.map((u) => u.id) } };
 
   const [xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
     period === "global"
       ? null
-      : prisma.xpEvent.groupBy({
+      : scopedDb.xpEvent.groupBy({
           by: ["userId"],
           where: { ...createdAtFilter, ...memberFilter },
           _sum: { amount: true },
         }),
-    prisma.xpEvent.groupBy({
+    scopedDb.xpEvent.groupBy({
       by: ["userId"],
       where: { reason: "PARTICIPATE", ...createdAtFilter, ...memberFilter },
       _count: { _all: true },
@@ -109,7 +117,7 @@ export async function getScoreboard(
     // en base — aucune table de snapshot hebdomadaire n'existe, et cette
     // approche donne exactement le même résultat sans migration.
     period === "global"
-      ? prisma.xpEvent.groupBy({
+      ? scopedDb.xpEvent.groupBy({
           by: ["userId"],
           where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter },
           _sum: { amount: true },

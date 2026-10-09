@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { resolveActiveCommunityScope } from "@/lib/community-isolation";
-import { prisma } from "@/lib/prisma";
+import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
 import { pageMetadata } from "@/lib/page-title";
@@ -14,7 +14,8 @@ export default async function ProfilSaisonsPage() {
   if (!user) redirect("/");
 
   const scope = await resolveActiveCommunityScope(user.id);
-  const snapshots = await prisma.seasonSnapshot.findMany({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const snapshots = await scopedDb.seasonSnapshot.findMany({
     where: { userId: user.id, ...(scope ? { season: { communityId: { in: scope.communityIds } } } : {}) },
     include: { season: true },
     orderBy: { season: { number: "desc" } },

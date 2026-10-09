@@ -1,11 +1,11 @@
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, listCronCommunityIds } from "@/lib/community-isolation";
+import { communityMemberUserWhere, listCronCommunityIds } from "@/lib/community-isolation";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
-import { prisma } from "@/lib/prisma";
+import { postCommunityEmbed } from "@/lib/community-announce";
 import { wallClockNow, endOfMonthUTC } from "@/lib/wallclock";
 import { levelForXp, rankForLevel } from "@/lib/xp";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { logger } from "@/lib/logger";
 
@@ -119,12 +119,17 @@ export async function ensureActiveSeasonExists(communityId?: string): Promise<vo
 }
 
 /**
- * Clôture la saison active si sa `endDate` est dépassée : snapshot du
- * classement (`SeasonSnapshot`, AVANT le reset — seule façon de consulter
- * "qui était où" une fois l'XP remis à zéro), reset `xpTotal` à 0 pour
- * TOUT LE MONDE (badges/achievements/streak jamais touchés — cf. spec
- * "conservés"), puis ouverture immédiate de la saison suivante (jamais de
- * trou sans saison active) — annonce Discord du champion après coup.
+ * Clôture la saison active D'UNE COMMUNAUTÉ si sa `endDate` est dépassée :
+ * snapshot du classement (`SeasonSnapshot`, AVANT le reset — seule façon de
+ * consulter "qui était où" une fois l'XP remis à zéro), reset du solde XP de
+ * CETTE communauté (`CommunityMemberStats.xpTotal`) à 0 pour tous ses membres
+ * (badges/achievements/streak jamais touchés — cf. spec "conservés" ; le solde
+ * des autres communautés ne bouge jamais : un membre de A+B ne perd rien dans B à
+ * la clôture de A), puis ouverture immédiate de la saison suivante (jamais de
+ * trou sans saison active) — annonce Discord du champion après coup, dans le
+ * salon de cette communauté.
+ *
+ * PR B : la clôture n'est plus suspendue sous isolation.
  *
  * Fix bug remonté (atomicité saisons, PR "Atomicité saisons + tournois")
  * — ces 4 écritures vivent maintenant dans UNE seule transaction, ouverte
@@ -149,11 +154,11 @@ export async function ensureActiveSeasonExists(communityId?: string): Promise<vo
  * saisons") — la lecture des users pour le snapshot vivait AVANT cette
  * transaction (`prisma.user.findMany`, sans verrou). Tout `awardXp()`
  * (`src/lib/xp-actions.ts`) ou `placeBet()` (`src/lib/xp-bets.ts`) qui
- * commitait entre cette lecture et le `updateMany({xpTotal:0})` plus bas
+ * commitait entre cette lecture et le reset plus bas
  * était absent du snapshot ET silencieusement écrasé par le reset — XP
  * perdue sans trace. Désormais, `SELECT ... FOR UPDATE` verrouille TOUTES
- * les lignes `User` dès l'intérieur de la transaction, juste après le
- * claim : tout writer concurrent visant ces lignes (`awardXp`, `placeBet`)
+ * les lignes `CommunityMemberStats` de la communauté dès l'intérieur de la
+ * transaction, juste après le claim : tout writer concurrent visant ces lignes (`awardXp`, `placeBet`)
  * attend le commit de CETTE transaction avant d'écrire, et s'applique
  * ensuite proprement sur le solde déjà remis à 0 (attribué à la saison
  * suivante — jamais perdu). Voir `placeBet` (`src/lib/xp-bets.ts`) pour la
@@ -183,45 +188,48 @@ export async function ensureActiveSeasonExists(communityId?: string): Promise<vo
  * retrouve plus rien à clôturer (idempotent par construction, pas besoin
  * d'un flag dédié).
  */
-export async function finalizeSeasonIfDue(): Promise<void> {
-  // PR B fournira les soldes par communauté. Aucun reset global sous isolation :
-  // un membre de A+B ne doit jamais perdre son XP de B lors de la clôture de A.
-  if (isCommunityIsolationEnabled()) {
-    logger.warn("seasons", "Clôture suspendue sous isolation en attendant les soldes XP par communauté (PR B).");
-    return;
-  }
-  const season = await getActiveSeason();
+export async function finalizeSeasonIfDue(communityId?: string): Promise<void> {
+  const id = communityId ?? (await getDefaultCommunityId());
+  const season = await getActiveSeason(id);
   if (!season) return; // Bootstrapée par ensureActiveSeasonExists (ci-dessus) ou seedInitialSeason (src/lib/seed-season.ts).
   if (wallClockNow() < season.endDate) return;
 
   const now = wallClockNow();
   const nextNumber = season.number + 1;
+  const members = await communityMemberUserWhere(id);
 
   type FinalizeOutcome =
     | { claimed: false }
     | { claimed: true; champion: { discordId: string; discordName: string; xpTotal: number } };
 
+  const scoped = await scopedPrismaForCommunityId(id);
   let outcome: FinalizeOutcome;
   try {
-    outcome = await prisma.$transaction(async (tx): Promise<FinalizeOutcome> => {
-      const claim = await tx.season.updateMany({
+    // `scopedDb` : client de transaction dérivé du client scopé sur CETTE communauté.
+    outcome = await scoped.$transaction(async (scopedDb): Promise<FinalizeOutcome> => {
+      const claim = await scopedDb.season.updateMany({
         where: { id: season.id, isActive: true },
         data: { isActive: false },
       });
       if (claim.count !== 1) return { claimed: false }; // déjà clôturée par une exécution concurrente
 
-      const lockedUsers = await tx.$queryRaw<
-        { id: string; discordId: string; discordName: string; xpTotal: number }[]
-      >`SELECT id, "discordId", "discordName", "xpTotal" FROM "User" FOR UPDATE`;
+      // Verrou sur LES soldes de cette communauté (et d'elle seule), puis lecture des membres.
+      const lockedStats = await scopedDb.$queryRaw<{ userId: string; xpTotal: number }[]>`
+        SELECT "userId", "xpTotal" FROM "CommunityMemberStats" WHERE "communityId" = ${id} FOR UPDATE
+      `;
+      const xpByUser = new Map(lockedStats.map((row) => [row.userId, row.xpTotal]));
+      const users = (
+        await scopedDb.user.findMany({ where: members, select: { id: true, discordId: true, discordName: true } })
+      ).map((u) => ({ ...u, xpTotal: xpByUser.get(u.id) ?? 0 }));
 
-      if (lockedUsers.length === 0) {
+      if (users.length === 0) {
         // Comportement identique à avant ce fix : rien à clôturer tant
         // qu'il n'y a aucun user — annule TOUT y compris le claim
         // ci-dessus (la saison reste active, le cron réessaiera demain).
         throw new NoUsersToCloseSeasonError();
       }
 
-      const ranked = rankUsersByXp(lockedUsers);
+      const ranked = rankUsersByXp(users);
       const snapshotRows = ranked.map((u) => {
         const level = levelForXp(u.xpTotal);
         return {
@@ -235,9 +243,9 @@ export async function finalizeSeasonIfDue(): Promise<void> {
       });
       const champion = ranked[0];
 
-      await tx.seasonSnapshot.createMany({ data: snapshotRows });
-      await tx.user.updateMany({ data: { xpTotal: 0 } });
-      await tx.season.create({
+      await scopedDb.seasonSnapshot.createMany({ data: snapshotRows });
+      await scopedDb.communityMemberStats.updateMany({ where: { communityId: id }, data: { xpTotal: 0 } });
+      await scopedDb.season.create({
         data: {
           communityId: season.communityId,
           number: nextNumber,
@@ -257,13 +265,25 @@ export async function finalizeSeasonIfDue(): Promise<void> {
 
   if (!outcome.claimed) return;
 
-  const result = await postToDiscord({
+  const result = await postCommunityEmbed(id, {
     title: `🏆 ${season.name} terminée !`,
     description: `Champion : <@${outcome.champion.discordId}> avec ${outcome.champion.xpTotal} XP !\nL'XP de tout le monde repart à 0 — nouvelle saison lancée.`,
     color: ACCENT_COLOR,
   });
   if (!result.ok) {
     logger.warn("seasons", "Notif Discord fin de saison non envoyée.", { seasonId: season.id });
+  }
+}
+
+/** Clôture les saisons échues de toutes les communautés traitées par les crons (default seule si l'isolation est éteinte). */
+export async function finalizeSeasonsIfDue(): Promise<void> {
+  for (const communityId of await listCronCommunityIds()) {
+    try {
+      await finalizeSeasonIfDue(communityId);
+    } catch (error) {
+      // Une communauté en échec ne bloque jamais les suivantes.
+      logger.error("seasons", error, { communityId, task: "finalizeSeasonIfDue" });
+    }
   }
 }
 

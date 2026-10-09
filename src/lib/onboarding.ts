@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 /**
  * Déclenchement de l'onboarding premier login (Sprint 2 PR-B, U1) :
@@ -10,6 +12,9 @@ import { prisma } from "@/lib/prisma";
  * PARTICIPATE) et aucune dispo réglée (ni créneau récurrent, ni
  * exception ponctuelle) — un compte plus ancien qui a déjà de l'activité
  * ne se voit jamais imposer ce tutoriel après coup.
+ *
+ * PR B : « aucune soirée jouée » s'entend dans la communauté courante de
+ * l'utilisateur (`XpEvent` est propre à chaque communauté).
  */
 export async function shouldShowOnboarding(
   userId: string,
@@ -17,8 +22,12 @@ export async function shouldShowOnboarding(
 ): Promise<boolean> {
   if (onboardingCompleted) return false;
 
+  const communityId = await writeCommunityIdForUser(userId);
+  const scopedDb = communityId === null ? null : await scopedPrismaForCommunityId(communityId);
   const [sessionsParticipated, weeklySlots, overrides] = await Promise.all([
-    prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } }),
+    communityId === null || scopedDb === null
+      ? 0
+      : scopedDb.xpEvent.count({ where: { communityId, userId, reason: "PARTICIPATE" } }),
     prisma.weeklyAvailability.count({ where: { userId } }),
     prisma.availabilityOverride.count({ where: { userId } }),
   ]);

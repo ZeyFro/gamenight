@@ -4,6 +4,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { memberUserWhereFor } from "@/lib/community-isolation";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import {
+  EMPTY_MEMBER_STATS,
+  getCurrentMemberStats,
+  getMemberStatsMap,
+  type MemberStats,
+} from "@/lib/member-stats";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
@@ -47,8 +54,6 @@ export default async function PotesPage() {
       discordAvatar: true,
       color: true,
       bannerUrl: true,
-      xpTotal: true,
-      streakCount: true,
       steamId64: true,
       lastPlayedGame: true,
       lastPlayedAt: true,
@@ -62,11 +67,20 @@ export default async function PotesPage() {
   // Une seule requête groupée pour "soirées jouées" plutôt que N requêtes
   // (une par pote) — même info que `getProfileStats`, mais cette page a
   // besoin de toutes les cartes d'un coup.
-  const sessionsPlayedRows = await prisma.xpEvent.groupBy({
-    by: ["userId"],
-    where: { userId: { in: potes.map((p) => p.id) }, reason: "PARTICIPATE" },
-    _count: { _all: true },
-  });
+  // PR B : XP, niveau, streak et soirées jouées sont ceux de la communauté COURANTE
+  // du spectateur (`CommunityMemberStats` / `XpEvent` de cette communauté).
+  const { communityId } = await getCurrentMemberStats(user.id);
+  const statsByUser =
+    communityId === null ? new Map<string, MemberStats>() : await getMemberStatsMap(communityId, potes.map((p) => p.id));
+  const scopedDb = communityId === null ? null : await scopedPrismaForCommunityId(communityId);
+  const sessionsPlayedRows =
+    communityId === null || scopedDb === null
+      ? []
+      : await scopedDb.xpEvent.groupBy({
+          by: ["userId"],
+          where: { communityId, userId: { in: potes.map((p) => p.id) }, reason: "PARTICIPATE" },
+          _count: { _all: true },
+        });
   const sessionsPlayedByUser = new Map(
     sessionsPlayedRows.map((row) => [row.userId, row._count._all])
   );
@@ -111,7 +125,8 @@ export default async function PotesPage() {
       ) : (
         <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {potes.map((pote) => {
-            const level = levelForXp(pote.xpTotal);
+            const stats = statsByUser.get(pote.id) ?? EMPTY_MEMBER_STATS;
+            const level = levelForXp(stats.xpTotal);
             const rank = rankForLevel(level);
             const sessionsPlayed = sessionsPlayedByUser.get(pote.id) ?? 0;
             const gamesOwned = gamesOwnedByUser.get(pote.id) ?? 0;
@@ -172,16 +187,16 @@ export default async function PotesPage() {
                           value={sessionsPlayed}
                           label={`soirée${sessionsPlayed === 1 ? "" : "s"}`}
                         />
-                        <QuickStat value={pote.xpTotal} label="XP" />
+                        <QuickStat value={stats.xpTotal} label="XP" />
                         <QuickStat
                           value={
-                            pote.streakCount > 0 ? (
+                            stats.streakCount > 0 ? (
                               <span className="flex items-center gap-1">
-                                {pote.streakCount}
+                                {stats.streakCount}
                                 <StreakFlame />
                               </span>
                             ) : (
-                              pote.streakCount
+                              stats.streakCount
                             )
                           }
                           label="streak"

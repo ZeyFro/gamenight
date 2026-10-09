@@ -1,9 +1,5 @@
-import {
-  postToDiscord,
-  ACCENT_COLOR,
-  type DiscordEmbed,
-  type PostToDiscordResult,
-} from "@/lib/discord";
+import { ACCENT_COLOR, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
+import { postCommunityEmbed } from "@/lib/community-announce";
 import { pickMessageTemplate } from "@/lib/message-templates";
 
 export interface SessionAwardWinner {
@@ -32,6 +28,7 @@ export interface SessionAwardWinner {
  * possible, pas exploité ici pour rester simple.
  */
 export async function announceSessionAwards(
+  communityId: string,
   gameName: string,
   winners: SessionAwardWinner[]
 ): Promise<PostToDiscordResult> {
@@ -51,5 +48,5 @@ export async function announceSessionAwards(
     })),
   };
 
-  return postToDiscord(embed, message);
+  return postCommunityEmbed(communityId, embed, message);
 }

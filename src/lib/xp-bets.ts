@@ -1,12 +1,19 @@
-import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
+import {
+  getScopedPrisma,
+  scopedPrisma,
+  scopedPrismaForCommunityId,
+  withCommunity,
+} from "@/lib/community-scoped-client";
 import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { canAccessSession } from "@/lib/session-access";
-import { getDefaultCommunityId } from "@/lib/default-community";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { postCommunityEmbed } from "@/lib/community-announce";
+import { getMemberStats } from "@/lib/member-stats";
 import { prisma } from "@/lib/prisma";
 import { awardXp } from "@/lib/xp-actions";
 import { createNotification } from "@/lib/notifications";
 import { checkBetBadges } from "@/lib/badges";
-import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
+import { ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 
 /** Mise minimale, et pas de mise au-delà de 50% du solde actuel — par tranches de 10 (spec). */
@@ -37,6 +44,10 @@ class InsufficientBalanceError extends Error {}
  * moment du pari — nécessaire pour le badge "All In", `xpTotal` pouvant
  * changer après coup (cf. commentaire sur le modèle `XpBet`).
  *
+ * PR B (multi-communautés) : le solde est celui du parieur DANS LA COMMUNAUTÉ DE
+ * LA SOIRÉE (`CommunityMemberStats.xpTotal`), jamais un solde global : miser sur
+ * le serveur A ne touche pas l'XP du serveur B, et la mise gagnée y est créditée.
+ *
  * Fix bug remonté (solde négatif, PR "Fiabilise la clôture des saisons")
  * — la vérification ci-dessus (`isValidBetAmount(amount, voter.xpTotal)`)
  * lit `xpTotal` HORS transaction, donc potentiellement périmée si le solde
@@ -60,13 +71,6 @@ export async function placeBet(
 ): Promise<boolean> {
   if (isCommunityIsolationEnabled() && (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(targetUserId, sessionId)))) return false;
   const scopedDb = await getScopedPrisma(voterId);
-  const voter = await prisma.user.findUnique({
-    where: { id: voterId },
-    select: { xpTotal: true },
-  });
-  if (!voter || !isValidBetAmount(amount, voter.xpTotal)) return false;
-
-  const allIn = amount === maxBetAmount(voter.xpTotal);
 
   // Chantier nettoyage réel du stockage (V2, suite) — `gameName` dénormalisé
   // ICI, à la pose du pari (le jeu de la soirée est déjà décidé à ce stade)
@@ -76,24 +80,68 @@ export async function placeBet(
     where: { id: sessionId },
     select: { communityId: true, decidedGame: { select: { name: true } } },
   });
-
   if (!session) return false;
+
+  const communityId = await statsCommunityIdForSession(session.communityId);
+  const voter = await getMemberStats(voterId, communityId);
+  if (!isValidBetAmount(amount, voter.xpTotal)) return false;
+
+  // `allIn` fige si la mise valait le max autorisé au moment du pari.
+  const allIn = amount === maxBetAmount(voter.xpTotal);
+
+  return createBetAndDebit({
+    communityId,
+    sessionCommunityId: session.communityId,
+    sessionId,
+    voterId,
+    targetUserId,
+    amount,
+    allIn,
+    gameName: session.decidedGame?.name ?? null,
+  });
+}
+
+/** Création du pari ET débit du solde de la communauté, atomiques (voir `placeBet`). */
+async function createBetAndDebit(input: {
+  communityId: string;
+  sessionCommunityId: string | null;
+  sessionId: string;
+  voterId: string;
+  targetUserId: string;
+  amount: number;
+  allIn: boolean;
+  gameName: string | null;
+}): Promise<boolean> {
+  const { communityId, voterId, amount } = input;
+  const scoped = await scopedPrismaForCommunityId(communityId);
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.xpBet.create({
-        data: { ...withCommunity(session.communityId), sessionId, voterId, targetUserId, amount, allIn, gameName: session?.decidedGame?.name ?? null },
+    // `scopedDb` : client de transaction dérivé du client scopé sur cette communauté.
+    await scoped.$transaction(async (scopedDb) => {
+      await scopedDb.xpBet.create({
+        data: {
+          ...withCommunity(input.sessionCommunityId),
+          sessionId: input.sessionId,
+          voterId,
+          targetUserId: input.targetUserId,
+          amount,
+          allIn: input.allIn,
+          gameName: input.gameName,
+        },
       });
 
-      const locked = await tx.$queryRaw<{ xpTotal: number }[]>`
-        SELECT "xpTotal" FROM "User" WHERE id = ${voterId} FOR UPDATE
+      // Verrou de ligne sur LE solde de cette communauté (SQL brut : la clé est
+      // explicitement `(communityId, userId)`, jamais le solde d'un autre serveur).
+      const locked = await scopedDb.$queryRaw<{ xpTotal: number }[]>`
+        SELECT "xpTotal" FROM "CommunityMemberStats"
+        WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE
       `;
       const currentXpTotal = locked[0]?.xpTotal;
       if (currentXpTotal === undefined || !isValidBetAmount(amount, currentXpTotal)) {
         throw new InsufficientBalanceError();
       }
 
-      await tx.user.update({
-        where: { id: voterId },
+      await scopedDb.communityMemberStats.update({
+        where: { communityId_userId: { communityId, userId: voterId } },
         data: { xpTotal: { decrement: amount } },
       });
     });
@@ -121,7 +169,8 @@ export async function resolveBets(
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
   if (!session) return;
-  const canUseLegacyWebhook = !isCommunityIsolationEnabled() || (session.communityId ?? await getDefaultCommunityId()) === await getDefaultCommunityId();
+  // PR B : le solde crédité, le badge et l'annonce sont ceux de la communauté de la soirée.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   const bets = await scopedDb.xpBet.findMany({
     where: { sessionId },
     include: { voter: true, target: true },
@@ -133,9 +182,10 @@ export async function resolveBets(
     if (!won) continue;
 
     await awardXp(bet.voterId, "XP_BET_WON", bet.id, bet.amount * 2, {
+      communityId: xpCommunityId,
       applyStreak: false,
     });
-    await checkBetBadges(bet.voterId);
+    await checkBetBadges(bet.voterId, xpCommunityId);
 
     await createNotification({
       userId: bet.voterId,
@@ -145,8 +195,7 @@ export async function resolveBets(
       relatedSessionId: sessionId,
     });
 
-    if (!canUseLegacyWebhook) continue;
-    const result = await postToDiscord({
+    const result = await postCommunityEmbed(xpCommunityId, {
       title: "🎲 Pari gagné !",
       description: `<@${bet.voter.discordId}> avait misé sur le bon carry — +${bet.amount * 2} XP`,
       color: ACCENT_COLOR,

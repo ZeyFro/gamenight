@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { personalCommunityIds } from "@/lib/community-stats";
+import { ensureMemberStatsRow, getMemberStats } from "@/lib/member-stats";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { STAT_KEY_FOR_CRITERIA_TYPE, type BadgeCriteria, type BadgeStats } from "@/lib/badges";
 import type { Badge } from "@prisma/client";
@@ -21,7 +24,13 @@ import type { Badge } from "@prisma/client";
  * mois). Réutiliser le chemin live nécessiterait de lui ajouter un mode
  * silencieux — refactor plus risqué que le gain, donc pas fait ici.
  *
- * Idempotent via `@@unique([userId, badgeId])` sur `UserBadge` — le
+ * PR B (multi-communautés) : un badge se gagne PAR communauté. Le passage de
+ * réconciliation évalue chaque membre dans CHAQUE communauté dont il est
+ * membre actif (la communauté par défaut quand l'isolation est éteinte), sur
+ * l'activité de cette communauté, et crédite l'éventuelle récompense d'XP dans
+ * le registre de cette communauté.
+ *
+ * Idempotent via `@@unique([communityId, userId, badgeId])` sur `UserBadge` — le
  * chemin live et ce passage de réconciliation écrivent dans la même
  * table, aucune double attribution possible.
  *
@@ -36,22 +45,29 @@ import type { Badge } from "@prisma/client";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Écriture idempotente d'un UserBadge + XP, sans notif Discord (voir décision ci-dessus). */
-async function unlockBadgeRaw(userId: string, badge: Badge): Promise<void> {
+async function unlockBadgeRaw(userId: string, communityId: string, badge: Badge): Promise<void> {
+  const scoped = await scopedPrismaForCommunityId(communityId);
   try {
-    await prisma.userBadge.create({ data: { userId, badgeId: badge.id } });
+    await scoped.$transaction(async (scopedDb) => {
+      await scopedDb.userBadge.create({ data: { communityId, userId, badgeId: badge.id } });
+    });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) return; // déjà débloqué
     throw error;
   }
 
   if (badge.xpReward) {
+    const amount = badge.xpReward;
     try {
-      await prisma.xpEvent.create({
-        data: { userId, reason: "BADGE_UNLOCKED", sourceId: badge.id, amount: badge.xpReward },
-      });
-      await prisma.user.update({
-        where: { id: userId },
-        data: { xpTotal: { increment: badge.xpReward } },
+      await scoped.$transaction(async (scopedDb) => {
+        await scopedDb.xpEvent.create({
+          data: { communityId, userId, reason: "BADGE_UNLOCKED", sourceId: badge.id, amount },
+        });
+        await ensureMemberStatsRow(scopedDb, communityId, userId);
+        await scopedDb.communityMemberStats.update({
+          where: { communityId_userId: { communityId, userId } },
+          data: { xpTotal: { increment: amount } },
+        });
       });
     } catch (error) {
       if (!isUniqueConstraintViolation(error)) throw error; // XpEvent déjà présent (chemin live entre-temps) — UserBadge suffit
@@ -59,20 +75,24 @@ async function unlockBadgeRaw(userId: string, badge: Badge): Promise<void> {
   }
 }
 
-async function computeStats(user: {
-  id: string;
-  createdAt: Date;
-  streakCount: number;
-}): Promise<BadgeStats> {
+async function computeStats(
+  user: {
+    id: string;
+    createdAt: Date;
+  },
+  communityId: string
+): Promise<BadgeStats> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const memberStats = await getMemberStats(user.id, communityId);
   const [sessionsCreated, sessionsParticipated, votesCast, superlativesWon, libraryCount] =
     await Promise.all([
       // Chantier nettoyage réel du stockage (V2, suite) — même correctif
       // que `checkSessionsCreatedBadges` (src/lib/badges.ts) : compte les
       // `XpEvent` `CREATE_SESSION`, jamais les lignes `Session` (purgeables).
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "CREATE_SESSION" } }),
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "PARTICIPATE" } }),
-      prisma.xpEvent.count({ where: { userId: user.id, reason: "VOTE" } }),
-      prisma.superlativeAward.count({ where: { winnerUserId: user.id } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "CREATE_SESSION" } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "PARTICIPATE" } }),
+      scopedDb.xpEvent.count({ where: { communityId, userId: user.id, reason: "VOTE" } }),
+      scopedDb.superlativeAward.count({ where: { winnerUserId: user.id } }),
       prisma.userGame.count({ where: { userId: user.id, owned: true } }),
     ]);
 
@@ -84,7 +104,7 @@ async function computeStats(user: {
     votesCast,
     superlativesWon,
     libraryCount,
-    streakCount: user.streakCount,
+    streakCount: memberStats.streakCount,
     accountAgeDays,
   };
 }
@@ -97,21 +117,24 @@ export async function backfillBadges(): Promise<void> {
   if (users.length === 0) return;
 
   for (const user of users) {
-    const stats = await computeStats(user);
-    const alreadyUnlocked = await prisma.userBadge.findMany({
-      where: { userId: user.id },
-      select: { badgeId: true },
-    });
-    const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
+    for (const communityId of await personalCommunityIds(user.id)) {
+      const scopedDb = await scopedPrismaForCommunityId(communityId);
+      const stats = await computeStats(user, communityId);
+      const alreadyUnlocked = await scopedDb.userBadge.findMany({
+        where: { communityId, userId: user.id },
+        select: { badgeId: true },
+      });
+      const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
 
-    for (const badge of badges) {
-      if (unlockedIds.has(badge.id)) continue;
-      const criteria = badge.criteria as unknown as BadgeCriteria;
-      const key = STAT_KEY_FOR_CRITERIA_TYPE[criteria.type];
-      const value = stats[key];
-      if (value === undefined || value < criteria.count) continue;
+      for (const badge of badges) {
+        if (unlockedIds.has(badge.id)) continue;
+        const criteria = badge.criteria as unknown as BadgeCriteria;
+        const key = STAT_KEY_FOR_CRITERIA_TYPE[criteria.type];
+        const value = stats[key];
+        if (value === undefined || value < criteria.count) continue;
 
-      await unlockBadgeRaw(user.id, badge);
+        await unlockBadgeRaw(user.id, communityId, badge);
+      }
     }
   }
 }

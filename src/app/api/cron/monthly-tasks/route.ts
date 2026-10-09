@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { finalizeSeasonIfDue } from "@/lib/seasons";
+import { finalizeSeasonsIfDue } from "@/lib/seasons";
 import { generateMonthlyRecapIfDue } from "@/lib/monthly-recap";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -23,9 +23,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    await finalizeSeasonIfDue();
+    await finalizeSeasonsIfDue();
   } catch (error) {
-    logger.error("cron:monthly-tasks", error, { task: "finalizeSeasonIfDue" });
+    logger.error("cron:monthly-tasks", error, { task: "finalizeSeasonsIfDue" });
   }
 
   try {

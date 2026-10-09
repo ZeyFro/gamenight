@@ -19,6 +19,8 @@ import {
   resyncTournamentThreadMembers,
 } from "@/lib/tournament-announce";
 import { checkTournamentBadges } from "@/lib/badges";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { bumpTournamentsParticipated } from "@/lib/member-stats";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
@@ -234,9 +236,9 @@ export async function registerForTournamentAction(formData: FormData) {
 
   const registered = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<
-      { id: string; status: string; maxPlayers: number; announceViaBot: boolean }[]
+      { id: string; status: string; maxPlayers: number; announceViaBot: boolean; communityId: string | null }[]
     >`
-      SELECT id, status, "maxPlayers", "announceViaBot" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+      SELECT id, status, "maxPlayers", "announceViaBot", "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
     `;
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
@@ -274,11 +276,8 @@ export async function registerForTournamentAction(formData: FormData) {
     // faux dès qu'un tournoi ancien est purgé (voir badges.ts,
     // `checkTournamentBadges`) — jamais recalculé par un `count()` sur des
     // lignes vouées à disparaître.
-    await tx.userLifetimeStats.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, tournamentsParticipatedCount: 1 },
-      update: { tournamentsParticipatedCount: { increment: 1 } },
-    });
+    // PR B : compteur par communauté (celle du tournoi), plus UserLifetimeStats (hérité).
+    await bumpTournamentsParticipated(tx, await statsCommunityIdForSession(tournament.communityId), user.id, 1);
 
     // Places pleines → lancement automatique du bracket (spec), dans
     // CETTE transaction (voir docstring ci-dessus).
@@ -322,8 +321,8 @@ export async function unregisterFromTournamentAction(formData: FormData) {
 
   if (!(await canAccessTournament(user.id, tournamentId))) return;
   const unregistered = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
-      SELECT id, status FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    const locked = await tx.$queryRaw<{ id: string; status: string; communityId: string | null }[]>`
+      SELECT id, status, "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
     `;
     const tournament = locked[0];
     if (!tournament || tournament.status !== "REGISTRATION") return false;
@@ -333,11 +332,7 @@ export async function unregisterFromTournamentAction(formData: FormData) {
     // réellement été retirée (jamais sur un double appel/une inscription
     // déjà absente) — voir le commentaire de `registerForTournamentAction`.
     if (deleted.count > 0) {
-      await tx.userLifetimeStats.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, tournamentsParticipatedCount: 0 },
-        update: { tournamentsParticipatedCount: { decrement: 1 } },
-      });
+      await bumpTournamentsParticipated(tx, await statsCommunityIdForSession(tournament.communityId), user.id, -1);
     }
     return true;
   });
@@ -394,14 +389,13 @@ export async function declareWinnerAction(formData: FormData) {
   const result = await declareWinner(input.data.matchId, input.data.winnerId, user.id);
   if (!result.ok) return;
 
-  if (result.tournamentDone) {
-    await checkTournamentBadges(user.id);
-  }
-
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: input.data.matchId },
-    select: { tournamentId: true },
+    select: { tournamentId: true, tournament: { select: { communityId: true } } },
   });
+  if (result.tournamentDone && match) {
+    await checkTournamentBadges(user.id, await statsCommunityIdForSession(match.tournament.communityId));
+  }
   if (match) {
     revalidatePath(`/tournois/${match.tournamentId}`);
     revalidatePath("/tournois");

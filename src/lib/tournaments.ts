@@ -4,6 +4,7 @@ import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkTournamentBadges } from "@/lib/badges";
 import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
@@ -488,13 +489,18 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
       .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
       .filter((id): id is string => id !== null);
 
-    await awardXp(championId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
+    // PR B : XP, badges et annonce de fin vont dans la communauté du tournoi.
+    const xpCommunityId = await statsCommunityIdForSession(tournament.communityId);
+    await awardXp(championId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST, {
+      communityId: xpCommunityId,
+    });
     if (runnerUpId) {
       await awardXp(
         runnerUpId,
         "TOURNAMENT_RESULT",
         `${tournamentId}:2nd`,
-        XP_AMOUNTS.TOURNAMENT_2ND
+        XP_AMOUNTS.TOURNAMENT_2ND,
+        { communityId: xpCommunityId }
       );
     }
     for (const loserId of semifinalLoserIds) {
@@ -502,7 +508,8 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
         loserId,
         "TOURNAMENT_RESULT",
         `${tournamentId}:semi:${loserId}`,
-        XP_AMOUNTS.TOURNAMENT_SEMIFINALIST
+        XP_AMOUNTS.TOURNAMENT_SEMIFINALIST,
+        { communityId: xpCommunityId }
       );
     }
 
@@ -511,7 +518,7 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
       select: { userId: true },
     });
     for (const p of participantIds) {
-      await checkTournamentBadges(p.userId);
+      await checkTournamentBadges(p.userId, xpCommunityId);
     }
 
     // Chantier annonces tournois (étend #99) — transport figé À LA

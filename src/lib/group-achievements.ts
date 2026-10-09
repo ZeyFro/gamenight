@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { communityMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
-import { getDefaultCommunityId } from "@/lib/default-community";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { announceGroupAchievementUnlocked } from "@/lib/discord-group-achievement";
 import { logger } from "@/lib/logger";
@@ -133,7 +132,6 @@ export async function checkGroupAchievements(communityId: string): Promise<Group
   const locked = await scopedDb.groupAchievement.findMany({ where: { communityId, unlockedAt: null } });
   if (locked.length === 0) return [];
   const members = await communityMemberUserWhere(communityId);
-  const announce = !isCommunityIsolationEnabled() || communityId === (await getDefaultCommunityId());
 
   const doneSessions = await scopedDb.session.findMany({
     where: { status: "DONE" },
@@ -186,13 +184,14 @@ export async function checkGroupAchievements(communityId: string): Promise<Group
       // CETTE MÊME population, à la clôture du vote (`closeSession`,
       // src/lib/sessions.ts) — sans FK vers `Session`, déjà à l'abri de
       // toute purge, aucun nouveau schéma nécessaire.
-      prisma.xpEvent.findMany({ where: { reason: "PARTICIPATE", user: members }, distinct: ["userId"], select: { userId: true } }),
+      scopedDb.xpEvent.findMany({ where: { communityId, reason: "PARTICIPATE", user: members }, distinct: ["userId"], select: { userId: true } }),
       // "réguliers" — voir `GroupActiveWeek` (prisma/schema.prisma) : une
       // ligne par semaine calendaire ayant eu ≥1 soirée DONE, écrite dans
       // `markSessionDone`, jamais retouchée par la purge.
       scopedDb.groupActiveWeek.findMany({ where: { communityId }, select: { weekStart: true }, orderBy: { weekStart: "asc" } }),
       prisma.userGame.groupBy({ by: ["gameId"], where: { owned: true, user: members } }),
-      prisma.user.findMany({ where: members, select: { xpTotal: true } }),
+      // PR B : « légendaire » se juge sur le solde XP DANS cette communauté.
+      scopedDb.communityMemberStats.findMany({ where: { communityId, user: members }, select: { xpTotal: true } }),
     ]);
 
   const totalDone = sessionStats?.totalSessionsPlayed ?? 0;
@@ -237,10 +236,9 @@ export async function checkGroupAchievements(communityId: string): Promise<Group
 
     unlocked.push({ ...achievement, unlockedAt: new Date() });
 
-    // Seule la communauté par défaut a un salon (celui de l'environnement) : les
-    // trophées des autres communautés ne sont pas annoncés (PR9).
-    if (!announce) continue;
-    const result = await announceGroupAchievementUnlocked(achievement);
+    // PR B : annonce dans le salon de CETTE communauté (webhook historique pour default ;
+    // les autres communautés : salon d'annonce configuré, sinon rien n'est envoyé).
+    const result = await announceGroupAchievementUnlocked(communityId, achievement);
     if (!result.ok) {
       logger.error(
         "group-achievements",

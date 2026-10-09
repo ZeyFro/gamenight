@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { getCurrentMemberStats } from "@/lib/member-stats";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -48,10 +50,16 @@ export default async function ProfilHistoriquePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const participations = await prisma.xpEvent.findMany({
-    where: { userId: user.id, reason: "PARTICIPATE" },
-    orderBy: { createdAt: "desc" },
-  });
+  // PR B : participations de la communauté courante (sans communauté, liste vide).
+  const { communityId } = await getCurrentMemberStats(user.id);
+  const scopedDb = communityId === null ? null : await scopedPrismaForCommunityId(communityId);
+  const participations =
+    communityId === null || scopedDb === null
+      ? []
+      : await scopedDb.xpEvent.findMany({
+          where: { communityId, userId: user.id, reason: "PARTICIPATE" },
+          orderBy: { createdAt: "desc" },
+        });
   const sessionIds = participations.map((p) => p.sourceId);
 
   const [sessions, results] = await Promise.all([

@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import type { XpReason } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { ensureMemberStatsRow } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
 import { computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
@@ -13,9 +15,10 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
 }
 
 /**
- * Attribue de l'XP à un user pour une action donnée — idempotent via la
- * contrainte unique `@@unique([userId, reason, sourceId])` sur `XpEvent` :
- * un second appel avec le même trio ne fait rien (silencieusement), ce qui
+ * Attribue de l'XP à un user, DANS UNE COMMUNAUTÉ, pour une action donnée —
+ * idempotent via la contrainte unique `@@unique([communityId, userId, reason,
+ * sourceId])` sur `XpEvent` : un second appel avec le même quadruplet ne fait
+ * rien (silencieusement), ce qui
  * permet au script de backfill (backfillXp, src/lib/backfill-xp.ts) de
  * tourner à volonté sans jamais doubler une récompense déjà attribuée par le chemin
  * "live" (et vice-versa) — même mécanisme de prudence que le bug de seed
@@ -26,8 +29,16 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
  * script de backfill), donc pas de multiplicateur appliqué là-dessus —
  * uniquement pour l'XP gagnée en direct, aujourd'hui.
  *
+ * PR B (multi-communautés) : `communityId` est OBLIGATOIRE (jamais de défaut
+ * silencieux) — l'appelant dérive la communauté de la ligne qui a rapporté l'XP
+ * (soirée, tournoi, défi…) ou, pour une action personnelle, de la communauté
+ * courante de l'utilisateur (`writeCommunityIdForUser`). Le solde, le streak
+ * utilisé pour le multiplicateur et le `LevelUpEvent` sont ceux de CETTE
+ * communauté (`CommunityMemberStats`) : gagner de l'XP dans A ne change jamais
+ * le solde dans B. `User.xpTotal` est hérité et n'est plus écrit.
+ *
  * Fix bug remonté (XP non-transactionnelle) — la création du `XpEvent` et
- * l'incrément de `User.xpTotal` (+ `LevelUpEvent` s'il y a lieu) vivent
+ * l'incrément de `CommunityMemberStats.xpTotal` (+ `LevelUpEvent` s'il y a lieu) vivent
  * maintenant dans une seule `prisma.$transaction` : soit les deux/trois
  * écritures réussissent ensemble, soit aucune ne persiste. Une violation
  * de la contrainte unique à l'intérieur fait échouer (rollback) toute la
@@ -73,24 +84,32 @@ export async function awardXp(
   reason: XpReason,
   sourceId: string,
   baseAmount: number,
-  { applyStreak = true }: { applyStreak?: boolean } = {}
+  { communityId, applyStreak = true }: { communityId: string; applyStreak?: boolean }
 ): Promise<{ leveledUp: boolean }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { streakCount: true },
+    select: { discordId: true },
   });
   if (!user) return { leveledUp: false };
 
-  const amount = computeAwardedAmount(baseAmount, user.streakCount, applyStreak);
+  const scoped = await scopedPrismaForCommunityId(communityId);
+  const current = await scoped.communityMemberStats.findUnique({
+    where: { communityId_userId: { communityId, userId } },
+    select: { streakCount: true },
+  });
+  const amount = computeAwardedAmount(baseAmount, current?.streakCount ?? 0, applyStreak);
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.xpEvent.create({ data: { userId, reason, sourceId, amount } });
+    // `scopedDb` : client de transaction DÉRIVÉ du client scopé (les écritures y restent
+    // restreintes à la communauté, `communityId` obligatoire et dans le périmètre).
+    const result = await scoped.$transaction(async (scopedDb) => {
+      await scopedDb.xpEvent.create({ data: { communityId, userId, reason, sourceId, amount } });
 
-      const updated = await tx.user.update({
-        where: { id: userId },
+      await ensureMemberStatsRow(scopedDb, communityId, userId);
+      const updated = await scopedDb.communityMemberStats.update({
+        where: { communityId_userId: { communityId, userId } },
         data: { xpTotal: { increment: amount } },
-        select: { xpTotal: true, discordId: true },
+        select: { xpTotal: true },
       });
 
       const beforeXpTotal = updated.xpTotal - amount;
@@ -105,21 +124,22 @@ export async function awardXp(
         // backfill (backfillXp, src/lib/backfill-xp.ts), qui ne passe pas par
         // `awardXp` — voir le commentaire sur `LevelUpEvent` dans le
         // schéma.
-        await tx.levelUpEvent.create({ data: { userId, level: afterLevel } });
+        await scopedDb.levelUpEvent.create({ data: { communityId, userId, level: afterLevel } });
       }
 
-      return { leveledUp, beforeLevel, afterLevel, discordId: updated.discordId };
+      return { leveledUp, beforeLevel, afterLevel };
     });
 
     if (result.leveledUp) {
       try {
         await announceLevelUp(
-          { discordId: result.discordId },
+          { discordId: user.discordId },
+          communityId,
           result.beforeLevel,
           result.afterLevel
         );
       } catch (error) {
-        logger.error("xp-actions", error, { userId, reason, sourceId, effect: "discord" });
+        logger.error("xp-actions", error, { userId, reason, sourceId, communityId, effect: "discord" });
       }
       try {
         // Notification in-app (Sprint 2 PR-C, U3) — même événement que le
@@ -131,7 +151,7 @@ export async function awardXp(
           message: `Niveau ${result.beforeLevel} → ${result.afterLevel} · ${titleForLevel(result.afterLevel)} · ${rankForLevel(result.afterLevel).name}`,
         });
       } catch (error) {
-        logger.error("xp-actions", error, { userId, reason, sourceId, effect: "notification" });
+        logger.error("xp-actions", error, { userId, reason, sourceId, communityId, effect: "notification" });
       }
     }
 
@@ -146,22 +166,27 @@ const STREAK_MIN_GAP_MS = 12 * 60 * 60 * 1000;
 const STREAK_BREAK_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Met à jour le streak de connexion d'un user si nécessaire — appelé
- * depuis `getCurrentUser()` (donc à chaque page protégée). Fenêtre
- * glissante de 24h (pas de notion de "jour calendaire") : se casse après
- * 24h sans passage, comme demandé. Un minimum de 12h entre deux
- * incréments évite qu'une simple série de clics dans la même journée ne
- * fasse gonfler le streak — sans ce throttle, `streakCount` grimperait à
- * chaque `getCurrentUser()` au lieu d'une fois par vraie "journée
- * d'activité". Écrit en base seulement quand un changement réel a lieu
- * (pas à chaque requête).
+ * Met à jour le streak de connexion d'un user DANS UNE COMMUNAUTÉ si
+ * nécessaire — appelé depuis `getCurrentUser()` (donc à chaque page
+ * protégée), avec la communauté courante de l'utilisateur et ses statistiques
+ * dans cette communauté (`CommunityMemberStats`). Fenêtre glissante de 24h
+ * (pas de notion de "jour calendaire") : se casse après 24h sans passage,
+ * comme demandé. Un minimum de 12h entre deux incréments évite qu'une simple
+ * série de clics dans la même journée ne fasse gonfler le streak — sans ce
+ * throttle, `streakCount` grimperait à chaque `getCurrentUser()` au lieu
+ * d'une fois par vraie "journée d'activité". Écrit en base seulement quand un
+ * changement réel a lieu (pas à chaque requête). Un streak est propre à chaque
+ * communauté : passer sur le serveur B n'entretient pas celui du serveur A.
  */
-export async function touchStreak(user: {
-  id: string;
-  streakCount: number;
-  streakLastActiveAt: Date | null;
-  bestStreakCount: number;
-}): Promise<{ streakCount: number; streakLastActiveAt: Date }> {
+export async function touchStreak(
+  user: {
+    id: string;
+    streakCount: number;
+    streakLastActiveAt: Date | null;
+    bestStreakCount: number;
+  },
+  communityId: string
+): Promise<{ streakCount: number; streakLastActiveAt: Date }> {
   const now = new Date();
 
   if (
@@ -183,8 +208,10 @@ export async function touchStreak(user: {
   // Amélioration profil (stats) — `streakCount` repart à 1 dès qu'un
   // streak casse, donc `bestStreakCount` doit être maintenu à part pour
   // garder l'historique du meilleur streak (jamais décrémenté).
-  await prisma.user.update({
-    where: { id: user.id },
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  await ensureMemberStatsRow(scopedDb, communityId, user.id);
+  await scopedDb.communityMemberStats.update({
+    where: { communityId_userId: { communityId, userId: user.id } },
     data: {
       streakCount: nextStreakCount,
       streakLastActiveAt: now,

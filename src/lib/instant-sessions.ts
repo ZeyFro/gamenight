@@ -4,6 +4,7 @@ import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIso
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import {
@@ -439,7 +440,7 @@ export async function settleAllDueInstantSessions(): Promise<string[]> {
  * groupe ci-dessus. Effet de bord voulu, cohérent avec la demande
  * ("réutiliser la règle d'XP de participation à une soirée").
  *
- * Idempotent via la contrainte unique `[userId, reason, sourceId]` sur
+ * Idempotent via la contrainte unique `[communityId, userId, reason, sourceId]` sur
  * `XpEvent` (même garantie que partout ailleurs dans l'app, voir
  * `awardXp`) — `sourceId = instantSessionId` : un appel répété (poll 30s,
  * fin de session, expiration, plusieurs passages de purge...) ne peut
@@ -451,9 +452,11 @@ export async function settleInstantSessionRewards(instantSessionId: string): Pro
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
-    select: { status: true, endedAt: true },
+    select: { status: true, endedAt: true, communityId: true },
   });
   if (!session) return;
+  // PR B : l'XP de présence est créditée dans la communauté de la session instantanée.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
 
   const intervals = await prisma.instantSessionPresenceInterval.findMany({
     where: { instantSessionId },
@@ -467,8 +470,10 @@ export async function settleInstantSessionRewards(instantSessionId: string): Pro
   for (const [userId, ms] of totals) {
     if (ms < INSTANT_SESSION_ELIGIBLE_PRESENCE_MS) continue;
     try {
-      await awardXp(userId, "PARTICIPATE", instantSessionId, XP_AMOUNTS.PARTICIPATE);
-      await checkSessionsParticipatedBadges(userId);
+      await awardXp(userId, "PARTICIPATE", instantSessionId, XP_AMOUNTS.PARTICIPATE, {
+        communityId: xpCommunityId,
+      });
+      await checkSessionsParticipatedBadges(userId, xpCommunityId);
     } catch (error) {
       // Best-effort par utilisateur — un échec pour l'un ne doit jamais
       // empêcher le règlement des autres (même philosophie que les effets

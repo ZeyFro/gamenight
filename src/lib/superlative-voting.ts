@@ -1,6 +1,6 @@
 import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
-import { getDefaultCommunityId } from "@/lib/default-community";
+import { cronCommunityScope } from "@/lib/community-isolation";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
@@ -179,6 +179,8 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     })),
   });
 
+  // PR B : l'XP et les badges de superlatifs vont dans la communauté de la soirée.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   for (const award of awards) {
     const category = categories.find((c) => c.id === award.categoryId);
     if (!category) continue;
@@ -186,9 +188,10 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
       award.winnerUserId,
       "SUPERLATIVE_AWARD",
       `${sessionId}:${award.categoryId}`,
-      category.xpReward
+      category.xpReward,
+      { communityId: xpCommunityId }
     );
-    await checkSuperlativesWonBadges(award.winnerUserId);
+    await checkSuperlativesWonBadges(award.winnerUserId, xpCommunityId);
   }
 
   await scopedDb.session.update({
@@ -233,9 +236,9 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
     })
   );
 
-  // Le webhook global ne doit jamais révéler une récompense d’un autre serveur.
-  if (isCommunityIsolationEnabled() && (session.communityId ?? await getDefaultCommunityId()) !== await getDefaultCommunityId()) return;
+  // PR B : l'annonce part dans le salon de la communauté de la soirée (webhook historique pour default).
   await announceSessionAwards(
+    xpCommunityId,
     session.decidedGame.name,
     awards
       .map((a) => {

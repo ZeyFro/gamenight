@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { parseDateOnly } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
+import { personalCommunityIds } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
@@ -57,12 +58,10 @@ export async function addWeeklySlot(formData: FormData): Promise<DispoActionResu
   });
 
   if (!hadSlotsBefore) {
-    await awardXp(
-      user.id,
-      "AVAILABILITY_FIRST",
-      user.id,
-      XP_AMOUNTS.AVAILABILITY_FIRST
-    );
+    // Action personnelle : créditée dans chaque communauté du membre (registre d'XP par communauté).
+    for (const communityId of await personalCommunityIds(user.id)) {
+      await awardXp(user.id, "AVAILABILITY_FIRST", user.id, XP_AMOUNTS.AVAILABILITY_FIRST, { communityId });
+    }
   }
 
   revalidatePath("/disponibilites");

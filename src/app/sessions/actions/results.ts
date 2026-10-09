@@ -6,6 +6,7 @@ import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { awardXp } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkRevancheAfterSessionResults } from "@/lib/revanche";
 import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
@@ -99,6 +100,8 @@ export async function submitSessionResultsAction(formData: FormData) {
   if (participantVotes.length === 0) return;
 
   const isCoop = session.decidedGame?.isCoop ?? false;
+  // PR B : l'XP de résultat est créditée dans la communauté de la soirée.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   const placementAmounts: Record<number, number> = {
     1: XP_AMOUNTS.PODIUM_1ST,
     2: XP_AMOUNTS.PODIUM_2ND,
@@ -152,13 +155,16 @@ export async function submitSessionResultsAction(formData: FormData) {
 
     let xpResult: { leveledUp: boolean } | null = null;
     if (isCoop) {
-      xpResult = await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS);
+      xpResult = await awardXp(participantId, "SESSION_RESULT", sessionId, XP_AMOUNTS.COOP_BONUS, {
+        communityId: xpCommunityId,
+      });
     } else if (placement) {
       xpResult = await awardXp(
         participantId,
         "SESSION_RESULT",
         sessionId,
-        placementAmounts[placement]
+        placementAmounts[placement],
+        { communityId: xpCommunityId }
       );
     }
 

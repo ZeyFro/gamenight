@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { XpReason } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
+import { getCurrentMemberStats } from "@/lib/member-stats";
 import { prisma } from "@/lib/prisma";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
@@ -37,6 +38,9 @@ export default async function ProfilApercuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const scopedDb = await getActiveScopedPrisma(user.id);
+  // PR B : le fil d'XP et la courbe sont ceux de la communauté courante (`""` : aucune
+  // ligne n'a cet identifiant — sans communauté, rien n'est affiché).
+  const xpCommunityId = (await getCurrentMemberStats(user.id)).communityId ?? "";
 
   const now = nowMs();
   const xpChartSince = new Date(now - XP_CHART_DAYS * 24 * 60 * 60 * 1000);
@@ -56,8 +60,8 @@ export default async function ProfilApercuPage() {
       include: { decidedGame: true },
       orderBy: { date: "asc" },
     }),
-    prisma.xpEvent.findFirst({
-      where: { userId: user.id },
+    scopedDb.xpEvent.findFirst({
+      where: { communityId: xpCommunityId, userId: user.id },
       orderBy: { createdAt: "desc" },
     }),
     // Chantier nettoyage réel du stockage (V2, suite) — `gameName`
@@ -98,8 +102,8 @@ export default async function ProfilApercuPage() {
       where: { voterId: user.id, won: true },
       _sum: { amount: true },
     }),
-    prisma.xpEvent.findMany({
-      where: { userId: user.id, createdAt: { gte: xpChartSince } },
+    scopedDb.xpEvent.findMany({
+      where: { communityId: xpCommunityId, userId: user.id, createdAt: { gte: xpChartSince } },
       select: { amount: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),

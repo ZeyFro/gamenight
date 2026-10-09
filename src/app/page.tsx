@@ -9,6 +9,7 @@ import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/wallclock";
 import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
 import { getScoreboard } from "@/lib/scoreboard";
+import { countCurrentCommunityBadges } from "@/lib/member-stats";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { shouldShowOnboarding } from "@/lib/onboarding";
@@ -143,9 +144,8 @@ export default async function Home({
   await requireCommunityChosen(user.id, "/");
 
   const showOnboarding = await shouldShowOnboarding(user.id, user.onboardingCompleted);
-  const badgeCount = showOnboarding
-    ? await prisma.userBadge.count({ where: { userId: user.id } })
-    : 0;
+  // PR B : badges de la communauté courante (affichés dans l'onboarding).
+  const badgeCount = showOnboarding ? await countCurrentCommunityBadges(user.id) : 0;
 
   const dueSession = await prisma.session.findFirst({
     where: { status: "VOTING", date: { lte: wallClockNow() } },

@@ -43,6 +43,8 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
+  // PR B : XP, niveaux, badges gagnés et statistiques de membre par communauté.
+  "XpEvent", "LevelUpEvent", "UserBadge", "CommunityMemberStats",
 ]);
 
 /**
@@ -53,6 +55,8 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
   "WeeklyChallenge", "MonthlyRecap", "Season",
+  // PR B : jamais de ligne sans communauté (les lignes historiques ont été rattachées à default).
+  "XpEvent", "LevelUpEvent", "UserBadge", "CommunityMemberStats",
 ]);
 
 export class CommunityScopeError extends Error {

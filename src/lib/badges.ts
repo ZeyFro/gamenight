@@ -1,5 +1,8 @@
 import type { Badge } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { getMemberStats } from "@/lib/member-stats";
+import { personalCommunityIds } from "@/lib/community-stats";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { announceBadgeUnlocked } from "@/lib/discord-badge-unlocked";
 import { createNotification } from "@/lib/notifications";
@@ -11,6 +14,13 @@ export { BADGE_XP_BY_RARITY, RARITY_LABELS, CATEGORY_LABELS } from "@/lib/badge-
  * (JSON en base, typé ici) suit une forme unique `{ type, count }` pour
  * les 7 types de critère listés par l'utilisateur — un seuil à atteindre
  * sur une statistique donnée.
+ *
+ * PR B (multi-communautés) : le catalogue `Badge` est commun, mais un badge se
+ * GAGNE par communauté (`UserBadge.communityId`) et ses critères comptent
+ * l'activité DE CETTE communauté (événements XP, awards, pronostics, paris,
+ * streak, tournois). Toutes les fonctions `check*` reçoivent donc la
+ * communauté dans laquelle l'événement vient de se produire ; la récompense en
+ * XP du badge est créditée dans la même communauté.
  */
 export type BadgeCriteria =
   | { type: "SESSIONS_CREATED"; count: number }
@@ -98,9 +108,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * U9 — confettis `?celebrate=badge` sur les appelants qui redirigent
  * vers une page vue par ce même user, ex. `createSession`).
  */
-async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<boolean> {
+async function unlockMatchingBadges(userId: string, communityId: string, stats: BadgeStats): Promise<boolean> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   const [alreadyUnlocked, badges] = await Promise.all([
-    prisma.userBadge.findMany({ where: { userId }, select: { badgeId: true } }),
+    scopedDb.userBadge.findMany({ where: { communityId, userId }, select: { badgeId: true } }),
     prisma.badge.findMany({ where: { active: true } }),
   ]);
   const unlockedIds = new Set(alreadyUnlocked.map((b) => b.badgeId));
@@ -114,26 +125,27 @@ async function unlockMatchingBadges(userId: string, stats: BadgeStats): Promise<
     const value = stats[key];
     if (value === undefined || value < criteria.count) continue;
 
-    const unlocked = await unlockBadge(userId, badge);
+    const unlocked = await unlockBadge(userId, communityId, badge);
     if (unlocked) unlockedAny = true;
   }
   return unlockedAny;
 }
 
-async function unlockBadge(userId: string, badge: Badge): Promise<boolean> {
+async function unlockBadge(userId: string, communityId: string, badge: Badge): Promise<boolean> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   try {
-    await prisma.userBadge.create({ data: { userId, badgeId: badge.id } });
+    await scopedDb.userBadge.create({ data: { communityId, userId, badgeId: badge.id } });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) return false;
     throw error;
   }
 
   if (badge.xpReward) {
-    await awardXp(userId, "BADGE_UNLOCKED", badge.id, badge.xpReward);
+    await awardXp(userId, "BADGE_UNLOCKED", badge.id, badge.xpReward, { communityId });
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (user) await announceBadgeUnlocked(user, badge);
+  if (user) await announceBadgeUnlocked(user, communityId, badge);
   // Notification in-app (Sprint 2 PR-C, U3) — même événement que le
   // webhook Discord ci-dessus, écrit en parallèle.
   await createNotification({
@@ -158,9 +170,10 @@ async function unlockBadge(userId: string, badge: Badge): Promise<boolean> {
  * reverrouiller/sous-compter parce qu'une soirée ancienne a été purgée,
  * seul le cumul historique compte.
  */
-export async function checkSessionsCreatedBadges(userId: string): Promise<boolean> {
-  const count = await prisma.xpEvent.count({ where: { userId, reason: "CREATE_SESSION" } });
-  return unlockMatchingBadges(userId, { sessionsCreated: count });
+export async function checkSessionsCreatedBadges(userId: string, communityId: string): Promise<boolean> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.xpEvent.count({ where: { communityId, userId, reason: "CREATE_SESSION" } });
+  return unlockMatchingBadges(userId, communityId, { sessionsCreated: count });
 }
 
 /**
@@ -170,9 +183,10 @@ export async function checkSessionsCreatedBadges(userId: string): Promise<boolea
  * c'est exactement la même définition de présence déjà utilisée partout
  * dans le chantier XP, et déjà backfillée pour l'historique.
  */
-export async function checkSessionsParticipatedBadges(userId: string): Promise<void> {
-  const count = await prisma.xpEvent.count({ where: { userId, reason: "PARTICIPATE" } });
-  await unlockMatchingBadges(userId, { sessionsParticipated: count });
+export async function checkSessionsParticipatedBadges(userId: string, communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.xpEvent.count({ where: { communityId, userId, reason: "PARTICIPATE" } });
+  await unlockMatchingBadges(userId, communityId, { sessionsParticipated: count });
 }
 
 /**
@@ -182,21 +196,30 @@ export async function checkSessionsParticipatedBadges(userId: string): Promise<v
  * parce qu'on a retiré un vote entre-temps, seul le cumul historique
  * compte.
  */
-export async function checkVotesCastBadges(userId: string): Promise<void> {
-  const count = await prisma.xpEvent.count({ where: { userId, reason: "VOTE" } });
-  await unlockMatchingBadges(userId, { votesCast: count });
+export async function checkVotesCastBadges(userId: string, communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.xpEvent.count({ where: { communityId, userId, reason: "VOTE" } });
+  await unlockMatchingBadges(userId, communityId, { votesCast: count });
 }
 
 /** Après l'attribution d'un award de superlatif — Compétiteur / Star. */
-export async function checkSuperlativesWonBadges(userId: string): Promise<void> {
-  const count = await prisma.superlativeAward.count({ where: { winnerUserId: userId } });
-  await unlockMatchingBadges(userId, { superlativesWon: count });
+export async function checkSuperlativesWonBadges(userId: string, communityId: string): Promise<void> {
+  // Client scopé sur CETTE communauté : `communityId = null` (historique) compte pour `default`.
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.superlativeAward.count({ where: { winnerUserId: userId } });
+  await unlockMatchingBadges(userId, communityId, { superlativesWon: count });
 }
 
 /** Après l'ajout d'un jeu (manuel ou import Steam) — Bibliophile / Collectionneur. */
 export async function checkLibraryBadges(userId: string): Promise<void> {
+  // La bibliothèque est personnelle : le critère se vérifie (et le badge se débloque) dans
+  // CHAQUE communauté dont l'utilisateur est membre.
+  const communityIds = await personalCommunityIds(userId);
+  if (communityIds.length === 0) return;
   const count = await prisma.userGame.count({ where: { userId, owned: true } });
-  await unlockMatchingBadges(userId, { libraryCount: count });
+  for (const communityId of communityIds) {
+    await unlockMatchingBadges(userId, communityId, { libraryCount: count });
+  }
 }
 
 /**
@@ -205,15 +228,17 @@ export async function checkLibraryBadges(userId: string): Promise<void> {
  * CHALLENGE_COMPLETE, même mécanique que `checkSessionsParticipatedBadges`
  * (le cumul historique compte, pas un état recalculable autrement).
  */
-export async function checkChallengeBadges(userId: string): Promise<boolean> {
-  const count = await prisma.xpEvent.count({ where: { userId, reason: "CHALLENGE_COMPLETE" } });
-  return unlockMatchingBadges(userId, { challengesCompleted: count });
+export async function checkChallengeBadges(userId: string, communityId: string): Promise<boolean> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.xpEvent.count({ where: { communityId, userId, reason: "CHALLENGE_COMPLETE" } });
+  return unlockMatchingBadges(userId, communityId, { challengesCompleted: count });
 }
 
 /** Après un prono résolu correct (`resolvePronostics`) — "Oracle" à 10 pronos corrects. */
-export async function checkPronosticBadges(userId: string): Promise<void> {
-  const count = await prisma.pronostic.count({ where: { voterId: userId, correct: true } });
-  await unlockMatchingBadges(userId, { pronosticsCorrect: count });
+export async function checkPronosticBadges(userId: string, communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
+  const count = await scopedDb.pronostic.count({ where: { voterId: userId, correct: true } });
+  await unlockMatchingBadges(userId, communityId, { pronosticsCorrect: count });
 }
 
 /**
@@ -223,12 +248,13 @@ export async function checkPronosticBadges(userId: string): Promise<void> {
  * cumul, contrairement aux autres critères : un seul pari all-in gagné
  * suffit).
  */
-export async function checkBetBadges(userId: string): Promise<void> {
+export async function checkBetBadges(userId: string, communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   const [betsWonCount, allInWinCount] = await Promise.all([
-    prisma.xpBet.count({ where: { voterId: userId, won: true } }),
-    prisma.xpBet.count({ where: { voterId: userId, won: true, allIn: true } }),
+    scopedDb.xpBet.count({ where: { voterId: userId, won: true } }),
+    scopedDb.xpBet.count({ where: { voterId: userId, won: true, allIn: true } }),
   ]);
-  await unlockMatchingBadges(userId, {
+  await unlockMatchingBadges(userId, communityId, {
     betsWon: betsWonCount,
     allInWin: allInWinCount > 0 ? 1 : 0,
   });
@@ -248,19 +274,23 @@ export async function checkBetBadges(userId: string): Promise<void> {
  *     `sourceId` finit par `:1st` (posé UNIQUEMENT pour le champion, voir
  *     `announceTournamentFinalization`, tournaments.ts) — déjà durable,
  *     aucun nouveau champ nécessaire.
- *   - `tournamentsParticipated` — `UserLifetimeStats.tournamentsParticipatedCount`,
- *     résumé durable MINIMAL maintenu à l'inscription/désinscription (voir
+ *   - `tournamentsParticipated` — `CommunityMemberStats.tournamentsParticipatedCount`
+ *     (PR B : par communauté ; remplace `UserLifetimeStats`, hérité), résumé
+ *     durable MINIMAL maintenu à l'inscription/désinscription (voir
  *     `registerForTournamentAction`/`unregisterFromTournamentAction`,
  *     tournois/actions.ts) — jamais recalculé par un `count()`.
  */
-export async function checkTournamentBadges(userId: string): Promise<void> {
+export async function checkTournamentBadges(userId: string, communityId: string): Promise<void> {
+  const scopedDb = await scopedPrismaForCommunityId(communityId);
   const [won, stats] = await Promise.all([
-    prisma.xpEvent.count({ where: { userId, reason: "TOURNAMENT_RESULT", sourceId: { endsWith: ":1st" } } }),
-    prisma.userLifetimeStats.findUnique({ where: { userId }, select: { tournamentsParticipatedCount: true } }),
+    scopedDb.xpEvent.count({
+      where: { communityId, userId, reason: "TOURNAMENT_RESULT", sourceId: { endsWith: ":1st" } },
+    }),
+    getMemberStats(userId, communityId),
   ]);
-  await unlockMatchingBadges(userId, {
+  await unlockMatchingBadges(userId, communityId, {
     tournamentsWon: won,
-    tournamentsParticipated: stats?.tournamentsParticipatedCount ?? 0,
+    tournamentsParticipated: stats.tournamentsParticipatedCount,
   });
 }
 
@@ -270,13 +300,16 @@ export async function checkTournamentBadges(userId: string): Promise<void> {
  * Appelée depuis `getCurrentUser()`, throttlée là-bas sur le même signal
  * que `touchStreak` (pas de requête supplémentaire à chaque page).
  */
-export async function checkTemporalBadges(user: {
-  id: string;
-  streakCount: number;
-  createdAt: Date;
-}): Promise<void> {
+export async function checkTemporalBadges(
+  user: {
+    id: string;
+    streakCount: number;
+    createdAt: Date;
+  },
+  communityId: string
+): Promise<void> {
   const accountAgeDays = Math.floor((Date.now() - user.createdAt.getTime()) / DAY_MS);
-  await unlockMatchingBadges(user.id, {
+  await unlockMatchingBadges(user.id, communityId, {
     streakCount: user.streakCount,
     accountAgeDays,
   });

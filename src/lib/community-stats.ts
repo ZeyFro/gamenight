@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 
@@ -22,4 +23,22 @@ export async function statsCommunityIdForSession(sessionCommunityId: string | nu
 export async function writeCommunityIdForUser(userId: string): Promise<string | null> {
   if (!isCommunityIsolationEnabled()) return getDefaultCommunityId();
   return resolveActiveCommunityId(userId);
+}
+
+/**
+ * PR B — communautés dans lesquelles une action PERSONNELLE de `userId` (premier
+ * créneau de dispo, liaison Steam, bibliothèque de jeux) est créditée : toutes les
+ * communautés ACTIVE dont il est membre ACTIF ; la communauté par défaut quand
+ * l'isolation est éteinte. Chaque communauté a son propre registre d'XP : l'XP
+ * « une fois dans la vie » y est donc attribuée une fois PAR communauté. Vide si
+ * l'utilisateur n'a aucune communauté (rien n'est crédité).
+ */
+export async function personalCommunityIds(userId: string): Promise<string[]> {
+  if (!isCommunityIsolationEnabled()) return [await getDefaultCommunityId()];
+  const memberships = await prisma.membership.findMany({
+    where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
+    select: { communityId: true },
+    orderBy: { joinedAt: "asc" },
+  });
+  return memberships.map((m) => m.communityId);
 }

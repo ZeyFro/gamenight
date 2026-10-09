@@ -71,6 +71,8 @@ export async function runRetentionCleanup(opts: {
   now?: Date;
   batchSize?: number;
   budgetMs?: number;
+  /** PR B : borne le passage à UNE communauté ; sans, toutes les communautés (chacune filtrée). */
+  communityId?: string;
 }): Promise<RetentionRunReport> {
   const startedAt = opts.now ?? wallClockNow();
   const budgetMs = opts.budgetMs ?? RETENTION_MAX_BATCH_DURATION_MS;
@@ -112,7 +114,7 @@ export async function runRetentionCleanup(opts: {
 
   try {
     try {
-      report.chat = await purgeEligibleChatMessagesBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.chat = await purgeEligibleChatMessagesBatch({ limit, dryRun: opts.dryRun, now: startedAt, communityId: opts.communityId });
     } catch (error) {
       errors.push(`chat: ${String(error)}`);
       logger.error("retention-runner", error, { step: "chat" });
@@ -128,6 +130,7 @@ export async function runRetentionCleanup(opts: {
         limit,
         dryRun: opts.dryRun,
         now: startedAt,
+        communityId: opts.communityId,
       });
     } catch (error) {
       errors.push(`discordCleanup: ${String(error)}`);
@@ -140,7 +143,12 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.sessionRowPurge = await purgeEligibleSessionsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.sessionRowPurge = await purgeEligibleSessionsBatch({
+        limit,
+        dryRun: opts.dryRun,
+        now: startedAt,
+        communityId: opts.communityId,
+      });
     } catch (error) {
       errors.push(`sessionRowPurge: ${String(error)}`);
       logger.error("retention-runner", error, { step: "sessionRowPurge" });
@@ -152,7 +160,12 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.tournamentRowPurge = await purgeEligibleTournamentsBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      report.tournamentRowPurge = await purgeEligibleTournamentsBatch({
+        limit,
+        dryRun: opts.dryRun,
+        now: startedAt,
+        communityId: opts.communityId,
+      });
     } catch (error) {
       errors.push(`tournamentRowPurge: ${String(error)}`);
       logger.error("retention-runner", error, { step: "tournamentRowPurge" });
@@ -168,6 +181,7 @@ export async function runRetentionCleanup(opts: {
         limit,
         dryRun: opts.dryRun,
         now: startedAt,
+        communityId: opts.communityId,
       });
     } catch (error) {
       errors.push(`instantSessionRowPurge: ${String(error)}`);

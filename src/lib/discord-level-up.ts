@@ -1,9 +1,5 @@
-import {
-  postToDiscord,
-  ACCENT_COLOR,
-  type DiscordEmbed,
-  type PostToDiscordResult,
-} from "@/lib/discord";
+import { ACCENT_COLOR, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
+import { postCommunityEmbed } from "@/lib/community-announce";
 import { pickMessageTemplate } from "@/lib/message-templates";
 import { rankForLevel, titleForLevel } from "@/lib/xp";
 import type { User } from "@prisma/client";
@@ -18,9 +14,13 @@ import type { User } from "@prisma/client";
  * `{createur}` dans la notif de création de soirée, qui n'est jamais
  * masqué non plus (le sujet du message n'est pas "un rappel dont on peut
  * se couper", c'est l'identité de la personne dont on parle).
+ *
+ * PR B : le niveau est celui de `communityId` ; l'annonce part dans le salon de
+ * CETTE communauté (webhook historique pour `default`, voir `postCommunityEmbed`).
  */
 export async function announceLevelUp(
   user: Pick<User, "discordId">,
+  communityId: string,
   beforeLevel: number,
   afterLevel: number
 ): Promise<PostToDiscordResult> {
@@ -48,5 +48,5 @@ export async function announceLevelUp(
     ],
   };
 
-  return postToDiscord(embed, message);
+  return postCommunityEmbed(communityId, embed, message);
 }

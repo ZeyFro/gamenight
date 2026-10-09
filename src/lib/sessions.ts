@@ -20,6 +20,7 @@ import { openSuperlativeVotingWindow } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
@@ -359,9 +360,10 @@ export async function closeSession(
   // l'app, jamais déplacés dans la transaction de clôture/notification —
   // seule la clôture ET l'intention de notification bot doivent être
   // atomiques ensemble, pas ces effets de bord indépendants.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   for (const vote of winner.votes) {
-    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
-    await checkSessionsParticipatedBadges(vote.userId);
+    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE, { communityId: xpCommunityId });
+    await checkSessionsParticipatedBadges(vote.userId, xpCommunityId);
   }
 
   const discord = announceViaBot
@@ -526,9 +528,10 @@ export async function drawSessionGame(
   // ici la proposition et ses votes réels existaient déjà). Peut être
   // une liste vide (jeu tiré sans le moindre vote) — aucun XP à
   // attribuer dans ce cas, jamais une erreur.
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   for (const vote of winner.votes) {
-    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE);
-    await checkSessionsParticipatedBadges(vote.userId);
+    await awardXp(vote.userId, "PARTICIPATE", sessionId, XP_AMOUNTS.PARTICIPATE, { communityId: xpCommunityId });
+    await checkSessionsParticipatedBadges(vote.userId, xpCommunityId);
   }
 
   return { kind: "drawn", winnerGameId: winner.gameId, candidateGameIds };

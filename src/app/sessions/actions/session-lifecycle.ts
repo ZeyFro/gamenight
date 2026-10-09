@@ -18,6 +18,7 @@ import {
   enqueueSessionThreadDelete,
 } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
   cancelSession,
@@ -152,13 +153,15 @@ export async function createSession(formData: FormData) {
     return created;
   });
 
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   const xpResult = await awardXp(
     user.id,
     "CREATE_SESSION",
     session.id,
-    XP_AMOUNTS.CREATE_SESSION
+    XP_AMOUNTS.CREATE_SESSION,
+    { communityId: xpCommunityId }
   );
-  const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
+  const badgeUnlocked = await checkSessionsCreatedBadges(user.id, xpCommunityId);
 
   // Jeu pré-sélectionné depuis la fiche jeu ("Proposer une soirée avec ce
   // jeu") : on le propose directement, sans passer par le formulaire de

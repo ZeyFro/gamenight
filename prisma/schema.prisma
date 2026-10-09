@@ -130,6 +130,12 @@ model User {
   // les jours de connexion consécutifs (mis à jour depuis
   // `getCurrentUser()`, cf. src/lib/xp.ts) : `streakCount` repart à 1 si
   // plus de 24h se sont écoulées depuis `streakLastActiveAt`.
+  //
+  // PR B (multi-communautés) : ces quatre colonnes sont HÉRITÉES. Le solde, le
+  // streak et le meilleur streak vivent désormais par communauté dans
+  // `CommunityMemberStats` ; la migration y a copié les valeurs existantes vers
+  // la communauté `default`. Plus lues ni écrites par l'application (aucune
+  // suppression : l'étape « contract » exige une validation explicite).
   xpTotal            Int       @default(0)
   streakCount        Int       @default(0)
   streakLastActiveAt DateTime?
@@ -298,6 +304,8 @@ model User {
 
   // Multi-communautés (PR A) — relation seule, aucune colonne sur `User`.
   memberships Membership[]
+  // PR B : solde XP, streak et compteurs durables par communauté.
+  memberStats CommunityMemberStats[]
 
   @@index([xpTotal])
 }
@@ -939,6 +947,11 @@ model SessionResult {
 // Proposal pour VOTE — pas l'id du Vote lui-même, pour ne pas re-créditer
 // un aller-retour vote/dévote/revote sur la même proposition ; l'id du
 // user lui-même pour les XP "une seule fois dans la vie").
+//
+// PR B (multi-communautés) : chaque événement appartient à UNE communauté
+// (obligatoire ; les lignes historiques ont été rattachées à `default`). La clé
+// d'idempotence inclut la communauté : un même `(userId, reason, sourceId)`
+// peut exister dans deux communautés (XP « une fois dans la vie » ou badge).
 model XpEvent {
   id        String   @id @default(cuid())
   userId    String
@@ -947,11 +960,44 @@ model XpEvent {
   amount    Int
   createdAt DateTime @default(now())
 
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, reason, sourceId])
+  @@unique([communityId, userId, reason, sourceId])
   @@index([userId])
   @@index([createdAt])
+  @@index([communityId, createdAt])
+  @@index([communityId, userId, reason])
+}
+
+// PR B — solde XP, streak de connexion et compteur durable de tournois d'un
+// membre DANS une communauté. Remplace `User.xpTotal`/`streakCount`/
+// `streakLastActiveAt`/`bestStreakCount` (hérités) et
+// `UserLifetimeStats.tournamentsParticipatedCount` (hérité) : un membre de deux
+// serveurs a deux soldes, deux streaks et deux compteurs indépendants. Ligne
+// créée à la demande (absente = tout à zéro). `xpTotal` reste un cache
+// dénormalisé de la somme de `XpEvent.amount` de la communauté, remis à zéro à
+// la clôture de la saison DE CETTE communauté.
+model CommunityMemberStats {
+  id                           String    @id @default(cuid())
+  communityId                  String
+  userId                       String
+  xpTotal                      Int       @default(0)
+  streakCount                  Int       @default(0)
+  streakLastActiveAt           DateTime?
+  bestStreakCount              Int       @default(0)
+  tournamentsParticipatedCount Int       @default(0)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([communityId, xpTotal])
+  @@index([userId])
 }
 
 // Refonte home ("Activité récente") — un passage de niveau était jusque-là
@@ -965,15 +1011,22 @@ model XpEvent {
 // spammer Discord de level-ups rétroactifs à chaque déploiement — même
 // raisonnement ici : pas de `LevelUpEvent` rétroactif non plus, seuls les
 // VRAIS passages de niveau à partir de maintenant sont enregistrés).
+//
+// PR B : appartient à la communauté où l'XP a été gagnée (obligatoire ; lignes
+// historiques rattachées à `default`).
 model LevelUpEvent {
   id        String   @id @default(cuid())
   userId    String
   level     Int
   createdAt DateTime @default(now())
 
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([communityId, createdAt])
 }
 
 enum StatType {
@@ -1241,16 +1294,24 @@ model Badge {
 // créés restent : jamais de retrait rétroactif, un badge gagné reste
 // gagné — cohérent avec le principe déjà appliqué au streak (badge
 // "Marathon" débloqué une fois, jamais retiré si le streak retombe).
+//
+// PR B : un badge se gagne PAR communauté (le catalogue `Badge` reste commun,
+// les critères comptent l'activité de la communauté). Obligatoire ; lignes
+// historiques rattachées à `default`.
 model UserBadge {
   id         String   @id @default(cuid())
   userId     String
   badgeId    String
   unlockedAt DateTime @default(now())
 
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, badgeId])
+  @@unique([communityId, userId, badgeId])
+  @@index([communityId, unlockedAt])
 }
 
 // Sprint 2 PR-C (U3) — notifications in-app, écrites en parallèle de
@@ -2404,6 +2465,12 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+
+  // Multi-communautés, PR B : XP, niveaux, badges et statistiques de membre.
+  xpEvents      XpEvent[]
+  levelUpEvents LevelUpEvent[]
+  userBadges    UserBadge[]
+  memberStats   CommunityMemberStats[]
 }
 
 model CommunityChannelConfig {

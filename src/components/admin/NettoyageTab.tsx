@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { generateStorageAuditReport } from "@/lib/storage-audit";
 import { listFailedDiscordCleanupDeliveries } from "@/lib/discord-cleanup-status";
 import { Card } from "@/components/ui/Card";
@@ -19,15 +21,42 @@ const ROLE_LABELS: Record<string, string> = {
  * cette page elle-même — le cron réel reste désactivé par défaut
  * (`RETENTION_CLEANUP_ENABLED`), voir le README pour la procédure
  * complète.
+ *
+ * PR B (multi-communautés) : l'inventaire est borné par communauté — `?communaute=<id>`
+ * restreint toutes les lectures collectives à cette communauté ; sans paramètre (ou avec un
+ * identifiant inconnu), c'est la somme de toutes les communautés, jamais un accès sans filtre.
+ * Notifications et livraisons techniques (personnelles) restent globales.
  */
-export async function NettoyageTab() {
+export async function NettoyageTab({ communityId }: { communityId?: string }) {
+  const communities = await prisma.community.findMany({
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const selected = communities.find((c) => c.id === communityId) ?? null;
   const [audit, failedCleanups] = await Promise.all([
-    generateStorageAuditReport(),
+    generateStorageAuditReport({ communityId: selected?.id }),
     listFailedDiscordCleanupDeliveries(),
   ]);
 
   return (
     <div className="flex flex-col gap-6">
+      <Card className="flex flex-col gap-2">
+        <h2 className="font-semibold text-foreground">Communauté</h2>
+        <p className="text-sm text-muted">
+          Inventaire de : <strong>{selected ? selected.name : "toutes les communautés"}</strong>
+        </p>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Link className="underline" href="/admin?tab=nettoyage">
+            Toutes
+          </Link>
+          {communities.map((c) => (
+            <Link key={c.id} className="underline" href={`/admin?tab=nettoyage&communaute=${c.id}`}>
+              {c.name}
+            </Link>
+          ))}
+        </div>
+      </Card>
+
       <Card className="flex flex-col gap-2">
         <h2 className="font-semibold text-foreground">Configuration du nettoyage automatique</h2>
         <p className="text-sm text-muted">

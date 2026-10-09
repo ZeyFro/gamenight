@@ -3,7 +3,8 @@ import { getCalendarData } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getWeekStart } from "@/lib/calendar-dates";
 import { todayDateOnly, DAY_LABELS_MON_FIRST } from "@/lib/wallclock";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
-import { creationMemberUserWhere, memberUserWhereFor } from "@/lib/community-isolation";
+import { creationMemberUserWhere } from "@/lib/community-isolation";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 
 /**
@@ -46,13 +47,14 @@ export interface ActivityItem {
  * ailleurs dans l'app (profil, classement), pas le contenu d'une soirée
  * précise — périmètre volontairement limité, documenté comme tel dans le README.
  *
- * Multi-communautés (PR8, isolation allumée) : ces 3 flux se limitent aux
- * membres visibles de `viewerId` (`memberUserWhereFor`), faute de colonne
- * `communityId` sur XP/badges/superlatifs (PR10 et PR12). Filtre provisoire :
- * un membre de deux serveurs y apparaît dans les deux.
+ * Multi-communautés (PR B, isolation allumée) : ces 3 flux sont ceux de la
+ * communauté ACTIVE de `viewerId` — badges (`UserBadge.communityId`), niveaux
+ * (`LevelUpEvent.communityId`) et superlatifs (`SuperlativeAward.communityId`)
+ * y sont rattachés — et se limitent à ses membres actifs. Un membre de deux
+ * serveurs n'apparaît donc dans chacun que pour ce qu'il y a accompli.
  */
 export async function getRecentActivity(viewerId: string, limit = 5): Promise<ActivityItem[]> {
-  const members = await memberUserWhereFor(viewerId);
+  const members = await creationMemberUserWhere(viewerId);
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const [playedSessions, badgeUnlocks, superlativeAwards, levelUps] = await Promise.all([
     prisma.session.findMany({
@@ -66,7 +68,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
         createdBy: { select: { discordName: true } },
       },
     }),
-    prisma.userBadge.findMany({
+    scopedDb.userBadge.findMany({
       where: { user: members },
       orderBy: { unlockedAt: "desc" },
       take: limit,
@@ -88,7 +90,7 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
         category: { select: { name: true, icon: true } },
       },
     }),
-    prisma.levelUpEvent.findMany({
+    scopedDb.levelUpEvent.findMany({
       where: { user: members },
       orderBy: { createdAt: "desc" },
       take: limit,
@@ -161,8 +163,9 @@ const ACTIVE_PLAYER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * entre soirées encore présentes et soirées déjà purgées. `Game` n'étant
  * jamais purgée par ce chantier, la jointure `name`/`coverUrl` reste
  * fiable à 100% même pour un jeu dont toutes les soirées ont depuis été
- * purgées. `bestActiveStreak`/`activePlayers` restent inchangés : dérivés
- * de `User.streakCount`/`streakLastActiveAt`, jamais de `Session`.
+ * purgées. `bestActiveStreak`/`activePlayers` restent dérivés du streak, jamais de
+ * `Session` — PR B : du streak de la communauté ACTIVE (`CommunityMemberStats`),
+ * parmi les membres de cette communauté.
  */
 export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   const now = Date.now();
@@ -170,8 +173,9 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   // allumée ; éteinte, toutes les lignes, comme avant) et joueurs de cette communauté.
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const members = await creationMemberUserWhere(viewerId);
+  const statsCommunityId = await writeCommunityIdForUser(viewerId);
 
-  const [sessionStats, topGameStats, bestStreakUser, activePlayers] = await Promise.all([
+  const [sessionStats, topGameStats, bestStreakRow, activePlayers] = await Promise.all([
     scopedDb.groupSessionStats.aggregate({ _sum: { totalSessionsPlayed: true } }),
     scopedDb.groupGameStat.groupBy({
       by: ["gameId"],
@@ -179,18 +183,27 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
       orderBy: { _sum: { playCount: "desc" } },
       take: 1,
     }),
-    prisma.user.findFirst({
-      where: {
-        ...members,
-        streakCount: { gt: 0 },
-        streakLastActiveAt: { gte: new Date(now - ACTIVE_STREAK_WINDOW_MS) },
-      },
-      orderBy: { streakCount: "desc" },
-      select: { discordName: true, streakCount: true },
-    }),
-    prisma.user.count({
-      where: { ...members, streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
-    }),
+    statsCommunityId === null
+      ? null
+      : scopedDb.communityMemberStats.findFirst({
+          where: {
+            communityId: statsCommunityId,
+            user: members,
+            streakCount: { gt: 0 },
+            streakLastActiveAt: { gte: new Date(now - ACTIVE_STREAK_WINDOW_MS) },
+          },
+          orderBy: { streakCount: "desc" },
+          select: { streakCount: true, user: { select: { discordName: true } } },
+        }),
+    statsCommunityId === null
+      ? 0
+      : scopedDb.communityMemberStats.count({
+          where: {
+            communityId: statsCommunityId,
+            user: members,
+            streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) },
+          },
+        }),
   ]);
 
   const topGame = topGameStats[0]
@@ -203,8 +216,8 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
       topGame && topGameStats[0]
         ? { name: topGame.name, coverUrl: topGame.coverUrl, count: topGameStats[0]._sum.playCount ?? 0 }
         : null,
-    bestActiveStreak: bestStreakUser
-      ? { discordName: bestStreakUser.discordName, streakCount: bestStreakUser.streakCount }
+    bestActiveStreak: bestStreakRow
+      ? { discordName: bestStreakRow.user.discordName, streakCount: bestStreakRow.streakCount }
       : null,
     activePlayers,
   };

@@ -94,7 +94,8 @@ export async function completeWeeklyChallenge(
     return { completed: false, badgeUnlockedByUserId: {} };
   }
 
-  const challenge = await getCurrentWeeklyChallenge(await statsCommunityIdForSession(session.communityId));
+  const communityId = await statsCommunityIdForSession(session.communityId);
+  const challenge = await getCurrentWeeklyChallenge(communityId);
   if (challenge.completedAt || session.date < challenge.weekStart) {
     return { completed: false, badgeUnlockedByUserId: {} };
   }
@@ -113,9 +114,10 @@ export async function completeWeeklyChallenge(
       participant.id,
       "CHALLENGE_COMPLETE",
       challenge.id,
-      XP_AMOUNTS.CHALLENGE_COMPLETE
+      XP_AMOUNTS.CHALLENGE_COMPLETE,
+      { communityId }
     );
-    badgeUnlockedByUserId[participant.id] = await checkChallengeBadges(participant.id);
+    badgeUnlockedByUserId[participant.id] = await checkChallengeBadges(participant.id, communityId);
   }
 
   return { completed: true, badgeUnlockedByUserId };

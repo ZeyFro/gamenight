@@ -14,6 +14,7 @@ import {
 } from "@/lib/validations";
 import { parseDateAndTime, wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { announceSessionResult } from "@/lib/discord-announce";
@@ -86,13 +87,15 @@ export async function createSessionFromRouletteAction(formData: FormData) {
     notifiedUserIds: finalParticipantIds,
   });
 
+  const xpCommunityId = await statsCommunityIdForSession(session.communityId);
   const xpResult = await awardXp(
     user.id,
     "CREATE_SESSION",
     session.id,
-    XP_AMOUNTS.CREATE_SESSION
+    XP_AMOUNTS.CREATE_SESSION,
+    { communityId: xpCommunityId }
   );
-  const badgeUnlocked = await checkSessionsCreatedBadges(user.id);
+  const badgeUnlocked = await checkSessionsCreatedBadges(user.id, xpCommunityId);
 
   // Jamais les deux transports à la fois — voir `createRouletteResultSession`
   // (l'enqueue bot a déjà réussi, atomiquement avec la création de la

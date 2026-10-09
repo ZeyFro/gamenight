@@ -8,6 +8,7 @@ import {
   type ImportSteamLibraryResult,
 } from "@/lib/steam";
 import { awardXp } from "@/lib/xp-actions";
+import { personalCommunityIds } from "@/lib/community-stats";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { logger } from "@/lib/logger";
 
@@ -77,7 +78,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (isFirstLink) {
-    await awardXp(user.id, "STEAM_LINK_FIRST", user.id, XP_AMOUNTS.STEAM_LINK_FIRST);
+    // Action personnelle : créditée dans chaque communauté du membre (registre d'XP par communauté).
+    for (const communityId of await personalCommunityIds(user.id)) {
+      await awardXp(user.id, "STEAM_LINK_FIRST", user.id, XP_AMOUNTS.STEAM_LINK_FIRST, { communityId });
+    }
   }
 
   // Même logique : `importSteamLibrary` appelle Steam GetOwnedGames, pas
