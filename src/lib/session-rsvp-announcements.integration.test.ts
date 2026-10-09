@@ -19,7 +19,7 @@ describe.skipIf(!TEST_DATABASE_URL)("annonces personnalisées, MP, mentions et b
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111"); vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "444");
     vi.stubEnv("DISCORD_APP_PUBLIC_KEY", "ab".repeat(32)); vi.stubEnv("DISCORD_CLIENT_ID", "555");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Aucun HTTP attendu au resolver"); }));
-    await db.$executeRawUnsafe('TRUNCATE "Community", "User", "Game" CASCADE');
+    await db.$executeRawUnsafe('TRUNCATE "NotificationEvent", "Community", "User", "Game" CASCADE');
     await db.community.create({ data: { id: "a", slug: "default", name: "A", status: "ACTIVE", discordGuildId: "111" } });
     await db.communityChannelConfig.create({ data: { communityId: "a", category: "SESSION", discordChannelId: "444", enabled: true } });
     await db.user.createMany({ data: ["host", "alice", "bob"].map((id, index) => ({ id, discordId: String(700 + index), discordName: id })) });

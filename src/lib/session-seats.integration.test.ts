@@ -15,7 +15,7 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
   afterAll(async () => { await db.$disconnect(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true"); vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true"); mocks.enqueue.mockReset();
-    await db.$executeRawUnsafe('TRUNCATE "Community", "User", "Game" CASCADE');
+    await db.$executeRawUnsafe('TRUNCATE "NotificationEvent", "Community", "User", "Game" CASCADE');
     await db.community.createMany({ data: [{ id: "a", slug: "default", name: "A", status: "ACTIVE" }, { id: "b", slug: "b", name: "B", status: "ACTIVE" }] });
     await db.user.createMany({ data: ["host", "alice", "bob", "outsider", "foreign"].map(id => ({ id, discordId: id, discordName: id, activeCommunityId: id === "foreign" ? "b" : "a" })) });
     await db.membership.createMany({ data: ["host", "alice", "bob", "outsider"].map(userId => ({ userId, communityId: "a", status: "ACTIVE" })) });
