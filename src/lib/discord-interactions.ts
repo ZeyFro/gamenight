@@ -3,6 +3,8 @@ import { logger } from "@/lib/logger";
 import { verifyDiscordSignature } from "@/lib/discord-signature";
 import { setupCommunityFromGuild } from "@/lib/community-setup";
 import { editSetupResponse } from "@/lib/discord-rest";
+import { parseSessionRsvpId } from "@/lib/session-rsvp-components";
+import { respondToSessionRsvp } from "@/lib/discord-session-rsvp";
 
 /**
  * Multi-communautés, PR6 — endpoint d'interactions Discord
@@ -24,9 +26,13 @@ const EPHEMERAL = 64;
 
 const interactionSchema = z.object({
   type: z.number(),
+  id: z.string().optional(),
   application_id: z.string().optional(),
   token: z.string().optional(),
   guild_id: z.string().optional(),
+  channel_id: z.string().optional(),
+  user: z.object({ id: z.string() }).optional(),
+  message: z.object({ id: z.string() }).optional(),
   member: z
     .object({
       permissions: z.string().optional(),
@@ -36,6 +42,8 @@ const interactionSchema = z.object({
   data: z
     .object({
       name: z.string().optional(),
+      custom_id: z.string().optional(),
+      component_type: z.number().optional(),
       options: z.array(z.object({ name: z.string(), type: z.number().optional() })).optional(),
     })
     .optional(),
@@ -51,6 +59,7 @@ export interface InteractionOutput {
   status: number;
   body?: unknown;
   runSetup?: () => Promise<void>;
+  runRsvp?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -92,7 +101,29 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const interaction = parsed.data;
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
-  // Seules les commandes d'application sont gérées (pas de composants ni de modales).
+  if (interaction.type === 3) {
+    const rsvp = parseSessionRsvpId(interaction.data?.custom_id ?? "");
+    const applicationId = interaction.application_id;
+    const token = interaction.token;
+    const discordId = interaction.guild_id ? interaction.member?.user?.id : interaction.user?.id;
+    const { id, channel_id: channelId } = interaction;
+    const messageId = interaction.message?.id;
+    // La signature seule n'expire pas : un corps signé ancien n'est jamais rejoué.
+    const timestamp = Number(input.timestamp);
+    if (!rsvp || interaction.data?.component_type !== 2 || !applicationId || applicationId !== process.env.DISCORD_CLIENT_ID || !token || !id || !discordId || !channelId || !messageId || ![applicationId, id, discordId, channelId, messageId].every(value => /^\d+$/.test(value)) || (interaction.guild_id !== undefined && !/^\d+$/.test(interaction.guild_id)) || !Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return { status: 400 };
+    // Aucun accès SQL/Discord avant l'ACK : réponse privée en < 3 s.
+    return { status: 200, body: { type: 5, data: { flags: EPHEMERAL } }, runRsvp: async () => {
+      let content: string;
+      try {
+        content = await respondToSessionRsvp(rsvp.sessionId, rsvp.kind, { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId });
+      } catch (error) {
+        logger.error("discord-rsvp", error, { sessionId: rsvp.sessionId });
+        content = "Ta réponse n’a pas pu être confirmée. Vérifie ton inscription dans GameNight, puis réessaie si nécessaire.";
+      }
+      const sent = await editSetupResponse({ applicationId, token, content, deadline: new Date(Date.now() + 10_000) });
+      if (!sent.ok) logger.error("discord-rsvp", "Confirmation Discord non livrée ; consulter GameNight avant de réessayer.", { kind: sent.kind });
+    } };
+  }
   if (interaction.type !== 2) return { status: 400 };
 
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {

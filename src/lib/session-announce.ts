@@ -1,4 +1,5 @@
 import { sessionMessage } from "@/lib/session-message";
+import { sessionRsvpComponents } from "@/lib/session-rsvp-components";
 import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { randomUUID } from "crypto";
@@ -1214,7 +1215,7 @@ async function buildMessageContent(
   // édition d'annonce (déjà notifiée in-app) — jamais deux fois la même.
   inApp = true
 ): Promise<ResolvedMessageContent> {
-  const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions) : [];
+  const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions.filter(user => user.id !== session.createdById)) : [];
   // Le créateur est destinataire de MP en plus des invités (jamais mentionné
   // dans le fil, sauf en secours si son MP est fermé) — pas pour un état sans
   // mention (annulation : `candidateMentions === null`).
@@ -1436,11 +1437,11 @@ async function resolveSessionDirectMessage(
 
   const rendering = resolveAnnounceRendering(session);
   let body = subject;
-  if (operation === "SEND" && (parsed.base === "reminder" || parsed.base === "date" || (parsed.base === "announce" && session.status === "VOTING"))) {
+  if (operation === "SEND" && (parsed.base === "reminder" || parsed.base === "date" || parsed.base === "announce")) {
     const previousDate = parsed.base === "date" ? await previousDateForChange(session.id, parsed.kind.slice("date:".length)) : undefined;
     body = `${subject} — ${await sessionMessage(session, parsed.base === "announce" ? "created" : parsed.base, { creatorName: session.createdBy.discordName, recipientName: recipient.discordName, previousDate, gameName: session.proposals.find((p) => p.gameId === session.decidedGameId)?.game.name })}`;
   }
-  const message = { content: body, embeds: [rendering.embed], allowedMentions: NO_MENTIONS_PARSE };
+  const message = { content: body, embeds: [rendering.embed], components: sessionRsvpComponents(session), allowedMentions: NO_MENTIONS_PARSE };
 
   if (operation === "EDIT") {
     const sent = await findSentDelivery(delivery.targetSlot);
@@ -1534,7 +1535,7 @@ async function resolveAnnounceDelivery(
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
   const rendering = resolveAnnounceRendering(session);
-  if (session.status === "VOTING" && delivery.operation === "SEND") rendering.embed.description = await sessionMessage(session, "created", { creatorName: session.createdBy.discordName });
+  if (session.status === "VOTING" || delivery.operation === "SEND" && session.status === "SCHEDULED") rendering.embed.description = await sessionMessage(session, "created", { creatorName: session.createdBy.discordName });
 
   if (delivery.operation === "SEND") {
     const { notifType, notifTitle } = resolveSendNotificationMeta(session, rendering);
@@ -1550,7 +1551,7 @@ async function resolveAnnounceDelivery(
     const action: ResolvedAction = {
       kind: "send_thread_message_verified",
       threadId: thread.discordThreadId,
-      message: { ...message, embeds: [rendering.embed] },
+      message: { ...message, embeds: [rendering.embed], components: sessionRsvpComponents(session) },
     };
     return { eligible: true, action };
   }
@@ -1611,7 +1612,7 @@ async function resolveAnnounceDelivery(
     kind: "edit_channel_message",
     channelId: sentAnnounce.discordThreadId,
     messageId: sentAnnounce.discordMessageId,
-    message: { ...message, embeds: [rendering.embed] },
+    message: { ...message, embeds: [rendering.embed], components: sessionRsvpComponents(session) },
   };
   return { eligible: true, action };
 }
@@ -1705,7 +1706,7 @@ async function resolveThreadSummary(sessionId: string, session: SessionWithVotes
   const action: ResolvedAction = {
     kind: "send_thread_message_verified",
     threadId: thread.discordThreadId,
-    message: { ...message, embeds: [rendering.embed] },
+    message: { ...message, embeds: [rendering.embed], components: sessionRsvpComponents(session) },
   };
   return { eligible: true, action };
 }
@@ -1734,7 +1735,7 @@ async function resolveThreadValidated(sessionId: string, session: SessionWithVot
     "validated",
     false
   );
-  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message: { ...message, components: sessionRsvpComponents(session) } };
   return { eligible: true, action };
 }
 
@@ -1774,7 +1775,7 @@ async function resolveThreadDateChange(
     `date:${changeId}`,
     false
   );
-  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message: { ...message, components: sessionRsvpComponents(session) } };
   return { eligible: true, action };
 }
 
@@ -1923,6 +1924,6 @@ async function resolveThreadReminder(
     `reminder:${minutes}`
     // Rappel : mention dans le fil ET MP à chaque invité, créateur inclus (MP, pas de mention).
   );
-  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message };
+  const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message: { ...message, components: sessionRsvpComponents(session) } };
   return { eligible: true, action };
 }
