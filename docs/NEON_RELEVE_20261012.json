@@ -139,7 +139,7 @@
   "known_limits": [
     "Vercel : 403 pour l'équipe attendue ; métriques/configuration live non accessibles.",
     "Inventaire des crons externes non accessible.",
-    "Environnement local devenu offline avant publication des modifications de code ; celles-ci ne figurent pas dans cette PR."
+    "Environnement local offline : now-playing reconstruit via GitHub ; import groupé et autres changements locaux non récupérés/non publiés."
   ],
   "read_only_production": true
 }

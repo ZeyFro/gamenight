@@ -10,7 +10,7 @@ Ce rapport distingue le code présent, les preuves automatiques et les contrôle
 - Le passage en `fra1`, l'allègement des lectures du streak (#213) et la parallélisation de l'accueil (#214) sont déjà intégrés. Il ne faut pas les refaire.
 - Les appels périodiques à l'executor, même sans livraison à traiter, peuvent empêcher la suspension. Réduire seulement le nombre de requêtes d'un import Steam ne garantit donc pas une baisse des CU-heures.
 - L'accès Vercel renvoie **403 pour l'équipe attendue**. Les durées réelles, variables, destinations des previews et paramètres de runtime ne sont pas vérifiés.
-- L'environnement local s'est déconnecté avant la publication des modifications de code. **Cette PR contient uniquement le diagnostic et le relevé anonymisé. Aucune optimisation de code n'est livrée par cette PR.**
+- L'environnement local s'est déconnecté avant la récupération du diff. Le connecteur GitHub a permis de reconstruire un correctif limité **now-playing**, ajouté à cette même PR. L'import Steam groupé et les autres modifications préparées localement restent non livrés.
 
 Aucun changement de compute, de flag, de cadence, de dépendance ou de migration en production.
 Aucune notification Discord réelle, aucun merge, aucun reset de statistiques.
@@ -147,22 +147,37 @@ Une lecture UserGame isolée atteint environ **97 ms**.
 Le temps SQL d'exécution seul ne mesure ni les allers-retours réseau, ni la connexion, ni l'API Steam/Discord, ni le rendu navigateur.
 Il ne permet pas de garantir « instantané » ni d'exclure tout pic de latence.
 
-### Optimisations préparées localement — non publiées
+### Optimisation livrée dans cette PR : now-playing
+
+Une lecture groupée remplace les UPDATE répétés des comptes déjà inactifs.
+Un joueur en partie renouvelle toujours son observation, même sans changer de jeu : la fraîcheur de 10 minutes est préservée.
+Les comptes absents de la réponse Steam ne sont pas considérés inactifs.
+Un compte supprimé/détaché est signalé sans empêcher les autres ; le même SteamID est exigé lors de l'écriture.
+La panne de lecture en base conserve l'observation précédente et retourne un résultat d'erreur.
+Le UPDATE ne renvoie que l'identifiant, sans les autres champs du compte.
+
+Quatre régressions Postgres, sans appel Steam réel : sept comptes idle (une lecture de delegate, zéro appel UPDATE),
+renouvellement d'une partie inchangée, échec de lecture et changement de liaison pendant le passage.
+Il ne s'agit pas d'une mesure de latence ou de CU-h en production. L'optimisation ajoute une lecture groupée ; lorsque tous les joueurs jouent, les écritures de fraîcheur restent nécessaires.
+Les résultats de la CI du commit final doivent être relevés dans la description de PR.
+
+### Optimisations préparées localement — hors de cette PR
 
 1. Import Steam par lots de 50, créations groupées, mises à jour uniquement pour les métadonnées ou possessions qui changent.
 2. Sélections étroites sur les écritures User ; conservation des attributs manuels/coop et des possessions des autres utilisateurs.
-3. Now-playing : aucune écriture pour un joueur déjà idle, renouvellement conservé pour un joueur actif afin de préserver la fraîcheur de 10 minutes.
-4. Écriture conditionnée au même SteamID afin d'éviter d'écraser un compte détaché/relié pendant la requête.
+3. Now-playing : le périmètre décrit ci-dessus a été reconstruit et ajouté via GitHub.
+4. Écriture conditionnée au même SteamID : incluse dans ce correctif reconstruit.
 5. Contrôle ACTIVE de default sur le chemin de lecture rapide des statistiques lorsque les flags sont OFF.
 6. Tests Postgres prévus : import concurrent, reprise partielle, métadonnées manuelles, snapshot Steam, suspension default et mesure SQL avant/après depuis le vrai code de base.
 
 Avant la déconnexion de l'environnement : **100 tests ciblés**, TypeScript, ESLint et build direct Next avaient réussi.
 La suite locale complète finale et les nouveaux scénarios Postgres **n'ont pas de résultat vérifiable**.
 Il n'y avait pas de Postgres local disponible pour les nouveaux tests d'intégration.
-**Ces contrôles ne valident pas la PR documentaire, ne prouvent pas que le code est poussé et ne remplacent pas sa future CI.**
+**Ces contrôles locaux ne valident pas les sources reconstruites. La CI de leur commit final doit passer avant de considérer le correctif vérifié.**
 
 Les modifications de code étaient non committées quand l'environnement local est devenu offline.
-Leur disponibilité à la reprise est incertaine ; il faut vérifier le disque avant de reprendre ou reconstruire.
+Leur disponibilité à la reprise est incertaine ; il faut vérifier le disque avant de reprendre l'import groupé ou les autres modifications non livrées.
+Le correctif now-playing a été reconstruit séparément dans la branche distante de cette PR.
 Ne pas déclarer de gain SQL mesuré pour cette implémentation : son benchmark Postgres n'a pas été exécuté.
 
 ## Discord : incidents à traiter
@@ -215,12 +230,13 @@ L'executor ne doit pas être simplement désactivé pour laisser dormir la base.
   Ne pas retenter une requête inchangée ni utiliser une autre équipe pour contourner ce refus.
 - **Crons externes** : aucun accès à leur inventaire réel.
 - **Local** : le serveur d'exécution répond `409 environment_offline: Environment is not connected`.
-  La relecture finale, la récupération des fichiers de code et leur publication n'étaient plus possibles.
+  La relecture finale et la récupération des fichiers locaux n'étaient plus possibles.
+  La publication du correctif reconstruit a utilisé le connecteur GitHub, sans accès local.
 
-À la reprise : vérifier d'abord les fichiers locaux et l'état de main, récupérer le diff préparé si disponible,
-finir les tests Postgres en série et la mesure avant/après, puis ajouter le code dans une seule PR Draft.
+À la reprise : vérifier d'abord les fichiers locaux et l'état de main, récupérer le reste du diff préparé si disponible,
+finir les tests Postgres en série et la mesure avant/après de l'import groupé, puis préparer la prochaine PR Draft.
 Ne pas prétendre repartir de zéro avant d'avoir vérifié le travail encore présent.
-La PR de diagnostic conserve les constats et peut être complétée par cette implémentation après validation.
+Cette PR conserve les constats et livre seulement le correctif now-playing reconstruit. Les autres optimisations restent distinctes.
 
 Pour le volet infrastructure, fournir l'accès autorisé à l'équipe Vercel attendue et l'inventaire des tâches externes.
 Aucune nouvelle requête SQL de migration n'est nécessaire pour appliquer ce rapport.

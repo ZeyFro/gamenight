@@ -13,8 +13,8 @@ import { STEAM_ACTIVITY_CALL_TIMEOUT_MS } from "@/lib/steam";
  * parce qu'il prétendait à tort une activité en cours. L'état courant n'est
  * fourni que par `ISteamUser/GetPlayerSummaries` (`gameextrainfo`, présent
  * seulement pendant une partie). Un SEUL appel groupé (jusqu'à 100 comptes)
- * par passage du cron léger `steam-library-sync` : une requête de plus toutes
- * les ~2 min, bien en deçà des quotas Steam. Drapeau éteint : aucun appel,
+ * par passage du cron léger `steam-library-sync`. La cadence reste celle
+ * de l'opérateur. Drapeau éteint : aucun appel,
  * aucune écriture, aucun affichage.
  *
  * Limite assumée : Steam ne renvoie `gameextrainfo` que si les « Détails du
@@ -24,7 +24,7 @@ import { STEAM_ACTIVITY_CALL_TIMEOUT_MS } from "@/lib/steam";
 
 export const NOW_PLAYING_FLAG = "STEAM_NOW_PLAYING_ENABLED";
 
-/** Une observation « en jeu » reste affichée au plus ce temps (≈ 5 passages du cron toutes les 2 min). */
+/** Une observation « en jeu » reste affichée au plus ce temps, quelle que soit la cadence du cron. */
 export const NOW_PLAYING_FRESH_MS = 10 * 60 * 1000;
 
 const SUMMARIES_BATCH_SIZE = 100;
@@ -95,7 +95,9 @@ export interface NowPlayingRefreshResult {
 }
 
 /**
- * Relit l'état « en jeu » de tous les comptes liés en UN appel et l'écrit.
+ * Relit l'état « en jeu » en un appel par lot Steam, puis ne réécrit pas
+ * les comptes déjà inactifs. Une partie en cours renouvelle son horodatage
+ * même si le jeu ne change pas, pour conserver la péremption de 10 minutes.
  * Aucune erreur ne remonte (le cron d'activité qui l'accompagne ne doit
  * jamais en dépendre) : un échec est journalisé et RIEN n'est écrit — l'état
  * déjà en base reste, et s'éteint seul par péremption (`activeNowPlaying`).
@@ -119,16 +121,45 @@ export async function refreshSteamNowPlaying(
     return { enabled: true, checked: 0, playing: 0, error: true };
   }
 
+  const observed = linked.filter((user) => snapshot.has(user.steamId64));
+  if (observed.length === 0) return { enabled: true, checked: 0, playing: 0, error: false };
+
+  // Une lecture groupée remplace les écritures répétées des comptes déjà
+  // inactifs. Ne jamais déduire l'inactivité d'une réponse Steam absente.
+  let stored;
+  try {
+    stored = await prisma.user.findMany({
+      where: { OR: observed.map(({ id, steamId64 }) => ({ id, steamId64 })) },
+      select: { id: true, steamNowPlaying: true, steamNowPlayingSeenAt: true },
+    });
+  } catch (error) {
+    logger.error("steam-now-playing", error, { accounts: observed.length, step: "read" });
+    return { enabled: true, checked: 0, playing: 0, error: true };
+  }
+  const byId = new Map(stored.map((user) => [user.id, user]));
+
   const seenAt = new Date();
   let checked = 0;
   let playing = 0;
   let writeFailed = false;
-  for (const user of linked) {
-    if (!snapshot.has(user.steamId64)) continue;
+  for (const user of observed) {
     const game = snapshot.get(user.steamId64) ?? null;
+    const previous = byId.get(user.id);
+    if (!previous) {
+      logger.error("steam-now-playing", new Error("Compte supprimé ou Steam détaché pendant la lecture."), { userId: user.id, step: "read" });
+      writeFailed = true;
+      continue;
+    }
+    if (!game && previous.steamNowPlaying === null && previous.steamNowPlayingSeenAt === null) {
+      checked += 1;
+      continue;
+    }
     try {
       await prisma.user.update({
-        where: { id: user.id },
+        // Ne pas appliquer une observation d'un ancien compte Steam après
+        // un détachement ou un changement de liaison pendant le passage.
+        where: { id: user.id, steamId64: user.steamId64 },
+        select: { id: true },
         data: game
           ? { steamNowPlaying: game, steamNowPlayingSeenAt: seenAt }
           : { steamNowPlaying: null, steamNowPlayingSeenAt: null },
