@@ -301,3 +301,43 @@ describe("applyReminderResults", () => {
     expect(applyReminderResults(["720"], [], [720, 120])).toHaveLength(2);
   });
 });
+
+describe("computeTimingsDue — soirée en VOTING, délai plus long que le temps restant à la création", () => {
+  // Soirée à 20:00 créée à 08:00 (12h avant), vote ouvert. Horloge murale partout.
+  const base = { date: new Date("2026-06-15T20:00:00Z"), createdAt: new Date("2026-06-15T08:00:00Z") };
+
+  it("« 15h avant » : échéance (05:00) antérieure à la création (08:00) → résolu sans envoi, jamais de « dans 11h ! » juste après l'annonce", () => {
+    const result = computeTimingsDue({ ...base, reminderTimings: [900, 60], remindersSent: [] }, new Date("2026-06-15T09:00:00Z"));
+    expect(result).toEqual({ toSend: null, toResolveWithoutSending: [900] });
+  });
+
+  it("le délai suivant part à son heure réelle, pendant le vote : « 1h avant » → 19:00", () => {
+    const result = computeTimingsDue({ ...base, reminderTimings: [900, 60], remindersSent: ["900"] }, new Date("2026-06-15T19:00:00Z"));
+    expect(result).toEqual({ toSend: { minutes: 60, actualMinutesRemaining: 60 }, toResolveWithoutSending: [] });
+  });
+
+  it("un délai tout juste postérieur à la création reste actif (échéance 08:30 > création 08:00)", () => {
+    const result = computeTimingsDue({ ...base, reminderTimings: [690], remindersSent: [] }, new Date("2026-06-15T08:30:00Z"));
+    expect(result.toSend).toEqual({ minutes: 690, actualMinutesRemaining: 690 });
+  });
+
+  it("plusieurs dus d'un coup : le plus proche des délais VALIDES part, les plus anciens et ceux antérieurs à la création sont résolus", () => {
+    // 20:00 − 600 = 10:00 (valide) ; 20:00 − 900 = 05:00 (avant création) ; 20:00 − 720 = 08:00 pile (≥ création → valide).
+    const result = computeTimingsDue({ ...base, reminderTimings: [900, 720, 600], remindersSent: [] }, new Date("2026-06-15T10:30:00Z"));
+    expect(result.toSend).toEqual({ minutes: 600, actualMinutesRemaining: 570 });
+    expect(result.toResolveWithoutSending.sort()).toEqual([720, 900]);
+  });
+
+  it("sans createdAt (appelants historiques) : comportement inchangé", () => {
+    const result = computeTimingsDue({ date: base.date, reminderTimings: [900], remindersSent: [] }, new Date("2026-06-15T09:00:00Z"));
+    expect(result.toSend).toEqual({ minutes: 900, actualMinutesRemaining: 660 });
+  });
+
+  it("vote clos juste avant la soirée : les rappels déjà envoyés pendant le vote ne repartent pas", () => {
+    const result = computeTimingsDue(
+      { ...base, reminderTimings: [360, 120, 15], remindersSent: ["360", "120"] },
+      new Date("2026-06-15T19:59:00Z") // 1 min avant, vote clos : seul « 15 min » reste dû
+    );
+    expect(result).toEqual({ toSend: { minutes: 15, actualMinutesRemaining: 1 }, toResolveWithoutSending: [] });
+  });
+});
