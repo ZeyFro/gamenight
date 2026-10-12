@@ -1,0 +1,145 @@
+{
+  "observed_at": "2026-10-12T06:42:16Z",
+  "audited_commit": "49f2ea41d8ef94cfa208bd3c958552ace18d50a7",
+  "provenance": {
+    "project": "Neon describe_project",
+    "branches": "Neon list_branches",
+    "endpoints": "Neon list_endpoints",
+    "sql": "SELECT et inspect_database uniquement, aucun reset de statistiques"
+  },
+  "plan": "free_v3",
+  "project_id": "misty-tooth-45335023",
+  "region": "aws-eu-central-1",
+  "postgres_version": 18,
+  "history_retention_seconds": 21600,
+  "synthetic_storage_bytes": 38764544,
+  "sql_database_size_bytes": 15712256,
+  "production_endpoint": {
+    "id": "ep-calm-paper-b1vnxb5d",
+    "branch_id": "br-super-cell-b1ukvk08",
+    "current_state": "active",
+    "min_cu": 0.25,
+    "max_cu": 0.5,
+    "suspend_timeout_seconds": 0,
+    "pooler_enabled": false
+  },
+  "usage_raw": {
+    "period_start": "2026-10-09T21:19:49Z",
+    "period_end": "2026-11-01T00:00:00Z",
+    "compute_time_seconds": 52607,
+    "active_time_seconds": 200716,
+    "data_transfer_bytes": 85045475,
+    "note": "Champ historique compute_time_seconds : ne pas assimiler à une mesure vérifiée de compute_unit_seconds sans rapprochement avec les métriques facturées."
+  },
+  "branch_consumption": [
+    {
+      "name": "production",
+      "state": "ready",
+      "compute_time_seconds": 52607,
+      "active_time_seconds": 200716
+    },
+    {
+      "name": "preview-gamenight",
+      "state": "archived",
+      "compute_time_seconds": 0,
+      "active_time_seconds": 0
+    },
+    {
+      "name": "backup-avant-multiserveur",
+      "state": "ready",
+      "compute_time_seconds": 0,
+      "active_time_seconds": 0
+    }
+  ],
+  "pg_stat_statements": {
+    "stats_since": "2026-10-11T19:58:00Z",
+    "most_called": [
+      {
+        "calls": "1077",
+        "total_exec_time": "00:00:00.228029",
+        "query": "INSERT INTO \"public\".\"UserGame\" (\"userId\",\"gameId\",\"owned\",\"source\") VALUES ($1,$2,$3,CAST($4::text AS \"public\".\"UserGameSource\")) ON CONFLICT (\"userI"
+      },
+      {
+        "calls": "1077",
+        "total_exec_time": "00:00:00.093195",
+        "query": "INSERT INTO \"public\".\"Game\" (\"id\",\"name\",\"source\",\"steamAppId\",\"coverUrl\",\"isCoop\",\"minPlayers\",\"addedById\",\"createdAt\",\"playInfoManual\") VALUES ($1,$"
+      },
+      {
+        "calls": "649",
+        "total_exec_time": "00:00:00.011722",
+        "query": "SELECT EXISTS (\n      SELECT $3 FROM \"NotificationDelivery\"\n      WHERE status = $4\n        AND (\"nextAttemptAt\" IS NULL OR \"nextAttemptAt\" <= ($1::ti"
+      },
+      {
+        "calls": "314",
+        "total_exec_time": "00:00:00.003395",
+        "query": "BEGIN"
+      },
+      {
+        "calls": "305",
+        "total_exec_time": "00:00:00.006965",
+        "query": "SELECT \"public\".\"Community\".\"id\", \"public\".\"Community\".\"slug\" FROM \"public\".\"Community\" WHERE \"public\".\"Community\".\"status\" = CAST($1::text AS \"public"
+      },
+      {
+        "calls": "288",
+        "total_exec_time": "00:00:00.001225",
+        "query": "COMMIT"
+      },
+      {
+        "calls": "220",
+        "total_exec_time": "00:00:00.039067",
+        "query": "UPDATE \"public\".\"User\" SET \"steamNowPlaying\" = $1, \"steamNowPlayingSeenAt\" = $2 WHERE (\"public\".\"User\".\"id\" = $3 AND $4=$5) RETURNING \"public\".\"User\"."
+      },
+      {
+        "calls": "220",
+        "total_exec_time": "00:00:00.028513",
+        "query": "UPDATE \"public\".\"User\" SET \"steamActivityCheckedAt\" = $1, \"steamPublic\" = $2, \"lastPlayedGame\" = $3, \"lastPlayedAt\" = $4 WHERE (\"public\".\"User\".\"id\" ="
+      },
+      {
+        "calls": "156",
+        "total_exec_time": "00:00:00.006007",
+        "query": "SELECT \"public\".\"Membership\".\"id\", \"public\".\"Membership\".\"communityId\" FROM \"public\".\"Membership\" LEFT JOIN \"public\".\"Community\" AS \"j0\" ON (\"j0\".\"id\""
+      },
+      {
+        "calls": "155",
+        "total_exec_time": "00:00:00.003794",
+        "query": "SELECT \"public\".\"Community\".\"id\", \"public\".\"Community\".\"slug\" FROM \"public\".\"Community\" WHERE \"public\".\"Community\".\"id\" IN ($1 /*, ... */) OFFSET $2"
+      },
+      {
+        "calls": "137",
+        "total_exec_time": "00:00:00.013174",
+        "query": "SELECT \"public\".\"Membership\".\"id\", \"public\".\"Membership\".\"communityId\" FROM \"public\".\"Membership\" LEFT JOIN \"public\".\"Community\" AS \"j0\" ON (\"j0\".\"id\""
+      },
+      {
+        "calls": "136",
+        "total_exec_time": "00:00:00.003993",
+        "query": "SELECT \"public\".\"Community\".\"id\", \"public\".\"Community\".\"name\", \"public\".\"Community\".\"slug\", \"public\".\"Community\".\"discordGuildId\", \"public\".\"Community"
+      }
+    ]
+  },
+  "delivery_status_counts": {
+    "SENT": 392,
+    "FAILED": 134,
+    "SKIPPED": 43,
+    "PENDING": 0,
+    "RESERVED": 0
+  },
+  "failed_delivery_classes": {
+    "resolver:expired": 87,
+    "discord:auth_or_permission": 17,
+    "resolver:not_configured": 11,
+    "discord:dm_unavailable": 9,
+    "discord:not_found": 9,
+    "resolver:dependency_not_ready": 1
+  },
+  "instant_invite_missing_configuration": {
+    "total": 11,
+    "second_community": 9,
+    "default": 2
+  },
+  "known_limits": [
+    "Vercel : 403 pour l'équipe attendue ; métriques/configuration live non accessibles.",
+    "Inventaire des crons externes non accessible.",
+    "Environnement local devenu offline avant publication des modifications de code ; celles-ci ne figurent pas dans cette PR."
+  ],
+  "read_only_production": true
+}
