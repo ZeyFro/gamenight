@@ -12864,22 +12864,24 @@ mise à jour le 2026-08-24 : défaut 300 s, maximum 300 s). Les 60 s / 45 s déc
 choix de route, pas le plafond du plan. Fréquences : celles réellement configurées sur cron-job.org. cron-job.org coupe à 30 s : les routes longues
 répondent donc `202` et travaillent dans `after()`.
 
+**Pause nocturne (budget Neon Free)** : tous les jobs cron-job.org sont réglés en `Europe/Paris` et ne tournent pas de 03:00 à 07:59 (heures 0, 1, 2 et 8 à 23), sur une grille de 15 min (:00, :15, :30, :45) pour qu'un même réveil serve plusieurs jobs. Les jobs quotidiens sont groupés avant 03:00 (02:00 à 02:45). Une soirée dont le vote se clôt ou qui commence dans la pause est traitée à 08:00 ; les envois déclenchés par une action (annonce, MP) partent immédiatement, hors cron. « Backfill IGDB Coop » (00:00 et 12:00) est inchangé.
+
 | Route | Méthodes | `maxDuration` | Mode | Fréquence (cron-job.org) | Log à surveiller |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | `/api/cron/close-sessions` | GET | non déclaré (défaut 300 s) | synchrone | toutes les 15 min | `cron:close-sessions` (erreurs par tâche/session) |
-| `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | toutes les 5 min | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
-| `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | chaque minute | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
+| `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | toutes les 15 min | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
+| `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | toutes les 15 min (filet : l'envoi courant part par événement, `after()`) | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
 | `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | toutes les 15 min | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
 | `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
-| `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 5 min | `cron:steam-library-sync` |
-| `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
+| `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 15 min | `cron:steam-library-sync` |
+| `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h (0, 2, 8, 10 … 22 h) | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
 | `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 02:45 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
 | `/api/cron/community-guild-sync` | GET | non déclaré (défaut 300 s ; budget Discord 20 s) | synchrone | quotidien (à configurer sur cron-job.org) | `cron:community-guild-sync` (`Passage terminé.` + résumé) ; `{enabled:false}` si éteint |
-| `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
+| `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 02:30 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
 | `/api/backfill/igdb-coop` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | 00:00 et 12:00 | `igdb-coop` (`Processing n/N`, `stopReason`) |
-| `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 04:00 | `steam-store` (`Processing n/N`) |
-| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | quotidien à 05:00 | `game-news` |
+| `/api/backfill/steam-store` | POST | 60 s (budget 50 s) | **202 + `after()`** | quotidien à 02:00 | `steam-store` (`Processing n/N`) |
+| `/api/backfill/game-news` | POST | 60 s | **202 + `after()`** | quotidien à 02:15 | `game-news` |
 
 Le tableau « I5 » plus haut (« Tableau récapitulatif des crons ») date d'avant la V2 : celui-ci fait foi.
 
