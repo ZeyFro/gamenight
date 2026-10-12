@@ -6481,7 +6481,7 @@ Header  : Authorization: Bearer <CRON_SECRET>
 Fréquence : 1x par jour
 ```
 
-Planifié sur cron-job.org : quotidien à 03:30 (testé : succès).
+Planifié sur cron-job.org : quotidien à 02:45, heure de Paris.
 
 ### Fichiers modifiés/ajoutés
 
@@ -6856,7 +6856,7 @@ Aucun doublon constaté (chaque cron couvre une tâche distincte) :
 | Rappels de soirée | `/api/cron/reminders` | 15 min | Envoie les rappels Discord programmés (`Session.reminderTimings`) |
 | Sync bibliothèques Steam | `/api/cron/steam-library-sync` | 1h | Réimporte la biblio Steam de chaque compte lié, badges, détection d'achats wishlist |
 | Rafraîchissement profils Discord | `/api/cron/refresh-discord-profiles` | 1h | Avatar/pseudo de tout le monde via le bot Discord (contourne l'expiration du token OAuth individuel) |
-| Tâches mensuelles | `/api/cron/monthly-tasks` | quotidien à 03:30 | Clôture de saison si échue, génération du recap Wrapped du mois si le 1er |
+| Tâches mensuelles | `/api/cron/monthly-tasks` | quotidien à 02:45 | Clôture de saison si échue, génération du recap Wrapped du mois si le 1er |
 
 ### Fichiers modifiés/ajoutés
 
@@ -12871,7 +12871,7 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
 | `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 5 min | `cron:steam-library-sync` |
 | `/api/cron/steam-library-full-sync` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | toutes les 2 h | `cron:steam-library-full-sync` : `début userId=…` puis `fin stopReason=completed\|time_budget\|error` ; un `début` sans `fin` = coupure plateforme |
-| `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 03:30 | `cron:monthly-tasks` |
+| `/api/cron/monthly-tasks` | GET | non déclaré (défaut 300 s) | synchrone | quotidien à 02:45 | `cron:monthly-tasks` |
 | `/api/cron/refresh-discord-profiles` | GET | non déclaré (défaut 300 s) | synchrone | toutes les heures | `cron:refresh-discord-profiles` |
 | `/api/cron/community-guild-sync` | GET | non déclaré (défaut 300 s ; budget Discord 20 s) | synchrone | quotidien (à configurer sur cron-job.org) | `cron:community-guild-sync` (`Passage terminé.` + résumé) ; `{enabled:false}` si éteint |
 | `/api/backfill/seed-reconcile` | GET, POST | 300 s (budget 240 s) | **202 + `after()`** | quotidien à 06:00 | `seed-reconcile` : `fin stopReason=completed\|time_budget\|error` (`warn` si `time_budget`) |
