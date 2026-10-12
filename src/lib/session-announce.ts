@@ -2,6 +2,7 @@ import { sessionMessage } from "@/lib/session-message";
 import { sessionRsvpComponents } from "@/lib/session-rsvp-components";
 import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
+import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 import { randomUUID } from "crypto";
 import type { Game, Proposal, Session, SessionInvite, SessionSeat, User, Vote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -754,6 +755,7 @@ export async function enqueueSessionInviteSyncForNewInvites(
       targetSlot: inviteSlot(session.id, inviteId),
     })),
   });
+  kickNotificationExecutor();
 }
 
 async function enqueueInviteSyncDelivery(sessionId: string, inviteId: string, db?: NotificationDb): Promise<void> {
