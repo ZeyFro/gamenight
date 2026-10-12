@@ -73,7 +73,7 @@ const EMPTY_RESULT: TimingsDueResult = { toSend: null, toResolveWithoutSending: 
  * résolus sans envoi, plutôt que vidés en rafale comme avant ce fix.
  */
 export function computeTimingsDue(
-  session: Pick<Session, "date" | "reminderTimings" | "remindersSent">,
+  session: Pick<Session, "date" | "reminderTimings" | "remindersSent"> & { createdAt?: Date },
   now: Date
 ): TimingsDueResult {
   const minutesUntil = (session.date.getTime() - now.getTime()) / 60_000;
@@ -85,10 +85,22 @@ export function computeTimingsDue(
   if (due.length === 0) return EMPTY_RESULT;
   if (minutesUntil <= 0) return { toSend: null, toResolveWithoutSending: due };
 
-  const [closest, ...stale] = due;
+  // Un seuil dont l'échéance (date − seuil) précède la CRÉATION de la soirée n'a
+  // jamais pu être « à temps » : « 15h avant » pour une soirée créée 10h avant.
+  // Résolu sans envoi, sans alerte — sinon un « dans 10h ! » partirait juste
+  // après l'annonce. `createdAt` doit être en horloge murale, comme `date` et
+  // `now` (`toWallClock`) ; absent = pas de filtre (appelants historiques).
+  const createdAtMs = session.createdAt?.getTime();
+  const isElapsedAtCreation = (minutes: number) =>
+    createdAtMs !== undefined && session.date.getTime() - minutes * 60_000 < createdAtMs;
+  const live = due.filter((minutes) => !isElapsedAtCreation(minutes));
+  const elapsedAtCreation = due.filter(isElapsedAtCreation);
+
+  if (live.length === 0) return { toSend: null, toResolveWithoutSending: elapsedAtCreation };
+  const [closest, ...stale] = live;
   return {
     toSend: { minutes: closest, actualMinutesRemaining: Math.round(minutesUntil) },
-    toResolveWithoutSending: stale,
+    toResolveWithoutSending: [...stale, ...elapsedAtCreation],
   };
 }
 

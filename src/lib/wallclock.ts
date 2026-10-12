@@ -102,7 +102,17 @@ const NOW_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
  * désormais corrigées.
  */
 export function wallClockNow(): Date {
-  const parts = NOW_PARTS_FORMATTER.formatToParts(new Date());
+  return toWallClock(new Date());
+}
+
+/**
+ * Convertit un VRAI instant (ex. `createdAt`, horodatage Postgres en UTC) vers
+ * la représentation « horloge murale » de `GROUP_TIME_ZONE` décrite plus haut,
+ * la seule comparable aux dates de session stockées. `wallClockNow()` est ce
+ * même calcul appliqué à l'instant présent.
+ */
+export function toWallClock(instant: Date): Date {
+  const parts = NOW_PARTS_FORMATTER.formatToParts(instant);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return new Date(
     Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"))

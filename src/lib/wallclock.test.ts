@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { wallClockNow, formatDurationFr } from "@/lib/wallclock";
+import { wallClockNow, toWallClock, formatDurationFr } from "@/lib/wallclock";
 
 describe("wallClockNow", () => {
   beforeEach(() => {
@@ -73,5 +73,26 @@ describe("formatDurationFr", () => {
 
   it("ne renvoie jamais une durée négative (clamp à 0)", () => {
     expect(formatDurationFr(-5000)).toBe("0 min");
+  });
+});
+
+describe("toWallClock", () => {
+  it("heure d'été : 08:26:52 UTC → 10:26:52 en horloge murale de Paris", () => {
+    expect(toWallClock(new Date("2026-10-12T08:26:52Z")).toISOString()).toBe("2026-10-12T10:26:52.000Z");
+  });
+
+  it("heure d'hiver : 08:00 UTC → 09:00", () => {
+    expect(toWallClock(new Date("2026-01-15T08:00:00Z")).toISOString()).toBe("2026-01-15T09:00:00.000Z");
+  });
+
+  it("passage de minuit : 23:30 UTC (été) → 01:30 le lendemain", () => {
+    expect(toWallClock(new Date("2026-07-14T23:30:00Z")).toISOString()).toBe("2026-07-15T01:30:00.000Z");
+  });
+
+  it("wallClockNow() est toWallClock appliqué à l'instant présent", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-12T08:26:52Z"));
+    expect(wallClockNow().toISOString()).toBe(toWallClock(new Date()).toISOString());
+    vi.useRealTimers();
   });
 });

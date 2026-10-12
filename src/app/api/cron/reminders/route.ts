@@ -5,7 +5,7 @@ import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
 import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
-import { wallClockNow } from "@/lib/wallclock";
+import { toWallClock, wallClockNow } from "@/lib/wallclock";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import {
   applyReminderResults,
@@ -133,7 +133,17 @@ export async function GET(request: Request) {
   try {
     const now = wallClockNow();
     const sessions = await prisma.session.findMany({
-      where: { status: "SCHEDULED", decidedGameId: { not: null }, date: { gt: now } },
+      // Les rappels partent aussi PENDANT le vote (chemin bot uniquement : le
+      // webhook, lui, ne poste plus rien, et exige un jeu décidé). Avant, une
+      // soirée VOTING était ignorée : un « 15h avant » ne partait jamais et un
+      // « 1h avant » était perdu si le vote se clôturait trop près de la soirée.
+      where: {
+        date: { gt: now },
+        OR: [
+          { status: "SCHEDULED", decidedGameId: { not: null } },
+          { status: "VOTING", announceViaBot: true },
+        ],
+      },
       include: { decidedGame: true },
     });
 
@@ -142,7 +152,11 @@ export async function GET(request: Request) {
     const staleSkipped: string[] = [];
 
     for (const session of sessions) {
-      const { toSend, toResolveWithoutSending } = computeTimingsDue(session, now);
+      // `createdAt` est un vrai instant UTC ; `date` et `now` sont en horloge murale.
+      const { toSend, toResolveWithoutSending } = computeTimingsDue(
+        { ...session, createdAt: toWallClock(session.createdAt) },
+        now
+      );
       if (!toSend && toResolveWithoutSending.length === 0) continue;
 
       const outcomes: ReminderSendOutcome[] = [];

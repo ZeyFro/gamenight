@@ -1856,6 +1856,8 @@ cron HTTP équivalent — GitHub Actions `schedule`, EasyCron, etc.).
    configurer un en-tête personnalisé sur la requête programmée — c'est
    là qu'ajouter `Authorization: Bearer <CRON_SECRET>`.
 
+**Rappels pendant le vote.** La route lit aussi les soirées `VOTING` du chemin bot (`announceViaBot`) : un rappel part à son heure réelle (date − délai) même si le vote n'est pas clos. Avant, seules les soirées `SCHEDULED` à jeu décidé étaient lues : un « 15h avant » ne partait jamais, et un « 1h avant » était perdu si le vote se clôturait trop près de la soirée. Un délai dont l'échéance précède la **création** de la soirée (« 15h avant » pour une soirée créée 10h avant) est marqué résolu sans envoi, sans alerte (`computeTimingsDue`, `createdAt` converti en horloge murale par `toWallClock`). À la mise en production, une soirée déjà en vote dont un délai est déjà passé reçoit UN rappel de rattrapage avec le temps réellement restant. Le webhook historique ne poste toujours rien. Précision du cron : un rappel peut arriver jusqu'à une période de cron en retard (15 min).
+
 À chaque appel, la route (`src/app/api/cron/reminders/route.ts`) parcourt
 les sessions `SCHEDULED` à jeu décidé et à venir, et envoie un rappel pour
 chaque timing de `Session.reminderTimings` dès que le seuil est franchi
