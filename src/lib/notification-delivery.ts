@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 
 /**
  * Même vérification que `isUniqueConstraintViolation` (`src/lib/xp-actions.ts`),
@@ -269,7 +270,7 @@ export async function enqueueDelivery(
 ): Promise<NotificationDelivery> {
   const operation = input.operation ?? "SEND";
   try {
-    return await db.notificationDelivery.create({
+    const created = await db.notificationDelivery.create({
       data: {
         eventId: input.eventId,
         channel: input.channel,
@@ -279,6 +280,10 @@ export async function enqueueDelivery(
         targetSlot: input.targetSlot,
       },
     });
+    // Planifié après la réponse (voir le module) : la transaction de
+    // l'appelant, s'il y en a une, est validée avant que l'executor ne lise.
+    kickNotificationExecutor();
+    return created;
   } catch (error) {
     if (!isUniqueConstraintViolation(error)) throw error;
     const existing = await db.notificationDelivery.findUnique({
