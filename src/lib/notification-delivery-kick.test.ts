@@ -12,15 +12,22 @@ describe("enqueueDelivery → kick de l'executor", () => {
   beforeEach(() => kick.mockClear());
 
   it("demande un passage après l'écriture d'une livraison", async () => {
-    const create = vi.fn().mockResolvedValue({ id: "d1" });
-    const db = { notificationDelivery: { create } } as unknown as NotificationDb;
+    const createManyAndReturn = vi.fn().mockResolvedValue([{ id: "d1" }]);
+    const db = { notificationDelivery: { createManyAndReturn } } as unknown as NotificationDb;
     await expect(enqueueDelivery(input, db)).resolves.toEqual({ id: "d1" });
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(createManyAndReturn).toHaveBeenCalledTimes(1);
     expect(kick).toHaveBeenCalledTimes(1);
   });
 
+  it("livraison déjà présente : relue, sans nouveau passage", async () => {
+    const findUniqueOrThrow = vi.fn().mockResolvedValue({ id: "d0" });
+    const db = { notificationDelivery: { createManyAndReturn: vi.fn().mockResolvedValue([]), findUniqueOrThrow } } as unknown as NotificationDb;
+    await expect(enqueueDelivery(input, db)).resolves.toEqual({ id: "d0" });
+    expect(kick).not.toHaveBeenCalled();
+  });
+
   it("ne demande rien si l'écriture échoue", async () => {
-    const db = { notificationDelivery: { create: vi.fn().mockRejectedValue(new Error("db")) } } as unknown as NotificationDb;
+    const db = { notificationDelivery: { createManyAndReturn: vi.fn().mockRejectedValue(new Error("db")) } } as unknown as NotificationDb;
     await expect(enqueueDelivery(input, db)).rejects.toThrow("db");
     expect(kick).not.toHaveBeenCalled();
   });

@@ -7,6 +7,7 @@ import type { Session, User } from "@prisma/client";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
+import { getDefaultCommunityId } from "@/lib/default-community";
 
 /**
  * Chantier confidentialité des soirées — voir le commentaire de fonction
@@ -18,7 +19,7 @@ import { logger } from "@/lib/logger";
  * continuent d'être écrites, restreintes aux invités ACTIFS.
  */
 export async function announceSessionCreated(
-  session: Pick<Session, "id" | "createdById" | "date" | "votingDeadline" | "notifiedUserIds">,
+  session: Pick<Session, "id" | "createdById" | "date" | "votingDeadline" | "notifiedUserIds" | "communityId">,
   creator: Pick<User, "id" | "discordId">
 ): Promise<PostToDiscordResult> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
@@ -32,9 +33,13 @@ export async function announceSessionCreated(
 
   // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
   // les mentions qu'aurait portées l'ancien message Discord, EN PLUS
-  // restreintes aux invités encore actifs.
+  // restreintes aux invités encore actifs. Provenance déjà connue : même
+  // règle que `createNotifications` (soirée historique null = default),
+  // sans relire la soirée.
+  const communityId = session.communityId ?? (others.length ? await getDefaultCommunityId() : null);
   await createNotifications(
     others.map((u) => ({
+      communityId,
       userId: u.id,
       type: "SESSION_CREATED" as const,
       title: "📣 Nouvelle soirée",

@@ -15,17 +15,6 @@ import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 
 /**
- * Même vérification que `isUniqueConstraintViolation` (`src/lib/xp-actions.ts`),
- * dupliquée volontairement plutôt qu'importée : ce module fondation ne doit
- * dépendre d'aucun module métier (XP, level-up...) pour une seule fonction
- * de 3 lignes — garde ce socle livraison isolable/testable indépendamment
- * du reste de l'app.
- */
-function isUniqueConstraintViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-}
-
-/**
  * Refonte notifications Discord — fondations de livraison (PR 1/N).
  *
  * Ce module ne parle JAMAIS à Discord et n'est appelé par AUCUN code
@@ -194,17 +183,13 @@ export async function notificationEventMatchesSource(eventCommunityId: string | 
 /**
  * Idempotent : deux appels avec le même (category, eventType, sourceId,
  * occurrence) renvoient toujours le MÊME événement (celui déjà en base au
- * second appel), jamais un doublon — même idiome que `awardXp`
- * (`isUniqueConstraintViolation`, voir `src/lib/xp-actions.ts`) : on tente
- * la création, une violation de contrainte unique signifie juste que
- * l'événement existe déjà, auquel cas on le relit.
+ * second appel), jamais un doublon : l'insertion ignore le conflit
+ * (`ON CONFLICT DO NOTHING`) et, si rien n'a été inséré, on relit l'existant.
  *
  * `db` optionnel (défaut : client global) — voir `NotificationDb`. Passer
  * un `tx` compose cette écriture avec la mutation métier de l'appelant
- * dans la MÊME transaction ; la logique de retry idempotent ci-dessous
- * reste valide à l'identique dans les deux cas (une violation de
- * contrainte unique DANS une transaction se comporte comme hors
- * transaction pour ce genre de retry en lecture seule).
+ * dans la MÊME transaction. Jamais un P2002 rattrapé : sous Postgres il
+ * annulerait le `tx` entier (25P02), relecture comprise.
  */
 export async function createNotificationEvent(
   input: CreateEventInput,
@@ -212,32 +197,30 @@ export async function createNotificationEvent(
 ): Promise<NotificationEvent> {
   const occurrence = input.occurrence ?? "";
   const communityId = await eventCommunityId(input, db);
-  try {
-    return await db.notificationEvent.create({
-      data: {
+  // ON CONFLICT DO NOTHING plutôt qu'un P2002 rattrapé : sous Postgres, une
+  // erreur annule tout le `tx` de l'appelant (25P02) et la relecture échouerait.
+  const [created] = await db.notificationEvent.createManyAndReturn({
+    data: [{
+      category: input.category,
+      eventType: input.eventType,
+      sourceId: input.sourceId,
+      occurrence,
+      communityId,
+      ...(input.payload === undefined ? {} : { payload: input.payload }),
+    }],
+    skipDuplicates: true,
+  });
+  if (created) return created;
+  return db.notificationEvent.findUniqueOrThrow({
+    where: {
+      category_eventType_sourceId_occurrence: {
         category: input.category,
         eventType: input.eventType,
         sourceId: input.sourceId,
         occurrence,
-        communityId,
-        ...(input.payload === undefined ? {} : { payload: input.payload }),
       },
-    });
-  } catch (error) {
-    if (!isUniqueConstraintViolation(error)) throw error;
-    const existing = await db.notificationEvent.findUnique({
-      where: {
-        category_eventType_sourceId_occurrence: {
-          category: input.category,
-          eventType: input.eventType,
-          sourceId: input.sourceId,
-          occurrence,
-        },
-      },
-    });
-    if (!existing) throw error;
-    return existing;
-  }
+    },
+  });
 }
 
 export interface EnqueueDeliveryInput {
@@ -269,37 +252,35 @@ export async function enqueueDelivery(
   db: NotificationDb = prisma
 ): Promise<NotificationDelivery> {
   const operation = input.operation ?? "SEND";
-  try {
-    const created = await db.notificationDelivery.create({
-      data: {
-        eventId: input.eventId,
-        channel: input.channel,
-        transport: input.transport,
-        operation,
-        recipientKey: input.recipientKey,
-        targetSlot: input.targetSlot,
-      },
-    });
+  // Même ON CONFLICT DO NOTHING que `createNotificationEvent` (tx Postgres).
+  const [created] = await db.notificationDelivery.createManyAndReturn({
+    data: [{
+      eventId: input.eventId,
+      channel: input.channel,
+      transport: input.transport,
+      operation,
+      recipientKey: input.recipientKey,
+      targetSlot: input.targetSlot,
+    }],
+    skipDuplicates: true,
+  });
+  if (created) {
     // Planifié après la réponse (voir le module) : la transaction de
     // l'appelant, s'il y en a une, est validée avant que l'executor ne lise.
     kickNotificationExecutor();
     return created;
-  } catch (error) {
-    if (!isUniqueConstraintViolation(error)) throw error;
-    const existing = await db.notificationDelivery.findUnique({
-      where: {
-        eventId_channel_recipientKey_operation_targetSlot: {
-          eventId: input.eventId,
-          channel: input.channel,
-          recipientKey: input.recipientKey,
-          operation,
-          targetSlot: input.targetSlot,
-        },
-      },
-    });
-    if (!existing) throw error;
-    return existing;
   }
+  return db.notificationDelivery.findUniqueOrThrow({
+    where: {
+      eventId_channel_recipientKey_operation_targetSlot: {
+        eventId: input.eventId,
+        channel: input.channel,
+        recipientKey: input.recipientKey,
+        operation,
+        targetSlot: input.targetSlot,
+      },
+    },
+  });
 }
 
 /**

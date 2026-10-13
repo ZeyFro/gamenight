@@ -52,6 +52,7 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
         createdById: "creator",
         date: new Date("2026-09-20T20:00:00Z"),
         votingDeadline: new Date("2026-09-19T20:00:00Z"),
+        communityId: "community-1",
         notifiedUserIds: ["u-accepte"],
       },
       { id: "creator", discordId: "discord-creator" }
@@ -74,6 +75,7 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
         createdById: "creator",
         date: new Date("2026-09-20T20:00:00Z"),
         votingDeadline: new Date("2026-09-19T20:00:00Z"),
+        communityId: "community-1",
         notifiedUserIds: ["u-refuse"],
       },
       { id: "creator", discordId: "discord-creator" }
@@ -97,6 +99,7 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
         createdById: "creator",
         date: new Date("2026-09-20T20:00:00Z"),
         votingDeadline: new Date("2026-09-19T20:00:00Z"),
+        communityId: "community-1",
         notifiedUserIds: ["u-revoque"],
       },
       { id: "creator", discordId: "discord-creator" }
@@ -118,6 +121,7 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
         createdById: "creator",
         date: new Date("2026-09-20T20:00:00Z"),
         votingDeadline: new Date("2026-09-19T20:00:00Z"),
+        communityId: "community-1",
         notifiedUserIds: ["u-accepte"],
       },
       { id: "creator", discordId: "discord-creator" }
