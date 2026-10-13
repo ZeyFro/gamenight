@@ -17,6 +17,8 @@ export interface BracketMatch {
   player1: BracketPlayer | null;
   player2: BracketPlayer | null;
   winnerId: string | null;
+  score1?: number | null;
+  score2?: number | null;
 }
 
 const ROUND_LABEL_FROM_END = ["Finale", "Demi-finale", "Quarts de finale"];
@@ -42,6 +44,7 @@ export function TournamentBracket({
   currentUserId,
   isCreator,
   interactive = true,
+  showScores = false,
 }: {
   matches: BracketMatch[];
   totalRounds: number;
@@ -58,6 +61,8 @@ export function TournamentBracket({
    * mort affiché à tort. Par défaut `true` (comportement inchangé pour
    * IN_PROGRESS/DONE). */
   interactive?: boolean;
+  /** Drapeau `TOURNAMENT_SCORES_ENABLED` (lu côté serveur) : saisie et affichage des scores. */
+  showScores?: boolean;
 }) {
   const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.position}`, m]));
 
@@ -72,6 +77,7 @@ export function TournamentBracket({
           currentUserId={currentUserId}
           isCreator={isCreator}
           interactive={interactive}
+          showScores={showScores}
         />
       </div>
     </div>
@@ -86,6 +92,7 @@ function BracketNode({
   currentUserId,
   isCreator,
   interactive,
+  showScores,
 }: {
   matchesByKey: Map<string, BracketMatch>;
   round: number;
@@ -94,6 +101,7 @@ function BracketNode({
   currentUserId: string;
   isCreator: boolean;
   interactive: boolean;
+  showScores: boolean;
 }) {
   const match = matchesByKey.get(`${round}:${position}`);
   if (!match) return null;
@@ -106,7 +114,7 @@ function BracketNode({
       <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-faint">
         {roundLabel(round, totalRounds)}
       </p>
-      <MatchCard match={match} canDeclare={canDeclare} />
+      <MatchCard match={match} canDeclare={canDeclare} showScores={showScores} />
     </div>
   );
 
@@ -124,6 +132,7 @@ function BracketNode({
             currentUserId={currentUserId}
             isCreator={isCreator}
             interactive={interactive}
+          showScores={showScores}
           />
         </ConnectorSlot>
         <ConnectorSlot>
@@ -135,6 +144,7 @@ function BracketNode({
             currentUserId={currentUserId}
             isCreator={isCreator}
             interactive={interactive}
+          showScores={showScores}
           />
         </ConnectorSlot>
       </div>
@@ -152,7 +162,7 @@ function ConnectorSlot({ children }: { children: React.ReactNode }) {
   );
 }
 
-function MatchCard({ match, canDeclare }: { match: BracketMatch; canDeclare: boolean }) {
+function MatchCard({ match, canDeclare, showScores }: { match: BracketMatch; canDeclare: boolean; showScores: boolean }) {
   const isPlayable = Boolean(match.player1 && match.player2 && !match.winnerId);
   const isDone = Boolean(match.winnerId);
 
@@ -165,11 +175,54 @@ function MatchCard({ match, canDeclare }: { match: BracketMatch; canDeclare: boo
         isDone ? "border-accent/40" : "border-border"
       }`}
     >
-      <PlayerRow player={match.player1} isWinner={isDone && match.winnerId === match.player1?.id} />
+      <PlayerRow
+        player={match.player1}
+        isWinner={isDone && match.winnerId === match.player1?.id}
+        score={showScores ? match.score1 : null}
+      />
       <div className="h-px bg-border" />
-      <PlayerRow player={match.player2} isWinner={isDone && match.winnerId === match.player2?.id} />
+      <PlayerRow
+        player={match.player2}
+        isWinner={isDone && match.winnerId === match.player2?.id}
+        score={showScores ? match.score2 : null}
+      />
 
-      {isPlayable && canDeclare && match.player1 && match.player2 && (
+      {isPlayable && canDeclare && match.player1 && match.player2 && showScores && (
+        <form action={declareWinnerAction} className="flex flex-col gap-1.5 border-t border-border p-1.5">
+          <input type="hidden" name="matchId" value={match.id} />
+          <div className="flex gap-1">
+            {([["score1", match.player1], ["score2", match.player2]] as const).map(([name, p]) => (
+              <label key={name} className="flex min-w-0 flex-1 flex-col gap-0.5 text-[10px] text-faint">
+                <span className="truncate">Score de {p.discordName} (facultatif)</span>
+                <input
+                  type="number"
+                  name={name}
+                  min={0}
+                  max={999}
+                  step={1}
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-sm text-foreground"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            {[match.player1, match.player2].map((p) => (
+              <button
+                key={p.id}
+                type="submit"
+                name="winnerId"
+                value={p.id}
+                className="min-w-0 flex-1 truncate rounded-md bg-accent/10 px-1.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
+              >
+                {p.discordName} gagne
+              </button>
+            ))}
+          </div>
+        </form>
+      )}
+
+      {isPlayable && canDeclare && match.player1 && match.player2 && !showScores && (
         <div className="flex gap-1 border-t border-border p-1.5">
           <form action={declareWinnerAction} className="flex-1">
             <input type="hidden" name="matchId" value={match.id} />
@@ -197,7 +250,15 @@ function MatchCard({ match, canDeclare }: { match: BracketMatch; canDeclare: boo
   );
 }
 
-function PlayerRow({ player, isWinner }: { player: BracketPlayer | null; isWinner: boolean }) {
+function PlayerRow({
+  player,
+  isWinner,
+  score = null,
+}: {
+  player: BracketPlayer | null;
+  isWinner: boolean;
+  score?: number | null;
+}) {
   return (
     <div
       className={`flex items-center gap-2 px-2.5 py-2 ${
@@ -208,6 +269,7 @@ function PlayerRow({ player, isWinner }: { player: BracketPlayer | null; isWinne
         <>
           <Avatar src={player.discordAvatar} alt={player.discordName} size={20} />
           <span className="min-w-0 flex-1 truncate text-sm">{player.discordName}</span>
+          {score != null && <span className="text-sm tabular-nums" aria-label={`Score : ${score}`}>{score}</span>}
           {isWinner && <span aria-hidden>👑</span>}
         </>
       ) : (

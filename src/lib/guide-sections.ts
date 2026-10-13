@@ -1,3 +1,5 @@
+import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
+
 export type GuideSection = { icon: string; title: string; lines: string[] };
 
 /**
@@ -28,5 +30,14 @@ const EXTRA_SECTIONS: GuideSection[] = [
 ];
 
 export function guideSections(base: GuideSection[]): GuideSection[] {
-  return process.env.GUIDE_V2_ENABLED === "true" ? [...base, ...EXTRA_SECTIONS] : base;
+  if (process.env.GUIDE_V2_ENABLED !== "true") return base;
+  if (!isTournamentScoresEnabled()) return [...base, ...EXTRA_SECTIONS];
+  return [
+    ...base,
+    ...EXTRA_SECTIONS.map((s) =>
+      s.title === "Tournois"
+        ? { ...s, lines: [...s.lines, "Tu peux ajouter le score du match (facultatif) : il s'affiche dans le bracket."] }
+        : s
+    ),
+  ];
 }

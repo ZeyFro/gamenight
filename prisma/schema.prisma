@@ -2033,6 +2033,9 @@ model TournamentMatch {
   winnerId     String?
   scheduledAt  DateTime?
   completedAt  DateTime?
+  // Scores optionnels (TOURNAMENT_SCORES_ENABLED) : player1 / player2.
+  score1       Int?
+  score2       Int?
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   player1    User?      @relation("TournamentMatchPlayer1", fields: [player1Id], references: [id])

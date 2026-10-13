@@ -20,11 +20,13 @@ import {
   resyncTournamentThreadMembersAction,
 } from "../actions";
 import { pageMetadata } from "@/lib/page-title";
+import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 
 export const metadata = pageMetadata("Tournoi");
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
+  scores: "Scores refusés : renseigne les deux scores, entre 0 et 999, avec le score le plus élevé pour le gagnant.",
 };
 
 const ANNOUNCE_STATUS_LABELS: Record<"pending" | "sent" | "failed", { text: string; tone: "accent" | "warning" | "neutral" }> = {
@@ -230,6 +232,7 @@ export default async function TournoiDetailPage({
           currentUserId={user.id}
           isCreator={isCreator}
           interactive={tournament.status === "IN_PROGRESS"}
+          showScores={isTournamentScoresEnabled()}
         />
       )}
     </div>
