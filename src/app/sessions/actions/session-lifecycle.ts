@@ -159,7 +159,7 @@ export async function createSession(formData: FormData) {
     // la même transaction, conserve les ids pour la synchronisation du fil.
     const createdInvites = await createInitialSessionInvites(created, user.id, notifiedUserIds, tx);
     if (announceViaBot) {
-      await enqueueSessionCreationDeliveries(created.id, tx);
+      await enqueueSessionCreationDeliveries(created.id, tx, undefined, created.communityId);
       // Bug remonté en test réel — un invité sélectionné ICI (au
       // formulaire de création) n'obtenait jusqu'ici jamais de
       // synchronisation Discord (voir le commentaire de fonction dans

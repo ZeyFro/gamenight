@@ -356,12 +356,19 @@ async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput):
  * des écritures — voir le commentaire de fichier de notification-delivery.ts
  * sur l'interdiction d'appel Discord dans une transaction SQL).
  */
-export async function enqueueSessionCreationDeliveries(sessionId: string, db?: NotificationDb, sourceRouletteId?: string): Promise<void> {
+export async function enqueueSessionCreationDeliveries(
+  sessionId: string,
+  db: NotificationDb = prisma,
+  sourceRouletteId?: string,
+  /** Communauté de la soirée si l'appelant la connaît : évite de relire la session. */
+  communityId?: string | null
+): Promise<void> {
   const event = await createNotificationEvent(
     {
       category: "SESSION",
       eventType: "SESSION_CREATED",
       sourceId: sessionId,
+      communityId,
       ...(sourceRouletteId ? { payload: { sourceRouletteId } } : {}),
     },
     db
@@ -373,36 +380,27 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
   // avant `announce` sans détour par `dependency_not_ready` — jamais un
   // ORDRE garanti par ce module (l'exécuteur ne suppose jamais un ordre
   // d'enqueue, voir notification-executor.ts), juste l'ordre le plus
-  // efficace pour le cas courant.
-  await enqueueDelivery(
-    {
+  // efficace pour le cas courant. Une seule écriture : `sequence` suit
+  // l'ordre du tableau ; `skipDuplicates` garde l'idempotence d'un rappel.
+  const created = await db.notificationDelivery.createMany({
+    data: [threadSlot(sessionId), announceSlot(sessionId)].map((targetSlot) => ({
       eventId: event.id,
-      channel: "DISCORD_CHANNEL",
-      transport: "BOT",
-      operation: "SEND",
+      channel: "DISCORD_CHANNEL" as const,
+      transport: "BOT" as const,
+      operation: "SEND" as const,
       recipientKey: "channel",
-      targetSlot: threadSlot(sessionId),
-    },
-    db
-  );
-  await enqueueDelivery(
-    {
-      eventId: event.id,
-      channel: "DISCORD_CHANNEL",
-      transport: "BOT",
-      operation: "SEND",
-      recipientKey: "channel",
-      targetSlot: announceSlot(sessionId),
-    },
-    db
-  );
+      targetSlot,
+    })),
+    skipDuplicates: true,
+  });
+  if (created.count > 0) kickNotificationExecutor();
   // Correction (revue ciblée) — le créateur n'a jamais de `SessionInvite`,
   // donc jamais ajouté au fil par `resolveInviteSync` seul (voir le
   // commentaire de fichier). Enqueue-é DANS LA MÊME TRANSACTION que le
   // reste (même garantie d'atomicité) pour TOUTE nouvelle soirée bot,
   // classique ou roulette (un seul appelant, `enqueueSessionCreationDeliveries`,
   // commun aux deux chemins).
-  await enqueueSessionCreatorThreadMembership(sessionId, db);
+  await enqueueSessionCreatorThreadMembership(sessionId, db, communityId);
 }
 
 /**
@@ -425,13 +423,14 @@ export async function enqueueSessionCreationDeliveries(sessionId: string, db?: N
  *
  * `db` optionnel — même contrat que les autres enqueue de ce module.
  */
-export async function enqueueSessionCreatorThreadMembership(sessionId: string, db?: NotificationDb): Promise<void> {
+export async function enqueueSessionCreatorThreadMembership(sessionId: string, db?: NotificationDb, communityId?: string | null): Promise<void> {
   const event = await createNotificationEvent(
     {
       category: "SESSION",
       eventType: "SESSION_CREATOR_MEMBER",
       sourceId: sessionId,
       occurrence: randomUUID(),
+      communityId,
     },
     db
   );

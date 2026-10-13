@@ -102,7 +102,7 @@ export async function createRouletteResultSession(data: {
       if (invite) createdInviteIds.push(invite.id);
     }
     if (announceViaBot) {
-      await enqueueSessionCreationDeliveries(created.id, tx, sourceRouletteId);
+      await enqueueSessionCreationDeliveries(created.id, tx, sourceRouletteId, created.communityId);
       // Même correctif que `createSession` (session-lifecycle.ts) : un
       // participant Roulette n'était jusqu'ici jamais synchronisé vers le
       // fil Discord tant qu'il n'était pas réinvité manuellement — voir le
