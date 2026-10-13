@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCronRequest } from "@/lib/cron-auth";
 import { triggerGlobalRelogin } from "@/lib/force-relogin";
 import { logger } from "@/lib/logger";
 
@@ -14,14 +15,12 @@ import { logger } from "@/lib/logger";
  * `curl`/script sans passer par l'UI, exactement comme les crons.
  */
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    logger.error("admin:force-relogin", "CRON_SECRET non configurée — route désactivée.");
-    return NextResponse.json({ error: "not_configured" }, { status: 503 });
-  }
-
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const access = verifyCronRequest(request);
+  if (!access.ok) {
+    if (access.status === 503) {
+      logger.error("admin:force-relogin", "CRON_SECRET non configurée — route désactivée.");
+      return NextResponse.json({ error: "not_configured" }, { status: 503 });
+    }
     logger.warn("admin:force-relogin", "Authorization manquante/invalide — 401.");
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -31,9 +30,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     logger.error("admin:force-relogin", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
-    );
+    // Détail loggé côté serveur (logger.error ci-dessus), jamais renvoyé au client.
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
