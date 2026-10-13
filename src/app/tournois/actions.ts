@@ -32,6 +32,7 @@ import { canAccessTournament } from "@/lib/community-access";
 import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
+import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 import {
   createTournamentSchema,
   declareWinnerSchema,
@@ -388,6 +389,11 @@ export async function launchTournamentAction(formData: FormData) {
   revalidatePath("/tournois");
 }
 
+async function redirectToScoreError(matchId: string): Promise<void> {
+  const match = await prisma.tournamentMatch.findUnique({ where: { id: matchId }, select: { tournamentId: true } });
+  if (match) redirect(`/tournois/${match.tournamentId}?error=scores`);
+}
+
 /**
  * Déclare le vainqueur d'un match — réservé au créateur du tournoi ou à
  * l'un des deux joueurs (cf. `declareWinner`, src/lib/tournaments.ts, pour
@@ -401,15 +407,31 @@ export async function declareWinnerAction(formData: FormData) {
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "declareWinner")) return;
 
+  // Drapeau éteint : les scores du formulaire sont ignorés (jamais lus).
+  const scoresEnabled = isTournamentScoresEnabled();
+  const matchId = String(formData.get("matchId") ?? "");
   const input = declareWinnerSchema.safeParse({
-    matchId: String(formData.get("matchId") ?? ""),
+    matchId,
     winnerId: String(formData.get("winnerId") ?? ""),
+    ...(scoresEnabled && { score1: formData.get("score1"), score2: formData.get("score2") }),
   });
-  if (!input.success) return;
+  if (!input.success) {
+    // Scores invalides : message sur la page du tournoi (sinon rejet silencieux historique).
+    if (scoresEnabled) await redirectToScoreError(matchId);
+    return;
+  }
 
-  const result = await declareWinner(input.data.matchId, input.data.winnerId, user.id);
-  if (!result.ok) return;
-
+  const { score1, score2 } = input.data;
+  const result = await declareWinner(
+    input.data.matchId,
+    input.data.winnerId,
+    user.id,
+    score1 !== undefined && score2 !== undefined ? { score1, score2 } : undefined
+  );
+  if (!result.ok) {
+    if (result.error) await redirectToScoreError(input.data.matchId);
+    return;
+  }
 
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: input.data.matchId },

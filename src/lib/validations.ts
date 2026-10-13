@@ -128,10 +128,17 @@ export const createTournamentSchema = z.object({
 });
 
 /** Sprint 5 (Tournois Bracket) — `declareWinnerAction`. */
-export const declareWinnerSchema = z.object({
-  matchId: idSchema,
-  winnerId: idSchema,
-});
+// Scores optionnels : champ vide = absent ; les deux ensemble ou aucun.
+const optionalScore = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.number().int().min(0).max(999).optional()
+);
+export const declareWinnerSchema = z
+  .object({ matchId: idSchema, winnerId: idSchema, score1: optionalScore, score2: optionalScore })
+  .refine((d) => (d.score1 === undefined) === (d.score2 === undefined), {
+    message: "Renseigne les deux scores ou aucun.",
+    path: ["score1"],
+  });
 
 /** `addWeeklySlot` — créneau hebdomadaire récurrent. */
 export const weeklySlotSchema = z.object({

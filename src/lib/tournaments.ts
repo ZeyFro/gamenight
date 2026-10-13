@@ -11,6 +11,7 @@ import { ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
+import { scoreConsistencyError } from "@/lib/tournament-scores";
 import {
   enqueueTournamentAnnounceDelete,
   enqueueTournamentAnnounceUpdate,
@@ -347,6 +348,8 @@ export async function getActiveTournament(viewerId: string): Promise<{ id: strin
 export interface DeclareWinnerResult {
   ok: boolean;
   tournamentDone: boolean;
+  /** Refus explicite affichable (scores incohérents avec le gagnant). */
+  error?: string;
 }
 
 /**
@@ -383,7 +386,8 @@ export interface DeclareWinnerResult {
 export async function declareWinner(
   matchId: string,
   winnerId: string,
-  actorUserId: string
+  actorUserId: string,
+  scores?: { score1: number; score2: number }
 ): Promise<DeclareWinnerResult> {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
@@ -402,6 +406,11 @@ export async function declareWinner(
   const isPlayer = actorUserId === match.player1Id || actorUserId === match.player2Id;
   if (!isCreator && !isPlayer) return { ok: false, tournamentDone: false };
 
+  if (scores) {
+    const error = scoreConsistencyError(winnerId === match.player1Id ? 1 : 2, scores.score1, scores.score2);
+    if (error) return { ok: false, tournamentDone: false, error };
+  }
+
   const loserId = computeMatchLoser(winnerId, match.player1Id, match.player2Id);
   const totalRounds = totalRoundsFor(bracketSizeFor(match.tournament.maxPlayers));
 
@@ -411,7 +420,7 @@ export async function declareWinner(
   await prisma.$transaction(async (tx) => {
     const claim = await tx.tournamentMatch.updateMany({
       where: { id: matchId, completedAt: null },
-      data: { winnerId, completedAt: wallClockNow() },
+      data: { winnerId, completedAt: wallClockNow(), ...scores },
     });
     if (claim.count !== 1) return; // course perdue — le match a déjà été tranché
 
