@@ -16,7 +16,7 @@ const { currentUserMock } = vi.hoisted(() => ({ currentUserMock: vi.fn() }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) return { prisma: {} as unknown };
-  return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) };
+  return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL, log: [{ emit: "event", level: "query" }] }) };
 });
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: currentUserMock }));
 vi.mock("next/navigation", () => ({
@@ -41,9 +41,12 @@ describe.skipIf(!TEST_DATABASE_URL)("En jeu maintenant (Postgres isolée + Steam
   /** steamId → jeu en cours (null = pas en jeu, absent = pas dans la réponse). */
   let playing: Map<string, string | null>;
   let summariesStatus: number;
+  const queries: string[] = [];
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as import("@prisma/client").PrismaClient;
+    (db as import("@prisma/client").PrismaClient<import("@prisma/client").Prisma.PrismaClientOptions, "query">)
+      .$on("query", (event) => queries.push(event.query));
     nowPlayingLib = await import("./steam-now-playing");
   });
 
@@ -82,6 +85,7 @@ describe.skipIf(!TEST_DATABASE_URL)("En jeu maintenant (Postgres isolée + Steam
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
@@ -137,6 +141,133 @@ describe.skipIf(!TEST_DATABASE_URL)("En jeu maintenant (Postgres isolée + Steam
 
   describe("drapeau actif — refreshSteamNowPlaying", () => {
     beforeEach(() => vi.stubEnv(nowPlayingLib.NOW_PLAYING_FLAG, "true"));
+
+    it("sept comptes déjà inactifs : une lecture groupée, aucune écriture", async () => {
+      const users = [];
+      for (let i = 0; i < 7; i += 1) {
+        const user = await makeUser();
+        users.push(user);
+        playing.set(user.steamId64!, null);
+      }
+      const read = vi.spyOn(db.user, "findMany");
+      const write = vi.spyOn(db.user, "update");
+
+      // Référence avant correctif : même boucle d'UPDATE que main 09bc468.
+      // Mesure limitée à la présence, hors fixtures et autres écritures du cron.
+      queries.length = 0;
+      for (const user of users) {
+        await db.user.update({
+          where: { id: user.id },
+          data: { steamNowPlaying: null, steamNowPlayingSeenAt: null },
+        });
+      }
+      const beforeSql = [...queries];
+      expect(write).toHaveBeenCalledTimes(7);
+      expect(beforeSql.filter((query) => /^UPDATE\b/i.test(query))).toHaveLength(7);
+      read.mockClear();
+      write.mockClear();
+      queries.length = 0;
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList(users))).toEqual({
+        enabled: true, checked: 7, playing: 0, error: false,
+      });
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(write).not.toHaveBeenCalled();
+      const afterSql = [...queries];
+      expect(afterSql).toHaveLength(1);
+      expect(afterSql[0]).toMatch(/^SELECT\b/i);
+      process.stdout.write(`[steam-now-playing-queries] ${JSON.stringify({
+        accounts: 7,
+        before: { prismaReads: 0, prismaWrites: 7, sql: beforeSql.length, updates: 7 },
+        after: { prismaReads: read.mock.calls.length, prismaWrites: write.mock.calls.length, sql: afterSql.length, updates: 0 },
+      })}\n`);
+      expect(summariesCalls()).toHaveLength(1);
+      for (const user of users) {
+        const after = await row(user.id);
+        expect(after.steamNowPlaying).toBeNull();
+        expect(after.steamNowPlayingSeenAt).toBeNull();
+      }
+    });
+
+    it("inactif avec horodatage résiduel : nettoie les deux champs", async () => {
+      const user = await makeUser({ steamNowPlayingSeenAt: new Date() });
+      playing.set(user.steamId64!, null);
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList([user]))).toEqual({
+        enabled: true, checked: 1, playing: 0, error: false,
+      });
+      const after = await row(user.id);
+      expect(after.steamNowPlaying).toBeNull();
+      expect(after.steamNowPlayingSeenAt).toBeNull();
+    });
+
+    it("liaison détachée avant la lecture groupée : préserve l'observation", async () => {
+      const at = new Date();
+      const user = await makeUser({ steamNowPlaying: "Jeu conservé", steamNowPlayingSeenAt: at });
+      playing.set(user.steamId64!, "Ancien compte");
+      await db.user.update({ where: { id: user.id }, data: { steamId64: null } });
+      const write = vi.spyOn(db.user, "update");
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList([user]))).toEqual({
+        enabled: true, checked: 0, playing: 0, error: true,
+      });
+      expect(write).not.toHaveBeenCalled();
+      const after = await row(user.id);
+      expect(after.steamId64).toBeNull();
+      expect(after.steamNowPlaying).toBe("Jeu conservé");
+      expect(after.steamNowPlayingSeenAt!.getTime()).toBe(at.getTime());
+    });
+
+    it("le même jeu actif renouvelle l'horodatage et reste récent", async () => {
+      const old = new Date(Date.now() - 9 * 60_000);
+      const user = await makeUser({ steamNowPlaying: "Rocket League", steamNowPlayingSeenAt: old });
+      playing.set(user.steamId64!, "Rocket League");
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList([user]))).toEqual({
+        enabled: true, checked: 1, playing: 1, error: false,
+      });
+      const after = await row(user.id);
+      expect(after.steamNowPlayingSeenAt!.getTime()).toBeGreaterThan(old.getTime());
+      expect(nowPlayingLib.activeNowPlaying(after.steamNowPlaying, after.steamNowPlayingSeenAt, Date.now())).toBe("Rocket League");
+    });
+
+    it("échec de lecture en base : résultat en erreur et observation préservée", async () => {
+      const at = new Date();
+      const user = await makeUser({ steamNowPlaying: "Rocket League", steamNowPlayingSeenAt: at });
+      playing.set(user.steamId64!, null);
+      vi.spyOn(db.user, "findMany").mockRejectedValueOnce(new Error("lecture indisponible"));
+      const write = vi.spyOn(db.user, "update");
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList([user]))).toEqual({
+        enabled: true, checked: 0, playing: 0, error: true,
+      });
+      expect(write).not.toHaveBeenCalled();
+      const after = await row(user.id);
+      expect(after.steamNowPlaying).toBe("Rocket League");
+      expect(after.steamNowPlayingSeenAt!.getTime()).toBe(at.getTime());
+    });
+
+    it("Steam relié ailleurs pendant la lecture : aucune observation de l'ancien compte écrite", async () => {
+      const user = await makeUser();
+      const newSteamId = "76561198888888888";
+      playing.set(user.steamId64!, "Ancien jeu");
+      const originalRead = db.user.findMany.bind(db.user);
+      vi.spyOn(db.user, "findMany").mockImplementationOnce((args) => {
+        const pending = originalRead(args);
+        return pending.then(async (rows) => {
+          await db.user.update({ where: { id: user.id }, data: { steamId64: newSteamId } });
+          return rows;
+        }) as typeof pending;
+      });
+
+      expect(await nowPlayingLib.refreshSteamNowPlaying(asList([user]))).toEqual({
+        enabled: true, checked: 0, playing: 0, error: true,
+      });
+      const after = await row(user.id);
+      expect(after.steamId64).toBe(newSteamId);
+      expect(after.steamNowPlaying).toBeNull();
+      expect(after.steamNowPlayingSeenAt).toBeNull();
+    });
 
     it("en jeu → nom + horodatage réel ; plus en jeu → remis à null", async () => {
       const user = await makeUser();
