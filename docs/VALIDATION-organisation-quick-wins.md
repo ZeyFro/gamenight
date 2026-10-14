@@ -77,3 +77,11 @@ Tous les sous-agents sont restés en lecture seule. L'agent principal réalise l
 Capacités utilisées : shell/Git/GitHub CLI, Docker local, Vitest/Postgres local, TypeScript, ESLint, Next, Context7 (documentation Prisma), skill Plugin Management (inventaire), skills Vercel React et Deployments/CI-CD (relecture et inspection des checks), plugin Vercel (tentative d'inspection refusée). GitHub, Context7, Vercel, Neon, Sites et Work Pets figurent dans les outils exposés ; les capacités Neon n'ont pas été utilisées. Aucun nouveau plugin ni dépendance installé.
 
 Limites : Superpowers proposé mais non installé ; Graphify, Ponytail, frontend-design/design-skills et outil navigateur Playwright non exposés. Cartographie Graphify non nécessaire à cette correction ciblée. TDD et vérification avant conclusion effectués avec l'outillage du dépôt ; synthèse concise rédigée directement. Context7 retourne aussi des API Prisma récentes : seules les signatures compatibles avec Prisma 6 et le client local sont retenues.
+
+## Relecture avant merge : invitation retirée
+
+La relecture finale a identifié un contournement : un ancien participant de roulette resté membre du serveur pouvait encore changer le jeu de la soirée après révocation de son invitation. L'autorisation relit maintenant le critère existant `accessibleSessionWhere` dans la transaction, après verrouillage de la soirée et de l'invitation de l'auteur. Le créateur garde son accès sans invitation. Le bouton utilise le même critère côté serveur.
+
+Cinq scénarios Postgres supplémentaires couvrent le retrait avec isolation OFF/ON, l'invité encore ACTIVE, le créateur et une révocation committée pendant l'attente du verrou. Les refus préservent le jeu, les propositions, les votes, les vetos et les livraisons. Cette correction ne modifie aucune migration ni dépendance.
+
+Validation de cette correction en environnement cloud : tests sans base, TypeScript et ESLint locaux ; les nouveaux scénarios Postgres sont explicitement ignorés localement faute de serveur de test disponible. Leur validation complète revient au service Postgres isolé de CI avant merge, jamais à Neon. Les résultats du commit final sont consignés dans la PR.

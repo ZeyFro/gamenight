@@ -18,6 +18,7 @@ import { rouletteVetoRefusal } from "@/lib/roulette-veto";
 import { wallClockNow } from "@/lib/wallclock";
 import { forceSpinRouletteAction } from "@/app/roulette/actions";
 import { pageMetadata } from "@/lib/page-title";
+import { accessibleSessionWhere } from "@/lib/session-access";
 
 export const metadata = pageMetadata("Roulette");
 
@@ -130,7 +131,7 @@ export default async function RouletteDetailPage({
   let canVeto = false;
   if (isVoteVetoEnabled() && roulette.status === "DONE" && roulette.resultSessionId) {
     const [resultSession, myVeto] = await Promise.all([
-      scopedDb.session.findUnique({ where: { id: roulette.resultSessionId }, select: { status: true, date: true, announceViaBot: true } }),
+      scopedDb.session.findFirst({ where: { id: roulette.resultSessionId, ...accessibleSessionWhere(user.id) }, select: { status: true, date: true, announceViaBot: true } }),
       scopedDb.rouletteVeto.findFirst({ where: { rouletteId: id, userId: user.id }, select: { id: true } }),
     ]);
     canVeto =

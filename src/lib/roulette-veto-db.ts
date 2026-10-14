@@ -9,6 +9,7 @@ import { enqueueRouletteDirectMessageEdits } from "@/lib/roulette-dm";
 import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
 import { isVoteVetoEnabled } from "@/lib/session-veto";
 import { wallClockNow } from "@/lib/wallclock";
+import { accessibleSessionWhere } from "@/lib/session-access";
 
 /** Date neutre quand la roulette n'a pas de soirée (le refus `closed` prime alors). */
 const NO_SESSION_DATE = new Date(0);
@@ -36,8 +37,11 @@ export async function vetoRouletteGame(input: { rouletteId: string; userId: stri
     });
     if (roulette?.resultSessionId) {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${roulette.resultSessionId} FOR UPDATE`;
+      // Une ancienne participation à la roulette ne remplace jamais une invitation actuelle.
+      // Même ordre que les places : soirée puis invitation. Le retrait attend le commit du veto.
+      await tx.$queryRaw`SELECT id FROM "SessionInvite" WHERE "sessionId" = ${roulette.resultSessionId} AND "userId" = ${userId} FOR SHARE`;
     }
-    const session = roulette?.resultSessionId ? await scopedDb.session.findUnique({ where: { id: roulette.resultSessionId } }) : null;
+    const session = roulette?.resultSessionId ? await scopedDb.session.findFirst({ where: { id: roulette.resultSessionId, ...accessibleSessionWhere(userId) } }) : null;
     if (!roulette || (roulette.resultSessionId && !session)) return { ok: false, error: "forbidden" };
     const { entries, participantIds } = await eligibleRouletteEntries(tx, roulette);
     const vetoes = await scopedDb.rouletteVeto.findMany({ where: { rouletteId }, select: { userId: true, gameId: true } });
