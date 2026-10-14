@@ -25,7 +25,7 @@ const COLLECTIVE_MODELS = [
   "Tournament", "TournamentParticipant", "TournamentMatch", "ChatMessage", "ChatReaction",
   "GameWishlist", "GameWishlistVote", "XpEvent", "LevelUpEvent", "Season", "SeasonSnapshot",
   "MonthlyRecap", "WeeklyChallenge", "GroupAchievement", "GroupSessionStats", "GroupGameStat",
-  "GroupActiveWeek",
+  "GroupActiveWeek", "SessionVeto",
   "CommunityMemberStats",
   // Décision 3 (catalogues copiés par communauté) : le catalogue de badges et
   // les badges gagnés deviennent collectifs.
