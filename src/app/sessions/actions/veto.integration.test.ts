@@ -173,6 +173,21 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
       expect(await db.sessionVeto.count()).toBe(1);
     });
 
+    it("concurrence : deux vetos simultanés sur les deux derniers jeux, un seul passe", async () => {
+      for (let round = 0; round < 8; round++) {
+        await db.$executeRawUnsafe(`TRUNCATE "SessionVeto"`);
+        const { creator, games, session } = await scenario({ games: 2 });
+        const [a, b] = await propose(session.id, creator.id, games);
+        const other = await makeUser();
+        await db.sessionInvite.create({ data: { sessionId: session.id, userId: other.id, invitedById: creator.id } });
+        currentUser.mockResolvedValueOnce(creator).mockResolvedValueOnce(other);
+        const results = await Promise.all([veto.setVeto(fd(a.id)), veto.setVeto(fd(b.id))]);
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        expect(results.filter((r) => r.error === "last_candidate")).toHaveLength(1);
+        expect(await db.sessionVeto.count()).toBe(1);
+      }
+    });
+
     it("le seul jeu jouable ne peut pas être vetoé", async () => {
       const { creator, games, session } = await scenario({ games: 1 });
       const [a] = await propose(session.id, creator.id, games);

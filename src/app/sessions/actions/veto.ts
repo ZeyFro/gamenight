@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { getIsolationScope } from "@/lib/community-isolation";
+import { prisma } from "@/lib/prisma";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { getProposalAvailability, isVotingOpen } from "@/lib/sessions";
 import { canAccessSession } from "@/lib/session-access";
@@ -48,27 +50,32 @@ async function prepare(formData: FormData) {
 export async function setVeto(formData: FormData): Promise<VetoResult> {
   const r = await prepare(formData);
   if (r.fail) return r.fail;
-  const { user, proposalId, scopedDb, session } = r;
+  const { user, proposalId, session } = r;
 
   const availability = await getProposalAvailability(
     session.date,
     session.proposals.map((p) => p.game)
   );
   const jouableIds = session.proposals.filter((p) => availability.get(p.gameId)?.jouable).map((p) => p.id);
-  const others = await scopedDb.sessionVeto.findMany({
-    where: { sessionId: session.id, NOT: { userId: user.id } },
-    select: { proposalId: true },
-  });
-  if (!wouldVetoLeaveCandidate(jouableIds, new Set(others.map((v) => v.proposalId)), proposalId)) {
-    return { ok: false, error: "last_candidate" };
-  }
-
   const communityId = session.communityId ?? (await getDefaultCommunityId());
-  await scopedDb.sessionVeto.upsert({
-    where: { sessionId_userId: { sessionId: session.id, userId: user.id } },
-    update: { proposalId },
-    create: { sessionId: session.id, userId: user.id, proposalId, communityId },
+  const scope = await getIsolationScope(user.id);
+  // Verrou de ligne sur la soirée : deux vetos simultanés sont sérialisés, le second voit le premier.
+  const allowed = await prisma.$transaction(async (tx) => {
+    const db = scopedTransactionPrisma(tx, scope);
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
+    const others = await db.sessionVeto.findMany({
+      where: { sessionId: session.id, NOT: { userId: user.id } },
+      select: { proposalId: true },
+    });
+    if (!wouldVetoLeaveCandidate(jouableIds, new Set(others.map((v) => v.proposalId)), proposalId)) return false;
+    await db.sessionVeto.upsert({
+      where: { sessionId_userId: { sessionId: session.id, userId: user.id } },
+      update: { proposalId },
+      create: { sessionId: session.id, userId: user.id, proposalId, communityId },
+    });
+    return true;
   });
+  if (!allowed) return { ok: false, error: "last_candidate" };
   revalidatePath(`/sessions/${session.id}`);
   return { ok: true };
 }
