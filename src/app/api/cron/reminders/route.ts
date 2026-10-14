@@ -240,6 +240,7 @@ export async function GET(request: Request) {
         // prochain passage rejouera sans doublon.
         try {
           let current: Prisma.JsonValue | undefined = session.remindersSent;
+          let saved = false;
           for (let attempt = 0; attempt < 3 && current !== undefined; attempt++) {
             const { count } = await prisma.session.updateMany({
               where: { id: session.id, remindersSent: { equals: current ?? Prisma.JsonNull } },
@@ -251,13 +252,23 @@ export async function GET(request: Request) {
                 ),
               },
             });
-            if (count === 1) break;
+            if (count === 1) {
+              saved = true;
+              break;
+            }
             current = (
               await prisma.session.findUnique({
                 where: { id: session.id },
                 select: { remindersSent: true },
               })
             )?.remindersSent; // undefined : session supprimée entre-temps
+          }
+          if (!saved && current !== undefined) {
+            logger.warn(
+              "cron:reminders",
+              "remindersSent non écrit après 3 tentatives (écritures concurrentes) : rejeu au prochain passage.",
+              { sessionId: session.id, minutes: [...outcomes.filter((o) => o.ok).map((o) => o.minutes), ...toResolveWithoutSending] }
+            );
           }
         } catch (error) {
           logger.error("cron:reminders", error, { sessionId: session.id });

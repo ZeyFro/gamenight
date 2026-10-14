@@ -17,6 +17,7 @@ const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const hooks = vi.hoisted(() => ({
   onEnqueue: null as null | ((sessionId: string) => Promise<void>),
   failWriteFor: null as null | string,
+  casMissFor: null as null | string,
 }));
 
 vi.mock("@/lib/session-announce", async (importOriginal) => {
@@ -41,6 +42,8 @@ vi.mock("@/lib/prisma", async () => {
       if (key === "update" || key === "updateMany") {
         return (args: { where: { id?: string } }) => {
           if (hooks.failWriteFor && args.where.id === hooks.failWriteFor) throw new Error("écriture forcée en échec");
+          // Compare-and-set toujours perdu (écritures concurrentes sans fin).
+          if (hooks.casMissFor && args.where.id === hooks.casMissFor && key === "updateMany") return Promise.resolve({ count: 0 });
           return (value as Method).call(target, args);
         };
       }
@@ -68,10 +71,12 @@ const CREATED_AT_UTC = new Date("2026-06-15T06:00:00.000Z");
 describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)", () => {
   let db: import("@prisma/client").PrismaClient;
   let route: typeof import("./route");
+  let logger: typeof import("@/lib/logger").logger;
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as import("@prisma/client").PrismaClient;
     route = await import("./route");
+    logger = (await import("@/lib/logger")).logger;
   });
 
   afterAll(async () => {
@@ -90,6 +95,7 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
   afterEach(() => {
     hooks.onEnqueue = null;
     hooks.failWriteFor = null;
+    hooks.casMissFor = null;
     vi.useRealTimers();
     vi.unstubAllEnvs();
   });
@@ -251,6 +257,17 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
     await call();
     expect(await remindersSent(failedId)).toEqual(["60"]);
     expect(await reminderEvents(failedId)).toHaveLength(1);
+  });
+
+  it("compare-and-set perdu 3 fois : avertissement (session, minutes), rien d'écrit", async () => {
+    const session = await makeSession({ timings: [60] });
+    hooks.casMissFor = session.id;
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    setParisTime("19:00");
+    await call();
+    expect(warn).toHaveBeenCalledWith("cron:reminders", expect.stringContaining("remindersSent"), { sessionId: session.id, minutes: [60] });
+    expect(await remindersSent(session.id)).toEqual([]);
+    warn.mockRestore();
   });
 
   it("non-régression : SCHEDULED avec jeu décidé envoie toujours son rappel", async () => {
