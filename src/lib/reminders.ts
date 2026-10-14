@@ -17,6 +17,34 @@ export function parseRemindersSent(value: unknown): string[] {
     : [];
 }
 
+// Métadonnée dans le JSON existant : les seuils restent des chaînes numériques.
+// Une génération distincte permet aussi de replanifier A → B → A sans réutiliser
+// les anciennes clés de livraison. Aucun changement de schéma nécessaire.
+export const REMINDER_SCHEDULE_PREFIX = "schedule:";
+
+export function reminderScheduleKey(value: unknown): string {
+  return parseRemindersSent(value).find(v => v.startsWith(REMINDER_SCHEDULE_PREFIX))?.slice(REMINDER_SCHEDULE_PREFIX.length) ?? "";
+}
+
+export function reminderOccurrence(minutes: number, remindersSent: unknown): string {
+  const generation = reminderScheduleKey(remindersSent);
+  return generation ? `${minutes}:${generation}` : String(minutes);
+}
+
+export function reminderSchedulePayload(session: Pick<Session, "date" | "remindersSent">) {
+  return { reminderDate: session.date.toISOString(), reminderGeneration: reminderScheduleKey(session.remindersSent) };
+}
+
+export function isReminderForSchedule(payload: unknown, session: Pick<Session, "date" | "remindersSent">): boolean {
+  // Les anciennes livraisons sans métadonnées restent valides uniquement tant
+  // que le créneau n'a jamais été modifié depuis l'installation du correctif.
+  if (payload == null) return reminderScheduleKey(session.remindersSent) === "";
+  if (typeof payload !== "object" || Array.isArray(payload)) return false;
+  const stored = payload as Record<string, unknown>;
+  const current = reminderSchedulePayload(session);
+  return stored.reminderDate === current.reminderDate && stored.reminderGeneration === current.reminderGeneration;
+}
+
 /**
  * Résultat de `computeTimingsDue` pour un passage du cron.
  *

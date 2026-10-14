@@ -4,7 +4,8 @@ import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommun
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 import { randomUUID } from "crypto";
-import type { Game, Proposal, Session, SessionInvite, SessionSeat, User, Vote } from "@prisma/client";
+import type { Game, Prisma, Proposal, Session, SessionInvite, SessionSeat, User, Vote } from "@prisma/client";
+import { isReminderForSchedule, reminderOccurrence, reminderSchedulePayload } from "@/lib/reminders";
 import { prisma } from "@/lib/prisma";
 import { isSeatReminderRecipient } from "@/lib/session-seat-plan";
 import { logger } from "@/lib/logger";
@@ -226,7 +227,8 @@ const DM_UNAVAILABLE_ERROR_CLASS = "discord:dm_unavailable";
 async function enqueueSessionDirectMessages<T extends { id: string }>(
   sessionId: string,
   kind: DmKind,
-  users: T[]
+  users: T[],
+  schedule?: ReturnType<typeof reminderSchedulePayload>
 ): Promise<{ covered: T[]; blocked: T[] }> {
   if (users.length === 0) return { covered: [], blocked: [] };
   const prefix = `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:`;
@@ -250,6 +252,7 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
     eventType: "SESSION_DM",
     sourceId: sessionId,
     occurrence: kind,
+    ...(schedule ? { payload: schedule } : {}),
   });
   for (const user of covered) {
     await enqueueDelivery({
@@ -315,7 +318,9 @@ async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput):
   if (session?.createdById !== userId) return;
 
   const fallbackEvent = await createNotificationEvent(
-    { category: "SESSION", eventType: "SESSION_DM_FALLBACK", sourceId: event.sourceId, occurrence: delivery.targetSlot },
+    { category: "SESSION", eventType: "SESSION_DM_FALLBACK", sourceId: event.sourceId, occurrence: delivery.targetSlot,
+      ...(event.payload !== null ? { payload: event.payload as Prisma.InputJsonValue } : {}),
+    },
     db
   );
   await enqueueDelivery(
@@ -610,26 +615,28 @@ export async function enqueueSessionResultThreadSummary(sessionId: string, db?: 
   );
 }
 
-/** SEND une fois par palier de rappel (occurrence = le palier lui-même,
- * fixe par nature) — un appel répété pour le MÊME palier déjà dû est
- * sans effet (idempotent), sûr à rappeler depuis le cron à chaque
- * passage tant que le palier reste dû. Pas de paramètre `db` : appelée
- * depuis le cron rappels, jamais couplée à une mutation métier atomique
- * (aucune mutation métier n'accompagne un rappel — voir le README). */
-export async function enqueueSessionReminderDelivery(sessionId: string, minutes: number): Promise<void> {
-  const event = await createNotificationEvent({
-    category: "SESSION",
-    eventType: "SESSION_REMINDER",
-    sourceId: sessionId,
-    occurrence: String(minutes),
-  });
-  await enqueueDelivery({
-    eventId: event.id,
-    channel: "DISCORD_CHANNEL",
-    transport: "BOT",
-    operation: "SEND",
-    recipientKey: "channel",
-    targetSlot: threadReminderSlot(sessionId, minutes),
+/** Un rappel par palier ET génération du créneau, sans appel Discord.
+ * Le verrou partagé sérialise l'enqueue avec une replanification concurrente.
+ * `false` signifie que le snapshot du cron est devenu obsolète. */
+export async function enqueueSessionReminderDelivery(
+  sessionId: string,
+  minutes: number,
+  expectedSchedule?: Pick<Session, "date" | "remindersSent">
+): Promise<boolean> {
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR SHARE`;
+    const session = await tx.session.findUnique({ where: { id: sessionId }, select: { date: true, remindersSent: true, communityId: true } });
+    if (!session || (expectedSchedule && !isReminderForSchedule(reminderSchedulePayload(expectedSchedule), session))) return false;
+    const event = await createNotificationEvent({
+      category: "SESSION", eventType: "SESSION_REMINDER", sourceId: sessionId,
+      occurrence: reminderOccurrence(minutes, session.remindersSent),
+      communityId: session.communityId, payload: reminderSchedulePayload(session),
+    }, tx);
+    await enqueueDelivery({
+      eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND",
+      recipientKey: "channel", targetSlot: threadReminderSlot(sessionId, minutes),
+    }, tx);
+    return true;
   });
 }
 
@@ -1264,7 +1271,9 @@ async function buildMessageContent(
       ? await resolveCreatorDmRecipient(session)
       : null;
   const dmTargets = creatorRecipient ? [...eligible, creatorRecipient] : eligible;
-  const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(session.id, dmKind, dmTargets) : null;
+  const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(
+    session.id, dmKind, dmTargets, dmKind.startsWith("reminder:") ? reminderSchedulePayload(session) : undefined
+  ) : null;
   // Double ping : TOUS les invités éligibles restent mentionnés, MP ou non.
   const mentioned = session.createdViaRoulette ? [] : [...eligible];
   // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
@@ -1341,6 +1350,8 @@ export const sessionAnnounceResolver: DeliveryResolver = {
     const session = await loadSession(sessionId);
     if (!session) return { eligible: false, reason: "expired" };
     if (!(await notificationEventMatchesSource(event.communityId, session.communityId))) return { eligible: false, reason: "expired" };
+    if ((event.eventType === "SESSION_REMINDER" || role.startsWith("dm:reminder:") || role.startsWith("dm-fallback:reminder:")) &&
+        !isReminderForSchedule(event.payload, session)) return { eligible: false, reason: "expired" };
     if (session.createdViaRoulette) {
       const initial = await prisma.notificationEvent.findUnique({
         where: { category_eventType_sourceId_occurrence: { category: "SESSION", eventType: "SESSION_CREATED", sourceId: sessionId, occurrence: "" } },
@@ -1959,7 +1970,7 @@ async function resolveThreadReminder(
     reminderTitle,
     session.decidedGameId ? "" : formatDateTimeFr(session.date),
     `${reminderTitle} ${reminderBody}`,
-    `reminder:${minutes}`
+    `reminder:${reminderOccurrence(minutes, session.remindersSent)}`
     // Rappel : mention dans le fil ET MP à chaque invité, créateur inclus (MP, pas de mention).
   );
   const action: ResolvedAction = { kind: "send_thread_message_verified", threadId: thread.discordThreadId, message: { ...message, components: sessionRsvpComponents(session) } };

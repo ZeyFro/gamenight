@@ -462,6 +462,42 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(2);
     });
 
+    it("nouvelle date : même palier renvoyé en fil et MP une seule fois pour la nouvelle génération", async () => {
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const session = await makeReadySession(creator.id, [guest.id]);
+      await drain(); fetchMock.mockClear();
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(2);
+      const { updateSessionSchedule } = await import("./sessions");
+      await updateSessionSchedule(session.id, { date: new Date(session.date.getTime() + 24 * 3600_000), votingDeadline: null }, false);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(4);
+      expect(calls("POST", /\/channels\/thread-1\/messages$/)).toHaveLength(2);
+      expect(await db.notificationEvent.count({ where: { sourceId: session.id, eventType: "SESSION_DM", occurrence: { startsWith: "reminder:" } } })).toBe(2);
+    });
+
+    it("les MP de rappel encore en file expirent si la date change après le message dans le fil", async () => {
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const session = await makeReadySession(creator.id, [guest.id]);
+      await drain();
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      const thread = await executorLib.processNextDelivery({ resolver: announceLib.sessionAnnounceResolver, owner: uniq("worker") });
+      expect(thread?.outcome).toBe("sent");
+      expect(await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm:reminder:60:" }, status: "PENDING" } })).toBe(2);
+      const { updateSessionSchedule } = await import("./sessions");
+      await updateSessionSchedule(session.id, { date: new Date(session.date.getTime() + 24 * 3600_000), votingDeadline: null }, false);
+      fetchMock.mockClear();
+      const outcomes = await drain();
+      expect(outcomes).toHaveLength(2);
+      expect(outcomes.every(o => o.outcome === "failed")).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("rappel : le créateur n'est pas mentionné dans le fil même sans préférence ; préférence SESSION coupée → pas de MP pour lui", async () => {
       const creator = await makeUser();
       const a = await makeUser();

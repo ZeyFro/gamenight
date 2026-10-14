@@ -12,10 +12,55 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+// Points d'injection : écriture concurrente pendant l'enqueue, et échec forcé
+// de l'écriture de `remindersSent` pour une session donnée.
+const hooks = vi.hoisted(() => ({
+  onEnqueue: null as null | ((sessionId: string) => Promise<void>),
+  onEnqueued: null as null | ((sessionId: string) => Promise<void>),
+  failWriteFor: null as null | string,
+  casMissFor: null as null | string,
+}));
+
+vi.mock("@/lib/session-announce", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/session-announce")>();
+  return {
+    ...actual,
+    enqueueSessionReminderDelivery: async (sessionId: string, minutes: number, expectedSchedule?: Parameters<typeof actual.enqueueSessionReminderDelivery>[2]) => {
+      await hooks.onEnqueue?.(sessionId);
+      const queued = await actual.enqueueSessionReminderDelivery(sessionId, minutes, expectedSchedule);
+      await hooks.onEnqueued?.(sessionId);
+      return queued;
+    },
+  };
+});
+
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) return { prisma: {} as unknown };
-  return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) };
+  const real = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
+  type Method = (args: { where: { id?: string } }) => unknown;
+  const session = new Proxy(real.session, {
+    get(target, key) {
+      const value = Reflect.get(target, key) as unknown;
+      if (key === "update" || key === "updateMany") {
+        return (args: { where: { id?: string } }) => {
+          if (hooks.failWriteFor && args.where.id === hooks.failWriteFor) throw new Error("écriture forcée en échec");
+          // Compare-and-set toujours perdu (écritures concurrentes sans fin).
+          if (hooks.casMissFor && args.where.id === hooks.casMissFor && key === "updateMany") return Promise.resolve({ count: 0 });
+          return (value as Method).call(target, args);
+        };
+      }
+      return typeof value === "function" ? (value as () => unknown).bind(target) : value;
+    },
+  });
+  const prisma = new Proxy(real, {
+    get(target, key) {
+      if (key === "session") return session;
+      const value = Reflect.get(target, key) as unknown;
+      return typeof value === "function" ? (value as () => unknown).bind(target) : value;
+    },
+  });
+  return { prisma };
 });
 
 if (!TEST_DATABASE_URL) {
@@ -29,10 +74,12 @@ const CREATED_AT_UTC = new Date("2026-06-15T06:00:00.000Z");
 describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)", () => {
   let db: import("@prisma/client").PrismaClient;
   let route: typeof import("./route");
+  let logger: typeof import("@/lib/logger").logger;
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as import("@prisma/client").PrismaClient;
     route = await import("./route");
+    logger = (await import("@/lib/logger")).logger;
   });
 
   afterAll(async () => {
@@ -49,6 +96,10 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
   });
 
   afterEach(() => {
+    hooks.onEnqueue = null;
+    hooks.onEnqueued = null;
+    hooks.failWriteFor = null;
+    hooks.casMissFor = null;
     vi.useRealTimers();
     vi.unstubAllEnvs();
   });
@@ -94,6 +145,71 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
   async function remindersSent(sessionId: string) {
     return (await db.session.findUniqueOrThrow({ where: { id: sessionId } })).remindersSent as string[];
   }
+
+  async function move(sessionId: string, date: Date) {
+    const { updateSessionSchedule } = await import("@/lib/sessions");
+    await updateSessionSchedule(sessionId, { date, votingDeadline: null }, false);
+  }
+
+  it("une nouvelle date réarme les seuils et crée une nouvelle livraison du même palier", async () => {
+    const session = await makeSession({ timings: [60] });
+    setParisTime("19:00");
+    await call();
+    expect(await remindersSent(session.id)).toEqual(["60"]);
+    const nextDate = new Date(PARTY.getTime() + 24 * 3600_000);
+    await move(session.id, nextDate);
+    expect(await remindersSent(session.id)).not.toContain("60");
+    vi.setSystemTime(new Date("2026-06-16T17:00:00.000Z"));
+    await call();
+    const events = await reminderEvents(session.id);
+    expect(events).toHaveLength(2);
+    expect(new Set(events.map(e => e.occurrence)).size).toBe(2);
+    expect(events.some(e => (e.payload as { reminderDate: string }).reminderDate === nextDate.toISOString())).toBe(true);
+    expect(await remindersSent(session.id)).toContain("60");
+    await call();
+    expect(await reminderEvents(session.id)).toHaveLength(2);
+  });
+
+  it("modifier seulement la deadline ne réarme aucun rappel déjà envoyé", async () => {
+    const session = await makeSession({ timings: [60] });
+    setParisTime("19:00"); await call();
+    await move(session.id, PARTY);
+    expect(await remindersSent(session.id)).toEqual(["60"]);
+    await call();
+    expect(await reminderEvents(session.id)).toHaveLength(1);
+  });
+
+  it("A → B → A permet un nouveau rappel sans réutiliser l'ancienne occurrence", async () => {
+    const session = await makeSession({ timings: [60] });
+    setParisTime("19:00"); await call();
+    await move(session.id, new Date(PARTY.getTime() + 24 * 3600_000));
+    await move(session.id, PARTY);
+    await call();
+    expect(await reminderEvents(session.id)).toHaveLength(2);
+    expect(await remindersSent(session.id)).toContain("60");
+  });
+
+  it("date modifiée après lecture du cron : aucun enqueue sur le snapshot périmé", async () => {
+    const session = await makeSession({ timings: [900, 60] });
+    hooks.onEnqueue = id => move(id, new Date(PARTY.getTime() + 24 * 3600_000));
+    setParisTime("19:00"); await call();
+    expect(await reminderEvents(session.id)).toHaveLength(0);
+    expect(await remindersSent(session.id)).not.toContain("60");
+    expect(await remindersSent(session.id)).not.toContain("900");
+  });
+
+  it.each([false, true])("replanification après enqueue (retour à la même date : %s) : le cron ne pollue pas la nouvelle génération", async sameDate => {
+    const session = await makeSession({ timings: [900, 60] });
+    hooks.onEnqueued = async id => {
+      await move(id, new Date(PARTY.getTime() + 24 * 3600_000));
+      if (sameDate) await move(id, PARTY);
+    };
+    setParisTime("19:00"); await call();
+    expect(await reminderEvents(session.id)).toHaveLength(1);
+    expect(await remindersSent(session.id)).toHaveLength(1);
+    expect(await remindersSent(session.id)).not.toContain("60");
+    expect(await remindersSent(session.id)).not.toContain("900");
+  });
 
   it("VOTING + délai long : « 15h avant » (échéance avant la création) est supprimé sans envoi ni livraison", async () => {
     const session = await makeSession();
@@ -166,6 +282,61 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
     const result = await call();
     expect(result.checked).toBe(0);
     expect(await reminderEvents(session.id)).toHaveLength(0);
+  });
+
+  it("rejouer l'enqueue du même rappel ne crée ni 2e événement ni 2e livraison", async () => {
+    const session = await makeSession({ timings: [60] });
+    const { enqueueSessionReminderDelivery } = await import("@/lib/session-announce");
+    await enqueueSessionReminderDelivery(session.id, 60);
+    await enqueueSessionReminderDelivery(session.id, 60);
+    const events = await reminderEvents(session.id);
+    expect(events).toHaveLength(1);
+    expect(events[0].deliveries).toHaveLength(1);
+  });
+
+  it("écriture concurrente de remindersSent pendant le passage : non écrasée (fusion)", async () => {
+    const session = await makeSession({ timings: [60] });
+    hooks.onEnqueue = async (id) => {
+      await db.session.update({ where: { id }, data: { remindersSent: ["999"] } });
+    };
+    setParisTime("19:00");
+    await call();
+    expect((await remindersSent(session.id)).sort()).toEqual(["60", "999"]);
+  });
+
+  it("échec d'écriture de remindersSent sur une session : les suivantes sont traitées, ré-enqueue sans doublon", async () => {
+    const a = await makeSession({ timings: [60] });
+    const b = await makeSession({ timings: [60] });
+    let first: string | null = null;
+    hooks.onEnqueue = async (id) => {
+      first ??= id;
+      hooks.failWriteFor = first;
+    };
+    setParisTime("19:00");
+    const result = await call();
+    const failedId = first as unknown as string;
+    const otherId = failedId === a.id ? b.id : a.id;
+    expect(await remindersSent(otherId)).toEqual(["60"]);
+    expect(result.sent).toContain(`${otherId}:60min`);
+    expect(await remindersSent(failedId)).toEqual([]);
+
+    hooks.failWriteFor = null;
+    hooks.onEnqueue = null;
+    setParisTime("19:05");
+    await call();
+    expect(await remindersSent(failedId)).toEqual(["60"]);
+    expect(await reminderEvents(failedId)).toHaveLength(1);
+  });
+
+  it("compare-and-set perdu 3 fois : avertissement (session, minutes), rien d'écrit", async () => {
+    const session = await makeSession({ timings: [60] });
+    hooks.casMissFor = session.id;
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    setParisTime("19:00");
+    await call();
+    expect(warn).toHaveBeenCalledWith("cron:reminders", expect.stringContaining("remindersSent"), { sessionId: session.id, minutes: [60] });
+    expect(await remindersSent(session.id)).toEqual([]);
+    warn.mockRestore();
   });
 
   it("non-régression : SCHEDULED avec jeu décidé envoie toujours son rappel", async () => {
