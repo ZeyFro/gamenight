@@ -1,0 +1,73 @@
+# CI des PR vers main : tests (dont intégration sur un Postgres de service
+# jetable), typage, lint, build. Aucun secret ni variable Vercel : la base est
+# celle du conteneur de service, jamais Neon. Pas d'auto-merge.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # Miroir Amazon ECR Public de l'image officielle (Docker Official Images) : le
+        # pull anonyme depuis Docker Hub échoue parfois (limite de 100 pulls / 6 h par IP
+        # partagée des runners, ou délai dépassé sur auth.docker.io). Même image
+        # (PostgreSQL 16), sans compte ni secret.
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gamenight_test
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: prisma migrate deploy (base de service)
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+
+      - name: npm run test:postgres
+        run: npm run test:postgres
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+
+      - run: npm test
+
+      # Types globaux de Next (`LayoutProps`, `PageProps`…) générés dans
+      # `.next/types` : absents d'un checkout neuf, tsc échoue sans eux.
+      - run: npx next typegen
+
+      - run: npx tsc --noEmit
+
+      - run: npm run lint
+
+      # `npm run build` lancerait `prisma migrate deploy` : on compile seulement.
+      - run: npx next build

@@ -1,0 +1,114 @@
+import { withCommunityReadContext } from "@/lib/community-read-context";
+import type { User } from "@prisma/client";
+import { nowMs, wallClockNow } from "@/lib/wallclock";
+import { getNextSessionForHome, getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
+import { listGroupAchievements } from "@/lib/group-achievements";
+import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardCommunityId } from "@/lib/community-access";
+import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
+import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
+import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
+import { getMonthlyRecap } from "@/lib/monthly-recap";
+import { ensureActiveSeasonExistsForViewer, getSeasonProgress } from "@/lib/seasons";
+import { getActiveTournament } from "@/lib/tournaments";
+import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats";
+
+/**
+ * Données de l'accueil v2 (`/accueil-v2`) : mêmes requêtes que l'accueil
+ * actuel (`src/app/page.tsx`, branche « connecté »), dans le même ordre et avec
+ * les mêmes filtres de confidentialité (`accessibleSessionWhere`). Aucune
+ * donnée fictive.
+ *
+ * Volontairement absents (effets de bord de l'accueil actuel, pas des données
+ * affichées) : la clôture automatique d'une soirée au vote échu
+ * (`closeSessionIfDue`) et l'affichage de l'onboarding. Cette page ne les
+ * déclenche donc pas ; `/` continue de s'en charger.
+ */
+export function loadHomeData(rawUser: User) {
+  return withCommunityReadContext(() => loadHomeDataUncached(rawUser));
+}
+
+async function loadHomeDataUncached(rawUser: User) {
+  const user = projectUserProgress(rawUser, await getMemberStatsForViewer(rawUser.id, rawUser.id));
+  // Garde-fou idempotent identique à `/` (voir `ensureActiveSeasonExistsForViewer`).
+  await ensureActiveSeasonExistsForViewer(user.id);
+
+  const [
+    nextSession,
+    activity,
+    groupStats,
+    weekAvailability,
+    scoreboard,
+    gameNews,
+    weeklyChallenge,
+    groupAchievements,
+    activeDebts,
+    activeDebtorIds,
+  ] = await Promise.all([
+    getNextSessionForHome(user.id),
+    getRecentActivity(user.id, 3),
+    getGroupStats(user.id),
+    getWeekAvailability(user.id),
+    getScoreboard("global", { communityId: await getScoreboardCommunityId(user.id) }),
+    getRecentGameNews(),
+    getCurrentWeeklyChallengeForViewer(user.id),
+    listGroupAchievements(user.id),
+    getActiveDebts(user.id),
+    getActiveDebtorIds(user.id),
+  ]);
+
+  const wallNow = wallClockNow();
+  const prevMonthDate = new Date(Date.UTC(wallNow.getUTCFullYear(), wallNow.getUTCMonth() - 1, 1));
+  const recapYear = prevMonthDate.getUTCFullYear();
+  const recapMonth = prevMonthDate.getUTCMonth() + 1;
+  const [lastMonthRecap, seasonProgress, activeTournament] = await Promise.all([
+    getMonthlyRecap(recapYear, recapMonth, user.id),
+    getSeasonProgress(user.id),
+    getActiveTournament(user.id),
+  ]);
+
+  // Cover : jeu décidé si la soirée est SCHEDULED, sinon proposition la plus votée.
+  const topProposal = nextSession?.proposals.reduce<(typeof nextSession.proposals)[number] | null>(
+    (best, p) => (!best || p.votes.length > best.votes.length ? p : best),
+    null
+  );
+  const nextSessionCoverUrl = nextSession?.decidedGame?.coverUrl ?? topProposal?.game.coverUrl ?? null;
+
+  // « Joueurs inscrits » : voteurs de la proposition gagnante une fois le jeu
+  // décidé, sinon voteurs de toutes les propositions.
+  const registeredPlayerIds = new Set<string>();
+  if (nextSession) {
+    const relevantProposals = nextSession.decidedGameId
+      ? nextSession.proposals.filter((p) => p.gameId === nextSession.decidedGameId)
+      : nextSession.proposals;
+    for (const p of relevantProposals) {
+      for (const v of p.votes) registeredPlayerIds.add(v.userId);
+    }
+  }
+
+  const level = levelForXp(user.xpTotal);
+
+  return {
+    now: nowMs(),
+    nextSession,
+    nextSessionCoverUrl,
+    registeredPlayerCount: registeredPlayerIds.size,
+    activity,
+    groupStats,
+    weekAvailability,
+    scoreboard,
+    gameNews,
+    weeklyChallenge,
+    groupAchievements,
+    activeDebts,
+    activeDebtorIds,
+    lastMonthRecap,
+    recapYear,
+    recapMonth,
+    seasonProgress,
+    activeTournament,
+    level,
+    rank: rankForLevel(level),
+    title: titleForLevel(level),
+  };
+}

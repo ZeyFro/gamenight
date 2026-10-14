@@ -1,0 +1,148 @@
+import type { CommunityChannelCategory } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { listGuildChannels, verifyChannelDestination, type GuildChannel } from "@/lib/discord-rest";
+
+/**
+ * Multi-communautés — écran d'administration (onglet « Communautés » de
+ * `/admin`), derrière `COMMUNITY_ADMIN_ENABLED` (exactement `true`, éteint par
+ * défaut). Éteint : aucun onglet, aucune action, aucune lecture.
+ *
+ * Deux écritures seulement, toutes revalidées en base à chaque appel :
+ *  - `activateCommunity` : PENDING → ACTIVE (jamais depuis un autre statut) ;
+ *  - `setCommunityChannel` : salon SESSION / TOURNAMENT d'une communauté. Le
+ *    salon n'est enregistré qu'après un `GET` Discord réel
+ *    (`verifyChannelDestination`) confirmant qu'il appartient au serveur de la
+ *    communauté et accepte les fils. Aucun message n'est envoyé.
+ * L'accès admin lui-même (`requireAdmin`) est contrôlé par l'appelant.
+ */
+
+export function isCommunityAdminEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.COMMUNITY_ADMIN_ENABLED === "true";
+}
+
+export const ADMIN_CHANNEL_CATEGORIES: readonly CommunityChannelCategory[] = ["SESSION", "TOURNAMENT"];
+
+export function parseChannelCategory(value: unknown): CommunityChannelCategory | null {
+  return ADMIN_CHANNEL_CATEGORIES.find((c) => c === value) ?? null;
+}
+
+/** Identifiant Discord (snowflake) : chiffres seuls, jamais d'espace. */
+function isSnowflake(value: string): boolean {
+  return /^\d{17,20}$/.test(value);
+}
+
+const DISCORD_BUDGET_MS = 8_000;
+
+/** Même règle que `community-channels.ts` : seule `default` emprunte le serveur de l'environnement. */
+function guildIdOf(community: { slug: string; discordGuildId: string | null }): string | null {
+  if (community.discordGuildId) return community.discordGuildId;
+  return community.slug === DEFAULT_COMMUNITY_SLUG ? process.env.DISCORD_BOT_GUILD_ID?.trim() || null : null;
+}
+
+export type ActivateResult = "activated" | "not_found" | "not_pending" | "no_guild";
+
+export async function activateCommunity(communityId: string, adminId: string): Promise<ActivateResult> {
+  const community = await prisma.community.findUnique({ where: { id: communityId } });
+  if (!community) return "not_found";
+  if (community.status !== "PENDING") return "not_pending";
+  if (!community.discordGuildId) return "no_guild";
+
+  // `status: "PENDING"` dans le where : deux admins qui cliquent ensemble ne
+  // réécrivent pas `activatedAt` / `activatedById`.
+  const { count } = await prisma.community.updateMany({
+    where: { id: communityId, status: "PENDING" },
+    data: { status: "ACTIVE", activatedAt: new Date(), activatedById: adminId },
+  });
+  return count === 1 ? "activated" : "not_pending";
+}
+
+export type SetChannelFailure =
+  | "invalid_channel"
+  | "not_found"
+  | "inactive"
+  | "no_guild"
+  | "unusable_channel"
+  | "verification_failed";
+export type SetChannelResult = { ok: true } | { ok: false; reason: SetChannelFailure };
+
+export async function setCommunityChannel(input: {
+  communityId: string;
+  category: CommunityChannelCategory;
+  channelId: string;
+}): Promise<SetChannelResult> {
+  if (!isSnowflake(input.channelId)) return { ok: false, reason: "invalid_channel" };
+
+  const community = await prisma.community.findUnique({ where: { id: input.communityId } });
+  if (!community) return { ok: false, reason: "not_found" };
+  if (community.status !== "PENDING" && community.status !== "ACTIVE") return { ok: false, reason: "inactive" };
+  const guildId = guildIdOf(community);
+  if (!guildId) return { ok: false, reason: "no_guild" };
+
+  const verified = await verifyChannelDestination({
+    channelId: input.channelId,
+    guildId,
+    deadline: new Date(Date.now() + DISCORD_BUDGET_MS),
+  });
+  if (!verified.ok) {
+    return { ok: false, reason: verified.kind === "destination_mismatch" ? "unusable_channel" : "verification_failed" };
+  }
+
+  await prisma.communityChannelConfig.upsert({
+    where: { communityId_category: { communityId: community.id, category: input.category } },
+    create: { communityId: community.id, category: input.category, discordChannelId: input.channelId, enabled: true },
+    update: { discordChannelId: input.channelId, enabled: true },
+  });
+  return { ok: true };
+}
+
+export interface AdminCommunityRow {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  discordGuildId: string | null;
+  activeMembers: number;
+  channels: Partial<Record<CommunityChannelCategory, { discordChannelId: string; enabled: boolean }>>;
+  /** Salons texte du serveur (liste Discord) ; `null` = indisponible, motif dans `channelsError`. */
+  guildChannels: GuildChannel[] | null;
+  channelsError: string | null;
+}
+
+/** Toutes les communautés, avec leurs salons configurés et, pour les PENDING/ACTIVE, les salons proposés par Discord. */
+export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
+  const communities = await prisma.community.findMany({
+    orderBy: { createdAt: "asc" },
+    include: {
+      channelConfigs: true,
+      _count: { select: { memberships: { where: { status: "ACTIVE" } } } },
+    },
+  });
+
+  return Promise.all(
+    communities.map(async (c) => {
+      const editable = c.status === "PENDING" || c.status === "ACTIVE";
+      const guildId = guildIdOf(c);
+      let guildChannels: GuildChannel[] | null = null;
+      let channelsError: string | null = null;
+      if (editable && guildId) {
+        const res = await listGuildChannels({ guildId, deadline: new Date(Date.now() + DISCORD_BUDGET_MS) });
+        if (res.ok) guildChannels = res.data.channels;
+        else channelsError = res.message;
+      }
+      return {
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        status: c.status,
+        discordGuildId: guildId,
+        activeMembers: c._count.memberships,
+        channels: Object.fromEntries(
+          c.channelConfigs.map((r) => [r.category, { discordChannelId: r.discordChannelId, enabled: r.enabled }])
+        ),
+        guildChannels,
+        channelsError,
+      };
+    })
+  );
+}
