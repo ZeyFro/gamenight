@@ -65,6 +65,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `PAGE_TITLES_ENABLED` : titres d'onglet par page (gabarit `%s · GameNight`) ; éteint = titre global seul
 - `GUIDE_V2_ENABLED` : sections « Jouer maintenant » et « Tournois » dans `/guide`
 - `TOURNAMENT_SCORES_ENABLED` : saisie facultative des scores de match (bracket seulement, ni annonces ni MP) ; exige la migration `tournament_match_scores`
+- `VOTE_VETO_ENABLED` : veto au vote de jeu (1 par personne et par soirée, remplaçable ; un jeu vetoé n'est ni retenu ni tiré ; veto refusé s'il ne reste aucun jeu candidat) ; exige la migration `add_session_veto`
 
 ## Outils
 - Superpowers : planifier une grosse fonctionnalité.

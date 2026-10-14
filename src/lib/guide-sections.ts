@@ -1,3 +1,4 @@
+import { isVoteVetoEnabled } from "@/lib/session-veto";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 
 export type GuideSection = { icon: string; title: string; lines: string[] };
@@ -29,7 +30,12 @@ const EXTRA_SECTIONS: GuideSection[] = [
   },
 ];
 
-export function guideSections(base: GuideSection[]): GuideSection[] {
+const VETO_LINE = "Un veto par soirée : le jeu vetoé ne peut pas être retenu (sauf si c'est le dernier possible).";
+
+export function guideSections(input: GuideSection[]): GuideSection[] {
+  const base = isVoteVetoEnabled()
+    ? input.map((s) => (s.title === "Soirées" ? { ...s, lines: [...s.lines, VETO_LINE] } : s))
+    : input;
   if (process.env.GUIDE_V2_ENABLED !== "true") return base;
   if (!isTournamentScoresEnabled()) return [...base, ...EXTRA_SECTIONS];
   return [
