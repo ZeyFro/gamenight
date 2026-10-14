@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { prisma } from "@/lib/prisma";
-import { getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
+import { getGroupLibraryGames, getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
 import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/lib/game-filters";
 import { ButtonLink } from "@/components/ui/Button";
 import { LibraryTabs } from "@/components/LibraryTabs";
@@ -20,17 +19,9 @@ export default async function GroupLibraryPage({
   if (!user) redirect("/");
 
   const [allGames, ownerCounts, totalUsers] = await Promise.all([
-    prisma.game.findMany({
-      where: { userGames: { some: { owned: true } } },
-      include: {
-        userGames: {
-          where: { owned: true },
-          include: { user: true },
-        },
-      },
-    }),
-    getGameOwnerCounts(),
-    getTotalUserCount(),
+    getGroupLibraryGames(user.id),
+    getGameOwnerCounts(user.id),
+    getTotalUserCount(user.id),
   ]);
 
   const filterableGames = allGames.map((game) => toFilterableGame(game));

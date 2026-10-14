@@ -27,8 +27,8 @@ export default async function BibliothequePage({
       include: { game: true },
       orderBy: { game: { name: "asc" } },
     }),
-    getGameOwnerCounts(),
-    getTotalUserCount(),
+    getGameOwnerCounts(user.id),
+    getTotalUserCount(user.id),
   ]);
 
   const allGames = userGames.map(({ game }) => game);

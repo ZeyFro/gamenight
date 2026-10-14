@@ -1,5 +1,6 @@
 import type { Game, UserGameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { memberUserWhere, resolveActiveCommunityScope } from "@/lib/community-isolation";
 import type { FilterableGame } from "@/lib/game-filters";
 import type { IgdbGameDetails } from "@/lib/igdb";
 
@@ -24,17 +25,36 @@ export function toFilterableGame(
   };
 }
 
-/** Nombre de possesseurs (`UserGame.owned`) par jeu, tout le groupe confondu — filtre "possédé par N potes" (PR 31, 2/4). */
-export async function getGameOwnerCounts(): Promise<Map<string, number>> {
+/** Même communauté active pour les jeux, leurs possesseurs et les compteurs. */
+async function libraryMemberWhere(viewerId: string) {
+  return memberUserWhere(await resolveActiveCommunityScope(viewerId));
+}
+
+export async function getGroupLibraryGames(viewerId: string) {
+  const user = await libraryMemberWhere(viewerId);
+  return prisma.game.findMany({
+    where: { userGames: { some: { owned: true, user } } },
+    include: {
+      userGames: {
+        where: { owned: true, user },
+        include: { user: { select: { id: true, discordName: true, discordAvatar: true } } },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+}
+
+/** Nombre de possesseurs actifs par jeu dans la communauté affichée. */
+export async function getGameOwnerCounts(viewerId: string): Promise<Map<string, number>> {
   const rows = await prisma.userGame.groupBy({
     by: ["gameId"],
-    where: { owned: true },
+    where: { owned: true, user: await libraryMemberWhere(viewerId) },
     _count: { _all: true },
   });
   return new Map(rows.map((r) => [r.gameId, r._count._all]));
 }
 
 /** Borne haute du slider "possédé par N potes" — nombre total de membres du groupe. */
-export async function getTotalUserCount(): Promise<number> {
-  return prisma.user.count();
+export async function getTotalUserCount(viewerId: string): Promise<number> {
+  return prisma.user.count({ where: await libraryMemberWhere(viewerId) });
 }
