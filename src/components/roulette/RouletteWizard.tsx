@@ -200,7 +200,7 @@ export function RouletteWizard({
     requestAnimationFrame(() => spin());
   }
 
-  const allDrawn = segments.length > 0 && segments.every((seg) => drawnGameIds.has(seg.game.id));
+  const allDrawn = playerFilterEnabled && segments.length > 0 && segments.every((seg) => drawnGameIds.has(seg.game.id));
 
   const wheelSegments: WheelSegment[] = segments.map((seg) => ({
     key: `${seg.userId}-${seg.game.id}`,

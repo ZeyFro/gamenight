@@ -71,9 +71,13 @@ describe("pickInstantSegment (roulette instantanée, « Relancer »)", () => {
   const segments = [seg("a"), seg("b"), seg("a"), seg("c")]; // « a » proposé 2 fois
 
   it("exclut TOUS les segments d'un jeu déjà tiré, renvoie l'index d'origine", () => {
-    const r = pickInstantSegment(segments, { drawnGameIds: new Set(["a"]), playerCount: 2, filterEnabled: false, rng: at(0) });
+    const r = pickInstantSegment(segments, { drawnGameIds: new Set(["a"]), playerCount: 2, filterEnabled: true, rng: at(0) });
     expect(r).toEqual({ index: 1, fallback: false, exhausted: false });
-    expect(pickInstantSegment(segments, { drawnGameIds: new Set(["a"]), playerCount: 2, filterEnabled: false, rng: at(0.99) }).index).toBe(3);
+    expect(pickInstantSegment(segments, { drawnGameIds: new Set(["a"]), playerCount: 2, filterEnabled: true, rng: at(0.99) }).index).toBe(3);
+  });
+  it("flag éteint : jeux déjà tirés ignorés, tirage uniforme comme à l'origine", () => {
+    const r = pickInstantSegment(segments, { drawnGameIds: new Set(["a", "b", "c"]), playerCount: 2, filterEnabled: false, rng: at(0) });
+    expect(r).toEqual({ index: 0, fallback: false, exhausted: false });
   });
   it("tous tirés : exhausted, aucun index", () => {
     const r = pickInstantSegment(segments, { drawnGameIds: new Set(["a", "b", "c"]), playerCount: 2, filterEnabled: true, rng: at(0) });
