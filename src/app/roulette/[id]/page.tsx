@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/Button";
 import { RouletteCountdown } from "@/components/roulette/RouletteCountdown";
 import { RouletteEntryForm } from "@/components/roulette/RouletteEntryForm";
 import { RouletteResultReveal } from "@/components/roulette/RouletteResultReveal";
+import { RouletteVetoButton } from "@/components/roulette/RouletteVetoButton";
+import { isVoteVetoEnabled } from "@/lib/session-veto";
+import { rouletteVetoRefusal } from "@/lib/roulette-veto";
+import { wallClockNow } from "@/lib/wallclock";
 import { forceSpinRouletteAction } from "@/app/roulette/actions";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -122,6 +126,26 @@ export default async function RouletteDetailPage({
     orderBy: { game: { name: "asc" } },
   });
 
+  // Veto du jeu tiré : proposé seulement si le serveur l'accepterait (mêmes règles que `vetoRouletteGame`).
+  let canVeto = false;
+  if (isVoteVetoEnabled() && roulette.status === "DONE" && roulette.resultSessionId) {
+    const [resultSession, myVeto] = await Promise.all([
+      scopedDb.session.findUnique({ where: { id: roulette.resultSessionId }, select: { status: true, date: true } }),
+      scopedDb.rouletteVeto.findFirst({ where: { rouletteId: id, userId: user.id }, select: { id: true } }),
+    ]);
+    canVeto =
+      resultSession !== null &&
+      rouletteVetoRefusal({
+        rouletteStatus: roulette.status,
+        hasResultSession: true,
+        sessionStatus: resultSession.status,
+        sessionDate: resultSession.date,
+        isParticipant: fullEntries.some((e) => e.userId === user.id),
+        alreadyVetoed: myVeto !== null,
+        now: wallClockNow(),
+      }) === null;
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
@@ -198,6 +222,8 @@ export default async function RouletteDetailPage({
           soundEnabled={user.soundEnabled}
         />
       )}
+
+      {canVeto && <RouletteVetoButton rouletteId={roulette.id} />}
 
       {roulette.status === "DONE" && !roulette.resultGameId && (
         <Card>

@@ -25,12 +25,14 @@ if (!TEST_DATABASE_URL) {
 describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", () => {
   let db: import("@prisma/client").PrismaClient;
   let roulette: typeof import("./roulette");
+  let vetoLib: typeof import("./roulette-veto-db");
   let n = 0;
   const uniq = (label: string) => `${label}-${++n}`;
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     roulette = await import("./roulette");
+    vetoLib = await import("./roulette-veto-db");
   });
   afterAll(async () => {
     await db?.$disconnect();
@@ -41,7 +43,7 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
   beforeEach(async () => {
     vi.unstubAllEnvs();
     await db.$executeRawUnsafe(
-      `TRUNCATE "RouletteEntry", "Roulette", "SessionVeto", "Vote", "Proposal", "Session", "Game", "User", "Community" CASCADE`
+      `TRUNCATE "RouletteVeto", "RouletteEntry", "Roulette", "SessionVeto", "Vote", "Proposal", "Session", "Game", "User", "Community" CASCADE`
     );
     (await import("./default-community")).resetDefaultCommunityIdCache();
     communityId = (await db.community.create({ data: { slug: "default", name: "default", status: "ACTIVE" } })).id;
@@ -125,6 +127,124 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
       const out = await roulette.spinRoulette(r.id);
       expect([big.id, huge.id]).toContain(await resultGameOf(r.id));
       expect(out).toEqual({ playerFilterFallback: false });
+    });
+  });
+
+  describe("veto du jeu tiré (VOTE_VETO_ENABLED)", () => {
+    /** 3 participants ; x et y sans borne, z accepte 2 joueurs seulement. Tirage initial déterministe (rng 0). */
+    async function drawn(opts: { filter?: boolean; announceViaBot?: boolean } = {}) {
+      vi.stubEnv("VOTE_VETO_ENABLED", "true");
+      if (opts.filter) vi.stubEnv("ROULETTE_PLAYER_FILTER_ENABLED", "true");
+      const users = [await makeUser(), await makeUser(), await makeUser()];
+      const x = await makeGame(users[0].id, null, null);
+      const y = await makeGame(users[0].id, null, null);
+      const z = await makeGame(users[0].id, 2, 2);
+      const r = await makeRoulette([
+        { userId: users[0].id, gameIds: [x.id, y.id] },
+        { userId: users[1].id, gameIds: [x.id, z.id] },
+        { userId: users[2].id, gameIds: [y.id, z.id] },
+      ]);
+      await roulette.spinRoulette(r.id, () => 0);
+      const done = await db.roulette.findUniqueOrThrow({ where: { id: r.id } });
+      if (opts.announceViaBot) await db.session.update({ where: { id: done.resultSessionId! }, data: { announceViaBot: true } });
+      return { r, users, games: { x, y, z }, first: done.resultGameId!, sessionId: done.resultSessionId! };
+    }
+    const sessionOf = (id: string) => db.session.findUniqueOrThrow({ where: { id }, include: { proposals: { include: { votes: true } } } });
+    const veto = (rouletteId: string, userId: string, rng: () => number = () => 0) => vetoLib.vetoRouletteGame({ rouletteId, userId, rng });
+
+    it("flag éteint : refus, rien ne change", async () => {
+      const s = await drawn();
+      vi.stubEnv("VOTE_VETO_ENABLED", "");
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "disabled" });
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(s.first);
+      expect(await db.rouletteVeto.count()).toBe(0);
+    });
+
+    it("un participant vetoe : relance sur un autre jeu, soirée et roulette mises à jour, veto enregistré", async () => {
+      const s = await drawn();
+      expect(await veto(s.r.id, s.users[0].id)).toMatchObject({ ok: true });
+      const session = await sessionOf(s.sessionId);
+      expect(session.decidedGameId).not.toBe(s.first);
+      expect((await db.roulette.findUniqueOrThrow({ where: { id: s.r.id } })).resultGameId).toBe(session.decidedGameId);
+      // Même invariant que la création : une seule proposition (le jeu décidé) avec un vote par participant.
+      expect(session.proposals.map((p) => p.gameId)).toEqual([session.decidedGameId]);
+      expect(session.proposals[0].votes.map((v) => v.userId).sort()).toEqual(s.users.map((u) => u.id).sort());
+      const row = await db.rouletteVeto.findFirstOrThrow();
+      expect(row).toMatchObject({ rouletteId: s.r.id, userId: s.users[0].id, gameId: s.first, communityId });
+    });
+
+    it("double veto de la même personne refusé ; la soirée ne bouge plus", async () => {
+      const s = await drawn();
+      await veto(s.r.id, s.users[0].id);
+      const decided = (await sessionOf(s.sessionId)).decidedGameId;
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "already_vetoed" });
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(decided);
+      expect(await db.rouletteVeto.count()).toBe(1);
+    });
+
+    it("exclut TOUS les jeux déjà vetoés ; plus aucun candidat : veto refusé, soirée inchangée", async () => {
+      const s = await drawn();
+      expect((await veto(s.r.id, s.users[0].id)).ok).toBe(true);
+      expect((await veto(s.r.id, s.users[1].id)).ok).toBe(true);
+      const vetoed = (await db.rouletteVeto.findMany()).map((v) => v.gameId);
+      const decided = (await sessionOf(s.sessionId)).decidedGameId!;
+      expect(vetoed).not.toContain(decided);
+      expect(new Set([...vetoed, decided]).size).toBe(3);
+      expect(await veto(s.r.id, s.users[2].id)).toEqual({ ok: false, error: "no_candidate" });
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(decided);
+      expect(await db.rouletteVeto.count()).toBe(2);
+    });
+
+    it("non-participant (sans entrée) refusé", async () => {
+      const s = await drawn();
+      const outsider = await makeUser();
+      expect(await veto(s.r.id, outsider.id)).toEqual({ ok: false, error: "not_participant" });
+      expect(await db.rouletteVeto.count()).toBe(0);
+    });
+
+    it("roulette introuvable : forbidden", async () => {
+      const u = await makeUser();
+      vi.stubEnv("VOTE_VETO_ENABLED", "true");
+      expect(await veto("nope", u.id)).toEqual({ ok: false, error: "forbidden" });
+    });
+
+    it("soirée passée ou annulée : refusée", async () => {
+      const s = await drawn();
+      await db.session.update({ where: { id: s.sessionId }, data: { date: new Date("2020-01-01T20:00:00Z") } });
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "closed" });
+      await db.session.update({ where: { id: s.sessionId }, data: { date: new Date("2099-06-06T20:00:00Z"), status: "CANCELLED" } });
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "closed" });
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(s.first);
+    });
+
+    it("applique le filtre joueurs à la relance (jeu 2-2 jamais retenu à 3 joueurs)", async () => {
+      const s = await drawn({ filter: true });
+      expect(s.first).not.toBe(s.games.z.id);
+      expect(await veto(s.r.id, s.users[0].id, () => 0.999)).toMatchObject({ ok: true });
+      const other = s.first === s.games.x.id ? s.games.y.id : s.games.x.id;
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(other);
+    });
+
+    it("chemin bot : l'annonce est ÉDITÉE (SESSION_MODIFIED), pas de nouveau message de validation", async () => {
+      const s = await drawn({ announceViaBot: true });
+      await veto(s.r.id, s.users[0].id);
+      const events = await db.notificationEvent.findMany({ where: { sourceId: s.sessionId } });
+      expect(events.map((e) => e.eventType)).toContain("SESSION_MODIFIED");
+      expect(events.map((e) => e.eventType)).not.toContain("SESSION_VALIDATED");
+      const modified = events.filter((e) => e.eventType === "SESSION_MODIFIED").map((e) => e.id);
+      const deliveries = await db.notificationDelivery.findMany({ where: { eventId: { in: modified } } });
+      expect(deliveries.length).toBeGreaterThan(0);
+      expect(deliveries.every((d) => d.operation === "EDIT")).toBe(true);
+    });
+
+    it("isolation : un veto n'est visible que dans sa communauté", async () => {
+      const s = await drawn();
+      await veto(s.r.id, s.users[0].id);
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      const other = await db.community.create({ data: { slug: "autre", name: "autre", status: "ACTIVE" } });
+      const { scopedPrismaForCommunityId } = await import("./community-scoped-client");
+      expect(await (await scopedPrismaForCommunityId(other.id)).rouletteVeto.count()).toBe(0);
+      expect(await (await scopedPrismaForCommunityId(communityId)).rouletteVeto.count()).toBe(1);
     });
   });
 });

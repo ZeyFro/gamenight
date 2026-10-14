@@ -38,7 +38,8 @@ describe("guideSections (GUIDE_V2_ENABLED)", () => {
     const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
     expect(guideSections(soirees)[0].lines).toHaveLength(1);
     vi.stubEnv("VOTE_VETO_ENABLED", "true");
-    expect(guideSections(soirees)[0].lines).toHaveLength(2);
+    expect(guideSections(soirees)[0].lines).toHaveLength(3);
+    expect(guideSections(soirees)[0].lines.at(-1)).toMatch(/Roulette.*veto/);
     expect(guideSections(base)).toEqual(base);
   });
 

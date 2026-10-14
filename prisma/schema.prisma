@@ -162,6 +162,7 @@ model User {
   proposals             Proposal[]
   votes                 Vote[]
   sessionVetoes         SessionVeto[]
+  rouletteVetoes        RouletteVeto[]
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
@@ -834,6 +835,24 @@ model SessionVeto {
   @@index([communityId])
 }
 
+// Veto du jeu tiré par une roulette asynchrone (flag VOTE_VETO_ENABLED) : 1 par participant et par roulette.
+// `gameId` = le jeu vetoé (id libre, comme Roulette.resultGameId) ; les vetoés sont exclus des relances.
+model RouletteVeto {
+  id          String   @id @default(cuid())
+  rouletteId  String
+  userId      String
+  gameId      String
+  communityId String
+  createdAt   DateTime @default(now())
+
+  roulette  Roulette  @relation(fields: [rouletteId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([rouletteId, userId])
+  @@index([communityId])
+}
+
 model Vote {
   id         String @id @default(cuid())
   proposalId String
@@ -1491,6 +1510,7 @@ model Roulette {
 
   createdBy User            @relation(fields: [createdById], references: [id])
   entries   RouletteEntry[]
+  vetoes    RouletteVeto[]
 
   @@index([status, deadline])
 
@@ -2512,6 +2532,7 @@ model Community {
   debts Debt[]
   wishlistGames GameWishlist[]
   sessionVetoes SessionVeto[]
+  rouletteVetoes RouletteVeto[]
   roulettes Roulette[]
   instantSessions InstantSession[]
   weeklyChallenges WeeklyChallenge[]

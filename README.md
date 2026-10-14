@@ -12802,7 +12802,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_DM_SESSION_ENABLED` | Création de nouveaux MP de soirée (les MP déjà en file sont traités) ; sans effet sans le chemin bot des soirées | éteint | `src/lib/discord-bot-config.ts:101` |
 | `DISCORD_DM_TOURNAMENT_ENABLED` | Création de nouveaux MP de tournoi | éteint | `src/lib/discord-bot-config.ts:114` |
 | `TOURNAMENT_SCORES_ENABLED` | Saisie facultative des scores de match, affichés dans le bracket seulement ; exige la migration `tournament_match_scores` | éteint | `src/lib/tournament-scores.ts` |
-| `VOTE_VETO_ENABLED` | Veto au vote de jeu (1 par personne et par soirée) ; exige la migration `add_session_veto` | éteint | `src/lib/session-veto.ts` |
+| `VOTE_VETO_ENABLED` | Veto au vote de jeu (1 par personne et par soirée) et au jeu tiré par la roulette asynchrone (relance) ; exige les migrations `add_session_veto` et `add_roulette_veto` | éteint | `src/lib/session-veto.ts` |
 | `ROULETTE_PLAYER_FILTER_ENABLED` | Roulette : filtre « nombre de joueurs » (asynchrone et instantanée), repli sur tous les jeux si aucun ne convient | éteint | `src/lib/roulette-draw.ts` |
 | `DISCORD_DM_ROULETTE_ENABLED` | Création de nouveaux MP de roulette | éteint | `src/lib/discord-bot-config.ts:124` |
 | `DISCORD_THREAD_CLEANUP_ENABLED` | Active `/api/cron/discord-thread-cleanup` (sinon `{enabled:false, dryRun:true, report:null}`) | éteint | `src/app/api/cron/discord-thread-cleanup/route.ts:33` |

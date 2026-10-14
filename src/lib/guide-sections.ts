@@ -33,11 +33,12 @@ const EXTRA_SECTIONS: GuideSection[] = [
 
 const VETO_LINE = "Un veto par soirée : le jeu vetoé ne peut pas être retenu (sauf si c'est le dernier possible).";
 
+const ROULETTE_VETO_LINE = "Roulette : tant que la soirée n'a pas eu lieu, chaque participant peut vetoer le jeu tiré une fois ; la roue relance sans lui.";
 const ROULETTE_FILTER_LINE = "Roulette : seuls les jeux qui acceptent le nombre de joueurs sont tirés (sinon, tous les jeux).";
 
 export function guideSections(input: GuideSection[]): GuideSection[] {
   const soireesLines = [
-    ...(isVoteVetoEnabled() ? [VETO_LINE] : []),
+    ...(isVoteVetoEnabled() ? [VETO_LINE, ROULETTE_VETO_LINE] : []),
     ...(isRoulettePlayerFilterEnabled() ? [ROULETTE_FILTER_LINE] : []),
   ];
   const base = soireesLines.length
