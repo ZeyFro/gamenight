@@ -23,8 +23,8 @@ export const maxDuration = 300;
  * et lance le backfill via `after()` (Next.js) : le traitement continue
  * après l'envoi de la réponse, sans faire attendre l'appelant (cron
  * externe ou `curl` manuel) — même mécanisme d'authentification que
- * `/api/cron/reminders` (`CRON_SECRET` optionnelle mais recommandée dès
- * que l'URL est publique).
+ * `/api/cron/reminders` : fail closed (`verifyCronRequest`), 503 si
+ * `CRON_SECRET` est absente, 401 si l'en-tête est faux.
  *
  * GET et POST font exactement la même chose : cron-job.org envoie un GET par
  * défaut, `curl -X POST` reste valable pour un lancement manuel. Dans les

@@ -27,6 +27,12 @@ const TICK_INTERVAL_MS = 90;
  * à garder "surprise".
  */
 export function RouletteResultReveal({
+  ...props
+}: Parameters<typeof RouletteResultAnimation>[0]) {
+  return <RouletteResultAnimation key={props.winnerGameId} {...props} />;
+}
+
+function RouletteResultAnimation({
   entries,
   winnerGameId,
   winnerGameName,

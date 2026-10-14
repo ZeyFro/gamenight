@@ -27,6 +27,8 @@ import { announceRouletteCreated } from "@/lib/discord-roulette";
 import { isRouletteProposalOpen, spinRoulette } from "@/lib/roulette";
 import { createRouletteResultSession } from "@/lib/sessions";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
+import { vetoRouletteGame, type RouletteVetoResult } from "@/lib/roulette-veto-db";
+import { RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 
 /**
  * Créer la soirée depuis le résultat de la roue (Sprint 3, /roulette).
@@ -266,4 +268,19 @@ export async function forceSpinRouletteAction(formData: FormData) {
 
   revalidatePath(`/roulette/${rouletteId}`);
   revalidatePath("/roulette");
+}
+
+/** Veto du jeu tiré d'une roulette asynchrone (VOTE_VETO_ENABLED) : relance sans les jeux vetoés, annonce éditée. */
+export async function vetoRouletteAction(formData: FormData): Promise<RouletteVetoResult | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "vetoRoulette")) return { ok: false, error: RATE_LIMIT_ERROR_KEY };
+  const rouletteId = String(formData.get("rouletteId") ?? "");
+  if (!rouletteId) return { ok: false, error: "forbidden" };
+  const result = await vetoRouletteGame({ rouletteId, userId: user.id });
+  if (result.ok) {
+    revalidatePath(`/roulette/${rouletteId}`);
+    revalidatePath("/sessions");
+  }
+  return result;
 }

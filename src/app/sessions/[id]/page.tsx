@@ -26,6 +26,9 @@ import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { VoterAvatars } from "@/components/VoterAvatars";
+import { VetoButton } from "@/components/VetoButton";
+import { isVoteVetoEnabled } from "@/lib/session-veto";
+import { loadSessionVetoes } from "@/lib/session-veto-db";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -241,6 +244,7 @@ export default async function SessionDetailPage({
   );
 
   const votingOpen = isVotingOpen(session);
+  const vetoes = await loadSessionVetoes(session.id, session.communityId);
 
   const proposedGameIds = session.proposals.map((p) => p.gameId);
   const availableGames = votingOpen
@@ -668,6 +672,8 @@ export default async function SessionDetailPage({
             const stats = availability.get(proposal.gameId);
             const availableCount = stats?.availableOwners.length ?? 0;
             const voted = proposal.votes.some((v) => v.userId === user.id);
+            const proposalVetoes = vetoes.filter((v) => v.proposalId === proposal.id);
+            const vetoedByMe = proposalVetoes.some((v) => v.userId === user.id);
 
             return (
               <StaggerItem key={proposal.id}>
@@ -698,11 +704,15 @@ export default async function SessionDetailPage({
                       </div>
                     </Link>
                     <Badge
-                      tone={stats?.jouable ? "accent" : "neutral"}
-                      glow={stats?.jouable}
+                      tone={stats?.jouable && proposalVetoes.length === 0 ? "accent" : "neutral"}
+                      glow={stats?.jouable && proposalVetoes.length === 0}
                       animate
                     >
-                      {stats?.jouable ? "JOUABLE" : "PAS ASSEZ DE JOUEURS"}
+                      {proposalVetoes.length > 0
+                        ? "VETOÉ"
+                        : stats?.jouable
+                          ? "JOUABLE"
+                          : "PAS ASSEZ DE JOUEURS"}
                     </Badge>
                   </div>
 
@@ -726,6 +736,9 @@ export default async function SessionDetailPage({
                       initialCount={proposal.votes.length}
                       disabled={!votingOpen}
                     />
+                    {votingOpen && isVoteVetoEnabled() && (stats?.jouable || vetoedByMe) && (
+                      <VetoButton proposalId={proposal.id} initialVetoed={vetoedByMe} />
+                    )}
                     {votingOpen && proposal.proposedById === user.id && (
                       <WithdrawProposalDialog
                         sessionId={session.id}
@@ -734,6 +747,12 @@ export default async function SessionDetailPage({
                       />
                     )}
                   </div>
+
+                  {proposalVetoes.length > 0 && (
+                    <p className="text-sm font-medium text-danger">
+                      {proposalVetoes.length} {proposalVetoes.length > 1 ? "vetos" : "veto"}
+                    </p>
+                  )}
 
                   <VoterAvatars
                     voters={proposal.votes.map((v) => ({

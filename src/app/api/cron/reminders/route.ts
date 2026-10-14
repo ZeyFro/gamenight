@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
 import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
@@ -33,10 +34,11 @@ export const maxDuration = 60;
  * avec le pas de 15 min dont F7 a besoin. Un seul appel gère tous les
  * timings de rappel de chaque session (`Session.reminderTimings`,
  * configurable par le créateur depuis PR 31/2·4 — remplace les deux
- * fenêtres fixes 24h/2h). Si `CRON_SECRET` est configurée, on exige
- * l'en-tête `Authorization: Bearer <CRON_SECRET>` (à renseigner
- * manuellement dans la config du cron externe), pour éviter qu'un tiers
- * déclenche des rappels en tapant l'URL. Sans cron externe configuré,
+ * fenêtres fixes 24h/2h). Fail closed (`verifyCronRequest`) : 503 si
+ * `CRON_SECRET` n'est pas configurée, 401 sans l'en-tête
+ * `Authorization: Bearer <CRON_SECRET>` (à renseigner manuellement dans la
+ * config du cron externe), pour éviter qu'un tiers déclenche des rappels
+ * en tapant l'URL. Sans cron externe configuré,
  * personne n'appelle jamais cette route : aucun rappel ne part, mais rien
  * ne plante ailleurs dans l'app — dégradation silencieuse, comme pour
  * DISCORD_WEBHOOK_URL non configurée (F6).
@@ -231,15 +233,46 @@ export async function GET(request: Request) {
 
       const hasNewSuccess = outcomes.some((outcome) => outcome.ok);
       if (hasNewSuccess || toResolveWithoutSending.length > 0) {
-        const remindersSent = applyReminderResults(
-          parseRemindersSent(session.remindersSent),
-          outcomes,
-          toResolveWithoutSending
-        );
-        await prisma.session.update({
-          where: { id: session.id },
-          data: { remindersSent },
-        });
+        // Écriture conditionnelle sur la valeur lue (compare-and-set) : si une
+        // écriture concurrente a changé `remindersSent` depuis la lecture, on
+        // relit et on fusionne au lieu d'écraser. Isolé par session : un échec
+        // ici ne saute pas les suivantes ; l'enqueue étant idempotent, le
+        // prochain passage rejouera sans doublon.
+        try {
+          let current: Prisma.JsonValue | undefined = session.remindersSent;
+          let saved = false;
+          for (let attempt = 0; attempt < 3 && current !== undefined; attempt++) {
+            const { count } = await prisma.session.updateMany({
+              where: { id: session.id, remindersSent: { equals: current ?? Prisma.JsonNull } },
+              data: {
+                remindersSent: applyReminderResults(
+                  parseRemindersSent(current),
+                  outcomes,
+                  toResolveWithoutSending
+                ),
+              },
+            });
+            if (count === 1) {
+              saved = true;
+              break;
+            }
+            current = (
+              await prisma.session.findUnique({
+                where: { id: session.id },
+                select: { remindersSent: true },
+              })
+            )?.remindersSent; // undefined : session supprimée entre-temps
+          }
+          if (!saved && current !== undefined) {
+            logger.warn(
+              "cron:reminders",
+              "remindersSent non écrit après 3 tentatives (écritures concurrentes) : rejeu au prochain passage.",
+              { sessionId: session.id, minutes: [...outcomes.filter((o) => o.ok).map((o) => o.minutes), ...toResolveWithoutSending] }
+            );
+          }
+        } catch (error) {
+          logger.error("cron:reminders", error, { sessionId: session.id });
+        }
       }
     }
 

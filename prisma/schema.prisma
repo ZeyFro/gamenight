@@ -161,6 +161,8 @@ model User {
   availabilityOverrides AvailabilityOverride[]
   proposals             Proposal[]
   votes                 Vote[]
+  sessionVetoes         SessionVeto[]
+  rouletteVetoes        RouletteVeto[]
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
@@ -504,6 +506,7 @@ model Session {
   // null conserve les participants historiques issus des votes.
   attendanceCapacity Int?
   seats SessionSeat[]
+  vetoes SessionVeto[]
 
   // Créateur de la session — introduit après coup (les sessions créées
   // avant cette migration ont été backfillées, voir la migration SQL pour
@@ -807,8 +810,47 @@ model Proposal {
   game       Game    @relation(fields: [gameId], references: [id])
   proposedBy User    @relation(fields: [proposedById], references: [id])
   votes      Vote[]
+  vetoes     SessionVeto[]
 
   @@unique([sessionId, gameId])
+}
+
+// Veto au vote de jeu (flag VOTE_VETO_ENABLED) : 1 par personne et par soirée.
+// Un jeu vetoé ne peut être ni retenu ni tiré.
+model SessionVeto {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  proposalId  String
+  communityId String
+  createdAt   DateTime @default(now())
+
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposal  Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([proposalId])
+  @@index([communityId])
+}
+
+// Veto du jeu tiré par une roulette asynchrone (flag VOTE_VETO_ENABLED) : 1 par participant et par roulette.
+// `gameId` = le jeu vetoé (id libre, comme Roulette.resultGameId) ; les vetoés sont exclus des relances.
+model RouletteVeto {
+  id          String   @id @default(cuid())
+  rouletteId  String
+  userId      String
+  gameId      String
+  communityId String
+  createdAt   DateTime @default(now())
+
+  roulette  Roulette  @relation(fields: [rouletteId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([rouletteId, userId])
+  @@index([communityId])
 }
 
 model Vote {
@@ -1468,6 +1510,7 @@ model Roulette {
 
   createdBy User            @relation(fields: [createdById], references: [id])
   entries   RouletteEntry[]
+  vetoes    RouletteVeto[]
 
   @@index([status, deadline])
 
@@ -2488,6 +2531,8 @@ model Community {
   chatMessages ChatMessage[]
   debts Debt[]
   wishlistGames GameWishlist[]
+  sessionVetoes SessionVeto[]
+  rouletteVetoes RouletteVeto[]
   roulettes Roulette[]
   instantSessions InstantSession[]
   weeklyChallenges WeeklyChallenge[]

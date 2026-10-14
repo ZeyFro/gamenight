@@ -11,6 +11,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { haptics } from "@/lib/haptics";
+import { pickInstantSegment } from "@/lib/roulette-draw";
 import {
   RouletteWheelDisplay,
   computeWinningRotation,
@@ -21,6 +22,8 @@ export interface RouletteGame {
   id: string;
   name: string;
   coverUrl: string | null;
+  minPlayers?: number | null;
+  maxPlayers?: number | null;
 }
 
 export interface RouletteCandidate {
@@ -47,10 +50,13 @@ export function RouletteWizard({
   candidates,
   defaultDate,
   soundEnabled,
+  playerFilterEnabled = false,
 }: {
   candidates: RouletteCandidate[];
   defaultDate: string;
   soundEnabled: boolean;
+  /** ROULETTE_PLAYER_FILTER_ENABLED, évalué côté serveur. */
+  playerFilterEnabled?: boolean;
 }) {
   const creator = candidates[0];
   const [participantIds, setParticipantIds] = useState<string[]>([creator.id]);
@@ -60,6 +66,8 @@ export function RouletteWizard({
   const [rotation, setRotation] = useState(0);
   const [winnerGame, setWinnerGame] = useState<RouletteGame | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [drawnGameIds, setDrawnGameIds] = useState<ReadonlySet<string>>(new Set());
+  const [filterFallback, setFilterFallback] = useState(false);
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState("20:00");
   const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -136,15 +144,23 @@ export function RouletteWizard({
     }
   }
 
-  function spin() {
+  // « Relancer » exclut les jeux déjà tirés ; `restart` repart de zéro quand ils l'ont tous été.
+  function spin(restart = false) {
     if (segments.length === 0) return;
+    const pick = pickInstantSegment(
+      segments.map((seg) => ({ gameId: seg.game.id, minPlayers: seg.game.minPlayers ?? null, maxPlayers: seg.game.maxPlayers ?? null })),
+      { drawnGameIds: restart ? new Set() : drawnGameIds, playerCount: participants.length, filterEnabled: playerFilterEnabled }
+    );
+    if (pick.index === null) return;
+    const winnerIndex = pick.index;
+    setFilterFallback(pick.fallback);
+    setDrawnGameIds((prev) => new Set([...(restart ? [] : prev), segments[winnerIndex].game.id]));
     haptics.medium();
     setWinnerGame(null);
     setCelebrate(false);
     setSpinning(true);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
 
-    const winnerIndex = Math.floor(Math.random() * segments.length);
     setRotation(computeWinningRotation(rotation, winnerIndex, segments.length));
 
     let elapsed = 0;
@@ -183,6 +199,8 @@ export function RouletteWizard({
     setPhase("wheel");
     requestAnimationFrame(() => spin());
   }
+
+  const allDrawn = playerFilterEnabled && segments.length > 0 && segments.every((seg) => drawnGameIds.has(seg.game.id));
 
   const wheelSegments: WheelSegment[] = segments.map((seg) => ({
     key: `${seg.userId}-${seg.game.id}`,
@@ -264,9 +282,25 @@ export function RouletteWizard({
               </Button>
             </CreationForm>
 
-            <Button type="button" variant="secondary" fullWidthOnMobile onClick={spin}>
-              🔄 Relancer
-            </Button>
+            {filterFallback && (
+              <p className="text-sm text-muted" role="status">
+                Aucun jeu ne convient à {participants.length} joueurs : tirage sur tous les jeux.
+              </p>
+            )}
+            {allDrawn ? (
+              <>
+                <p className="text-sm text-muted" role="status">
+                  Tous les jeux ont déjà été tirés.
+                </p>
+                <Button type="button" variant="secondary" fullWidthOnMobile onClick={() => spin(true)}>
+                  🔄 Recommencer
+                </Button>
+              </>
+            ) : (
+              <Button type="button" variant="secondary" fullWidthOnMobile onClick={() => spin()}>
+                🔄 Relancer
+              </Button>
+            )}
           </motion.div>
         )}
 
