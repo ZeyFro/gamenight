@@ -12803,6 +12803,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `DISCORD_DM_TOURNAMENT_ENABLED` | Création de nouveaux MP de tournoi | éteint | `src/lib/discord-bot-config.ts:114` |
 | `TOURNAMENT_SCORES_ENABLED` | Saisie facultative des scores de match, affichés dans le bracket seulement ; exige la migration `tournament_match_scores` | éteint | `src/lib/tournament-scores.ts` |
 | `VOTE_VETO_ENABLED` | Veto au vote de jeu (1 par personne et par soirée) ; exige la migration `add_session_veto` | éteint | `src/lib/session-veto.ts` |
+| `ROULETTE_PLAYER_FILTER_ENABLED` | Roulette : filtre « nombre de joueurs » (asynchrone et instantanée), repli sur tous les jeux si aucun ne convient | éteint | `src/lib/roulette-draw.ts` |
 | `DISCORD_DM_ROULETTE_ENABLED` | Création de nouveaux MP de roulette | éteint | `src/lib/discord-bot-config.ts:124` |
 | `DISCORD_THREAD_CLEANUP_ENABLED` | Active `/api/cron/discord-thread-cleanup` (sinon `{enabled:false, dryRun:true, report:null}`) | éteint | `src/app/api/cron/discord-thread-cleanup/route.ts:33` |
 | `DISCORD_THREAD_CLEANUP_MODE` | `execute` = archive/supprime réellement les fils ; toute autre valeur = dry-run (rapport seul) | dry-run | `src/app/api/cron/discord-thread-cleanup/route.ts:37` |

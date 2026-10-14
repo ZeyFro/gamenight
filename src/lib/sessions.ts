@@ -1,5 +1,6 @@
 import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
 import { prisma } from "@/lib/prisma";
+import { isPlayerCountCompatible } from "@/lib/player-count";
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { isAvailableAt } from "@/lib/availability";
 import { sameUtcDate, wallClockNow } from "@/lib/wallclock";
@@ -824,11 +825,7 @@ export async function getProposalAvailability(
     // 2 par défaut si non renseigné (cohérent avec l'ajout manuel et
     // l'import Steam) — évite qu'un jeu importé sans minPlayers connu
     // (ex. Steam avant enrichissement) s'affiche comme jouable à 1 joueur.
-    const min = game.minPlayers ?? 2;
-    const max = game.maxPlayers;
-    const jouable =
-      availableOwners.length >= min &&
-      (max === null || availableOwners.length <= max);
+    const jouable = isPlayerCountCompatible(game.minPlayers, game.maxPlayers, availableOwners.length);
 
     result.set(game.id, { owners, availableOwners, jouable });
   }
