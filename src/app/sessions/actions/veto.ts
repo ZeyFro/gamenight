@@ -61,14 +61,14 @@ export async function setVeto(formData: FormData): Promise<VetoResult> {
   const scope = await getIsolationScope(user.id);
   // Verrou de ligne sur la soirée : deux vetos simultanés sont sérialisés, le second voit le premier.
   const allowed = await prisma.$transaction(async (tx) => {
-    const db = scopedTransactionPrisma(tx, scope);
+    const scopedDb = scopedTransactionPrisma(tx, scope);
     await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
-    const others = await db.sessionVeto.findMany({
+    const others = await scopedDb.sessionVeto.findMany({
       where: { sessionId: session.id, NOT: { userId: user.id } },
       select: { proposalId: true },
     });
     if (!wouldVetoLeaveCandidate(jouableIds, new Set(others.map((v) => v.proposalId)), proposalId)) return false;
-    await db.sessionVeto.upsert({
+    await scopedDb.sessionVeto.upsert({
       where: { sessionId_userId: { sessionId: session.id, userId: user.id } },
       update: { proposalId },
       create: { sessionId: session.id, userId: user.id, proposalId, communityId },

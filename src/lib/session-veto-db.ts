@@ -10,13 +10,13 @@ export async function loadVetoedProposalIds(sessionId: string, communityId: stri
   return new Set(rows.map((r) => r.proposalId));
 }
 
-/** Vetos d'une soirée avec le nom de leur auteur (affichage). Flag éteint : liste vide. */
+/** Vetos d'une soirée (anonymes : jamais de nom d'auteur). Flag éteint : liste vide. */
 export async function loadSessionVetoes(sessionId: string, communityId: string | null) {
   if (!isVoteVetoEnabled()) return [];
   const scopedDb = await scopedPrismaForCommunityId(communityId ?? (await getDefaultCommunityId()));
   const rows = await scopedDb.sessionVeto.findMany({
     where: { sessionId },
-    select: { proposalId: true, userId: true, user: { select: { discordName: true } } },
+    select: { proposalId: true, userId: true },
   });
-  return rows.map((r) => ({ proposalId: r.proposalId, userId: r.userId, discordName: r.user.discordName }));
+  return rows;
 }

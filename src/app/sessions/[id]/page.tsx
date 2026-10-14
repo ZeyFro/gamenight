@@ -750,7 +750,7 @@ export default async function SessionDetailPage({
 
                   {proposalVetoes.length > 0 && (
                     <p className="text-sm font-medium text-danger">
-                      Vetoé par {proposalVetoes.map((v) => v.discordName).join(", ")}
+                      {proposalVetoes.length} {proposalVetoes.length > 1 ? "vetos" : "veto"}
                     </p>
                   )}
 

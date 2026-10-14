@@ -244,6 +244,16 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
     });
   });
 
+  describe("affichage", () => {
+    it("loadSessionVetoes n'expose aucun nom (vetos anonymes : seulement le compte)", async () => {
+      const { creator, games, session } = await scenario();
+      const [a] = await propose(session.id, creator.id, games);
+      await addVeto(session.id, creator.id, a.id);
+      const rows = await (await import("@/lib/session-veto-db")).loadSessionVetoes(session.id, communityId);
+      expect(rows).toEqual([{ proposalId: a.id, userId: creator.id }]);
+    });
+  });
+
   describe("closeSession", () => {
     it("le jeu vetoé le plus voté n'est pas retenu : le suivant gagne", async () => {
       const { creator, games, session } = await scenario();
