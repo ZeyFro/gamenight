@@ -9,6 +9,7 @@ const ok = {
   sessionDate: new Date("2026-10-20T20:00:00Z"),
   isParticipant: true,
   alreadyVetoed: false,
+  announceViaBot: true,
   now,
 } as const;
 
@@ -23,6 +24,7 @@ describe("rouletteVetoRefusal", () => {
     [{ sessionStatus: "DONE" }, "closed"],
     [{ sessionDate: new Date("2026-10-14T12:00:00Z") }, "closed"], // début atteint
     [{ sessionDate: new Date("2026-10-01T12:00:00Z") }, "closed"],
+    [{ announceViaBot: false }, "announce_not_editable"], // annonce Discord non modifiable
     [{ isParticipant: false }, "not_participant"],
     [{ alreadyVetoed: true }, "already_vetoed"],
   ] as const)("%j -> %s", (patch, error) => {

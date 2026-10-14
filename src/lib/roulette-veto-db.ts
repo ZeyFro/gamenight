@@ -10,6 +10,9 @@ import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
 import { isVoteVetoEnabled } from "@/lib/session-veto";
 import { wallClockNow } from "@/lib/wallclock";
 
+/** Date neutre quand la roulette n'a pas de soirée (le refus `closed` prime alors). */
+const NO_SESSION_DATE = new Date(0);
+
 export type RouletteVetoResult =
   | { ok: true; gameId: string; playerFilterFallback: boolean }
   | { ok: false; error: RouletteVetoError };
@@ -39,9 +42,10 @@ export async function vetoRouletteGame(input: { rouletteId: string; userId: stri
       rouletteStatus: roulette.status,
       hasResultSession: session !== null && roulette.resultGameId !== null,
       sessionStatus: session?.status ?? "",
-      sessionDate: session?.date ?? new Date(0),
+      sessionDate: session?.date ?? NO_SESSION_DATE,
       isParticipant: participantIds.includes(userId),
       alreadyVetoed: vetoes.some((v) => v.userId === userId),
+      announceViaBot: session?.announceViaBot ?? false,
       now: wallClockNow(),
     });
     if (refusal) return { ok: false, error: refusal };
@@ -61,7 +65,7 @@ export async function vetoRouletteGame(input: { rouletteId: string; userId: stri
     await scopedDb.vote.createMany({ data: participantIds.map((id) => ({ proposalId: proposal.id, userId: id })) });
     await scopedDb.session.update({ where: { id: session!.id }, data: { decidedGameId: chosen.gameId } });
     await scopedDb.roulette.update({ where: { id: rouletteId }, data: { resultGameId: chosen.gameId } });
-    if (session!.announceViaBot) await enqueueSessionAnnounceUpdate(session!.id, tx);
+    await enqueueSessionAnnounceUpdate(session!.id, tx);
     await enqueueRouletteDirectMessageEdits(rouletteId, tx);
     return { ok: true, gameId: chosen.gameId, playerFilterFallback: fallback };
   }, { timeout: 15_000 });

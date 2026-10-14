@@ -146,7 +146,7 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
       ]);
       await roulette.spinRoulette(r.id, () => 0);
       const done = await db.roulette.findUniqueOrThrow({ where: { id: r.id } });
-      if (opts.announceViaBot) await db.session.update({ where: { id: done.resultSessionId! }, data: { announceViaBot: true } });
+      await db.session.update({ where: { id: done.resultSessionId! }, data: { announceViaBot: opts.announceViaBot ?? true } });
       return { r, users, games: { x, y, z }, first: done.resultGameId!, sessionId: done.resultSessionId! };
     }
     const sessionOf = (id: string) => db.session.findUniqueOrThrow({ where: { id }, include: { proposals: { include: { votes: true } } } });
@@ -193,6 +193,14 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
       expect(await veto(s.r.id, s.users[2].id)).toEqual({ ok: false, error: "no_candidate" });
       expect((await sessionOf(s.sessionId)).decidedGameId).toBe(decided);
       expect(await db.rouletteVeto.count()).toBe(2);
+    });
+
+    it("annonce Discord non modifiable (announceViaBot faux) : veto refusé, soirée et roulette inchangées", async () => {
+      const s = await drawn({ announceViaBot: false });
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "announce_not_editable" });
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(s.first);
+      expect((await db.roulette.findUniqueOrThrow({ where: { id: s.r.id } })).resultGameId).toBe(s.first);
+      expect(await db.rouletteVeto.count()).toBe(0);
     });
 
     it("non-participant (sans entrée) refusé", async () => {

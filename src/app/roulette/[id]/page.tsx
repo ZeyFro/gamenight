@@ -130,7 +130,7 @@ export default async function RouletteDetailPage({
   let canVeto = false;
   if (isVoteVetoEnabled() && roulette.status === "DONE" && roulette.resultSessionId) {
     const [resultSession, myVeto] = await Promise.all([
-      scopedDb.session.findUnique({ where: { id: roulette.resultSessionId }, select: { status: true, date: true } }),
+      scopedDb.session.findUnique({ where: { id: roulette.resultSessionId }, select: { status: true, date: true, announceViaBot: true } }),
       scopedDb.rouletteVeto.findFirst({ where: { rouletteId: id, userId: user.id }, select: { id: true } }),
     ]);
     canVeto =
@@ -142,6 +142,7 @@ export default async function RouletteDetailPage({
         sessionDate: resultSession.date,
         isParticipant: fullEntries.some((e) => e.userId === user.id),
         alreadyVetoed: myVeto !== null,
+        announceViaBot: resultSession.announceViaBot,
         now: wallClockNow(),
       }) === null;
   }

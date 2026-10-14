@@ -7,6 +7,7 @@ import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 const ERRORS: Record<string, string> = {
   no_candidate: "Impossible : il ne reste aucun autre jeu à tirer.",
+  announce_not_editable: "Veto indisponible : l'annonce Discord de cette soirée ne peut pas être modifiée.",
   closed: "La soirée n'accepte plus de veto.",
   already_vetoed: "Tu as déjà utilisé ton veto.",
   not_participant: "Seuls les participants peuvent vetoer.",
