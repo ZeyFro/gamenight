@@ -32,7 +32,9 @@ Aucune migration existante modifiée. Application locale vérifiée sur une base
 
 Les tests ajoutés reproduisent avant correction quatre courses sur Postgres et le bouton veto obsolète. Après correction : 22 tests veto de soirée, 19 tests roulette et 3 tests DOM ciblés réussis. La relecture finale fonctionnelle et sécurité n'a relevé aucun blocage.
 
-Validation complète et checks distants : résultats finaux consignés dans la PR Draft. Les journaux locaux sont conservés sous `%TEMP%/gamenight-organisation-*`.
+Suite unitaire complète : 164 fichiers et 1 534 tests réussis avec deux workers ; 56 fichiers et 900 tests Postgres ignorés dans ce passage sans URL. TypeScript, ESLint et build Next direct réussis. Premier passage unitaire : timeout de 5 secondes dans le test OAuth préexistant, suivi d'un passage isolé puis complet réussis. Premier build : téléchargement des polices Google bloqué par le réseau du bac à sable, puis build complet réussi avec accès réseau autorisé.
+
+Validation Postgres complète et checks distants : résultats finaux consignés dans la [PR Draft #227](https://github.com/ZeyFro/gamenight/pull/227). Les journaux locaux sont conservés sous `%TEMP%/gamenight-organisation-*`. Le premier passage Postgres a signalé sept échecs roulette : diagnostic ouvert jusqu'à lecture du rapport complet. La CI distante exécute les mêmes tests sur son service Postgres. Le premier check Vercel indique « Deployment was blocked » ; inspection détaillée refusée par le plugin (403 sur l'équipe), aucune CLI Vercel installée.
 
 Commandes utilisées :
 
@@ -68,6 +70,6 @@ Ces parcours réels restent à vérifier : aucun navigateur Playwright ni compte
 
 Tous les sous-agents sont restés en lecture seule. L'agent principal réalise les corrections et les validations. Les rôles de `.claude/agents/` ont été lus ; leur modèle Claude `sonnet` n'est pas supposé disponible dans Codex.
 
-Capacités utilisées : shell/Git/GitHub CLI, Vitest/Postgres local, TypeScript, ESLint, Next, Context7 (documentation Prisma), skill Plugin Management (inventaire), skills Vercel React et Deployments/CI-CD (relecture et inspection des checks). Aucun nouveau plugin ni dépendance installé.
+Capacités utilisées : shell/Git/GitHub CLI, Docker local, Vitest/Postgres local, TypeScript, ESLint, Next, Context7 (documentation Prisma), skill Plugin Management (inventaire), skills Vercel React et Deployments/CI-CD (relecture et inspection des checks), plugin Vercel (tentative d'inspection refusée). GitHub, Context7, Vercel, Neon, Sites et Work Pets figurent dans les outils exposés ; les capacités Neon n'ont pas été utilisées. Aucun nouveau plugin ni dépendance installé.
 
 Limites : Superpowers proposé mais non installé ; Graphify, Ponytail, frontend-design/design-skills et outil navigateur Playwright non exposés. Cartographie Graphify non nécessaire à cette correction ciblée. TDD et vérification avant conclusion effectués avec l'outillage du dépôt ; synthèse concise rédigée directement. Context7 retourne aussi des API Prisma récentes : seules les signatures compatibles avec Prisma 6 et le client local sont retenues.
