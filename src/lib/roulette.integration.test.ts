@@ -312,6 +312,8 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     it("non-participant (sans entrée) refusé", async () => {
       const s = await drawn();
       const outsider = await makeUser();
+      expect(await veto(s.r.id, outsider.id)).toEqual({ ok: false, error: "forbidden" });
+      await db.sessionInvite.create({ data: { sessionId: s.sessionId, userId: outsider.id, invitedById: s.users[0].id, status: "ACTIVE" } });
       expect(await veto(s.r.id, outsider.id)).toEqual({ ok: false, error: "not_participant" });
       expect(await db.rouletteVeto.count()).toBe(0);
     });
