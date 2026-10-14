@@ -22,7 +22,7 @@ if (!TEST_DATABASE_URL) {
   console.warn("[roulette.integration.test] TEST_DATABASE_URL absente - suite SKIPPÉE : filtre et veto de roulette NON validés sur Postgres.");
 }
 
-describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", () => {
+describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { timeout: 15_000 }, () => {
   let db: import("@prisma/client").PrismaClient;
   let roulette: typeof import("./roulette");
   let vetoLib: typeof import("./roulette-veto-db");
@@ -40,14 +40,21 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
   afterEach(() => vi.unstubAllEnvs());
 
   let communityId: string;
-  beforeEach(async () => {
+  beforeEach(async ({ signal }) => {
     vi.unstubAllEnvs();
-    await db.$executeRawUnsafe(
-      `TRUNCATE "RouletteVeto", "RouletteEntry", "Roulette", "SessionVeto", "Vote", "Proposal", "Session", "Game", "User", "Community" CASCADE`
-    );
+    // Un hook Vitest expiré ne stoppe pas ses requêtes SQL. Le nettoyage et
+    // l'initialisation commitent ensemble ; la transaction expire avant le hook,
+    // et le signal d'annulation est vérifié avant d'initialiser la communauté.
+    const community = await db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `TRUNCATE "RouletteVeto", "RouletteEntry", "Roulette", "SessionVeto", "Vote", "Proposal", "Session", "Game", "User", "Community" CASCADE`
+      );
+      signal.throwIfAborted();
+      return tx.community.create({ data: { slug: "default", name: "default", status: "ACTIVE" } });
+    }, { timeout: 20_000, maxWait: 5_000 });
+    communityId = community.id;
     (await import("./default-community")).resetDefaultCommunityIdCache();
-    communityId = (await db.community.create({ data: { slug: "default", name: "default", status: "ACTIVE" } })).id;
-  });
+  }, 30_000);
 
   const makeUser = () => {
     const id = uniq("user");
