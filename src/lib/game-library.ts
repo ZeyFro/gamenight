@@ -44,6 +44,14 @@ export async function getGroupLibraryGames(viewerId: string) {
   });
 }
 
+/** La fiche d'un jeu réutilise le même périmètre que sa carte de bibliothèque. */
+export async function getGameOwners(viewerId: string, gameId: string) {
+  return prisma.userGame.findMany({
+    where: { gameId, owned: true, user: await libraryMemberWhere(viewerId) },
+    include: { user: { select: { id: true, discordName: true, discordAvatar: true } } },
+  });
+}
+
 /** Nombre de possesseurs actifs par jeu dans la communauté affichée. */
 export async function getGameOwnerCounts(viewerId: string): Promise<Map<string, number>> {
   const rows = await prisma.userGame.groupBy({

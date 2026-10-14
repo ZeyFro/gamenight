@@ -44,6 +44,8 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect(games.map(g => g.name)).toEqual(["onlyA", "shared"]);
     expect(games.find(g => g.name === "shared")!.userGames.map(g => g.user.id).sort()).toEqual([ids.alice, ids.both].sort());
     expect((await library.getGroupLibraryGames(ids.bob)).map(g => g.name)).toEqual(["onlyB", "shared"]);
+    expect((await library.getGameOwners(ids.alice, ids.shared)).map(g => g.user.id).sort()).toEqual([ids.alice, ids.both].sort());
+    expect(await library.getGameOwners(ids.alice, ids.onlyB)).toEqual([]);
   });
 
   it("compte les mêmes possesseurs que ceux affichés et les seuls membres actifs", async () => {
@@ -64,6 +66,7 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect(await library.getGroupLibraryGames(ids[name])).toEqual([]);
     expect(await library.getGameOwnerCounts(ids[name])).toEqual(new Map());
     expect(await library.getTotalUserCount(ids[name])).toBe(0);
+    expect(await library.getGameOwners(ids[name], ids.shared)).toEqual([]);
   });
 
   it("une communauté suspendue n'accorde pas d'accès", async () => {
@@ -83,5 +86,6 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect((await library.getGroupLibraryGames(ids.none)).map(g => g.name)).toEqual(["former", "onlyA", "onlyB", "shared"]);
     expect((await library.getGameOwnerCounts(ids.none)).get(ids.shared)).toBe(3);
     expect(await library.getTotalUserCount(ids.none)).toBe(5);
+    expect(await library.getGameOwners(ids.none, ids.shared)).toHaveLength(3);
   });
 });
