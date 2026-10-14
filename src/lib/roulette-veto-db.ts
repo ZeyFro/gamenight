@@ -34,6 +34,9 @@ export async function vetoRouletteGame(input: { rouletteId: string; userId: stri
       where: { id: rouletteId },
       include: { entries: { include: { game: { select: { minPlayers: true, maxPlayers: true } } } } },
     });
+    if (roulette?.resultSessionId) {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${roulette.resultSessionId} FOR UPDATE`;
+    }
     const session = roulette?.resultSessionId ? await scopedDb.session.findUnique({ where: { id: roulette.resultSessionId } }) : null;
     if (!roulette || (roulette.resultSessionId && !session)) return { ok: false, error: "forbidden" };
     const { entries, participantIds } = await eligibleRouletteEntries(tx, roulette);

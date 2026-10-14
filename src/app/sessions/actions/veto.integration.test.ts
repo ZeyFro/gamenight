@@ -121,7 +121,35 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
   const addVeto = (sessionId: string, userId: string, proposalId: string) =>
     db.sessionVeto.create({ data: { sessionId, userId, proposalId, communityId } });
 
+  /** Attend une vraie requête bloquée sur le verrou, sans supposer un ordre temporel. */
+  async function waitForLock() {
+    for (let attempt = 0; attempt < 150; attempt++) {
+      const rows = await db.$queryRaw<{ count: bigint }[]>`
+        SELECT count(*) FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'
+      `;
+      if (Number(rows[0].count) > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("Aucune requête concurrente en attente du verrou Session");
+  }
+
   describe("actions", () => {
+    it.each(["setVeto", "clearVeto"] as const)("%s revalide le vote après une clôture concurrente", async (action) => {
+      const { creator, games, session } = await scenario();
+      const [a] = await propose(session.id, creator.id, games);
+      if (action === "clearVeto") await addVeto(session.id, creator.id, a.id);
+      currentUser.mockResolvedValue(creator);
+      let pending!: Promise<import("./veto").VetoResult>;
+      await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
+        pending = veto[action](fd(a.id));
+        await waitForLock();
+        await tx.session.update({ where: { id: session.id }, data: { status: "SCHEDULED" } });
+      });
+      expect(await pending).toMatchObject({ ok: false, error: "closed" });
+      expect(await db.sessionVeto.count()).toBe(action === "clearVeto" ? 1 : 0);
+    });
     it("flag éteint : refus, aucune ligne", async () => {
       vi.stubEnv("VOTE_VETO_ENABLED", "");
       const { creator, games, session } = await scenario();
@@ -255,6 +283,22 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
   });
 
   describe("closeSession", () => {
+    it.each(["close", "draw"])("%s exclut le veto arrivé pendant l'attente de son verrou", async (mode) => {
+      const { creator, games, session } = await scenario({ games: 2 });
+      const [a, b] = await propose(session.id, creator.id, games, [3, 1]);
+      const random = vi.spyOn(Math, "random").mockReturnValue(0);
+      let pending!: Promise<unknown>;
+      try {
+        await db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
+          pending = mode === "close" ? sessionsLib.closeSession(session.id) : sessionsLib.drawSessionGame(session.id, creator.id);
+          await waitForLock();
+          await tx.sessionVeto.create({ data: { sessionId: session.id, userId: creator.id, proposalId: a.id, communityId } });
+        });
+        await pending;
+        expect((await db.session.findUniqueOrThrow({ where: { id: session.id } })).decidedGameId).toBe(b.gameId);
+      } finally { random.mockRestore(); }
+    });
     it("le jeu vetoé le plus voté n'est pas retenu : le suivant gagne", async () => {
       const { creator, games, session } = await scenario();
       const [a, b] = await propose(session.id, creator.id, games, [3, 1, 0]);

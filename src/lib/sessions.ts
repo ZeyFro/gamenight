@@ -23,13 +23,13 @@ import { openSuperlativeVotingWindow, getWinningProposalParticipants } from "@/l
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { getDefaultCommunityId } from "@/lib/default-community";
-import { excludeVetoed } from "@/lib/session-veto";
+import { excludeVetoed, isVoteVetoEnabled } from "@/lib/session-veto";
 import { loadVetoedProposalIds } from "@/lib/session-veto-db";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
-import type { Game, GroupAchievement, Session, SessionStatus, User } from "@prisma/client";
+import type { Game, GroupAchievement, Prisma, Session, SessionStatus, User } from "@prisma/client";
 
 /**
  * Bug remonté (production, après activation de `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`)
@@ -245,26 +245,36 @@ export interface CloseSessionResult {
  * réseau (voir le commentaire de fichier de `notification-delivery.ts`
  * sur l'interdiction d'appel Discord dans une transaction SQL).
  */
+type ClosingProposal = Prisma.ProposalGetPayload<{ include: { game: true; votes: { include: { user: true } } } }>;
+
 async function claimSessionCloseWithAnnounce(
-  sessionId: string,
-  announceViaBot: boolean,
-  data: { status: "CANCELLED" } | { status: "SCHEDULED"; decidedGameId: string; decidedTime: Date },
-  winner: Parameters<typeof announceSessionResult>[1]
-): Promise<boolean> {
+  session: Session,
+  proposals: ClosingProposal[]
+) {
+  const sessionId = session.id;
   return prisma.$transaction(async (tx) => {
+    // Même verrou que les mutations de veto : décision et vetos sont un seul état SQL.
+    if (isVoteVetoEnabled()) await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+    const candidates = excludeVetoed(proposals, await loadVetoedProposalIds(sessionId, session.communityId, tx));
+    const best = candidates.length ? candidates.reduce((a, b) => b.votes.length > a.votes.length ? b : a) : null;
+    const winner = best && best.votes.length > 0 ? best : null;
+    const silent = best !== null && winner === null;
+    const data = winner
+      ? { status: "SCHEDULED" as const, decidedGameId: winner.gameId, decidedTime: session.date }
+      : { status: "CANCELLED" as const };
     const result = await tx.session.updateMany({
       where: { id: sessionId, status: "VOTING" },
       data,
     });
-    if (result.count !== 1) return false;
-    if (announceViaBot) {
+    if (result.count !== 1) return null;
+    if (session.announceViaBot && !silent) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
       if (winner) {
         await enqueueSessionResultThreadSummary(sessionId, tx);
         await enqueueSessionValidated(sessionId, tx);
       }
     }
-    return true;
+    return { winner, silent, tie: winner !== null && candidates.filter((p) => p.votes.length === winner.votes.length).length > 1 };
   });
 }
 
@@ -317,51 +327,20 @@ export async function closeSession(
   if (!session || session.status !== "VOTING") return null;
   const announceViaBot = session.announceViaBot;
 
-  if (session.proposals.length === 0) {
-    return closeAsCancelled(sessionId, announceViaBot, session);
-  }
-
   const availability = await getProposalAvailability(
     session.date,
     session.proposals.map((p) => p.game)
   );
-  // Veto (VOTE_VETO_ENABLED) : filtré AVANT le gagnant et le contrôle « 0 votant ».
-  const jouableProposals = excludeVetoed(
-    session.proposals.filter((p) => availability.get(p.gameId)?.jouable),
-    await loadVetoedProposalIds(sessionId, session.communityId)
+  const decision = await claimSessionCloseWithAnnounce(
+    session,
+    session.proposals.filter((p) => availability.get(p.gameId)?.jouable)
   );
-
-  if (jouableProposals.length === 0) {
-    return closeAsCancelled(sessionId, announceViaBot, session);
-  }
-
-  const winner = jouableProposals.reduce((best, proposal) =>
-    proposal.votes.length > best.votes.length ? proposal : best
-  );
-
-  if (winner.votes.length === 0) {
-    const result = await prisma.session.updateMany({
-      where: { id: sessionId, status: "VOTING" },
-      data: { status: "CANCELLED" },
-    });
-    if (result.count !== 1) return null;
+  if (!decision) return null;
+  const { winner, tie, silent } = decision;
+  if (!winner) {
     await closeThreadOnEndSafely("session", sessionId);
-    return { discord: null };
+    return { discord: silent ? null : announceViaBot ? { ok: true as const } : await announceSessionResult(session, null, false) };
   }
-
-  const tie =
-    jouableProposals.filter((p) => p.votes.length === winner.votes.length)
-      .length > 1;
-
-  // Réclame la clôture ET enqueue son intention de notification bot
-  // ENSEMBLE (revue ciblée de #99) — voir `claimSessionCloseWithAnnounce`.
-  const claimed = await claimSessionCloseWithAnnounce(
-    sessionId,
-    announceViaBot,
-    { status: "SCHEDULED", decidedGameId: winner.gameId, decidedTime: session.date },
-    winner
-  );
-  if (!claimed) return null;
 
   // XP participation (Axe 1) — même définition de "présent" que celle
   // utilisée par l'écran de saisie des résultats (PR 3/9) : les users qui
@@ -382,21 +361,6 @@ export async function closeSession(
   const discord = announceViaBot
     ? { ok: true as const }
     : await announceSessionResult(session, winner, tie);
-  return { discord };
-}
-
-/** Annulation partagée par les deux branches "aucune proposition
- * jouable" de `closeSession` — claim + enqueue bot atomiques, webhook
- * hors transaction (voir `claimSessionCloseWithAnnounce`). */
-async function closeAsCancelled(
-  sessionId: string,
-  announceViaBot: boolean,
-  session: Pick<Session, "id" | "createdById" | "date" | "notifiedUserIds">
-): Promise<CloseSessionResult | null> {
-  const claimed = await claimSessionCloseWithAnnounce(sessionId, announceViaBot, { status: "CANCELLED" }, null);
-  if (!claimed) return null;
-  await closeThreadOnEndSafely("session", sessionId);
-  const discord = announceViaBot ? { ok: true as const } : await announceSessionResult(session, null, false);
   return { discord };
 }
 
@@ -492,17 +456,14 @@ export async function drawSessionGame(
     session.date,
     session.proposals.map((p) => p.game)
   );
-  const jouableProposals = excludeVetoed(
-    session.proposals.filter((p) => availability.get(p.gameId)?.jouable),
-    await loadVetoedProposalIds(sessionId, session.communityId)
-  );
-  if (jouableProposals.length === 0) return { kind: "no_eligible_game" };
-
-  const winner = jouableProposals[Math.floor(Math.random() * jouableProposals.length)];
-  const candidateGameIds = jouableProposals.map((p) => p.gameId);
+  const jouableProposals = session.proposals.filter((p) => availability.get(p.gameId)?.jouable);
   const announceViaBot = session.announceViaBot;
 
   const committed = await prisma.$transaction(async (tx) => {
+    if (isVoteVetoEnabled()) await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+    const candidates = excludeVetoed(jouableProposals, await loadVetoedProposalIds(sessionId, session.communityId, tx));
+    if (candidates.length === 0) return { kind: "no_eligible_game" as const };
+    const winner = candidates[Math.floor(Math.random() * candidates.length)];
     // Protection contre un retrait de proposition survenu APRÈS le
     // tirage ci-dessus mais AVANT ce commit (voir le commentaire de
     // fonction) — jamais un jeu retiré entre-temps annoncé comme retenu.
@@ -510,20 +471,20 @@ export async function drawSessionGame(
       where: { sessionId_gameId: { sessionId, gameId: winner.gameId } },
       select: { id: true },
     });
-    if (!stillProposed) return false;
+    if (!stillProposed) return null;
 
     const claim = await tx.session.updateMany({
       where: { id: sessionId, status: "VOTING" },
       data: { status: "SCHEDULED", decidedGameId: winner.gameId, decidedTime: session.date },
     });
-    if (claim.count !== 1) return false;
+    if (claim.count !== 1) return null;
 
     if (announceViaBot) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
       await enqueueSessionResultThreadSummary(sessionId, tx);
       await enqueueSessionValidated(sessionId, tx);
     }
-    return true;
+    return { kind: "committed" as const, winner, candidateGameIds: candidates.map((p) => p.gameId) };
   });
 
   if (!committed) {
@@ -536,6 +497,9 @@ export async function drawSessionGame(
     if (!fresh) return { kind: "not_found" };
     return { kind: "not_voting", status: fresh.status, decidedGameId: fresh.decidedGameId };
   }
+
+  if (committed.kind === "no_eligible_game") return committed;
+  const { winner, candidateGameIds } = committed;
 
   // XP participation — même définition que `closeSession` : les VRAIS
   // votants de la proposition retenue, jamais fabriqués (contrairement à

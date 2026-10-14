@@ -1,11 +1,15 @@
-import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
+import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import type { Prisma } from "@prisma/client";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { isVoteVetoEnabled } from "@/lib/session-veto";
 
 /** Ids des propositions vetoées d'une soirée. Flag éteint : ensemble vide, aucune requête. */
-export async function loadVetoedProposalIds(sessionId: string, communityId: string | null): Promise<Set<string>> {
+export async function loadVetoedProposalIds(sessionId: string, communityId: string | null, tx?: Prisma.TransactionClient): Promise<Set<string>> {
   if (!isVoteVetoEnabled()) return new Set();
-  const scopedDb = await scopedPrismaForCommunityId(communityId ?? (await getDefaultCommunityId()));
+  const id = communityId ?? (await getDefaultCommunityId());
+  const scopedDb = tx
+    ? scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false })
+    : await scopedPrismaForCommunityId(id);
   const rows = await scopedDb.sessionVeto.findMany({ where: { sessionId }, select: { proposalId: true } });
   return new Set(rows.map((r) => r.proposalId));
 }

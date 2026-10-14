@@ -63,19 +63,21 @@ export async function setVeto(formData: FormData): Promise<VetoResult> {
   const allowed = await prisma.$transaction(async (tx) => {
     const scopedDb = scopedTransactionPrisma(tx, scope);
     await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
+    const fresh = await scopedDb.session.findUnique({ where: { id: session.id } });
+    if (!fresh || !isVotingOpen(fresh)) return "closed" as const;
     const others = await scopedDb.sessionVeto.findMany({
       where: { sessionId: session.id, NOT: { userId: user.id } },
       select: { proposalId: true },
     });
-    if (!wouldVetoLeaveCandidate(jouableIds, new Set(others.map((v) => v.proposalId)), proposalId)) return false;
+    if (!wouldVetoLeaveCandidate(jouableIds, new Set(others.map((v) => v.proposalId)), proposalId)) return "last_candidate" as const;
     await scopedDb.sessionVeto.upsert({
       where: { sessionId_userId: { sessionId: session.id, userId: user.id } },
       update: { proposalId },
       create: { sessionId: session.id, userId: user.id, proposalId, communityId },
     });
-    return true;
+    return null;
   });
-  if (!allowed) return { ok: false, error: "last_candidate" };
+  if (allowed) return { ok: false, error: allowed };
   revalidatePath(`/sessions/${session.id}`);
   return { ok: true };
 }
@@ -84,7 +86,17 @@ export async function setVeto(formData: FormData): Promise<VetoResult> {
 export async function clearVeto(formData: FormData): Promise<VetoResult> {
   const r = await prepare(formData);
   if (r.fail) return r.fail;
-  await r.scopedDb.sessionVeto.deleteMany({ where: { sessionId: r.session.id, userId: r.user.id } });
+  const scope = await getIsolationScope(r.user.id);
+  const cleared = await prisma.$transaction(async (tx) => {
+    const scopedDb = scopedTransactionPrisma(tx, scope);
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${r.session.id} FOR UPDATE`;
+    const fresh = await scopedDb.session.findUnique({ where: { id: r.session.id } });
+    if (!fresh || !isVotingOpen(fresh)) return false;
+    // Un bouton obsolète ne doit jamais retirer le veto d'une autre proposition.
+    await scopedDb.sessionVeto.deleteMany({ where: { sessionId: r.session.id, userId: r.user.id, proposalId: r.proposalId } });
+    return true;
+  });
+  if (!cleared) return { ok: false, error: "closed" };
   revalidatePath(`/sessions/${r.session.id}`);
   return { ok: true };
 }

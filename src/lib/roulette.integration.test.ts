@@ -152,6 +152,55 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", ()
     const sessionOf = (id: string) => db.session.findUniqueOrThrow({ where: { id }, include: { proposals: { include: { votes: true } } } });
     const veto = (rouletteId: string, userId: string, rng: () => number = () => 0) => vetoLib.vetoRouletteGame({ rouletteId, userId, rng });
 
+    it.each(["CANCELLED", "DONE"] as const)("refuse après un passage concurrent de la soirée à %s", async (status) => {
+      const s = await drawn();
+      let pending!: ReturnType<typeof veto>;
+      await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${s.sessionId} FOR UPDATE`;
+        pending = veto(s.r.id, s.users[0].id);
+        let waiting = false;
+        for (let attempt = 0; attempt < 150; attempt++) {
+          const rows = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+          if (Number(rows[0].count) > 0) { waiting = true; break; }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        await tx.session.update({ where: { id: s.sessionId }, data: { status } });
+      });
+      expect(await pending).toEqual({ ok: false, error: "closed" });
+      expect(await db.rouletteVeto.count()).toBe(0);
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(s.first);
+    });
+
+    it("sérialise les vetos simultanés d'un même participant", async () => {
+      const s = await drawn();
+      const results = await Promise.all([veto(s.r.id, s.users[0].id), veto(s.r.id, s.users[0].id)]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results).toContainEqual({ ok: false, error: "already_vetoed" });
+      expect(await db.rouletteVeto.count()).toBe(1);
+    });
+
+    it("sérialise deux participants et exclut chacun des jeux rejetés", async () => {
+      const s = await drawn();
+      const results = await Promise.all([veto(s.r.id, s.users[0].id), veto(s.r.id, s.users[1].id)]);
+      expect(results.every((r) => r.ok)).toBe(true);
+      const rejected = await db.rouletteVeto.findMany();
+      expect(new Set(rejected.map((r) => r.gameId)).size).toBe(2);
+      expect(rejected.map((r) => r.gameId)).not.toContain((await sessionOf(s.sessionId)).decidedGameId);
+    });
+
+    it("refuse un participant devenu membre d'une autre communauté seulement", async () => {
+      const s = await drawn();
+      const foreign = await db.community.create({ data: { slug: "foreign", name: "foreign", status: "ACTIVE" } });
+      await db.membership.create({ data: { userId: s.users[0].id, communityId: foreign.id, status: "ACTIVE", role: "MEMBER" } });
+      await db.roulette.update({ where: { id: s.r.id }, data: { communityId } });
+      await db.session.update({ where: { id: s.sessionId }, data: { communityId } });
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      expect(await veto(s.r.id, s.users[0].id)).toEqual({ ok: false, error: "forbidden" });
+      expect(await db.rouletteVeto.count()).toBe(0);
+      expect((await sessionOf(s.sessionId)).decidedGameId).toBe(s.first);
+    });
+
     it("flag éteint : refus, rien ne change", async () => {
       const s = await drawn();
       vi.stubEnv("VOTE_VETO_ENABLED", "");
