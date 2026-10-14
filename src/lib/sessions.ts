@@ -22,6 +22,8 @@ import { openSuperlativeVotingWindow, getWinningProposalParticipants } from "@/l
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { excludeVetoed } from "@/lib/session-veto";
+import { loadVetoedProposalIds } from "@/lib/session-veto-db";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
@@ -322,8 +324,10 @@ export async function closeSession(
     session.date,
     session.proposals.map((p) => p.game)
   );
-  const jouableProposals = session.proposals.filter(
-    (p) => availability.get(p.gameId)?.jouable
+  // Veto (VOTE_VETO_ENABLED) : filtré AVANT le gagnant et le contrôle « 0 votant ».
+  const jouableProposals = excludeVetoed(
+    session.proposals.filter((p) => availability.get(p.gameId)?.jouable),
+    await loadVetoedProposalIds(sessionId, session.communityId)
   );
 
   if (jouableProposals.length === 0) {
@@ -487,7 +491,10 @@ export async function drawSessionGame(
     session.date,
     session.proposals.map((p) => p.game)
   );
-  const jouableProposals = session.proposals.filter((p) => availability.get(p.gameId)?.jouable);
+  const jouableProposals = excludeVetoed(
+    session.proposals.filter((p) => availability.get(p.gameId)?.jouable),
+    await loadVetoedProposalIds(sessionId, session.communityId)
+  );
   if (jouableProposals.length === 0) return { kind: "no_eligible_game" };
 
   const winner = jouableProposals[Math.floor(Math.random() * jouableProposals.length)];
