@@ -16,6 +16,8 @@ import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { CursorTrailToggle } from "@/components/CursorTrailToggle";
+import { GamePreferencesForm } from "@/components/GamePreferencesForm";
+import { visiblePreferenceGames } from "@/lib/game-suggestions";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import {
   AVAILABLE_NOTIFICATION_CATEGORIES,
@@ -88,21 +90,24 @@ export default async function ProfilParametresPage({
     family?: string;
     new?: string;
     notifications?: string;
+    gouts?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
   // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
   // ce user, pour afficher les chips "actif"/"inactif".
-  const [allTags, ownUserTags, storedNotificationPreferences] = await Promise.all([
+  const [allTags, ownUserTags, storedNotificationPreferences, preferenceGames, gameRefusals] = await Promise.all([
     prisma.tag.findMany({ orderBy: { name: "asc" } }),
     prisma.userTag.findMany({ where: { userId: user.id }, select: { tagId: true } }),
     prisma.userNotificationPreference.findMany({ where: { userId: user.id } }),
+    visiblePreferenceGames(user.id),
+    prisma.userGameRefusal.findMany({ where: { userId: user.id }, select: { gameId: true, game: { select: { name: true } } }, orderBy: [{ createdAt: "desc" }, { gameId: "asc" }] }),
   ]);
   const notificationPreferences = await getUserNotificationPreferences({
     silenceReminders: user.silenceReminders,
@@ -112,6 +117,7 @@ export default async function ProfilParametresPage({
 
   return (
     <Stagger className="flex flex-col gap-6">
+      <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Bannière de profil</h2>
