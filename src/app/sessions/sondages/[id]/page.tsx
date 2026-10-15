@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Sondage de disponibilités");
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { AvailabilityPollError, loadAvailabilityPoll } from "@/lib/session-availability-poll-data";

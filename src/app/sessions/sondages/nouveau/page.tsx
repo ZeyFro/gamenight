@@ -1,4 +1,7 @@
 import { redirect } from "next/navigation";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Nouveau sondage de créneaux");
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { creationMemberUserWhere } from "@/lib/community-isolation";
