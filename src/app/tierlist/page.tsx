@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
+import { getGroupLibraryGames, getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
 import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/lib/game-filters";
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
@@ -31,13 +31,10 @@ export default async function TierlistPage({
   if (!user) redirect("/");
 
   const [allGames, entries, ownerCounts, totalUsers] = await Promise.all([
-    prisma.game.findMany({
-      where: { userGames: { some: { owned: true } } },
-      orderBy: { name: "asc" },
-    }),
+    getGroupLibraryGames(user.id),
     prisma.tierlistEntry.findMany({ where: { userId: user.id } }),
-    getGameOwnerCounts(),
-    getTotalUserCount(),
+    getGameOwnerCounts(user.id),
+    getTotalUserCount(user.id),
   ]);
 
   const initialTiers = Object.fromEntries(entries.map((e) => [e.gameId, e.tier]));
