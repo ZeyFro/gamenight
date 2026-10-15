@@ -36,6 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
   let createSession: typeof import("./session-lifecycle").createSession;
   const queries: string[] = [];
   const counts = new Map<string, number>();
+  const statements = new Map<string, string[]>();
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
@@ -108,6 +109,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
     const total = queries.length;
     const tx = queries.filter((q) => q === "BEGIN" || q === "COMMIT" || q === "ROLLBACK").length;
     counts.set(label, total);
+    statements.set(label, [...queries]);
     console.log(`[create-session-queries] ${label} requêtes=${total} (dont BEGIN/COMMIT/ROLLBACK=${tx})`);
     if (process.env.CREATE_SESSION_QUERIES_VERBOSE === "true") console.log(queries.join("\n"));
     return total;
@@ -163,7 +165,9 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
 
   it("le compte ne croît ni avec N ni avec E", () => {
     const get = (label: string) => counts.get(label)!;
-    const all = JSON.stringify(Object.fromEntries(counts));
+    // Conserver le SQL (sans paramètres) en cas d'écart : une requête du
+    // moteur ou un événement tardif ne doit pas conduire à relâcher la borne.
+    const all = JSON.stringify({ counts: Object.fromEntries(counts), statements: Object.fromEntries(statements) });
     expect(get("bot N=5 E=0"), all).toBe(get("bot N=1 E=0"));
     expect(get("bot N=5 E=5"), all).toBe(get("bot N=1 E=5"));
     // E > 0 : deux lectures fixes (relation `badge` incluse, XP des badges), jamais une par badge.
