@@ -21,6 +21,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { NotifyRecipientsField } from "@/components/NotifyRecipientsField";
 import { RouletteWizard } from "@/components/roulette/RouletteWizard";
+import { isRoulettePlayerFilterEnabled } from "@/lib/roulette-draw";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createRouletteAction } from "./actions";
@@ -336,7 +337,7 @@ async function InstantMode({ user }: { user: User }) {
   const [meGames, potesRaw] = await Promise.all([
     prisma.userGame.findMany({
       where: { userId: user.id, owned: true },
-      select: { game: { select: { id: true, name: true, coverUrl: true } } },
+      select: { game: { select: { id: true, name: true, coverUrl: true, minPlayers: true, maxPlayers: true } } },
       orderBy: { game: { name: "asc" } },
     }),
     prisma.user.findMany({
@@ -348,7 +349,7 @@ async function InstantMode({ user }: { user: User }) {
         color: true,
         userGames: {
           where: { owned: true },
-          select: { game: { select: { id: true, name: true, coverUrl: true } } },
+          select: { game: { select: { id: true, name: true, coverUrl: true, minPlayers: true, maxPlayers: true } } },
           orderBy: { game: { name: "asc" } },
         },
       },
@@ -376,6 +377,6 @@ async function InstantMode({ user }: { user: User }) {
   const defaultDate = toDateInputValue(wallClockNow());
 
   return (
-    <RouletteWizard candidates={candidates} defaultDate={defaultDate} soundEnabled={user.soundEnabled} />
+    <RouletteWizard candidates={candidates} defaultDate={defaultDate} soundEnabled={user.soundEnabled} playerFilterEnabled={isRoulettePlayerFilterEnabled()} />
   );
 }

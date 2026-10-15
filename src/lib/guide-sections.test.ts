@@ -26,6 +26,23 @@ describe("guideSections (GUIDE_V2_ENABLED)", () => {
     expect(tournois()).toHaveLength(sans + 1);
   });
 
+  it("ROULETTE_PLAYER_FILTER_ENABLED : ajoute une ligne à la roulette dans Soirées", () => {
+    const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
+    expect(guideSections(soirees)[0].lines).toHaveLength(1);
+    vi.stubEnv("ROULETTE_PLAYER_FILTER_ENABLED", "true");
+    expect(guideSections(soirees)[0].lines.at(-1)).toMatch(/Roulette/);
+    expect(guideSections(base)).toEqual(base);
+  });
+
+  it("VOTE_VETO_ENABLED : ajoute une ligne de veto aux Soirées, même sans GUIDE_V2_ENABLED", () => {
+    const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
+    expect(guideSections(soirees)[0].lines).toHaveLength(1);
+    vi.stubEnv("VOTE_VETO_ENABLED", "true");
+    expect(guideSections(soirees)[0].lines).toHaveLength(3);
+    expect(guideSections(soirees)[0].lines.at(-1)).toMatch(/Roulette.*veto/);
+    expect(guideSections(base)).toEqual(base);
+  });
+
   it("actif : ajoute Jouer maintenant et Tournois après les sections d'origine", () => {
     vi.stubEnv("GUIDE_V2_ENABLED", "true");
     expect(guideSections(base).map((s) => s.title)).toEqual(["Calendrier", "Jouer maintenant", "Tournois"]);

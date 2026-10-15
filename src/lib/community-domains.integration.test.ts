@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { currentUser, postDiscord } = vi.hoisted(() => ({ currentUser: vi.fn(), postDiscord: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: currentUser }));
-vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: () => true, RATE_LIMIT_ERROR_KEY: "rate_limited" }));
+vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: () => true, RATE_LIMIT_ERROR_KEY: "rate_limited", RATE_LIMIT_MESSAGE: "trop vite" }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); },

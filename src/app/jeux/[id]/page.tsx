@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getGameDetails } from "@/lib/game-details";
+import { getGameOwners } from "@/lib/game-library";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -220,10 +221,7 @@ export default async function GameDetailPage({
   if (!game) notFound();
 
   const [owners, owns] = await Promise.all([
-    prisma.userGame.findMany({
-      where: { gameId: id, owned: true },
-      include: { user: true },
-    }),
+    getGameOwners(user.id, id),
     prisma.userGame.findUnique({
       where: { userId_gameId: { userId: user.id, gameId: id } },
     }),

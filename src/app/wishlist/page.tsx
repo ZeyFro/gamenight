@@ -32,7 +32,7 @@ export default async function WishlistPage({
   const { error } = await searchParams;
   const errorMessage = error ? (WISHLIST_ERROR_MESSAGES[error] ?? null) : null;
 
-  const [entries, totalUsers] = await Promise.all([getWishlist(user.id), getTotalUserCount()]);
+  const [entries, totalUsers] = await Promise.all([getWishlist(user.id), getTotalUserCount(user.id)]);
   const prices = await enrichWithPrices(entries);
 
   return (
