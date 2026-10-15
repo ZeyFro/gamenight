@@ -392,6 +392,7 @@ function Process-Pr([int]$n, [bool]$isStatus) {
 function Process-OpenPrs {
   while ($true) {
     $summary = $null
+    if (Test-Path $WorkDir) { $null = G @('fetch', '-q', 'origin') }
     $md = Get-RoadmapMain
     if ($md) {
       $tmp = Join-Path $logDir 'roadmap-main.md'
