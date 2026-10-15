@@ -29,8 +29,8 @@ puis l'encart indique l'indisponibilité ; le reste de la fiche reste disponible
 Il n'y a ni reprise automatique ajoutée, ni collecte de toute la bibliothèque.
 Les autres appels Steam existants conservent leur politique de délai.
 
-Le client partagé expose désormais `isFree` et `priceCurrency`, et fixe la
-région FR aussi pour les prix déjà lus dans la wishlist. Son ancien champ
+Le client partagé expose désormais `isFree` et `priceCurrency`, et propose un
+paramètre de région FR réservé au relevé de fiche. Son ancien champ
 `priceFormatted` reste nullable et compatible avec les usages existants.
 La détection coop et les écritures du backfill ne changent pas.
 

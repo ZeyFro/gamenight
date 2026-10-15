@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger";
 
 // L'heure du relevé est mise en cache AVEC les données, jamais recréée à la lecture.
 const readSteamPurchase = unstable_cache(async (appId: number) => {
-  const details = await fetchSteamStoreDetails(appId, { signal: AbortSignal.timeout(5000) });
+  const details = await fetchSteamStoreDetails(appId, { signal: AbortSignal.timeout(5000), countryCode: "fr" });
   return details ? { isFree: details.isFree, priceFormatted: details.priceFormatted,
     currency: details.priceCurrency, observedAt: new Date().toISOString() } : null;
 }, ["steam-purchase-fr-v1"], { revalidate: 3600 });

@@ -14,8 +14,10 @@ describe("prix Steam explicitement typé", () => {
   it("fixe la région FR, transmet le signal et conserve prix/devise et coopération", async () => {
     const fetcher = respond({ is_free: false, price_overview: { final_formatted: "19,99€", currency: "EUR" }, categories: [{ id: 9, description: "Co-op" }] });
     const signal = AbortSignal.timeout(5000);
-    expect(await fetchSteamStoreDetails(620,{signal})).toMatchObject({ isFree: false, priceFormatted: "19,99€", priceCurrency: "EUR", isCoop: true });
+    expect(await fetchSteamStoreDetails(620,{signal,countryCode:"fr"})).toMatchObject({ isFree: false, priceFormatted: "19,99€", priceCurrency: "EUR", isCoop: true });
     expect(fetcher).toHaveBeenCalledWith("https://store.steampowered.com/api/appdetails?appids=620&l=french&cc=fr",{signal});
+    await fetchSteamStoreDetails(620);
+    expect(fetcher).toHaveBeenLastCalledWith("https://store.steampowered.com/api/appdetails?appids=620&l=french",{signal:undefined});
   });
   it("ne remplace pas le statut explicite par une promotion à zéro, et borne le texte reçu", async () => {
     respond({ is_free: false, price_overview: { final_formatted: "0€", currency: "EUR" } }); expect(await fetchSteamStoreDetails(620)).toMatchObject({ isFree: false, priceFormatted: "0€" });

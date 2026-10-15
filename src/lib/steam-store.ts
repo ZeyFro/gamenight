@@ -74,10 +74,10 @@ export function deriveIsCoopFromCategories(categories: SteamStoreCategory[]): bo
  */
 export async function fetchSteamStoreDetails(
   steamAppId: number,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; countryCode?: "fr" }
 ): Promise<SteamStoreDetails | null> {
   const res = await fetch(
-    `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&l=french&cc=fr`,
+    `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&l=french${options?.countryCode ? `&cc=${options.countryCode}` : ""}`,
     { signal: options?.signal }
   );
   if (!res.ok) {

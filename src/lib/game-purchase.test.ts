@@ -12,7 +12,7 @@ describe("relevé Steam de fiche", () => {
     expect(value).toMatchObject({ isFree: false, priceFormatted: "12€", currency: "EUR", observedAt: expect.any(String) });
     expect(Number.isFinite(Date.parse(value!.observedAt))).toBe(true);
     expect(mocks.cache).toHaveBeenCalledWith(["steam-purchase-fr-v1"],{revalidate:3600});
-    expect(mocks.fetch).toHaveBeenCalledWith(620,{signal:expect.any(AbortSignal)});
+    expect(mocks.fetch).toHaveBeenCalledWith(620,{signal:expect.any(AbortSignal),countryCode:"fr"});
   });
   it("refuse les identifiants invalides et ne fait pas passer une panne pour un jeu gratuit", async () => {
     for (const appId of [0,-1,NaN,1.5]) expect(await getSteamPurchaseInfo(appId)).toBeNull(); expect(mocks.fetch).not.toHaveBeenCalled();
