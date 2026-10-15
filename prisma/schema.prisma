@@ -38,6 +38,8 @@ enum UserRole {
 }
 
 model User {
+  availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
+  availabilityPollParticipations SessionAvailabilityPollParticipant[]
   id                       String    @id @default(cuid())
   discordId                String    @unique
   discordName              String
@@ -494,6 +496,7 @@ enum SessionStatus {
 // l'heure de la session ; nul = pas de deadline distincte, seule l'heure
 // de la session ferme le vote (comportement historique).
 model Session {
+  availabilityPoll SessionAvailabilityPoll?
   id             String        @id @default(cuid())
   date           DateTime
   votingDeadline DateTime?
@@ -2498,6 +2501,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  availabilityPolls SessionAvailabilityPoll[]
   id   String @id @default(cuid())
   // Segment d'URL `/c/[slug]/…` (PR suivante). `default` = la communauté
   // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
@@ -2542,6 +2546,77 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+// Une proposition de créneau ne crée jamais une Session ni un rappel.
+// La soirée finale est liée seulement au choix transactionnel du créateur.
+enum SessionAvailabilityPollStatus {
+  OPEN
+  CLOSED
+}
+
+enum SessionAvailabilityPollAnswer {
+  AVAILABLE
+  MAYBE
+  UNAVAILABLE
+}
+
+model SessionAvailabilityPoll {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation("AvailabilityPollCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  status SessionAvailabilityPollStatus @default(OPEN)
+  sessionId String? @unique
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  chosenSlotId String?
+  chosenSlot SessionAvailabilityPollSlot? @relation("PollChoice", fields: [id, chosenSlotId], references: [pollId, id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  participants SessionAvailabilityPollParticipant[]
+  slots SessionAvailabilityPollSlot[] @relation("PollOptions")
+
+  @@index([communityId, createdAt])
+  @@index([createdById, status])
+}
+
+model SessionAvailabilityPollParticipant {
+  pollId String
+  userId String
+  poll SessionAvailabilityPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses SessionAvailabilityPollResponse[]
+
+  @@id([pollId, userId])
+  @@index([userId])
+}
+
+model SessionAvailabilityPollSlot {
+  id String @id @default(cuid())
+  pollId String
+  poll SessionAvailabilityPoll @relation("PollOptions", fields: [pollId], references: [id], onDelete: Cascade)
+  start DateTime
+  end DateTime
+  chosenBy SessionAvailabilityPoll[] @relation("PollChoice")
+  responses SessionAvailabilityPollResponse[]
+
+  @@unique([pollId, id])
+  @@unique([pollId, start, end])
+}
+
+model SessionAvailabilityPollResponse {
+  pollId String
+  slotId String
+  userId String
+  answer SessionAvailabilityPollAnswer
+  updatedAt DateTime @updatedAt
+  slot SessionAvailabilityPollSlot @relation(fields: [pollId, slotId], references: [pollId, id], onDelete: Cascade)
+  participant SessionAvailabilityPollParticipant @relation(fields: [pollId, userId], references: [pollId, userId], onDelete: Cascade)
+
+  @@id([pollId, slotId, userId])
+  @@index([pollId, userId])
 }
 
 model CommunityChannelConfig {

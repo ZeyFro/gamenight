@@ -18,12 +18,20 @@ export async function resumeCreation(actorId: string, kind: string, form: FormDa
     ? await scopedDb.session.findUnique({ where: { id: receipt.resourceId } })
     : kind === "ROULETTE" ? await scopedDb.roulette.findUnique({ where: { id: receipt.resourceId } })
     : kind === "TOURNAMENT" ? await scopedDb.tournament.findUnique({ where: { id: receipt.resourceId } })
+    : kind === "AVAILABILITY_POLL" ? await (async () => {
+      // Sondages default historiques sans Membership restent accessibles en
+      // isolation OFF, comme lors de leur création. Le service contrôle la
+      // même audience privée et l'état du serveur, puis nous vérifions l'auteur.
+      const { loadAvailabilityPoll } = await import("@/lib/session-availability-poll-data");
+      return loadAvailabilityPoll(actorId, receipt.resourceId);
+    })()
     : await scopedDb.instantSession.findUnique({ where: { id: receipt.resourceId } });
   if (!row || row.createdById !== actorId) throw new Error("Cette création n’est plus accessible. Aucune nouvelle création n’a été effectuée.");
   if (kind === "SESSION" || kind === "ROULETTE_SESSION") {
     await awardXp(actorId, row.communityId, "CREATE_SESSION", row.id, XP_AMOUNTS.CREATE_SESSION);
     await checkSessionsCreatedBadges(actorId, row.communityId);
   }
+  if (kind === "AVAILABILITY_POLL") return `/sessions/sondages/${row.id}`;
   const path = kind === "SESSION" || kind === "ROULETTE_SESSION" ? "sessions" : kind === "ROULETTE" ? "roulette" : kind === "TOURNAMENT" ? "tournois" : "jouer-maintenant";
   return `/${path}/${row.id}`;
 }
