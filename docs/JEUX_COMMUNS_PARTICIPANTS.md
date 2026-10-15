@@ -62,6 +62,45 @@ ni à la reprise ni à la reproduction des résultats ci-dessus.
 3. Pour le timeout isolé : sans `TEST_DATABASE_URL`, lancer
    `npx vitest run src/app/onboarding-links.test.tsx --maxWorkers=1`.
 4. Après revue des contrôles et des limitations, sortir la PR du brouillon et
-   fusionner avec `--match-head-commit` sur le SHA validé, si cette action est
-   de nouveau autorisée. Le travail autonome a été arrêté à la demande du
-   propriétaire ; aucun lot suivant n’est engagé.
+   fusionner avec `--match-head-commit` sur le SHA validé. La reprise du
+   15 octobre autorise cette fusion après vérification, puis les lots suivants
+   dans des PR séparées.
+
+## Diagnostic CI #119 — reprise du 15 octobre 2026
+
+Le premier passage sur `1064236` a exécuté 2 501 tests : 2 498 réussis et trois
+expirations de 5 000 ms, dans deux suites existantes :
+
+- `community-domains.integration.test.ts` : refus du tirage par un membre
+  non invité du même serveur ;
+- `thread-close-on-end.integration.test.ts` : nettoyage éteint et cycle
+  annulation / archivage / suppression différée.
+
+Les 17 intégrations de bibliothèque O06 réussissent. Ces échecs ne sont pas des
+assertions métier : le délai du corps du test expire. Le journal Postgres
+contient ensuite un `Session_createdById_fkey` : une création du scénario
+expiré continue après le nettoyage des utilisateurs par le scénario suivant.
+Cette erreur tardive est une conséquence du timeout, pas une preuve d'un
+défaut de création O06.
+
+La tentative 2 du même run, sur le même SHA, avec les mêmes dépendances,
+assertions, délais et sérialisation des fichiers, réussit l'étape complète
+`npm run test:postgres`. Les expirations initiales sont donc intermittentes.
+Le journal initial ne mesure pas l'opération en attente : une saturation du
+runner ou une latence SQL reste une hypothèse, pas une cause racine établie.
+Aucun correctif applicatif n'est justifié par ces seuls résultats. Aucun
+timeout relevé, retry automatique ajouté ou test désactivé pour obtenir ce
+résultat ; la première tentative rouge reste consultable dans GitHub Actions.
+
+Sur le PC Windows de reprise, Docker, `psql`, `pg_ctl` et un service Postgres
+local ne sont pas disponibles. Les intégrations locales sont impossibles ;
+aucune base distante n'est utilisée à leur place. La suite locale sans base
+termine à 1 554 réussis et 944 ignorés. Les 26 tests ciblés (liens OAuth,
+formulaire O06 et filtres), typegen, TypeScript, lint et build direct Webpack
+réussissent. Le build a nécessité l'accès réseau aux polices Google, sans
+migration. Le parcours navigateur authentifié/mobile reste non vérifié.
+
+Le compte GitHub authentifié est `ZeyFro` (id `102926389`) ; l'auteur et le
+committer locaux sont configurés avec son adresse GitHub noreply. Les
+contrôles doivent encore être relus sur le commit final de cette mise à jour
+avant fusion de la PR #234.
