@@ -22,6 +22,7 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - Jamais la base Neon en test ni en local. Tests uniquement via `TEST_DATABASE_URL`.
 - Jamais de vraie notification Discord depuis un test ou un essai.
 - PR en Draft ; s'arrêter à « PR ouverte, build vert » (check Vercel). Pas de merge/déploiement sans demande.
+- Exception décidée par le propriétaire (2026-10-15) : la boucle roadmap (`scripts/work-roadmap.ps1`, suivi `docs/ROADMAP.md`) fusionne elle-même les PR `claude/lot[1-7]-*` qu'elle a construites, après la porte `scripts/roadmap-gate.mjs` et une CI verte, puis attend le déploiement de production (les migrations additives s'appliquent alors sur la base de production). Claude ne fusionne jamais : `gh pr merge` / `gh pr ready` lui restent interdits. Arrêt propre : fichier `logs/STOP`.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
 - Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée par `prisma migrate deploy` au build de production ; jamais au build Preview). Changement Prisma seulement si justifié.
