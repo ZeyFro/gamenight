@@ -12,6 +12,8 @@ import {
   applyReminderResults,
   computeTimingsDue,
   parseRemindersSent,
+  isReminderForSchedule,
+  reminderSchedulePayload,
   type ReminderSendOutcome,
 } from "@/lib/reminders";
 
@@ -168,8 +170,8 @@ export async function GET(request: Request) {
         try {
           // Chemin bot (chantier annonces Discord/fils) : n'ENVOIE rien
           // ici — enqueue une livraison `thread-reminder-<minutes>`
-          // (occurrence FIXE = `minutes`, donc un appel répété pour le
-          // même timing ne duplique jamais la ligne). `ok` ici signifie
+          // (occurrence = palier + génération du créneau ; un appel répété
+          // pour le même créneau ne duplique jamais la ligne). `ok` ici signifie
           // "enqueue réussi", pas "posté dans le fil" — la livraison
           // réelle (et ses propres tentatives/backoff si le fil n'existe
           // pas encore) reste entièrement de la responsabilité de
@@ -181,8 +183,8 @@ export async function GET(request: Request) {
           // (potentiellement décalé si l'exécuteur traite la livraison
           // plus tard), jamais figé à l'enqueue — voir son commentaire.
           const ok = session.announceViaBot
-            ? await enqueueSessionReminderDelivery(session.id, minutes).then(
-                () => true,
+            ? await enqueueSessionReminderDelivery(session.id, minutes, session).then(
+                (queued) => queued,
                 (error) => {
                   logger.error(
                     "cron:reminders",
@@ -243,7 +245,7 @@ export async function GET(request: Request) {
           let saved = false;
           for (let attempt = 0; attempt < 3 && current !== undefined; attempt++) {
             const { count } = await prisma.session.updateMany({
-              where: { id: session.id, remindersSent: { equals: current ?? Prisma.JsonNull } },
+              where: { id: session.id, date: session.date, remindersSent: { equals: current ?? Prisma.JsonNull } },
               data: {
                 remindersSent: applyReminderResults(
                   parseRemindersSent(current),
@@ -256,12 +258,14 @@ export async function GET(request: Request) {
               saved = true;
               break;
             }
-            current = (
-              await prisma.session.findUnique({
+            const fresh = await prisma.session.findUnique({
                 where: { id: session.id },
-                select: { remindersSent: true },
-              })
-            )?.remindersSent; // undefined : session supprimée entre-temps
+                select: { date: true, remindersSent: true },
+              });
+            // Une replanification a remplacé la génération : ne jamais y
+            // recopier les succès ni les seuils obsolètes de l'ancien créneau.
+            current = fresh && isReminderForSchedule(reminderSchedulePayload(session), fresh)
+              ? fresh.remindersSent : undefined;
           }
           if (!saved && current !== undefined) {
             logger.warn(

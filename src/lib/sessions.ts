@@ -1,4 +1,6 @@
 import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
+import { randomUUID } from "crypto";
+import { REMINDER_SCHEDULE_PREFIX } from "@/lib/reminders";
 import { prisma } from "@/lib/prisma";
 import { isPlayerCountCompatible } from "@/lib/player-count";
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
@@ -198,14 +200,19 @@ export async function updateSessionSchedule(
   announceViaBot: boolean
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
     const before = await tx.session.findUnique({ where: { id: sessionId }, select: { date: true } });
-    await tx.session.update({ where: { id: sessionId }, data });
+    const dateChanged = before !== null && before.date.getTime() !== data.date.getTime();
+    await tx.session.update({ where: { id: sessionId }, data: {
+      ...data,
+      ...(dateChanged ? { remindersSent: [`${REMINDER_SCHEDULE_PREFIX}${randomUUID()}`] } : {}),
+    } });
     if (announceViaBot) {
       // L'annonce et le MP d'invitation sont ÉDITÉS (une édition ne notifie
       // personne) ; un changement de DATE y ajoute un message avec mention
       // dans le fil et un nouveau MP « Date modifiée ».
       await enqueueSessionAnnounceUpdate(sessionId, tx);
-      if (before && before.date.getTime() !== data.date.getTime()) {
+      if (before && dateChanged) {
         await enqueueSessionDateChange(sessionId, tx, before.date);
       }
     }

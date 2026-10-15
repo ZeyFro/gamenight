@@ -508,6 +508,17 @@ describe.skipIf(!TEST_DATABASE_URL)(
     });
 
     describe("rappel en attente de fil — dépendance jamais épuisée", () => {
+      it("une livraison de l'ancienne date est expirée avant toute construction ou requête Discord", async () => {
+        const creator = await makeUser();
+        const session = await makeSession(creator.id, { status: "SCHEDULED", date: futureDate() });
+        await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+        await sessionsLib.updateSessionSchedule(session.id, { date: new Date(session.date.getTime() + 24 * 3600_000), votingDeadline: null }, false);
+        const outcome = await processOne();
+        expect(outcome).toMatchObject({ outcome: "failed", errorClass: "resolver:expired" });
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(await db.notificationDelivery.count({ where: { channel: "DISCORD_DM" } })).toBe(0);
+      });
+
       it("dependency_not_ready retryable tant que le fil n'existe pas, aucun appel réseau tenté", async () => {
         const creator = await makeUser();
         const session = await makeSession(creator.id, { status: "SCHEDULED" });
@@ -1178,6 +1189,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           announceViaBot: true,
           date: new Date("2026-10-01T20:00:00.000Z"),
         });
+        await db.session.update({ where: { id: session.id }, data: { remindersSent: ["60"] } });
         vi.spyOn(announceLib, "enqueueSessionAnnounceUpdate").mockRejectedValueOnce(new Error("panne enqueue"));
 
         await expect(
@@ -1191,6 +1203,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const stored = await db.session.findUniqueOrThrow({ where: { id: session.id } });
         // Le créneau n'a PAS bougé — la mutation a été annulée avec l'enqueue.
         expect(stored.date.toISOString()).toBe(new Date("2026-10-01T20:00:00.000Z").toISOString());
+        expect(stored.remindersSent).toEqual(["60"]);
         expect(await db.notificationEvent.count({ where: { sourceId: session.id } })).toBe(0);
       });
 
