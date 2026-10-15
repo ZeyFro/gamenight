@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
+import { GameWarnings } from "@/components/GameWarnings";
+import { GameWarningsForm } from "@/components/GameWarningsForm";
 import { GameDescription } from "@/components/GameDescription";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
@@ -283,6 +285,9 @@ export default async function GameDetailPage({
           </div>
         </div>
       </div>
+
+      <GameWarnings game={game} />
+      {owns?.owned && <GameWarningsForm game={{ id: game.id, jumpscares: game.jumpscares, motionSickness: game.motionSickness, textLanguages: game.textLanguages, audioLanguages: game.audioLanguages }} />}
 
       <Suspense fallback={<GameIgdbSectionSkeleton />}>
         <GameIgdbSection game={game} />

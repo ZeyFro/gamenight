@@ -319,6 +319,12 @@ enum GameSource {
 }
 
 model Game {
+  // Informations déclarées par un possesseur ; null = inconnu.
+  jumpscares          Boolean?
+  motionSickness      Boolean?
+  textLanguages       String? @db.VarChar(120)
+  audioLanguages      String? @db.VarChar(120)
+  warningsUpdatedAt   DateTime?
   id         String     @id @default(cuid())
   name       String
   source     GameSource
