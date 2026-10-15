@@ -10,7 +10,7 @@ Les rappels de fil, les MP et les mentions de secours portent la date et la gén
 
 Le cron transmet son snapshot à l'enqueue. Un verrou partagé sur la soirée le sérialise avec le verrou exclusif de replanification. La sauvegarde des seuils est conditionnelle à la date et au JSON lu ; après conflit, elle ne fusionne que si la génération est encore la même. Un vieux passage ne peut donc pas recopier ses seuils dans la nouvelle génération, même après A → B → A.
 
-Aucune nouvelle migration, dépendance ni variable. Aucun flag activé. Une requête HTTP Discord déjà engagée au moment d'un changement de date ne peut pas être annulée transactionnellement ; les contrôles protègent les livraisons encore en file et la persistance en base.
+Aucune nouvelle migration, dépendance ni variable. Aucun flag activé. La génération est vérifiée au chargement du résolveur : une résolution déjà engagée au moment d'un changement de date peut poursuivre ses opérations asynchrones puis son appel HTTP Discord. Elle ne peut pas être annulée transactionnellement. Les livraisons dont la résolution commence après la replanification expirent ; la persistance des seuils reste conditionnée à la génération.
 
 ## Validation
 
@@ -32,6 +32,17 @@ Aucune nouvelle migration, dépendance ni variable. Aucun flag activé. Une requ
 
 ## Suivi
 
-#227 est techniquement validée mais le merge a été refusé par l'approbation automatique. #228 traite séparément l'isolation de la bibliothèque. Aucun changement de production n'a été effectué pour ces validations. L'accès direct Vercel reste refusé 403 ; les previews sont contrôlées via les checks GitHub.
+La suite locale complète exécutée le 15 octobre a terminé avec 2 467 tests
+réussis et deux échecs : un timeout de 5 secondes dans le scénario multi-serveurs
+et le filtre de la première version du nouveau test de secours. Le filtre a
+été corrigé pendant l'exécution ; cette suite ne valide donc pas un état figé
+de la branche. La revalidation ciblée des trois fichiers concernés réussit :
+40 tests sur trois fichiers, y compris les deux nouveaux scénarios de secours,
+le compteur SQL inchangé et le scénario multi-serveurs. Aucun timeout ou seuil
+de requêtes n'a été relâché.
 
-Plugins et skills utilisés : GitHub, Vercel (inspection refusée), Vercel Deployments/CI-CD, Vercel React Best Practices pour le lot bibliothèque. Développement et relecture par l'agent principal, sans sous-agent.
+#227 et #228 sont fusionnées dans `main`, réconciliée dans #229 au commit `e5f3558`. Le veto et la fusion concurrente des seuils sont conservés. Sur ce commit, deux exécutions locales du compteur SQL passent (12 tests chacune), mais les deux tentatives CI échouent sur un écart de 32 contre 31 requêtes. Le commit de diagnostic `1837f60` conserve les bornes et égalités strictes et joint les traces SQL sans paramètres aux futurs échecs. Sa CI complète passe (run `38708716525`) ; la cause des écarts précédents n'est donc pas démontrée et aucune exclusion SQL n'a été ajoutée.
+
+La preview Vercel de `e5f3558` est `BLOCKED`, avec un lien d'erreur de configuration de compte ; cela ne prouve pas un échec de compilation. La lecture des événements du déploiement est refusée en `403 forbidden` pour le scope `mpmaximeparisot-6230s-projects`. Aucun merge de #229 ne doit intervenir sans CI et preview vertes sur sa dernière tête. Les validations du commit précédent ne remplacent pas celles de la révision finale.
+
+Outils utilisés : GitHub CLI, Context7 et accès Vercel disponible ; skill Vercel Deployments/CI-CD. Aucun outil navigateur exposé dans cette session. Trois sous-agents en lecture seule préparent le prochain lot et relisent le fonctionnement et la sécurité ; seul l'agent principal modifie le code et exécute les tests. La revue a conduit à compléter la couverture du secours du créateur après replanification et à préciser la fenêtre de résolution ci-dessus.

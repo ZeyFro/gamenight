@@ -480,6 +480,58 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(await db.notificationEvent.count({ where: { sourceId: session.id, eventType: "SESSION_DM", occurrence: { startsWith: "reminder:" } } })).toBe(2);
     });
 
+    it("le secours du créateur encore en file expire après replanification, sans appel Discord", async () => {
+      const creator = await makeUser();
+      const session = await makeReadySession(creator.id, []);
+      await drain();
+      closedDms.add(creator.discordId);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      const processOne = () => executorLib.processNextDelivery({ resolver: announceLib.sessionAnnounceResolver, owner: uniq("worker") });
+      expect((await processOne())?.outcome).toBe("sent"); // rappel dans le fil
+      expect((await processOne())?.outcome).toBe("failed"); // MP fermé, secours mis en file
+      const fallback = await db.notificationDelivery.findFirstOrThrow({
+        where: { targetSlot: { contains: ":dm-fallback:reminder:" }, status: "PENDING" },
+      });
+      const { updateSessionSchedule } = await import("./sessions");
+      await updateSessionSchedule(session.id, { date: new Date(session.date.getTime() + 24 * 3600_000), votingDeadline: null }, false);
+      fetchMock.mockClear();
+      expect(await drain()).toMatchObject([{ outcome: "failed", errorClass: "resolver:expired" }]);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: fallback.id } })).toMatchObject({ status: "FAILED", errorClass: "resolver:expired" });
+    });
+
+    it("une nouvelle génération mentionne une seule fois le créateur au MP déjà fermé, sans retenter son MP", async () => {
+      const creator = await makeUser();
+      const session = await makeReadySession(creator.id, []);
+      await drain();
+      closedDms.add(creator.discordId);
+      fetchMock.mockClear();
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      const dmAttempts = calls("POST", /\/channels\/dm-[^/]+\/messages$/).length;
+      expect(dmAttempts).toBe(1);
+      const { updateSessionSchedule } = await import("./sessions");
+      await updateSessionSchedule(session.id, { date: new Date(session.date.getTime() + 24 * 3600_000), votingDeadline: null }, false);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      const fallbacks = calls("POST", /\/channels\/thread-1\/messages$/)
+        .map(([, init]) => JSON.parse(String(init.body)))
+        .filter(body => body.content.includes("MP impossible"));
+      expect(fallbacks).toHaveLength(1);
+      expect(fallbacks.every(body => body.allowed_mentions.users.length === 1 && body.allowed_mentions.users[0] === creator.discordId)).toBe(true);
+      expect(await db.notificationDelivery.count({ where: { targetSlot: { contains: ":dm-fallback:reminder:" }, status: "SENT" } })).toBe(1);
+      const reminders = calls("POST", /\/channels\/thread-1\/messages$/)
+        .map(([, init]) => JSON.parse(String(init.body)))
+        .filter(body => body.content.includes("⏰ Rappel") && !body.content.includes("MP impossible"));
+      expect(reminders).toHaveLength(2);
+      expect(reminders[0].allowed_mentions.users ?? []).not.toContain(creator.discordId);
+      expect(reminders[1].allowed_mentions.users).toEqual([creator.discordId]);
+      expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(dmAttempts);
+    });
+
     it("les MP de rappel encore en file expirent si la date change après le message dans le fil", async () => {
       const creator = await makeUser();
       const guest = await makeUser();
