@@ -261,6 +261,9 @@ export default async function SessionsPage({
           Soirées
         </h1>
         <div className="flex min-w-0 flex-wrap gap-2">
+          <ButtonLink href="/sessions/sondages" variant="secondary" size="sm">
+            Préparer une soirée
+          </ButtonLink>
           {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
           <ButtonLink href="/roulette" variant="secondary" size="sm">
             🎰 Roulette

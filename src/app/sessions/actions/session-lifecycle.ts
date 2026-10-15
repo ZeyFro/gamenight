@@ -2,7 +2,8 @@
 
 import { resumeCreation } from "@/lib/creation-resume";
 
-import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
+import { createOnce, creationKey } from "@/lib/creation-intent";
+import { createVotingSessionInTransaction } from "@/lib/session-creation";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -18,8 +19,6 @@ import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/li
 import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
-  enqueueSessionCreationDeliveries,
-  enqueueSessionInviteSyncForNewInvites,
   enqueueSessionThreadDelete,
 } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
@@ -35,7 +34,6 @@ import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
-import { createInitialSessionInvites } from "@/lib/session-access";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   createSessionSchema,
@@ -132,44 +130,17 @@ export async function createSession(formData: FormData) {
   // annulée — préféré à une session silencieusement jamais annoncée :
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
-  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
-    await lockCreationMembers(tx, communityId, [user.id, ...notifiedUserIds]);
-    const created = await tx.session.create({
-      data: {
-        date,
-        votingDeadline,
-        customReminderMessage,
-        reminderTimings,
-        notifiedUserIds,
-        createdById: user.id,
-        announceViaBot,
-        communityId,
-      },
-    });
-    // Confidentialité des soirées — `SessionInvite` posée pour EXACTEMENT
-    // les personnes sélectionnées (`notifiedUserIds`, déjà validées contre
-    // de vrais users ci-dessus), jamais plus/moins, DANS LA MÊME
-    // transaction que la création de la session : un crash entre les deux
-    // laisserait sinon une session sans le moindre invité accessible,
-    // visible du seul créateur en silence. Créateur jamais inclus ici
-    // (`createInitialSessionInvites` l'exclut), il garde accès via
-    // `createdById`. Les destinataires sont déjà filtrés et leur appartenance
-    // verrouillée ci-dessus. Le parent vient d'être créé : aucun upsert ou
-    // relecture du parent/par invité nécessaire. Une écriture groupée, dans
-    // la même transaction, conserve les ids pour la synchronisation du fil.
-    const createdInvites = await createInitialSessionInvites(created, user.id, notifiedUserIds, tx);
-    if (announceViaBot) {
-      await enqueueSessionCreationDeliveries(created.id, tx, undefined, created.communityId);
-      // Bug remonté en test réel — un invité sélectionné ICI (au
-      // formulaire de création) n'obtenait jusqu'ici jamais de
-      // synchronisation Discord (voir le commentaire de fonction dans
-      // session-announce.ts) : sans cet enqueue, il n'était jamais ajouté
-      // au fil privé tant que le créateur ne le réinvitait pas
-      // manuellement depuis la page invités.
-      await enqueueSessionInviteSyncForNewInvites(created, createdInvites.map((invite) => invite.id), tx);
-    }
-    return created;
-  }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
+  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), (tx) =>
+    createVotingSessionInTransaction(tx, {
+      date,
+      votingDeadline,
+      customReminderMessage,
+      reminderTimings,
+      notifiedUserIds,
+      createdById: user.id,
+      announceViaBot,
+      communityId,
+    }), (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
   measure("creationTransaction");
 
   const xpResult = await awardXp(user.id, session.communityId,
