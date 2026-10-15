@@ -319,6 +319,13 @@ enum GameSource {
 }
 
 model Game {
+  // Relevé de préparation déclaré, indépendant des prix Steam consultés.
+  preparationCost       String? @db.VarChar(10)
+  preparationPrice      String? @db.VarChar(120)
+  downloadSizeGb        Float?
+  preparationPlatform   String? @db.VarChar(80)
+  preparationSourceUrl  String? @db.VarChar(500)
+  preparationUpdatedAt  DateTime?
   id         String     @id @default(cuid())
   name       String
   source     GameSource

@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
+import { GamePreparation, GameSteamPrice } from "@/components/GamePreparation";
+import { GamePreparationForm } from "@/components/GamePreparationForm";
 import { GameDescription } from "@/components/GameDescription";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
@@ -283,6 +285,10 @@ export default async function GameDetailPage({
           </div>
         </div>
       </div>
+
+      <GamePreparation game={game} />
+      {owns?.owned && <GamePreparationForm game={{ id: game.id, preparationCost: game.preparationCost, preparationPrice: game.preparationPrice, downloadSizeGb: game.downloadSizeGb, preparationPlatform: game.preparationPlatform, preparationSourceUrl: game.preparationSourceUrl }} />}
+      {game.steamAppId && <Suspense fallback={<p className="text-sm text-muted">Lecture du prix Steam…</p>}><GameSteamPrice appId={game.steamAppId} /></Suspense>}
 
       <Suspense fallback={<GameIgdbSectionSkeleton />}>
         <GameIgdbSection game={game} />
