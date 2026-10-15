@@ -80,8 +80,10 @@ try {
     $isError = ($null -eq $j) -or [bool]$j.is_error
     Add-Content -Path $logFile -Value $text -Encoding utf8
 
-    # Limite d'usage : 429 suppose + texte (non confirme, voir le brut conserve ci-dessous).
-    if (($j -and $isError -and $j.api_error_status -eq 429) -or $raw -match '(?i)usage limit|rate limit|limit reached|limit will reset|quota exceeded') {
+    # Limite d'usage : seulement si le run est en erreur (is_error ou code non nul), jamais sur le texte d'un run reussi.
+    # 429 et libelles supposes (non confirmes) ; le brut est conserve dans logs/.
+    $errored = $isError -or ($code -ne 0)
+    if ($errored -and (($j -and $j.api_error_status -eq 429) -or $raw -match '(?i)usage limit|rate limit|limit reached|limit will reset|quota exceeded')) {
       $raw | Set-Content (Join-Path $logDir "roadmap-raw-limite-$(Get-Date -Format 'yyyyMMdd-HHmmss').json") -Encoding utf8
       Log "Limite d'usage detectee. Reprise a $((Get-Date).AddMinutes($WaitMinutes).ToString('HH:mm'))."
       Start-Sleep -Seconds ($WaitMinutes * 60)
