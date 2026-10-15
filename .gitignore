@@ -43,3 +43,6 @@ next-env.d.ts
 
 # playwright (captures et journaux du MCP)
 .playwright*
+
+# journaux de la boucle roadmap
+logs/
