@@ -17,7 +17,7 @@ import {
   RELEASE_YEAR_RANGE,
   countActiveFilters,
   parseGameFilters,
-  serializeGameFilters,
+  updateGameFilterQuery,
   type GameFilters,
   type GameMode,
 } from "@/lib/game-filters";
@@ -103,7 +103,7 @@ export function GameFilterDrawer({
   const activeCount = countActiveFilters(filters);
 
   function update(next: GameFilters) {
-    const qs = serializeGameFilters(next);
+    const qs = updateGameFilterQuery(searchParams.toString(), next);
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }
 

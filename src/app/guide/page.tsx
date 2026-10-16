@@ -10,6 +10,15 @@ export const metadata = pageMetadata("Guide");
 
 const SECTIONS: GuideSection[] = [
   {
+    icon: "🎮",
+    title: "Jeux communs",
+    lines: [
+      "Dans Bibliothèque du groupe, choisis les personnes qui joueront pour voir les jeux possédés par chacune d’elles.",
+      "Inclus-toi si tu participes. Les autres filtres restent disponibles ; efface la sélection pour retrouver tout le groupe.",
+      "Les bibliothèques déclarées doivent être à jour : ce filtre ne vérifie ni l’installation ni la présence en ligne.",
+    ],
+  },
+  {
     icon: "📅",
     title: "Calendrier",
     lines: [
