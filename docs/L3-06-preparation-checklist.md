@@ -30,3 +30,15 @@ SESSION_PREPARATION_ENABLED : OFF par défaut (seul true exact active). Migratio
 Aucun accès Neon, aucune notification Discord réelle, aucune migration appliquée, aucun test Postgres, aucun build ni parcours navigateur. Tests de sécurité unitaires avec doubles de base : ils vérifient les filtres et les refus, pas l'exécution SQL ni les courses réelles. Le compteur collectif s'actualise au chargement/rafraîchissement de la page, sans temps réel ajouté. Aucun changement CI ou dépendances, aucune estimation de téléchargement ou durée ajoutée.
 
 Avant activation ultérieure : appliquer et vérifier la migration sur une base de test jetable, puis vérifier le parcours réel. Ces vérifications restent hors de ce lot borné.
+
+## Complément : suites Postgres (2026-10-16T09:05:37.766Z)
+
+Ajout de src/lib/session-preparation.integration.test.ts, sur le modèle des suites existantes : Prisma réel via TEST_DATABASE_URL uniquement, describe.skipIf sans URL, fixtures nettoyées par TRUNCATE sur base jetable dédiée. Dix scénarios couvrent création persistée et effacement des quatre cases personnelles, préservation du voisin, identité tierce forgée, invité non participant, tiers non invité, invitation révoquée, membre retiré, isolation entre communautés et soirées, places confirmées/attente, conservation intégrale des métadonnées de soirée/invitations/votes/jeu et absence de livraisons, séparation par jeu/flag OFF, cascade utilisateur/soirée.
+
+Validation sans base : TEST_DATABASE_URL retirée de l'environnement du processus de validation ; Vitest ciblé : 22 tests unitaires réussis, 10 tests Postgres explicitement ignorés. Aucune exécution SQL, aucune connexion Neon, aucune base partagée. Les scénarios réels sont écrits mais leur réussite Postgres reste non vérifiée.
+
+Découverte confirmée par vitest list --filesOnly src/lib/session-preparation.integration.test.ts. Le script test-postgres.mjs lance Vitest run --maxWorkers=1 sans filtre de fichiers : vérifié par interception de spawnSync (aucun processus enfant lancé), avec la configuration src/**/*.test.ts inchangée. Aucun changement du script, de la CI ou des dépendances.
+
+Dépendances propres confirmées par Get-Item : node_modules, node_modules/.prisma/client et node_modules/@prisma/client sont des Directory locales, sans ReparsePoint, LinkType ni Target. Source : npm ci --ignore-scripts --no-audit --no-fund dans ce worktree ; prisma generate a écrit seulement dans ce node_modules local. Aucun client généré partagé avec Claude.
+
+Contrôles du complément : npx tsc --noEmit et ESLint ciblé sur la suite d'intégration réussis ; git diff --check réussi.
