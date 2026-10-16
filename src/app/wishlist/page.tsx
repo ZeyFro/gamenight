@@ -49,11 +49,16 @@ export default async function WishlistPage({
         <WishlistProposeForm />
       </Card>
 
+      <p className="text-sm text-muted">
+        <a href="https://store.epicgames.com/free-games?lang=fr" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Voir les jeux gratuits de la semaine sur Epic Games Store →</a>
+      </p>
+
       {entries.length === 0 ? (
         <EmptyState icon="🛒" title="Propose un jeu que le groupe devrait acheter" />
       ) : (
         <Stagger className="flex flex-col gap-3">
           {entries.map((e) => {
+            const offer = prices.get(e.id);
             return (
               <StaggerItem key={e.id}>
                 <Card className="flex gap-3">
@@ -85,14 +90,14 @@ export default async function WishlistPage({
                           initialMyVote={e.myVote}
                           initialInterestedCount={e.interestedCount}
                         />
-                        {prices.get(e.id) && e.steamAppId && (
+                        {offer && e.steamAppId && (
                           <a
                             href={`https://store.steampowered.com/app/${e.steamAppId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="mt-1 text-xs text-accent hover:underline"
                           >
-                            {prices.get(e.id)} sur Steam →
+                            {offer.discountPercent ? <><strong>-{offer.discountPercent}%</strong>{offer.initialPriceFormatted && <> <del>{offer.initialPriceFormatted}</del></>} {offer.priceFormatted} sur Steam →</> : offer.isFree ? "Gratuit sur Steam →" : offer.priceFormatted ? `${offer.priceFormatted} sur Steam →` : "Voir sur Steam →"}
                           </a>
                         )}
                       </>
