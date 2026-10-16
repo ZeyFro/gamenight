@@ -26,11 +26,13 @@ const basePr = () => ({
 });
 
 describe("porte de merge — PR de fonctionnalité", () => {
-  it("accepte une PR propre avec une migration additive", () => {
+  it("accepte une PR sans migration et exige une revue explicite même pour une migration additive", () => {
     const pr = basePr();
+    expect(evaluateGate(pr)).toMatchObject({ ok: true, item: "L2-01", reasons: [] });
     pr.files.push({ filename: MIG, status: "added" });
     pr.newMigrations[MIG] = OK_SQL;
-    expect(evaluateGate(pr)).toMatchObject({ ok: true, item: "L2-01", reasons: [] });
+    expect(evaluateGate(pr)).toMatchObject({ ok: false, item: "L2-01" });
+    expect(evaluateGate(pr).reasons.join(" ")).toMatch(/revue explicite requise/);
   });
 
   it("refuse une migration avec DROP", () => {
@@ -77,6 +79,8 @@ describe("porte de merge — PR de fonctionnalité", () => {
   it("refuse un renommage depuis un fichier protégé", () => {
     const pr = basePr();
     pr.files.push({ filename: "docs/x.yml", status: "renamed", previous_filename: ".github/workflows/ci.yml" } as never);
+    expect(evaluateGate(pr).ok).toBe(false);
+    pr.files = [{ filename: "docs/old.sql", status: "renamed", previous_filename: MIG } as never];
     expect(evaluateGate(pr).ok).toBe(false);
   });
 
@@ -141,6 +145,8 @@ describe("porte de merge — SQL des migrations", () => {
     ['ALTER TABLE "User" ADD COLUMN "a" TEXT REFERENCES "B"("id");', /clé étrangère/],
     ['ALTER TYPE "Kind" ADD VALUE \'C\';', /non admise/],
     ["DO $$ BEGIN END $$;", /procédural/],
+    ['CREATE TABLE IF NOT EXISTS "User" ("id" TEXT); ALTER TABLE "User" ADD CONSTRAINT "u" UNIQUE ("email");', /conditionnel/],
+    ['CREATE TABLE "Archive" AS SELECT * FROM "User";', /AS non admis/],
   ])("refuse %s", (sql, re) => {
     const r = check(sql);
     expect(r.length).toBeGreaterThan(0);

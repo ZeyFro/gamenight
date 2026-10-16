@@ -120,6 +120,7 @@ export function checkMigrationSql(files) {
       else if (/\bTRUNCATE\b/.test(u)) refuse("TRUNCATE interdit", s);
       else if (/^DELETE\b/.test(u)) refuse("DELETE interdit", s);
       else if (/^UPDATE\b/.test(u)) refuse("UPDATE interdit", s);
+      else if (/^CREATE TABLE\b.*\b(AS|IF NOT EXISTS)\b/.test(u)) refuse("CREATE TABLE conditionnel ou AS non admis", s);
       else if (/\bALTER COLUMN\b.*\b(TYPE|SET DATA TYPE)\b/.test(u)) refuse("changement de type interdit", s);
       else if (/^CREATE TABLE\b/.test(u) || /^CREATE TYPE\b/.test(u)) continue;
       else if (/^CREATE (UNIQUE )?INDEX\b/.test(u)) {
@@ -171,6 +172,7 @@ export function evaluateGate(pr) {
   }
   const newSql = {};
   for (const f of files) {
+    if (f.previous_filename?.startsWith("prisma/migrations/")) reasons.push(`migration existante renommée : ${f.previous_filename}`);
     for (const p of [f.filename, f.previous_filename].filter(Boolean)) {
       for (const [re, label] of PROTECTED) {
         if (re.test(p) && !/(^|\/)\.env\.example$/.test(p)) reasons.push(`fichier protégé (${label}) : ${p}`);
@@ -184,6 +186,8 @@ export function evaluateGate(pr) {
     }
   }
   reasons.push(...checkMigrationSql(newSql));
+  // La syntaxe additive ne prouve pas l'absence d'effets de bord des expressions SQL.
+  if (Object.keys(newSql).length) reasons.push("nouvelle migration : revue explicite requise hors auto-fusion");
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)], item };
 }
 
@@ -267,6 +271,15 @@ function gateFromGitHub(n) {
     files,
     newMigrations,
   });
+  const latest = JSON.parse(gh("api", `repos/${repo}/pulls/${n}`));
+  if (files.length !== pr.changed_files) {
+    res.ok = false;
+    res.reasons.push("liste des fichiers incomplète : revue manuelle nécessaire");
+  }
+  if (latest.head.sha !== pr.head.sha || latest.base.sha !== pr.base.sha) {
+    res.ok = false;
+    res.reasons.push("PR ou base modifiée pendant l'analyse : réévaluer");
+  }
   return { ...res, headSha: pr.head.sha, pr: Number(n) };
 }
 

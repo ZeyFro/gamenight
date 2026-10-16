@@ -3,7 +3,7 @@ description: Traite UN élément de docs/ROADMAP.md (plan, TDD, PR Draft vers ma
 ---
 
 Tu traites **un seul** élément de `docs/ROADMAP.md`, puis tu t'arrêtes. Réponses courtes, en français.
-Lis d'abord `CLAUDE.md` et « Règles de travail » de `docs/ROADMAP-claude-code.md` (elles s'appliquent, sauf l'arrêt par lot). Utilise l'outil **Bash** pour git/gh/npm.
+Lis d'abord `CLAUDE.md` et `docs/REPRISE_AUTONOME.md`, puis `docs/ROADMAP.md`. Utilise l'outil **Bash** pour git/gh/npm.
 
 **Tu ne fusionnes jamais.** Le script `scripts/work-roadmap.ps1` (hors de toi) passe la PR en « ready », la fusionne dans `main` et surveille le déploiement, seulement si une porte déterministe et la CI sont vertes. Ta seule sortie est une PR **Draft** vers `main`.
 
@@ -13,7 +13,7 @@ Lis d'abord `CLAUDE.md` et « Règles de travail » de `docs/ROADMAP-claude-code
 - Jamais lire ni modifier un `.env*` (sauf `.env.example`). Jamais la base Neon, jamais `neon.tech`. Tests uniquement sur le Postgres local 127.0.0.1:55439.
 - Jamais de vraie notification Discord depuis un test ou un essai. Aucune nouvelle dépendance : **ne modifie ni `package.json`, ni `package-lock.json`, ni `vercel.json`, ni `next.config.*`**.
 - **Ne modifie jamais** `.github/`, `.claude/`, `scripts/work-roadmap.ps1`, `scripts/roadmap-*`, `src/lib/roadmap-gate.test.ts` : la boucle ne se modifie pas elle-même (la porte refuserait la PR).
-- Migration Prisma existante immuable. Une **nouvelle** migration ne doit être qu'additive : `CREATE TABLE`, `CREATE INDEX`, `CREATE TYPE` (objets nouveaux), `ADD COLUMN` nullable ou avec `DEFAULT`, contraintes seulement sur une table créée dans la même migration. Interdit (la porte refuse) : `DROP`, `RENAME`, `ALTER COLUMN … TYPE`, `DELETE`, `UPDATE`, `TRUNCATE`, `NOT NULL` sans `DEFAULT` sur une table existante, `UNIQUE` ou clé étrangère sur une table existante, `ALTER TYPE … ADD VALUE`. Si l'élément l'exige, étape 3.
+- Migration Prisma existante immuable. Toute nouvelle migration, même additive, exige une revue explicite hors auto-fusion : étape 3. La porte SQL ne prouve pas l'absence d'effets de bord des expressions PostgreSQL.
 - Tout nouveau modèle : `communityId` obligatoire, client scopé (`getScopedPrisma`), tests d'isolation. Dates : `wallClockNow()`. Notifications : système existant (`enqueue`). Interface en français, mobile d'abord. Mise à jour de `/guide` si la fonction est visible.
 
 ## 1. Choisir l'élément
@@ -30,7 +30,7 @@ Fichiers, modèles, routes et tests touchés ; plan en 5-10 lignes. `verificateu
 
 ## 3. Blocage humain (`À TOI`)
 
-Si l'élément exige un **secret**, un **service externe non configuré**, une **décision produit** ou une migration non additive : n'écris aucun code. Étape 6 avec `À TOI — <raison courte et question précise>`, puis affiche `ELEMENT BLOQUE : <ID> — <explication>`. Ce n'est pas un échec.
+Si l'élément exige un **secret**, un **service externe non configuré**, une **décision produit** ou une nouvelle migration : n'écris aucun code. Étape 6 avec `À TOI — <raison courte et question précise>`, puis affiche `ELEMENT BLOQUE : <ID> — <explication>`. Ce n'est pas un échec.
 
 ## 4. Implémenter
 
@@ -39,12 +39,12 @@ Si l'élément exige un **secret**, un **service externe non configuré**, une *
 3. **TDD** : test d'abord, vu en rouge, puis implémentation, puis vert. Pas de refactor large, pas de `try/catch` silencieux.
 4. Fonctionnalité visible derrière un interrupteur `*_ENABLED`, **éteint par défaut** (actif seulement si la valeur vaut exactement `true`), ajouté à `.env.example` avec son commentaire et à la liste des interrupteurs de `CLAUDE.md`.
 5. **Vert local** = `npx next typegen` (avant `tsc` : les types de Next sont absents d'un checkout neuf), `npx tsc --noEmit`, `npm run lint`, `npx next build` (jamais `npm run build`), plus les tests **ajoutés ou modifiés** par l'élément : `npx vitest run <fichier>` ; pour un test d'intégration Postgres, `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test npx vitest run <fichier>` (un fichier à la fois). `npm test` et `npm run test:postgres` complets ne sont **pas** exigés en local : la CI GitHub fait foi. Si tu lances quand même `npm test` complet (sans `TEST_DATABASE_URL`, sinon les suites Postgres partent en parallèle) : un échec « Test timed out in 5000ms » sur `src/app/onboarding-links.test.tsx` est connu sur cette machine (passe seul, échoue aussi sur `main`) ; relance ce fichier seul (`npx vitest run <fichier>`) et ne le compte pas comme un échec. Un test « skipped » est signalé, jamais présenté comme passé. Plusieurs essais de correction sont permis ; sinon étape 5.
-6. Mets la ligne de l'élément à `Fait` dans `docs/ROADMAP.md` (c'est l'état voulu après fusion). Commits en français `type(scope): …`, fichiers ajoutés un par un (jamais `git add -A`, jamais `.gitignore`). `git push -u origin <branche>`.
+6. Mets la ligne de l'élément à `Fait` dans `docs/ROADMAP.md` (c'est l'état voulu après fusion). Commits en français `type(scope): …`, fichiers ajoutés un par un (jamais `git add -A`, jamais `.gitignore`). Avant `git push -u origin <branche>`, relève `git ls-remote origin refs/heads/<branche>` : si la branche existe déjà, arrête-toi sans pousser et conserve ton travail pour réconciliation ; jamais de force-push.
 7. `gh pr create --draft --base main` : **titre** `type(scope): … [<ID>]` ; **description** : si migration, première ligne **MIGRATION** ; fait · tests (sautés signalés) · fichiers de prod modifiés · interrupteur à activer · à tester à la main · ligne « Plugins et skills utilisés : … » · tableau étape → sous-agent → modèle ; et, en dernière ligne, le marqueur exact `<!-- roadmap-item: <ID> -->`. Termine par `PR OUVERTE : <url>` et arrête-toi.
 
 ## 5. Échec
 
-Si le vert local reste rouge ou si l'élément est impossible : **ne pousse pas le code**. Reviens sur `origin/main` (`git switch --detach origin/main`, `git branch -D` la branche locale de l'essai). Étape 6 avec `ÉCHEC — <raison : commande, erreur>`. Affiche `ECHEC : <ID> — <raison>`.
+Si le vert local reste rouge ou si l'élément est impossible : **ne pousse pas le code**. Conserve les modifications et la branche locale ; affiche `ECHEC : <ID> — <raison : commande, erreur>`. Ne supprime aucun travail pour produire une PR de statut.
 
 ## 6. PR de statut seul (`ÉCHEC`, `À TOI`, `Fait`)
 

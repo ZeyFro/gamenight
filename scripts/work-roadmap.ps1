@@ -171,7 +171,7 @@ function Ensure-Deps {
   if (Test-Path $nm) {
     if ((Get-Item $nm -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
       Log 'node_modules est une jonction (casse next build) : suppression de la jonction seule.'
-      & cmd /c rmdir ('"' + $nm + '"') | Out-Null
+      [System.IO.Directory]::Delete($nm)
     }
   }
   $lockFile = Join-Path $WorkDir 'package-lock.json'
@@ -187,6 +187,7 @@ function Ensure-Deps {
     & cmd /c 'npm ci --no-audit --no-fund' 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Log 'npm ci a echoue. Arret.'; Stop-Loop 2 }
     & cmd /c 'npx prisma generate' 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Log 'prisma generate a echoue. Arret.'; Stop-Loop 2 }
   } finally { Pop-Location }
   [System.IO.File]::WriteAllText($mark, $hash)
 }
@@ -195,16 +196,10 @@ function Reset-Worktree {
     $null = & git worktree add --detach $WorkDir origin/main 2>&1
     if (-not (Test-Path $WorkDir)) { Log 'Creation du worktree impossible. Arret.'; Stop-Loop 2 }
   }
-  $null = G @('reset', '-q', '--hard', 'HEAD')
-  $null = G @('clean', '-fdq')
-  $null = G @('fetch', '-q', 'origin')
-  $null = G @('checkout', '-q', '--detach', 'origin/main')
-  # branches locales claude/* jamais poussees : travail abandonne apres interruption (la reprise se fait sur origin)
-  $locals = (G @('for-each-ref', '--format=%(refname:short)', 'refs/heads/claude/')).Out -split "`r?`n" | Where-Object { $_ }
-  foreach ($b in $locals) {
-    $remote = (G @('ls-remote', '--heads', 'origin', $b)).Out.Trim()
-    if (-not $remote) { $null = G @('branch', '-D', $b) }
-  }
+  $status = G @('status', '--porcelain')
+  if ($status.Code -ne 0 -or $status.Out.Trim()) { Log 'Worktree modifie : travail conserve, arret.'; Stop-Loop 2 }
+  if ((G @('fetch', '-q', 'origin')).Code -ne 0) { Log 'Fetch impossible. Arret.'; Stop-Loop 2 }
+  if ((G @('checkout', '-q', '--detach', 'origin/main')).Code -ne 0) { Log 'Checkout impossible. Arret.'; Stop-Loop 2 }
   if (-not (Test-Path (Join-Path $WorkDir '.claude\commands\next-item.md'))) {
     Log 'next-item.md absent de origin/main : la PR de mise en place est-elle fusionnee ? Arret.'; Stop-Loop 2
   }
@@ -251,18 +246,25 @@ function Get-Gate([int]$n) {
   }
   return $null
 }
+function Get-CiState($checks) {
+  $c = @($checks | Where-Object { $_ -ne $null })
+  $bad = @($c | Where-Object { $_.bucket -eq 'fail' -or $_.bucket -eq 'cancel' })
+  $vercel = @($bad | Where-Object { $_.name -like 'Vercel*' })
+  if ($vercel.Count -gt 0) { return @{ State = 'blocked'; Names = 'Vercel'; Link = $vercel[0].link } }
+  if ($bad.Count -gt 0) { return @{ State = 'fail'; Names = (($bad | ForEach-Object { $_.name }) -join ', '); Link = $bad[0].link } }
+  $verify = @($c | Where-Object { $_.name -eq 'verify' -and $_.bucket -eq 'pass' })
+  $preview = @($c | Where-Object { $_.name -eq 'Vercel' -and $_.bucket -eq 'pass' })
+  $unfinished = @($c | Where-Object { $_.bucket -ne 'pass' })
+  if ($verify.Count -gt 0 -and $preview.Count -gt 0 -and $unfinished.Count -eq 0) { return @{ State = 'pass'; Names = ''; Link = '' } }
+  return @{ State = 'pending'; Names = ''; Link = '' }
+}
 function Wait-Ci([int]$n) {
   $deadline = (Get-Date).AddMinutes(45)
   Start-Sleep -Seconds 45
   while ((Get-Date) -lt $deadline) {
     $c = @(GhJson @('pr', 'checks', "$n", '--json', 'bucket,name,state,link') | Where-Object { $_ -ne $null })
-    if ($c.Count -gt 0) {
-      $bad = @($c | Where-Object { $_.bucket -eq 'fail' -or $_.bucket -eq 'cancel' })
-      $pending = @($c | Where-Object { $_.bucket -eq 'pending' })
-      $verify = @($c | Where-Object { $_.name -eq 'verify' })
-      if ($bad.Count -gt 0) { return @{ State = 'fail'; Names = (($bad | ForEach-Object { $_.name }) -join ', '); Link = $bad[0].link } }
-      if ($pending.Count -eq 0 -and $verify.Count -gt 0) { return @{ State = 'pass'; Names = ''; Link = '' } }
-    }
+    $result = Get-CiState $c
+    if ($result.State -ne 'pending') { return $result }
     Start-Sleep -Seconds 60
   }
   return @{ State = 'timeout'; Names = ''; Link = '' }
@@ -271,10 +273,11 @@ function Wait-Deploy([string]$sha) {
   $deadline = (Get-Date).AddMinutes(25)
   while ((Get-Date) -lt $deadline) {
     $deps = @(GhJson @('api', ("repos/" + $repoName + "/deployments?sha=" + $sha + "&environment=Production")) | Where-Object { $_ -ne $null })
-    foreach ($d in $deps) {
-      if ($d.creator.login -ne 'vercel[bot]') { continue }
+    $d = $deps | Where-Object { $_.creator.login -eq 'vercel[bot]' } | Select-Object -First 1
+    if ($d) {
       $sts = @(GhJson @('api', ("repos/" + $repoName + "/deployments/" + $d.id + "/statuses")) | Where-Object { $_ -ne $null })
-      foreach ($s in $sts) {
+      $s = $sts | Select-Object -First 1
+      if ($s) {
         if ($s.state -eq 'success') { return @{ Ok = $true; Url = $s.target_url } }
         if ($s.state -eq 'failure' -or $s.state -eq 'error') { return @{ Ok = $false; Url = $s.target_url } }
       }
@@ -352,6 +355,13 @@ function Process-Pr([int]$n, [bool]$isStatus) {
     $sha = $g.headSha
     Log ("PR #" + $n + " (" + $g.item + ") : porte OK, attente de la CI ...")
     $ci = Wait-Ci $n
+    if ($ci.State -eq 'blocked') {
+      Log ("PR #" + $n + " bloquee par Vercel (quota ou deploiement) : aucune relance, correction ni fusion. " + $ci.Link)
+      Add-State 'failed' @{ pr = $n; item = $g.item; reason = 'Vercel bloque : aucune relance automatique' }
+      $script:Skip[$n] = $true
+      Write-Morning
+      return 'skipped'
+    }
     if ($ci.State -eq 'timeout') { return (Fail-Pr $n $g.item 'CI : delai de 45 min depasse' $isStatus) }
     if ($ci.State -eq 'fail') {
       if ($isStatus -or $fixes -ge 2) { return (Fail-Pr $n $g.item ("CI rouge : " + $ci.Names + " " + $ci.Link) $isStatus) }
@@ -368,7 +378,7 @@ function Process-Pr([int]$n, [bool]$isStatus) {
     if ($null -eq $g2 -or -not $g2.ok) { return (Fail-Pr $n $g.item 'porte refusee au moment de la fusion' $isStatus) }
     if ($g2.headSha -ne $sha) { Log ("PR #" + $n + " : nouveau commit pendant la CI, on recommence."); continue }
     $null = & gh pr ready "$n" 2>&1
-    $m = & gh pr merge "$n" --merge 2>&1 | Out-String
+    $m = & gh pr merge "$n" --merge --match-head-commit $sha 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { return (Fail-Pr $n $g.item ("fusion refusee : " + (Short $m 250)) $isStatus) }
     $mergeSha = (& gh pr view "$n" --json mergeCommit --jq .mergeCommit.oid 2>$null | Out-String).Trim()
     Log ("PR #" + $n + " fusionnee (" + $mergeSha + "). Attente du deploiement de production ...")
