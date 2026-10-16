@@ -26,6 +26,7 @@ import {
   activateCommunity,
   isCommunityAdminEnabled,
   parseChannelCategory,
+  setCommunityGuide,
   setCommunityChannel,
 } from "./community-admin";
 
@@ -54,6 +55,35 @@ describe("parseChannelCategory", () => {
     expect(parseChannelCategory("TOURNAMENT")).toBe("TOURNAMENT");
     expect(parseChannelCategory("VOICE")).toBe("VOICE");
     for (const v of ["session", "", "DM", null, undefined, 3]) expect(parseChannelCategory(v)).toBeNull();
+  });
+});
+
+describe("setCommunityGuide", () => {
+  beforeEach(() => communityUpdateMany.mockReset().mockResolvedValue({ count: 1 }));
+
+  it("refuse les valeurs non textuelles et les dépassements sans écrire", async () => {
+    for (const input of [
+      { communityId: "c", rules: { name: "rules.txt" }, contacts: "" },
+      { communityId: "c", rules: "x".repeat(4001), contacts: "" },
+      { communityId: "c", rules: "", contacts: "x".repeat(2001) },
+    ]) expect(await setCommunityGuide(input)).toBe("invalid");
+    expect(communityUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("enregistre le texte nettoyé uniquement pour une communauté éditable", async () => {
+    expect(await setCommunityGuide({ communityId: "c", rules: " Règles\n ", contacts: "  @admin " })).toBe("saved");
+    expect(communityUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c", status: { in: ["PENDING", "ACTIVE"] } },
+      data: { guideRules: "Règles", guideContacts: "@admin" },
+    });
+  });
+
+  it("efface les champs vides et signale une communauté devenue indisponible", async () => {
+    communityUpdateMany.mockResolvedValue({ count: 0 });
+    expect(await setCommunityGuide({ communityId: "c", rules: " ", contacts: null })).toBe("unavailable");
+    expect(communityUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { guideRules: null, guideContacts: null },
+    }));
   });
 });
 

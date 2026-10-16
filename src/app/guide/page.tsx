@@ -6,6 +6,8 @@ import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
 import { ButtonLink } from "@/components/ui/Button";
 import { isCommunityExpressionsEnabled } from "@/lib/community-expressions-input";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { prisma } from "@/lib/prisma";
 
 export const metadata = pageMetadata("Guide");
 
@@ -91,6 +93,13 @@ const SECTIONS: GuideSection[] = [
 export default async function GuidePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const communityId = await writeCommunityIdForUser(user.id);
+  const communityGuide = communityId
+    ? await prisma.community.findUnique({
+        where: { id: communityId },
+        select: { name: true, guideRules: true, guideContacts: true },
+      })
+    : null;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-4xl">
@@ -106,6 +115,13 @@ export default async function GuidePage() {
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
       {isCommunityExpressionsEnabled() && <Card><h2 className="font-semibold">Expressions du serveur</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Expressions et running gags, les membres actifs partagent les expressions de leur serveur et leur sens. L’auteur peut les modifier ou les supprimer, ainsi que les administrateurs et propriétaires de la communauté. Le nom du serveur est affiché pour éviter de mélanger les histoires.</p></Card>}
       <ButtonLink href="/charte" variant="ghost">Lire la charte de fair-play du serveur</ButtonLink>
+      {(communityGuide?.guideRules || communityGuide?.guideContacts) && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-semibold text-foreground">{communityGuide.name} : informations du serveur</h2>
+          {communityGuide.guideRules && <section><h3 className="text-sm font-medium">Règles</h3><p className="whitespace-pre-wrap text-sm text-muted">{communityGuide.guideRules}</p></section>}
+          {communityGuide.guideContacts && <section><h3 className="text-sm font-medium">Contacts</h3><p className="whitespace-pre-wrap text-sm text-muted">{communityGuide.guideContacts}</p></section>}
+        </Card>
+      )}
       <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {guideSections(SECTIONS).map((section) => (
           <StaggerItem key={section.title}>
