@@ -46,7 +46,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L4-01 | Export Google/Apple Calendar (iCal) | ❌ Aucun export | Export ou abonnement respectant la confidentialité | code | À faire |
+| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | PR #242 à vérifier |
 | L4-02 | Rituels récurrents | ❌ Pas de séries de soirées | « Tous les vendredis », « premier samedi du mois »… | code | À faire |
 | L4-03 | Anniversaires et dates importantes du serveur | ❌ Pas d'événements calendrier dédiés | Saisie et affichage | code | À faire |
 | L4-04 | Bouton « Rejoindre le vocal » | ❌ Aucun parcours/configuration vocale | Salon vocal par communauté, lien depuis la soirée | code | À faire |

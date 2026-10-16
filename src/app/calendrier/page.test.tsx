@@ -39,6 +39,7 @@ describe("calendrier : la grille suit le mode de disponibilité sélectionné", 
     render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08", vue: "semaine" }) }));
     expect(getCalendarData.mock.calls[0][0]).toEqual(new Date("2026-10-05T00:00:00Z"));
     expect(getCalendarData.mock.calls[0][1]).toEqual(new Date("2026-10-12T00:00:00Z"));
+    expect(screen.getByRole("link", { name: "Télécharger les soirées à venir (.ics)" }).getAttribute("href")).toBe("/api/calendrier/export");
   });
   it("en individuel, affiche le pote choisi plutôt que les disponibilités du groupe", async () => {
     render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08", mode: "individuel", pote: "friend", potes: "other,me" }) }));
