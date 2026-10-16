@@ -47,8 +47,9 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
               <div className="gn-calendar-chips">
                 {day.sessions.slice(0, 2).map((session) => <Link prefetch={false} href={`/sessions/${session.id}`} className="gn-calendar-event" key={session.id}><b>{session.decidedGameName ?? `Soirée · ${SESSION_STATUS_LABELS[session.status].label}`}</b><span>{TIME.format(session.date)}</span></Link>)}
                 {day.roulettes?.slice(0, 1).map((roulette) => <Link prefetch={false} href={`/roulette/${roulette.id}`} className="gn-calendar-event roulette" key={roulette.id}><b>Roulette</b><span>{TIME.format(roulette.scheduledAt)}</span></Link>)}
-                {day.communityDates.slice(0, 1).map((event) => event.href
-                  ? <Link prefetch={false} key={event.id} href={event.href} className="gn-calendar-event"><b>{event.title}</b></Link>
+                {day.communityDates.slice(0, 1).map((event) => event.href?.startsWith("https://")
+                  ? <a key={event.id} href={event.href} target="_blank" rel="noopener noreferrer" className="gn-calendar-event"><b>{event.title}</b></a>
+                  : event.href ? <Link prefetch={false} key={event.id} href={event.href} className="gn-calendar-event"><b>{event.title}</b></Link>
                   : <span key={event.id} className="gn-calendar-event"><b>{event.title}</b></span>)}
                 {(day.sessions.length > 2 || (day.roulettes?.length ?? 0) > 1 || day.communityDates.length > 1) && <Link prefetch={false} href={href(day.date)} className="text-[10px] text-muted">Voir la journée →</Link>}
               </div>
@@ -68,9 +69,13 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
         </Link>)}
         {selectedDay?.roulettes?.map((roulette) => <Link prefetch={false} key={roulette.id} href={`/roulette/${roulette.id}`} className="gn-agenda-event roulette"><span className="text-xs" style={{ color: "var(--gn-lime)" }}>Roulette · {TIME.format(roulette.scheduledAt)}</span><h4>Le hasard choisira le jeu</h4><p>Propositions jusqu’à {TIME.format(roulette.deadline)}</p><small className="mt-3 block">Ouvrir la roulette →</small></Link>)}
         {selectedDay?.communityDates.map((event) => event.href
-          ? <Link prefetch={false} key={event.id} href={event.href} className="gn-agenda-event">
-            <span className="text-xs text-accent">Date de sortie IGDB</span><h4>{event.title}</h4><small>Ouvrir la fiche du jeu →</small>
-          </Link>
+          ? event.href.startsWith("https://")
+            ? <a key={event.id} href={event.href} target="_blank" rel="noopener noreferrer" className="gn-agenda-event">
+              <span className="text-xs text-accent">Événement gaming</span><h4>{event.title}</h4><small>Ouvrir le site officiel →</small>
+            </a>
+            : <Link prefetch={false} key={event.id} href={event.href} className="gn-agenda-event">
+              <span className="text-xs text-accent">{event.kind === "GAME_RELEASE" ? "Date de sortie IGDB" : "Événement gaming"}</span><h4>{event.title}</h4><small>Ouvrir la fiche du jeu →</small>
+            </Link>
           : <div key={event.id} className="gn-agenda-event">
             <span className="text-xs text-accent">{event.kind === "BIRTHDAY" ? "Anniversaire" : "Date du serveur"}</span>
             <h4>{event.title}</h4>

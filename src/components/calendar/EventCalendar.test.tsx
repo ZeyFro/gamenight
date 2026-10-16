@@ -21,6 +21,16 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     expect(screen.getByRole("button", { name: "Retirer du calendrier" })).toBeTruthy();
   });
 
+  it("ouvre les événements gaming globaux sur leur source officielle", () => {
+    const data = days.map((day) => day.date.toISOString() === selectedDate.toISOString()
+      ? { ...day, communityDates: [{ id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS" as const, date: selectedDate, createdById: "system", href: "https://thegameawards.com/" }] }
+      : day);
+    render(<EventCalendar days={data} selectedDate={selectedDate} today={selectedDate} mode="collectif" view="mois" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
+    const link = within(screen.getByRole("complementary", { name: "Programme du jour" })).getByRole("link", { name: /The Game Awards 2026/ });
+    expect(link.getAttribute("href")).toBe("https://thegameawards.com/");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
   it("conserve les filtres et la date quand on change de vue ou de mois", () => {
     render(<EventCalendar days={days} selectedDate={selectedDate} today={selectedDate} mode="individuel" pote="ami" view="mois" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
     expect(screen.getByRole("link", { name: "Semaine" }).getAttribute("href")).toBe("/calendrier?date=2026-10-08&mode=individuel&pote=ami&vue=semaine");

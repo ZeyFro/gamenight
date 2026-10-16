@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandCommunityDates, expandGameReleaseDates, type CommunityDateInput } from "./community-dates";
+import { expandCommunityDates, expandGameAwards, expandGameReleaseDates, type CommunityDateInput } from "./community-dates";
 
 const date = (fields: Partial<CommunityDateInput>): CommunityDateInput => ({
   id: "date", title: "Soirée importante", kind: "IMPORTANT", date: new Date("2026-12-31T00:00:00Z"),
@@ -33,5 +33,14 @@ describe("expandGameReleaseDates", () => {
       id: "game-release:wish", title: "Sortie · Jeu attendu", kind: "GAME_RELEASE",
       date: new Date("2026-12-31T00:00:00Z"), href: "/jeux/game",
     })]);
+  });
+});
+
+describe("expandGameAwards", () => {
+  it("adds the official 2026 date as a UTC calendar day only in its range", () => {
+    expect(expandGameAwards(new Date("2026-12-10T00:00:00Z"), new Date("2026-12-11T00:00:00Z"))).toEqual([
+      expect.objectContaining({ id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS", date: new Date("2026-12-10T00:00:00Z") }),
+    ]);
+    expect(expandGameAwards(new Date("2026-12-11T00:00:00Z"), new Date("2026-12-12T00:00:00Z"))).toEqual([]);
   });
 });

@@ -19,6 +19,13 @@ export interface WishlistEntryDTO {
   myVote: boolean | null;
 }
 
+export interface WishlistSteamOffer {
+  priceFormatted: string | null;
+  initialPriceFormatted: string | null;
+  discountPercent: number;
+  isFree: boolean | null;
+}
+
 /**
  * Sprint 5 (FEATURE 3, Wishlist) — toutes les entrées, triées par nombre
  * d'intéressés décroissant (cf. spec). Le prix Steam n'est PAS inclus ici
@@ -66,15 +73,20 @@ export async function getWishlist(currentUserId: string): Promise<WishlistEntryD
  */
 export async function enrichWithPrices(
   entries: WishlistEntryDTO[]
-): Promise<Map<string, string | null>> {
-  const prices = new Map<string, string | null>();
+): Promise<Map<string, WishlistSteamOffer | null>> {
+  const prices = new Map<string, WishlistSteamOffer | null>();
   await Promise.all(
     entries
       .filter((e) => e.steamAppId && !e.purchasedByName)
       .map(async (e) => {
         try {
           const details = await fetchSteamStoreDetails(e.steamAppId!);
-          prices.set(e.id, details?.priceFormatted ?? null);
+          prices.set(e.id, details ? {
+            priceFormatted: details.priceFormatted,
+            initialPriceFormatted: details.initialPriceFormatted,
+            discountPercent: details.discountPercent,
+            isFree: details.isFree,
+          } : null);
         } catch {
           logger.warn("wishlist", "Steam Store injoignable pour un prix wishlist.", {
             gameId: e.gameId,

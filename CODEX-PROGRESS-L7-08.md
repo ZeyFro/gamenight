@@ -1,0 +1,9 @@
+# L7-08 — soldes Steam, Game Awards et jeux gratuits
+
+- Worktree : `.codex-worktrees/soldes-evenements`, branche `feat/soldes-evenements`, rebasée sur `origin/main` après #257 (`df5119d908a8dd0b4a334f4111fd2e8ed606eb2d`). #259 (`bba5956fed3b22b115e1bed74d2ef21a17ccc572`) et #258 (`86b6fd442c8a5e018ec6e78690d1eaac4ab912e6`) sont aussi fusionnées.
+- Sous-agents lecture seule terminés : Erdos a identifié le client Steam Store et l’absence d’une source API Epic stable ; Dewey a relevé le calendrier communautaire existant, le besoin de dates UTC et la date unique par source. Aucun fichier modifié par les agents.
+- Recherche web officielle : Epic maintient une page FR « un jeu gratuit chaque semaine » (`https://store.epicgames.com/free-games?lang=fr`) ; The Game Awards annonce l’édition 2026 le 10 décembre (`https://thegameawards.com/news/tga-returns-december-10-2026`). Les liens de code vont directement à ces sources.
+- Implémentation locale : wishlist Steam affiche les réductions réellement renvoyées par Steam Store (prix initial/final et pourcentage validé) ; lien direct vers les jeux gratuits hebdomadaires Epic ; The Game Awards 2026 s’affiche comme événement global daté en UTC dans le calendrier. Pas de scraping Epic ni de gratuité permanente présentée comme cadeau temporaire.
+- Limite : l’édition Game Awards 2026 est la seule date annoncée intégrée ; ajouter une édition après annonce officielle. Les réductions Steam sont un relevé live best-effort et n’ont pas de date de fin fournie.
+- Validations locales après rebase : 16 tests passent ; les 8 tests Postgres d’isolation calendrier sont ignorés sans `TEST_DATABASE_URL`; ESLint ciblé, TypeScript, Next typegen et diff-check passent.
+- Commit local rebasé : `217a08b6f44420981b9ba564d9cefa1fda5dc756`. PR brouillon à ouvrir ; fusion uniquement lorsque CI, Vercel et Preview Comments passent sur le SHA exact.

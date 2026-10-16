@@ -1,7 +1,7 @@
 export interface CommunityDateInput {
   id: string;
   title: string | null;
-  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE";
+  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS";
   date: Date;
   repeatsAnnually: boolean;
   createdById: string;
@@ -11,7 +11,7 @@ export interface CommunityDateInput {
 export interface CalendarCommunityDate {
   id: string;
   title: string;
-  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE";
+  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS";
   date: Date;
   createdById: string;
   href?: string;
@@ -29,6 +29,16 @@ export function expandGameReleaseDates(rows: { id: string; gameId: string; title
     if (date < start || date >= endExclusive) return [];
     return [{ id: `game-release:${row.id}`, title: `Sortie · ${row.title}`, kind: "GAME_RELEASE" as const, date, createdById: row.createdById, href: `/jeux/${row.gameId}` }];
   });
+}
+
+export function expandGameAwards(start: Date, endExclusive: Date): CalendarCommunityDate[] {
+  // shortcut: seule l’édition 2026 est connue officiellement ; ajouter l’année suivante quand sa date est annoncée.
+  const date = new Date("2026-12-10T00:00:00.000Z");
+  if (date < start || date >= endExclusive) return [];
+  return [{
+    id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS",
+    date, createdById: "system", href: "https://thegameawards.com/",
+  }];
 }
 
 export function expandCommunityDates(rows: CommunityDateInput[], start: Date, endExclusive: Date): CalendarCommunityDate[] {

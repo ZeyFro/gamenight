@@ -27,6 +27,8 @@ export interface SteamStoreDetails {
   // Steam n'a pas renvoyé de `price_overview` (jeu retiré du store,
   // région sans prix…) — "approximatif" et best-effort, cf. spec.
   priceFormatted: string | null;
+  initialPriceFormatted: string | null;
+  discountPercent: number;
   isFree: boolean | null;
   priceCurrency: string | null;
 }
@@ -94,7 +96,7 @@ export async function fetchSteamStoreDetails(
       data?: {
         categories?: SteamStoreCategory[];
         is_free?: boolean;
-        price_overview?: { final_formatted?: string; currency?: string };
+        price_overview?: { initial_formatted?: string; final_formatted?: string; discount_percent?: number; currency?: string };
       };
     }
   >;
@@ -104,10 +106,26 @@ export async function fetchSteamStoreDetails(
   const categories = entry.data.categories ?? [];
   const isFree = typeof entry.data.is_free === "boolean" ? entry.data.is_free : null;
   const rawPrice = entry.data.price_overview?.final_formatted;
+  const rawInitialPrice = entry.data.price_overview?.initial_formatted;
+  const rawDiscount = entry.data.price_overview?.discount_percent;
   const rawCurrency = entry.data.price_overview?.currency;
   const priceFormatted = isFree === true
     ? null
     : (typeof rawPrice === "string" && rawPrice.trim().length > 0 && rawPrice.length <= 120 ? rawPrice : null);
+  const initialPriceFormatted = isFree === false && typeof rawInitialPrice === "string" && rawInitialPrice.trim().length > 0 && rawInitialPrice.length <= 120
+    ? rawInitialPrice
+    : null;
+  const discountPercent = initialPriceFormatted && priceFormatted && isFree === false && typeof rawDiscount === "number" && Number.isInteger(rawDiscount) && rawDiscount > 0 && rawDiscount <= 100
+    ? rawDiscount
+    : 0;
   const priceCurrency = typeof rawCurrency === "string" && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null;
-  return { categories, isCoop: deriveIsCoopFromCategories(categories), priceFormatted, isFree, priceCurrency };
+  return {
+    categories,
+    isCoop: deriveIsCoopFromCategories(categories),
+    priceFormatted,
+    initialPriceFormatted,
+    discountPercent,
+    isFree,
+    priceCurrency,
+  };
 }
