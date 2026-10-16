@@ -41,8 +41,6 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | Fait (#239) |
 | L3-06 | Checklist installé / mis à jour / micro / lobby | ❌ Pas de checklist par participant | Cases enregistrées et état de préparation collectif | code | PR ouverte #240 (Draft ; CI bloquée avant checkout : quota ECR) |
 | L3-07 | Temps de préparation | ✅ Durée saisie par les possesseurs et visible sur la fiche jeu | Aucune | code | Implémenté ; CI PR #241 à vérifier |
-| L3-07 | Temps de préparation | ✅ Durée saisie par les possesseurs et visible sur la fiche jeu | Aucune | code | Implémenté ; CI de la PR à vérifier |
->>>>>>> ef2aaa2 (feat: add estimated game preparation time)
 
 ## Lot 4 — Calendrier pratique
 
