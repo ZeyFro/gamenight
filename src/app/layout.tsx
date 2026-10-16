@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { after } from "next/server";
@@ -53,7 +54,7 @@ export const viewport: Viewport = {
   themeColor: "#8b5cf6",
 };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
   // est la seule source de vérité "vraiment connecté" (tient compte de
   // `forceReloginAt`, contrairement à `auth()` seul, cf. commentaire dans

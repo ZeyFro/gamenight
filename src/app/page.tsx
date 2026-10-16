@@ -14,6 +14,7 @@ import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
+import { getEquippedShopItemsForViewer } from "@/lib/xp-shop";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
@@ -34,6 +35,7 @@ import { EmptySessionHero, HomePlanningLinks, HomeInstantLink } from "@/componen
 import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
+import { ColorDot } from "@/components/ColorDot";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -181,6 +183,7 @@ async function HomeContent({
     getScoreboardCommunityId(user.id).then((communityId) => getScoreboard("global", { communityId })),
     getRecentGameNews(),
     getCurrentWeeklyChallengeForViewer(user.id),
+    getEquippedShopItemsForViewer(user.id),
     listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
@@ -215,6 +218,7 @@ async function HomeContent({
     scoreboard,
     gameNews,
     weeklyChallenge,
+    shopCosmetics,
     groupAchievements,
     activeDebts,
     activeDebtorIds,
@@ -251,7 +255,8 @@ async function HomeContent({
   const now = nowMs();
   const level = levelForXp(user.xpTotal);
   const rank = rankForLevel(level);
-  const title = titleForLevel(level);
+  const title = shopCosmetics.TITLE?.value ?? titleForLevel(level);
+  const profileColor = shopCosmetics.COLOR?.value ?? user.color;
   const podium = scoreboard.slice(0, 3);
   const [first, second, third] = podium;
 
@@ -274,12 +279,13 @@ async function HomeContent({
           alt={`Avatar de ${user.discordName}`}
           level={level}
           rank={rank}
+          frameColor={shopCosmetics.FRAME?.value}
           size={64}
         />
         <div className="min-w-0">
           <p className="text-sm text-muted">Salut,</p>
           <h2 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
-            {user.discordName}
+            {user.discordName} <ColorDot color={profileColor} title="Couleur équipée" />
             {activeDebtorIds.has(user.id) && (
               <span className="ml-1" title="Dette de gage active">
                 💀

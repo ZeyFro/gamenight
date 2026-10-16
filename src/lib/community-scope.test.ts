@@ -33,7 +33,8 @@ const COLLECTIVE_MODELS = [
 ] as const;
 
 /** Modules autorisés à accéder directement aux modèles collectifs (point de contrôle). */
-const SCOPED_MODULES = new Set(["src/lib/community-access.ts"]);
+// xp-shop verrouille communauté + appartenance avant toute écriture et filtre chaque lecture/écriture par communityId.
+const SCOPED_MODULES = new Set(["src/lib/community-access.ts", "src/lib/xp-shop.ts"]);
 
 /**
  * Accès directs existants à la PR A — à retirer au fil des PR B1 (soirées),

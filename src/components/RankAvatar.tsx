@@ -51,12 +51,14 @@ export function RankAvatar({
   alt,
   level,
   rank,
+  frameColor,
   size = 96,
 }: {
   src: string | null;
   alt: string;
   level: number;
   rank: Rank;
+  frameColor?: string | null;
   size?: number;
 }) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -64,6 +66,7 @@ export function RankAvatar({
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       {rank.glowing && <LegendaryGlow />}
+      {frameColor && <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-full border-2" style={{ borderColor: frameColor }} />}
       <button
         type="button"
         onClick={() => setTooltipOpen((open) => !open)}

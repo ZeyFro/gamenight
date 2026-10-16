@@ -8,6 +8,7 @@ const TABS = [
   { href: "/profil/historique", label: "Historique soirées" },
   { href: "/profil/superlatifs", label: "Récompenses gagnées" },
   { href: "/profil/badges", label: "Badges" },
+  { href: "/profil/boutique", label: "Boutique XP" },
   // Fix UX (après test prod PR 8/9) : pointait vers /tierlist (page
   // top-level), ce qui faisait sortir du profil au clic. Sous-route
   // dédiée maintenant, qui réutilise TierlistBoard tel quel (pas de
