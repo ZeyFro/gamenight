@@ -3,7 +3,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityChannelAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -27,6 +27,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "activate-not_pending": { ok: false, text: "Cette communauté n'est plus en attente." },
   "activate-no_guild": { ok: false, text: "Aucun serveur Discord connu pour cette communauté." },
   "channel-ok": { ok: true, text: "Salon enregistré." },
+  "guide-ok": { ok: true, text: "Règles et contacts enregistrés." },
+  "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
+  "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "channel-invalid_channel": { ok: false, text: "Identifiant de salon invalide." },
   "channel-not_found": { ok: false, text: "Communauté introuvable." },
   "channel-inactive": { ok: false, text: "Cette communauté ne peut plus recevoir de salon." },
@@ -91,6 +94,17 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           <Button type="submit" variant="primary" size="sm" disabled={!c.discordGuildId}>
             Activer la communauté
           </Button>
+        </form>
+      )}
+
+      {editable && (
+        <form action={setCommunityGuideAction} className="flex flex-col gap-2 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <label className="text-sm font-medium" htmlFor={`${c.id}-guideRules`}>Règles du serveur</label>
+          <textarea id={`${c.id}-guideRules`} name="guideRules" defaultValue={c.guideRules ?? ""} maxLength={4000} rows={4} className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
+          <label className="text-sm font-medium" htmlFor={`${c.id}-guideContacts`}>Contacts et moyens de joindre les responsables</label>
+          <textarea id={`${c.id}-guideContacts`} name="guideContacts" defaultValue={c.guideContacts ?? ""} maxLength={2000} rows={3} className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
+          <Button type="submit" size="sm">Enregistrer pour le guide</Button>
         </form>
       )}
 

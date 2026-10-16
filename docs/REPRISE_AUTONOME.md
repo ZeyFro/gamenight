@@ -1,5 +1,15 @@
 # Reprise autonome du 16 octobre 2026
 
+## Mission globale — reprise continue sur le deuxième portable
+
+- Autorisation actuelle : poursuivre tous les lots exécutables, publier les PR et fusionner après contrôles verts, sans s'arrêter après une PR. Aucun arrêt de la session du premier portable supposé. Relire les SHA distants avant chaque push et fusion ; push normal uniquement, fusion avec `--match-head-commit`.
+- #267 : intégration locale de main après #268 sans conflit, migration additive du guide appliquée sur Postgres dédié ; 54 tests ciblés, typegen, TypeScript, lint complet et diff --check réussis. Contrôles du nouveau SHA à attendre. Son ancien contrôle Vercel était bloqué par le quota, jamais contourné.
+- #233 : ancienne PR d'automatisation en conflit avec main ; revue et correction des gardes de contrôles/SHA/préservation en cours dans `.codex-worktrees/reprise-233`. Les anciens checks verts ne valident pas cette nouvelle intégration. Ne jamais lancer le script réel pour le tester.
+- Inventaire : les statuts de L5-05, L6-01/02/08 et L7 déjà livrés sont réconciliés avec leurs PR fusionnées. L6-04 reste partiel : #251 affiche les trophées, sans Hall of Shame ni médias/descriptions éditables.
+- L6-03 pris en charge dans `.codex-worktrees/reprise-268`, branche `feat/tournament-predictions-next` : pronostics de tournoi et de match, gardes communautaires, aucun nouveau montant d'XP. Ne pas lancer une seconde implémentation de ce lot.
+- Postgres dédié commun aux worktrees : `gamenight-reprise-268-pg`, `127.0.0.1:55439`. Tests d'intégration strictement en série ; aucun changement aux conteneurs des autres projets. Les validations de #267 ont priorité sur les migrations/tests de L6-03.
+- Blocages humains existants conservés : limites des uploads (L5-02), économie XP de présence (L5-04), règles d'achat groupé (L6-11), clés VAPID (L6-13), format de recherche de joueurs (L7-11), validation des messages Discord réels (L7-17). Aucun secret fabriqué, aucune notification réelle pour les tests.
+
 ## Deuxième portable — reprise de #268 (16 octobre 2026)
 
 - Autorisation explicite : branches/PR et fusion après validation des contrôles requis. La session du premier portable peut toujours être active ; aucun arrêt déduit de ce diagnostic.
@@ -14,6 +24,15 @@
 - **Blocage Vercel : quota `api-deployments-free-per-day` dépassé** sur #267 et #268. Le commentaire Vercel demande d'attendre 24 heures. Aucune relance manuelle, aucun contournement et aucune fusion tant que le contrôle Vercel du SHA final n'est pas vert ; la CI GitHub doit également être verte. Une ancienne Preview verte ne valide pas le SHA final.
 - Outils réellement testés ici : Git, gh authentifié, Node/npm, Docker et MCP GitHub (lecture du dépôt). Le skill `gamenight-tool-routing` du premier portable est absent ici ; Playwright et claude-mem ne sont pas exposés dans cette session. `.claude/commands/next-item.md` référence `docs/ROADMAP-claude-code.md`, absent : ne pas supposer ces instructions accessibles.
 - Validation après correction : 71/71 tests ciblés réussis, aucun ignoré ; `next typegen`, TypeScript `--noEmit`, lint complet, `git diff --check` et `npx next build` réussis. Suite complète `npm run test:postgres` lancée sur le conteneur dédié ; résultat encore en attente au checkpoint de publication, ne pas le présenter comme réussi. La CI du nouveau SHA reste également à vérifier.
+
+### Résultat final de #268 — 19:36 UTC
+
+- Seul push de correction : `dcf74ad16532ed1cd51b3d0a4bba17a26302d887`, après comparaison du SHA distant avec `7d6e031`. Aucun changement concurrent observé, aucun force-push.
+- [CI 38954746757](https://github.com/ZeyFro/gamenight/actions/runs/38954746757) réussie au SHA `dcf74ad` : 2 752 tests avec Postgres, aucun ignoré ; passe sans base : 1 751 réussis et 998 ignorés. Typage, lint et build réussis.
+- Le contrôle Vercel du même SHA est devenu vert via le déploiement automatique de ce push. Blocage initial de quota résolu sans relance manuelle ni contournement. `Vercel Preview Comments` également vert.
+- [#268 fusionnée](https://github.com/ZeyFro/gamenight/pull/268) le 16 octobre 2026 à 19:36:03 UTC, commit `27b6c2ac3d12f9bd7864641b2c7c57c99fe3b37d`, après nouvelle vérification des contrôles et du SHA (`--match-head-commit`). Bilan final publié dans la description de PR, sans déclencher de déploiement supplémentaire.
+- Suite complète locale interrompue volontairement après réussite de la suite complète CI ; elle ne compte pas comme passée. Les 71 tests ciblés locaux et le build local restent validés. Aucun parcours Discord réel ni contrôle de production authentifié effectué.
+- Worktree et conteneur local conservés pour la reprise ; checkout principal toujours inchangé. Ce complément final reste local pour rejoindre la prochaine publication utile, plutôt que déclencher un déploiement documentaire supplémentaire ; les résultats distants font foi dans la description de #268 et la CI liée.
 
 ## Bibliothèque et inventaire
 
