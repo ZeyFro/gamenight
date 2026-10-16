@@ -10,6 +10,8 @@ import { PoteTabs } from "@/components/PoteTabs";
 import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { levelForXp, rankForLevel } from "@/lib/xp";
+import { PlayerEquipment } from "@/components/PlayerEquipment";
+import { GamingIdentifiers } from "@/components/GamingIdentifiers";
 
 /**
  * En-tête + onglets partagés par les 5 sous-routes de `/potes/[id]`
@@ -81,6 +83,9 @@ export default async function PoteLayout({
           </div>
         </div>
       </div>
+
+      <PlayerEquipment user={pote} />
+      <GamingIdentifiers user={pote} />
 
       <PoteTabs poteId={id} />
 

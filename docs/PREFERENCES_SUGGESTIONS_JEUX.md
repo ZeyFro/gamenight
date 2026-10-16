@@ -80,9 +80,8 @@ Postgres sans serveur local), 230 fichiers. Typage TypeScript, lint et build
 Next.js webpack validés ; aucun délai ni mécanisme de reprise des tests modifié.
 Parcours authentifié/mobile non vérifié. Aucun accès Neon ou Discord réel.
 
-Ce lot part de `main` et reste indépendant des PR #234–236, toujours ouvertes.
-La sortie du brouillon et la fusion de #234 ont été refusées par la revue
-automatique pour défaut d'autorisation reconnue comme fiable, malgré les
-contrôles verts. Le propriétaire demande de ne pas répéter l'action refusée.
-Avant toute fusion ultérieure des lots de profil, leurs modifications des
-paramètres devront être réconciliées puis leurs contrôles rejoués.
+Reprise locale : #234 et #235 sont fusionnées dans `main`. La branche de
+reprise #236 est intégrée avec ses identifiants et son matériel, en conservant
+les préférences, les refus et les trois formulaires indépendants. Les migrations
+additives des trois lots sont conservées. #236 et #237 restent des PR ouvertes ;
+les contrôles doivent porter sur leurs derniers commits avant toute fusion.
