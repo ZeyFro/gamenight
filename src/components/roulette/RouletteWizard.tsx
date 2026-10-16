@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { haptics } from "@/lib/haptics";
 import { pickInstantSegment } from "@/lib/roulette-draw";
+import { splitIntoTeams } from "@/lib/team-draw";
 import {
   RouletteWheelDisplay,
   computeWinningRotation,
@@ -67,6 +68,8 @@ export function RouletteWizard({
   const [winnerGame, setWinnerGame] = useState<RouletteGame | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [drawnGameIds, setDrawnGameIds] = useState<ReadonlySet<string>>(new Set());
+  const [teamCount, setTeamCount] = useState(2);
+  const [teams, setTeams] = useState<RouletteCandidate[][]>([]);
   const [filterFallback, setFilterFallback] = useState(false);
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState("20:00");
@@ -90,6 +93,7 @@ export function RouletteWizard({
     if (id === creator.id) return;
     haptics.light();
     setParticipantIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    setTeams([]);
     setSelections((prev) => {
       if (!(id in prev)) return prev;
       const next = { ...prev };
@@ -341,6 +345,48 @@ export function RouletteWizard({
           <p className="text-xs text-muted">Minimum 2 participants pour lancer la roue.</p>
         )}
       </Card>
+
+      {participants.length >= 2 && (
+        <Card className="flex flex-col gap-3">
+          <div>
+            <p className="font-semibold text-foreground">Tirage des équipes</p>
+            <p className="text-xs text-muted">Les équipes sont équilibrées ; avec un nombre impair, l’écart est d’un joueur.</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted" htmlFor="roulette-team-count">
+              Nombre d’équipes
+              <select
+                id="roulette-team-count"
+                value={Math.min(teamCount, participants.length)}
+                onChange={(event) => { setTeamCount(Number(event.target.value)); setTeams([]); }}
+                className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                {Array.from({ length: Math.min(4, participants.length) - 1 }, (_, index) => index + 2).map((count) => (
+                  <option key={count} value={count}>{count}</option>
+                ))}
+              </select>
+            </label>
+            <Button type="button" variant="secondary" onClick={() => setTeams(splitIntoTeams(participants, Math.min(teamCount, participants.length)))}>
+              {teams.length ? "Refaire le tirage" : "Tirer les équipes"}
+            </Button>
+          </div>
+          {teams.length > 0 && (
+            <div role="status" className="grid gap-3 sm:grid-cols-2">
+              {teams.map((team, index) => (
+                <div key={index} className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3">
+                  <p className="text-sm font-semibold text-foreground">Équipe {index + 1}</p>
+                  {team.map((player) => (
+                    <div key={player.id} className="flex items-center gap-2 text-sm text-foreground">
+                      <Avatar src={player.discordAvatar} alt="" size={24} />
+                      <span>{player.discordName}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {participants.map((p) => (
         <ParticipantGamesCard

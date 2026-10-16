@@ -104,6 +104,8 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
   }
 
   async function measure(label: string, guestIds: string[]): Promise<number> {
+    // Écarte les événements Prisma tardifs des fixtures avant de remettre le compteur à zéro.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     queries.length = 0;
     await expect(createSession(form(guestIds))).rejects.toThrow(/^REDIRECT:\/sessions\/(?!\?)/);
     const total = queries.length;
