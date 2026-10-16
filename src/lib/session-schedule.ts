@@ -16,6 +16,7 @@ const MIN_SESSION_LEAD_MS = 30 * 60 * 1000;
  * même d'atteindre `resolveSessionSchedule`.
  */
 export const SESSION_SCHEDULE_ERROR_MESSAGES: Record<string, string> = {
+  duration_invalide: "La durée doit être comprise entre 1 minute et 24 heures.",
   session_trop_proche:
     "Cette session est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,

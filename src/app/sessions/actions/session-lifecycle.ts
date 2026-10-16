@@ -39,6 +39,7 @@ import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   createSessionSchema,
   editSessionSchema,
+  sessionPlayedMinutesSchema,
   VALIDATION_ERROR_KEY,
 } from "@/lib/validations";
 
@@ -436,6 +437,11 @@ export async function markSessionDoneAction(formData: FormData) {
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
+  const duration = sessionPlayedMinutesSchema.safeParse(formData.get("playedMinutes"));
+  if (!duration.success) {
+    redirect(`/sessions/${sessionId}?error=duration_invalide`);
+  }
+  const playedMinutes = duration.data;
 
   // Pas explicitement listée dans l'alignement des permissions demandé
   // (qui nomme "modifier/supprimer/clôturer/annuler"), mais c'est la même
@@ -449,7 +455,7 @@ export async function markSessionDoneAction(formData: FormData) {
   });
   if (!session || session.createdById !== user.id) return;
 
-  const { unlockedAchievements } = await markSessionDone(sessionId);
+  const { unlockedAchievements } = await markSessionDone(sessionId, playedMinutes);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
   revalidatePath("/");

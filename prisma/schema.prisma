@@ -1902,8 +1902,9 @@ model GroupSessionStats {
 // `Game` elle-même n'est jamais purgée par ce chantier, une jointure
 // reste fiable à 100%).
 model GroupGameStat {
-  gameId    String
-  playCount Int    @default(0)
+  gameId           String
+  playCount        Int    @default(0)
+  totalPlayMinutes Int    @default(0)
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 

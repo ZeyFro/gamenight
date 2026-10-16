@@ -616,9 +616,13 @@ export default async function SessionDetailPage({
           )}
           <form action={markSessionDoneAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <Button type="submit" size="sm">
-              Marquer comme terminée
-            </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Durée jouée (minutes, facultatif)
+                <input name="playedMinutes" type="number" min={1} max={1440} step={1} inputMode="numeric" className="w-40 rounded-lg border border-border bg-background p-2 text-sm text-foreground" />
+              </label>
+              <Button type="submit" size="sm">Marquer comme terminée</Button>
+            </div>
           </form>
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
