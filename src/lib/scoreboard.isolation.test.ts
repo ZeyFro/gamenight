@@ -10,20 +10,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * ses membres sur leur XP personnelle.
  */
 
-const { userFindMany, xpGroupBy, statsFindMany } = vi.hoisted(() => ({
+const { userFindMany, xpGroupBy, statsFindMany, gameStatsFindMany } = vi.hoisted(() => ({
   userFindMany: vi.fn(),
   xpGroupBy: vi.fn(),
   statsFindMany: vi.fn(),
+  gameStatsFindMany: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { user: { findMany: userFindMany }, community: { findUnique: vi.fn(async () => ({ status: "ACTIVE" })) } },
 }));
 vi.mock("@/lib/default-community", () => ({ getDefaultCommunityId: vi.fn(async () => "default-id") }));
 vi.mock("@/lib/community-scoped-client", () => ({ scopedPrismaForCommunityId: vi.fn(async () => ({
-  xpEvent: { groupBy: xpGroupBy }, communityMemberStats: { findMany: statsFindMany },
+  xpEvent: { groupBy: xpGroupBy }, communityMemberStats: { findMany: statsFindMany }, groupGameStat: { findMany: gameStatsFindMany },
 })) }));
 
-import { getScoreboard } from "./scoreboard";
+import { getFunLeaderboards, getScoreboard } from "./scoreboard";
 
 const user = (id: string, xpTotal = 0) => ({
   id,
@@ -38,6 +39,7 @@ describe("getScoreboard — communauté", () => {
     userFindMany.mockReset().mockResolvedValue([user("a", 50), user("b", 10)]);
     xpGroupBy.mockReset().mockResolvedValue([]);
     statsFindMany.mockReset().mockResolvedValue([{ userId: "a", xpTotal: 50 }, { userId: "b", xpTotal: 10 }]);
+    gameStatsFindMany.mockReset().mockResolvedValue([]);
   });
 
   it("sans option : roster historique mais progression dans default", async () => {
@@ -95,5 +97,26 @@ describe("getScoreboard — communauté", () => {
   it("classe par XP décroissant au sein de la communauté", async () => {
     const entries = await getScoreboard("global", { communityId: "c-b" });
     expect(entries.map((e) => e.userId)).toEqual(["a", "b"]);
+  });
+});
+
+describe("getFunLeaderboards — isolation communautaire", () => {
+  beforeEach(() => {
+    userFindMany.mockReset().mockResolvedValue([user("a"), user("b")]);
+    statsFindMany.mockReset().mockResolvedValue([]);
+    gameStatsFindMany.mockReset().mockResolvedValue([]);
+  });
+
+  it("restreint heures et séries aux données de la communauté sélectionnée", async () => {
+    gameStatsFindMany.mockResolvedValue([{ gameId: "g1", totalPlayMinutes: 180, game: { name: "Catan", coverUrl: null } }]);
+    statsFindMany.mockResolvedValue([{ userId: "a", streakCount: 12, user: { discordName: "Alice", discordAvatar: null, color: "#fff" } }]);
+
+    await expect(getFunLeaderboards({ communityId: "c-b" })).resolves.toEqual({
+      gamesByPlayTime: [{ gameId: "g1", name: "Catan", coverUrl: null, totalPlayMinutes: 180 }],
+      playersByStreak: [{ userId: "a", discordName: "Alice", discordAvatar: null, color: "#fff", streakCount: 12 }],
+    });
+    expect(gameStatsFindMany.mock.calls[0][0].where).toMatchObject({ communityId: "c-b", totalPlayMinutes: { gt: 0 } });
+    expect(statsFindMany.mock.calls[0][0].where).toMatchObject({ communityId: "c-b", userId: { in: ["a", "b"] }, streakCount: { gt: 0 } });
+    expect(userFindMany.mock.calls[0][0].where.memberships.some).toMatchObject({ communityId: "c-b", status: "ACTIVE" });
   });
 });

@@ -4,6 +4,7 @@ import { requireCommunityChosen } from "@/lib/community-picker";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import {
   getScoreboard,
+  getFunLeaderboards,
   SCOREBOARD_PERIODS,
   type ScoreboardEntry,
   type ScoreboardPeriod,
@@ -18,6 +19,7 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { pageMetadata } from "@/lib/page-title";
+import { formatDurationFr } from "@/lib/wallclock";
 
 export const metadata = pageMetadata("Classement");
 
@@ -138,7 +140,10 @@ export default async function ClassementPage({
   // (`?communaute=<id>`, 404 si non membre ; sinon la communauté active).
   // `undefined` quand l'isolation est éteinte : tous les utilisateurs, comme avant.
   const communityId = await getScoreboardCommunityId(user.id, communaute);
-  const entries = await getScoreboard(period, { communityId });
+  const [entries, funLeaderboards] = await Promise.all([
+    getScoreboard(period, { communityId }),
+    getFunLeaderboards({ communityId }),
+  ]);
   const podium = entries.slice(0, 3);
   const [first, second, third] = podium;
 
@@ -195,6 +200,36 @@ export default async function ClassementPage({
           </Stagger>
         </div>
       )}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="p-4">
+          <h2 className="font-semibold text-foreground">Jeux les plus joués</h2>
+          <p className="mt-1 text-xs text-muted">Temps déclaré par la communauté, cumulatif.</p>
+          {funLeaderboards.gamesByPlayTime.length ? (
+            <ol className="mt-3 space-y-2 text-sm">
+              {funLeaderboards.gamesByPlayTime.map((game, index) => (
+                <li key={game.gameId} className="flex justify-between gap-3">
+                  <span className="truncate text-foreground">{index + 1}. {game.name}</span>
+                  <span className="shrink-0 tabular-nums text-muted">{formatDurationFr(game.totalPlayMinutes * 60_000)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="mt-3 text-sm text-muted">Aucune durée déclarée.</p>}
+        </Card>
+        <Card className="p-4">
+          <h2 className="font-semibold text-foreground">Joueurs les plus réguliers</h2>
+          <p className="mt-1 text-xs text-muted">Série active, activité dans les dernières 24 heures.</p>
+          {funLeaderboards.playersByStreak.length ? (
+            <ol className="mt-3 space-y-2 text-sm">
+              {funLeaderboards.playersByStreak.map((player, index) => (
+                <li key={player.userId} className="flex justify-between gap-3">
+                  <span className="truncate text-foreground">{index + 1}. {player.discordName}</span>
+                  <span className="shrink-0 tabular-nums text-muted">{player.streakCount} j</span>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="mt-3 text-sm text-muted">Aucune série active.</p>}
+        </Card>
+      </div>
     </div>
     </PullToRefresh>
   );
