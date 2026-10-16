@@ -137,6 +137,29 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     });
   });
 
+  it("favorise les tierlists tout en écartant les jeux terminés dans les 7 derniers jours", async () => {
+    const [u1, u2] = [await makeUser(), await makeUser()];
+    const recent = await makeGame(u1.id, null, null);
+    const rested = await makeGame(u1.id, null, null);
+    await db.tierlistEntry.createMany({ data: [
+      { userId: u1.id, gameId: recent.id, tier: "S" },
+      { userId: u2.id, gameId: recent.id, tier: "S" },
+      { userId: u1.id, gameId: rested.id, tier: "D" },
+      { userId: u2.id, gameId: rested.id, tier: "D" },
+    ] });
+    await db.session.create({ data: {
+      date: new Date(Date.now() - 24 * 60 * 60 * 1000), status: "DONE",
+      decidedGameId: recent.id, createdById: u1.id,
+    } });
+    const r = await makeRoulette([
+      { userId: u1.id, gameIds: [recent.id, rested.id] },
+      { userId: u2.id, gameIds: [recent.id, rested.id] },
+    ]);
+
+    await roulette.spinRoulette(r.id, () => 0.99);
+    expect(await resultGameOf(r.id)).toBe(rested.id);
+  });
+
   describe("veto du jeu tiré (VOTE_VETO_ENABLED)", () => {
     /** 3 participants ; x et y sans borne, z accepte 2 joueurs seulement. Tirage initial déterministe (rng 0). */
     async function drawn(opts: { filter?: boolean; announceViaBot?: boolean } = {}) {

@@ -10,7 +10,7 @@ import { announceRouletteCancelled, announceRouletteReminder, announceRouletteRe
 import { enqueueRouletteDirectMessageEdits } from "@/lib/roulette-dm";
 import { createRouletteResultSession } from "@/lib/sessions";
 import { logger } from "@/lib/logger";
-import { isRoulettePlayerFilterEnabled, pickRouletteCandidate } from "@/lib/roulette-draw";
+import { isRoulettePlayerFilterEnabled, pickWeightedRouletteCandidate } from "@/lib/roulette-draw";
 import type { Prisma, Roulette } from "@prisma/client";
 
 const REMINDER_BEFORE_DEADLINE_MS = 60 * 60 * 1000;
@@ -54,8 +54,9 @@ export async function spinRoulette(
       await enqueueRouletteDirectMessageEdits(rouletteId, tx);
       return { roulette, result: null, participantIds, fallback: false };
     }
-    const { chosen: winner, fallback } = pickRouletteCandidate(
-      entries.map((e) => ({ ...e, ...e.game })),
+    const drawCandidates = await enrichRouletteCandidates(tx, scopedDb, entries, participantIds);
+    const { chosen: winner, fallback } = pickWeightedRouletteCandidate(
+      drawCandidates,
       { playerCount: participantIds.length, filterEnabled: isRoulettePlayerFilterEnabled(), rng }
     );
     if (!winner) throw new Error("spinRoulette : aucune entrée à tirer.");
@@ -80,6 +81,37 @@ export async function spinRoulette(
   }
   logger.info("roulette", "Roulette tirée.", { rouletteId, announceViaBot: result.announceViaBot, playerFilterFallback: fallback });
   return { playerFilterFallback: fallback };
+}
+
+/** Ajoute aux segments le poids moyen des tierlists participantes et l'historique récent de la communauté. */
+export async function enrichRouletteCandidates<
+  E extends { gameId: string; userId: string; game: { minPlayers: number | null; maxPlayers: number | null } }
+>(
+  tx: Prisma.TransactionClient,
+  scopedDb: Prisma.TransactionClient,
+  entries: E[],
+  participantIds: string[]
+) {
+  const gameIds = [...new Set(entries.map((entry) => entry.gameId))];
+  const now = wallClockNow();
+  const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const [tiers, recentSessions] = await Promise.all([
+    tx.tierlistEntry.findMany({ where: { userId: { in: participantIds }, gameId: { in: gameIds } }, select: { gameId: true, tier: true } }),
+    scopedDb.session.findMany({
+      where: { status: "DONE", date: { gte: cutoff, lte: now }, decidedGameId: { in: gameIds } },
+      select: { decidedGameId: true },
+    }),
+  ]);
+  const tierValue = { S: 5, A: 4, B: 3, C: 2, D: 1 } as const;
+  const totals = new Map<string, number>();
+  for (const tier of tiers) totals.set(tier.gameId, (totals.get(tier.gameId) ?? 3 * participantIds.length) + tierValue[tier.tier] - 3);
+  const recent = new Set(recentSessions.flatMap((session) => session.decidedGameId ? [session.decidedGameId] : []));
+  return entries.map((entry) => ({
+    ...entry,
+    ...entry.game,
+    weight: Math.max(1, (totals.get(entry.gameId) ?? 3 * participantIds.length) / participantIds.length),
+    recentlyPlayed: recent.has(entry.gameId),
+  }));
 }
 
 /** Entrées des participants encore membres de la communauté de la roulette (isolation) et leurs ids distincts. */
