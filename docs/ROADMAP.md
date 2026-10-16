@@ -67,7 +67,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|
 | L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | 🟡 Pronostics/paris pour les soirées | Les relier aux tournois et matchs | code | À faire |
+| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics immuables champion et match, sans enjeu XP | Validation finale de la PR | code | PR ouverte (`feat/tournament-predictions-next`) |
 | L6-04 | Hall of Fame / Hall of Shame | 🟡 Trophées communautaires affichés (#251) | Hall of Shame, descriptions et médias éditables restent absents | code | À faire |
 | L6-05 | Running gags et expressions du serveur | ❌ Pas de glossaire communautaire | Collection éditable par serveur | code | À faire |
 | L6-06 | Chronique de soirée | ❌ Absente | Texte par soirée, archive durable | code | À faire |
@@ -98,7 +98,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-13 | PWA hors ligne | ✅ Livré | Aucune | code | Fait (#265, fusionnée) |
 | L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
-| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | PR ouverte (#267) |
+| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Livré | Aucune | code | Fait (#267, fusionnée) |
 | L7-17 | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
 
 ## Fait ou à valider en réel (ignorés par la boucle)
