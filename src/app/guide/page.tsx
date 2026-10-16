@@ -10,6 +10,15 @@ export const metadata = pageMetadata("Guide");
 
 const SECTIONS: GuideSection[] = [
   {
+    icon: "🎮",
+    title: "Jeux communs",
+    lines: [
+      "Dans Bibliothèque du groupe, choisis les personnes qui joueront pour voir les jeux possédés par chacune d’elles.",
+      "Inclus-toi si tu participes. Les autres filtres restent disponibles ; efface la sélection pour retrouver tout le groupe.",
+      "Les bibliothèques déclarées doivent être à jour : ce filtre ne vérifie ni l’installation ni la présence en ligne.",
+    ],
+  },
+  {
     icon: "📅",
     title: "Calendrier",
     lines: [
@@ -25,6 +34,7 @@ const SECTIONS: GuideSection[] = [
       "Propose une date, tes potes votent pour le jeu.",
       "Le jeu le plus voté est retenu à la deadline.",
       "Retrouve les soirées passées dans l'onglet Historique.",
+      "Avant de participer, consulte les avertissements et les langues du jeu. Les joueurs qui possèdent le jeu peuvent les renseigner sur sa fiche ; une information non renseignée reste inconnue.",
     ],
   },
   {
@@ -60,6 +70,8 @@ const SECTIONS: GuideSection[] = [
       "Personnalise ta bannière et ta couleur perso.",
       "Consulte tes stats, ton historique et tes récompenses gagnées.",
       "Lie ton compte Steam pour importer ta bibliothèque de jeux.",
+      "Dans les paramètres, renseigne tes identifiants PSN, Xbox, Nintendo Switch, Epic Games et Battle.net : les membres qui peuvent voir ta fiche les retrouveront sur ton profil.",
+      "Déclare aussi tes commandes, plateformes disponibles et ton micro dans les paramètres : les membres autorisés à consulter ta fiche verront ton matériel, sans filtrage automatique des jeux.",
     ],
   },
 ];

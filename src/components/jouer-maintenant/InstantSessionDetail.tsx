@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
+import { GameWarnings } from "@/components/GameWarnings";
 import { Button } from "@/components/ui/Button";
 import { EndInstantSessionDialog } from "@/components/jouer-maintenant/EndInstantSessionDialog";
 import { ChangeInstantSessionGameControl } from "@/components/jouer-maintenant/ChangeInstantSessionGameControl";
@@ -216,6 +217,7 @@ export function InstantSessionDetail({
         </p>
       </div>
 
+      <GameWarnings game={view.game} />
       {!isEnded && !view.viewerIsParticipant && (
         <form action={joinAction}>
           <input type="hidden" name="instantSessionId" value={instantSessionId} />

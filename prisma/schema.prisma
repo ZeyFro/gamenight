@@ -83,7 +83,16 @@ model User {
   // CSS, `.profile-banner-default`).
   bannerUrl                String?
   steamId64                String?   @unique
+  // Identifiants déclaratifs facultatifs ; aucune liaison OAuth ni preuve de propriété.
+  psnId                    String?   @db.VarChar(100)
+  xboxGamertag             String?   @db.VarChar(100)
+  switchFriendCode         String?   @db.VarChar(100)
+  epicDisplayName          String?   @db.VarChar(100)
+  battleTag                String?   @db.VarChar(100)
   steamPublic              Boolean   @default(false)
+  inputDevices             String[]  @default([])
+  availablePlatforms       String[]  @default([])
+  microphoneAvailable      Boolean?
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
@@ -326,6 +335,12 @@ model Game {
   preparationPlatform   String? @db.VarChar(80)
   preparationSourceUrl  String? @db.VarChar(500)
   preparationUpdatedAt  DateTime?
+  // Informations déclarées par un possesseur ; null = inconnu.
+  jumpscares          Boolean?
+  motionSickness      Boolean?
+  textLanguages       String? @db.VarChar(120)
+  audioLanguages      String? @db.VarChar(120)
+  warningsUpdatedAt   DateTime?
   id         String     @id @default(cuid())
   name       String
   source     GameSource
