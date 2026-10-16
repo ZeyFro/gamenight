@@ -16,6 +16,7 @@ import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { CursorTrailToggle } from "@/components/CursorTrailToggle";
+import { PlayerEquipmentForm } from "@/components/PlayerEquipmentForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { GAMING_IDENTIFIER_FIELDS } from "@/lib/gaming-identifiers";
 import { updateGamingIdentifiersAction } from "@/app/profil/gaming-identifiers-actions";
@@ -96,13 +97,14 @@ export default async function ProfilParametresPage({
     family?: string;
     new?: string;
     notifications?: string;
+    materiel?: string;
     identifiants?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, identifiants } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, materiel, identifiants } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
@@ -121,6 +123,7 @@ export default async function ProfilParametresPage({
 
   return (
     <Stagger className="flex flex-col gap-6">
+      <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold">Mes identifiants de jeu</h2>

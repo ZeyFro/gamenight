@@ -71,6 +71,7 @@ const SECTIONS: GuideSection[] = [
       "Consulte tes stats, ton historique et tes récompenses gagnées.",
       "Lie ton compte Steam pour importer ta bibliothèque de jeux.",
       "Dans les paramètres, renseigne tes identifiants PSN, Xbox, Nintendo Switch, Epic Games et Battle.net : les membres qui peuvent voir ta fiche les retrouveront sur ton profil.",
+      "Déclare aussi tes commandes, plateformes disponibles et ton micro dans les paramètres : les membres autorisés à consulter ta fiche verront ton matériel, sans filtrage automatique des jeux.",
     ],
   },
 ];
