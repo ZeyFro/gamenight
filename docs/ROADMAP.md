@@ -40,11 +40,6 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L3-04 | Avertissements : jumpscares, mal des transports, langue | ❌ Pas d'avertissements structurés | Infos sur les fiches et avant inscription | code | PR ouverte #238 (CI et Vercel verts au SHA 019d9e4) |
 | L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | PR ouverte #239 (HEAD intégré, contrôles à vérifier) |
 | L3-06 | Checklist installé / mis à jour / micro / lobby | ❌ Pas de checklist par participant | Cases enregistrées et état de préparation collectif | code | PR ouverte #240 (CI bloquée avant checkout : quota ECR) |
-| L3-02 | Manette/clavier, micro, plateformes disponibles | ❌ Aucun carnet structuré | Formulaire et affichage aux autres membres | code | Fait (#236) |
-| L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
-| L3-04 | Avertissements : jumpscares, mal des transports, langue | ❌ Pas d'avertissements structurés | Infos sur les fiches et avant inscription | code | PR ouverte #238 (CI et Vercel verts au SHA 019d9e4) |
-| L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | PR ouverte #239 (HEAD intégré, contrôles à vérifier) |
-| L3-06 | Checklist installé / mis à jour / micro / lobby | ❌ Pas de checklist par participant | Cases enregistrées et état de préparation collectif | code | PR ouverte #240 (CI bloquée avant checkout : quota ECR) |
 | L3-07 | Temps de préparation | ❌ Pas de durée dédiée | Durée estimée affichée avant la soirée | code | En cours |
 
 ## Lot 4 — Calendrier pratique
