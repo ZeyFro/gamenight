@@ -2607,6 +2607,7 @@ model Community {
   // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
   slug String @unique
   name String
+  fairPlayCharter String? @db.Text
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.

@@ -103,6 +103,7 @@ export default async function GuidePage() {
       </div>
 
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
+      <ButtonLink href="/charte" variant="ghost">Lire la charte de fair-play du serveur</ButtonLink>
       <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {guideSections(SECTIONS).map((section) => (
           <StaggerItem key={section.title}>
