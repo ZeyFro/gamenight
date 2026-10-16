@@ -27,4 +27,11 @@ it("seul le créateur active une capacité ; un échec permet de réessayer", as
   await userEvent.click(screen.getByRole("button", { name: "Activer les places" })); expect(screen.getByRole("status").textContent).toContain("Réessaie"); expect(mocks.refresh).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "Activer les places" })); expect(mocks.action).toHaveBeenLastCalledWith({ sessionId: "s", command: { kind: "capacity", capacity: 4 } });
 });
+it("permet de confirmer ou décliner sa présence sans limite de places", async () => {
+  mocks.action.mockResolvedValue({ ok: true, status: "CONFIRMED" });
+  render(<SessionSeatsPanel {...base} capacity={null} />);
+  expect(screen.getByText(/Sans limite de places/)).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Je participe" }));
+  expect(mocks.action).toHaveBeenCalledWith({ sessionId: "s", command: { kind: "join" } });
+});
 it("ne propose aucune mutation après fermeture", () => { render(<SessionSeatsPanel {...base} isCreator open={false} />); expect(screen.queryByRole("button")).toBeNull(); });

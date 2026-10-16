@@ -15,6 +15,7 @@ import { createNotificationEvent, enqueueDelivery, notificationEventMatchesSourc
 import type { DeliveryResolver, Resolution, ResolvedAction, ResolveInput } from "@/lib/notification-executor";
 import { ACCENT_COLOR } from "@/lib/discord";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
+import { instantSessionRsvpComponents } from "@/lib/instant-session-rsvp-components";
 
 /**
  * V2 ("Jouer maintenant") — invitation rapide par MP Discord + notification
@@ -338,7 +339,7 @@ async function resolveAnnouncement({ event, delivery }: Pick<ResolveInput, "even
     VERCEL_ENV: process.env.VERCEL_ENV, VERCEL_URL: process.env.VERCEL_URL, VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
   });
   if (!config || !link) return { eligible: false, reason: "configuration_unavailable" };
-  const message = { allowedMentions: NO_MENTIONS_PARSE, embeds: [{
+  const message = { allowedMentions: NO_MENTIONS_PARSE, components: active ? instantSessionRsvpComponents(session.id) : [], embeds: [{
     title: active ? "🎮 On joue maintenant !" : "🎮 Partie terminée",
     description: active ? `**${session.createdBy.discordName}** lance une partie de **${session.game.name}**.\nLes membres de ce serveur peuvent participer.\n\n👉 [Rejoindre la partie](${link})`
       : `La partie sur **${session.game.name}** est terminée.`, color: ACCENT_COLOR,

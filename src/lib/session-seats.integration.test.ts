@@ -73,6 +73,18 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     expect(await change("bob", "s", { kind: "join" }, { ...origin, discordId: "bob" })).toEqual({ ok: false, error: "access" });
     expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true });
   });
+  it("soirée sans capacité : RSVP confirmés illimités, désistements préservés lors de l'activation", async () => {
+    await db.session.update({ where: { id: "s" }, data: { attendanceCapacity: null } });
+    await db.sessionSeat.deleteMany({});
+    const origin = await discordOrigin();
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });
+    expect(await change("bob", "s", { kind: "join" }, { ...origin, interactionId: "200", discordId: "bob" })).toMatchObject({ ok: true, status: "CONFIRMED" });
+    await db.game.update({ where: { id: "game" }, data: { maxPlayers: 4 } });
+    expect(await change("host", "s", { kind: "capacity", capacity: 2 })).toEqual({ ok: false, error: "capacity" });
+    expect(await change("host", "s", { kind: "capacity", capacity: 3 })).toMatchObject({ ok: true, status: "CONFIRMED" });
+    expect(await db.sessionSeat.count({ where: { status: "CONFIRMED" } })).toBe(3);
+    expect(await db.session.findUniqueOrThrow({ where: { id: "s" } })).toMatchObject({ attendanceCapacity: 3 });
+  });
   it("Discord revalide Membership et Community même lorsque les flags d'isolation sont OFF", async () => {
     const origin = await discordOrigin(); vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     await db.membership.updateMany({ where: { userId: "alice" }, data: { status: "REMOVED" } });
@@ -149,11 +161,12 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     for (const capacity of [1, 3, 0, 101]) expect(await change("host", "s", { kind: "capacity", capacity })).toEqual({ ok: false, error: "capacity" });
     expect(await db.sessionSeat.count({ where: { status: "CONFIRMED" } })).toBe(2);
   });
-  it("activation : reprend les votants sans supprimer ni recréer les votes", async () => {
+  it("activation : conserve les RSVP illimités et reprend les votants sans modifier les votes", async () => {
     await db.session.update({ where: { id: "s" }, data: { attendanceCapacity: null } }); await db.sessionSeat.deleteMany({});
-    expect(await join("alice")).toEqual({ ok: false, error: "disabled" });
-    expect((await change("host", "s", { kind: "capacity", capacity: 1 })).ok).toBe(true);
-    expect(await db.sessionSeat.findFirst()).toMatchObject({ userId: "host", status: "CONFIRMED" });
+    expect(await join("alice")).toEqual({ ok: true, status: "CONFIRMED" });
+    expect((await change("host", "s", { kind: "capacity", capacity: 2 })).ok).toBe(true);
+    expect(await db.sessionSeat.findUnique({ where: { sessionId_userId: { sessionId: "s", userId: "host" } } })).toMatchObject({ status: "CONFIRMED" });
+    expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.vote.count()).toBe(1);
   });
   it("participants de résultats/pronostics : seuls les confirmés, avec compatibilité historique", async () => {

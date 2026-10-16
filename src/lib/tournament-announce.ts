@@ -32,6 +32,7 @@ import type {
   TerminalDiscordFailureInput,
 } from "@/lib/notification-executor";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
+import { tournamentRsvpComponents } from "@/lib/tournament-rsvp-components";
 
 /**
  * Chantier annonces Discord tournois (#🏆-tournois, fil dédié par
@@ -845,14 +846,15 @@ function mentionContent(users: { discordId: string }[]): { text: string; userIds
 /** Contenu commun à la plupart des rôles — jamais de mention (embed
  * uniquement) SAUF pour le SEND initial de `announce`, seul appelant à
  * fournir `mentionedUsers` non vide (voir `resolveAnnounceDelivery`). */
-function buildMessageContent(embed: DiscordRestEmbed, mentionedUsers: { discordId: string }[] = []): ResolvedMessageContent {
+function buildMessageContent(embed: DiscordRestEmbed, mentionedUsers: { discordId: string }[] = [], components: ResolvedMessageContent["components"] = []): ResolvedMessageContent {
   if (mentionedUsers.length === 0) {
-    return { embeds: [embed], allowedMentions: NO_MENTIONS };
+    return { embeds: [embed], allowedMentions: NO_MENTIONS, components };
   }
   const { text, userIds } = mentionContent(mentionedUsers);
   return {
     content: text,
     embeds: [embed],
+    components,
     // Liste EXPLICITE d'ids (`users`), jamais `parse: ["users"]` — exclut
     // structurellement tout autre `<@id>` qui apparaîtrait par accident
     // dans le texte (ex. un nom de tournoi ressemblant à une mention) :
@@ -1131,7 +1133,7 @@ async function resolveAnnounceDelivery(
       kind: "send_channel_message_verified",
       channelId: tournament.discordChannelId,
       guildId: tournament.discordGuildId,
-      message: buildMessageContent(rendering.embed),
+      message: buildMessageContent(rendering.embed, [], tournamentRsvpComponents(tournament.id, tournament.status === "REGISTRATION")),
     };
     return { eligible: true, action };
   }
@@ -1154,7 +1156,7 @@ async function resolveAnnounceDelivery(
     kind: "edit_channel_message",
     channelId: sent.discordChannelId,
     messageId: sent.discordMessageId,
-    message: buildMessageContent(rendering.embed),
+    message: buildMessageContent(rendering.embed, [], tournamentRsvpComponents(tournament?.id ?? tournamentId, tournament?.status === "REGISTRATION")),
   };
   return { eligible: true, action };
 }

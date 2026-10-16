@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ verify: vi.fn(), respond: vi.fn(), edit: vi.fn(), setup: vi.fn() }));
+const mocks = vi.hoisted(() => ({ verify: vi.fn(), respond: vi.fn(), respondInstant: vi.fn(), respondTournament: vi.fn(), edit: vi.fn(), setup: vi.fn() }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: mocks.verify }));
 vi.mock("@/lib/discord-session-rsvp", () => ({ respondToSessionRsvp: mocks.respond }));
+vi.mock("@/lib/discord-instant-session-rsvp", () => ({ respondToInstantSessionRsvp: mocks.respondInstant }));
+vi.mock("@/lib/discord-tournament-rsvp", () => ({ respondToTournamentRsvp: mocks.respondTournament }));
 vi.mock("@/lib/community-setup", () => ({ setupCommunityFromGuild: mocks.setup }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit }));
 import { handleDiscordInteraction } from "./discord-interactions";

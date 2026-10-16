@@ -5,6 +5,10 @@ import { setupCommunityFromGuild } from "@/lib/community-setup";
 import { editSetupResponse } from "@/lib/discord-rest";
 import { parseSessionRsvpId } from "@/lib/session-rsvp-components";
 import { respondToSessionRsvp } from "@/lib/discord-session-rsvp";
+import { parseInstantSessionRsvpId } from "@/lib/instant-session-rsvp-components";
+import { respondToInstantSessionRsvp } from "@/lib/discord-instant-session-rsvp";
+import { parseTournamentRsvpId } from "@/lib/tournament-rsvp-components";
+import { respondToTournamentRsvp } from "@/lib/discord-tournament-rsvp";
 
 /**
  * Multi-communautés, PR6 — endpoint d'interactions Discord
@@ -102,7 +106,12 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
   if (interaction.type === 3) {
-    const rsvp = parseSessionRsvpId(interaction.data?.custom_id ?? "");
+    const customId = interaction.data?.custom_id ?? "";
+    const rsvp = parseSessionRsvpId(customId);
+    const instantRsvp = parseInstantSessionRsvpId(customId);
+    const tournamentRsvp = parseTournamentRsvpId(customId);
+    const resolvedRsvp = rsvp ?? instantRsvp;
+    const isInstantRsvp = !rsvp && Boolean(instantRsvp);
     const applicationId = interaction.application_id;
     const token = interaction.token;
     const discordId = interaction.guild_id ? interaction.member?.user?.id : interaction.user?.id;
@@ -110,14 +119,20 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const messageId = interaction.message?.id;
     // La signature seule n'expire pas : un corps signé ancien n'est jamais rejoué.
     const timestamp = Number(input.timestamp);
-    if (!rsvp || interaction.data?.component_type !== 2 || !applicationId || applicationId !== process.env.DISCORD_CLIENT_ID || !token || !id || !discordId || !channelId || !messageId || ![applicationId, id, discordId, channelId, messageId].every(value => /^\d+$/.test(value)) || (interaction.guild_id !== undefined && !/^\d+$/.test(interaction.guild_id)) || !Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return { status: 400 };
+    if ((!resolvedRsvp && !tournamentRsvp) || interaction.data?.component_type !== 2 || !applicationId || applicationId !== process.env.DISCORD_CLIENT_ID || !token || !id || !discordId || !channelId || !messageId || ![applicationId, id, discordId, channelId, messageId].every(value => /^\d+$/.test(value)) || (interaction.guild_id !== undefined && !/^\d+$/.test(interaction.guild_id)) || !Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return { status: 400 };
+    if ((isInstantRsvp || tournamentRsvp) && !interaction.guild_id) return { status: 400 };
     // Aucun accès SQL/Discord avant l'ACK : réponse privée en < 3 s.
     return { status: 200, body: { type: 5, data: { flags: EPHEMERAL } }, runRsvp: async () => {
       let content: string;
       try {
-        content = await respondToSessionRsvp(rsvp.sessionId, rsvp.kind, { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId });
+        const origin = { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId };
+        content = tournamentRsvp
+          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin)
+          : isInstantRsvp
+            ? await respondToInstantSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin)
+            : await respondToSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin);
       } catch (error) {
-        logger.error("discord-rsvp", error, { sessionId: rsvp.sessionId });
+        logger.error("discord-rsvp", error, { customId });
         content = "Ta réponse n’a pas pu être confirmée. Vérifie ton inscription dans GameNight, puis réessaie si nécessaire.";
       }
       const sent = await editSetupResponse({ applicationId, token, content, deadline: new Date(Date.now() + 10_000) });

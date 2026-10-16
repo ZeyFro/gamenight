@@ -1071,7 +1071,7 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
         orderBy: { createdAt: "asc" },
       },
       invites: { include: { user: true } },
-      seats: { where: { status: "CONFIRMED" }, include: { user: true } },
+      seats: { include: { user: true } },
     },
   });
 }
@@ -1204,18 +1204,20 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
     }
     const maxVotes = Math.max(...session.proposals.map((p) => p.votes.length));
     const tie = winner.votes.length === maxVotes && session.proposals.filter((p) => p.votes.length === maxVotes).length > 1;
+    const confirmedSeats = (session.seats ?? []).filter(seat => seat.status === "CONFIRMED");
+    const hasSeatRsvps = session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0;
     return {
       embed: {
         title: `🎮 Soirée validée : ${winner.game.name}`,
         description: formatDateTimeFr(session.date),
         color: 0x8b5cf6,
         fields: [
-          { name: "Joueurs", value: session.attendanceCapacity != null ? `${session.seats?.length ?? 0}/${session.attendanceCapacity}` : String(winner.votes.length), inline: true },
+          { name: "Joueurs", value: session.attendanceCapacity != null ? `${confirmedSeats.length}/${session.attendanceCapacity}` : hasSeatRsvps ? String(confirmedSeats.length) : String(winner.votes.length), inline: true },
           ...(tie ? [{ name: "Note", value: "Égalité de votes — choisi par ancienneté de proposition.", inline: false }] : []),
           { name: "Lien", value: absoluteSessionUrl(session.id) },
         ],
       },
-      candidateMentions: session.attendanceCapacity != null ? (session.seats ?? []).map(seat => seat.user) : winner.votes.map((v) => v.user),
+      candidateMentions: hasSeatRsvps ? confirmedSeats.map(seat => seat.user) : winner.votes.map((v) => v.user),
     };
   }
 
@@ -1470,7 +1472,7 @@ async function resolveSessionDirectMessage(
 ): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
-  if (parsed.base === "reminder" && !isSeatReminderRecipient(session.attendanceCapacity, session.createdById, parsed.userId, (session.seats ?? []).map(seat => seat.userId))) return { eligible: false, reason: "preference_declined" };
+  if (parsed.base === "reminder" && !isSeatReminderRecipient(session.attendanceCapacity, session.createdById, parsed.userId, (session.seats ?? []).filter(seat => seat.status === "CONFIRMED").map(seat => seat.userId), session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0)) return { eligible: false, reason: "preference_declined" };
   const operation = delivery.operation === "EDIT" ? "EDIT" : "SEND";
   if (session.deferredRoulette && operation === "SEND") return { eligible: false, reason: "expired" };
   if (operation === "EDIT" && parsed.base !== "announce") return { eligible: false, reason: "unresolvable" };
@@ -1951,8 +1953,8 @@ async function resolveThreadReminder(
   let candidates: (User & { silenceReminders: boolean })[];
   if (session.status === "VOTING") {
     candidates = resolveInvitedCandidates(session.invites, session.createdById);
-  } else if (session.attendanceCapacity != null) {
-    candidates = (session.seats ?? []).map(seat => seat.user);
+  } else if (session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0) {
+    candidates = (session.seats ?? []).filter(seat => seat.status === "CONFIRMED").map(seat => seat.user);
   } else {
     const voters = new Map<string, User & { silenceReminders: boolean }>();
     for (const proposal of session.proposals) {
