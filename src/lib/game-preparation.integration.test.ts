@@ -18,17 +18,18 @@ describe.skipIf(!TEST_DATABASE_URL)("préparation sourcée en PostgreSQL",() => 
   afterAll(async () => {await db?.$disconnect();});
   afterEach(() => {vi.unstubAllGlobals(); vi.useRealTimers();});
   beforeEach(async () => {
+    vi.stubEnv("GAME_PREPARATION_TIME_ENABLED", "true");
     vi.stubGlobal("fetch",vi.fn(() => {throw Error("Réseau réel interdit");}));
     await db.$executeRawUnsafe('TRUNCATE "User", "Game" CASCADE');
     await db.user.createMany({data:[{id:"owner",discordId:"owner",discordName:"Owner"},{id:"other",discordId:"other",discordName:"Other"}]});
     await db.game.createMany({data:[{id:"g",name:"Game",source:"MANUAL",addedById:"owner",minPlayers:2,igdbDetails:{genres:["Puzzle"]}},{id:"foreign",name:"Foreign",source:"MANUAL",addedById:"other"}]});
     await db.userGame.create({data:{userId:"owner",gameId:"g",owned:true}}); mocks.current.mockResolvedValue({id:"owner"});
   });
-  function form(gameId="g") {const f=new FormData(); for(const[k,v] of Object.entries({gameId,preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:"12,5",preparationPlatform:"PC Windows",preparationSourceUrl:"https://example.com/game",userId:"other",minPlayers:"99"})) f.set(k,v); return f;}
-  it("laisse les champs non renseignés inconnus et conserve les autres métadonnées lors d'un relevé",async () => {
-    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:null,downloadSizeGb:null,preparationUpdatedAt:null});
+  function form(gameId="g") {const f=new FormData(); for(const[k,v] of Object.entries({gameId,preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:"12,5",preparationPlatform:"PC Windows",preparationSourceUrl:"https://example.com/game",preparationTimeMinutes:"90",userId:"other",minPlayers:"99"})) f.set(k,v); return f;}
+  it("laisse les anciens jeux inconnus et conserve les autres métadonnées lors d'un relevé",async () => {
+    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:null,downloadSizeGb:null,preparationTimeMinutes:null,preparationUpdatedAt:null});
     expect(await update(form())).toEqual({ok:true});
-    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"PC Windows",preparationSourceUrl:"https://example.com/game",preparationUpdatedAt:expect.any(Date),minPlayers:2,igdbDetails:{genres:["Puzzle"]}});
+    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"PC Windows",preparationSourceUrl:"https://example.com/game",preparationTimeMinutes:90,preparationUpdatedAt:expect.any(Date),minPlayers:2,igdbDetails:{genres:["Puzzle"]}});
   });
   it("conserve le jour parisien déclaré après aller-retour PostgreSQL près de minuit",async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -42,8 +43,8 @@ describe.skipIf(!TEST_DATABASE_URL)("préparation sourcée en PostgreSQL",() => 
   });
   it("permet un statut gratuit sourcé puis un effacement complet",async () => {
     const f=form(); f.set("preparationCost","FREE"); f.set("preparationPrice",""); expect((await update(f)).ok).toBe(true); expect((await db.game.findUniqueOrThrow({where:{id:"g"}})).preparationCost).toBe("FREE");
-    f.set("preparationCost","unknown"); for(const k of ["downloadSizeGb","preparationPrice","preparationPlatform","preparationSourceUrl"]) f.set(k,""); expect((await update(f)).ok).toBe(true);
-    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:null,preparationPrice:null,downloadSizeGb:null,preparationPlatform:null,preparationSourceUrl:null});
+    f.set("preparationCost","unknown"); for(const k of ["downloadSizeGb","preparationPrice","preparationPlatform","preparationSourceUrl","preparationTimeMinutes"]) f.set(k,""); expect((await update(f)).ok).toBe(true);
+    expect(await db.game.findUnique({where:{id:"g"}})).toMatchObject({preparationCost:null,preparationPrice:null,downloadSizeGb:null,preparationPlatform:null,preparationSourceUrl:null,preparationTimeMinutes:null});
   });
   it("refuse un jeu tiers, inexistant et une possession retirée",async () => {
     expect(await update(form("foreign"))).toEqual({ok:false,error:"access"}); expect(await update(form("missing"))).toEqual({ok:false,error:"access"});
@@ -51,7 +52,12 @@ describe.skipIf(!TEST_DATABASE_URL)("préparation sourcée en PostgreSQL",() => 
     expect(await db.game.count({where:{preparationUpdatedAt:{not:null}}})).toBe(0);
   });
   it("ne fait aucune écriture partielle si le relevé est incohérent ou non sourcé",async () => {
-    for(const[k,v] of [["preparationSourceUrl",""],["preparationPlatform",""],["downloadSizeGb","-1"],["preparationCost","FREE"]]){const f=form(); f.set(k,v); expect(await update(f)).toEqual({ok:false,error:"invalid"});}
+    for(const[k,v] of [["preparationSourceUrl",""],["preparationPlatform",""],["downloadSizeGb","-1"],["preparationTimeMinutes","10081"],["preparationCost","FREE"]]){const f=form(); f.set(k,v); expect(await update(f)).toEqual({ok:false,error:"invalid"});}
     expect(await db.game.count({where:{preparationUpdatedAt:{not:null}}})).toBe(0);
+  });
+  it("la contrainte PostgreSQL refuse directement une durée hors limites", async () => {
+    for (const minutes of [0, 10081]) {
+      await expect(db.$executeRaw`UPDATE "Game" SET "preparationTimeMinutes" = ${minutes} WHERE "id" = 'g'`).rejects.toThrow();
+    }
   });
 });
