@@ -69,6 +69,8 @@ describe.skipIf(!TEST_DATABASE_URL)("accueil : lectures en parallèle, même com
       date: new Date(Date.now() + 48 * 3600_000), votingDeadline: new Date(Date.now() + 24 * 3600_000),
       status: "VOTING", createdById: userId, communityId,
     } });
-    expect(texts(await Home({ searchParams: Promise.resolve({}) })).join(" ")).toContain("Vote en cours");
+    const rendered = texts(await Home({ searchParams: Promise.resolve({}) })).join(" ");
+    expect(rendered).toContain("Vote en cours");
+    expect(rendered.indexOf("Prochaine soirée")).toBeLessThan(rendered.indexOf("Roulette instantanée"));
   });
 });

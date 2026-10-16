@@ -267,11 +267,6 @@ async function HomeContent({
         <div><p className="gn-eyebrow mb-3">Ensemble, c’est toujours mieux</p><h1><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Ce soir, on joue à quoi ?</AuroraText></h1><p>Un jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.</p></div>
         <ButtonLink href="/sessions" variant="primary" className="hidden sm:inline-flex">+ Créer une soirée</ButtonLink>
       </div>
-      <nav className="gn-quick-actions" aria-label="Lancer une partie">
-        <Link href="/sessions" prefetch={false} className="gn-quick-action"><span aria-hidden="true">☾</span><div><b>Créer une soirée</b><small>Un rendez-vous avec les potes</small></div></Link>
-        <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
-        <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
-      </nav>
       <ParallaxHeader className="gn-home-greeting relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
@@ -365,6 +360,11 @@ async function HomeContent({
           ) : (
             <EmptySessionHero />
           )}
+          <nav className="gn-quick-actions" aria-label="Lancer une partie">
+            <Link href="/sessions" prefetch={false} className="gn-quick-action"><span aria-hidden="true">☾</span><div><b>Créer une soirée</b><small>Un rendez-vous avec les potes</small></div></Link>
+            <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
+            <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
+          </nav>
           <HomePlanningLinks />
           <HomeInstantLink />
         </StaggerItem>
