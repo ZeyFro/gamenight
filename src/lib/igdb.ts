@@ -292,6 +292,7 @@ interface IgdbGameDetailsResponse {
   videos?: { video_id: string }[];
   platforms?: { name: string }[];
   genres?: { name: string }[];
+  themes?: { name: string }[];
   first_release_date?: number; // timestamp Unix (secondes)
   involved_companies?: IgdbInvolvedCompany[];
   multiplayer_modes?: IgdbMultiplayerMode[];
@@ -316,6 +317,8 @@ export interface IgdbGameDetails {
   youtubeVideoIds: string[];
   platforms: string[];
   genres: string[];
+  /** Absent des anciens caches : thème inconnu, jamais assimilé à une liste vide. */
+  themes?: string[];
   /** ISO 8601, ou `null` si inconnue. */
   releaseDate: string | null;
   developers: string[];
@@ -361,7 +364,7 @@ export async function fetchIgdbGameDetails(
       Authorization: `Bearer ${token}`,
       "Content-Type": "text/plain",
     },
-    body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,multiplayer_modes.onlinecoop,multiplayer_modes.offlinecoop,multiplayer_modes.lancoop,multiplayer_modes.campaigncoop,multiplayer_modes.offlinemax,multiplayer_modes.onlinemax,multiplayer_modes.offlinecoopmax,multiplayer_modes.onlinecoopmax; limit 1;`,
+    body: `where id = ${igdbId}; fields name,summary,total_rating,cover.image_id,screenshots.image_id,videos.video_id,platforms.name,genres.name,themes.name,first_release_date,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,multiplayer_modes.onlinecoop,multiplayer_modes.offlinecoop,multiplayer_modes.lancoop,multiplayer_modes.campaigncoop,multiplayer_modes.offlinemax,multiplayer_modes.onlinemax,multiplayer_modes.offlinecoopmax,multiplayer_modes.onlinecoopmax; limit 1;`,
   });
 
   if (!res.ok) {
@@ -400,6 +403,7 @@ export async function fetchIgdbGameDetails(
     youtubeVideoIds: (game.videos ?? []).map((v) => v.video_id),
     platforms: (game.platforms ?? []).map((p) => p.name),
     genres: (game.genres ?? []).map((g) => g.name),
+    themes: (game.themes ?? []).map((theme) => theme.name),
     releaseDate: game.first_release_date
       ? new Date(game.first_release_date * 1000).toISOString()
       : null,

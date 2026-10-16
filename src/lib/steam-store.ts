@@ -27,6 +27,8 @@ export interface SteamStoreDetails {
   // Steam n'a pas renvoyé de `price_overview` (jeu retiré du store,
   // région sans prix…) — "approximatif" et best-effort, cf. spec.
   priceFormatted: string | null;
+  isFree: boolean | null;
+  priceCurrency: string | null;
 }
 
 /**
@@ -71,10 +73,12 @@ export function deriveIsCoopFromCategories(categories: SteamStoreCategory[]): bo
  * convention que `fetchIgdbGameDetails`).
  */
 export async function fetchSteamStoreDetails(
-  steamAppId: number
+  steamAppId: number,
+  options?: { signal?: AbortSignal; countryCode?: "fr" }
 ): Promise<SteamStoreDetails | null> {
   const res = await fetch(
-    `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&l=french`
+    `https://store.steampowered.com/api/appdetails?appids=${steamAppId}&l=french${options?.countryCode ? `&cc=${options.countryCode}` : ""}`,
+    { signal: options?.signal }
   );
   if (!res.ok) {
     throw new SteamStoreHttpError(
@@ -90,7 +94,7 @@ export async function fetchSteamStoreDetails(
       data?: {
         categories?: SteamStoreCategory[];
         is_free?: boolean;
-        price_overview?: { final_formatted?: string };
+        price_overview?: { final_formatted?: string; currency?: string };
       };
     }
   >;
@@ -98,8 +102,12 @@ export async function fetchSteamStoreDetails(
   if (!entry?.success || !entry.data) return null;
 
   const categories = entry.data.categories ?? [];
-  const priceFormatted = entry.data.is_free
+  const isFree = typeof entry.data.is_free === "boolean" ? entry.data.is_free : null;
+  const rawPrice = entry.data.price_overview?.final_formatted;
+  const rawCurrency = entry.data.price_overview?.currency;
+  const priceFormatted = isFree === true
     ? null
-    : (entry.data.price_overview?.final_formatted ?? null);
-  return { categories, isCoop: deriveIsCoopFromCategories(categories), priceFormatted };
+    : (typeof rawPrice === "string" && rawPrice.trim().length > 0 && rawPrice.length <= 120 ? rawPrice : null);
+  const priceCurrency = typeof rawCurrency === "string" && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null;
+  return { categories, isCoop: deriveIsCoopFromCategories(categories), priceFormatted, isFree, priceCurrency };
 }

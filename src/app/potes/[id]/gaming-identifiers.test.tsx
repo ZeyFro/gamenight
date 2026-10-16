@@ -21,7 +21,7 @@ const props = { children: null, params: Promise.resolve({ id: "friend" }) };
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.user.mockResolvedValue({ id: "viewer" }); mocks.canView.mockResolvedValue(true);
-  mocks.find.mockResolvedValue({ ...identifiers, id: "friend", discordName: "Pote", discordAvatar: null, color: "#ffffff", xpTotal: 0 });
+  mocks.find.mockResolvedValue({ ...identifiers, id: "friend", discordName: "Pote", discordAvatar: null, color: "#ffffff", xpTotal: 0, inputDevices: [], availablePlatforms: [], microphoneAvailable: null });
 });
 
 describe("visibilité des identifiants sur la fiche d'un pote", () => {

@@ -53,6 +53,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
 import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
+import { GameWarnings } from "@/components/GameWarnings";
 
 import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
@@ -339,6 +340,7 @@ export default async function SessionDetailPage({
         </p>
       )}
 
+      {session.decidedGame && <GameWarnings game={session.decidedGame} />}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
 
       {deadlineAdjusted && (
@@ -721,6 +723,7 @@ export default async function SessionDetailPage({
                     </Badge>
                   </div>
 
+                  <GameWarnings game={proposal.game} />
                   <p className="text-sm text-muted">
                     {availableCount} dispo{availableCount > 1 ? "s" : ""} et
                     possède le jeu
