@@ -2,6 +2,9 @@
 
 ## Mission globale — reprise continue sur le deuxième portable
 
+- État après la validation de #267 : fusionnée au commit `a53a0bc` le 16 octobre à 20:30:02 UTC, CI [38961360176](https://github.com/ZeyFro/gamenight/actions/runs/38961360176) et Vercel verts. L6-03 publié en Draft [#269](https://github.com/ZeyFro/gamenight/pull/269), SHA `ba94678` ; contrôles du SHA final requis avant fusion.
+- #233 réconciliée avec ce main, puis vérifiée par 33 tests de porte et 18 self-checks PowerShell simulés, sans vrai appel réseau ni fusion. Verrouillage des contrôles verify/Vercel, comparaison SHA tête/base, nouvelle lecture finale des checks, protection du travail local, rejet des nouvelles migrations hors revue explicite, rejet d'un SHA de fusion absent avant contrôle du déploiement. Ces validations ne valent pas la CI du prochain SHA poussé. PowerShell 5.1 n'a pas été exécuté (politique locale), sans contournement.
+
 - Autorisation actuelle : poursuivre tous les lots exécutables, publier les PR et fusionner après contrôles verts, sans s'arrêter après une PR. Aucun arrêt de la session du premier portable supposé. Relire les SHA distants avant chaque push et fusion ; push normal uniquement, fusion avec `--match-head-commit`.
 - #267 : intégration locale de main après #268 sans conflit, migration additive du guide appliquée sur Postgres dédié ; 54 tests ciblés, typegen, TypeScript, lint complet et diff --check réussis. Contrôles du nouveau SHA à attendre. Son ancien contrôle Vercel était bloqué par le quota, jamais contourné.
 - #233 : ancienne PR d'automatisation en conflit avec main ; revue et correction des gardes de contrôles/SHA/préservation en cours dans `.codex-worktrees/reprise-233`. Les anciens checks verts ne valident pas cette nouvelle intégration. Ne jamais lancer le script réel pour le tester.
