@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ user: vi.fn(), canView: vi.fn(), find: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
 vi.mock("@/lib/community-isolation", () => ({ canViewPote: mocks.canView }));
+vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: async () => "community" }));
+vi.mock("@/lib/xp-shop", () => ({ getEquippedShopItems: async () => ({ TITLE: null, FRAME: null, COLOR: null }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: mocks.find } } }));
 vi.mock("@/lib/member-stats", () => ({ getMemberStatsForViewer: async () => ({}), projectUserProgress: (user: unknown) => user }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
