@@ -586,6 +586,70 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(
           await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MODIFIED" } })
         ).toBe(1);
+        expect(
+          await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })
+        ).toBe(1);
+        expect(
+          await db.notificationDelivery.count({ where: { targetSlot: { contains: `:match-result:${match.id}` } } })
+        ).toBe(1);
+      });
+
+      it("résultat de match : enqueue dans le thread, par match, sans ping même si un nom contient @everyone", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        const first = await makeUser({ discordName: "@everyone joueur" });
+        const second = await makeUser({ discordName: "Joueur 2" });
+        await makeParticipant(tournament.id, first.id);
+        await makeParticipant(tournament.id, second.id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        await processOne(); // EDIT lancement
+
+        const match = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 1 } });
+        await tournamentsLib.declareWinner(match.id, first.id, creator.id, { score1: 3, score2: 1 });
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT", occurrence: match.id } })).toBe(1);
+        expect(await db.notificationDelivery.count({ where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:match-result:${match.id}` } })).toBe(1);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "message-match-result", channel_id: "thread-1" }));
+        const sent = await processOne();
+        expect(sent?.outcome).toBe("sent");
+        expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("/channels/thread-1/messages");
+        const body = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
+        expect(body.content).toContain("@everyone joueur");
+        expect(body.content).toContain("bat Joueur 2");
+        expect(body.content).toContain("3–1");
+        expect(body.allowed_mentions).toEqual({ parse: [] });
+      });
+
+      it("échec d'enqueue du résultat : la déclaration du vainqueur est annulée avec la transaction", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await launchBracket(tournament.id);
+        const match = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 1 } });
+
+        vi.spyOn(announceLib, "enqueueTournamentMatchResult").mockRejectedValueOnce(new Error("panne enqueue"));
+        await expect(tournamentsLib.declareWinner(match.id, match.player1Id!, creator.id)).rejects.toThrow("panne enqueue");
+        expect((await db.tournamentMatch.findUniqueOrThrow({ where: { id: match.id } })).completedAt).toBeNull();
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })).toBe(0);
+      });
+
+      it("tournoi sans annonce bot : aucun résultat Discord n'est mis en file", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await launchBracket(tournament.id);
+        const match = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 1 } });
+        expect((await tournamentsLib.declareWinner(match.id, match.player1Id!, creator.id)).ok).toBe(true);
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })).toBe(0);
       });
     });
 
