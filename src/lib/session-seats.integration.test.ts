@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
-const mocks = vi.hoisted(() => ({ enqueue: vi.fn() }));
+const mocks = vi.hoisted(() => ({ enqueue: vi.fn(), promotionDm: vi.fn() }));
 vi.mock("@/lib/prisma", async () => { const { PrismaClient } = await import("@prisma/client"); return { prisma: TEST_DATABASE_URL ? new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) : {} }; });
-vi.mock("@/lib/session-announce", () => ({ enqueueSessionAnnounceUpdate: mocks.enqueue }));
+vi.mock("@/lib/session-announce", () => ({ enqueueSessionAnnounceUpdate: mocks.enqueue, enqueueSessionPromotionDm: mocks.promotionDm }));
 if (!TEST_DATABASE_URL) console.warn("[session-seats.integration] TEST_DATABASE_URL absente — tests Postgres SKIPPÉS.");
 
 describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Postgres", () => {
@@ -14,7 +14,7 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
   beforeAll(async () => { db = (await import("@/lib/prisma")).prisma as typeof db; ({ changeSessionSeat: change, readSessionSeats: read } = await import("./session-seats")); participants = (await import("./superlative-voting")).getWinningProposalParticipants; });
   afterAll(async () => { await db.$disconnect(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true"); vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true"); mocks.enqueue.mockReset();
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true"); vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true"); mocks.enqueue.mockReset(); mocks.promotionDm.mockReset().mockResolvedValue(undefined);
     await db.$executeRawUnsafe('TRUNCATE "NotificationEvent", "Community", "User", "Game" CASCADE');
     await db.community.createMany({ data: [{ id: "a", slug: "default", name: "A", status: "ACTIVE" }, { id: "b", slug: "b", name: "B", status: "ACTIVE" }] });
     await db.user.createMany({ data: ["host", "alice", "bob", "outsider", "foreign"].map(id => ({ id, discordId: id, discordName: id, activeCommunityId: id === "foreign" ? "b" : "a" })) });
@@ -42,6 +42,13 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     await leave("host");
     expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.notification.count({ where: { userId: "alice" } })).toBe(1);
+  });
+  it("met le DM en file dans la transaction de chaque promotion", async () => {
+    await db.session.update({ where: { id: "s" }, data: { announceViaBot: true } });
+    await join("alice");
+    await leave("host");
+    expect(mocks.promotionDm).toHaveBeenCalledOnce();
+    expect(mocks.promotionDm).toHaveBeenCalledWith("s", "alice", false, expect.any(Object));
   });
   it("deux retries Discord ne rejouent pas une ancienne réponse après un désistement", async () => {
     await db.sessionSeat.deleteMany({}); const origin = await discordOrigin();
@@ -94,7 +101,7 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
   });
   it("le reçu de réponse fait partie du commit, et disparaît en cas de rollback", async () => {
     const origin = await discordOrigin(); await db.sessionSeat.deleteMany({}); await db.session.update({ where: { id: "s" }, data: { announceViaBot: true } });
-    mocks.enqueue.mockRejectedValueOnce(new Error("enqueue failure"));
+    mocks.promotionDm.mockRejectedValueOnce(new Error("enqueue failure"));
     await expect(change("alice", "s", { kind: "join" }, origin)).rejects.toThrow("enqueue failure");
     expect(await db.sessionSeat.count()).toBe(0); expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(0);
     expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });

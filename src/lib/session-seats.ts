@@ -3,7 +3,7 @@ import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-cl
 import { getIsolationScope, communityMemberUserWhere } from "@/lib/community-isolation";
 import { accessibleSessionWhere } from "@/lib/session-access";
 import { lockCreationMembers } from "@/lib/creation-intent";
-import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
+import { enqueueSessionAnnounceUpdate, enqueueSessionPromotionDm } from "@/lib/session-announce";
 import { wallClockNow } from "@/lib/wallclock";
 import { planSessionSeats, type SeatStatus } from "@/lib/session-seat-plan";
 
@@ -116,7 +116,10 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       if (status === row.status) continue;
       changed = true;
       await scopedDb.sessionSeat.update({ where: { id: row.id }, data: { status } });
-      if (status === "CONFIRMED") await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
+      if (status === "CONFIRMED") {
+        await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
+        if (row.status === "WAITLIST" && session.announceViaBot) await enqueueSessionPromotionDm(sessionId, row.userId, session.createdViaRoulette, scopedDb);
+      }
     }
     if (changed && session.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, scopedDb);
     if (receiptWhere) await scopedDb.notificationEvent.create({ data: { ...receiptWhere.category_eventType_sourceId_occurrence, communityId: session.communityId, payload: { userId, kind: command.kind, status: plan.get(userId) ?? "DECLINED" } } });
