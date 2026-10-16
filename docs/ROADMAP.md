@@ -49,13 +49,17 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
 | L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
 | L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
-| L4-04 | Bouton « Rejoindre le vocal » | 🟡 Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | PR #246 en cours |
+| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
+| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
+| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
+| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
 ## Lot 5 — Engagement
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L5-01 | Note de la soirée | ❌ Absente | Vote de satisfaction et moyenne | code | À faire |
+| L5-01 | Note de la soirée | 🟡 Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Vérifier la CI/preview puis fusionner | code | PR #247 ; CI/preview en attente |
 | L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
 | L5-03 | Quêtes hebdomadaires automatiques | 🟡 Défis hebdo manuels, 100 XP | Objectifs suivis automatiquement (deux jeux différents, invitation d'un nouveau…) | code | À faire |
 | L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage de fiabilité et bonus/malus XP (montants à proposer avant) | produit | À TOI — montants d’XP à décider (bonus/malus) |
