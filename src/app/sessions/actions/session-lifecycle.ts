@@ -13,6 +13,7 @@ import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-re
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
+import { recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
@@ -82,6 +83,15 @@ export async function createSession(formData: FormData) {
     redirect(`/sessions?error=${schedule.error}`);
   }
   const { date, votingDeadline, deadlineAdjusted } = schedule;
+  const recurrenceValue = String(formData.get("recurrence") ?? "");
+  const recurrenceCount = Number(formData.get("recurrenceCount") ?? "4");
+  if (recurrenceValue && !["weekly", "monthly"].includes(recurrenceValue)) redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  if (recurrenceValue && (!Number.isInteger(recurrenceCount) || recurrenceCount < 2 || recurrenceCount > 12)) {
+    redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  }
+  const occurrenceDates = recurrenceValue
+    ? recurringSessionDates(date, recurrenceValue as SessionRecurrence, recurrenceCount)
+    : [date];
 
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
@@ -130,17 +140,23 @@ export async function createSession(formData: FormData) {
   // annulée — préféré à une session silencieusement jamais annoncée :
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
-  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), (tx) =>
-    createVotingSessionInTransaction(tx, {
-      date,
-      votingDeadline,
-      customReminderMessage,
-      reminderTimings,
-      notifiedUserIds,
-      createdById: user.id,
-      announceViaBot,
-      communityId,
-    }), (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
+  // shortcut: a series contains 2–12 independent sessions with no later series editing; add a persisted series model if users need bulk changes.
+  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
+    const sessions = [];
+    for (const occurrenceDate of occurrenceDates) {
+      sessions.push(await createVotingSessionInTransaction(tx, {
+        date: occurrenceDate,
+        votingDeadline: new Date(occurrenceDate.getTime() - (date.getTime() - votingDeadline.getTime())),
+        customReminderMessage,
+        reminderTimings,
+        notifiedUserIds,
+        createdById: user.id,
+        announceViaBot,
+        communityId,
+      }));
+    }
+    return sessions[0];
+  }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
   measure("creationTransaction");
 
   const xpResult = await awardXp(user.id, session.communityId,

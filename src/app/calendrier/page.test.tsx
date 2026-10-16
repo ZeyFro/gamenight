@@ -8,16 +8,22 @@ const { getCalendarData } = vi.hoisted(() => ({ getCalendarData: vi.fn() }));
 vi.mock("@/lib/calendar", () => ({ getCalendarData }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: async () => ({ id: "me", color: "#aabbcc" }) }));
 vi.mock("@/lib/community-picker", () => ({ requireCommunityChosen: async () => undefined }));
+vi.mock("@/lib/community-isolation", () => ({ resolveActiveCommunityId: async () => "community" }));
+vi.mock("@/app/calendrier/actions", () => ({ saveCommunityBirthdayAction: vi.fn(), createCommunityDateAction: vi.fn(), deleteCommunityDateAction: vi.fn() }));
 vi.mock("@/lib/community-read-context", () => ({ withCommunityReadContext: (fn: () => unknown) => fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
   weeklyAvailability: { findMany: async () => [] },
   availabilityOverride: { findUnique: async () => null },
+  membership: { findUnique: async () => ({ role: "OWNER", status: "ACTIVE" }) },
 } }));
 vi.mock("@/components/PullToRefresh", () => ({ PullToRefresh: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("@/components/calendar/DayTimeline", () => ({ DayTimeline: () => <div>Timeline conservée</div> }));
 vi.mock("@/components/calendar/PoteFilterDrawer", () => ({ PoteFilterDrawer: ({ users }: { users: { discordName: string }[] }) => <div aria-label="Choix des potes">{users.map(user => user.discordName).join(", ")}</div> }));
 vi.mock("@/components/magicui/aurora-text", () => ({ AuroraText: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-vi.mock("@/components/ui/Button", () => ({ ButtonLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock("@/components/ui/Button", () => ({
+  Button: ({ children, ...props }: React.ComponentProps<"button">) => <button {...props}>{children}</button>,
+  ButtonLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+}));
 import CalendrierPage from "./page";
 
 afterEach(cleanup);
@@ -30,7 +36,7 @@ beforeEach(() => {
       { id: "other", discordName: "Autre", discordAvatar: null, color: "#aabbcc" },
     ];
     const availableUserIds = visibleIds ? ["friend", "other"].filter(id => visibleIds.includes(id)) : ["friend", "other"];
-    return { users, days: [{ date: new Date("2026-10-08T00:00:00Z"), sessions: [], hours: [{ hour: 20, availableUserIds }], maxAvailableCount: availableUserIds.length }], bestSlot: null, ownWeeklySlots: [], ownOverrides: [] };
+    return { users, days: [{ date: new Date("2026-10-08T00:00:00Z"), sessions: [], communityDates: [], hours: [{ hour: 20, availableUserIds }], maxAvailableCount: availableUserIds.length }], bestSlot: null, ownWeeklySlots: [], ownOverrides: [] };
   });
 });
 
