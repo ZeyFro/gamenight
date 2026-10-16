@@ -12,9 +12,9 @@ describe("boutons de présence Discord", () => {
     expect(buttons.map(button => parseSessionRsvpId(button.custom_id))).toEqual([{ kind: "join", sessionId: "s" }, { kind: "leave", sessionId: "s" }]);
     expect(buttons.every(button => button.custom_id.length <= 100)).toBe(true);
   });
-  it("aucun bouton pendant le vote, sans capacité, après début/fin/annulation", () => {
+  it("boutons aussi sans limite de places; aucun pendant le vote, après début/fin/annulation", () => {
     for (const status of ["VOTING", "DONE", "CANCELLED"]) expect(sessionRsvpComponents({ ...session(), status })).toEqual([]);
-    expect(sessionRsvpComponents({ ...session(), attendanceCapacity: null })).toEqual([]);
+    expect(sessionRsvpComponents({ ...session(), attendanceCapacity: null })[0].components.map(button => button.label)).toEqual(["Je viens", "Je viens pas"]);
     expect(sessionRsvpComponents({ ...session(), date: new Date(0) })).toEqual([]);
   });
   it("endpoint non configuré : ne propose aucun bouton inutilisable", () => {

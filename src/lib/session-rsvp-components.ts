@@ -8,7 +8,7 @@ export function parseSessionRsvpId(value: string) {
 
 /** Composants classiques compatibles avec les embeds existants, sans Components V2. */
 export function sessionRsvpComponents(session: { id: string; status: string; date: Date; attendanceCapacity: number | null }): DiscordActionRow[] {
-  if (!/^[a-f0-9]{64}$/i.test(process.env.DISCORD_APP_PUBLIC_KEY ?? "") || !/^\d+$/.test(process.env.DISCORD_CLIENT_ID ?? "") || session.attendanceCapacity === null || session.status !== "SCHEDULED" || session.date <= wallClockNow()) return [];
+  if (!/^[a-f0-9]{64}$/i.test(process.env.DISCORD_APP_PUBLIC_KEY ?? "") || !/^\d+$/.test(process.env.DISCORD_CLIENT_ID ?? "") || session.status !== "SCHEDULED" || session.date <= wallClockNow()) return [];
   if (!parseSessionRsvpId(`gn:seat:join:${session.id}`)) return [];
   return [{ type: 1, components: [
     { type: 2, style: 3, label: "Je viens", custom_id: `gn:seat:join:${session.id}` },

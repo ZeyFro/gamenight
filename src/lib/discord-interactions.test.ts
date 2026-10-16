@@ -9,10 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * défaut) et permission `MANAGE_GUILD` revérifiée côté serveur.
  */
 
-const { verify, setup, edit } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn(), edit: vi.fn() }));
+const { verify, setup, edit, sessionRsvp, instantRsvp, tournamentRsvp } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn(), edit: vi.fn(), sessionRsvp: vi.fn(), instantRsvp: vi.fn(), tournamentRsvp: vi.fn() }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: verify }));
 vi.mock("@/lib/community-setup", () => ({ setupCommunityFromGuild: setup }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: edit }));
+vi.mock("@/lib/discord-session-rsvp", () => ({ respondToSessionRsvp: sessionRsvp }));
+vi.mock("@/lib/discord-instant-session-rsvp", () => ({ respondToInstantSessionRsvp: instantRsvp }));
+vi.mock("@/lib/discord-tournament-rsvp", () => ({ respondToTournamentRsvp: tournamentRsvp }));
 
 import { handleDiscordInteraction } from "./discord-interactions";
 
@@ -55,7 +58,11 @@ describe("handleDiscordInteraction", () => {
     verify.mockReset().mockReturnValue(true);
     setup.mockReset().mockResolvedValue({ action: "activated", communityId: "c1" });
     edit.mockReset().mockResolvedValue({ ok: true, data: { messageId: "666" } });
+    sessionRsvp.mockReset().mockResolvedValue("session RSVP");
+    instantRsvp.mockReset().mockResolvedValue("instant RSVP");
+    tournamentRsvp.mockReset().mockResolvedValue("tournament RSVP");
     vi.stubEnv("DISCORD_APP_PUBLIC_KEY", "ab".repeat(32));
+    vi.stubEnv("DISCORD_CLIENT_ID", "555");
     vi.stubEnv("COMMUNITY_SETUP_COMMAND_ENABLED", "true");
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -97,6 +104,19 @@ describe("handleDiscordInteraction", () => {
 
   it("type d'interaction non géré (composant) : 400", async () => {
     await expect(handle(JSON.stringify({ type: 3 }))).resolves.toEqual({ status: 400 });
+  });
+
+  it.each([
+    ["gn:seat:join:session_1", sessionRsvp, ["session_1", "join"]],
+    ["gn:instant:join:session_1", instantRsvp, ["session_1", "join"]],
+    ["gn:tournament:join:tournament_1", tournamentRsvp, ["tournament_1"]],
+  ])("ACKs the signed RSVP before routing %s", async (customId, responder, args) => {
+    const interaction = { type: 3, id: "111", application_id: "555", token: "token", guild_id: "123", channel_id: "456", member: { user: { id: "789" } }, message: { id: "321" }, data: { component_type: 2, custom_id: customId } };
+    const out = await handle(JSON.stringify(interaction), { timestamp: String(Math.floor(Date.now() / 1000)) });
+    expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
+    expect(responder).not.toHaveBeenCalled();
+    await out.runRsvp?.();
+    expect(responder).toHaveBeenCalledWith(...args, expect.objectContaining({ interactionId: "111", discordId: "789", guildId: "123", channelId: "456", messageId: "321" }));
   });
 
   describe("/gamenight setup", () => {

@@ -1,0 +1,8 @@
+# L7-14 — RSVP Discord
+
+- Worktree isolé `.codex-worktrees/discord-je-viens-next`, branche `feat/discord-je-viens-next`, rebasée sur `main` après la fusion #263 (`ba76ebfb32a345bcf3057dffe5190606009106cc`). Le travail de Claude dans le checkout principal reste intact.
+- Les soirées programmées sans capacité confirment les réponses au lieu de les mettre en attente; les refus explicites sont respectés dans les annonces et rappels; une activation ultérieure de capacité conserve les places déjà confirmées.
+- Les annonces actives de parties immédiates ajoutent les boutons rejoindre/quitter. Le callback exige le compte Discord lié, une communauté et une adhésion actives, et la livraison BOT/SEND/SENT du message, salon et annonce exacts avant d'appeler les mutations existantes.
+- Les annonces de tournois ouverts ajoutent « Je viens ». L'inscription web et Discord réutilisent maintenant `registerTournamentParticipant`, qui garde le verrou du tournoi, les contrôles de capacité/doublon, les statistiques et la création du bracket dans une transaction. Le callback vérifie aussi le serveur, l'adhésion et la livraison exacte de l'annonce initiale.
+- Vérifications locales observées : 48 tests ciblés réussis; ESLint ciblé, `tsc --noEmit` et `git diff --check` réussis. 127 tests d'intégration ignorés faute de `TEST_DATABASE_URL`; ils n'ont donc pas été validés localement.
+- Au checkpoint prépublication : commit rebasé et validations locales terminés; publication de la branche et ouverture de la PR à suivre. La suite Postgres CI et la preview devront être vérifiées sur le SHA final de la PR avant fusion.

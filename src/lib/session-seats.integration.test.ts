@@ -73,6 +73,18 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     expect(await change("bob", "s", { kind: "join" }, { ...origin, discordId: "bob" })).toEqual({ ok: false, error: "access" });
     expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true });
   });
+  it("soirée sans capacité : RSVP confirmés illimités, désistements préservés lors de l'activation", async () => {
+    await db.session.update({ where: { id: "s" }, data: { attendanceCapacity: null } });
+    await db.sessionSeat.deleteMany({});
+    const origin = await discordOrigin();
+    expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });
+    expect(await change("bob", "s", { kind: "join" }, { ...origin, interactionId: "200", discordId: "bob" })).toMatchObject({ ok: true, status: "CONFIRMED" });
+    await db.game.update({ where: { id: "game" }, data: { maxPlayers: 4 } });
+    expect(await change("host", "s", { kind: "capacity", capacity: 2 })).toEqual({ ok: false, error: "capacity" });
+    expect(await change("host", "s", { kind: "capacity", capacity: 3 })).toMatchObject({ ok: true, status: "CONFIRMED" });
+    expect(await db.sessionSeat.count({ where: { status: "CONFIRMED" } })).toBe(3);
+    expect(await db.session.findUniqueOrThrow({ where: { id: "s" } })).toMatchObject({ attendanceCapacity: 3 });
+  });
   it("Discord revalide Membership et Community même lorsque les flags d'isolation sont OFF", async () => {
     const origin = await discordOrigin(); vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     await db.membership.updateMany({ where: { userId: "alice" }, data: { status: "REMOVED" } });
