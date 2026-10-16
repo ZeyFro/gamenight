@@ -2546,6 +2546,7 @@ enum MembershipStatus {
 enum CommunityChannelCategory {
   SESSION
   TOURNAMENT
+  VOICE
 }
 
 model Community {

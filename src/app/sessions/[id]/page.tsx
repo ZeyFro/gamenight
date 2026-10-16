@@ -53,6 +53,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
 import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
+import { resolveVoiceChannelUrl } from "@/lib/community-channels";
 import { GameWarnings } from "@/components/GameWarnings";
 
 import { readSessionPreparation } from "@/lib/session-preparation";
@@ -118,6 +119,9 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const voiceChannelUrl = ["VOTING", "SCHEDULED"].includes(session.status)
+    ? await resolveVoiceChannelUrl(session.communityId)
+    : null;
   const seatState = session.status === "SCHEDULED" ? await readSessionSeats(user.id, session.id) : null;
   const sessionProgress = await getMemberStats(user.id, await statsCommunityIdForSession(session.communityId));
 
@@ -329,6 +333,11 @@ export default async function SessionDetailPage({
             {status.label}
           </span>
         </div>
+        {voiceChannelUrl && (
+          <a className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2 font-medium text-background hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" href={voiceChannelUrl} target="_blank" rel="noopener noreferrer">
+            Rejoindre le vocal (ouvre Discord)
+          </a>
+        )}
         {session.status === "VOTING" && (
           <VotingCountdown deadline={votingClosesAt(session).toISOString()} />
         )}

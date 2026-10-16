@@ -679,6 +679,7 @@ export async function listBotGuilds(input: ListBotGuildsInput): Promise<DiscordR
  * type (vocal, catégorie, forum, DM...) ne supporte pas le parcours
  * annonce+fil de ce chantier. */
 export const THREAD_CAPABLE_CHANNEL_TYPES: ReadonlySet<number> = new Set([0, 5]);
+export const VOICE_CHANNEL_TYPES: ReadonlySet<number> = new Set([2, 13]);
 
 const guildChannelsResponseSchema = z.array(
   z.object({ id: z.string(), name: z.string(), type: z.number(), position: z.number().optional() })
@@ -697,7 +698,7 @@ export interface ListGuildChannelsInput {
 }
 
 /** `GET /guilds/{id}/channels` — lecture seule : salons du serveur compatibles avec le parcours annonce+fil
- * (`THREAD_CAPABLE_CHANNEL_TYPES`), triés par position. Sert à proposer un choix à l'écran d'administration. */
+ * pour annonces et vocal, triés par position. Sert à proposer un choix dans l'écran d'administration. */
 export async function listGuildChannels(
   input: ListGuildChannelsInput
 ): Promise<DiscordRestResult<{ channels: GuildChannel[] }>> {
@@ -710,7 +711,7 @@ export async function listGuildChannels(
       const result = guildChannelsResponseSchema.safeParse(json);
       if (!result.success) return null;
       const channels = result.data
-        .filter((c) => THREAD_CAPABLE_CHANNEL_TYPES.has(c.type))
+        .filter((c) => THREAD_CAPABLE_CHANNEL_TYPES.has(c.type) || VOICE_CHANNEL_TYPES.has(c.type))
         .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
         .map((c) => ({ id: c.id, name: c.name, type: c.type }));
       return { channels };
@@ -771,6 +772,17 @@ export async function verifyChannelDestination(
       message: `Type de salon Discord (${result.data.type}) incompatible avec le parcours annonce+fil.`,
       retryable: false,
     };
+  }
+  return { ok: true, data: { channelId: result.data.channelId } };
+}
+
+export async function verifyVoiceChannelDestination(
+  input: VerifyChannelDestinationInput
+): Promise<DiscordRestResult<VerifiedChannel>> {
+  const result = await getChannel({ channelId: input.channelId, deadline: input.deadline, now: input.now });
+  if (!result.ok) return result;
+  if (result.data.guildId !== input.guildId || !VOICE_CHANNEL_TYPES.has(result.data.type)) {
+    return { ok: false, kind: "destination_mismatch", message: "Ce salon vocal n'appartient pas à ce serveur.", retryable: false };
   }
   return { ok: true, data: { channelId: result.data.channelId } };
 }
