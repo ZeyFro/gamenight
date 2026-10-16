@@ -13,7 +13,7 @@ vi.mock("@/components/calendar/SessionBlock", () => ({ SessionBlock: () => <div>
 const date = new Date("2026-11-01T00:00:00Z");
 const users = ["a", "b"].map((id) => ({ id, discordName: `Pote ${id}`, discordAvatar: null, color: "#aabbcc" }));
 const props = {
-  day: { date, sessions: [], hours: [{ hour: 20, availableUserIds: ["a", "b"] }], maxAvailableCount: 2 },
+  day: { date, sessions: [], communityDates: [], hours: [{ hour: 20, availableUserIds: ["a", "b"] }], maxAvailableCount: 2 },
   users, mode: "collectif" as const, date, today: date, canEdit: true, ownWeeklySlots: [],
 };
 beforeEach(() => {

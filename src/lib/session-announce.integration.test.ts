@@ -82,6 +82,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
       vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
       vi.stubEnv("DISCORD_BOT_GUILD_ID", "guild-1");
       vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "chan-sessions");
+      vi.stubEnv("DISCORD_DM_SESSION_ENABLED", "false");
+      vi.stubEnv("DISCORD_DM_ROULETTE_ENABLED", "false");
       // `DISCORD_WEBHOOK_URL` volontairement JAMAIS stubbée ici :
       // `postToDiscord` (chemin webhook legacy) doit rester un no-op sans
       // toucher `fetch`, pour que les assertions "aucun appel réseau"
@@ -194,6 +196,26 @@ describe.skipIf(!TEST_DATABASE_URL)(
         now,
       });
     }
+
+    it("met en file un DM de promotion ciblé seulement quand la catégorie est activée", async () => {
+      const creator = await makeUser();
+      const promoted = await makeUser();
+      const session = await makeSession(creator.id, { status: "SCHEDULED", date: futureDate() });
+      await invite(session.id, promoted.id, creator.id);
+      await announceLib.enqueueSessionPromotionDm(session.id, promoted.id, false);
+      expect(await db.notificationDelivery.count()).toBe(0);
+
+      vi.stubEnv("DISCORD_DM_SESSION_ENABLED", "true");
+      await announceLib.enqueueSessionPromotionDm(session.id, promoted.id, false);
+      const delivery = await db.notificationDelivery.findFirstOrThrow({
+        where: { event: { category: "SESSION", eventType: "SESSION_DM", sourceId: session.id }, recipientKey: `user:${promoted.id}` },
+        include: { event: true },
+      });
+      expect(delivery).toMatchObject({ channel: "DISCORD_DM", transport: "BOT", operation: "SEND", status: "PENDING" });
+      expect(delivery.targetSlot).toMatch(new RegExp(`^default-guild:SESSION:${session.id}:dm:promotion:[^:]+:${promoted.id}$`));
+      expect(delivery.event.occurrence).toMatch(/^promotion:/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
 
     describe("fil privé puis annonce postée dedans (parcours nominal, confidentialité des soirées)", () => {
       it("SEND fil PRIVÉ réussi (aucune dépendance), puis SEND annonce POSTÉE DANS LE FIL — jamais dans le salon public", async () => {

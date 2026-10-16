@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { after } from "next/server";
@@ -17,7 +18,9 @@ import { CursorTrail } from "@/components/CursorTrail";
 import { MotionBackground } from "@/components/app/MotionBackground";
 import "./globals.css";
 import { SkipLink } from "@/components/SkipLink";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
+import { getSeasonalTheme } from "@/lib/seasonal-theme";
 
 const geistSans = DM_Sans({
   variable: "--font-geist-sans",
@@ -31,10 +34,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// PWA basique (Sprint 2, U7) : manifest + meta Apple pour permettre
-// l'ajout à l'écran d'accueil (icône seule, sans barre de navigateur) —
-// volontairement PAS de service worker (pas de cache offline, pas de
-// push), juste ce qu'il faut pour l'installation.
+// PWA : manifest et méta Apple pour l'installation ; le service worker ne
+// garde qu'une page hors-ligne statique, jamais de contenu de compte.
 export const metadata: Metadata = {
   title: { default: "GameNight", template: "%s · GameNight" },
   description: "Organise tes soirées jeux avec tes potes.",
@@ -53,7 +54,7 @@ export const viewport: Viewport = {
   themeColor: "#8b5cf6",
 };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   // Feature "forcer la reconnexion globale" (PR 75) — `getCurrentUser()`
   // est la seule source de vérité "vraiment connecté" (tient compte de
   // `forceReloginAt`, contrairement à `auth()` seul, cf. commentaire dans
@@ -68,14 +69,16 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     });
   }
   const skipLink = isSkipLinkEnabled();
+  const seasonalTheme = getSeasonalTheme(new Date());
 
   return (
     <html
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
-      <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""}`}>
+      <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""} ${seasonalTheme ? `gn-theme-${seasonalTheme}` : ""}`}>
         <MotionConfig reducedMotion="user">
+          <ServiceWorkerRegistration />
           <MotionBackground />
           {skipLink && <SkipLink />}
           <Header />

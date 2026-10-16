@@ -9,7 +9,7 @@ const { prisma, scopedDb, getCalendarData } = vi.hoisted(() => ({
   // PR9 : compteurs de groupe lus via le client scopé (communauté active).
   scopedDb: {
     groupSessionStats: { aggregate: vi.fn() },
-    groupGameStat: { groupBy: vi.fn() },
+    groupGameStat: { groupBy: vi.fn(), aggregate: vi.fn(), findMany: vi.fn() },
     communityMemberStats: { findFirst: vi.fn(), count: vi.fn() },
   },
   getCalendarData: vi.fn(),
@@ -34,6 +34,8 @@ beforeEach(() => {
 const emptyStats = () => {
   scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: null } });
   scopedDb.groupGameStat.groupBy.mockResolvedValue([]);
+  scopedDb.groupGameStat.aggregate.mockResolvedValue({ _sum: { totalPlayMinutes: null } });
+  scopedDb.groupGameStat.findMany.mockResolvedValue([]);
   scopedDb.communityMemberStats.findFirst.mockResolvedValue(null);
   scopedDb.communityMemberStats.count.mockResolvedValue(0);
 };
@@ -44,6 +46,8 @@ describe("getGroupStats", () => {
     expect(await getGroupStats("viewer")).toEqual({
       totalSessionsPlayed: 0,
       mostPlayedGame: null,
+      totalPlayMinutes: 0,
+      gamePlayTimes: [],
       bestActiveStreak: null,
       activePlayers: 0,
     });
@@ -52,6 +56,8 @@ describe("getGroupStats", () => {
   it("agrège les compteurs durables, le meilleur streak actif et les joueurs actifs", async () => {
     scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: 12 } });
     scopedDb.groupGameStat.groupBy.mockResolvedValue([{ gameId: "g1", _sum: { playCount: 4 } }]);
+    scopedDb.groupGameStat.aggregate.mockResolvedValue({ _sum: { totalPlayMinutes: 180 } });
+    scopedDb.groupGameStat.findMany.mockResolvedValue([{ gameId: "g1", totalPlayMinutes: 180, game: { name: "Mario Kart" } }]);
     prisma.game.findUnique.mockResolvedValue({ name: "Mario Kart", coverUrl: "https://img/mk.jpg" });
     scopedDb.communityMemberStats.findFirst.mockResolvedValue({ user: { discordName: "Zoé" }, streakCount: 7 });
     scopedDb.communityMemberStats.count.mockResolvedValue(5);
@@ -59,6 +65,8 @@ describe("getGroupStats", () => {
     expect(await getGroupStats("viewer")).toEqual({
       totalSessionsPlayed: 12,
       mostPlayedGame: { name: "Mario Kart", coverUrl: "https://img/mk.jpg", count: 4 },
+      totalPlayMinutes: 180,
+      gamePlayTimes: [{ gameId: "g1", name: "Mario Kart", playedMinutes: 180 }],
       bestActiveStreak: { discordName: "Zoé", streakCount: 7 },
       activePlayers: 5,
     });

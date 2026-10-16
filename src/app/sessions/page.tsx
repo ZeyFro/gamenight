@@ -1,5 +1,6 @@
 
 import { CreationForm } from "@/components/CreationForm";
+import { GameWarnings } from "@/components/GameWarnings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Game, Session } from "@prisma/client";
@@ -261,6 +262,9 @@ export default async function SessionsPage({
           Soirées
         </h1>
         <div className="flex min-w-0 flex-wrap gap-2">
+          <ButtonLink href="/sessions/sondages" variant="secondary" size="sm">
+            Préparer une soirée
+          </ButtonLink>
           {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
           <ButtonLink href="/roulette" variant="secondary" size="sm">
             🎰 Roulette
@@ -292,10 +296,10 @@ export default async function SessionsPage({
             <h2 id="nouvelle-soiree" className="scroll-mt-24 font-semibold text-foreground">Nouvelle soirée</h2>
 
             {preselectedGame && (
-              <div className="flex items-center gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              <div className="flex flex-col gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">
                 <input type="hidden" name="gameId" value={preselectedGame.id} />
-                🎮 Cette soirée proposera automatiquement{" "}
-                <strong>{preselectedGame.name}</strong>
+                <p>🎮 Cette soirée proposera automatiquement <strong>{preselectedGame.name}</strong></p>
+                <GameWarnings game={preselectedGame} />
               </div>
             )}
 

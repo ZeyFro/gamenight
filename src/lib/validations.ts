@@ -53,6 +53,11 @@ export const timeStringSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide (format HH:mm attendu).");
 
+export const sessionPlayedMinutesSchema = z.preprocess(
+  (value) => value === null || value === undefined || value === "" ? undefined : Number(value),
+  z.number().int().min(1).max(1440).optional()
+);
+
 export const hexColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, "Couleur invalide (format #RRGGBB attendu).");

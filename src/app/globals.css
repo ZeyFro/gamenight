@@ -30,6 +30,27 @@
   --warning: #f59e0b;
 }
 
+body.gn-theme-halloween {
+  --accent: #f2a65a;
+  --accent-hover: #ffc078;
+  --accent-active: #d98532;
+  --accent-foreground: #201306;
+}
+
+body.gn-theme-noel {
+  --accent: #f08b8b;
+  --accent-hover: #ffabab;
+  --accent-active: #d86161;
+  --accent-foreground: #210b0b;
+}
+
+body.gn-theme-marathon-ete {
+  --accent: #74ddb5;
+  --accent-hover: #9beccc;
+  --accent-active: #43bd91;
+  --accent-foreground: #062016;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);

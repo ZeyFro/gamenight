@@ -19,21 +19,22 @@ import { join, relative, sep } from "node:path";
  */
 
 const COLLECTIVE_MODELS = [
-  "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "Pronostic", "XpBet", "Debt",
+  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",
   "Tournament", "TournamentParticipant", "TournamentMatch", "ChatMessage", "ChatReaction",
   "GameWishlist", "GameWishlistVote", "XpEvent", "LevelUpEvent", "Season", "SeasonSnapshot",
   "MonthlyRecap", "WeeklyChallenge", "GroupAchievement", "GroupSessionStats", "GroupGameStat",
-  "GroupActiveWeek", "SessionVeto", "RouletteVeto",
-  "CommunityMemberStats",
+  "GroupActiveWeek", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "SessionAvailabilityPollParticipant", "SessionAvailabilityPollSlot", "SessionAvailabilityPollResponse",
+  "CommunityMemberStats", "CommunityDate",
   // Décision 3 (catalogues copiés par communauté) : le catalogue de badges et
   // les badges gagnés deviennent collectifs.
   "Badge", "UserBadge",
 ] as const;
 
 /** Modules autorisés à accéder directement aux modèles collectifs (point de contrôle). */
-const SCOPED_MODULES = new Set(["src/lib/community-access.ts"]);
+// xp-shop verrouille communauté + appartenance avant toute écriture et filtre chaque lecture/écriture par communityId.
+const SCOPED_MODULES = new Set(["src/lib/community-access.ts", "src/lib/xp-shop.ts"]);
 
 /**
  * Accès directs existants à la PR A — à retirer au fil des PR B1 (soirées),

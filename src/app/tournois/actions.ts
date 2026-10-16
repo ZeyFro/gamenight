@@ -15,7 +15,6 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import {
   generateBracket,
   declareWinner,
-  buildBracketInTransaction,
   cancelTournament,
   deleteTournament,
 } from "@/lib/tournaments";
@@ -33,6 +32,7 @@ import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/com
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
+import { registerTournamentParticipant } from "@/lib/tournament-registration";
 import {
   createTournamentSchema,
   declareWinnerSchema,
@@ -239,71 +239,8 @@ export async function registerForTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  // Multi-communautés (PR4) : on ne s'inscrit pas à un tournoi d'une autre
-  // communauté, même en connaissant son id (aucune lecture si isolation éteinte).
-  if (!(await canAccessTournament(user.id, tournamentId))) return;
-
-  const registered = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<
-      { id: string; status: string; maxPlayers: number; announceViaBot: boolean; communityId: string | null }[]
-    >`
-      SELECT id, status, "maxPlayers", "announceViaBot", "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
-    `;
-    const tournament = locked[0];
-    if (!tournament || tournament.status !== "REGISTRATION") return false;
-    const communityId = await statsCommunityIdForSession(tournament.communityId);
-    if (!(await lockCommunityProgress(tx, communityId, user.id))) return false;
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
-
-    const participants = await tx.tournamentParticipant.findMany({
-      where: { tournamentId },
-      select: { userId: true },
-    });
-    if (participants.length >= tournament.maxPlayers) return false;
-    if (participants.some((p) => p.userId === user.id)) return false;
-
-    try {
-      await tx.tournamentParticipant.create({ data: { tournamentId, userId: user.id } });
-    } catch {
-      // Contrainte unique (déjà inscrit) — ne devrait plus se produire
-      // sous ce verrou (le re-check ci-dessus le prévient déjà pour
-      // toute transaction concurrente sur ce tournoi), gardé en filet de
-      // sécurité minimal, comportement identique à avant.
-      return false;
-    }
-
-    // Chantier auto-adhésion aux fils de tournois (V2) — un joueur qui
-    // s'inscrit rejoint automatiquement le fil, DANS CETTE MÊME
-    // TRANSACTION que son inscription (même raisonnement que ci-dessus) —
-    // jamais l'inverse (rejoindre le fil n'inscrit jamais au tournoi,
-    // cette fonction n'écrit d'ailleurs aucun `TournamentParticipant`).
-    if (tournament.announceViaBot) {
-      await enqueueTournamentThreadMember(tournamentId, user.id, tx);
-    }
-
-    // Chantier nettoyage réel du stockage (V2, suite) — résumé durable
-    // MINIMAL (`CommunityMemberStats.tournamentsParticipatedCount`) maintenu
-    // ICI, à l'inscription, DANS CETTE MÊME TRANSACTION : ce compteur
-    // remplace un `tournamentParticipant.count({userId})` qui deviendrait
-    // faux dès qu'un tournoi ancien est purgé (voir badges.ts,
-    // `checkTournamentBadges`) — jamais recalculé par un `count()` sur des
-    // lignes vouées à disparaître.
-    await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId: user.id }], skipDuplicates: true });
-      await scopedDb.communityMemberStats.update({
-        where: { communityId_userId: { communityId, userId: user.id } },
-        data: { tournamentsParticipatedCount: { increment: 1 } },
-      });
-
-    // Places pleines → lancement automatique du bracket (spec), dans
-    // CETTE transaction (voir docstring ci-dessus).
-    if (participants.length + 1 >= tournament.maxPlayers) {
-      await buildBracketInTransaction(tx, tournamentId);
-    }
-
-    return true;
-  });
-
-  if (!registered) return;
+  const registered = await registerTournamentParticipant(user.id, tournamentId);
+  if (registered !== "registered") return;
 
   revalidatePath(`/tournois/${tournamentId}`);
   revalidatePath("/tournois");

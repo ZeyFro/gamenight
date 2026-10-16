@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import type { Game, Prisma, Proposal, Session, SessionInvite, SessionSeat, User, Vote } from "@prisma/client";
 import { isReminderForSchedule, reminderOccurrence, reminderSchedulePayload } from "@/lib/reminders";
 import { prisma } from "@/lib/prisma";
-import { isSeatReminderRecipient } from "@/lib/session-seat-plan";
+import { isPromotionDmRecipient, isSeatReminderRecipient } from "@/lib/session-seat-plan";
 import { logger } from "@/lib/logger";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { formatReminderTimingShort } from "@/lib/reminder-timings";
@@ -196,11 +196,13 @@ const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
  * message du fil, créateur inclus (MP oui, mention non). Mention de secours
  * dans le fil (MP fermé, créateur seulement) : `dm-fallback:<kind>:<userId>`,
  * même `<kind>` que le MP d'origine. Un `userId` (cuid) ne contient jamais `:`.
+ * Une promotion utilise `promotion:<transitionId>` pour pouvoir notifier de
+ * nouveau le même joueur après une rétrogradation puis une nouvelle promotion.
  *
  * L'ancien kind `update:<eventId>` n'est plus jamais mis en file (l'invitation
  * est éditée) ; ses lignes déjà en file sont abandonnées (`expired`).
  */
-type DmKind = "announce" | "validated" | `date:${string}` | `reminder:${string}`;
+type DmKind = "announce" | "validated" | `date:${string}` | `reminder:${string}` | `promotion:${string}`;
 
 function dmSlot(sessionId: string, kind: DmKind, userId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:${kind}:${userId}`;
@@ -228,11 +230,12 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
   sessionId: string,
   kind: DmKind,
   users: T[],
-  schedule?: ReturnType<typeof reminderSchedulePayload>
+  schedule?: ReturnType<typeof reminderSchedulePayload>,
+  db: NotificationDb = prisma
 ): Promise<{ covered: T[]; blocked: T[] }> {
   if (users.length === 0) return { covered: [], blocked: [] };
   const prefix = `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:dm:`;
-  const known = await prisma.notificationDelivery.findMany({
+  const known = await db.notificationDelivery.findMany({
     where: { targetSlot: { startsWith: prefix }, recipientKey: { in: users.map((u) => `user:${u.id}`) } },
     select: { targetSlot: true, recipientKey: true, errorClass: true },
   });
@@ -253,7 +256,7 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
     sourceId: sessionId,
     occurrence: kind,
     ...(schedule ? { payload: schedule } : {}),
-  });
+  }, db);
   for (const user of covered) {
     await enqueueDelivery({
       eventId: event.id,
@@ -262,9 +265,15 @@ async function enqueueSessionDirectMessages<T extends { id: string }>(
       operation: "SEND",
       recipientKey: `user:${user.id}`,
       targetSlot: dmSlot(sessionId, kind, user.id),
-    });
+    }, db);
   }
   return { covered, blocked: blockedUsers };
+}
+
+/** Queue a promotion DM in the same transaction as the WAITLIST→CONFIRMED update. */
+export async function enqueueSessionPromotionDm(sessionId: string, userId: string, createdViaRoulette: boolean, db?: NotificationDb): Promise<void> {
+  if (!(createdViaRoulette ? isRouletteDirectMessageEnabled() : isSessionDirectMessageEnabled())) return;
+  await enqueueSessionDirectMessages(sessionId, `promotion:${randomUUID()}`, [{ id: userId }], undefined, db);
 }
 
 /**
@@ -1071,7 +1080,7 @@ async function loadSession(sessionId: string): Promise<SessionWithVotes | null> 
         orderBy: { createdAt: "asc" },
       },
       invites: { include: { user: true } },
-      seats: { where: { status: "CONFIRMED" }, include: { user: true } },
+      seats: { include: { user: true } },
     },
   });
 }
@@ -1204,18 +1213,20 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
     }
     const maxVotes = Math.max(...session.proposals.map((p) => p.votes.length));
     const tie = winner.votes.length === maxVotes && session.proposals.filter((p) => p.votes.length === maxVotes).length > 1;
+    const confirmedSeats = (session.seats ?? []).filter(seat => seat.status === "CONFIRMED");
+    const hasSeatRsvps = session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0;
     return {
       embed: {
         title: `🎮 Soirée validée : ${winner.game.name}`,
         description: formatDateTimeFr(session.date),
         color: 0x8b5cf6,
         fields: [
-          { name: "Joueurs", value: session.attendanceCapacity != null ? `${session.seats?.length ?? 0}/${session.attendanceCapacity}` : String(winner.votes.length), inline: true },
+          { name: "Joueurs", value: session.attendanceCapacity != null ? `${confirmedSeats.length}/${session.attendanceCapacity}` : hasSeatRsvps ? String(confirmedSeats.length) : String(winner.votes.length), inline: true },
           ...(tie ? [{ name: "Note", value: "Égalité de votes — choisi par ancienneté de proposition.", inline: false }] : []),
           { name: "Lien", value: absoluteSessionUrl(session.id) },
         ],
       },
-      candidateMentions: session.attendanceCapacity != null ? (session.seats ?? []).map(seat => seat.user) : winner.votes.map((v) => v.user),
+      candidateMentions: hasSeatRsvps ? confirmedSeats.map(seat => seat.user) : winner.votes.map((v) => v.user),
     };
   }
 
@@ -1403,7 +1414,7 @@ export const sessionAnnounceResolver: DeliveryResolver = {
 interface ParsedDmRole {
   /** `announce`, `validated`, `date:<changeId>`, `reminder:<min>` (ou, hérité, `update:<id>`). */
   kind: string;
-  base: "announce" | "date" | "validated" | "update" | "reminder";
+  base: "announce" | "date" | "validated" | "update" | "reminder" | "promotion";
   userId: string;
 }
 
@@ -1413,7 +1424,7 @@ function parseDmRole(role: string, prefix: "dm:" | "dm-fallback:"): ParsedDmRole
   if (cut < 0) return null;
   const kind = rest.slice(0, cut);
   const base = kind.split(":")[0];
-  if (base !== "announce" && base !== "date" && base !== "validated" && base !== "update" && base !== "reminder") {
+  if (base !== "announce" && base !== "date" && base !== "validated" && base !== "update" && base !== "reminder" && base !== "promotion") {
     return null;
   }
   return { kind, base, userId: rest.slice(cut + 1) };
@@ -1425,6 +1436,7 @@ function parseDmRole(role: string, prefix: "dm:" | "dm-fallback:"): ParsedDmRole
  * un kind hérité (`update`, plus jamais envoyé).
  */
 function dmSubject(session: SessionWithVotes, parsed: ParsedDmRole, operation: "SEND" | "EDIT"): string | null {
+  if (parsed.base === "promotion") return "🎉 Une place s’est libérée";
   if (parsed.base === "date") return "📅 Date modifiée";
   if (parsed.base === "reminder") {
     const minutesRemaining = (session.date.getTime() - wallClockNow().getTime()) / 60_000;
@@ -1470,7 +1482,9 @@ async function resolveSessionDirectMessage(
 ): Promise<Resolution> {
   const parsed = parseDmRole(role, "dm:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
-  if (parsed.base === "reminder" && !isSeatReminderRecipient(session.attendanceCapacity, session.createdById, parsed.userId, (session.seats ?? []).map(seat => seat.userId))) return { eligible: false, reason: "preference_declined" };
+  const confirmedSeatIds = (session.seats ?? []).filter(seat => seat.status === "CONFIRMED").map(seat => seat.userId);
+  if (parsed.base === "promotion" && !isPromotionDmRecipient(session.status, session.attendanceCapacity, parsed.userId, confirmedSeatIds)) return { eligible: false, reason: "preference_declined" };
+  if (parsed.base === "reminder" && !isSeatReminderRecipient(session.attendanceCapacity, session.createdById, parsed.userId, confirmedSeatIds, session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0)) return { eligible: false, reason: "preference_declined" };
   const operation = delivery.operation === "EDIT" ? "EDIT" : "SEND";
   if (session.deferredRoulette && operation === "SEND") return { eligible: false, reason: "expired" };
   if (operation === "EDIT" && parsed.base !== "announce") return { eligible: false, reason: "unresolvable" };
@@ -1486,7 +1500,9 @@ async function resolveSessionDirectMessage(
 
   const rendering = resolveAnnounceRendering(session);
   let body = subject;
-  if (operation === "SEND" && (parsed.base === "reminder" || parsed.base === "date" || parsed.base === "announce")) {
+  if (operation === "SEND" && parsed.base === "promotion") {
+    body = `${subject} — Ta place est confirmée pour la soirée. ${absoluteSessionUrl(session.id)}`;
+  } else if (operation === "SEND" && (parsed.base === "reminder" || parsed.base === "date" || parsed.base === "announce")) {
     const previousDate = parsed.base === "date" ? await previousDateForChange(session.id, parsed.kind.slice("date:".length)) : undefined;
     body = `${subject} — ${await sessionMessage(session, parsed.base === "announce" ? "created" : parsed.base, { creatorName: session.createdBy.discordName, recipientName: recipient.discordName, previousDate, gameName: session.proposals.find((p) => p.gameId === session.decidedGameId)?.game.name })}`;
   }
@@ -1518,6 +1534,7 @@ async function resolveSessionDirectMessageFallback(role: string, session: Sessio
   if (session.createdViaRoulette) return { eligible: false, reason: "expired" };
   const parsed = parseDmRole(role, "dm-fallback:");
   if (!parsed) return { eligible: false, reason: "unresolvable" };
+  if (parsed.base === "promotion" && !isPromotionDmRecipient(session.status, session.attendanceCapacity, parsed.userId, (session.seats ?? []).filter(seat => seat.status === "CONFIRMED").map(seat => seat.userId))) return { eligible: false, reason: "preference_declined" };
   const thread = await findSentDelivery(threadSlot(session.id));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
   if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
@@ -1951,8 +1968,8 @@ async function resolveThreadReminder(
   let candidates: (User & { silenceReminders: boolean })[];
   if (session.status === "VOTING") {
     candidates = resolveInvitedCandidates(session.invites, session.createdById);
-  } else if (session.attendanceCapacity != null) {
-    candidates = (session.seats ?? []).map(seat => seat.user);
+  } else if (session.attendanceCapacity != null || (session.seats?.length ?? 0) > 0) {
+    candidates = (session.seats ?? []).filter(seat => seat.status === "CONFIRMED").map(seat => seat.user);
   } else {
     const voters = new Map<string, User & { silenceReminders: boolean }>();
     for (const proposal of session.proposals) {

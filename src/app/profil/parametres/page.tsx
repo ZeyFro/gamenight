@@ -16,13 +16,20 @@ import { ColorPickerField } from "@/components/ColorPickerField";
 import { FamilyImportForm } from "@/components/FamilyImportForm";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { CursorTrailToggle } from "@/components/CursorTrailToggle";
+import { GamePreferencesForm } from "@/components/GamePreferencesForm";
+import { visiblePreferenceGames } from "@/lib/game-suggestions";
+import { PlayerEquipmentForm } from "@/components/PlayerEquipmentForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { GAMING_IDENTIFIER_FIELDS } from "@/lib/gaming-identifiers";
+import { updateGamingIdentifiersAction } from "@/app/profil/gaming-identifiers-actions";
 import {
   AVAILABLE_NOTIFICATION_CATEGORIES,
   getUserNotificationPreferences,
   NOTIFICATION_CATEGORY_DETAILS,
 } from "@/lib/notification-preferences";
 import { pageMetadata } from "@/lib/page-title";
+import { resolveActiveCommunityId } from "@/lib/community-isolation";
+import { saveGameStyleProfile } from "@/app/profil/game-style-actions";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -78,6 +85,12 @@ const FAMILY_FEEDBACK: Record<string, { text: string; className: string }> = {
   rate_limited: { text: RATE_LIMIT_MESSAGE, className: "bg-warning/10 text-warning" },
 };
 
+const IDENTIFIERS_FEEDBACK: Record<string, string> = {
+  ok: "Tes identifiants de jeu ont été enregistrés.",
+  invalide: "Utilise au maximum 100 caractères par identifiant, sur une seule ligne.",
+  rate_limited: RATE_LIMIT_MESSAGE,
+};
+
 export default async function ProfilParametresPage({
   searchParams,
 }: {
@@ -88,22 +101,30 @@ export default async function ProfilParametresPage({
     family?: string;
     new?: string;
     notifications?: string;
+    gouts?: string;
+    materiel?: string;
+    identifiants?: string;
+    style?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, style } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
   // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
   // ce user, pour afficher les chips "actif"/"inactif".
-  const [allTags, ownUserTags, storedNotificationPreferences] = await Promise.all([
+  const [allTags, ownUserTags, storedNotificationPreferences, preferenceGames, gameRefusals, communityId] = await Promise.all([
     prisma.tag.findMany({ orderBy: { name: "asc" } }),
     prisma.userTag.findMany({ where: { userId: user.id }, select: { tagId: true } }),
     prisma.userNotificationPreference.findMany({ where: { userId: user.id } }),
+    visiblePreferenceGames(user.id),
+    prisma.userGameRefusal.findMany({ where: { userId: user.id }, select: { gameId: true, game: { select: { name: true } } }, orderBy: [{ createdAt: "desc" }, { gameId: "asc" }] }),
+    resolveActiveCommunityId(user.id),
   ]);
+  const gameStyle = communityId ? await prisma.gameStyleProfile.findUnique({ where: { communityId_userId: { communityId, userId: user.id } } }) : null;
   const notificationPreferences = await getUserNotificationPreferences({
     silenceReminders: user.silenceReminders,
     notificationPreferences: storedNotificationPreferences,
@@ -112,6 +133,34 @@ export default async function ProfilParametresPage({
 
   return (
     <Stagger className="flex flex-col gap-6">
+      <StaggerItem><Card className="flex flex-col gap-4">
+        <h2 className="font-semibold">Mon style de jeu en équipe</h2>
+        <p className="text-sm text-muted">Évalue chaque tendance de 0 (pas du tout) à 5 (beaucoup). Ces préférences servent à équilibrer les équipes de ta communauté.</p>
+        {style === "ok" && <p role="status" className="text-sm text-accent">Profil enregistré.</p>}
+        {style === "invalide" && <p role="alert" className="text-sm text-destructive">Choisis une valeur entre 0 et 5 pour chaque tendance.</p>}
+        {!communityId ? <p className="text-sm text-muted">Choisis une communauté active pour enregistrer ton profil.</p> : <form action={saveGameStyleProfile} className="flex flex-col gap-3">
+          {([["tryharder", "Tryharder"], ["ambianceur", "Ambianceur"], ["stratege", "Stratège"], ["chaos", "Chaos"]] as const).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 text-sm"><span>{label}</span><input aria-label={label} name={key} type="number" min="0" max="5" required defaultValue={gameStyle?.[key] ?? 0} className="w-20 rounded-lg border border-border bg-background px-3 py-2" /></label>)}
+          <Button type="submit" variant="primary">Enregistrer mon style</Button>
+        </form>}
+      </Card></StaggerItem>
+      <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
+      <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold">Mes identifiants de jeu</h2>
+          <p className="text-sm text-muted">Ces identifiants facultatifs sont visibles par les membres autorisés à consulter ta fiche. Leur existence n’est pas vérifiée. Laisse un champ vide pour l’effacer ; ton compte Steam se gère dans la section Steam.</p>
+          {identifiants && IDENTIFIERS_FEEDBACK[identifiants] && <p role={identifiants === "ok" ? "status" : "alert"} className="text-sm">
+            {IDENTIFIERS_FEEDBACK[identifiants]}
+          </p>}
+          <form action={updateGamingIdentifiersAction} className="flex flex-col gap-4">
+            {GAMING_IDENTIFIER_FIELDS.map(({ key, label }) => <div key={key}>
+              <label htmlFor={`gaming-${key}`} className="mb-1 block text-sm font-medium">{label}</label>
+              <input id={`gaming-${key}`} name={key} type="text" maxLength={100} autoComplete="off" defaultValue={user[key] ?? ""} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-accent" />
+            </div>)}
+            <Button type="submit" variant="primary">Enregistrer mes identifiants</Button>
+          </form>
+        </Card>
+      </StaggerItem>
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Bannière de profil</h2>

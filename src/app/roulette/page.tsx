@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { User } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
-import { creationMemberUserWhere } from "@/lib/community-isolation";
+import { creationMemberUserWhere, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { toDateInputValue, wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
@@ -334,12 +334,14 @@ async function HistoriqueTab({ userId }: { userId: string }) {
 
 /** Mode instant (existant, inchangé) — tout le monde présent en même temps, une seule session côté client. */
 async function InstantMode({ user }: { user: User }) {
-  const [meGames, potesRaw] = await Promise.all([
+  const communityId = await resolveActiveCommunityId(user.id);
+  const [meGames, meStyle, potesRaw] = await Promise.all([
     prisma.userGame.findMany({
       where: { userId: user.id, owned: true },
       select: { game: { select: { id: true, name: true, coverUrl: true, minPlayers: true, maxPlayers: true } } },
       orderBy: { game: { name: "asc" } },
     }),
+    communityId ? prisma.gameStyleProfile.findUnique({ where: { communityId_userId: { communityId, userId: user.id } }, select: { tryharder: true, ambianceur: true, stratege: true, chaos: true } }) : null,
     prisma.user.findMany({
       where: { id: { not: user.id }, ...(await creationMemberUserWhere(user.id)) },
       select: {
@@ -347,6 +349,7 @@ async function InstantMode({ user }: { user: User }) {
         discordName: true,
         discordAvatar: true,
         color: true,
+        gameStyleProfiles: { where: { communityId: communityId ?? "" }, select: { tryharder: true, ambianceur: true, stratege: true, chaos: true }, take: 1 },
         userGames: {
           where: { owned: true },
           select: { game: { select: { id: true, name: true, coverUrl: true, minPlayers: true, maxPlayers: true } } },
@@ -364,6 +367,7 @@ async function InstantMode({ user }: { user: User }) {
       discordAvatar: (user as { discordAvatar: string | null }).discordAvatar,
       color: (user as { color: string }).color,
       games: meGames.map((g) => g.game),
+      styleProfile: meStyle ? [meStyle.tryharder, meStyle.ambianceur, meStyle.stratege, meStyle.chaos] : undefined,
     },
     ...potesRaw.map((p) => ({
       id: p.id,
@@ -371,6 +375,7 @@ async function InstantMode({ user }: { user: User }) {
       discordAvatar: p.discordAvatar,
       color: p.color,
       games: p.userGames.map((g) => g.game),
+      styleProfile: p.gameStyleProfiles[0] ? [p.gameStyleProfiles[0].tryharder, p.gameStyleProfiles[0].ambianceur, p.gameStyleProfiles[0].stratege, p.gameStyleProfiles[0].chaos] : undefined,
     })),
   ];
 

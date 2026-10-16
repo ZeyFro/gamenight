@@ -8,43 +8,9 @@ import { getCurrentUser } from "@/lib/current-user";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkRevancheAfterSessionResults } from "@/lib/revanche";
-import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
 import { detectDebts } from "@/lib/debts";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getWinningProposalParticipants } from "@/lib/superlative-voting";
-
-/**
- * Marque le défi hebdo de la semaine en cours comme complété par CETTE
- * soirée (Sprint 3 suite) — bouton créateur, sur une soirée `DONE`
- * uniquement. `completeWeeklyChallenge` fait toutes les vérifications
- * (défi pas déjà complété, soirée dans la bonne semaine) et l'attribution
- * XP/badge ; ici on ne fait que le contrôle de permission et rediriger
- * avec `?celebrate=badge` si LE créateur (l'utilisateur qui vient de
- * cliquer, seul spectateur de cette redirection) a débloqué "Challenger".
- */
-export async function completeWeeklyChallengeAction(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/");
-  if (!checkRateLimit(user.id, "completeWeeklyChallenge")) return;
-
-  const sessionId = String(formData.get("sessionId") ?? "");
-  if (!sessionId) return;
-
-  const scopedDb = await getScopedPrisma(user.id);
-  const session = await scopedDb.session.findUnique({
-    where: { id: sessionId },
-    select: { createdById: true },
-  });
-  if (!session || session.createdById !== user.id) return;
-
-  const { badgeUnlockedByUserId } = await completeWeeklyChallenge(sessionId);
-  revalidatePath(`/sessions/${sessionId}`);
-  revalidatePath("/");
-
-  if (badgeUnlockedByUserId[user.id]) {
-    redirect(`/sessions/${sessionId}?celebrate=badge`);
-  }
-}
 
 /**
  * Saisie des résultats d'une soirée (Axe 2) — réservée au créateur, une

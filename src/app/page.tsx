@@ -14,6 +14,7 @@ import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
 import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
+import { getEquippedShopItemsForViewer } from "@/lib/xp-shop";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
@@ -34,6 +35,7 @@ import { EmptySessionHero, HomePlanningLinks, HomeInstantLink } from "@/componen
 import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
+import { ColorDot } from "@/components/ColorDot";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -181,6 +183,7 @@ async function HomeContent({
     getScoreboardCommunityId(user.id).then((communityId) => getScoreboard("global", { communityId })),
     getRecentGameNews(),
     getCurrentWeeklyChallengeForViewer(user.id),
+    getEquippedShopItemsForViewer(user.id),
     listGroupAchievements(user.id),
     getActiveDebts(user.id),
     getActiveDebtorIds(user.id),
@@ -215,6 +218,7 @@ async function HomeContent({
     scoreboard,
     gameNews,
     weeklyChallenge,
+    shopCosmetics,
     groupAchievements,
     activeDebts,
     activeDebtorIds,
@@ -251,7 +255,8 @@ async function HomeContent({
   const now = nowMs();
   const level = levelForXp(user.xpTotal);
   const rank = rankForLevel(level);
-  const title = titleForLevel(level);
+  const title = shopCosmetics.TITLE?.value ?? titleForLevel(level);
+  const profileColor = shopCosmetics.COLOR?.value ?? user.color;
   const podium = scoreboard.slice(0, 3);
   const [first, second, third] = podium;
 
@@ -262,11 +267,6 @@ async function HomeContent({
         <div><p className="gn-eyebrow mb-3">Ensemble, c’est toujours mieux</p><h1><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Ce soir, on joue à quoi ?</AuroraText></h1><p>Un jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.</p></div>
         <ButtonLink href="/sessions" variant="primary" className="hidden sm:inline-flex">+ Créer une soirée</ButtonLink>
       </div>
-      <nav className="gn-quick-actions" aria-label="Lancer une partie">
-        <Link href="/sessions" prefetch={false} className="gn-quick-action"><span aria-hidden="true">☾</span><div><b>Créer une soirée</b><small>Un rendez-vous avec les potes</small></div></Link>
-        <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
-        <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
-      </nav>
       <ParallaxHeader className="gn-home-greeting relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
@@ -274,12 +274,13 @@ async function HomeContent({
           alt={`Avatar de ${user.discordName}`}
           level={level}
           rank={rank}
+          frameColor={shopCosmetics.FRAME?.value}
           size={64}
         />
         <div className="min-w-0">
           <p className="text-sm text-muted">Salut,</p>
           <h2 className="truncate text-xl font-semibold text-foreground sm:text-2xl">
-            {user.discordName}
+            {user.discordName} <ColorDot color={profileColor} title="Couleur équipée" />
             {activeDebtorIds.has(user.id) && (
               <span className="ml-1" title="Dette de gage active">
                 💀
@@ -359,6 +360,11 @@ async function HomeContent({
           ) : (
             <EmptySessionHero />
           )}
+          <nav className="gn-quick-actions" aria-label="Lancer une partie">
+            <Link href="/sessions" prefetch={false} className="gn-quick-action"><span aria-hidden="true">☾</span><div><b>Créer une soirée</b><small>Un rendez-vous avec les potes</small></div></Link>
+            <Link href="/roulette?mode=instant" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🎲</span><div><b>Roulette instantanée</b><small>Choisir un jeu maintenant</small></div></Link>
+            <Link href="/tournois/creer" prefetch={false} className="gn-quick-action"><span aria-hidden="true">🏆</span><div><b>Lancer un tournoi</b><small>Qui ira jusqu’au bout ?</small></div></Link>
+          </nav>
           <HomePlanningLinks />
           <HomeInstantLink />
         </StaggerItem>
@@ -412,6 +418,22 @@ async function HomeContent({
                   </div>
                 </div>
               )}
+              {groupStats.totalPlayMinutes > 0 && (
+                <div className="col-span-2 border-t border-border pt-3">
+                  <p className="text-sm font-medium text-foreground">Temps de jeu déclaré · {formatDurationFr(groupStats.totalPlayMinutes * 60_000)}</p>
+                  <details className="mt-2 text-xs text-muted">
+                    <summary className="cursor-pointer">Temps par jeu ({groupStats.gamePlayTimes.length})</summary>
+                    <ul className="mt-2 space-y-1">
+                      {groupStats.gamePlayTimes.map((game) => (
+                        <li key={game.gameId} className="flex justify-between gap-3">
+                          <span className="truncate">{game.name}</span>
+                          <span className="shrink-0 tabular-nums">{formatDurationFr(game.playedMinutes * 60_000)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+              )}
               {groupStats.bestActiveStreak && (
                 <div className="col-span-2">
                   <p className="text-sm font-medium text-foreground">
@@ -428,10 +450,7 @@ async function HomeContent({
         </StaggerItem>
         </div>
 
-        {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
-            semaine en cours par `getCurrentWeeklyChallengeForViewer` ci-dessus. La
-            complétion se fait depuis une soirée DONE (bouton créateur),
-            jamais directement ici — la Home reste en lecture seule. */}
+        {/* Défi hebdo généré à la première lecture et validé à la clôture des soirées. */}
         {weeklyChallenge && (
           <StaggerItem className="gn-home-wide">
           <Card className="gn-home-challenge gradient-border">
@@ -440,7 +459,7 @@ async function HomeContent({
             <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
               {weeklyChallenge.completedAt
                 ? "✅ Complété !"
-                : "Complète-le depuis une soirée terminée cette semaine."}
+                : "La progression est suivie automatiquement à la clôture des soirées."}
             </p>
           </Card>
         </StaggerItem>

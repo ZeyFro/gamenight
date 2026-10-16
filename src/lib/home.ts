@@ -136,6 +136,8 @@ export async function getRecentActivity(viewerId: string, limit = 5): Promise<Ac
 export interface GroupStats {
   totalSessionsPlayed: number;
   mostPlayedGame: { name: string; coverUrl: string | null; count: number } | null;
+  totalPlayMinutes: number;
+  gamePlayTimes: { gameId: string; name: string; playedMinutes: number }[];
   bestActiveStreak: { discordName: string; streakCount: number } | null;
   activePlayers: number;
 }
@@ -174,13 +176,19 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   const communityId = await writeCommunityIdForUser(viewerId);
   const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
 
-  const [sessionStats, topGameStats, bestStreakUser, activePlayers] = await Promise.all([
+  const [sessionStats, topGameStats, playTimeStats, gamePlayTimes, bestStreakUser, activePlayers] = await Promise.all([
     scopedDb.groupSessionStats.aggregate({ _sum: { totalSessionsPlayed: true } }),
     scopedDb.groupGameStat.groupBy({
       by: ["gameId"],
       _sum: { playCount: true },
       orderBy: { _sum: { playCount: "desc" } },
       take: 1,
+    }),
+    scopedDb.groupGameStat.aggregate({ _sum: { totalPlayMinutes: true } }),
+    scopedDb.groupGameStat.findMany({
+      where: { totalPlayMinutes: { gt: 0 } },
+      orderBy: { totalPlayMinutes: "desc" },
+      select: { gameId: true, totalPlayMinutes: true, game: { select: { name: true } } },
     }),
     scopedDb.communityMemberStats.findFirst({
       where: {
@@ -207,6 +215,8 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
       topGame && topGameStats[0]
         ? { name: topGame.name, coverUrl: topGame.coverUrl, count: topGameStats[0]._sum.playCount ?? 0 }
         : null,
+    totalPlayMinutes: playTimeStats._sum.totalPlayMinutes ?? 0,
+    gamePlayTimes: gamePlayTimes.map((game) => ({ gameId: game.gameId, name: game.game.name, playedMinutes: game.totalPlayMinutes })),
     bestActiveStreak: bestStreakUser
       ? { discordName: bestStreakUser.user.discordName, streakCount: bestStreakUser.streakCount }
       : null,

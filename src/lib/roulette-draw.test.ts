@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isPlayerCountCompatible } from "@/lib/player-count";
-import { isRoulettePlayerFilterEnabled, pickInstantSegment, pickRouletteCandidate, type DrawCandidate } from "@/lib/roulette-draw";
+import { isRoulettePlayerFilterEnabled, pickInstantSegment, pickRouletteCandidate, pickWeightedRouletteCandidate, type DrawCandidate } from "@/lib/roulette-draw";
 
 const c = (id: string, minPlayers: number | null, maxPlayers: number | null): DrawCandidate & { id: string } => ({
   id,
@@ -63,6 +63,28 @@ describe("pickRouletteCandidate", () => {
   });
   it("aucun candidat : chosen null", () => {
     expect(pickRouletteCandidate([], { playerCount: 3, filterEnabled: true, rng: at(0) })).toEqual({ chosen: null, fallback: false });
+  });
+});
+
+describe("pickWeightedRouletteCandidate", () => {
+  const candidates = [
+    { ...c("low", null, null), weight: 1, recentlyPlayed: false },
+    { ...c("high", null, null), weight: 5, recentlyPlayed: false },
+    { ...c("recent", null, null), weight: 100, recentlyPlayed: true },
+  ];
+
+  it("pondère les jeux selon leur tierlist", () => {
+    expect(pickWeightedRouletteCandidate(candidates.slice(0, 2), { playerCount: 2, filterEnabled: false, rng: at(0.5) }).chosen).toBe(candidates[1]);
+  });
+  it("écarte un jeu récent quand un candidat reposé existe", () => {
+    expect(pickWeightedRouletteCandidate(candidates, { playerCount: 2, filterEnabled: false, rng: at(0.99) }).chosen).toBe(candidates[1]);
+  });
+  it("garde les jeux récents si tous les candidats le sont", () => {
+    expect(pickWeightedRouletteCandidate(candidates.slice(2), { playerCount: 2, filterEnabled: false, rng: at(0) }).chosen).toBe(candidates[2]);
+  });
+  it("préserve le fallback joueur quand aucun jeu n'est compatible", () => {
+    const incompatible = [{ ...c("a", 8, 10), weight: 1, recentlyPlayed: false }];
+    expect(pickWeightedRouletteCandidate(incompatible, { playerCount: 2, filterEnabled: true, rng: at(0) })).toEqual({ chosen: incompatible[0], fallback: true });
   });
 });
 

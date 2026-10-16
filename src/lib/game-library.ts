@@ -30,10 +30,28 @@ async function libraryMemberWhere(viewerId: string) {
   return memberUserWhere(await resolveActiveCommunityScope(viewerId));
 }
 
-export async function getGroupLibraryGames(viewerId: string) {
+export async function getGroupLibraryMembers(viewerId: string) {
+  return prisma.user.findMany({
+    where: await libraryMemberWhere(viewerId),
+    select: { id: true, discordName: true },
+    orderBy: [{ discordName: "asc" }, { id: "asc" }],
+  });
+}
+
+export async function getGroupLibraryGames(viewerId: string, selectedUserIds: string[] = []) {
   const user = await libraryMemberWhere(viewerId);
+  const participants = [...new Set(selectedUserIds)];
+  if (participants.length > 100) return [];
+  if (participants.length) {
+    const valid = await prisma.user.count({ where: { AND: [user, { id: { in: participants } }] } });
+    // Ne jamais réduire silencieusement la sélection : cela élargirait le résultat.
+    if (valid !== participants.length) return [];
+  }
   return prisma.game.findMany({
-    where: { userGames: { some: { owned: true, user } } },
+    where: {
+      userGames: { some: { owned: true, user } },
+      AND: participants.map(userId => ({ userGames: { some: { userId, owned: true, user } } })),
+    },
     include: {
       userGames: {
         where: { owned: true, user },

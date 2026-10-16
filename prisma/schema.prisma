@@ -38,6 +38,10 @@ enum UserRole {
 }
 
 model User {
+  availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
+  communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
+  communityBirthdays CommunityDate[] @relation("CommunityDateMember")
+  availabilityPollParticipations SessionAvailabilityPollParticipant[]
   id                       String    @id @default(cuid())
   discordId                String    @unique
   discordName              String
@@ -81,7 +85,19 @@ model User {
   // CSS, `.profile-banner-default`).
   bannerUrl                String?
   steamId64                String?   @unique
+  // Identifiants déclaratifs facultatifs ; aucune liaison OAuth ni preuve de propriété.
+  psnId                    String?   @db.VarChar(100)
+  xboxGamertag             String?   @db.VarChar(100)
+  switchFriendCode         String?   @db.VarChar(100)
+  epicDisplayName          String?   @db.VarChar(100)
+  battleTag                String?   @db.VarChar(100)
   steamPublic              Boolean   @default(false)
+  preferredGameCategories  String[]  @default([])
+  refusedGameCategories    String[]  @default([])
+  gameRefusals             UserGameRefusal[]
+  inputDevices             String[]  @default([])
+  availablePlatforms       String[]  @default([])
+  microphoneAvailable      Boolean?
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
@@ -166,6 +182,7 @@ model User {
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+  sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
 
@@ -173,6 +190,7 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  sessionPreparations SessionPreparation[]
   sessionSeats SessionSeat[]
   sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
   sessionInvitesRevoked  SessionInvite[] @relation("SessionInviteRevokedBy")
@@ -306,6 +324,7 @@ model User {
 
   // Multi-communautés (PR A) — relation seule, aucune colonne sur `User`.
   memberships Membership[]
+  gameStyleProfiles GameStyleProfile[]
 
   @@index([xpTotal])
 }
@@ -317,6 +336,20 @@ enum GameSource {
 }
 
 model Game {
+  // Relevé de préparation déclaré, indépendant des prix Steam consultés.
+  preparationCost       String? @db.VarChar(10)
+  preparationPrice      String? @db.VarChar(120)
+  downloadSizeGb        Float?
+  preparationPlatform   String? @db.VarChar(80)
+  preparationSourceUrl  String? @db.VarChar(500)
+  preparationTimeMinutes Int?
+  preparationUpdatedAt  DateTime?
+  // Informations déclarées par un possesseur ; null = inconnu.
+  jumpscares          Boolean?
+  motionSickness      Boolean?
+  textLanguages       String? @db.VarChar(120)
+  audioLanguages      String? @db.VarChar(120)
+  warningsUpdatedAt   DateTime?
   id         String     @id @default(cuid())
   name       String
   source     GameSource
@@ -346,7 +379,7 @@ model Game {
   // timeout Vercel si on enrichissait toute une biblio importée d'un coup).
   // `null` tant que jamais fetché (ou si IGDB n'a rien trouvé). Structure
   // libre en JSON (voir `IgdbGameDetails` dans src/lib/igdb.ts) : pas de
-  // colonnes dédiées, cette donnée est display-only et sa forme suit celle
+  // colonnes dédiées ; ces métadonnées servent à l'affichage et aux suggestions, suivant la forme
   // de l'API IGDB.
   igdbDetails          Json?
   igdbDetailsFetchedAt DateTime?
@@ -359,6 +392,7 @@ model Game {
 
   addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
   userGames UserGame[]
+  userRefusals UserGameRefusal[]
 
   proposals       Proposal[]
   decidedSessions Session[]
@@ -494,6 +528,7 @@ enum SessionStatus {
 // l'heure de la session ; nul = pas de deadline distincte, seule l'heure
 // de la session ferme le vote (comportement historique).
 model Session {
+  availabilityPoll SessionAvailabilityPoll?
   id             String        @id @default(cuid())
   date           DateTime
   votingDeadline DateTime?
@@ -505,6 +540,7 @@ model Session {
   // Gestion des places activée explicitement par le créateur après décision.
   // null conserve les participants historiques issus des votes.
   attendanceCapacity Int?
+  preparations SessionPreparation[]
   seats SessionSeat[]
   vetoes SessionVeto[]
 
@@ -608,6 +644,7 @@ model Session {
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]
   results           SessionResult[]
+  ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
   // Sprint 3 (dettes/gage) — voir `Debt`.
@@ -947,6 +984,7 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  SHOP_PURCHASE
   // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
   // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
   // Garde les classements par période cohérents avec le solde corrigé.
@@ -1006,6 +1044,23 @@ model SessionResult {
   // Sert `revanche.ts` (compte les résultats d'un user pour un jeu donné,
   // indépendamment de l'existence de la soirée).
   @@index([userId, gameId])
+}
+
+model SessionRating {
+  id          String   @id @default(cuid())
+  sessionId   String
+  communityId String?
+  userId      String
+  rating      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  session   Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([communityId, sessionId])
 }
 
 // Ledger XP append-only — préféré à un simple compteur sur `User` pour
@@ -1494,6 +1549,18 @@ enum RouletteStatus {
   DONE
 }
 
+// Refus personnel, distinct d'un veto ponctuel de soirée.
+model UserGameRefusal {
+  userId    String
+  gameId    String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@index([gameId])
+}
+
 model Roulette {
   id          String         @id @default(cuid())
   createdById String
@@ -1651,8 +1718,8 @@ model InstantSessionPresenceInterval {
 // distinguer les défis en base sans reparser `description` si jamais le
 // texte d'un template est retouché plus tard. `completedBySessionId`
 // (id "libre", même famille que `Notification.relatedSessionId`) : la
-// soirée qui a permis de cocher le défi cette semaine-là, renseignée par
-// `completeWeeklyChallenge` (créateur de cette session uniquement).
+// soirée qui a validé automatiquement le défi cette semaine-là, renseignée
+// par `completeWeeklyChallenge` à la clôture de la soirée.
 model WeeklyChallenge {
   id                   String    @id @default(cuid())
   description          String
@@ -1774,12 +1841,39 @@ model CommunityMemberStats {
   streakLastActiveAt DateTime?
   bestStreakCount Int @default(0)
   tournamentsParticipatedCount Int @default(0)
+  equippedTitleId String?
+  equippedFrameId String?
+  equippedColorId String?
+  cosmetics CommunityMemberCosmetic[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([communityId, userId])
   @@index([communityId, xpTotal])
   @@index([communityId, streakLastActiveAt])
+}
+
+model GameStyleProfile {
+  communityId String
+  userId String
+  tryharder Int @default(0)
+  ambianceur Int @default(0)
+  stratege Int @default(0)
+  chaos Int @default(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+}
+
+model CommunityMemberCosmetic {
+  communityId String
+  userId String
+  itemId String
+  purchasedAt DateTime @default(now())
+
+  stats CommunityMemberStats @relation(fields: [communityId, userId], references: [communityId, userId], onDelete: Cascade)
+
+  @@id([communityId, userId, itemId])
 }
 
 // Chantier nettoyage réel du stockage (V2, suite) — résumé durable MINIMAL
@@ -1821,8 +1915,9 @@ model GroupSessionStats {
 // `Game` elle-même n'est jamais purgée par ce chantier, une jointure
 // reste fiable à 100%).
 model GroupGameStat {
-  gameId    String
-  playCount Int    @default(0)
+  gameId           String
+  playCount        Int    @default(0)
+  totalPlayMinutes Int    @default(0)
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
@@ -2483,6 +2578,11 @@ enum CommunityRole {
   MEMBER
 }
 
+enum CommunityDateKind {
+  BIRTHDAY
+  IMPORTANT
+}
+
 enum MembershipStatus {
   ACTIVE
   LEFT
@@ -2495,14 +2595,19 @@ enum MembershipStatus {
 enum CommunityChannelCategory {
   SESSION
   TOURNAMENT
+  VOICE
 }
 
 model Community {
+  availabilityPolls SessionAvailabilityPoll[]
+  dates CommunityDate[]
+  sessionRatings SessionRating[]
   id   String @id @default(cuid())
   // Segment d'URL `/c/[slug]/…` (PR suivante). `default` = la communauté
   // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
   slug String @unique
   name String
+  fairPlayCharter String? @db.Text
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
@@ -2544,6 +2649,77 @@ model Community {
   groupActiveWeeks GroupActiveWeek[]
 }
 
+// Une proposition de créneau ne crée jamais une Session ni un rappel.
+// La soirée finale est liée seulement au choix transactionnel du créateur.
+enum SessionAvailabilityPollStatus {
+  OPEN
+  CLOSED
+}
+
+enum SessionAvailabilityPollAnswer {
+  AVAILABLE
+  MAYBE
+  UNAVAILABLE
+}
+
+model SessionAvailabilityPoll {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation("AvailabilityPollCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  status SessionAvailabilityPollStatus @default(OPEN)
+  sessionId String? @unique
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  chosenSlotId String?
+  chosenSlot SessionAvailabilityPollSlot? @relation("PollChoice", fields: [id, chosenSlotId], references: [pollId, id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  participants SessionAvailabilityPollParticipant[]
+  slots SessionAvailabilityPollSlot[] @relation("PollOptions")
+
+  @@index([communityId, createdAt])
+  @@index([createdById, status])
+}
+
+model SessionAvailabilityPollParticipant {
+  pollId String
+  userId String
+  poll SessionAvailabilityPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses SessionAvailabilityPollResponse[]
+
+  @@id([pollId, userId])
+  @@index([userId])
+}
+
+model SessionAvailabilityPollSlot {
+  id String @id @default(cuid())
+  pollId String
+  poll SessionAvailabilityPoll @relation("PollOptions", fields: [pollId], references: [id], onDelete: Cascade)
+  start DateTime
+  end DateTime
+  chosenBy SessionAvailabilityPoll[] @relation("PollChoice")
+  responses SessionAvailabilityPollResponse[]
+
+  @@unique([pollId, id])
+  @@unique([pollId, start, end])
+}
+
+model SessionAvailabilityPollResponse {
+  pollId String
+  slotId String
+  userId String
+  answer SessionAvailabilityPollAnswer
+  updatedAt DateTime @updatedAt
+  slot SessionAvailabilityPollSlot @relation(fields: [pollId, slotId], references: [pollId, id], onDelete: Cascade)
+  participant SessionAvailabilityPollParticipant @relation(fields: [pollId, userId], references: [pollId, userId], onDelete: Cascade)
+
+  @@id([pollId, slotId, userId])
+  @@index([pollId, userId])
+}
+
 model CommunityChannelConfig {
   id               String                   @id @default(cuid())
   communityId      String
@@ -2555,6 +2731,24 @@ model CommunityChannelConfig {
   updatedAt        DateTime                 @updatedAt
 
   @@unique([communityId, category])
+}
+
+model CommunityDate {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation("CommunityDateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  memberId String?
+  member User? @relation("CommunityDateMember", fields: [memberId], references: [id], onDelete: Cascade)
+  kind CommunityDateKind
+  title String? @db.VarChar(100)
+  date DateTime @db.Date
+  repeatsAnnually Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([communityId, memberId])
+  @@index([communityId, date])
 }
 
 // Appartenance d'un utilisateur à une communauté. Un seul OWNER actif par
@@ -2575,4 +2769,19 @@ model Membership {
 
   @@unique([communityId, userId])
   @@index([userId])
+}
+
+// Une préparation concerne le jeu retenu : un changement de jeu repart à zéro.
+model SessionPreparation {
+  sessionId String
+  userId String
+  gameId String
+  installed Boolean @default(false)
+  updated Boolean @default(false)
+  microphone Boolean @default(false)
+  lobby Boolean @default(false)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId, gameId])
 }

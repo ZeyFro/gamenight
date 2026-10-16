@@ -10,6 +10,10 @@ import { PoteTabs } from "@/components/PoteTabs";
 import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { levelForXp, rankForLevel } from "@/lib/xp";
+import { PlayerEquipment } from "@/components/PlayerEquipment";
+import { GamingIdentifiers } from "@/components/GamingIdentifiers";
+import { getEquippedShopItems } from "@/lib/xp-shop";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 /**
  * En-tête + onglets partagés par les 5 sous-routes de `/potes/[id]`
@@ -48,6 +52,10 @@ export default async function PoteLayout({
   const rawPote = await prisma.user.findUnique({ where: { id } });
   if (!rawPote) notFound();
   const pote = projectUserProgress(rawPote, await getMemberStatsForViewer(id, user.id));
+  const communityId = await writeCommunityIdForUser(user.id);
+  const cosmetics = communityId
+    ? await getEquippedShopItems(id, communityId)
+    : { TITLE: null, FRAME: null, COLOR: null };
 
   const level = levelForXp(pote.xpTotal);
   const rank = rankForLevel(level);
@@ -62,11 +70,11 @@ export default async function PoteLayout({
           ← Potes
         </Link>
         <div className="mt-2 flex items-center gap-3">
-          <RankAvatar src={pote.discordAvatar} alt={pote.discordName} level={level} rank={rank} size={48} />
+          <RankAvatar src={pote.discordAvatar} alt={pote.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={48} />
           <div>
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground sm:text-2xl">
               {pote.discordName}
-              <ColorDot color={pote.color} title={`Couleur de ${pote.discordName}`} />
+              <ColorDot color={cosmetics.COLOR?.value ?? pote.color} title={`Couleur de ${pote.discordName}`} />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -77,10 +85,14 @@ export default async function PoteLayout({
               <Badge tone={pote.steamId64 ? "accent" : "neutral"}>
                 {pote.steamId64 ? "Steam lié" : "Steam non lié"}
               </Badge>
+              {cosmetics.TITLE && <span className="text-xs text-muted">{cosmetics.TITLE.value}</span>}
             </div>
           </div>
         </div>
       </div>
+
+      <PlayerEquipment user={pote} />
+      <GamingIdentifiers user={pote} />
 
       <PoteTabs poteId={id} />
 

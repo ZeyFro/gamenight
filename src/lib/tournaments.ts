@@ -15,6 +15,7 @@ import { scoreConsistencyError } from "@/lib/tournament-scores";
 import {
   enqueueTournamentAnnounceDelete,
   enqueueTournamentAnnounceUpdate,
+  enqueueTournamentMatchResult,
   enqueueTournamentResultThreadSummary,
   enqueueTournamentThreadClose,
   enqueueTournamentThreadDelete,
@@ -442,6 +443,9 @@ export async function declareWinner(
       totalRounds,
       match.tournament.announceViaBot
     );
+    if (match.tournament.announceViaBot) {
+      await enqueueTournamentMatchResult(match.tournamentId, matchId, tx);
+    }
     tournamentFinalized = result.tournamentFinalized;
   });
 

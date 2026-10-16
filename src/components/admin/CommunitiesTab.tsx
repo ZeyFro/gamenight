@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { activateCommunityAction, setCommunityChannelAction } from "@/app/admin/communautes/actions";
+import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
   PENDING: { label: "En attente", tone: "warning" },
@@ -16,6 +17,7 @@ const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" 
 const CATEGORY_LABELS: Record<CommunityChannelCategory, string> = {
   SESSION: "Salon des soirées",
   TOURNAMENT: "Salon des tournois",
+  VOICE: "Salon vocal",
 };
 
 /** Messages du retour d'action (`?r=`), codes produits par `src/app/admin/communautes/actions.ts`. */
@@ -48,7 +50,7 @@ export async function CommunitiesTab({ result }: { result?: string }) {
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted">
-        Active une communauté en attente et choisis les salons où GameNight annonce les soirées et les tournois. Un
+        Active une communauté en attente et choisis les salons d&apos;annonce et le salon vocal. Un
         salon n&apos;est enregistré que s&apos;il appartient au serveur de la communauté (vérifié auprès de Discord).
       </p>
 
@@ -95,7 +97,10 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
       {editable &&
         ADMIN_CHANNEL_CATEGORIES.map((category) => {
           const current = c.channels[category];
-          const known = c.guildChannels?.some((g) => g.id === current?.discordChannelId) ?? false;
+          const channels = c.guildChannels?.filter((g) =>
+            (category === "VOICE" ? VOICE_CHANNEL_TYPES : THREAD_CAPABLE_CHANNEL_TYPES).has(g.type)
+          );
+          const known = channels?.some((g) => g.id === current?.discordChannelId) ?? false;
           return (
             <form key={category} action={setCommunityChannelAction} className="flex flex-col gap-1">
               <input type="hidden" name="communityId" value={c.id} />
@@ -104,7 +109,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
                 {CATEGORY_LABELS[category]}
                 {current && !current.enabled ? " (désactivé)" : ""}
               </label>
-              {c.guildChannels ? (
+              {channels ? (
                 <div className="flex flex-wrap gap-2">
                   <select
                     id={`${c.id}-${category}`}
@@ -115,7 +120,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
                     <option value="" disabled>
                       {current && !known ? `Actuel : ${current.discordChannelId} (introuvable)` : "Choisir un salon"}
                     </option>
-                    {c.guildChannels.map((g) => (
+                    {channels.map((g) => (
                       <option key={g.id} value={g.id}>
                         #{g.name}
                       </option>

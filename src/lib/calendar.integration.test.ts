@@ -79,6 +79,36 @@ describe.skipIf(!TEST_DATABASE_URL)("calendrier : isolation et invitations (Post
     expect((await calendar.getCalendarData(start, end, "viewer")).days[0].roulettes?.map((roulette) => roulette.id).sort()).toEqual(["invited", "own"]);
   });
 
+  it("affiche les dates du serveur actif et seulement les anniversaires de membres actifs", async () => {
+    await db.communityDate.createMany({ data: [
+      { id: "important-a", communityId: "a", createdById: "viewer", kind: "IMPORTANT", title: "Lancement", date: start, repeatsAnnually: false },
+      { id: "important-b", communityId: "b", createdById: "viewer", kind: "IMPORTANT", title: "Privé", date: start, repeatsAnnually: false },
+      { id: "birthday-a", communityId: "a", createdById: "friend-a", memberId: "friend-a", kind: "BIRTHDAY", date: new Date("2000-10-08T00:00:00Z"), repeatsAnnually: true },
+      { id: "birthday-left", communityId: "a", createdById: "friend-b", memberId: "friend-b", kind: "BIRTHDAY", date: new Date("2000-10-08T00:00:00Z"), repeatsAnnually: true },
+    ] });
+    await db.membership.create({ data: { userId: "friend-b", communityId: "a", status: "REMOVED" } });
+    const events = (await calendar.getCalendarData(start, end, "viewer")).days[0].communityDates;
+    expect(events.map((event) => event.title).sort()).toEqual(["Anniversaire · A", "Lancement"]);
+  });
+
+  it("intègre les sorties IGDB des jeux attendus sans exposer celles d’un autre serveur", async () => {
+    await db.game.createMany({ data: [
+      { id: "release-a", name: "Sortie A", source: "MANUAL", addedById: "viewer", igdbDetails: { releaseDate: "2026-10-08T00:00:00.000Z" } },
+      { id: "release-b", name: "Sortie B", source: "MANUAL", addedById: "viewer", igdbDetails: { releaseDate: "2026-10-08T00:00:00.000Z" } },
+    ] });
+    await db.gameWishlist.createMany({ data: [
+      { id: "wishlist-a", gameId: "release-a", proposedById: "viewer", communityId: "a" },
+      { id: "wishlist-b", gameId: "release-b", proposedById: "viewer", communityId: "b" },
+    ] });
+    const eventsA = (await calendar.getCalendarData(start, end, "viewer")).days[0].communityDates;
+    expect(eventsA.map((event) => event.title)).toEqual(["Sortie · Sortie A"]);
+    expect(eventsA[0]).toMatchObject({ kind: "GAME_RELEASE", href: "/jeux/release-a" });
+
+    await db.user.update({ where: { id: "viewer" }, data: { activeCommunityId: "b" } });
+    const eventsB = (await calendar.getCalendarData(start, end, "viewer")).days[0].communityDates;
+    expect(eventsB.map((event) => event.title)).toEqual(["Sortie · Sortie B"]);
+  });
+
   it("les filtres de disponibilité ne retirent pas les choix du panneau de potes", async () => {
     const data = await calendar.getCalendarData(start, end, "viewer", ["viewer", "friend-b"]);
     expect(data.users.map((user) => user.id).sort()).toEqual(["friend-a", "viewer"]);

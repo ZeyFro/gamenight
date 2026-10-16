@@ -5,10 +5,8 @@ import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 export type GuideSection = { icon: string; title: string; lines: string[] };
 
 /**
- * Sections ajoutées au guide (`/guide`) pour « Jouer maintenant » et les
- * tournois. Derrière le drapeau `GUIDE_V2_ENABLED` (éteint par défaut, actif
- * uniquement si la valeur vaut exactement `true`) : éteint, le guide garde ses
- * six sections d'origine.
+ * Le glossaire est toujours disponible dans le guide. « Jouer maintenant »
+ * et les tournois restent derrière `GUIDE_V2_ENABLED`.
  */
 const EXTRA_SECTIONS: GuideSection[] = [
   {
@@ -35,19 +33,31 @@ const VETO_LINE = "Un veto par soirée : les vetos sont anonymes (seul leur nomb
 
 const ROULETTE_VETO_LINE = "Roulette : tant que la soirée n'a pas eu lieu, chaque participant peut vetoer le jeu tiré une fois ; la roue relance sans lui.";
 const ROULETTE_FILTER_LINE = "Roulette : seuls les jeux qui acceptent le nombre de joueurs sont tirés (sinon, tous les jeux).";
+const GLOSSARY_SECTION: GuideSection = {
+  icon: "📖",
+  title: "Glossaire débutants",
+  lines: [
+    "Aggro : l’attention d’un ennemi. Prendre l’aggro, c’est devenir sa cible : préviens les potes si ça chauffe !",
+    "Tank : le rôle qui encaisse et protège l’équipe. Reste près de lui quand les ennemis débarquent.",
+    "GG : « Good game », ou « bien joué ». Un petit GG pour saluer la partie, même après une défaite.",
+    "Carry : porter l’équipe vers la victoire grâce à une grosse performance. Pense à remercier les potes qui t’ont aidé !",
+  ],
+};
 
 export function guideSections(input: GuideSection[]): GuideSection[] {
   const soireesLines = [
+    ...(process.env.SESSION_PREPARATION_ENABLED === "true" ? ["Sur une soirée prévue, chaque participant confirme pour lui-même : installé, mis à jour, micro testé et lobby prêt. La checklist affiche la préparation collective."] : []),
     ...(isVoteVetoEnabled() ? [VETO_LINE, ROULETTE_VETO_LINE] : []),
     ...(isRoulettePlayerFilterEnabled() ? [ROULETTE_FILTER_LINE] : []),
   ];
   const base = soireesLines.length
     ? input.map((s) => (s.title === "Soirées" ? { ...s, lines: [...s.lines, ...soireesLines] } : s))
     : input;
-  if (process.env.GUIDE_V2_ENABLED !== "true") return base;
-  if (!isTournamentScoresEnabled()) return [...base, ...EXTRA_SECTIONS];
+  const withGlossary = [...base, GLOSSARY_SECTION];
+  if (process.env.GUIDE_V2_ENABLED !== "true") return withGlossary;
+  if (!isTournamentScoresEnabled()) return [...withGlossary, ...EXTRA_SECTIONS];
   return [
-    ...base,
+    ...withGlossary,
     ...EXTRA_SECTIONS.map((s) =>
       s.title === "Tournois"
         ? { ...s, lines: [...s.lines, "Tu peux ajouter le score du match (facultatif) : il s'affiche dans le bracket."] }

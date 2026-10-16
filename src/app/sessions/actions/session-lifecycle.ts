@@ -2,7 +2,8 @@
 
 import { resumeCreation } from "@/lib/creation-resume";
 
-import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
+import { createOnce, creationKey } from "@/lib/creation-intent";
+import { createVotingSessionInTransaction } from "@/lib/session-creation";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -12,14 +13,13 @@ import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-re
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
+import { recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
 import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
-  enqueueSessionCreationDeliveries,
-  enqueueSessionInviteSyncForNewInvites,
   enqueueSessionThreadDelete,
 } from "@/lib/session-announce";
 import { awardXp } from "@/lib/xp-actions";
@@ -35,11 +35,11 @@ import { checkSessionsCreatedBadges } from "@/lib/badges";
 import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
-import { createInitialSessionInvites } from "@/lib/session-access";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   createSessionSchema,
   editSessionSchema,
+  sessionPlayedMinutesSchema,
   VALIDATION_ERROR_KEY,
 } from "@/lib/validations";
 
@@ -84,6 +84,15 @@ export async function createSession(formData: FormData) {
     redirect(`/sessions?error=${schedule.error}`);
   }
   const { date, votingDeadline, deadlineAdjusted } = schedule;
+  const recurrenceValue = String(formData.get("recurrence") ?? "");
+  const recurrenceCount = Number(formData.get("recurrenceCount") ?? "4");
+  if (recurrenceValue && !["weekly", "monthly"].includes(recurrenceValue)) redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  if (recurrenceValue && (!Number.isInteger(recurrenceCount) || recurrenceCount < 2 || recurrenceCount > 12)) {
+    redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+  }
+  const occurrenceDates = recurrenceValue
+    ? recurringSessionDates(date, recurrenceValue as SessionRecurrence, recurrenceCount)
+    : [date];
 
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
@@ -132,43 +141,22 @@ export async function createSession(formData: FormData) {
   // annulée — préféré à une session silencieusement jamais annoncée :
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
+  // shortcut: a series contains 2–12 independent sessions with no later series editing; add a persisted series model if users need bulk changes.
   const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
-    await lockCreationMembers(tx, communityId, [user.id, ...notifiedUserIds]);
-    const created = await tx.session.create({
-      data: {
-        date,
-        votingDeadline,
+    const sessions = [];
+    for (const occurrenceDate of occurrenceDates) {
+      sessions.push(await createVotingSessionInTransaction(tx, {
+        date: occurrenceDate,
+        votingDeadline: new Date(occurrenceDate.getTime() - (date.getTime() - votingDeadline.getTime())),
         customReminderMessage,
         reminderTimings,
         notifiedUserIds,
         createdById: user.id,
         announceViaBot,
         communityId,
-      },
-    });
-    // Confidentialité des soirées — `SessionInvite` posée pour EXACTEMENT
-    // les personnes sélectionnées (`notifiedUserIds`, déjà validées contre
-    // de vrais users ci-dessus), jamais plus/moins, DANS LA MÊME
-    // transaction que la création de la session : un crash entre les deux
-    // laisserait sinon une session sans le moindre invité accessible,
-    // visible du seul créateur en silence. Créateur jamais inclus ici
-    // (`createInitialSessionInvites` l'exclut), il garde accès via
-    // `createdById`. Les destinataires sont déjà filtrés et leur appartenance
-    // verrouillée ci-dessus. Le parent vient d'être créé : aucun upsert ou
-    // relecture du parent/par invité nécessaire. Une écriture groupée, dans
-    // la même transaction, conserve les ids pour la synchronisation du fil.
-    const createdInvites = await createInitialSessionInvites(created, user.id, notifiedUserIds, tx);
-    if (announceViaBot) {
-      await enqueueSessionCreationDeliveries(created.id, tx, undefined, created.communityId);
-      // Bug remonté en test réel — un invité sélectionné ICI (au
-      // formulaire de création) n'obtenait jusqu'ici jamais de
-      // synchronisation Discord (voir le commentaire de fonction dans
-      // session-announce.ts) : sans cet enqueue, il n'était jamais ajouté
-      // au fil privé tant que le créateur ne le réinvitait pas
-      // manuellement depuis la page invités.
-      await enqueueSessionInviteSyncForNewInvites(created, createdInvites.map((invite) => invite.id), tx);
+      }));
     }
-    return created;
+    return sessions[0];
   }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
   measure("creationTransaction");
 
@@ -449,6 +437,11 @@ export async function markSessionDoneAction(formData: FormData) {
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return;
+  const duration = sessionPlayedMinutesSchema.safeParse(formData.get("playedMinutes"));
+  if (!duration.success) {
+    redirect(`/sessions/${sessionId}?error=duration_invalide`);
+  }
+  const playedMinutes = duration.data;
 
   // Pas explicitement listée dans l'alignement des permissions demandé
   // (qui nomme "modifier/supprimer/clôturer/annuler"), mais c'est la même
@@ -462,7 +455,7 @@ export async function markSessionDoneAction(formData: FormData) {
   });
   if (!session || session.createdById !== user.id) return;
 
-  const { unlockedAchievements } = await markSessionDone(sessionId);
+  const { unlockedAchievements } = await markSessionDone(sessionId, playedMinutes);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
   revalidatePath("/");

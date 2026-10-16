@@ -3,7 +3,7 @@ import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-cl
 import { getIsolationScope, communityMemberUserWhere } from "@/lib/community-isolation";
 import { accessibleSessionWhere } from "@/lib/session-access";
 import { lockCreationMembers } from "@/lib/creation-intent";
-import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
+import { enqueueSessionAnnounceUpdate, enqueueSessionPromotionDm } from "@/lib/session-announce";
 import { wallClockNow } from "@/lib/wallclock";
 import { planSessionSeats, type SeatStatus } from "@/lib/session-seat-plan";
 
@@ -88,9 +88,12 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       if (!Number.isInteger(command.capacity) || command.capacity < 1 || command.capacity > 100 || (session.decidedGame?.maxPlayers && command.capacity > session.decidedGame.maxPlayers)) return { ok: false, error: "capacity" };
       if (capacity === null) {
         const proposal = await scopedDb.proposal.findFirst({ where: { sessionId, gameId: session.decidedGameId! }, include: { votes: { orderBy: { userId: "asc" } } } });
-        const voters = proposal?.votes.filter(vote => eligible.has(vote.userId)) ?? [];
-        if (voters.length > command.capacity) return { ok: false, error: "capacity" };
-        await scopedDb.sessionSeat.createMany({ data: voters.map(vote => ({ sessionId, userId: vote.userId, status: "CONFIRMED" })) });
+        const existingSeats = await scopedDb.sessionSeat.findMany({ where: { sessionId, userId: { in: [...eligible] } }, select: { userId: true, status: true } });
+        const seatsByUser = new Map(existingSeats.map(seat => [seat.userId, seat.status]));
+        const newVoterIds = (proposal?.votes.filter(vote => eligible.has(vote.userId) && !seatsByUser.has(vote.userId)) ?? []).map(vote => vote.userId);
+        const alreadyConfirmed = existingSeats.filter(seat => seat.status === "CONFIRMED").length;
+        if (alreadyConfirmed + newVoterIds.length > command.capacity) return { ok: false, error: "capacity" };
+        await scopedDb.sessionSeat.createMany({ data: newVoterIds.map(userId => ({ sessionId, userId, status: "CONFIRMED" })) });
       } else {
         const confirmed = await scopedDb.sessionSeat.count({ where: { sessionId, status: "CONFIRMED", userId: { in: [...eligible] } } });
         if (command.capacity < confirmed) return { ok: false, error: "capacity" };
@@ -98,11 +101,10 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       capacity = command.capacity;
       await scopedDb.session.update({ where: { id: sessionId }, data: { attendanceCapacity: capacity } });
     }
-    if (capacity === null) return { ok: false, error: "disabled" };
     const now = new Date();
     const before = await scopedDb.sessionSeat.findUnique({ where: { sessionId_userId: { sessionId, userId } } });
     if (command.kind === "join" && (!before || before.status === "DECLINED")) {
-      await scopedDb.sessionSeat.upsert({ where: { sessionId_userId: { sessionId, userId } }, create: { sessionId, userId, status: "WAITLIST", requestedAt: now }, update: { status: "WAITLIST", requestedAt: now } });
+      await scopedDb.sessionSeat.upsert({ where: { sessionId_userId: { sessionId, userId } }, create: { sessionId, userId, status: capacity === null ? "CONFIRMED" : "WAITLIST", requestedAt: now }, update: { status: capacity === null ? "CONFIRMED" : "WAITLIST", requestedAt: now } });
     } else if (command.kind === "leave" && before && before.status !== "DECLINED") {
       await scopedDb.sessionSeat.update({ where: { sessionId_userId: { sessionId, userId } }, data: { status: "DECLINED" } });
     }
@@ -114,7 +116,10 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       if (status === row.status) continue;
       changed = true;
       await scopedDb.sessionSeat.update({ where: { id: row.id }, data: { status } });
-      if (status === "CONFIRMED") await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
+      if (status === "CONFIRMED") {
+        await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
+        if (row.status === "WAITLIST" && session.announceViaBot) await enqueueSessionPromotionDm(sessionId, row.userId, session.createdViaRoulette, scopedDb);
+      }
     }
     if (changed && session.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, scopedDb);
     if (receiptWhere) await scopedDb.notificationEvent.create({ data: { ...receiptWhere.category_eventType_sourceId_occurrence, communityId: session.communityId, payload: { userId, kind: command.kind, status: plan.get(userId) ?? "DECLINED" } } });

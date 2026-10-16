@@ -22,7 +22,6 @@ import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wall
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getMemberStats } from "@/lib/member-stats";
-import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { VoterAvatars } from "@/components/VoterAvatars";
@@ -48,11 +47,17 @@ import {
   markSessionDoneAction,
   resendDiscordAction,
 } from "../actions/session-lifecycle";
-import { completeWeeklyChallengeAction } from "../actions/results";
 import { pageMetadata } from "@/lib/page-title";
 import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
 import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
+import { resolveVoiceChannelUrl } from "@/lib/community-channels";
+import { SessionRatingForm } from "@/components/sessions/SessionRatingForm";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { GameWarnings } from "@/components/GameWarnings";
+
+import { readSessionPreparation } from "@/lib/session-preparation";
+import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -114,6 +119,19 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  let ratingSummary: { average: number | null; count: number; own: number | null } | null = null;
+  if (session.status === "DONE") {
+    const scopedDb = await getScopedPrisma(user.id);
+    const where = { sessionId: session.id, communityId: session.communityId };
+    const [aggregate, ownRating] = await Promise.all([
+      scopedDb.sessionRating.aggregate({ where, _avg: { rating: true }, _count: { _all: true } }),
+      scopedDb.sessionRating.findFirst({ where: { ...where, userId: user.id }, select: { rating: true } }),
+    ]);
+    ratingSummary = { average: aggregate._avg.rating, count: aggregate._count._all, own: ownRating?.rating ?? null };
+  }
+  const voiceChannelUrl = ["VOTING", "SCHEDULED"].includes(session.status)
+    ? await resolveVoiceChannelUrl(session.communityId)
+    : null;
   const seatState = session.status === "SCHEDULED" ? await readSessionSeats(user.id, session.id) : null;
   const sessionProgress = await getMemberStats(user.id, await statsCommunityIdForSession(session.communityId));
 
@@ -137,6 +155,8 @@ export default async function SessionDetailPage({
       needsSuperlativeVote = alreadyVoted === 0;
     }
   }
+
+  const preparation = await readSessionPreparation(user.id, session.id);
 
   // Sprint 4 — Pronostics + Paris d'XP, ouverts pendant que la soirée est
   // `SCHEDULED` (mêmes participants éligibles que le futur vote de
@@ -292,18 +312,6 @@ export default async function SessionDetailPage({
         : `Toi + ${activeInvites.map((i) => i.user.discordName).join(", ")}`;
   }
 
-  // Défi hebdo (Sprint 3 suite) — bouton "Marquer comme complété" réservé
-  // au créateur d'une soirée DONE, et seulement si le défi de LA SEMAINE
-  // EN COURS n'est pas déjà complété (`completeWeeklyChallenge` refuse de
-  // toute façon une vieille soirée hors de cette semaine, cf. son
-  // commentaire — la requête n'est faite que si elle peut servir).
-  const weeklyChallenge =
-    session.status === "DONE" && isCreator ? await getCurrentWeeklyChallenge(await statsCommunityIdForSession(session.communityId)) : null;
-  const canCompleteWeeklyChallenge =
-    weeklyChallenge !== null &&
-    !weeklyChallenge.completedAt &&
-    session.date >= weeklyChallenge.weekStart;
-
   // Sprint 5 (Chat in-app) — canal dédié à cette soirée.
   const chatMessages = await getChatMessages(session.id, user.id);
 
@@ -323,6 +331,11 @@ export default async function SessionDetailPage({
             {status.label}
           </span>
         </div>
+        {voiceChannelUrl && (
+          <a className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2 font-medium text-background hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" href={voiceChannelUrl} target="_blank" rel="noopener noreferrer">
+            Rejoindre le vocal (ouvre Discord)
+          </a>
+        )}
         {session.status === "VOTING" && (
           <VotingCountdown deadline={votingClosesAt(session).toISOString()} />
         )}
@@ -334,6 +347,17 @@ export default async function SessionDetailPage({
         </p>
       )}
 
+      {session.decidedGame && <GameWarnings game={session.decidedGame} />}
+      {ratingSummary && (
+        <section aria-label="Note de la soirée" className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-3 text-sm text-muted">
+            {ratingSummary.count > 0
+              ? `Satisfaction moyenne : ${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(ratingSummary.average!)} / 5 (${ratingSummary.count} ${ratingSummary.count === 1 ? "note" : "notes"})`
+              : "Pas encore de note pour cette soirée."}
+          </p>
+          <SessionRatingForm sessionId={session.id} rating={ratingSummary.own} />
+        </section>
+      )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
 
       {deadlineAdjusted && (
@@ -592,9 +616,13 @@ export default async function SessionDetailPage({
           )}
           <form action={markSessionDoneAction}>
             <input type="hidden" name="sessionId" value={session.id} />
-            <Button type="submit" size="sm">
-              Marquer comme terminée
-            </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Durée jouée (minutes, facultatif)
+                <input name="playedMinutes" type="number" min={1} max={1440} step={1} inputMode="numeric" className="w-40 rounded-lg border border-border bg-background p-2 text-sm text-foreground" />
+              </label>
+              <Button type="submit" size="sm">Marquer comme terminée</Button>
+            </div>
           </form>
           <form action={cancelSessionAction}>
             <input type="hidden" name="sessionId" value={session.id} />
@@ -616,14 +644,6 @@ export default async function SessionDetailPage({
               ? "Voir les résultats"
               : "🏆 Saisir les résultats"}
           </ButtonLink>
-          {canCompleteWeeklyChallenge && (
-            <form action={completeWeeklyChallengeAction}>
-              <input type="hidden" name="sessionId" value={session.id} />
-              <Button type="submit" variant="secondary" size="sm">
-                🎯 Marquer le défi comme complété
-              </Button>
-            </form>
-          )}
         </div>
       )}
 
@@ -716,6 +736,7 @@ export default async function SessionDetailPage({
                     </Badge>
                   </div>
 
+                  <GameWarnings game={proposal.game} />
                   <p className="text-sm text-muted">
                     {availableCount} dispo{availableCount > 1 ? "s" : ""} et
                     possède le jeu
@@ -797,6 +818,8 @@ export default async function SessionDetailPage({
           )}
         </section>
       )}
+
+      {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
 
       <section className="flex min-h-0 flex-col gap-3">
         <h2 className="text-lg font-semibold text-foreground">💬 Chat</h2>

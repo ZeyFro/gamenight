@@ -8,10 +8,9 @@ Règles de travail des sessions manuelles : `docs/ROADMAP-claude-code.md` (non c
 - **Objectif** : finir toute la feuille de route, sans limite de durée. La boucle ne s’arrête que s’il n’y a plus d’élément `À faire` de nature `code`, ou après 2 échecs consécutifs (remis à zéro dès qu’un élément réussit).
 - **Statuts** : `À faire` · `PR ouverte` · `Fait` · `ÉCHEC — raison` · `À TOI — raison` (blocage humain : secret, service externe, décision produit, validation).
 - **Choix** : premier élément `À faire` de Nature `code`, lots 1 → 7, dans l’ordre des tableaux. Le statut du fichier fait foi.
-- **Pas de pile de PR** : chaque élément part de `origin/main` à jour et sa PR (Draft) a pour base `main`. Les statuts `ÉCHEC` / `À TOI` / `Fait` passent par une PR minimale qui ne modifie que ce fichier.
-- **Fusion** : jamais par Claude. Le script `scripts/work-roadmap.ps1` passe la PR en « ready for review » et la fusionne seulement si la porte déterministe (`scripts/roadmap-gate.mjs`) et la CI GitHub sont vertes, puis attend le déploiement de production. Chaque fusion applique ses migrations sur la base de production : la porte n’admet que des migrations additives.
-- **Pas de plafond de PR ni d’arrêt par lot** : ils remplacent l’arrêt par lot du brief `ROADMAP-claude-code.md` (qui reste valable pour les sessions manuelles et n’est pas modifié). La numérotation de ce fichier (lots 1→7) n’est pas celle du brief : ici ce fichier fait foi.
-- **Lancement** : `powershell -File scripts\work-roadmap.ps1` (`-MaxItems 0` = illimité). Arrêt propre : créer `logs/STOP`. Bilan : `logs/MORNING.md`.
+- **Pile de PR** : chaque élément part de la branche du dernier élément réussi (build, lint et tests verts) et sa PR Draft a cette branche pour base ; le premier part de `origin/main`. `/next-item` lit ce fichier **sur la pointe de la pile**, où les statuts s’accumulent. Un élément en échec n’est jamais une base : son statut `ÉCHEC` est écrit sur une branche de statut seul, partie de la pointe.
+- **Pas de plafond de PR** : il remplace l’arrêt par lot du brief `ROADMAP-claude-code.md` (qui reste valable pour les sessions manuelles et n’est pas modifié). La numérotation de ce fichier (lots 1→7) n’est pas celle du brief : ici ce fichier fait foi.
+- **Lancement** : `pwsh scripts/work-roadmap.ps1` (`-MaxItems 0` = illimité).
 
 ## Lot actuel — #227 (ignoré par la boucle)
 
@@ -28,39 +27,43 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | PR ouverte #232 (`feat/sondages-disponibilites`, Draft, hors boucle) |
-| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | À faire |
+| L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
+| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
 
 ## Lot 3 — Carnet et préparation
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L3-01 | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | À faire |
-| L3-02 | Manette/clavier, micro, plateformes disponibles | ❌ Aucun carnet structuré | Formulaire et affichage aux autres membres | code | À faire |
-| L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | À faire |
-| L3-04 | Avertissements : jumpscares, mal des transports, langue | ❌ Pas d'avertissements structurés | Infos sur les fiches et avant inscription | code | À faire |
-| L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | À faire |
-| L3-06 | Checklist installé / mis à jour / micro / lobby | ❌ Pas de checklist par participant | Cases enregistrées et état de préparation collectif | code | À faire |
-| L3-07 | Temps de préparation | ❌ Pas de durée dédiée | Durée estimée affichée avant la soirée | code | À faire |
+| L3-01 | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | Fait (#235) |
+| L3-02 | Manette/clavier, micro, plateformes disponibles | ❌ Aucun carnet structuré | Formulaire et affichage aux autres membres | code | Fait (#236) |
+| L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
+| L3-04 | Avertissements : jumpscares, mal des transports, langue | ✅ Avertissements visibles avant participation | Aucune | code | Fait (#239 ; PR #238 fusionnée) |
+| L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | Fait (#239) |
+| L3-06 | Checklist installé / mis à jour / micro / lobby | ✅ Checklist individuelle sur les soirées prévues | Aucune | code | Fait (#240) |
+| L3-07 | Temps de préparation | ✅ Durée estimée sur les fiches jeu | Aucune | code | Fait (#241) |
 
 ## Lot 4 — Calendrier pratique
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L4-01 | Export Google/Apple Calendar (iCal) | ❌ Aucun export | Export ou abonnement respectant la confidentialité | code | À faire |
-| L4-02 | Rituels récurrents | ❌ Pas de séries de soirées | « Tous les vendredis », « premier samedi du mois »… | code | À faire |
-| L4-03 | Anniversaires et dates importantes du serveur | ❌ Pas d'événements calendrier dédiés | Saisie et affichage | code | À faire |
-| L4-04 | Bouton « Rejoindre le vocal » | ❌ Aucun parcours/configuration vocale | Salon vocal par communauté, lien depuis la soirée | code | À faire |
+| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
+| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
+| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
+| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
+| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
+| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
 ## Lot 5 — Engagement
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L5-01 | Note de la soirée | ❌ Absente | Vote de satisfaction et moyenne | code | À faire |
+| L5-01 | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
 | L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
-| L5-03 | Quêtes hebdomadaires automatiques | 🟡 Défis hebdo manuels, 100 XP | Objectifs suivis automatiquement (deux jeux différents, invitation d'un nouveau…) | code | À faire |
+| L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
 | L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage de fiabilité et bonus/malus XP (montants à proposer avant) | produit | À TOI — montants d’XP à décider (bonus/malus) |
-| L5-05 | Boutique XP : titres, cadres, couleurs | ❌ Pas de boutique | Catalogue, achat, équipement (dépense XP atomique) | code | À faire |
+| L5-05 | Boutique XP : titres, cadres, couleurs | 🟡 Catalogue, achat et équipement par communauté | Aucune | code | PR en cours (`feat/xp-shop`) |
 
 ## Lot 6 — Compléments communautaires
 
@@ -105,3 +108,11 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 ## Fait ou à valider en réel (ignorés par la boucle)
 
 Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, filtre joueurs, relance sans doublon (#227) · Historique des soirées · Jeux les plus joués et stats du groupe (compléter les indicateurs : validation) · Wrapped mensuel (le Wrapped annuel serait un ajout distinct) · Vote MVP · Saisons et reset (vérifier en réel) · Bracket visuel · Saisie des scores (`TOURNAMENT_SCORES_ENABLED`, vérifier l'activation) · Annonces de tournoi · Popup/MP Steam et planning · Rappels (voir L1-01).
+
+## Bilan (rempli par la boucle, un élément à la fois)
+
+**Ordre de merge** : de haut en bas dans chaque lot, lots 1 → 7. Chaque PR a pour base la précédente : merge la première (base `main`), puis la suivante (GitHub la rebase sur `main` quand la branche de base est supprimée au merge ; à vérifier au premier merge). Les PR « statut seul » (ÉCHEC / À TOI) se mergent aussi, dans l’ordre : elles portent les statuts.
+
+| Lot | Ordre | ID | Branche | PR | Résultat |
+|---|---|---|---|---|---|
+| — | — | — | (pile vide) | — | — |

@@ -32,6 +32,7 @@ import type {
   TerminalDiscordFailureInput,
 } from "@/lib/notification-executor";
 import type { DiscordRestEmbed } from "@/lib/discord-rest";
+import { tournamentRsvpComponents } from "@/lib/tournament-rsvp-components";
 
 /**
  * Chantier annonces Discord tournois (#🏆-tournois, fil dédié par
@@ -135,6 +136,9 @@ function threadInviteSlot(tournamentId: string): string {
 }
 function threadSummarySlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-summary`;
+}
+function matchResultSlot(tournamentId: string, matchId: string): string {
+  return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:match-result:${matchId}`;
 }
 function threadCloseSlot(tournamentId: string): string {
   return `${GUILD_SLOT_PREFIX}:TOURNAMENT:${tournamentId}:thread-close`;
@@ -297,6 +301,26 @@ export async function enqueueTournamentResultThreadSummary(
     },
     db
   );
+}
+
+/** Enqueue a single match result in the tournament thread, once per match. */
+export async function enqueueTournamentMatchResult(
+  tournamentId: string,
+  matchId: string,
+  db?: NotificationDb
+): Promise<void> {
+  const event = await createNotificationEvent(
+    { category: "TOURNAMENT", eventType: "TOURNAMENT_MATCH_RESULT", sourceId: tournamentId, occurrence: matchId },
+    db
+  );
+  await enqueueDelivery({
+    eventId: event.id,
+    channel: "DISCORD_CHANNEL",
+    transport: "BOT",
+    operation: "SEND",
+    recipientKey: "channel",
+    targetSlot: matchResultSlot(tournamentId, matchId),
+  }, db);
 }
 
 /**
@@ -575,7 +599,10 @@ export async function getTournamentAnnounceStatus(tournamentId: string): Promise
 /* -------------------------------------------------------------------- */
 
 type TournamentWithMatches = Tournament & {
-  matches: TournamentMatch[];
+  matches: (TournamentMatch & {
+    player1: Pick<User, "discordName"> | null;
+    player2: Pick<User, "discordName"> | null;
+  })[];
   participants: TournamentParticipant[];
   game: { name: string };
   champion: User | null;
@@ -584,7 +611,10 @@ type TournamentWithMatches = Tournament & {
 async function loadTournament(tournamentId: string): Promise<TournamentWithMatches | null> {
   return prisma.tournament.findUnique({
     where: { id: tournamentId },
-    include: { matches: true, participants: true, game: { select: { name: true } }, champion: true },
+    include: {
+      matches: { include: { player1: { select: { discordName: true } }, player2: { select: { discordName: true } } } },
+      participants: true, game: { select: { name: true } }, champion: true,
+    },
   });
 }
 
@@ -845,14 +875,15 @@ function mentionContent(users: { discordId: string }[]): { text: string; userIds
 /** Contenu commun à la plupart des rôles — jamais de mention (embed
  * uniquement) SAUF pour le SEND initial de `announce`, seul appelant à
  * fournir `mentionedUsers` non vide (voir `resolveAnnounceDelivery`). */
-function buildMessageContent(embed: DiscordRestEmbed, mentionedUsers: { discordId: string }[] = []): ResolvedMessageContent {
+function buildMessageContent(embed: DiscordRestEmbed, mentionedUsers: { discordId: string }[] = [], components: ResolvedMessageContent["components"] = []): ResolvedMessageContent {
   if (mentionedUsers.length === 0) {
-    return { embeds: [embed], allowedMentions: NO_MENTIONS };
+    return { embeds: [embed], allowedMentions: NO_MENTIONS, components };
   }
   const { text, userIds } = mentionContent(mentionedUsers);
   return {
     content: text,
     embeds: [embed],
+    components,
     // Liste EXPLICITE d'ids (`users`), jamais `parse: ["users"]` — exclut
     // structurellement tout autre `<@id>` qui apparaîtrait par accident
     // dans le texte (ex. un nom de tournoi ressemblant à une mention) :
@@ -956,6 +987,9 @@ export const tournamentAnnounceResolver: DeliveryResolver = {
     }
     if (role === "thread-summary") {
       return resolveThreadSummary(tournamentId, tournament);
+    }
+    if (role.startsWith("match-result:")) {
+      return resolveMatchResult(role.slice("match-result:".length), tournament);
     }
     if (role.startsWith("member:")) {
       const userId = role.slice("member:".length);
@@ -1131,7 +1165,7 @@ async function resolveAnnounceDelivery(
       kind: "send_channel_message_verified",
       channelId: tournament.discordChannelId,
       guildId: tournament.discordGuildId,
-      message: buildMessageContent(rendering.embed),
+      message: buildMessageContent(rendering.embed, [], tournamentRsvpComponents(tournament.id, tournament.status === "REGISTRATION")),
     };
     return { eligible: true, action };
   }
@@ -1154,7 +1188,7 @@ async function resolveAnnounceDelivery(
     kind: "edit_channel_message",
     channelId: sent.discordChannelId,
     messageId: sent.discordMessageId,
-    message: buildMessageContent(rendering.embed),
+    message: buildMessageContent(rendering.embed, [], tournamentRsvpComponents(tournament?.id ?? tournamentId, tournament?.status === "REGISTRATION")),
   };
   return { eligible: true, action };
 }
@@ -1350,4 +1384,33 @@ async function resolveThreadSummary(
     message: buildMessageContent(embed),
   };
   return { eligible: true, action };
+}
+
+async function resolveMatchResult(matchId: string, tournament: TournamentWithMatches): Promise<Resolution> {
+  if (tournament.status !== "IN_PROGRESS" && tournament.status !== "DONE") return { eligible: false, reason: "expired" };
+  const thread = await findSentDelivery(threadSlot(tournament.id));
+  if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
+
+  const match = tournament.matches.find((candidate) => candidate.id === matchId);
+  if (!match?.completedAt || !match.winnerId) return { eligible: false, reason: "unresolvable" };
+  const winner = match.winnerId === match.player1Id ? match.player1 : match.winnerId === match.player2Id ? match.player2 : null;
+  if (!winner) return { eligible: false, reason: "unresolvable" };
+  const winnerIsPlayer1 = match.winnerId === match.player1Id;
+  const opponent = winnerIsPlayer1 ? match.player2 : match.player1;
+  const result = opponent ? `bat ${opponent.discordName}` : "remporte le match par forfait";
+  const score = opponent && match.score1 !== null && match.score2 !== null
+    ? ` (${winnerIsPlayer1 ? match.score1 : match.score2}–${winnerIsPlayer1 ? match.score2 : match.score1})`
+    : "";
+
+  return {
+    eligible: true,
+    action: {
+      kind: "send_thread_message",
+      threadId: thread.discordThreadId,
+      message: {
+        content: `🏆 ${tournament.name} — manche ${match.round}, match ${match.position + 1} : ${winner.discordName} ${result}${score}.`,
+        allowedMentions: NO_MENTIONS,
+      },
+    },
+  };
 }

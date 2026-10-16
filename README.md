@@ -2754,7 +2754,7 @@ src/app/sessions/[id]/resultats/page.tsx # Saisie/consultation du podium ou du b
 src/app/sessions/[id]/vote-superlatifs/page.tsx # Vote de superlatifs entre potes (PR 5/9)
 src/app/sessions/actions/session-lifecycle.ts # Server actions : cycle de vie session (create/edit/close/cancel/delete/markDone/resendDiscord)
 src/app/sessions/actions/proposals-votes.ts   # Server actions : proposer un jeu, voter, retirer une proposition
-src/app/sessions/actions/results.ts           # Server actions : saisie résultats, défi hebdo complété
+src/app/sessions/actions/results.ts           # Server actions : saisie des résultats
 src/app/sessions/actions/superlatives.ts      # Server actions : vote de superlatifs
 src/app/sessions/actions/predictions.ts       # Server actions : pronostics, paris XP
 src/components/SessionResultsForm.tsx   # Formulaire podium/coop de la page résultats
@@ -6197,7 +6197,7 @@ reste disponible tel quel, derrière un toggle.
   `checkGroupAchievements()`, retourne les trophées débloqués
 - `src/lib/validations.ts` — `setDebtGageSchema`
 - `src/app/dettes/actions.ts` (nouveau)
-- `src/app/sessions/actions.ts` — `completeWeeklyChallengeAction`,
+- `src/app/sessions/actions.ts` —
   `markSessionDoneAction` (celebrate achievement), `submitSessionResultsAction`
   (toggle présent + `detectDebts`)
 - `src/components/SessionResultsForm.tsx` — toggle "Présent" par participant
@@ -12958,3 +12958,7 @@ La CSP est envoyée en `Content-Security-Policy-Report-Only` (`src/lib/csp-polic
 ## Accueil v2 (`/accueil-v2`, drapeau `HOME_V2_ENABLED`)
 
 Page de comparaison de l'accueil : **mêmes requêtes** (`src/lib/home-data.ts`, copie des requêtes de `src/app/page.tsx`, mêmes filtres de confidentialité), **mêmes cartes et mêmes libellés**, même en-tête et même navigation (ceux du layout) ; seules la hiérarchie et l'espacement changent : prochaine soirée en grand, puis les trois actions (« Jouer maintenant » en violet, « Mes dispos », « Soirées »), puis « cette semaine » (dispos, activité), « le groupe » (classement, stats), et le reste dans l'ordre de l'accueil actuel. **Éteint par défaut** : sans `HOME_V2_ENABLED=true` la route répond 404 ; `/` n'est pas modifié. Page en lecture seule : elle ne déclenche ni la clôture automatique d'une soirée ni l'onboarding (que `/` continue de gérer). Captures avant/après : `docs/captures-accueil-v2/`.
+
+## Checklist de préparation (L3-06)
+
+`SESSION_PREPARATION_ENABLED=true` active installé / mis à jour / micro testé / lobby prêt sur les soirées prévues avec un jeu retenu. OFF par défaut, lecture et écriture désactivées. Appliquer la migration additive `20261016120000_session_preparation` avant activation. Chaque participant modifie uniquement ses cases ; les personnes autorisées à voir la soirée voient le collectif. Participants : places confirmées si capacité active, sinon votants du jeu retenu, toujours restreints aux accès actifs et à la communauté. Un changement de jeu affiche une checklist distincte. Aucun envoi Discord, aucune estimation de téléchargement. Désactiver le flag conserve les données.
