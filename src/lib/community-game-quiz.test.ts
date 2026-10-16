@@ -3,7 +3,6 @@ import { buildCommunityGameQuizRound, isCorrectGameAnswer, normalizeGameAnswer, 
 
 const game = (name: string, details: CommunityQuizGame["details"]): CommunityQuizGame => ({
   name,
-  coverUrl: null,
   details,
 });
 

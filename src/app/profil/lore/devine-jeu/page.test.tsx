@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.user.mockResolvedValue({ id: "viewer" });
   mocks.games.mockResolvedValue([{
-    name: "Stardew Valley", coverUrl: null,
+    name: "Stardew Valley",
     details: {
       igdbId: 1, name: "Stardew Valley", summary: null, descriptionFr: null, totalRating: null,
       coverUrl: null, screenshotUrls: [], youtubeVideoIds: [], platforms: ["PC"], genres: ["RPG"],

@@ -12,13 +12,13 @@ beforeEach(() => {
 
 describe("getCommunityQuizGames", () => {
   it("loads only played games from the viewer's active scoped client", async () => {
-    mocks.findMany.mockResolvedValue([{ game: { name: "Game", coverUrl: null, igdbDetails: null } }]);
-    await expect(getCommunityQuizGames("viewer")).resolves.toEqual([{ name: "Game", coverUrl: null, details: null }]);
+    mocks.findMany.mockResolvedValue([{ game: { name: "Game", igdbDetails: null } }]);
+    await expect(getCommunityQuizGames("viewer")).resolves.toEqual([{ name: "Game", details: null }]);
     expect(mocks.activeDb).toHaveBeenCalledWith("viewer");
     expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { playCount: { gt: 0 } },
       take: 100,
-      select: { game: { select: { name: true, coverUrl: true, igdbDetails: true } } },
+      select: { game: { select: { name: true, igdbDetails: true } } },
     }));
   });
 });

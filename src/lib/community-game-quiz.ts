@@ -2,13 +2,11 @@ import type { IgdbGameDetails } from "@/lib/igdb";
 
 export interface CommunityQuizGame {
   name: string;
-  coverUrl: string | null;
   details: IgdbGameDetails | null;
 }
 
 export interface CommunityGameQuizRound {
   answer: string;
-  coverUrl: string | null;
   clues: string[];
 }
 
@@ -26,11 +24,11 @@ export function buildCommunityGameQuizRound(
       details.releaseDate?.match(/^\d{4}/)?.[0] ? `Sorti en ${details.releaseDate.slice(0, 4)}` : null,
     ].filter((fact): fact is string => Boolean(fact));
     const clues = [...new Set(facts)].slice(0, 3);
-    return clues.length === 3 ? [{ answer: game.name, coverUrl: game.coverUrl, clues }] : [];
+    return clues.length === 3 ? [{ answer: game.name, clues }] : [];
   });
 
   if (eligible.length === 0) return null;
-  return eligible[Math.floor(rng() * eligible.length)];
+  return eligible[Math.min(eligible.length - 1, Math.floor(rng() * eligible.length))];
 }
 
 export function normalizeGameAnswer(value: string): string {

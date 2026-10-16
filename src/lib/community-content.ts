@@ -8,11 +8,10 @@ export async function getCommunityQuizGames(viewerId: string): Promise<Community
     where: { playCount: { gt: 0 } },
     orderBy: { playCount: "desc" },
     take: 100,
-    select: { game: { select: { name: true, coverUrl: true, igdbDetails: true } } },
+    select: { game: { select: { name: true, igdbDetails: true } } },
   });
   return played.map(({ game }) => ({
     name: game.name,
-    coverUrl: game.coverUrl,
     details: game.igdbDetails as unknown as IgdbGameDetails | null,
   }));
 }

@@ -5,7 +5,7 @@ import { CommunityGameQuiz } from "./CommunityGameQuiz";
 
 afterEach(cleanup);
 
-const round = { answer: "Le Café 2", coverUrl: null, clues: ["Genre : Puzzle", "Thème : Mystère", "Studio : Équipe" ] };
+const round = { answer: "Le Café 2", clues: ["Genre : Puzzle", "Thème : Mystère", "Studio : Équipe" ] };
 
 describe("CommunityGameQuiz", () => {
   it("reveals clues progressively and accepts accent-insensitive guesses", () => {
