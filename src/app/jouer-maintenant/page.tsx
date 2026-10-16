@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantSessionCreateForm";
+import { gameWarningsSelect } from "@/lib/game-warnings";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -43,7 +44,7 @@ export default async function JouerMaintenantPage({
   const [activeSessions, myActiveSession, games, potesRaw] = await Promise.all([
     listActiveInstantSessions(user.id),
     getActiveInstantSessionForUser(user.id),
-    prisma.game.findMany({ select: { id: true, name: true, igdbId: true }, orderBy: { name: "asc" } }),
+    prisma.game.findMany({ select: { id: true, name: true, igdbId: true, ...gameWarningsSelect }, orderBy: { name: "asc" } }),
     prisma.user.findMany({
       where: { id: { not: user.id }, ...(await creationMemberUserWhere(user.id)) },
       select: { id: true, discordName: true, discordAvatar: true, color: true },

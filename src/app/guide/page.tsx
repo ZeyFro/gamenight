@@ -16,6 +16,7 @@ const SECTIONS: GuideSection[] = [
       "Dans Bibliothèque du groupe, choisis les personnes qui joueront pour voir les jeux possédés par chacune d’elles.",
       "Inclus-toi si tu participes. Les autres filtres restent disponibles ; efface la sélection pour retrouver tout le groupe.",
       "Les bibliothèques déclarées doivent être à jour : ce filtre ne vérifie ni l’installation ni la présence en ligne.",
+      "Sur la fiche d’un jeu, consulte le prix Steam en France et les informations de téléchargement déclarées avec leur source. Le volume varie selon la plateforme et la version ; une valeur absente reste inconnue.",
       "Dans l’onglet Suggestions, choisis les participants : leurs jeux communs sont classés selon leurs préférences, en excluant les jeux et catégories refusés.",
     ],
   },
@@ -35,6 +36,7 @@ const SECTIONS: GuideSection[] = [
       "Propose une date, tes potes votent pour le jeu.",
       "Le jeu le plus voté est retenu à la deadline.",
       "Retrouve les soirées passées dans l'onglet Historique.",
+      "Avant de participer, consulte les avertissements et les langues du jeu. Les joueurs qui possèdent le jeu peuvent les renseigner sur sa fiche ; une information non renseignée reste inconnue.",
     ],
   },
   {

@@ -4,6 +4,7 @@ import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, scopedTransaction
 import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
+import { gameWarningsSelect, type GameWarningsData } from "@/lib/game-warnings";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
@@ -504,7 +505,7 @@ export interface InstantSessionParticipantView {
 export interface InstantSessionView {
   id: string;
   status: "ACTIVE" | "ENDED";
-  game: { id: string; name: string; coverUrl: string | null };
+  game: { id: string; name: string; coverUrl: string | null } & GameWarningsData;
   creator: { id: string; discordName: string; discordAvatar: string | null; color: string };
   createdAt: Date;
   expiresAt: Date;
@@ -570,7 +571,7 @@ export async function getInstantSessionView(
       expiresAt: true,
       endedAt: true,
       endedReason: true,
-      game: { select: { id: true, name: true, coverUrl: true } },
+      game: { select: { id: true, name: true, coverUrl: true, ...gameWarningsSelect } },
       createdBy: { select: { id: true, discordName: true, discordAvatar: true, color: true } },
       presence: {
         select: {
@@ -637,6 +638,7 @@ export function toInstantSessionViewDTO(view: InstantSessionView): InstantSessio
   const { createdAt, expiresAt, endedAt, ...rest } = view;
   return {
     ...rest,
+    game: { ...rest.game, ...(rest.game.warningsUpdatedAt instanceof Date ? { warningsUpdatedAt: rest.game.warningsUpdatedAt.toISOString() } : {}) },
     createdAtIso: createdAt.toISOString(),
     expiresAtIso: expiresAt.toISOString(),
     endedAtIso: endedAt ? endedAt.toISOString() : null,
