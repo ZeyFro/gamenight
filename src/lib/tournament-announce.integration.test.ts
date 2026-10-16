@@ -274,20 +274,24 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const result = await finalizeTournament(tournament.id, creator.id);
         expect(result.tournamentDone).toBe(true);
 
-        mockSendOk("chan-tournois");
-        const closureEdit = await processOne();
-        expect(closureEdit?.outcome).toBe("sent");
-        const [, closureInit] = fetchMock.mock.calls.at(-1)!;
+        const callsBeforeClosure = fetchMock.mock.calls.length;
+        for (let i = 0; i < 5; i++) {
+          fetchMock.mockImplementationOnce(async (url, init) => jsonResponse(200, {
+            id: `msg-closure-${i}`,
+            channel_id: init.method === "PATCH" ? "chan-tournois" : "thread-1",
+          }));
+          expect((await processOne())?.outcome).toBe("sent");
+        }
+        const closureCalls = fetchMock.mock.calls.slice(callsBeforeClosure);
+        const closureInit = closureCalls.find(([, init]) => init.method === "PATCH")![1];
         const closureBody = JSON.parse(String(closureInit.body));
         expect(closureBody.embeds[0].title).toContain("terminé");
 
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-summary", channel_id: "thread-1" }));
-        const summaryOutcome = await processOne();
-        expect(summaryOutcome?.outcome).toBe("sent");
-        const [, summaryInit] = fetchMock.mock.calls.at(-1)!;
-        const summaryBody = JSON.parse(String(summaryInit.body));
+        const bodies = closureCalls.map(([, init]) => JSON.parse(String(init.body)));
+        const summaryBody = bodies.find((body) => body.embeds?.[0].title.startsWith("🎮 Résumé"));
         expect(summaryBody.embeds[0].fields.some((f: { name: string }) => f.name === "🏆 Champion")).toBe(true);
         expect(summaryBody.allowed_mentions).toEqual({ parse: [] });
+        expect(bodies.filter((body) => body.content?.includes(" — manche "))).toHaveLength(3);
 
         // Cette PR n'attribue AUCUN XP/badge — `declareWinner`/`finalizeTournament`
         // gardent exactement le même mécanisme XP qu'avant (hors périmètre
@@ -586,6 +590,77 @@ describe.skipIf(!TEST_DATABASE_URL)(
         expect(
           await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MODIFIED" } })
         ).toBe(1);
+        expect(
+          await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })
+        ).toBe(1);
+        expect(
+          await db.notificationDelivery.count({ where: { targetSlot: { contains: `:match-result:${match.id}` } } })
+        ).toBe(1);
+      });
+
+      it("résultat de match : enqueue dans le thread, par match, sans ping même si un nom contient @everyone", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        const first = await makeUser({ discordName: "@everyone joueur" });
+        const second = await makeUser({ discordName: "Joueur 2" });
+        await makeParticipant(tournament.id, first.id);
+        await makeParticipant(tournament.id, second.id);
+        for (let i = 0; i < 2; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        await processOne(); // EDIT lancement
+
+        const match = await db.tournamentMatch.findFirstOrThrow({
+          where: { tournamentId: tournament.id, round: 1, OR: [{ player1Id: first.id }, { player2Id: first.id }] },
+          include: { player1: true, player2: true },
+        });
+        const firstIsPlayer1 = match.player1Id === first.id;
+        const opponent = firstIsPlayer1 ? match.player2 : match.player1;
+        const scores = firstIsPlayer1 ? { score1: 3, score2: 1 } : { score1: 1, score2: 3 };
+        expect((await tournamentsLib.declareWinner(match.id, first.id, creator.id, scores)).ok).toBe(true);
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT", occurrence: match.id } })).toBe(1);
+        expect(await db.notificationDelivery.count({ where: { targetSlot: `default-guild:TOURNAMENT:${tournament.id}:match-result:${match.id}` } })).toBe(1);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "message-match-result", channel_id: "thread-1" }));
+        const sent = await processOne();
+        expect(sent?.outcome).toBe("sent");
+        expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("/channels/thread-1/messages");
+        const body = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
+        expect(body.content).toContain("@everyone joueur");
+        expect(body.content).toContain(`bat ${opponent!.discordName}`);
+        expect(body.content).toContain("3–1");
+        expect(body.allowed_mentions).toEqual({ parse: [] });
+      });
+
+      it("échec d'enqueue du résultat : la déclaration du vainqueur est annulée avec la transaction", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id);
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await launchBracket(tournament.id);
+        const match = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 1 } });
+
+        vi.spyOn(announceLib, "enqueueTournamentMatchResult").mockRejectedValueOnce(new Error("panne enqueue"));
+        await expect(tournamentsLib.declareWinner(match.id, match.player1Id!, creator.id)).rejects.toThrow("panne enqueue");
+        expect((await db.tournamentMatch.findUniqueOrThrow({ where: { id: match.id } })).completedAt).toBeNull();
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })).toBe(0);
+      });
+
+      it("tournoi sans annonce bot : aucun résultat Discord n'est mis en file", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { announceViaBot: false });
+        for (let i = 0; i < 4; i++) await makeParticipant(tournament.id, (await makeUser()).id);
+        await launchBracket(tournament.id);
+        const match = await db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: tournament.id, round: 1 } });
+        expect((await tournamentsLib.declareWinner(match.id, match.player1Id!, creator.id)).ok).toBe(true);
+        expect(await db.notificationEvent.count({ where: { sourceId: tournament.id, eventType: "TOURNAMENT_MATCH_RESULT" } })).toBe(0);
       });
     });
 
@@ -657,14 +732,18 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const afterLaunch = await runCron();
         expect((await afterLaunch.json()).sent).toBe(1);
 
-        // 3) Clôture → EDIT de l'annonce ("terminé") + SEND du résumé de fil.
+        // 3) Trois résultats de match + EDIT de clôture + SEND du résumé de fil.
         const result = await finalizeTournament(tournament.id, creator.id);
         expect(result.tournamentDone).toBe(true);
-        mockSendOk("chan-tournois"); // EDIT clôture
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-summary", channel_id: "thread-1" })); // SEND résumé
+        for (let i = 0; i < 5; i++) {
+          fetchMock.mockImplementationOnce(async (url, init) => jsonResponse(200, {
+            id: `msg-closure-${i}`,
+            channel_id: init.method === "PATCH" ? "chan-tournois" : "thread-1",
+          }));
+        }
         const afterClosure = await runCron();
         const closureBody = await afterClosure.json();
-        expect(closureBody.sent).toBe(2);
+        expect(closureBody.sent).toBe(5);
         expect(closureBody.failed).toBe(0);
 
         // Toutes les livraisons de ce tournoi ont bien atteint SENT malgré
@@ -673,7 +752,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           where: { targetSlot: { startsWith: `default-guild:TOURNAMENT:${tournament.id}:` } },
         });
         expect(deliveries.every((d) => d.status === "SENT" || d.status === "SKIPPED")).toBe(true);
-        expect(deliveries.filter((d) => d.status === "SENT")).toHaveLength(5); // announce SEND, thread SEND, announce EDIT×2, thread-summary SEND
+        expect(deliveries.filter((d) => d.status === "SENT")).toHaveLength(8); // annonce, fil, deux éditions, résumé et trois résultats
       });
 
       it("configuration absente (canal tournois non renseigné) : not_configured terminal, aucun appel Discord", async () => {

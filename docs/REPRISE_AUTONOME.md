@@ -1,5 +1,20 @@
 # Reprise autonome du 16 octobre 2026
 
+## Deuxième portable — reprise de #268 (16 octobre 2026)
+
+- Autorisation explicite : branches/PR et fusion après validation des contrôles requis. La session du premier portable peut toujours être active ; aucun arrêt déduit de ce diagnostic.
+- Checkout principal `C:/Users/mpmax/gamenight` laissé sur main `6b26425`. Travail isolé dans `.codex-worktrees/reprise-268`, branche locale `fix/reprise-268`, créée au SHA distant de #268 `7d6e0311d174c43f5f1a6326bc573e6c9c0b1507`. Répertoire exclu localement via `.git/info/exclude`.
+- Avant chaque push, comparer `git ls-remote origin refs/heads/feat/tournament-match-announcements` au dernier SHA observé. En cas de changement, récupérer et réconcilier les commits avant de recommencer les contrôles ; jamais de force-push.
+- `npm ci` réussi avec Node 24.20.0 / npm 11.19.0, génération Prisma réussie. L'installation signale neuf vulnérabilités élevées dans les dépendances existantes ; aucun correctif automatique ni changement de dépendance effectué.
+- Docker 29.8.2 / Compose 5.6.0 disponibles. Nouveau conteneur dédié `gamenight-reprise-268-pg` (`postgres:16-alpine`), port `127.0.0.1:55439`, base `gamenight_test`, identifiants de test `postgres` / `test`. Les autres conteneurs, dont l'ancien `gamenight-test-pg` arrêté, restent intacts. Les 93 migrations existantes sont appliquées sur cette base locale uniquement.
+- Tests : fournir `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test` dans le processus PowerShell, puis `npm.cmd run test:postgres` (série obligatoire). Pour migrer ce conteneur uniquement, fournir la même URL sous `DATABASE_URL` et lancer `npx.cmd --no-install prisma migrate deploy`. Aucun fichier `.env` créé ou lu.
+- CI initiale [38938641094](https://github.com/ZeyFro/gamenight/actions/runs/38938641094) : quatre échecs, 2 748 réussites. Reproduction locale avant correction : exactement quatre échecs et 67 réussites sur `community-scope.test.ts` et `tournament-announce.integration.test.ts`.
+- Causes démontrées : nouvel accès direct `prisma.tournamentMatch` refusé par la garde ; deux anciennes simulations de clôture ignorent les trois nouvelles annonces de match ; fixture de deux joueurs dans un bracket de quatre ciblant un bye déjà terminé.
+- Correction : réutiliser les matchs du tournoi chargé avec les noms des joueurs, sans étendre les exceptions d'isolation ; fixture à quatre joueurs et scores adaptés au tirage ; vérifier cinq livraisons après clôture et huit au total, sans imposer leur ordre. Relecture indépendante statique : aucun blocage identifié, aucun test exécuté par le relecteur.
+- **Blocage Vercel : quota `api-deployments-free-per-day` dépassé** sur #267 et #268. Le commentaire Vercel demande d'attendre 24 heures. Aucune relance manuelle, aucun contournement et aucune fusion tant que le contrôle Vercel du SHA final n'est pas vert ; la CI GitHub doit également être verte. Une ancienne Preview verte ne valide pas le SHA final.
+- Outils réellement testés ici : Git, gh authentifié, Node/npm, Docker et MCP GitHub (lecture du dépôt). Le skill `gamenight-tool-routing` du premier portable est absent ici ; Playwright et claude-mem ne sont pas exposés dans cette session. `.claude/commands/next-item.md` référence `docs/ROADMAP-claude-code.md`, absent : ne pas supposer ces instructions accessibles.
+- Validation après correction : 71/71 tests ciblés réussis, aucun ignoré ; `next typegen`, TypeScript `--noEmit`, lint complet, `git diff --check` et `npx next build` réussis. Suite complète `npm run test:postgres` lancée sur le conteneur dédié ; résultat encore en attente au checkpoint de publication, ne pas le présenter comme réussi. La CI du nouveau SHA reste également à vérifier.
+
 ## Bibliothèque et inventaire
 
 - #234 fusionnée le 16 octobre à 08:56:06 UTC ; commit de fusion `5724728501d5ebdcf680702aa7a5056d14c37cf6`.
