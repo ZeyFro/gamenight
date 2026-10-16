@@ -3,6 +3,7 @@ import {
   idSchema,
   dateStringSchema,
   timeStringSchema,
+  sessionPlayedMinutesSchema,
   hexColorSchema,
   httpUrlSchema,
   createSessionSchema,
@@ -34,6 +35,14 @@ describe("primitives", () => {
     expect(timeStringSchema.safeParse("24:00").success).toBe(false);
     expect(timeStringSchema.safeParse("9:30").success).toBe(false);
     expect(timeStringSchema.safeParse("09:60").success).toBe(false);
+  });
+
+  it("sessionPlayedMinutesSchema accepte une durée facultative de 1 à 1440 minutes", () => {
+    expect(sessionPlayedMinutesSchema.safeParse(null)).toMatchObject({ success: true, data: undefined });
+    expect(sessionPlayedMinutesSchema.safeParse("60")).toMatchObject({ success: true, data: 60 });
+    for (const value of ["0", "1441", "1.5", "NaN"]) {
+      expect(sessionPlayedMinutesSchema.safeParse(value).success).toBe(false);
+    }
   });
 
   it("hexColorSchema exige #RRGGBB", () => {

@@ -990,9 +990,9 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       const game = await makeGame(user.id);
       const session = await makeSession(user.id, { status: "SCHEDULED", decidedGameId: game.id });
 
-      await sessionsLib.markSessionDone(session.id);
+      await sessionsLib.markSessionDone(session.id, 135);
       expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
-      expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect(await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).toMatchObject({ playCount: 1, totalPlayMinutes: 135 });
 
       // Rappel sur une soirée DÉJÀ DONE (bouton créateur cliqué deux fois,
       // ou passage cron qui retombe sur une soirée déjà clôturée) — le
@@ -1001,6 +1001,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // l'incrément : jamais un second comptage pour la même soirée.
       await sessionsLib.markSessionDone(session.id);
       expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
+      expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).totalPlayMinutes).toBe(135);
       expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
     });
 
@@ -1013,10 +1014,11 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // même temps) — le verrou de ligne Postgres sur le `updateMany`
       // conditionnel sérialise les deux : un seul obtient `count: 1` et
       // incrémente, l'autre voit `count: 0` et ressort sans rien toucher.
-      await Promise.all([sessionsLib.markSessionDone(session.id), sessionsLib.markSessionDone(session.id)]);
+      await Promise.all([sessionsLib.markSessionDone(session.id, 60), sessionsLib.markSessionDone(session.id, 120)]);
 
       expect((await db.groupSessionStats.findFirstOrThrow()).totalSessionsPlayed).toBe(1);
       expect((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).playCount).toBe(1);
+      expect([60, 120]).toContain((await db.groupGameStat.findFirstOrThrow({ where: { gameId: game.id } })).totalPlayMinutes);
       expect((await db.session.findUniqueOrThrow({ where: { id: session.id } })).status).toBe("DONE");
     });
 
@@ -1036,17 +1038,19 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
           decidedGameId: catan.id,
           date: new Date(`2026-09-0${i}T20:00:00.000Z`),
         });
-        await sessionsLib.markSessionDone(s.id);
+        await sessionsLib.markSessionDone(s.id, 120);
       }
       const recent = await makeSession(user.id, {
         status: "SCHEDULED",
         decidedGameId: wingspan.id,
         date: new Date("2026-09-18T20:00:00.000Z"), // dans la fenêtre, jamais purgée
       });
-      await sessionsLib.markSessionDone(recent.id);
+      await sessionsLib.markSessionDone(recent.id, 90);
 
       const before = await homeLib.getGroupStats("viewer");
       expect(before.totalSessionsPlayed).toBe(4);
+      expect(before.totalPlayMinutes).toBe(450);
+      expect(before.gamePlayTimes).toContainEqual({ gameId: catan.id, name: catan.name, playedMinutes: 360 });
       expect(before.mostPlayedGame).toEqual({ name: catan.name, coverUrl: catan.coverUrl, count: 3 });
 
       const purgeResult = await retention.purgeEligibleSessionsBatch({ dryRun: false, now });

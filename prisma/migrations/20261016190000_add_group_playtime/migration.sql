@@ -1,0 +1,2 @@
+ALTER TABLE "GroupGameStat"
+ADD COLUMN "totalPlayMinutes" INTEGER NOT NULL DEFAULT 0;

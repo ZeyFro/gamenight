@@ -272,6 +272,22 @@ export default async function AccueilV2Page() {
                       </div>
                     </div>
                   )}
+                  {d.groupStats.totalPlayMinutes > 0 && (
+                    <div className="col-span-2 border-t border-border pt-3">
+                      <p className="text-sm font-medium text-foreground">Temps de jeu déclaré · {formatDurationFr(d.groupStats.totalPlayMinutes * 60_000)}</p>
+                      <details className="mt-2 text-xs text-muted">
+                        <summary className="cursor-pointer">Temps par jeu ({d.groupStats.gamePlayTimes.length})</summary>
+                        <ul className="mt-2 space-y-1">
+                          {d.groupStats.gamePlayTimes.map((game) => (
+                            <li key={game.gameId} className="flex justify-between gap-3">
+                              <span className="truncate">{game.name}</span>
+                              <span className="shrink-0 tabular-nums">{formatDurationFr(game.playedMinutes * 60_000)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </div>
+                  )}
                   {d.groupStats.bestActiveStreak && (
                     <div className="col-span-2">
                       <p className="text-sm font-medium text-foreground">

@@ -571,8 +571,12 @@ export async function cancelSession(sessionId: string): Promise<void> {
 }
 
 export async function markSessionDone(
-  sessionId: string
+  sessionId: string,
+  playedMinutes?: number
 ): Promise<{ unlockedAchievements: GroupAchievement[] }> {
+  if (playedMinutes !== undefined && (!Number.isInteger(playedMinutes) || playedMinutes < 1 || playedMinutes > 1440)) {
+    throw new RangeError("La durée jouée doit être comprise entre 1 et 1440 minutes.");
+  }
   // Chantier nettoyage réel du stockage (V2, suite) — la transition de
   // statut ET l'incrément des compteurs durables de "Stats du groupe"
   // (Home, `GroupSessionStats`/`GroupGameStat`) ET la ligne durable du
@@ -613,8 +617,11 @@ export async function markSessionDone(
     if (updated?.decidedGameId) {
       await tx.groupGameStat.upsert({
         where: { communityId_gameId: { communityId, gameId: updated.decidedGameId } },
-        create: { communityId, gameId: updated.decidedGameId, playCount: 1 },
-        update: { playCount: { increment: 1 } },
+        create: { communityId, gameId: updated.decidedGameId, playCount: 1, totalPlayMinutes: playedMinutes ?? 0 },
+        update: {
+          playCount: { increment: 1 },
+          ...(playedMinutes === undefined ? {} : { totalPlayMinutes: { increment: playedMinutes } }),
+        },
       });
     }
     if (updated?.date) {
