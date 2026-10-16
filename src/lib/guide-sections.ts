@@ -38,6 +38,7 @@ const ROULETTE_FILTER_LINE = "Roulette : seuls les jeux qui acceptent le nombre 
 
 export function guideSections(input: GuideSection[]): GuideSection[] {
   const soireesLines = [
+    ...(process.env.SESSION_PREPARATION_ENABLED === "true" ? ["Sur une soirée prévue, chaque participant confirme pour lui-même : installé, mis à jour, micro testé et lobby prêt. La checklist affiche la préparation collective."] : []),
     ...(isVoteVetoEnabled() ? [VETO_LINE, ROULETTE_VETO_LINE] : []),
     ...(isRoulettePlayerFilterEnabled() ? [ROULETTE_FILTER_LINE] : []),
   ];

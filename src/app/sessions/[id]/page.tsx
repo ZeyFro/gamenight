@@ -54,6 +54,9 @@ import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
 import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
 
+import { readSessionPreparation } from "@/lib/session-preparation";
+import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
+
 export const metadata = pageMetadata("Soirée");
 
 const DISCORD_MESSAGES: Record<string, { text: string; tone: "warning" | "accent" }> = {
@@ -137,6 +140,8 @@ export default async function SessionDetailPage({
       needsSuperlativeVote = alreadyVoted === 0;
     }
   }
+
+  const preparation = await readSessionPreparation(user.id, session.id);
 
   // Sprint 4 — Pronostics + Paris d'XP, ouverts pendant que la soirée est
   // `SCHEDULED` (mêmes participants éligibles que le futur vote de
@@ -797,6 +802,8 @@ export default async function SessionDetailPage({
           )}
         </section>
       )}
+
+      {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
 
       <section className="flex min-h-0 flex-col gap-3">
         <h2 className="text-lg font-semibold text-foreground">💬 Chat</h2>
