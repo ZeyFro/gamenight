@@ -2624,6 +2624,8 @@ model Community {
   slug String @unique
   name String
   fairPlayCharter String? @db.Text
+  guideRules String? @db.Text
+  guideContacts String? @db.Text
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.

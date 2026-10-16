@@ -27,6 +27,22 @@ export function parseChannelCategory(value: unknown): CommunityChannelCategory |
   return ADMIN_CHANNEL_CATEGORIES.find((c) => c === value) ?? null;
 }
 
+export async function setCommunityGuide(input: { communityId: unknown; rules: unknown; contacts: unknown }) {
+  if (
+    typeof input.communityId !== "string" || !input.communityId ||
+    (input.rules !== null && typeof input.rules !== "string") ||
+    (input.contacts !== null && typeof input.contacts !== "string")
+  ) return "invalid" as const;
+  const rules = typeof input.rules === "string" ? input.rules.trim() : "";
+  const contacts = typeof input.contacts === "string" ? input.contacts.trim() : "";
+  if (rules.length > 4000 || contacts.length > 2000) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { guideRules: rules || null, guideContacts: contacts || null },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
 /** Identifiant Discord (snowflake) : chiffres seuls, jamais d'espace. */
 function isSnowflake(value: string): boolean {
   return /^\d{17,20}$/.test(value);
@@ -100,6 +116,8 @@ export interface AdminCommunityRow {
   id: string;
   slug: string;
   name: string;
+  guideRules: string | null;
+  guideContacts: string | null;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -134,6 +152,8 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         id: c.id,
         slug: c.slug,
         name: c.name,
+        guideRules: c.guideRules,
+        guideContacts: c.guideContacts,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,
