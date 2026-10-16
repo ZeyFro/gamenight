@@ -270,6 +270,7 @@ function Wait-Ci([int]$n) {
   return @{ State = 'timeout'; Names = ''; Link = '' }
 }
 function Wait-Deploy([string]$sha) {
+  if ($sha -notmatch '^[0-9a-fA-F]{40}$') { return @{ Ok = $false; Url = $null } }
   $deadline = (Get-Date).AddMinutes(25)
   while ((Get-Date) -lt $deadline) {
     $deps = @(GhJson @('api', ("repos/" + $repoName + "/deployments?sha=" + $sha + "&environment=Production")) | Where-Object { $_ -ne $null })
@@ -377,10 +378,31 @@ function Process-Pr([int]$n, [bool]$isStatus) {
     $g2 = Get-Gate $n
     if ($null -eq $g2 -or -not $g2.ok) { return (Fail-Pr $n $g.item 'porte refusee au moment de la fusion' $isStatus) }
     if ($g2.headSha -ne $sha) { Log ("PR #" + $n + " : nouveau commit pendant la CI, on recommence."); continue }
+    if (-not $g.baseSha -or $g2.baseSha -ne $g.baseSha) {
+      return (Fail-Pr $n $g.item 'main a change pendant la CI : reconciliation et nouvelle validation requises' $isStatus)
+    }
+    $checks = @(GhJson @('pr', 'checks', "$n", '--json', 'bucket,name,state,link') | Where-Object { $_ -ne $null })
+    if ((Get-CiState $checks).State -ne 'pass') {
+      Log ("PR #" + $n + " : controles finaux absents, non termines ou rouges ; aucune fusion ni relance.")
+      Add-State 'failed' @{ pr = $n; item = $g.item; reason = 'controles finaux non verts : nouvelle validation requise' }
+      $script:Skip[$n] = $true
+      Write-Morning
+      return 'skipped'
+    }
+    $latest = GhJson @('pr', 'view', "$n", '--json', 'headRefOid,baseRefOid')
+    if (-not $latest -or $latest.headRefOid -ne $sha -or $latest.baseRefOid -ne $g.baseSha) {
+      return (Fail-Pr $n $g.item 'SHA ou base modifie apres les controles : reconciliation et nouvelle validation requises' $isStatus)
+    }
     $null = & gh pr ready "$n" 2>&1
     $m = & gh pr merge "$n" --merge --match-head-commit $sha 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { return (Fail-Pr $n $g.item ("fusion refusee : " + (Short $m 250)) $isStatus) }
     $mergeSha = (& gh pr view "$n" --json mergeCommit --jq .mergeCommit.oid 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $mergeSha -notmatch '^[0-9a-fA-F]{40}$') {
+      Log ("SHA de fusion absent ou invalide apres la PR #" + $n + " : arret, aucun deploiement suppose vert.")
+      $script:State.deployFailure = @{ pr = $n; url = $null }
+      Write-Morning
+      return 'deploy-failed'
+    }
     Log ("PR #" + $n + " fusionnee (" + $mergeSha + "). Attente du deploiement de production ...")
     $url = (& gh pr view "$n" --json url --jq .url 2>$null | Out-String).Trim()
     Add-State 'merged' @{ pr = $n; item = $g.item; url = $url }

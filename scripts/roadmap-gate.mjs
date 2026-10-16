@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Porte de merge de la boucle roadmap + outils de statut. Aucune dépendance.
 // Sous-commandes (le script PowerShell les appelle ; seul `gate` parle à GitHub, via `gh`) :
-//   gate <pr>                           évalue la PR → JSON {ok, reasons, item, headSha}
+//   gate <pr>                           évalue la PR → JSON {ok, reasons, item, headSha, baseSha}
 //   status <ID> <fait|echec|a-toi>      met à jour la ligne de docs/ROADMAP.md (raison sur stdin)
 //   morning <état.json> <roadmap.md> <sortie.md>   régénère logs/MORNING.md
 // La logique pure (evaluateGate, checkMigrationSql, setItemStatus, summarize) est testée dans
@@ -280,7 +280,7 @@ function gateFromGitHub(n) {
     res.ok = false;
     res.reasons.push("PR ou base modifiée pendant l'analyse : réévaluer");
   }
-  return { ...res, headSha: pr.head.sha, pr: Number(n) };
+  return { ...res, headSha: pr.head.sha, baseSha: pr.base.sha, pr: Number(n) };
 }
 
 const readStdin = () => {
