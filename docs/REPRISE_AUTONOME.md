@@ -30,3 +30,9 @@ Outils employés : Git/gh, skill-creator, Ponytail, skills Vercel deployments-ci
 - #236 : conflits des paramètres et de la fiche pote résolus en conservant identifiants ET matériel ; fixture de rendu complétée avec les nouveaux champs facultatifs. Main fusionné, guide complété. 39 tests ciblés réussis, lint et diff --check réussis. CI du nouveau SHA à attendre avant fusion ; pas de Postgres local ni de build local sur cette intégration.
 - [#240](https://github.com/ZeyFro/gamenight/pull/240) publiée en Draft pour L3-06 : 95 tests unitaires/gardes au développement, puis après intégration de main 24 tests ciblés réussis / 10 Postgres ignorés. CI et preview en cours, aucun résultat anticipé. Dépendances isolées, sans jonction vers le checkout Claude.
 - L7-12 glossaire débutants en préparation dans un worktree séparé. Les autres lots restent à développer ; aucune affirmation d'achèvement global.
+
+## Reprise préférences #237 — 16 octobre 2026
+
+Worktree dédié `.codex-worktrees/preferences-237`, branche `feat/reprise-preferences-237`, départ `290bdf6`. Fusion de `feat/reprise-materiel-236` au SHA `04150c1` (inclut main après #235). Conflits résolus dans roadmap, schéma User et paramètres en conservant identifiants, matériel et préférences/refus. Guide enrichi ; #234/#235 faits, #236–240 ouverts au contrôle GitHub. Aucune intervention sur #238.
+
+`npm ci` et génération Prisma dans les dépendances propres au worktree réussis. Validation ciblée : 182/182 tests dans 21 fichiers, aucun ignoré (UI, actions, suggestions, régressions et gardes isolation/exports serveur). Next typegen, TypeScript `--noEmit`, lint complet et `git diff --check` réussis. Relecture React : composants serveur et trois formulaires/actions indépendants conservés. Aucun test Postgres, build ou parcours navigateur exécuté ; CI sur le prochain SHA publié requise. Aucun push ni mutation distante.
