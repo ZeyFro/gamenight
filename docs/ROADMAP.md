@@ -28,7 +28,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
 | L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
-| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | PR ouverte #234 (O06, contrôles du commit final requis avant fusion) |
+| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
 
 ## Lot 3 — Carnet et préparation
 
