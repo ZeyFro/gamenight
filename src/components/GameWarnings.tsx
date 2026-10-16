@@ -13,7 +13,7 @@ export function GameWarnings({ game }: { game: GameWarningsData }) {
       <div><dt className="inline font-medium">Langues de l’audio : </dt><dd className="inline">{game.audioLanguages || "Non renseignées"}</dd></div>
     </dl>
     <p className="mt-2 text-xs text-muted">Informations déclarées par les joueurs, à vérifier selon ta version du jeu. Une absence déclarée ne garantit pas l’absence de risque.
-      {game.warningsUpdatedAt && <> Mise à jour : {new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris" }).format(new Date(game.warningsUpdatedAt))}.</>}
+      {game.warningsUpdatedAt && <> Mise à jour : {new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC" }).format(new Date(game.warningsUpdatedAt))}.</>}
     </p>
   </section>;
 }
