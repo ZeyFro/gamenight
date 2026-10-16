@@ -19,6 +19,7 @@ import { MotionBackground } from "@/components/app/MotionBackground";
 import "./globals.css";
 import { SkipLink } from "@/components/SkipLink";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
+import { getSeasonalTheme } from "@/lib/seasonal-theme";
 
 const geistSans = DM_Sans({
   variable: "--font-geist-sans",
@@ -69,13 +70,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     });
   }
   const skipLink = isSkipLinkEnabled();
+  const seasonalTheme = getSeasonalTheme(new Date());
 
   return (
     <html
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
-      <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""}`}>
+      <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""} ${seasonalTheme ? `gn-theme-${seasonalTheme}` : ""}`}>
         <MotionConfig reducedMotion="user">
           <MotionBackground />
           {skipLink && <SkipLink />}
