@@ -22,3 +22,11 @@ Prochain développement indépendant : L3-06 checklist de préparation, puis L3-
 Skill installé dans `C:/Users/mparisot/.codex/skills/gamenight-tool-routing`. Validateur officiel via environnement temporaire `uv run --python 3.13 --with pyyaml python C:/Users/mparisot/.codex/skills/.system/skill-creator/scripts/quick_validate.py C:/Users/mparisot/.codex/skills/gamenight-tool-routing` : réussi. Python 3.15/PyYAML échouait faute de compilateur C++ ; recours Python 3.13 avec roue binaire réussi, sans dépendance du projet ajoutée.
 
 Outils employés : Git/gh, skill-creator, Ponytail, skills Vercel deployments-cicd et accès protégé ; MCP Vercel pour lecture de déploiement, CLI pour accès HTTP ; sous-agents de revue/inventaire et implémentation isolée. Pas d'hypothèse sur la disponibilité des outils Claude.
+
+## Résultats à 09:10 UTC
+
+- #235 fusionnée à 09:08:04 UTC, commit `bce0c833524496982b11fc03eeafa59fca0307d6`.
+- Son HEAD `db93b1073260538f5ac0cc4769e857eb598105dd` a réussi tous les contrôles, notamment [CI 38877363484](https://github.com/ZeyFro/gamenight/actions/runs/38877363484). Suite locale complète : 1 569 réussis, 946 ignorés faute de Postgres ; intégrations validées en CI ensuite. Preview `8hBjrBnFnNnLSbH9nvyiiihgVbb7` READY et HTTP 200 sur les paramètres. Contrôle Vercel de production réussi au commit de fusion ; parcours Discord authentifié/mobile non vérifié.
+- #236 : conflits des paramètres et de la fiche pote résolus en conservant identifiants ET matériel ; fixture de rendu complétée avec les nouveaux champs facultatifs. Main fusionné, guide complété. 39 tests ciblés réussis, lint et diff --check réussis. CI du nouveau SHA à attendre avant fusion ; pas de Postgres local ni de build local sur cette intégration.
+- [#240](https://github.com/ZeyFro/gamenight/pull/240) publiée en Draft pour L3-06 : 95 tests unitaires/gardes au développement, puis après intégration de main 24 tests ciblés réussis / 10 Postgres ignorés. CI et preview en cours, aucun résultat anticipé. Dépendances isolées, sans jonction vers le checkout Claude.
+- L7-12 glossaire débutants en préparation dans un worktree séparé. Les autres lots restent à développer ; aucune affirmation d'achèvement global.
