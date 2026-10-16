@@ -227,7 +227,7 @@ describe("scopeQueryArgs — fail-closed", () => {
 });
 
 describe("transaction scopée — même filtre sur chaque modèle PR B", () => {
-  it.each(["CommunityMemberStats", "CommunityMemberCosmetic", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "SessionRating", "Notification", "NotificationEvent", "ChatMessage", "Debt"])("%s : lecture et mutation ne sortent pas de la communauté", async (model) => {
+  it.each(["CommunityMemberStats", "CommunityMemberCosmetic", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "SessionRating", "TournamentPrediction", "Notification", "NotificationEvent", "ChatMessage", "Debt"])("%s : lecture et mutation ne sortent pas de la communauté", async (model) => {
     const key = model.charAt(0).toLowerCase() + model.slice(1);
     const findMany = vi.fn().mockResolvedValue([]);
     const deleteMany = vi.fn().mockResolvedValue({ count: 0 });

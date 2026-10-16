@@ -27,6 +27,14 @@ describe("guideSections (GUIDE_V2_ENABLED)", () => {
     expect(tournois()).toHaveLength(sans + 1);
   });
 
+  it("explique les pronostics seulement quand le drapeau est actif", () => {
+    vi.stubEnv("GUIDE_V2_ENABLED", "true");
+    vi.stubEnv("TOURNAMENT_PREDICTIONS_ENABLED", "false");
+    expect(guideSections(base).find(s => s.title === "Tournois")!.lines.join(" ")).not.toContain("Pronostique");
+    vi.stubEnv("TOURNAMENT_PREDICTIONS_ENABLED", "true");
+    expect(guideSections(base).find(s => s.title === "Tournois")!.lines.join(" ")).toContain("sans mise ni gain");
+  });
+
   it("ROULETTE_PLAYER_FILTER_ENABLED : ajoute une ligne à la roulette dans Soirées", () => {
     const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
     expect(guideSections(soirees)[0].lines).toHaveLength(1);
