@@ -27,6 +27,7 @@ import {
   pickCreationCommunityId,
   resolveSessionAnnounceConfig,
   resolveTournamentAnnounceConfig,
+  resolveVoiceChannelUrl,
 } from "./community-channels";
 
 const ENV_SESSION = { guildId: "111", channelId: "900" };
@@ -52,6 +53,18 @@ describe("community-channels", () => {
     vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "true");
   });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("construit un lien vocal Discord depuis la config active de la communauté", async () => {
+    communityFindUnique.mockResolvedValue(community({ discordGuildId: "333333333333333333", channelConfigs: [{ discordChannelId: "444444444444444444", enabled: true }] }));
+    await expect(resolveVoiceChannelUrl("c-b")).resolves.toBe("https://discord.com/channels/333333333333333333/444444444444444444");
+    expect(communityFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "c-b" }, include: expect.any(Object) }));
+  });
+
+  it("ne renvoie aucun lien vocal si la feature est désactivée", async () => {
+    vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "false");
+    await expect(resolveVoiceChannelUrl("c-b")).resolves.toBeNull();
+    expect(communityFindUnique).not.toHaveBeenCalled();
+  });
 
   describe("interrupteur COMMUNITY_CHANNELS_ENABLED", () => {
     it.each(["", "false", "TRUE", "1"])("valeur %j : éteint (seule `true` exacte active)", (v) => {

@@ -6,6 +6,7 @@ import {
   deleteThreadPermanently,
   editChannelMessage,
   listGuildChannels,
+  verifyVoiceChannelDestination,
   NO_MENTIONS,
   openDmChannel,
   sendChannelMessage,
@@ -710,13 +711,14 @@ describe("discord-rest", () => {
   });
 
   describe("listGuildChannels", () => {
-    it("ne garde que les salons texte/annonces, triés par position, via un GET en lecture seule", async () => {
+    it("garde salons texte, annonces et vocaux, triés par position", async () => {
       fetchMock.mockResolvedValue(
         jsonResponse(200, [
           { id: "3", name: "vocal", type: 2, position: 0 },
           { id: "2", name: "tournois", type: 0, position: 2 },
           { id: "1", name: "soirees", type: 5, position: 1 },
           { id: "4", name: "categorie", type: 4, position: 3 },
+          { id: "5", name: "stage", type: 13, position: 4 },
         ])
       );
       const result = await listGuildChannels({ guildId: "333", deadline: FAR_FUTURE, now: NOW });
@@ -724,8 +726,10 @@ describe("discord-rest", () => {
         ok: true,
         data: {
           channels: [
+            { id: "3", name: "vocal", type: 2 },
             { id: "1", name: "soirees", type: 5 },
             { id: "2", name: "tournois", type: 0 },
+            { id: "5", name: "stage", type: 13 },
           ],
         },
       });
@@ -738,6 +742,19 @@ describe("discord-rest", () => {
       fetchMock.mockResolvedValue(jsonResponse(200, { not: "an array" }));
       const result = await listGuildChannels({ guildId: "333", deadline: FAR_FUTURE, now: NOW });
       expect(result.ok).toBe(false);
+    });
+  });
+
+  describe("verifyVoiceChannelDestination", () => {
+    it.each([2, 13])("accepte le type vocal Discord %i du serveur attendu", async (type) => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "444", guild_id: "333", type }));
+      await expect(verifyVoiceChannelDestination({ channelId: "444", guildId: "333", deadline: FAR_FUTURE, now: NOW }))
+        .resolves.toMatchObject({ ok: true, data: { channelId: "444" } });
+    });
+    it("refuse un autre serveur ou un salon non vocal", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "444", guild_id: "other", type: 2 }));
+      await expect(verifyVoiceChannelDestination({ channelId: "444", guildId: "333", deadline: FAR_FUTURE, now: NOW }))
+        .resolves.toMatchObject({ ok: false, kind: "destination_mismatch" });
     });
   });
 });
