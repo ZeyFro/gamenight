@@ -78,6 +78,20 @@ export function resolveTournamentAnnounceConfig(communityId: string | null) {
   return resolveAnnounceConfig("TOURNAMENT", communityId, getTournamentAnnounceConfig);
 }
 
+export async function resolveVoiceChannelUrl(communityId: string | null): Promise<string | null> {
+  if (!isCommunityChannelsEnabled()) return null;
+  const include = { channelConfigs: { where: { category: "VOICE" as const } } };
+  const community = communityId
+    ? await prisma.community.findUnique({ where: { id: communityId }, include })
+    : await prisma.community.findUnique({ where: { slug: DEFAULT_COMMUNITY_SLUG }, include });
+  if (!community || community.status !== "ACTIVE") return null;
+  const config = community.channelConfigs[0];
+  if (!config?.enabled) return null;
+  const guildId = community.discordGuildId ?? (community.slug === DEFAULT_COMMUNITY_SLUG ? process.env.DISCORD_BOT_GUILD_ID?.trim() : null);
+  if (!guildId || !/^\d{17,20}$/.test(guildId) || !/^\d{17,20}$/.test(config.discordChannelId)) return null;
+  return `https://discord.com/channels/${guildId}/${config.discordChannelId}`;
+}
+
 /** Équivalent de `isSessionAnnounceViaBotEnabled` (discord-bot-config.ts) pour une communauté. */
 export async function isSessionAnnounceViaBotEnabledFor(communityId: string | null): Promise<boolean> {
   return (

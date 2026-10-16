@@ -1,7 +1,7 @@
 import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
-import { listGuildChannels, verifyChannelDestination, type GuildChannel } from "@/lib/discord-rest";
+import { listGuildChannels, verifyChannelDestination, verifyVoiceChannelDestination, type GuildChannel } from "@/lib/discord-rest";
 
 /**
  * Multi-communautés — écran d'administration (onglet « Communautés » de
@@ -21,7 +21,7 @@ export function isCommunityAdminEnabled(env: Record<string, string | undefined> 
   return env.COMMUNITY_ADMIN_ENABLED === "true";
 }
 
-export const ADMIN_CHANNEL_CATEGORIES: readonly CommunityChannelCategory[] = ["SESSION", "TOURNAMENT"];
+export const ADMIN_CHANNEL_CATEGORIES: readonly CommunityChannelCategory[] = ["SESSION", "TOURNAMENT", "VOICE"];
 
 export function parseChannelCategory(value: unknown): CommunityChannelCategory | null {
   return ADMIN_CHANNEL_CATEGORIES.find((c) => c === value) ?? null;
@@ -79,7 +79,7 @@ export async function setCommunityChannel(input: {
   const guildId = guildIdOf(community);
   if (!guildId) return { ok: false, reason: "no_guild" };
 
-  const verified = await verifyChannelDestination({
+  const verified = await (input.category === "VOICE" ? verifyVoiceChannelDestination : verifyChannelDestination)({
     channelId: input.channelId,
     guildId,
     deadline: new Date(Date.now() + DISCORD_BUDGET_MS),

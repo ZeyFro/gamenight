@@ -7,11 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * confirmant qu'il appartient au serveur de la communauté (aucun envoi).
  */
 
-const { communityFindUnique, communityUpdateMany, configUpsert, verifyChannelDestination } = vi.hoisted(() => ({
+const { communityFindUnique, communityUpdateMany, configUpsert, verifyChannelDestination, verifyVoiceChannelDestination } = vi.hoisted(() => ({
   communityFindUnique: vi.fn(),
   communityUpdateMany: vi.fn(),
   configUpsert: vi.fn(),
   verifyChannelDestination: vi.fn(),
+  verifyVoiceChannelDestination: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -19,7 +20,7 @@ vi.mock("@/lib/prisma", () => ({
     communityChannelConfig: { upsert: configUpsert },
   },
 }));
-vi.mock("@/lib/discord-rest", () => ({ verifyChannelDestination }));
+vi.mock("@/lib/discord-rest", () => ({ verifyChannelDestination, verifyVoiceChannelDestination }));
 
 import {
   activateCommunity,
@@ -51,6 +52,7 @@ describe("parseChannelCategory", () => {
   it("accepte SESSION et TOURNAMENT, rien d'autre", () => {
     expect(parseChannelCategory("SESSION")).toBe("SESSION");
     expect(parseChannelCategory("TOURNAMENT")).toBe("TOURNAMENT");
+    expect(parseChannelCategory("VOICE")).toBe("VOICE");
     for (const v of ["session", "", "DM", null, undefined, 3]) expect(parseChannelCategory(v)).toBeNull();
   });
 });
@@ -98,6 +100,7 @@ describe("setCommunityChannel", () => {
     communityFindUnique.mockReset().mockResolvedValue(community({ status: "ACTIVE" }));
     configUpsert.mockReset().mockResolvedValue({});
     verifyChannelDestination.mockReset().mockResolvedValue({ ok: true, data: { channelId: CHANNEL } });
+    verifyVoiceChannelDestination.mockReset().mockResolvedValue({ ok: true, data: { channelId: CHANNEL } });
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111111111111111111");
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -119,6 +122,13 @@ describe("setCommunityChannel", () => {
   it("accepte aussi une communauté PENDING (préparation avant activation)", async () => {
     communityFindUnique.mockResolvedValue(community());
     expect((await setCommunityChannel({ communityId: "c-b", category: "SESSION", channelId: CHANNEL })).ok).toBe(true);
+  });
+
+  it("vérifie un salon vocal avec son validateur dédié", async () => {
+    communityFindUnique.mockResolvedValue(community({ status: "ACTIVE" }));
+    expect((await setCommunityChannel({ communityId: "c-b", category: "VOICE", channelId: CHANNEL })).ok).toBe(true);
+    expect(verifyVoiceChannelDestination).toHaveBeenCalledWith(expect.objectContaining({ guildId: "333333333333333333" }));
+    expect(verifyChannelDestination).not.toHaveBeenCalled();
   });
 
   it.each(["", "abc", "12345", "44444444444444444x", "4".repeat(30), " 444444444444444444"])(
