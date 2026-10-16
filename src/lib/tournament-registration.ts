@@ -18,11 +18,11 @@ export async function registerTournamentParticipant(userId: string, tournamentId
     const communityId = await statsCommunityIdForSession(tournament.communityId);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
-    const participants = await tx.tournamentParticipant.findMany({ where: { tournamentId }, select: { userId: true } });
+    const participants = await scopedDb.tournamentParticipant.findMany({ where: { tournamentId }, select: { userId: true } });
     if (participants.some(participant => participant.userId === userId)) return "already";
     if (participants.length >= tournament.maxPlayers) return "unavailable";
     try {
-      await tx.tournamentParticipant.create({ data: { tournamentId, userId } });
+      await scopedDb.tournamentParticipant.create({ data: { tournamentId, userId } });
     } catch (error) {
       if (isUniqueConstraintViolation(error)) return "already";
       throw error;

@@ -165,7 +165,7 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     await db.session.update({ where: { id: "s" }, data: { attendanceCapacity: null } }); await db.sessionSeat.deleteMany({});
     expect(await join("alice")).toEqual({ ok: true, status: "CONFIRMED" });
     expect((await change("host", "s", { kind: "capacity", capacity: 2 })).ok).toBe(true);
-    expect(await db.sessionSeat.findFirst()).toMatchObject({ userId: "host", status: "CONFIRMED" });
+    expect(await db.sessionSeat.findUnique({ where: { sessionId_userId: { sessionId: "s", userId: "host" } } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.vote.count()).toBe(1);
   });

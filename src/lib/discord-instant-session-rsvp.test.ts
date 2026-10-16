@@ -10,6 +10,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
   membership: { findUnique: mocks.membership }, notificationDelivery: { findFirst: mocks.delivery },
 } }));
 vi.mock("@/lib/instant-sessions", () => ({ joinInstantSession: mocks.join, leaveInstantSession: mocks.leave }));
+vi.mock("@/lib/community-scoped-client", () => ({ getScopedPrisma: vi.fn(async () => ({ instantSession: { findUnique: mocks.session } })) }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rate, RATE_LIMIT_MESSAGE: "rate limited" }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 

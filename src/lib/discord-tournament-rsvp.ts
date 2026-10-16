@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { registerTournamentParticipant } from "@/lib/tournament-registration";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import type { DiscordSeatOrigin } from "@/lib/session-seats";
 
 export async function respondToTournamentRsvp(tournamentId: string, origin: DiscordSeatOrigin): Promise<string> {
@@ -9,7 +10,8 @@ export async function respondToTournamentRsvp(tournamentId: string, origin: Disc
   if (!user) return "Connecte-toi d’abord à GameNight avec ce compte Discord, puis réessaie.";
   if (!checkRateLimit(user.id, "discord-tournament-rsvp", { limit: 12 })) return RATE_LIMIT_MESSAGE;
 
-  const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId }, select: { id: true, status: true, communityId: true, discordGuildId: true, discordChannelId: true } });
+  const scopedDb = await getScopedPrisma(user.id);
+  const tournament = await scopedDb.tournament.findUnique({ where: { id: tournamentId }, select: { id: true, status: true, communityId: true, discordGuildId: true, discordChannelId: true } });
   if (!tournament || tournament.status !== "REGISTRATION" || tournament.discordGuildId !== origin.guildId || tournament.discordChannelId !== origin.channelId) return "Les inscriptions à ce tournoi sont fermées ou cette annonce n’est plus accessible.";
   const community = await prisma.community.findUnique({ where: tournament.communityId ? { id: tournament.communityId } : { slug: "default" }, select: { id: true, slug: true, status: true } });
   if (!community || community.status !== "ACTIVE") return "Cette annonce n’est plus accessible.";

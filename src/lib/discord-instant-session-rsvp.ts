@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { joinInstantSession, leaveInstantSession } from "@/lib/instant-sessions";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import type { DiscordSeatOrigin } from "@/lib/session-seats";
 
 export async function respondToInstantSessionRsvp(sessionId: string, kind: "join" | "leave", origin: DiscordSeatOrigin): Promise<string> {
@@ -9,7 +10,8 @@ export async function respondToInstantSessionRsvp(sessionId: string, kind: "join
   if (!user) return "Connecte-toi d’abord à GameNight avec ce compte Discord, puis réessaie.";
   if (!checkRateLimit(user.id, "discord-instant-session-rsvp", { limit: 12 })) return RATE_LIMIT_MESSAGE;
 
-  const session = await prisma.instantSession.findUnique({ where: { id: sessionId }, select: { id: true, communityId: true } });
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.instantSession.findUnique({ where: { id: sessionId }, select: { id: true, communityId: true } });
   if (!session) return "Cette partie n’est plus disponible.";
   const community = await prisma.community.findUnique({
     where: session.communityId ? { id: session.communityId } : { slug: "default" },
