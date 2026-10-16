@@ -39,6 +39,8 @@ enum UserRole {
 
 model User {
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
+  communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
+  communityBirthdays CommunityDate[] @relation("CommunityDateMember")
   availabilityPollParticipations SessionAvailabilityPollParticipant[]
   id                       String    @id @default(cuid())
   discordId                String    @unique
@@ -2525,6 +2527,11 @@ enum CommunityRole {
   MEMBER
 }
 
+enum CommunityDateKind {
+  BIRTHDAY
+  IMPORTANT
+}
+
 enum MembershipStatus {
   ACTIVE
   LEFT
@@ -2541,6 +2548,7 @@ enum CommunityChannelCategory {
 
 model Community {
   availabilityPolls SessionAvailabilityPoll[]
+  dates CommunityDate[]
   id   String @id @default(cuid())
   // Segment d'URL `/c/[slug]/…` (PR suivante). `default` = la communauté
   // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
@@ -2669,6 +2677,24 @@ model CommunityChannelConfig {
   updatedAt        DateTime                 @updatedAt
 
   @@unique([communityId, category])
+}
+
+model CommunityDate {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation("CommunityDateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  memberId String?
+  member User? @relation("CommunityDateMember", fields: [memberId], references: [id], onDelete: Cascade)
+  kind CommunityDateKind
+  title String? @db.VarChar(100)
+  date DateTime @db.Date
+  repeatsAnnually Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([communityId, memberId])
+  @@index([communityId, date])
 }
 
 // Appartenance d'un utilisateur à une communauté. Un seul OWNER actif par

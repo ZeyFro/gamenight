@@ -5,9 +5,10 @@ import { sameUtcDate } from "@/lib/wallclock";
 import { addDays, findBestSlot, type BestSlot, type HourSlot } from "@/lib/calendar-dates";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
-import { creationMemberUserWhere } from "@/lib/community-isolation";
+import { creationMemberUserWhere, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import type { WeeklySlot, OverrideForDate } from "@/lib/availability";
+import { expandCommunityDates, type CalendarCommunityDate } from "@/lib/community-dates";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -56,6 +57,7 @@ export interface CalendarDay {
   date: Date;
   hours: HourSlot[];
   sessions: CalendarSession[];
+  communityDates: CalendarCommunityDate[];
   roulettes?: CalendarRoulette[];
   /** Max de `availableUserIds.length` sur les heures du jour — résumé rapide pour la vue Mois. */
   maxAvailableCount: number;
@@ -126,13 +128,14 @@ export async function getCalendarData(
   visibleUserIds?: string[]
 ): Promise<CalendarData> {
   const scopedDb = await getActiveScopedPrisma(viewerId);
+  const activeCommunityId = await resolveActiveCommunityId(viewerId);
   const allUsers = await prisma.user.findMany({
       where: await creationMemberUserWhere(viewerId),
       select: { id: true, discordName: true, discordAvatar: true, color: true },
       orderBy: { discordName: "asc" },
   });
   const memberIds = allUsers.map((user) => user.id);
-  const [weeklySlots, overrides, sessions, roulettes] = await Promise.all([
+  const [weeklySlots, overrides, sessions, roulettes, dateRows] = await Promise.all([
     prisma.weeklyAvailability.findMany({ where: { userId: { in: memberIds } } }),
     prisma.availabilityOverride.findMany({
       where: { userId: { in: memberIds }, date: { gte: rangeStart, lt: rangeEndExclusive } },
@@ -160,7 +163,23 @@ export async function getCalendarData(
       select: { id: true, scheduledAt: true, deadline: true, createdById: true, notifiedUserIds: true },
       orderBy: { scheduledAt: "asc" },
     }),
+    activeCommunityId ? scopedDb.communityDate.findMany({
+      where: {
+        communityId: activeCommunityId,
+        OR: [
+          { kind: "IMPORTANT" },
+          { kind: "BIRTHDAY", member: { is: { memberships: { some: { communityId: activeCommunityId, status: "ACTIVE" } } } } },
+        ],
+      },
+      select: { id: true, kind: true, title: true, date: true, repeatsAnnually: true, createdById: true, member: { select: { discordName: true } } },
+    }) : Promise.resolve([]),
   ]);
+
+  const datesByDay = new Map<string, CalendarCommunityDate[]>();
+  for (const event of expandCommunityDates(dateRows, rangeStart, rangeEndExclusive)) {
+    const key = event.date.toISOString().slice(0, 10);
+    datesByDay.set(key, [...(datesByDay.get(key) ?? []), event]);
+  }
 
   const visibleSet = visibleUserIds ? new Set(visibleUserIds) : null;
   const users = allUsers;
@@ -222,6 +241,7 @@ export async function getCalendarData(
       date: new Date(dayDate),
       hours,
       sessions: sessionsByDay.get(dayKey) ?? [],
+      communityDates: datesByDay.get(dayKey) ?? [],
       // Une roulette ne révèle ni les jeux proposés ni un événement auquel
       // le lecteur n'est pas invité. Les règles sont celles de /roulette.
       roulettes: roulettes.filter((roulette) =>

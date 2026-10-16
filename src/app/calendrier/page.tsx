@@ -14,6 +14,10 @@ import { ColorDot } from "@/components/ColorDot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { pageMetadata } from "@/lib/page-title";
+import { prisma } from "@/lib/prisma";
+import { resolveActiveCommunityId } from "@/lib/community-isolation";
+import { saveCommunityBirthdayAction, createCommunityDateAction } from "./actions";
+import { Button } from "@/components/ui/Button";
 
 export const metadata = pageMetadata("Calendrier");
 
@@ -66,13 +70,20 @@ async function CalendrierContent({
     user.id,
     availabilityUserIds
   );
+  const activeCommunityId = await resolveActiveCommunityId(user.id);
+  const membership = activeCommunityId ? await prisma.membership.findUnique({
+    where: { communityId_userId: { communityId: activeCommunityId, userId: user.id } },
+    select: { role: true, status: true },
+  }) : null;
+  const canShareBirthday = membership?.status === "ACTIVE";
+  const canManageCommunityDates = membership?.status === "ACTIVE" && (membership.role === "OWNER" || membership.role === "ADMIN");
   const availabilityUsers = availabilityUserIds
     ? data.users.filter((member) => availabilityUserIds.includes(member.id))
     : data.users;
 
   const selectedDay: CalendarDay =
     data.days.find((d) => sameUtcDate(d.date, selectedDate)) ??
-    ({ date: selectedDate, hours: [], sessions: [], maxAvailableCount: 0 } satisfies CalendarDay);
+    ({ date: selectedDate, hours: [], sessions: [], communityDates: [], maxAvailableCount: 0 } satisfies CalendarDay);
 
   // Édition tactile des dispos (sous-PR 2, étendue post-retour terrain) :
   // on ne peut éditer que SA PROPRE dispo, jamais celle d'un pote —
@@ -99,7 +110,27 @@ async function CalendrierContent({
         </p>
       </div>
 
-      <EventCalendar days={data.days} selectedDate={selectedDate} today={today} mode={mode} pote={sp.pote} potes={sp.potes} view={view} totalUsers={availabilityUsers.length} />
+      <div className="grid gap-4 md:grid-cols-2">
+        {canShareBirthday && <form action={saveCommunityBirthdayAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">
+          <div className="min-w-0 flex-1">
+            <label className="text-xs text-muted" htmlFor="community-birthday">Partager ton anniversaire avec ce serveur</label>
+            <input id="community-birthday" name="date" type="date" required className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
+            <p className="mt-1 text-xs text-muted">Seuls le jour et le mois seront conservés. Tu peux le retirer du calendrier.</p>
+          </div>
+          <Button type="submit" size="sm">Enregistrer</Button>
+        </form>}
+        {canManageCommunityDates && <form action={createCommunityDateAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">
+          <div className="min-w-0 flex-1">
+            <label className="text-xs text-muted" htmlFor="community-date-title">Date importante du serveur</label>
+            <input id="community-date-title" name="title" maxLength={100} required placeholder="Anniversaire du serveur…" className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
+            <input name="date" aria-label="Date importante" type="date" required defaultValue={toDateInputValue(selectedDate)} className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted"><input name="annual" type="checkbox" />Chaque année</label>
+          <Button type="submit" size="sm">Ajouter</Button>
+        </form>}
+      </div>
+
+      <EventCalendar days={data.days} selectedDate={selectedDate} today={today} mode={mode} pote={sp.pote} potes={sp.potes} view={view} totalUsers={availabilityUsers.length} viewerId={user.id} canManageCommunityDates={canManageCommunityDates} />
       <div className="gn-calendar-detail" id="disponibilites-du-jour">
         <div className="gn-calendar-filters">
           <p className="gn-eyebrow">Disponibilités du jour</p>
