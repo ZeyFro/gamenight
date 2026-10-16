@@ -15,4 +15,15 @@ describe("splitIntoTeams", () => {
     expect(() => splitIntoTeams(["A"], 2)).toThrow(RangeError);
     expect(() => splitIntoTeams(["A", "B"], 1)).toThrow(RangeError);
   });
+
+  it("répartit les profils déclarés sur les équipes", () => {
+    const players = [
+      { id: "A", styleProfile: [5, 0, 0, 0] }, { id: "B", styleProfile: [5, 0, 0, 0] },
+      { id: "C", styleProfile: [0, 5, 0, 0] }, { id: "D", styleProfile: [0, 5, 0, 0] },
+    ];
+    const teams = splitIntoTeams(players, 2);
+    expect(teams.map((team) => team.reduce((sum, player) => sum + player.styleProfile[0], 0)).sort()).toEqual([5, 5]);
+    expect(teams.map((team) => team.reduce((sum, player) => sum + player.styleProfile[1], 0)).sort()).toEqual([5, 5]);
+    expect(teams.flat().map((player) => player.id).sort()).toEqual(["A", "B", "C", "D"]);
+  });
 });

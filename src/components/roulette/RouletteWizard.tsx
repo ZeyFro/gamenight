@@ -33,6 +33,7 @@ export interface RouletteCandidate {
   discordAvatar: string | null;
   color: string;
   games: RouletteGame[];
+  styleProfile?: number[];
 }
 
 const SPIN_DURATION_S = 3.6;

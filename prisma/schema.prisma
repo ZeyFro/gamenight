@@ -324,6 +324,7 @@ model User {
 
   // Multi-communautés (PR A) — relation seule, aucune colonne sur `User`.
   memberships Membership[]
+  gameStyleProfiles GameStyleProfile[]
 
   @@index([xpTotal])
 }
@@ -1850,6 +1851,18 @@ model CommunityMemberStats {
   @@id([communityId, userId])
   @@index([communityId, xpTotal])
   @@index([communityId, streakLastActiveAt])
+}
+
+model GameStyleProfile {
+  communityId String
+  userId String
+  tryharder Int @default(0)
+  ambianceur Int @default(0)
+  stratege Int @default(0)
+  chaos Int @default(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
 }
 
 model CommunityMemberCosmetic {
