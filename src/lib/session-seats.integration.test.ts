@@ -161,11 +161,12 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     for (const capacity of [1, 3, 0, 101]) expect(await change("host", "s", { kind: "capacity", capacity })).toEqual({ ok: false, error: "capacity" });
     expect(await db.sessionSeat.count({ where: { status: "CONFIRMED" } })).toBe(2);
   });
-  it("activation : reprend les votants sans supprimer ni recréer les votes", async () => {
+  it("activation : conserve les RSVP illimités et reprend les votants sans modifier les votes", async () => {
     await db.session.update({ where: { id: "s" }, data: { attendanceCapacity: null } }); await db.sessionSeat.deleteMany({});
-    expect(await join("alice")).toEqual({ ok: false, error: "disabled" });
-    expect((await change("host", "s", { kind: "capacity", capacity: 1 })).ok).toBe(true);
+    expect(await join("alice")).toEqual({ ok: true, status: "CONFIRMED" });
+    expect((await change("host", "s", { kind: "capacity", capacity: 2 })).ok).toBe(true);
     expect(await db.sessionSeat.findFirst()).toMatchObject({ userId: "host", status: "CONFIRMED" });
+    expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.vote.count()).toBe(1);
   });
   it("participants de résultats/pronostics : seuls les confirmés, avec compatibilité historique", async () => {
