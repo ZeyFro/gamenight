@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDateFr } from "@/lib/wallclock";
+import { isCommunityHighlightsEnabled } from "@/lib/community-highlights-input";
 
 export const metadata = pageMetadata("Lore du groupe");
 
@@ -29,6 +30,7 @@ export default async function GroupLorePage() {
           🕵️ Devine le jeu
         </Link>
       </header>
+      {isCommunityHighlightsEnabled() && <Link href="/profil/lore/musee" className="inline-flex min-h-11 items-center text-sm text-accent">Exploits et fails du serveur →</Link>}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {achievements.map((item) => (
           <li key={item.id}>

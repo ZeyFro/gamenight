@@ -53,7 +53,9 @@ export function guideSections(input: GuideSection[]): GuideSection[] {
   const base = soireesLines.length
     ? input.map((s) => (s.title === "Soirées" ? { ...s, lines: [...s.lines, ...soireesLines] } : s))
     : input;
-  const withGlossary = [...base, GLOSSARY_SECTION];
+  const withGlossary = [...base, GLOSSARY_SECTION,
+    ...(process.env.COMMUNITY_HIGHLIGHTS_ENABLED === "true" ? [{ icon: "🏆", title: "Exploits et fails", lines: ["Dans Profil → Lore du groupe → Exploits et fails, publie un souvenir du serveur avec une description et un lien HTTPS facultatif vers une image ou un clip. L’auteur et les modérateurs du serveur peuvent le modifier ou le supprimer."] }] : []),
+  ];
   if (process.env.GUIDE_V2_ENABLED !== "true") return withGlossary;
   if (!isTournamentScoresEnabled()) return [...withGlossary, ...EXTRA_SECTIONS];
   return [
