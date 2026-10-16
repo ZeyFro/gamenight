@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -44,4 +44,18 @@ export async function setCommunityChannelAction(formData: FormData): Promise<voi
   }
   const result = await setCommunityChannel({ communityId, category, channelId: channelId.trim() });
   done(result.ok ? "channel-ok" : `channel-${result.reason}`);
+}
+
+export async function setCommunityGuideAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityGuide")) done("rate");
+
+  const result = await setCommunityGuide({
+    communityId: formData.get("communityId"),
+    rules: formData.get("guideRules"),
+    contacts: formData.get("guideContacts"),
+  });
+  done(result === "saved" ? "guide-ok" : `guide-${result}`);
 }
