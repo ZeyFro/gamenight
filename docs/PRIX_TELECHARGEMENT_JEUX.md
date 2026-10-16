@@ -87,3 +87,27 @@ automatique pour défaut d'autorisation explicite reconnue comme fiable.
 L'instruction du propriétaire de ne pas répéter l'action est respectée.
 Réconcilier schéma, fiche jeu et roadmap avec les lots précédents puis rejouer
 les contrôles sur le commit intégré avant toute fusion ultérieure.
+
+## Reprise du 16 octobre
+
+Le propriétaire a explicitement autorisé les fusions après contrôles. #234 et
+#235 sont fusionnées, production READY vérifiée pour les deux. La présente
+branche intègre le matériel de #236 et les avertissements de #238 ; les
+conflits de schéma et de fiche jeu sont résolus en conservant les deux encarts.
+Le guide explique les sources du prix et du volume. Le relevé déclaré utilise
+l'horloge murale du dépôt et affiche son jour sans seconde conversion Paris ;
+la date du relevé Steam conserve son interprétation d'instant réel.
+
+Une relecture indépendante a repéré le double décalage près de minuit dans
+les avertissements après adaptation de l'horloge. Un test a reproduit le
+lendemain affiché à tort, puis la correction a réussi. La correction et un
+test analogue sont présents pour le relevé de préparation : 19 tests ciblés
+réussis sur quatre fichiers, dont les deux formulaires et actions. Validation
+Prisma, typage et contrôles distants du nouveau HEAD à terminer avant fusion.
+Les anciens statuts des PR ne valident pas cette intégration.
+
+La checklist #240 reste Draft : CI38878492814, tentatives 1 et 2, échoue avant
+checkout sur le quota de transfert du registre ECR. Aucun test Postgres n'y
+a encore tourné. Reprise après résolution du quota :
+`gh run rerun 38878492814 --repo ZeyFro/gamenight --failed`, puis
+`gh pr checks 240 --repo ZeyFro/gamenight`. Ne pas boucler à l'identique.
