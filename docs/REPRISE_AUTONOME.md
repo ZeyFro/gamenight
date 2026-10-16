@@ -15,6 +15,15 @@
 - Outils réellement testés ici : Git, gh authentifié, Node/npm, Docker et MCP GitHub (lecture du dépôt). Le skill `gamenight-tool-routing` du premier portable est absent ici ; Playwright et claude-mem ne sont pas exposés dans cette session. `.claude/commands/next-item.md` référence `docs/ROADMAP-claude-code.md`, absent : ne pas supposer ces instructions accessibles.
 - Validation après correction : 71/71 tests ciblés réussis, aucun ignoré ; `next typegen`, TypeScript `--noEmit`, lint complet, `git diff --check` et `npx next build` réussis. Suite complète `npm run test:postgres` lancée sur le conteneur dédié ; résultat encore en attente au checkpoint de publication, ne pas le présenter comme réussi. La CI du nouveau SHA reste également à vérifier.
 
+### Résultat final de #268 — 19:36 UTC
+
+- Seul push de correction : `dcf74ad16532ed1cd51b3d0a4bba17a26302d887`, après comparaison du SHA distant avec `7d6e031`. Aucun changement concurrent observé, aucun force-push.
+- [CI 38954746757](https://github.com/ZeyFro/gamenight/actions/runs/38954746757) réussie au SHA `dcf74ad` : 2 752 tests avec Postgres, aucun ignoré ; passe sans base : 1 751 réussis et 998 ignorés. Typage, lint et build réussis.
+- Le contrôle Vercel du même SHA est devenu vert via le déploiement automatique de ce push. Blocage initial de quota résolu sans relance manuelle ni contournement. `Vercel Preview Comments` également vert.
+- [#268 fusionnée](https://github.com/ZeyFro/gamenight/pull/268) le 16 octobre 2026 à 19:36:03 UTC, commit `27b6c2ac3d12f9bd7864641b2c7c57c99fe3b37d`, après nouvelle vérification des contrôles et du SHA (`--match-head-commit`). Bilan final publié dans la description de PR, sans déclencher de déploiement supplémentaire.
+- Suite complète locale interrompue volontairement après réussite de la suite complète CI ; elle ne compte pas comme passée. Les 71 tests ciblés locaux et le build local restent validés. Aucun parcours Discord réel ni contrôle de production authentifié effectué.
+- Worktree et conteneur local conservés pour la reprise ; checkout principal toujours inchangé. Ce complément final reste local pour rejoindre la prochaine publication utile, plutôt que déclencher un déploiement documentaire supplémentaire ; les résultats distants font foi dans la description de #268 et la CI liée.
+
 ## Bibliothèque et inventaire
 
 - #234 fusionnée le 16 octobre à 08:56:06 UTC ; commit de fusion `5724728501d5ebdcf680702aa7a5056d14c37cf6`.
