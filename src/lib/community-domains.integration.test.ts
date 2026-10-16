@@ -25,6 +25,7 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
   let instant: typeof import("./instant-sessions");
   let roulette: typeof import("./roulette");
   let weekly: typeof import("./weekly-challenges");
+  let sessions: typeof import("./sessions");
   let seasons: typeof import("./seasons");
   let recap: typeof import("./monthly-recap");
   let scope: typeof import("./community-scoped-client");
@@ -37,6 +38,7 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     instant = await import("./instant-sessions");
     roulette = await import("./roulette");
     weekly = await import("./weekly-challenges");
+    sessions = await import("./sessions");
     seasons = await import("./seasons");
     recap = await import("./monthly-recap");
     scope = await import("./community-scoped-client");
@@ -56,9 +58,9 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     await db.$executeRawUnsafe(`TRUNCATE "WeeklyChallenge", "MonthlyRecap", "Season", "Notification", "NotificationDelivery", "NotificationEvent", "User", "Game", "Community" CASCADE`);
     defaults.resetDefaultCommunityIdCache();
     for (const name of ["default", "a", "b"]) ids[name] = (await db.community.create({ data: { slug: name, name, status: "ACTIVE" } })).id;
-    for (const name of ["alice", "bob", "carol", "dave", "none"]) ids[name] = (await db.user.create({ data: { discordId: name, discordName: name, xpTotal: 100 } })).id;
+    for (const name of ["alice", "bob", "carol", "dave", "none", "newcomer"]) ids[name] = (await db.user.create({ data: { discordId: name, discordName: name, xpTotal: name === "newcomer" ? 0 : 100 } })).id;
     for (const [u, c] of [["alice", "a"], ["bob", "b"], ["carol", "a"], ["carol", "b"], ["dave", "default"]]) {
-      await db.membership.create({ data: { userId: ids[u], communityId: ids[c], status: "ACTIVE" } });
+      await db.membership.create({ data: { userId: ids[u], communityId: ids[c], status: "ACTIVE", joinedAt: new Date("2026-01-01") } });
     }
     await db.user.update({ where: { id: ids.carol }, data: { activeCommunityId: ids.a } });
     ids.game = (await db.game.create({ data: { name: "Coop", source: "MANUAL", addedById: ids.alice } })).id;
@@ -181,10 +183,38 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
 
   it("compléter un défi n’écrit jamais dans le défi de B", async () => {
     const a = await weekly.getCurrentWeeklyChallenge(ids.a), b = await weekly.getCurrentWeeklyChallenge(ids.b);
-    const session = await makeSession();
-    await db.session.update({ where: { id: session.id }, data: { status: "DONE", date: a.weekStart } });
-    expect((await weekly.completeWeeklyChallenge(session.id)).completed).toBe(true);
+    await db.weeklyChallenge.update({ where: { id: a.id }, data: { type: "T16" } });
+    const first = await makeSession();
+    await db.session.update({ where: { id: first.id }, data: { date: a.weekStart } });
+    await sessions.markSessionDone(first.id);
+    expect((await db.weeklyChallenge.findUniqueOrThrow({ where: { id: a.id } })).completedAt).toBeNull();
+    const second = await makeSession();
+    const otherGame = await db.game.create({ data: { name: "Puzzle", source: "MANUAL", addedById: ids.alice } });
+    await db.session.update({ where: { id: second.id }, data: { date: a.weekStart, decidedGameId: otherGame.id } });
+    await sessions.markSessionDone(second.id);
+    expect((await db.weeklyChallenge.findUniqueOrThrow({ where: { id: a.id } })).completedAt).not.toBeNull();
     expect((await db.weeklyChallenge.findUniqueOrThrow({ where: { id: b.id } })).completedAt).toBeNull();
+  });
+
+  it("complète automatiquement le défi d'accueil à l'arrivée d'un nouveau membre", async () => {
+    const challenge = await weekly.getCurrentWeeklyChallenge(ids.a);
+    await db.weeklyChallenge.update({
+      where: { id: challenge.id },
+      data: { type: "T17", description: "Accueillir un nouveau membre cette semaine" },
+    });
+    await db.membership.create({
+      data: {
+        userId: ids.newcomer,
+        communityId: ids.a,
+        joinedAt: new Date(challenge.weekStart.getTime() + 12 * 60 * 60 * 1000),
+      },
+    });
+    const session = await makeSession();
+    await db.session.update({ where: { id: session.id }, data: { date: challenge.weekStart } });
+
+    await sessions.markSessionDone(session.id);
+
+    expect((await db.weeklyChallenge.findUniqueOrThrow({ where: { id: challenge.id } })).completedAt).not.toBeNull();
   });
 
   it("saisons : snapshot et reset dans A seulement, soldes B et colonnes historiques conservés", async () => {

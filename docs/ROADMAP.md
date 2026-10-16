@@ -59,9 +59,9 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L5-01 | Note de la soirée | 🟡 Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Vérifier la CI/preview puis fusionner | code | PR #247 ; CI/preview en attente |
+| L5-01 | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
 | L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
-| L5-03 | Quêtes hebdomadaires automatiques | 🟡 Défis hebdo manuels, 100 XP | Objectifs suivis automatiquement (deux jeux différents, invitation d'un nouveau…) | code | À faire |
+| L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | PR ouverte (`feat/weekly-quests`) |
 | L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage de fiabilité et bonus/malus XP (montants à proposer avant) | produit | À TOI — montants d’XP à décider (bonus/malus) |
 | L5-05 | Boutique XP : titres, cadres, couleurs | ❌ Pas de boutique | Catalogue, achat, équipement (dépense XP atomique) | code | À faire |
 

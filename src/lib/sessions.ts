@@ -24,6 +24,7 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { openSuperlativeVotingWindow, getWinningProposalParticipants } from "@/lib/superlative-voting";
 import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
+import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { excludeVetoed, isVoteVetoEnabled } from "@/lib/session-veto";
 import { loadVetoedProposalIds } from "@/lib/session-veto-db";
@@ -655,6 +656,7 @@ export async function markSessionDone(
   // (cron `closeOverdueScheduledSessions`) : les deux passent par cette
   // même fonction, aucun appelant n'a besoin de dupliquer l'appel.
   const unlockedAchievements = await checkGroupAchievements(decided.communityId ?? defaultCommunityId);
+  await completeWeeklyChallenge(sessionId);
 
   return { unlockedAchievements };
 }
