@@ -599,7 +599,10 @@ export async function getTournamentAnnounceStatus(tournamentId: string): Promise
 /* -------------------------------------------------------------------- */
 
 type TournamentWithMatches = Tournament & {
-  matches: TournamentMatch[];
+  matches: (TournamentMatch & {
+    player1: Pick<User, "discordName"> | null;
+    player2: Pick<User, "discordName"> | null;
+  })[];
   participants: TournamentParticipant[];
   game: { name: string };
   champion: User | null;
@@ -608,7 +611,10 @@ type TournamentWithMatches = Tournament & {
 async function loadTournament(tournamentId: string): Promise<TournamentWithMatches | null> {
   return prisma.tournament.findUnique({
     where: { id: tournamentId },
-    include: { matches: true, participants: true, game: { select: { name: true } }, champion: true },
+    include: {
+      matches: { include: { player1: { select: { discordName: true } }, player2: { select: { discordName: true } } } },
+      participants: true, game: { select: { name: true } }, champion: true,
+    },
   });
 }
 
@@ -1385,13 +1391,7 @@ async function resolveMatchResult(matchId: string, tournament: TournamentWithMat
   const thread = await findSentDelivery(threadSlot(tournament.id));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
-  const match = await prisma.tournamentMatch.findFirst({
-    where: { id: matchId, tournamentId: tournament.id },
-    include: {
-      player1: { select: { discordName: true } },
-      player2: { select: { discordName: true } },
-    },
-  });
+  const match = tournament.matches.find((candidate) => candidate.id === matchId);
   if (!match?.completedAt || !match.winnerId) return { eligible: false, reason: "unresolvable" };
   const winner = match.winnerId === match.player1Id ? match.player1 : match.winnerId === match.player2Id ? match.player2 : null;
   if (!winner) return { eligible: false, reason: "unresolvable" };
