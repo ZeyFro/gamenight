@@ -9,7 +9,7 @@ import { GamePreparation, GameSteamPrice } from "./GamePreparation";
 import { GamePreparationForm } from "./GamePreparationForm";
 const unknown = { preparationCost:null,preparationPrice:null,downloadSizeGb:null,preparationPlatform:null,preparationSourceUrl:null,preparationTimeMinutes:null,preparationUpdatedAt:null };
 beforeEach(() => { vi.clearAllMocks(); mocks.update.mockResolvedValue({ok:true}); });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 describe("coût et téléchargement sur la fiche", () => {
   it("conserve le jour de la déclaration murale près de minuit", () => {
     render(<GamePreparation game={{ ...unknown, preparationUpdatedAt: new Date("2026-10-16T23:30:00Z") }} />);
@@ -24,6 +24,7 @@ describe("coût et téléchargement sur la fiche", () => {
     vi.stubEnv("GAME_PREPARATION_TIME_ENABLED", "true");
     render(<GamePreparation game={{...unknown,preparationTimeMinutes:90}} />);
     expect(screen.getByText("90 min")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Coût, téléchargement et temps de préparation déclarés" })).toBeTruthy();
   });
   it("ne transforme ni une panne ni un prix absent en gratuité", async () => {
     mocks.price.mockResolvedValue(null); const {rerender}=render(await GameSteamPrice({appId:620})); expect(screen.getByText(/indisponibles/)).toBeTruthy(); expect(screen.queryByText("Gratuit")).toBeNull();
@@ -36,7 +37,7 @@ describe("coût et téléchargement sur la fiche", () => {
   });
   it("préremplit le formulaire, envoie un effacement puis actualise après succès", async () => {
     render(<GamePreparationForm estimatedTimeEnabled game={{...unknown,id:"g",preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"Windows",preparationSourceUrl:"https://example.com",preparationTimeMinutes:90}} />);
-    fireEvent.click(screen.getByText("Renseigner le coût et le téléchargement"));
+    fireEvent.click(screen.getByText("Renseigner le coût, le téléchargement et la durée"));
     expect((screen.getByLabelText("Téléchargement estimé (Go)") as HTMLInputElement).value).toBe("12.5");
     expect((screen.getByLabelText("Temps de préparation estimé (minutes)") as HTMLInputElement).value).toBe("90");
     fireEvent.change(screen.getByLabelText("Coût déclaré"),{target:{value:"unknown"}});
@@ -44,6 +45,10 @@ describe("coût et téléchargement sur la fiche", () => {
     fireEvent.submit(screen.getByRole("button",{name:"Enregistrer le relevé"}).closest("form")!);
     await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
     expect(Object.fromEntries(mocks.update.mock.calls[0][0])).toEqual({gameId:"g",preparationCost:"unknown",preparationPrice:"",preparationPlatform:"",preparationSourceUrl:"",downloadSizeGb:"",preparationTimeMinutes:""}); expect(screen.getByRole("status").textContent).toContain("enregistré");
+  });
+  it("annonce la durée dans le panneau de saisie lorsqu'elle est activée", () => {
+    render(<GamePreparationForm estimatedTimeEnabled game={{...unknown,id:"g"}} />);
+    expect(screen.getByText("Renseigner le coût, le téléchargement et la durée")).toBeTruthy();
   });
   it("affiche les échecs serveur et réseau sans annoncer un succès", async () => {
     render(<GamePreparationForm estimatedTimeEnabled={false} game={{...unknown,id:"g"}} />); fireEvent.click(screen.getByText("Renseigner le coût et le téléchargement"));

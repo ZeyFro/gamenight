@@ -10,7 +10,7 @@ export function GamePreparationForm({ game, estimatedTimeEnabled }: { game: Omit
   const [pending, startTransition] = useTransition();
   const [notice, setNotice] = useState(""); const [failed, setFailed] = useState(false);
   return <details className="rounded-lg border border-border p-3">
-    <summary className="cursor-pointer font-medium">Renseigner le coût et le téléchargement</summary>
+    <summary className="cursor-pointer font-medium">{estimatedTimeEnabled ? "Renseigner le coût, le téléchargement et la durée" : "Renseigner le coût et le téléchargement"}</summary>
     <p className="my-2 text-sm text-muted">Indique la plateforme/version et un lien vers ta source pour tout coût ou volume renseigné. Utilise le volume à télécharger, en Go (1 Go = un milliard d’octets), sans le remplacer par l’espace disque requis. Laisse vide pour rétablir l’inconnu.</p>
     <form className="grid gap-3" onSubmit={event => {
       event.preventDefault(); const form = new FormData(event.currentTarget); setNotice(""); setFailed(false);

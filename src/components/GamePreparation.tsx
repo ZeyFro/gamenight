@@ -2,12 +2,13 @@ import type { GamePreparationData } from "@/lib/game-preparation";
 import { getSteamPurchaseInfo } from "@/lib/game-purchase";
 
 export function GamePreparation({ game }: { game: GamePreparationData }) {
-  return <section aria-label="Coût et téléchargement déclarés" className="rounded-xl border border-border bg-surface p-4 text-sm">
+  const estimatedTimeEnabled = process.env.GAME_PREPARATION_TIME_ENABLED === "true";
+  return <section aria-label={estimatedTimeEnabled ? "Coût, téléchargement et temps de préparation déclarés" : "Coût et téléchargement déclarés"} className="rounded-xl border border-border bg-surface p-4 text-sm">
     <h2 className="font-semibold">Préparer le jeu</h2>
     <dl className="mt-2 grid gap-1">
       <div><dt className="inline font-medium">Coût déclaré : </dt><dd className="inline">{game.preparationCost === "FREE" ? "Gratuit" : game.preparationCost === "PAID" ? `Payant${game.preparationPrice ? ` · ${game.preparationPrice}` : " · prix non renseigné"}` : "Non renseigné"}</dd></div>
       <div><dt className="inline font-medium">Téléchargement estimé : </dt><dd className="inline">{game.downloadSizeGb === null ? "Non renseigné" : `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(game.downloadSizeGb)} Go`}</dd></div>
-      {process.env.GAME_PREPARATION_TIME_ENABLED === "true" && <div><dt className="inline font-medium">Temps de préparation estimé : </dt><dd className="inline">{game.preparationTimeMinutes === null ? "Non renseigné" : `${game.preparationTimeMinutes} min`}</dd></div>}
+      {estimatedTimeEnabled && <div><dt className="inline font-medium">Temps de préparation estimé : </dt><dd className="inline">{game.preparationTimeMinutes === null ? "Non renseigné" : `${game.preparationTimeMinutes} min`}</dd></div>}
       {game.preparationPlatform && <div><dt className="inline font-medium">Plateforme / version : </dt><dd className="inline">{game.preparationPlatform}</dd></div>}
     </dl>
     <p className="mt-2 text-xs text-muted">Relevé déclaré par les joueurs. Le téléchargement varie selon la plateforme, la version et les mises à jour ; l’espace disque requis est une autre information.</p>

@@ -55,4 +55,9 @@ describe.skipIf(!TEST_DATABASE_URL)("préparation sourcée en PostgreSQL",() => 
     for(const[k,v] of [["preparationSourceUrl",""],["preparationPlatform",""],["downloadSizeGb","-1"],["preparationTimeMinutes","10081"],["preparationCost","FREE"]]){const f=form(); f.set(k,v); expect(await update(f)).toEqual({ok:false,error:"invalid"});}
     expect(await db.game.count({where:{preparationUpdatedAt:{not:null}}})).toBe(0);
   });
+  it("la contrainte PostgreSQL refuse directement une durée hors limites", async () => {
+    for (const minutes of [0, 10081]) {
+      await expect(db.$executeRaw`UPDATE "Game" SET "preparationTimeMinutes" = ${minutes} WHERE "id" = 'g'`).rejects.toThrow();
+    }
+  });
 });
