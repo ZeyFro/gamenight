@@ -7,6 +7,7 @@ const TABS = [
   { href: "/profil", label: "Aperçu" },
   { href: "/profil/historique", label: "Historique soirées" },
   { href: "/profil/superlatifs", label: "Récompenses gagnées" },
+  { href: "/profil/lore", label: "Lore du groupe" },
   { href: "/profil/badges", label: "Badges" },
   { href: "/profil/boutique", label: "Boutique XP" },
   // Fix UX (après test prod PR 8/9) : pointait vers /tierlist (page
