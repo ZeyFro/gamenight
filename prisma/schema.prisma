@@ -83,6 +83,12 @@ model User {
   // CSS, `.profile-banner-default`).
   bannerUrl                String?
   steamId64                String?   @unique
+  // Identifiants déclaratifs facultatifs ; aucune liaison OAuth ni preuve de propriété.
+  psnId                    String?   @db.VarChar(100)
+  xboxGamertag             String?   @db.VarChar(100)
+  switchFriendCode         String?   @db.VarChar(100)
+  epicDisplayName          String?   @db.VarChar(100)
+  battleTag                String?   @db.VarChar(100)
   steamPublic              Boolean   @default(false)
   inputDevices             String[]  @default([])
   availablePlatforms       String[]  @default([])

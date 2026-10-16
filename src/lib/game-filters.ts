@@ -217,6 +217,14 @@ export function serializeGameFilters(filters: GameFilters): string {
   return params.toString();
 }
 
+/** Conserve les paramètres des autres contrôles, dont les participants répétés. */
+export function updateGameFilterQuery(current: string, filters: GameFilters): string {
+  const params = new URLSearchParams(current);
+  for (const key of Object.keys(DEFAULT_GAME_FILTERS)) params.delete(key);
+  for (const [key, value] of new URLSearchParams(serializeGameFilters(filters))) params.set(key, value);
+  return params.toString();
+}
+
 export function countActiveFilters(filters: GameFilters): number {
   let count = 0;
   if (filters.modes.length > 0) count++;

@@ -18,6 +18,8 @@ import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { CursorTrailToggle } from "@/components/CursorTrailToggle";
 import { PlayerEquipmentForm } from "@/components/PlayerEquipmentForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { GAMING_IDENTIFIER_FIELDS } from "@/lib/gaming-identifiers";
+import { updateGamingIdentifiersAction } from "@/app/profil/gaming-identifiers-actions";
 import {
   AVAILABLE_NOTIFICATION_CATEGORIES,
   getUserNotificationPreferences,
@@ -79,6 +81,12 @@ const FAMILY_FEEDBACK: Record<string, { text: string; className: string }> = {
   rate_limited: { text: RATE_LIMIT_MESSAGE, className: "bg-warning/10 text-warning" },
 };
 
+const IDENTIFIERS_FEEDBACK: Record<string, string> = {
+  ok: "Tes identifiants de jeu ont été enregistrés.",
+  invalide: "Utilise au maximum 100 caractères par identifiant, sur une seule ligne.",
+  rate_limited: RATE_LIMIT_MESSAGE,
+};
+
 export default async function ProfilParametresPage({
   searchParams,
 }: {
@@ -90,12 +98,13 @@ export default async function ProfilParametresPage({
     new?: string;
     notifications?: string;
     materiel?: string;
+    identifiants?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, materiel } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, materiel, identifiants } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
@@ -115,6 +124,22 @@ export default async function ProfilParametresPage({
   return (
     <Stagger className="flex flex-col gap-6">
       <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold">Mes identifiants de jeu</h2>
+          <p className="text-sm text-muted">Ces identifiants facultatifs sont visibles par les membres autorisés à consulter ta fiche. Leur existence n’est pas vérifiée. Laisse un champ vide pour l’effacer ; ton compte Steam se gère dans la section Steam.</p>
+          {identifiants && IDENTIFIERS_FEEDBACK[identifiants] && <p role={identifiants === "ok" ? "status" : "alert"} className="text-sm">
+            {IDENTIFIERS_FEEDBACK[identifiants]}
+          </p>}
+          <form action={updateGamingIdentifiersAction} className="flex flex-col gap-4">
+            {GAMING_IDENTIFIER_FIELDS.map(({ key, label }) => <div key={key}>
+              <label htmlFor={`gaming-${key}`} className="mb-1 block text-sm font-medium">{label}</label>
+              <input id={`gaming-${key}`} name={key} type="text" maxLength={100} autoComplete="off" defaultValue={user[key] ?? ""} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-accent" />
+            </div>)}
+            <Button type="submit" variant="primary">Enregistrer mes identifiants</Button>
+          </form>
+        </Card>
+      </StaggerItem>
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Bannière de profil</h2>
