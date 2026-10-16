@@ -55,6 +55,48 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect(await library.getTotalUserCount(ids.bob)).toBe(2);
   });
 
+  it("exige chacun des possesseurs choisis, déduplique et exclut owned:false", async () => {
+    expect((await library.getGroupLibraryGames(ids.alice, [ids.alice, ids.both, ids.alice])).map(g => g.name)).toEqual(["shared"]);
+    expect((await library.getGroupLibraryGames(ids.alice, [ids.alice])).map(g => g.name)).toEqual(["onlyA", "shared"]);
+    expect((await library.getGroupLibraryGames(ids.alice, [])).map(g => g.name)).toEqual(["onlyA", "shared"]);
+    await db.userGame.create({ data: { userId: ids.both, gameId: ids.unowned, owned: true } });
+    expect((await library.getGroupLibraryGames(ids.alice, [ids.alice, ids.both])).map(g => g.name)).toEqual(["shared"]);
+  });
+
+  it.each(["bob", "left", "none", "missing"])("refuse toute la sélection si un participant est inaccessible (%s)", async name => {
+    expect(await library.getGroupLibraryGames(ids.alice, [ids.alice, ids[name] ?? "unknown"])).toEqual([]);
+  });
+
+  it("revalide le serveur actif, la révocation et la suspension", async () => {
+    expect((await library.getGroupLibraryGames(ids.both, [ids.alice, ids.both])).map(g => g.name)).toEqual(["shared"]);
+    await db.user.update({ where: { id: ids.both }, data: { activeCommunityId: ids.b } });
+    expect(await library.getGroupLibraryGames(ids.both, [ids.alice, ids.both])).toEqual([]);
+    expect((await library.getGroupLibraryGames(ids.both, [ids.bob, ids.both])).map(g => g.name)).toEqual(["shared"]);
+    await db.membership.update({ where: { communityId_userId: { userId: ids.bob, communityId: ids.b } }, data: { status: "REMOVED" } });
+    expect(await library.getGroupLibraryGames(ids.both, [ids.bob, ids.both])).toEqual([]);
+    await db.community.update({ where: { id: ids.b }, data: { status: "SUSPENDED" } });
+    // Le visiteur revient sur son autre serveur ACTIVE ; la sélection de B
+    // reste refusée et ne doit jamais révéler ses bibliothèques suspendues.
+    expect(await library.getGroupLibraryGames(ids.both, [ids.bob, ids.both])).toEqual([]);
+  });
+
+  it("OFF : intersection exacte entre serveurs et de trois personnes, pas seulement leur nombre", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    expect((await library.getGroupLibraryGames(ids.none, [ids.alice, ids.bob, ids.both])).map(g => g.name)).toEqual(["shared"]);
+    expect(await library.getGroupLibraryGames(ids.none, [ids.alice, ids.bob, ids.left])).toEqual([]);
+  });
+
+  it("propose les seuls membres du serveur actif, conserve le roster global sous OFF", async () => {
+    expect((await library.getGroupLibraryMembers(ids.alice)).map(row => row.id).sort()).toEqual([ids.alice, ids.both].sort());
+    expect(await library.getGroupLibraryMembers(ids.none)).toEqual([]);
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    expect(await library.getGroupLibraryMembers(ids.none)).toHaveLength(5);
+  });
+
+  it("refuse les sélections trop grandes sans élargir aux membres valides", async () => {
+    expect(await library.getGroupLibraryGames(ids.alice, [ids.alice, ...Array.from({ length: 100 }, (_, index) => `unknown-${index}`)])).toEqual([]);
+  });
+
   it("un changement de serveur bascule les jeux et compteurs sans agréger les deux serveurs", async () => {
     expect((await library.getGroupLibraryGames(ids.both)).map(g => g.name)).toEqual(["onlyA", "shared"]);
     await db.user.update({ where: { id: ids.both }, data: { activeCommunityId: ids.b } });

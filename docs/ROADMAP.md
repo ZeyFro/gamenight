@@ -28,13 +28,13 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
 | L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
-| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | PR ouverte #234 (Draft, CI120/Vercel verts ; fusion refusée par revue automatique, ne pas retenter) |
+| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
 
 ## Lot 3 — Carnet et préparation
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L3-01 | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | PR ouverte #235 (Draft, CI121/Vercel verts ; réconciliation avant fusion) |
+| L3-01 | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | PR ouverte #235 (réconciliée avec main ; CI du SHA db93b10 en cours) |
 | L3-02 | Manette/clavier, micro, plateformes disponibles | ❌ Aucun carnet structuré | Formulaire et affichage aux autres membres | code | PR ouverte #236 (Draft, CI122/Vercel verts ; réconciliation avant fusion) |
 | L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | PR ouverte #237 (Draft, CI123/Vercel verts ; réconciliation avant fusion) |
 | L3-04 | Avertissements : jumpscares, mal des transports, langue | ❌ Pas d'avertissements structurés | Infos sur les fiches et avant inscription | code | PR ouverte (`feat/avertissements-jeux`, Draft ; contrôles du dernier commit requis) |
