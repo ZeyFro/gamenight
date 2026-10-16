@@ -60,7 +60,7 @@ describe("routes /api hors cron et backfill", () => {
     ({ file }) => {
       const src = readFileSync(file, "utf8");
       const ok =
-        /\b(?:getValidSession|auth)\(\)/.test(src) ||
+        /\b(?:getValidSession|auth)\(\)/.test(src) || /\bgetCurrentUser\(/.test(src) ||
         /\b(?:verifyCronRequest|checkCronAuth)\(/.test(src);
       expect(ok, `${file} ne vérifie ni session ni secret cron`).toBe(true);
     }

@@ -108,6 +108,9 @@ async function CalendrierContent({
         <p className="mt-1 text-sm text-muted">
           Soirées, roulettes et disponibilités de ton serveur, en un coup d’œil.
         </p>
+        <a href="/api/calendrier/export" download className="mt-3 inline-block text-sm text-accent underline">
+          Télécharger les soirées à venir (.ics)
+        </a>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
