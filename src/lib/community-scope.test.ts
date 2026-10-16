@@ -26,7 +26,7 @@ const COLLECTIVE_MODELS = [
   "GameWishlist", "GameWishlistVote", "XpEvent", "LevelUpEvent", "Season", "SeasonSnapshot",
   "MonthlyRecap", "WeeklyChallenge", "GroupAchievement", "GroupSessionStats", "GroupGameStat",
   "GroupActiveWeek", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "SessionAvailabilityPollParticipant", "SessionAvailabilityPollSlot", "SessionAvailabilityPollResponse",
-  "CommunityMemberStats",
+  "CommunityMemberStats", "CommunityDate",
   // Décision 3 (catalogues copiés par communauté) : le catalogue de badges et
   // les badges gagnés deviennent collectifs.
   "Badge", "UserBadge",
