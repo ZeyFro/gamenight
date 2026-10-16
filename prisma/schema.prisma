@@ -337,6 +337,7 @@ model Game {
   downloadSizeGb        Float?
   preparationPlatform   String? @db.VarChar(80)
   preparationSourceUrl  String? @db.VarChar(500)
+  preparationTimeMinutes Int?
   preparationUpdatedAt  DateTime?
   // Informations déclarées par un possesseur ; null = inconnu.
   jumpscares          Boolean?
