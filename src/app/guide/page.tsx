@@ -5,6 +5,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
 import { ButtonLink } from "@/components/ui/Button";
+import { isCommunityExpressionsEnabled } from "@/lib/community-expressions-input";
 
 export const metadata = pageMetadata("Guide");
 
@@ -103,6 +104,7 @@ export default async function GuidePage() {
       </div>
 
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
+      {isCommunityExpressionsEnabled() && <Card><h2 className="font-semibold">Expressions du serveur</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Expressions et running gags, les membres actifs partagent les expressions de leur serveur et leur sens. L’auteur peut les modifier ou les supprimer, ainsi que les administrateurs et propriétaires de la communauté. Le nom du serveur est affiché pour éviter de mélanger les histoires.</p></Card>}
       <ButtonLink href="/charte" variant="ghost">Lire la charte de fair-play du serveur</ButtonLink>
       <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {guideSections(SECTIONS).map((section) => (

@@ -47,6 +47,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
 
 ## Switches d'environnement
+- `COMMUNITY_EXPRESSIONS_ENABLED` : collection d’expressions et running gags par serveur dans Profil → Lore ; membres actifs uniquement, modération auteur / ADMIN / OWNER, même isolation éteinte ; exige la migration `community_expressions` ; OFF par défaut
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
