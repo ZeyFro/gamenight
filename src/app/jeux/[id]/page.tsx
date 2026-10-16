@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { EditGameDialog } from "@/components/EditGameDialog";
+import { GamePreparation, GameSteamPrice } from "@/components/GamePreparation";
+import { GamePreparationForm } from "@/components/GamePreparationForm";
 import { GameWarnings } from "@/components/GameWarnings";
 import { GameWarningsForm } from "@/components/GameWarningsForm";
 import { GameDescription } from "@/components/GameDescription";
@@ -286,6 +288,9 @@ export default async function GameDetailPage({
         </div>
       </div>
 
+      <GamePreparation game={game} />
+      {owns?.owned && <GamePreparationForm game={{ id: game.id, preparationCost: game.preparationCost, preparationPrice: game.preparationPrice, downloadSizeGb: game.downloadSizeGb, preparationPlatform: game.preparationPlatform, preparationSourceUrl: game.preparationSourceUrl }} />}
+      {game.steamAppId && <Suspense fallback={<p className="text-sm text-muted">Lecture du prix Steam…</p>}><GameSteamPrice appId={game.steamAppId} /></Suspense>}
       <GameWarnings game={game} />
       {owns?.owned && <GameWarningsForm game={{ id: game.id, jumpscares: game.jumpscares, motionSickness: game.motionSickness, textLanguages: game.textLanguages, audioLanguages: game.audioLanguages }} />}
 
