@@ -66,3 +66,19 @@ d'autorisation explicite reconnue comme fiable. Le propriétaire demande de ne
 pas répéter cette action : aucune tentative de fusion n'est faite. Après les
 autres lots, réconcilier les changements de schéma, de pages et de roadmap puis
 rejouer les contrôles sur le nouveau commit.
+
+## Reprise du 16 octobre
+
+Le paragraphe précédent décrit l'ancienne session : le propriétaire autorise
+maintenant explicitement les fusions après contrôles. #234 est fusionnée,
+production READY vérifiée au SHA `5724728`. La branche est réconciliée
+localement avec la bibliothèque et les identifiants de #235 ; le schéma ne
+présente pas de conflit et la roadmap conserve les lots ouverts.
+
+Le guide explique les informations déclaratives et leur état inconnu. La date
+de déclaration utilise désormais `wallClockNow()`, conformément au dépôt.
+Après ces changements : 17 tests ciblés réussis, génération Prisma et Next
+typegen réussies, lint ciblé et `git diff --check` réussis. Typage et contrôles
+distants de la branche intégrée encore à terminer. Aucune migration appliquée
+localement, aucun accès Neon ou Discord réel. Le parcours authentifié/mobile
+reste non vérifié.
