@@ -4,9 +4,15 @@ import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { levelForXp, rankForLevel, titleForLevel, xpForLevel, type Rank } from "@/lib/xp";
 
 const WEEK_DELTA_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVE_STREAK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export const SCOREBOARD_PERIODS = ["global", "month", "week"] as const;
 export type ScoreboardPeriod = (typeof SCOREBOARD_PERIODS)[number];
+
+export interface FunLeaderboards {
+  gamesByPlayTime: { gameId: string; name: string; coverUrl: string | null; totalPlayMinutes: number }[];
+  playersByStreak: { userId: string; discordName: string; discordAvatar: string | null; color: string; streakCount: number }[];
+}
 
 export interface ScoreboardEntry {
   userId: string;
@@ -175,4 +181,38 @@ export async function getScoreboard(
     ...entry,
     weekDeltaPosition: lastWeekOrder.indexOf(entry.userId) - index,
   }));
+}
+
+/** Classements annexes communautaires : temps déclaré par jeu et streak actif des membres. */
+export async function getFunLeaderboards(options: { communityId?: string | null } = {}): Promise<FunLeaderboards> {
+  const requestedId = options.communityId;
+  if (requestedId === null) return { gamesByPlayTime: [], playersByStreak: [] };
+  const communityId = requestedId ?? await getDefaultCommunityId();
+  const [community, scopedDb, usersRaw] = await Promise.all([
+    prisma.community.findUnique({ where: { id: communityId }, select: { status: true } }),
+    scopedPrismaForCommunityId(communityId),
+    prisma.user.findMany({
+      ...(requestedId ? { where: { memberships: { some: { communityId, status: "ACTIVE" as const, community: { status: "ACTIVE" as const } } } } } : {}),
+      select: { id: true },
+    }),
+  ]);
+  if (community?.status !== "ACTIVE") return { gamesByPlayTime: [], playersByStreak: [] };
+  const [games, players] = await Promise.all([
+    scopedDb.groupGameStat.findMany({
+      where: { communityId, totalPlayMinutes: { gt: 0 } },
+      orderBy: { totalPlayMinutes: "desc" },
+      take: 5,
+      select: { gameId: true, totalPlayMinutes: true, game: { select: { name: true, coverUrl: true } } },
+    }),
+    scopedDb.communityMemberStats.findMany({
+      where: { communityId, userId: { in: usersRaw.map((user) => user.id) }, streakCount: { gt: 0 }, streakLastActiveAt: { gte: new Date(Date.now() - ACTIVE_STREAK_WINDOW_MS) } },
+      orderBy: [{ streakCount: "desc" }, { userId: "asc" }],
+      take: 5,
+      select: { userId: true, streakCount: true, user: { select: { discordName: true, discordAvatar: true, color: true } } },
+    }),
+  ]);
+  return {
+    gamesByPlayTime: games.map((game) => ({ gameId: game.gameId, name: game.game.name, coverUrl: game.game.coverUrl, totalPlayMinutes: game.totalPlayMinutes })),
+    playersByStreak: players.map((player) => ({ userId: player.userId, ...player.user, streakCount: player.streakCount })),
+  };
 }
