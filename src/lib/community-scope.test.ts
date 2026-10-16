@@ -19,7 +19,7 @@ import { join, relative, sep } from "node:path";
  */
 
 const COLLECTIVE_MODELS = [
-  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "Pronostic", "XpBet", "Debt",
+  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",
   "Tournament", "TournamentParticipant", "TournamentMatch", "ChatMessage", "ChatReaction",

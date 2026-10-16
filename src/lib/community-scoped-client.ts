@@ -44,7 +44,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
-  "CommunityMemberStats", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent",
+  "CommunityMemberStats", "CommunityDate", "SessionRating", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent",
   "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll",
 ]);
 

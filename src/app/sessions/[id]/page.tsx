@@ -53,6 +53,8 @@ import { pageMetadata } from "@/lib/page-title";
 import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
 import { SessionSeatsPanel } from "@/components/sessions/SessionSeatsPanel";
+import { SessionRatingForm } from "@/components/sessions/SessionRatingForm";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { GameWarnings } from "@/components/GameWarnings";
 
 import { readSessionPreparation } from "@/lib/session-preparation";
@@ -118,6 +120,16 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  let ratingSummary: { average: number | null; count: number; own: number | null } | null = null;
+  if (session.status === "DONE") {
+    const scopedDb = await getScopedPrisma(user.id);
+    const where = { sessionId: session.id, communityId: session.communityId };
+    const [aggregate, ownRating] = await Promise.all([
+      scopedDb.sessionRating.aggregate({ where, _avg: { rating: true }, _count: { _all: true } }),
+      scopedDb.sessionRating.findFirst({ where: { ...where, userId: user.id }, select: { rating: true } }),
+    ]);
+    ratingSummary = { average: aggregate._avg.rating, count: aggregate._count._all, own: ownRating?.rating ?? null };
+  }
   const seatState = session.status === "SCHEDULED" ? await readSessionSeats(user.id, session.id) : null;
   const sessionProgress = await getMemberStats(user.id, await statsCommunityIdForSession(session.communityId));
 
@@ -341,6 +353,16 @@ export default async function SessionDetailPage({
       )}
 
       {session.decidedGame && <GameWarnings game={session.decidedGame} />}
+      {ratingSummary && (
+        <section aria-label="Note de la soirée" className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-3 text-sm text-muted">
+            {ratingSummary.count > 0
+              ? `Satisfaction moyenne : ${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(ratingSummary.average!)} / 5 (${ratingSummary.count} ${ratingSummary.count === 1 ? "note" : "notes"})`
+              : "Pas encore de note pour cette soirée."}
+          </p>
+          <SessionRatingForm sessionId={session.id} rating={ratingSummary.own} />
+        </section>
+      )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
 
       {deadlineAdjusted && (

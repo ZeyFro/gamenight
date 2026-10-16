@@ -182,6 +182,7 @@ model User {
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+  sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
 
@@ -642,6 +643,7 @@ model Session {
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]
   results           SessionResult[]
+  ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
   // Sprint 3 (dettes/gage) — voir `Debt`.
@@ -1040,6 +1042,23 @@ model SessionResult {
   // Sert `revanche.ts` (compte les résultats d'un user pour un jeu donné,
   // indépendamment de l'existence de la soirée).
   @@index([userId, gameId])
+}
+
+model SessionRating {
+  id          String   @id @default(cuid())
+  sessionId   String
+  communityId String?
+  userId      String
+  rating      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  session   Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([communityId, sessionId])
 }
 
 // Ledger XP append-only — préféré à un simple compteur sur `User` pour
@@ -2551,6 +2570,7 @@ enum CommunityChannelCategory {
 model Community {
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
+  sessionRatings SessionRating[]
   id   String @id @default(cuid())
   // Segment d'URL `/c/[slug]/…` (PR suivante). `default` = la communauté
   // historique, créée par `ensureDefaultCommunity` (src/lib/default-community.ts).
