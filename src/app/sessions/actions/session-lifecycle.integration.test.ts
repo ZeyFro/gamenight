@@ -106,6 +106,24 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     expect(await db.xpEvent.count({ where: { userId: creator.id, reason: "CREATE_SESSION" } })).toBe(3);
   });
 
+  it("crée une série mensuelle atomique et rejoue la même intention sans dupliquer les occurrences", async () => {
+    await db.community.upsert({ where: { slug: "default" }, update: { status: "ACTIVE" }, create: { slug: "default", name: "default", status: "ACTIVE" } });
+    (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
+    const creator = await makeUser();
+    currentUserMock.mockResolvedValue(creator);
+    const form = formData({ date: "2026-11-07", time: "20:00", recurrence: "monthly", recurrenceCount: "4" });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(createSession(form)).rejects.toThrow(/^REDIRECT:\/sessions\//);
+    }
+
+    const sessions = await db.session.findMany({ where: { createdById: creator.id }, orderBy: { date: "asc" } });
+    expect(sessions.map((session) => session.date.toISOString())).toEqual([
+      "2026-11-07T20:00:00.000Z", "2026-12-05T20:00:00.000Z",
+      "2027-01-02T20:00:00.000Z", "2027-02-06T20:00:00.000Z",
+    ]);
+  });
+
   it("persiste EXACTEMENT les potes cochés — jamais plus, jamais moins, jamais 'tout le monde'", async () => {
     const creator = await makeUser();
     const invitedA = await makeUser();

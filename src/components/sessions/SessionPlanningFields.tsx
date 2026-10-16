@@ -25,6 +25,7 @@ export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", 
 }) {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
+  const [recurrence, setRecurrence] = useState("");
   const [guestIds, setGuestIds] = useState(() => potes.map((pote) => pote.id));
   const [durationMinutes, setDurationMinutes] = useState(120);
   const [result, setResult] = useState<SlotSuggestionsResult | null>(null);
@@ -54,6 +55,20 @@ export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", 
     <div className="grid grid-cols-2 gap-3">
       <div className="flex min-w-0 flex-col gap-1"><label className="text-xs text-muted" htmlFor="session-date">Date</label><input id="session-date" type="date" name="date" required min={minDate} value={date} onChange={(event) => setDate(event.target.value)} className={inputClass} /></div>
       <div className="flex min-w-0 flex-col gap-1"><label className="text-xs text-muted" htmlFor="session-time">Heure</label><input id="session-time" type="time" name="time" required value={time} onChange={(event) => setTime(event.target.value)} className={inputClass} /></div>
+    </div>
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-muted" htmlFor="session-recurrence">Répéter la soirée</label>
+      <select id="session-recurrence" name="recurrence" value={recurrence} onChange={(event) => setRecurrence(event.target.value)} className={inputClass}>
+        <option value="">Une seule fois</option>
+        <option value="weekly">Chaque semaine, le même jour</option>
+        <option value="monthly">Chaque mois, le même rang de jour (ex. premier samedi)</option>
+      </select>
+      {recurrence && <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted" htmlFor="session-recurrence-count">Nombre de soirées (première incluse)</label>
+        <select id="session-recurrence-count" name="recurrenceCount" defaultValue="4" className={inputClass}>
+          {[4, 8, 12].map((count) => <option key={count} value={count}>{count}</option>)}
+        </select>
+      </div>}
     </div>
     <NotifyRecipientsField potes={potes} tags={tags} onSelectionChange={changeGuests} />
     <section className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4" aria-labelledby="slot-suggestions-title" aria-busy={pending}>
