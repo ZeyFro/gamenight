@@ -22,7 +22,6 @@ import { formatDateTimeFr, toDateInputValue, toTimeInputValue } from "@/lib/wall
 import { SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getMemberStats } from "@/lib/member-stats";
-import { getCurrentWeeklyChallenge } from "@/lib/weekly-challenges";
 import { VotingCountdown } from "@/components/VotingCountdown";
 import { VoteButton } from "@/components/VoteButton";
 import { VoterAvatars } from "@/components/VoterAvatars";
@@ -48,7 +47,6 @@ import {
   markSessionDoneAction,
   resendDiscordAction,
 } from "../actions/session-lifecycle";
-import { completeWeeklyChallengeAction } from "../actions/results";
 import { pageMetadata } from "@/lib/page-title";
 import { readSessionSeats } from "@/lib/session-seats";
 import { wallClockNow } from "@/lib/wallclock";
@@ -313,18 +311,6 @@ export default async function SessionDetailPage({
         ? "Toi seul(e) pour l'instant"
         : `Toi + ${activeInvites.map((i) => i.user.discordName).join(", ")}`;
   }
-
-  // Défi hebdo (Sprint 3 suite) — bouton "Marquer comme complété" réservé
-  // au créateur d'une soirée DONE, et seulement si le défi de LA SEMAINE
-  // EN COURS n'est pas déjà complété (`completeWeeklyChallenge` refuse de
-  // toute façon une vieille soirée hors de cette semaine, cf. son
-  // commentaire — la requête n'est faite que si elle peut servir).
-  const weeklyChallenge =
-    session.status === "DONE" && isCreator ? await getCurrentWeeklyChallenge(await statsCommunityIdForSession(session.communityId)) : null;
-  const canCompleteWeeklyChallenge =
-    weeklyChallenge !== null &&
-    !weeklyChallenge.completedAt &&
-    session.date >= weeklyChallenge.weekStart;
 
   // Sprint 5 (Chat in-app) — canal dédié à cette soirée.
   const chatMessages = await getChatMessages(session.id, user.id);
@@ -654,14 +640,6 @@ export default async function SessionDetailPage({
               ? "Voir les résultats"
               : "🏆 Saisir les résultats"}
           </ButtonLink>
-          {canCompleteWeeklyChallenge && (
-            <form action={completeWeeklyChallengeAction}>
-              <input type="hidden" name="sessionId" value={session.id} />
-              <Button type="submit" variant="secondary" size="sm">
-                🎯 Marquer le défi comme complété
-              </Button>
-            </form>
-          )}
         </div>
       )}
 

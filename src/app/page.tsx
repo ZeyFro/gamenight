@@ -428,10 +428,7 @@ async function HomeContent({
         </StaggerItem>
         </div>
 
-        {/* Défi hebdo (Sprint 3 suite) — généré paresseusement pour la
-            semaine en cours par `getCurrentWeeklyChallengeForViewer` ci-dessus. La
-            complétion se fait depuis une soirée DONE (bouton créateur),
-            jamais directement ici — la Home reste en lecture seule. */}
+        {/* Défi hebdo généré à la première lecture et validé à la clôture des soirées. */}
         {weeklyChallenge && (
           <StaggerItem className="gn-home-wide">
           <Card className="gn-home-challenge gradient-border">
@@ -440,7 +437,7 @@ async function HomeContent({
             <p className={`mt-2 text-sm ${weeklyChallenge.completedAt ? "text-accent" : "text-muted"}`}>
               {weeklyChallenge.completedAt
                 ? "✅ Complété !"
-                : "Complète-le depuis une soirée terminée cette semaine."}
+                : "La progression est suivie automatiquement à la clôture des soirées."}
             </p>
           </Card>
         </StaggerItem>

@@ -2754,7 +2754,7 @@ src/app/sessions/[id]/resultats/page.tsx # Saisie/consultation du podium ou du b
 src/app/sessions/[id]/vote-superlatifs/page.tsx # Vote de superlatifs entre potes (PR 5/9)
 src/app/sessions/actions/session-lifecycle.ts # Server actions : cycle de vie session (create/edit/close/cancel/delete/markDone/resendDiscord)
 src/app/sessions/actions/proposals-votes.ts   # Server actions : proposer un jeu, voter, retirer une proposition
-src/app/sessions/actions/results.ts           # Server actions : saisie résultats, défi hebdo complété
+src/app/sessions/actions/results.ts           # Server actions : saisie des résultats
 src/app/sessions/actions/superlatives.ts      # Server actions : vote de superlatifs
 src/app/sessions/actions/predictions.ts       # Server actions : pronostics, paris XP
 src/components/SessionResultsForm.tsx   # Formulaire podium/coop de la page résultats
@@ -6197,7 +6197,7 @@ reste disponible tel quel, derrière un toggle.
   `checkGroupAchievements()`, retourne les trophées débloqués
 - `src/lib/validations.ts` — `setDebtGageSchema`
 - `src/app/dettes/actions.ts` (nouveau)
-- `src/app/sessions/actions.ts` — `completeWeeklyChallengeAction`,
+- `src/app/sessions/actions.ts` —
   `markSessionDoneAction` (celebrate achievement), `submitSessionResultsAction`
   (toggle présent + `detectDebts`)
 - `src/components/SessionResultsForm.tsx` — toggle "Présent" par participant

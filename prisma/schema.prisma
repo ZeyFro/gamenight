@@ -1716,8 +1716,8 @@ model InstantSessionPresenceInterval {
 // distinguer les défis en base sans reparser `description` si jamais le
 // texte d'un template est retouché plus tard. `completedBySessionId`
 // (id "libre", même famille que `Notification.relatedSessionId`) : la
-// soirée qui a permis de cocher le défi cette semaine-là, renseignée par
-// `completeWeeklyChallenge` (créateur de cette session uniquement).
+// soirée qui a validé automatiquement le défi cette semaine-là, renseignée
+// par `completeWeeklyChallenge` à la clôture de la soirée.
 model WeeklyChallenge {
   id                   String    @id @default(cuid())
   description          String
