@@ -3,6 +3,7 @@ import { TabLink } from "@/components/ui/TabLink";
 const TABS = [
   { href: "/bibliotheque", label: "Ma bibliothèque", key: "perso" },
   { href: "/bibliotheque/groupe", label: "Groupe", key: "groupe" },
+  { href: "/bibliotheque/suggestions", label: "Suggestions", key: "suggestions" },
   { href: "/tierlist", label: "Tierlist", key: "tierlist" },
   { href: "/bibliotheque/a-verifier", label: "À vérifier", key: "a-verifier" },
   // Sprint 5 (FEATURE 3, Wishlist) — `/wishlist` en route dédiée plutôt
@@ -16,7 +17,7 @@ export function LibraryTabs({
   active,
   toVerifyCount,
 }: {
-  active: "perso" | "groupe" | "tierlist" | "a-verifier" | "wishlist";
+  active: "perso" | "groupe" | "tierlist" | "a-verifier" | "wishlist" | "suggestions";
   /**
    * Compteur affiché sur l'onglet "À vérifier" (PR 32.6, Bloc B) — optionnel :
    * seules `/bibliotheque` et `/bibliotheque/a-verifier` chargent déjà les

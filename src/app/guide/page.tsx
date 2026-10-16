@@ -17,6 +17,7 @@ const SECTIONS: GuideSection[] = [
       "Inclus-toi si tu participes. Les autres filtres restent disponibles ; efface la sélection pour retrouver tout le groupe.",
       "Les bibliothèques déclarées doivent être à jour : ce filtre ne vérifie ni l’installation ni la présence en ligne.",
       "Sur la fiche d’un jeu, consulte le prix Steam en France et les informations de téléchargement déclarées avec leur source. Le volume varie selon la plateforme et la version ; une valeur absente reste inconnue.",
+      "Dans l’onglet Suggestions, choisis les participants : leurs jeux communs sont classés selon leurs préférences, en excluant les jeux et catégories refusés.",
     ],
   },
   {
@@ -73,6 +74,7 @@ const SECTIONS: GuideSection[] = [
       "Lie ton compte Steam pour importer ta bibliothèque de jeux.",
       "Dans les paramètres, renseigne tes identifiants PSN, Xbox, Nintendo Switch, Epic Games et Battle.net : les membres qui peuvent voir ta fiche les retrouveront sur ton profil.",
       "Déclare aussi tes commandes, plateformes disponibles et ton micro dans les paramètres : les membres autorisés à consulter ta fiche verront ton matériel, sans filtrage automatique des jeux.",
+      "Renseigne tes catégories préférées ou refusées et les jeux que tu refuses dans les paramètres : ces choix servent aux suggestions, sans modifier les votes ou les roulettes.",
     ],
   },
 ];
