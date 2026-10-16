@@ -1,5 +1,15 @@
 # Reprise autonome du 16 octobre 2026
 
+## Mission globale — reprise continue sur le deuxième portable
+
+- Autorisation actuelle : poursuivre tous les lots exécutables, publier les PR et fusionner après contrôles verts, sans s'arrêter après une PR. Aucun arrêt de la session du premier portable supposé. Relire les SHA distants avant chaque push et fusion ; push normal uniquement, fusion avec `--match-head-commit`.
+- #267 : intégration locale de main après #268 sans conflit, migration additive du guide appliquée sur Postgres dédié ; 54 tests ciblés, typegen, TypeScript, lint complet et diff --check réussis. Contrôles du nouveau SHA à attendre. Son ancien contrôle Vercel était bloqué par le quota, jamais contourné.
+- #233 : ancienne PR d'automatisation en conflit avec main ; revue et correction des gardes de contrôles/SHA/préservation en cours dans `.codex-worktrees/reprise-233`. Les anciens checks verts ne valident pas cette nouvelle intégration. Ne jamais lancer le script réel pour le tester.
+- Inventaire : les statuts de L5-05, L6-01/02/08 et L7 déjà livrés sont réconciliés avec leurs PR fusionnées. L6-04 reste partiel : #251 affiche les trophées, sans Hall of Shame ni médias/descriptions éditables.
+- L6-03 pris en charge dans `.codex-worktrees/reprise-268`, branche `feat/tournament-predictions-next` : pronostics de tournoi et de match, gardes communautaires, aucun nouveau montant d'XP. Ne pas lancer une seconde implémentation de ce lot.
+- Postgres dédié commun aux worktrees : `gamenight-reprise-268-pg`, `127.0.0.1:55439`. Tests d'intégration strictement en série ; aucun changement aux conteneurs des autres projets. Les validations de #267 ont priorité sur les migrations/tests de L6-03.
+- Blocages humains existants conservés : limites des uploads (L5-02), économie XP de présence (L5-04), règles d'achat groupé (L6-11), clés VAPID (L6-13), format de recherche de joueurs (L7-11), validation des messages Discord réels (L7-17). Aucun secret fabriqué, aucune notification réelle pour les tests.
+
 ## Deuxième portable — reprise de #268 (16 octobre 2026)
 
 - Autorisation explicite : branches/PR et fusion après validation des contrôles requis. La session du premier portable peut toujours être active ; aucun arrêt déduit de ce diagnostic.
