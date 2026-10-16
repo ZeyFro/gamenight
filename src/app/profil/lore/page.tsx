@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
 import { getCurrentUser } from "@/lib/current-user";
@@ -17,11 +18,16 @@ export default async function GroupLorePage() {
 
   return (
     <FadeInView className="flex flex-col gap-4">
-      <header>
-        <h2 className="text-lg font-semibold text-foreground">🏆 Hall of Fame du groupe</h2>
-        <p className="mt-1 text-sm text-muted">
-          {unlockedCount} trophée{unlockedCount === 1 ? "" : "s"} débloqué{unlockedCount === 1 ? "" : "s"} sur {achievements.length}.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">🏆 Hall of Fame du groupe</h2>
+          <p className="mt-1 text-sm text-muted">
+            {unlockedCount} trophée{unlockedCount === 1 ? "" : "s"} débloqué{unlockedCount === 1 ? "" : "s"} sur {achievements.length}.
+          </p>
+        </div>
+        <Link href="/profil/lore/devine-jeu" className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-hover">
+          🕵️ Devine le jeu
+        </Link>
       </header>
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {achievements.map((item) => (
