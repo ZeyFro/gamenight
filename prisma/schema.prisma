@@ -90,6 +90,9 @@ model User {
   epicDisplayName          String?   @db.VarChar(100)
   battleTag                String?   @db.VarChar(100)
   steamPublic              Boolean   @default(false)
+  preferredGameCategories  String[]  @default([])
+  refusedGameCategories    String[]  @default([])
+  gameRefusals             UserGameRefusal[]
   inputDevices             String[]  @default([])
   availablePlatforms       String[]  @default([])
   microphoneAvailable      Boolean?
@@ -357,7 +360,7 @@ model Game {
   // timeout Vercel si on enrichissait toute une biblio importée d'un coup).
   // `null` tant que jamais fetché (ou si IGDB n'a rien trouvé). Structure
   // libre en JSON (voir `IgdbGameDetails` dans src/lib/igdb.ts) : pas de
-  // colonnes dédiées, cette donnée est display-only et sa forme suit celle
+  // colonnes dédiées ; ces métadonnées servent à l'affichage et aux suggestions, suivant la forme
   // de l'API IGDB.
   igdbDetails          Json?
   igdbDetailsFetchedAt DateTime?
@@ -370,6 +373,7 @@ model Game {
 
   addedBy   User       @relation("GameAddedBy", fields: [addedById], references: [id])
   userGames UserGame[]
+  userRefusals UserGameRefusal[]
 
   proposals       Proposal[]
   decidedSessions Session[]
@@ -1504,6 +1508,18 @@ enum RouletteStatus {
   OPEN
   SPINNING
   DONE
+}
+
+// Refus personnel, distinct d'un veto ponctuel de soirée.
+model UserGameRefusal {
+  userId    String
+  gameId    String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@index([gameId])
 }
 
 model Roulette {
