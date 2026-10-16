@@ -187,6 +187,7 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  sessionPreparations SessionPreparation[]
   sessionSeats SessionSeat[]
   sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
   sessionInvitesRevoked  SessionInvite[] @relation("SessionInviteRevokedBy")
@@ -337,6 +338,7 @@ model Game {
   downloadSizeGb        Float?
   preparationPlatform   String? @db.VarChar(80)
   preparationSourceUrl  String? @db.VarChar(500)
+  preparationTimeMinutes Int?
   preparationUpdatedAt  DateTime?
   // Informations déclarées par un possesseur ; null = inconnu.
   jumpscares          Boolean?
@@ -534,6 +536,7 @@ model Session {
   // Gestion des places activée explicitement par le créateur après décision.
   // null conserve les participants historiques issus des votes.
   attendanceCapacity Int?
+  preparations SessionPreparation[]
   seats SessionSeat[]
   vetoes SessionVeto[]
 
@@ -2688,4 +2691,19 @@ model Membership {
 
   @@unique([communityId, userId])
   @@index([userId])
+}
+
+// Une préparation concerne le jeu retenu : un changement de jeu repart à zéro.
+model SessionPreparation {
+  sessionId String
+  userId String
+  gameId String
+  installed Boolean @default(false)
+  updated Boolean @default(false)
+  microphone Boolean @default(false)
+  lobby Boolean @default(false)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId, gameId])
 }

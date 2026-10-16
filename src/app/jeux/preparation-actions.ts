@@ -11,11 +11,15 @@ export async function updateGamePreparation(form: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   if (!checkRateLimit(user.id, "updateGamePreparation")) return { ok: false, error: "rate_limited" } as const;
+  const timeValue = form.get("preparationTimeMinutes");
+  const estimatedTimeEnabled = process.env.GAME_PREPARATION_TIME_ENABLED === "true";
+  if (timeValue && !estimatedTimeEnabled) return { ok: false, error: "disabled" } as const;
   const parsed = gamePreparationSchema.safeParse(Object.fromEntries(
-    ["gameId", "preparationCost", "preparationPrice", "downloadSizeGb", "preparationPlatform", "preparationSourceUrl"].map(key => [key, form.get(key)]),
+    ["gameId", "preparationCost", "preparationPrice", "downloadSizeGb", "preparationPlatform", "preparationSourceUrl", "preparationTimeMinutes"].map(key => [key, form.get(key) ?? ""]),
   ));
   if (!parsed.success) return { ok: false, error: "invalid" } as const;
-  const { gameId, ...data } = parsed.data;
+  const { gameId, preparationTimeMinutes, ...baseData } = parsed.data;
+  const data = estimatedTimeEnabled ? { ...baseData, preparationTimeMinutes } : baseData;
   const result = await prisma.game.updateMany({ where: { id: gameId, userGames: { some: { userId: user.id, owned: true } } }, data: { ...data, preparationUpdatedAt: wallClockNow() } });
   if (!result.count) return { ok: false, error: "access" } as const;
   revalidatePath(`/jeux/${encodeURIComponent(gameId)}`);
