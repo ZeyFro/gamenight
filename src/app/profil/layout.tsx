@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
+import { getEquippedShopItems } from "@/lib/xp-shop";
+import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
 import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
@@ -63,7 +65,12 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
   const level = levelForXp(user.xpTotal);
   const rank = rankForLevel(level);
-  const title = titleForLevel(level);
+  const communityId = await writeCommunityIdForUser(user.id);
+  const cosmetics = communityId
+    ? await getEquippedShopItems(user.id, communityId)
+    : { TITLE: null, FRAME: null, COLOR: null };
+  const title = cosmetics.TITLE?.value ?? titleForLevel(level);
+  const color = cosmetics.COLOR?.value ?? user.color;
   const steamActivityLabel = formatSteamActivityLabel(
     user.lastPlayedGame,
     user.lastPlayedAt,
@@ -81,7 +88,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
         <ShineBorder shineColor={["#b99aff", "#d4ef80"]} aria-hidden="true" />
         <BannerImage
           url={user.bannerUrl}
-          color={user.color}
+          color={color}
           className="banner-ken-burns h-40 w-full sm:h-56 md:h-64"
         />
         <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
@@ -94,11 +101,11 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
       <div className="flex flex-col gap-4 px-4 sm:px-6">
         <ParallaxHeader className="-mt-16 flex items-end gap-4 sm:-mt-20">
-          <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} size={96} />
+          <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={96} />
           <div className="name-halo relative flex flex-1 flex-col gap-1 pb-1">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
               {user.discordName}
-              <ColorDot color={user.color} title="Ta couleur perso" />
+              <ColorDot color={color} title="Ta couleur équipée" />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span

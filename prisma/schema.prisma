@@ -983,6 +983,7 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  SHOP_PURCHASE
   // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
   // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
   // Garde les classements par période cohérents avec le solde corrigé.
@@ -1839,12 +1840,27 @@ model CommunityMemberStats {
   streakLastActiveAt DateTime?
   bestStreakCount Int @default(0)
   tournamentsParticipatedCount Int @default(0)
+  equippedTitleId String?
+  equippedFrameId String?
+  equippedColorId String?
+  cosmetics CommunityMemberCosmetic[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([communityId, userId])
   @@index([communityId, xpTotal])
   @@index([communityId, streakLastActiveAt])
+}
+
+model CommunityMemberCosmetic {
+  communityId String
+  userId String
+  itemId String
+  purchasedAt DateTime @default(now())
+
+  stats CommunityMemberStats @relation(fields: [communityId, userId], references: [communityId, userId], onDelete: Cascade)
+
+  @@id([communityId, userId, itemId])
 }
 
 // Chantier nettoyage réel du stockage (V2, suite) — résumé durable MINIMAL
