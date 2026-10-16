@@ -8,7 +8,7 @@ import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { creationMemberUserWhere, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import type { WeeklySlot, OverrideForDate } from "@/lib/availability";
-import { expandCommunityDates, type CalendarCommunityDate } from "@/lib/community-dates";
+import { expandCommunityDates, expandGameReleaseDates, type CalendarCommunityDate } from "@/lib/community-dates";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -135,7 +135,7 @@ export async function getCalendarData(
       orderBy: { discordName: "asc" },
   });
   const memberIds = allUsers.map((user) => user.id);
-  const [weeklySlots, overrides, sessions, roulettes, dateRows] = await Promise.all([
+  const [weeklySlots, overrides, sessions, roulettes, dateRows, gameReleaseRows] = await Promise.all([
     prisma.weeklyAvailability.findMany({ where: { userId: { in: memberIds } } }),
     prisma.availabilityOverride.findMany({
       where: { userId: { in: memberIds }, date: { gte: rangeStart, lt: rangeEndExclusive } },
@@ -173,10 +173,24 @@ export async function getCalendarData(
       },
       select: { id: true, kind: true, title: true, date: true, repeatsAnnually: true, createdById: true, member: { select: { discordName: true } } },
     }) : Promise.resolve([]),
+    activeCommunityId ? scopedDb.gameWishlist.findMany({
+      where: { communityId: activeCommunityId, purchasedAt: null },
+      select: { id: true, proposedById: true, game: { select: { id: true, name: true, igdbDetails: true } } },
+    }) : Promise.resolve([]),
   ]);
 
   const datesByDay = new Map<string, CalendarCommunityDate[]>();
-  for (const event of expandCommunityDates(dateRows, rangeStart, rangeEndExclusive)) {
+  const calendarDates = [
+    ...expandCommunityDates(dateRows, rangeStart, rangeEndExclusive),
+    ...expandGameReleaseDates(gameReleaseRows.map((row) => ({
+      id: row.id,
+      gameId: row.game.id,
+      title: row.game.name,
+      createdById: row.proposedById,
+      igdbDetails: row.game.igdbDetails,
+    })), rangeStart, rangeEndExclusive),
+  ];
+  for (const event of calendarDates) {
     const key = event.date.toISOString().slice(0, 10);
     datesByDay.set(key, [...(datesByDay.get(key) ?? []), event]);
   }
