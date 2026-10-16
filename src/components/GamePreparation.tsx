@@ -11,7 +11,7 @@ export function GamePreparation({ game }: { game: GamePreparationData }) {
     </dl>
     <p className="mt-2 text-xs text-muted">Relevé déclaré par les joueurs. Le téléchargement varie selon la plateforme, la version et les mises à jour ; l’espace disque requis est une autre information.</p>
     {game.preparationSourceUrl && <a href={game.preparationSourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-accent underline">Consulter la source du relevé</a>}
-    {game.preparationUpdatedAt && <p className="text-xs text-muted">Déclaration du {new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris" }).format(game.preparationUpdatedAt)}.</p>}
+    {game.preparationUpdatedAt && <p className="text-xs text-muted">Déclaration du {new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC" }).format(game.preparationUpdatedAt)}.</p>}
   </section>;
 }
 export async function GameSteamPrice({ appId }: { appId: number }) {

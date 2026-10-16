@@ -11,6 +11,10 @@ const unknown = { preparationCost:null,preparationPrice:null,downloadSizeGb:null
 beforeEach(() => { vi.clearAllMocks(); mocks.update.mockResolvedValue({ok:true}); });
 afterEach(cleanup);
 describe("coût et téléchargement sur la fiche", () => {
+  it("conserve le jour de la déclaration murale près de minuit", () => {
+    render(<GamePreparation game={{ ...unknown, preparationUpdatedAt: new Date("2026-10-16T23:30:00Z") }} />);
+    expect(screen.getByText(/16\/10\/2026/)).toBeTruthy();
+  });
   it("affiche inconnu puis un relevé sourcé avec plateforme, volume et date", () => {
     const {rerender}=render(<GamePreparation game={unknown} />); expect(screen.getAllByText("Non renseigné")).toHaveLength(2); expect(screen.queryByText("Gratuit")).toBeNull();
     rerender(<GamePreparation game={{...unknown,preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"Windows / Steam",preparationSourceUrl:"https://example.com/game",preparationUpdatedAt:new Date("2026-10-15T12:00:00Z")}} />);
