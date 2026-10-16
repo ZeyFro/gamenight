@@ -8,15 +8,21 @@ const downloadSize = z.string().trim().max(16)
   .refine(value => value === "" || /^\d+(?:[.,]\d{1,2})?$/.test(value))
   .transform(value => value === "" ? null : Number(value.replace(",", ".")))
   .pipe(z.number().finite().positive().max(5000).nullable());
+const preparationTime = z.string().trim().max(5)
+  .refine(value => value === "" || /^\d+$/.test(value))
+  .transform(value => value === "" ? null : Number(value))
+  .pipe(z.number().int().min(1).max(10080).nullable());
 export const gamePreparationSchema = z.object({
   gameId: z.string().min(1).max(100),
   preparationCost: z.enum(["unknown", "FREE", "PAID"]).transform(value => value === "unknown" ? null : value),
   preparationPrice: optionalText(120), downloadSizeGb: downloadSize,
   preparationPlatform: optionalText(80), preparationSourceUrl: sourceUrl,
+  preparationTimeMinutes: preparationTime,
 }).refine(value => !value.preparationPrice || value.preparationCost === "PAID", "Un prix déclaré exige le statut payant.")
-  .refine(value => !(value.preparationCost || value.downloadSizeGb !== null) || !!(value.preparationPlatform && value.preparationSourceUrl), "Indique une plateforme et une source pour tout coût ou téléchargement renseigné.");
+  .refine(value => !(value.preparationCost || value.downloadSizeGb !== null || value.preparationTimeMinutes !== null) || !!(value.preparationPlatform && value.preparationSourceUrl), "Indique une plateforme et une source pour tout relevé renseigné.");
 export interface GamePreparationData {
   preparationCost: string | null; preparationPrice: string | null;
   downloadSizeGb: number | null; preparationPlatform: string | null;
   preparationSourceUrl: string | null; preparationUpdatedAt: Date | null;
+  preparationTimeMinutes: number | null;
 }

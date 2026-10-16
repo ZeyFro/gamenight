@@ -5,7 +5,7 @@ import { updateGamePreparation } from "@/app/jeux/preparation-actions";
 import type { GamePreparationData } from "@/lib/game-preparation";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
-export function GamePreparationForm({ game }: { game: Omit<GamePreparationData, "preparationUpdatedAt"> & { id: string } }) {
+export function GamePreparationForm({ game, estimatedTimeEnabled }: { game: Omit<GamePreparationData, "preparationUpdatedAt"> & { id: string }; estimatedTimeEnabled: boolean }) {
   const id = useId(); const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [notice, setNotice] = useState(""); const [failed, setFailed] = useState(false);
@@ -17,7 +17,7 @@ export function GamePreparationForm({ game }: { game: Omit<GamePreparationData, 
       startTransition(async () => {
         try {
           const result = await updateGamePreparation(form); setFailed(!result.ok);
-          setNotice(result.ok ? "Relevé enregistré." : result.error === "rate_limited" ? RATE_LIMIT_MESSAGE : result.error === "access" ? "Tu dois encore posséder ce jeu pour le modifier." : "Vérifie le coût, le volume (0,01 à 5 000 Go), la plateforme et le lien HTTPS vers la source. Un prix exige le statut payant.");
+          setNotice(result.ok ? "Relevé enregistré." : result.error === "rate_limited" ? RATE_LIMIT_MESSAGE : result.error === "access" ? "Tu dois encore posséder ce jeu pour le modifier." : result.error === "disabled" ? "Cette fonctionnalité est désactivée." : "Vérifie le coût, le volume (0,01 à 5 000 Go), la durée (1 à 10 080 minutes), la plateforme et le lien HTTPS vers la source. Un prix exige le statut payant.");
           if (result.ok) router.refresh();
         } catch { setFailed(true); setNotice("Enregistrement impossible. Réessaie plus tard."); }
       });
@@ -34,6 +34,7 @@ export function GamePreparationForm({ game }: { game: Omit<GamePreparationData, 
       ] as const).map(field => <div key={field.key} className="grid gap-1"><label htmlFor={`${id}-${field.key}`}>{field.label}</label><input id={`${id}-${field.key}`} name={field.key} type={field.type} maxLength={field.max} defaultValue={game[field.key] ?? ""} placeholder={field.placeholder} disabled={pending} className="rounded-lg border border-border bg-background p-2" /></div>)}
       <label htmlFor={`${id}-size`}>Téléchargement estimé (Go)</label>
       <input id={`${id}-size`} name="downloadSizeGb" type="number" min="0.01" max="5000" step="0.01" defaultValue={game.downloadSizeGb ?? ""} disabled={pending} className="rounded-lg border border-border bg-background p-2" />
+      {estimatedTimeEnabled && <><label htmlFor={`${id}-time`}>Temps de préparation estimé (minutes)</label><input id={`${id}-time`} name="preparationTimeMinutes" type="number" min="1" max="10080" step="1" defaultValue={game.preparationTimeMinutes ?? ""} disabled={pending} className="rounded-lg border border-border bg-background p-2" /></>}
       <button disabled={pending} className="rounded-lg bg-accent px-4 py-2 font-semibold text-accent-foreground">{pending ? "Enregistrement…" : "Enregistrer le relevé"}</button>
       {notice && <p role={failed ? "alert" : "status"}>{notice}</p>}
     </form>

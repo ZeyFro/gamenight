@@ -7,7 +7,7 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); } }));
 import { updateGamePreparation } from "./preparation-actions";
 function form() { const f = new FormData(); for (const [k,v] of Object.entries({ gameId: "g", preparationCost: "PAID", preparationPrice: " 12 EUR ", downloadSizeGb: "12,50", preparationPlatform: "PC Windows", preparationSourceUrl: "https://store.example/game", userId: "forged", minPlayers: "99" })) f.set(k,v); return f; }
-beforeEach(() => { vi.clearAllMocks(); mocks.current.mockResolvedValue({ id: "self" }); mocks.rate.mockReturnValue(true); mocks.update.mockResolvedValue({ count: 1 }); });
+beforeEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); mocks.current.mockResolvedValue({ id: "self" }); mocks.rate.mockReturnValue(true); mocks.update.mockResolvedValue({ count: 1 }); });
 describe("relevé déclaré de préparation", () => {
   it.each([["0,01", 0.01], ["5000", 5000]])("accepte le volume autorisé à la borne %s Go", async (raw, expected) => {
     const f = form(); f.set("downloadSizeGb", String(raw));
@@ -25,8 +25,15 @@ describe("relevé déclaré de préparation", () => {
     const f=form(); f.set("downloadSizeGb",new Blob(["1"])); expect((await updateGamePreparation(f)).ok).toBe(false); expect(mocks.update).not.toHaveBeenCalled();
   });
   it("écrit seulement les champs validés avec une possession atomiquement revalidée", async () => {
-    expect(await updateGamePreparation(form())).toEqual({ok:true});
-    expect(mocks.update).toHaveBeenCalledWith({where:{id:"g",userGames:{some:{userId:"self",owned:true}}},data:{preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"PC Windows",preparationSourceUrl:"https://store.example/game",preparationUpdatedAt:expect.any(Date)}});
+    vi.stubEnv("GAME_PREPARATION_TIME_ENABLED", "true");
+    const f=form(); f.set("preparationTimeMinutes","90"); expect(await updateGamePreparation(f)).toEqual({ok:true});
+    expect(mocks.update).toHaveBeenCalledWith({where:{id:"g",userGames:{some:{userId:"self",owned:true}}},data:{preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"PC Windows",preparationSourceUrl:"https://store.example/game",preparationTimeMinutes:90,preparationUpdatedAt:expect.any(Date)}});
+  });
+  it("garde la durée masquée côté serveur par défaut et valide ses bornes", async () => {
+    const disabledForm=form(); disabledForm.set("preparationTimeMinutes","90");
+    expect(await updateGamePreparation(disabledForm)).toEqual({ok:false,error:"disabled"}); expect(mocks.update).not.toHaveBeenCalled();
+    vi.stubEnv("GAME_PREPARATION_TIME_ENABLED", "true");
+    for (const value of ["0", "1.5", "10081", "x"]) { const f=form(); f.set("preparationTimeMinutes",value); expect(await updateGamePreparation(f)).toEqual({ok:false,error:"invalid"}); }
   });
   it("permet l'effacement total et distingue possession perdue et panne", async () => {
     const f=form(); for(const k of ["preparationPrice","downloadSizeGb","preparationPlatform","preparationSourceUrl"]) f.set(k,""); f.set("preparationCost","unknown");

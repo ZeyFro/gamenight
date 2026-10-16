@@ -7,7 +7,7 @@ vi.mock("@/app/jeux/preparation-actions", () => ({ updateGamePreparation: mocks.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 import { GamePreparation, GameSteamPrice } from "./GamePreparation";
 import { GamePreparationForm } from "./GamePreparationForm";
-const unknown = { preparationCost:null,preparationPrice:null,downloadSizeGb:null,preparationPlatform:null,preparationSourceUrl:null,preparationUpdatedAt:null };
+const unknown = { preparationCost:null,preparationPrice:null,downloadSizeGb:null,preparationPlatform:null,preparationSourceUrl:null,preparationTimeMinutes:null,preparationUpdatedAt:null };
 beforeEach(() => { vi.clearAllMocks(); mocks.update.mockResolvedValue({ok:true}); });
 afterEach(cleanup);
 describe("coût et téléchargement sur la fiche", () => {
@@ -20,6 +20,11 @@ describe("coût et téléchargement sur la fiche", () => {
     rerender(<GamePreparation game={{...unknown,preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"Windows / Steam",preparationSourceUrl:"https://example.com/game",preparationUpdatedAt:new Date("2026-10-15T12:00:00Z")}} />);
     expect(screen.getByText("Payant · 12 EUR")).toBeTruthy(); expect(screen.getByText("12,5 Go")).toBeTruthy(); expect(screen.getByText("Windows / Steam")).toBeTruthy(); expect(screen.getByText(/15\/10\/2026/)).toBeTruthy(); expect(screen.getByRole("link",{name:"Consulter la source du relevé"}).getAttribute("href")).toBe("https://example.com/game");
   });
+  it("n'affiche la durée que lorsque le flag est activé", () => {
+    vi.stubEnv("GAME_PREPARATION_TIME_ENABLED", "true");
+    render(<GamePreparation game={{...unknown,preparationTimeMinutes:90}} />);
+    expect(screen.getByText("90 min")).toBeTruthy();
+  });
   it("ne transforme ni une panne ni un prix absent en gratuité", async () => {
     mocks.price.mockResolvedValue(null); const {rerender}=render(await GameSteamPrice({appId:620})); expect(screen.getByText(/indisponibles/)).toBeTruthy(); expect(screen.queryByText("Gratuit")).toBeNull();
     mocks.price.mockResolvedValue({isFree:false,priceFormatted:null,currency:null,observedAt:"2026-10-15T12:00:00Z"}); rerender(await GameSteamPrice({appId:620})); expect(screen.getByText("Payant")).toBeTruthy(); expect(screen.getByText(/Prix affiché : non disponible/)).toBeTruthy();
@@ -30,17 +35,18 @@ describe("coût et téléchargement sur la fiche", () => {
     expect(screen.getByText("Boutique Steam · France")).toBeTruthy(); expect(screen.getByText(/12€ \(EUR\)/)).toBeTruthy(); expect(screen.getByText(/15\/10\/2026/)).toBeTruthy(); expect(screen.getByRole("link",{name:"Voir la fiche Steam"}).getAttribute("href")).toBe("https://store.steampowered.com/app/620/?cc=fr");
   });
   it("préremplit le formulaire, envoie un effacement puis actualise après succès", async () => {
-    render(<GamePreparationForm game={{...unknown,id:"g",preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"Windows",preparationSourceUrl:"https://example.com"}} />);
+    render(<GamePreparationForm estimatedTimeEnabled game={{...unknown,id:"g",preparationCost:"PAID",preparationPrice:"12 EUR",downloadSizeGb:12.5,preparationPlatform:"Windows",preparationSourceUrl:"https://example.com",preparationTimeMinutes:90}} />);
     fireEvent.click(screen.getByText("Renseigner le coût et le téléchargement"));
     expect((screen.getByLabelText("Téléchargement estimé (Go)") as HTMLInputElement).value).toBe("12.5");
+    expect((screen.getByLabelText("Temps de préparation estimé (minutes)") as HTMLInputElement).value).toBe("90");
     fireEvent.change(screen.getByLabelText("Coût déclaré"),{target:{value:"unknown"}});
-    for(const name of ["Prix et devise (si payant)","Téléchargement estimé (Go)","Plateforme / version","Source du relevé (HTTPS)"]) fireEvent.change(screen.getByLabelText(name),{target:{value:""}});
+    for(const name of ["Prix et devise (si payant)","Téléchargement estimé (Go)","Plateforme / version","Source du relevé (HTTPS)","Temps de préparation estimé (minutes)"]) fireEvent.change(screen.getByLabelText(name),{target:{value:""}});
     fireEvent.submit(screen.getByRole("button",{name:"Enregistrer le relevé"}).closest("form")!);
     await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
-    expect(Object.fromEntries(mocks.update.mock.calls[0][0])).toEqual({gameId:"g",preparationCost:"unknown",preparationPrice:"",preparationPlatform:"",preparationSourceUrl:"",downloadSizeGb:""}); expect(screen.getByRole("status").textContent).toContain("enregistré");
+    expect(Object.fromEntries(mocks.update.mock.calls[0][0])).toEqual({gameId:"g",preparationCost:"unknown",preparationPrice:"",preparationPlatform:"",preparationSourceUrl:"",downloadSizeGb:"",preparationTimeMinutes:""}); expect(screen.getByRole("status").textContent).toContain("enregistré");
   });
   it("affiche les échecs serveur et réseau sans annoncer un succès", async () => {
-    render(<GamePreparationForm game={{...unknown,id:"g"}} />); fireEvent.click(screen.getByText("Renseigner le coût et le téléchargement"));
+    render(<GamePreparationForm estimatedTimeEnabled={false} game={{...unknown,id:"g"}} />); fireEvent.click(screen.getByText("Renseigner le coût et le téléchargement"));
     const form=screen.getByRole("button",{name:"Enregistrer le relevé"}).closest("form")!;
     mocks.update.mockResolvedValue({ok:false,error:"invalid"}); fireEvent.submit(form); await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("HTTPS"));
     mocks.update.mockRejectedValue(Error("network")); fireEvent.submit(form); await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Enregistrement impossible")); expect(mocks.refresh).not.toHaveBeenCalled();

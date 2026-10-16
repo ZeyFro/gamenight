@@ -289,7 +289,7 @@ export default async function GameDetailPage({
       </div>
 
       <GamePreparation game={game} />
-      {owns?.owned && <GamePreparationForm game={{ id: game.id, preparationCost: game.preparationCost, preparationPrice: game.preparationPrice, downloadSizeGb: game.downloadSizeGb, preparationPlatform: game.preparationPlatform, preparationSourceUrl: game.preparationSourceUrl }} />}
+      {owns?.owned && <GamePreparationForm estimatedTimeEnabled={process.env.GAME_PREPARATION_TIME_ENABLED === "true"} game={{ id: game.id, preparationCost: game.preparationCost, preparationPrice: game.preparationPrice, downloadSizeGb: game.downloadSizeGb, preparationPlatform: game.preparationPlatform, preparationSourceUrl: game.preparationSourceUrl, preparationTimeMinutes: game.preparationTimeMinutes }} />}
       {game.steamAppId && <Suspense fallback={<p className="text-sm text-muted">Lecture du prix Steam…</p>}><GameSteamPrice appId={game.steamAppId} /></Suspense>}
       <GameWarnings game={game} />
       {owns?.owned && <GameWarningsForm game={{ id: game.id, jumpscares: game.jumpscares, motionSickness: game.motionSickness, textLanguages: game.textLanguages, audioLanguages: game.audioLanguages }} />}
