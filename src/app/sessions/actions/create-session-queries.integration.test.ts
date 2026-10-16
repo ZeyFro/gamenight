@@ -176,7 +176,9 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
     expect(get("bot N=5 E=0"), all).toBeLessThanOrEqual(get("bot N=1 E=0"));
     expect(get("bot N=5 E=5"), all).toBeLessThanOrEqual(get("bot N=1 E=5"));
     // E > 0 : deux lectures fixes (relation `badge` incluse, XP des badges), jamais une par badge.
-    expect(get("bot N=0 E=5"), all).toBeLessThanOrEqual(get("bot N=0 E=0") + 2);
+    // E ajoute deux lectures fixes; le troisième événement toléré est le
+    // query Prisma asynchrone documenté ci-dessous, observé en CI.
+    expect(get("bot N=0 E=5"), all).toBeLessThanOrEqual(get("bot N=0 E=0") + 3);
     expect(get("bot N=5 E=5"), all).toBeLessThanOrEqual(get("bot N=5 E=0") + 2);
     // Une requête Prisma peut être émise juste après la remise à zéro du compteur;
     // tolérer cet événement isolé tout en détectant une croissance liée aux invités.
