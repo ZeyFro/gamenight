@@ -2,8 +2,8 @@ import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { getIsolationScope } from "@/lib/community-isolation";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
-import { eligibleRouletteEntries } from "@/lib/roulette";
-import { isRoulettePlayerFilterEnabled, pickRouletteCandidate } from "@/lib/roulette-draw";
+import { eligibleRouletteEntries, enrichRouletteCandidates } from "@/lib/roulette";
+import { isRoulettePlayerFilterEnabled, pickWeightedRouletteCandidate } from "@/lib/roulette-draw";
 import { rouletteVetoRefusal, type RouletteVetoError } from "@/lib/roulette-veto";
 import { enqueueRouletteDirectMessageEdits } from "@/lib/roulette-dm";
 import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
@@ -58,8 +58,9 @@ export async function vetoRouletteGame(input: { rouletteId: string; userId: stri
     if (refusal) return { ok: false, error: refusal };
 
     const excluded = new Set([...vetoes.map((v) => v.gameId), roulette.resultGameId!]);
-    const { chosen, fallback } = pickRouletteCandidate(
-      entries.filter((e) => !excluded.has(e.gameId)).map((e) => ({ ...e, ...e.game })),
+    const weightedEntries = await enrichRouletteCandidates(tx, scopedDb, entries, participantIds);
+    const { chosen, fallback } = pickWeightedRouletteCandidate(
+      weightedEntries.filter((e) => !excluded.has(e.gameId)),
       { playerCount: participantIds.length, filterEnabled: isRoulettePlayerFilterEnabled(), rng }
     );
     if (!chosen) return { ok: false, error: "no_candidate" };
