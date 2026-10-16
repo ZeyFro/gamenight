@@ -18,6 +18,7 @@ import { CursorTrail } from "@/components/CursorTrail";
 import { MotionBackground } from "@/components/app/MotionBackground";
 import "./globals.css";
 import { SkipLink } from "@/components/SkipLink";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
 import { getSeasonalTheme } from "@/lib/seasonal-theme";
 
@@ -33,10 +34,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// PWA basique (Sprint 2, U7) : manifest + meta Apple pour permettre
-// l'ajout à l'écran d'accueil (icône seule, sans barre de navigateur) —
-// volontairement PAS de service worker (pas de cache offline, pas de
-// push), juste ce qu'il faut pour l'installation.
+// PWA : manifest et méta Apple pour l'installation ; le service worker ne
+// garde qu'une page hors-ligne statique, jamais de contenu de compte.
 export const metadata: Metadata = {
   title: { default: "GameNight", template: "%s · GameNight" },
   description: "Organise tes soirées jeux avec tes potes.",
@@ -79,6 +78,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     >
       <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""} ${seasonalTheme ? `gn-theme-${seasonalTheme}` : ""}`}>
         <MotionConfig reducedMotion="user">
+          <ServiceWorkerRegistration />
           <MotionBackground />
           {skipLink && <SkipLink />}
           <Header />
