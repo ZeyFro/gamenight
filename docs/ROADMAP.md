@@ -39,16 +39,16 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
 | L3-04 | Avertissements : jumpscares, mal des transports, langue | ✅ Avertissements visibles avant participation | Aucune | code | Fait (#239 ; PR #238 fusionnée) |
 | L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | Fait (#239) |
-| L3-06 | Checklist installé / mis à jour / micro / lobby | ❌ Pas de checklist par participant | Cases enregistrées et état de préparation collectif | code | PR ouverte #240 (Draft ; CI bloquée avant checkout : quota ECR) |
-| L3-07 | Temps de préparation | ✅ Durée saisie par les possesseurs et visible sur la fiche jeu | Aucune | code | Implémenté ; CI PR #241 à vérifier |
+| L3-06 | Checklist installé / mis à jour / micro / lobby | ✅ Checklist individuelle sur les soirées prévues | Aucune | code | Fait (#240) |
+| L3-07 | Temps de préparation | ✅ Durée estimée sur les fiches jeu | Aucune | code | Fait (#241) |
 
 ## Lot 4 — Calendrier pratique
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L4-01 | Export Google/Apple Calendar (iCal) | ❌ Aucun export | Export ou abonnement respectant la confidentialité | code | À faire |
-| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | PR #243 à vérifier |
-| L4-03 | Anniversaires et dates importantes du serveur | ❌ Pas d'événements calendrier dédiés | Saisie et affichage | code | À faire |
+| L4-01 | Export Google/Apple Calendar (iCal) | 🟡 Export ponctuel des soirées accessibles | Flux continu hors périmètre | code | PR #242 ; CI à confirmer après relance ; preview READY |
+| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-03 | Anniversaires et dates importantes du serveur | 🟡 Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | PR #245 ; CI et preview réussies |
 | L4-04 | Bouton « Rejoindre le vocal » | ❌ Aucun parcours/configuration vocale | Salon vocal par communauté, lien depuis la soirée | code | À faire |
 
 ## Lot 5 — Engagement
