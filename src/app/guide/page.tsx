@@ -69,6 +69,7 @@ const SECTIONS: GuideSection[] = [
       "Personnalise ta bannière et ta couleur perso.",
       "Consulte tes stats, ton historique et tes récompenses gagnées.",
       "Lie ton compte Steam pour importer ta bibliothèque de jeux.",
+      "Dans les paramètres, renseigne tes identifiants PSN, Xbox, Nintendo Switch, Epic Games et Battle.net : les membres qui peuvent voir ta fiche les retrouveront sur ton profil.",
     ],
   },
 ];
