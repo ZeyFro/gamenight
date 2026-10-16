@@ -46,7 +46,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | PR #242 ; contrôles verts, fusion en attente de sync |
+| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
 | L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
 | L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
 | L4-04 | Bouton « Rejoindre le vocal » | 🟡 Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | PR #246 en cours |

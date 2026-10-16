@@ -27,6 +27,10 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
   let userId: string;
   const communities: Record<string, string> = {};
   const queries: string[] = [];
+  async function resetQueryEvents() {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    queries.length = 0;
+  }
   beforeAll(async () => {
     db = (await import("./prisma")).prisma as unknown as typeof db;
     // Prisma's default generic omits event names; this test client emits query events.
@@ -59,7 +63,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
       await db.chatMessage.create({ data: { communityId: communities[slug], userId, content: `chat-${slug}` } });
     }
     auth.mockResolvedValue({ user: { discordId: "reader", sessionCreatedAt: Date.now() - 1000 } });
-    queries.length = 0;
+    await resetQueryEvents();
   });
   function expectReadOnly() {
     expect(queries.filter((q) => /\b(BEGIN|COMMIT|INSERT|UPDATE|DELETE|FOR UPDATE|FOR SHARE)\b/i.test(q))).toEqual([]);
@@ -68,7 +72,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
 
   it("lecture sans activité : XP du serveur choisi, sans transaction de streak", async () => {
     const before = await db.communityMemberStats.findMany({ where: { userId }, orderBy: { communityId: "asc" } });
-    queries.length = 0;
+    await resetQueryEvents();
     expect(await getCurrentUser({ recordActivity: false })).toMatchObject({ xpTotal: 30, streakCount: 2 });
     expectReadOnly();
     expect(await db.communityMemberStats.findMany({ where: { userId }, orderBy: { communityId: "asc" } })).toEqual(before);
@@ -83,7 +87,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
   it("visite ordinaire déjà comptée il y a moins de 12 h : une lecture, ni transaction ni verrou", async () => {
     await db.communityMemberStats.updateMany({ where: { userId }, data: { streakLastActiveAt: new Date(Date.now() - 60 * 60 * 1000) } });
     const before = await db.communityMemberStats.findMany({ where: { userId }, orderBy: { communityId: "asc" } });
-    queries.length = 0;
+    await resetQueryEvents();
     expect(await getCurrentUser()).toMatchObject({ xpTotal: 30, streakCount: 2 });
     expect(queries.length).toBeLessThanOrEqual(8); // 11 avant la voie rapide (transaction + verrou)
     expectReadOnly();
@@ -103,7 +107,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     expect((await poll(null))?.map((m) => m.content)).toEqual(["chat-a"]);
     expectReadOnly();
     await db.user.update({ where: { id: userId }, data: { activeCommunityId: communities.b } });
-    queries.length = 0;
+    await resetQueryEvents();
     expect((await poll(null))?.map((m) => m.content)).toEqual(["chat-b"]);
     expect(await getCurrentUser({ recordActivity: false })).toMatchObject({ xpTotal: 800 });
     expectReadOnly();
@@ -113,7 +117,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     await db.membership.update({ where: { communityId_userId: { communityId: communities.a, userId } }, data: { status: "REMOVED" } });
     expect((await poll(null))?.map((m) => m.content)).toEqual(["chat-b"]);
     await db.community.update({ where: { id: communities.b }, data: { status: "SUSPENDED" } });
-    queries.length = 0;
+    await resetQueryEvents();
     expect(await poll(null)).toEqual([]);
     expect(await getCurrentUser({ recordActivity: false })).toMatchObject({ xpTotal: 0, streakCount: 0 });
     expectReadOnly();
@@ -122,7 +126,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
   it("reconnexion forcée revalidée au prochain polling", async () => {
     expect(await poll(null)).toHaveLength(1);
     await db.user.update({ where: { id: userId }, data: { forceReloginAt: new Date() } });
-    queries.length = 0;
+    await resetQueryEvents();
     expect(await poll(null)).toBeNull();
     expect(await getCurrentUser({ recordActivity: false })).toBeNull();
     expectReadOnly();
@@ -131,13 +135,13 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
   it("header : mutualisation locale réduit les SQL, aucun droit conservé entre chargements", async () => {
     // Même vrai header et mêmes données : seules les lectures mutualisées changent.
     await (await import("./default-community")).getDefaultCommunityId();
-    queries.length = 0;
+    await resetQueryEvents();
     context.enabled = false;
     await header();
     const uncached = queries.length;
     expectReadOnly();
     context.enabled = true;
-    queries.length = 0;
+    await resetQueryEvents();
     await header();
     const cached = queries.length;
     expectReadOnly();
@@ -162,11 +166,11 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     const { getChatMessages } = await import("./chat");
     await (await import("./default-community")).getDefaultCommunityId();
     await db.communityMemberStats.updateMany({ where: { userId }, data: { streakLastActiveAt: new Date() } });
-    queries.length = 0;
+    await resetQueryEvents();
     const user = await getCurrentUser();
     const expected = await getChatMessages(null, user!.id);
     const visitQueries = queries.length;
-    queries.length = 0;
+    await resetQueryEvents();
     expect(await poll(null)).toEqual(expected);
     const pollingQueries = queries.length;
     expectReadOnly();
