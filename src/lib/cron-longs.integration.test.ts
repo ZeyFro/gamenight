@@ -122,22 +122,41 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
 
     it("deux imports enchaînés = mêmes Game/UserGame qu'un seul ; steamLastSyncAt posé", async () => {
       const { importSteamLibrary } = await import("./steam");
-      stubSteam(5);
+      stubSteam(30);
       const user = await db.user.create({
         data: { discordId: "carol", discordName: "carol", steamId64: "76561198000000003" },
       });
       const deadline = { deadlineMs: Date.now() + 60_000 };
 
       const r1 = await importSteamLibrary(user.id, "76561198000000003", deadline);
-      expect(r1).toEqual({ status: "imported", count: 5, newCount: 5 });
+      expect(r1).toEqual({ status: "imported", count: 30, newCount: 30 });
       const afterOne = await snapshot();
-      expect(afterOne.games).toBe(5);
-      expect(afterOne.userGames).toBe(5);
+      expect(afterOne.games).toBe(30);
+      expect(afterOne.userGames).toBe(30);
 
       const r2 = await importSteamLibrary(user.id, "76561198000000003", deadline);
-      expect(r2).toEqual({ status: "imported", count: 5, newCount: 0 });
+      expect(r2).toEqual({ status: "imported", count: 30, newCount: 0 });
       expect(await snapshot()).toEqual(afterOne);
       expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).steamLastSyncAt).not.toBeNull();
+    });
+
+    it("met à jour le catalogue et remplace FAMILY par PERSONAL dans le lot", async () => {
+      const { importSteamLibrary } = await import("./steam");
+      stubSteam(1);
+      const user = await db.user.create({
+        data: { discordId: "carol-existing", discordName: "carol", steamId64: "76561198000000005" },
+      });
+      const game = await db.game.create({
+        data: { name: "Ancien nom", source: "MANUAL", steamAppId: 1000, coverUrl: null, minPlayers: 3, addedById: user.id },
+      });
+      await db.userGame.create({ data: { userId: user.id, gameId: game.id, owned: true, source: "FAMILY" } });
+
+      const result = await importSteamLibrary(user.id, "76561198000000005", { deadlineMs: Date.now() + 60_000 });
+      const ownership = await db.userGame.findUniqueOrThrow({ where: { userId_gameId: { userId: user.id, gameId: game.id } }, include: { game: true } });
+      expect(result).toEqual({ status: "imported", count: 1, newCount: 0 });
+      expect(ownership.source).toBe("PERSONAL");
+      expect(ownership.game.name).toBe("Jeu 0");
+      expect(ownership.game.minPlayers).toBe(3);
     });
 
     it("deadline dépassé → partial, steamLastSyncAt NON posé, et un passage suivant complète sans doublon", async () => {

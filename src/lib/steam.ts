@@ -1,4 +1,5 @@
-import { GameSource } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkLibraryBadgesForActiveCommunity } from "@/lib/badges";
 import { checkWishlistPurchases } from "@/lib/wishlist";
@@ -552,6 +553,9 @@ export type ImportSteamLibraryResultWithBudget =
   | ImportSteamLibraryResult
   | { status: "partial"; processed: number; total: number };
 
+// shortcut: un lot peut finir juste après l'échéance (25 jeux max) ; réduire si les écritures dépassent le budget Vercel.
+const STEAM_IMPORT_BATCH_SIZE = 25;
+
 // `opts.deadlineMs` (timestamp `Date.now()` absolu, utilisé seulement par le
 // cron `steam-library-full-sync`) : la boucle d'upserts s'arrête dès qu'il est
 // dépassé et renvoie `partial` SANS badges/wishlist/`steamLastSyncAt` (réservé
@@ -592,39 +596,31 @@ export async function importSteamLibrary(
   let newCount = 0;
   let processed = 0;
 
-  for (const game of result.games) {
+  for (let offset = 0; offset < result.games.length; offset += STEAM_IMPORT_BATCH_SIZE) {
     if (opts && Date.now() > opts.deadlineMs) {
       return { status: "partial", processed, total: result.games.length };
     }
-    processed += 1;
-    if (!alreadyOwnedAppIds.has(game.appid)) newCount += 1;
-    const dbGame = await prisma.game.upsert({
-      where: { steamAppId: game.appid },
-      update: { name: game.name, coverUrl: steamCoverUrl(game.appid) },
-      create: {
-        name: game.name,
-        source: GameSource.STEAM,
-        steamAppId: game.appid,
-        coverUrl: steamCoverUrl(game.appid),
-        // Steam ne fournit pas le nombre de joueurs : 2 par défaut (comme
-        // l'ajout manuel), pas 1 — l'app sert à jouer à plusieurs, et un
-        // minPlayers=1 (ou null mal géré côté calcul) affichait des jeux
-        // multijoueurs comme "jouable" avec une seule personne dispo.
-        minPlayers: 2,
-        addedById: userId,
-      },
-    });
-
-    // `source: PERSONAL` posé aussi sur `update` (pas seulement `create`) :
-    // l'import Steam perso est la source la plus fiable de possession
-    // réelle — si ce jeu était déjà marqué FAMILY (import biblio famille,
-    // voir `family-import-actions.ts`), le fait de le posséder aussi en
-    // perso est l'info la plus précise à refléter.
-    await prisma.userGame.upsert({
-      where: { userId_gameId: { userId, gameId: dbGame.id } },
-      update: { owned: true, source: "PERSONAL" },
-      create: { userId, gameId: dbGame.id, owned: true, source: "PERSONAL" },
-    });
+    const batch = result.games.slice(offset, offset + STEAM_IMPORT_BATCH_SIZE);
+    batch.forEach((game) => { if (!alreadyOwnedAppIds.has(game.appid)) newCount += 1; });
+    const dbGames = await prisma.$queryRaw<Array<{ id: string; steamAppId: number }>>(Prisma.sql`
+      INSERT INTO "Game" ("id", "name", "source", "steamAppId", "coverUrl", "minPlayers", "addedById")
+      VALUES ${Prisma.join(batch.map((game) => Prisma.sql`(
+        ${randomUUID()}, ${game.name}, 'STEAM'::"GameSource", ${game.appid},
+        ${steamCoverUrl(game.appid)}, 2, ${userId}
+      )`))}
+      ON CONFLICT ("steamAppId") DO UPDATE
+      SET "name" = EXCLUDED."name", "coverUrl" = EXCLUDED."coverUrl"
+      RETURNING "id", "steamAppId"
+    `);
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "UserGame" ("userId", "gameId", "owned", "source")
+      VALUES ${Prisma.join(dbGames.map((game) => Prisma.sql`(
+        ${userId}, ${game.id}, true, 'PERSONAL'::"UserGameSource"
+      )`))}
+      ON CONFLICT ("userId", "gameId") DO UPDATE
+      SET "owned" = true, "source" = 'PERSONAL'::"UserGameSource"
+    `);
+    processed += batch.length;
   }
 
   await checkLibraryBadgesForActiveCommunity(userId);
