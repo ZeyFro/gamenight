@@ -20,15 +20,15 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|
-| L1-01 | Rappels après changement de date (✅ rappels 24 h / 2 h configurables) | Corriger les rappels après changement de date ; option 1 h | code | PR ouverte #229 (`fix/rappels-apres-replanification`, Draft) |
+| L1-01 | Rappels après changement de date (✅ rappels 24 h / 2 h configurables) | Corriger les rappels après changement de date ; option 1 h | code | Fait (#229) |
 | L1-02 | Périmètre communautaire de la bibliothèque | Isoler jeux, possesseurs et compteurs par serveur | code | Fait (#228) |
 
 ## Lot 2 — Organisation
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | À faire |
-| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | À faire |
+| L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
+| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | PR ouverte #234 (O06, contrôles du commit final requis avant fusion) |
 
 ## Lot 3 — Carnet et préparation
 
