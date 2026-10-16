@@ -9,6 +9,11 @@ import { updateGamePreparation } from "./preparation-actions";
 function form() { const f = new FormData(); for (const [k,v] of Object.entries({ gameId: "g", preparationCost: "PAID", preparationPrice: " 12 EUR ", downloadSizeGb: "12,50", preparationPlatform: "PC Windows", preparationSourceUrl: "https://store.example/game", userId: "forged", minPlayers: "99" })) f.set(k,v); return f; }
 beforeEach(() => { vi.clearAllMocks(); mocks.current.mockResolvedValue({ id: "self" }); mocks.rate.mockReturnValue(true); mocks.update.mockResolvedValue({ count: 1 }); });
 describe("relevé déclaré de préparation", () => {
+  it.each([["0,01", 0.01], ["5000", 5000]])("accepte le volume autorisé à la borne %s Go", async (raw, expected) => {
+    const f = form(); f.set("downloadSizeGb", String(raw));
+    expect(await updateGamePreparation(f)).toEqual({ ok: true });
+    expect(mocks.update.mock.calls[0][0].data.downloadSizeGb).toBe(expected);
+  });
   it("exige connexion et rate limit avant écriture", async () => {
     mocks.current.mockResolvedValue(null); await expect(updateGamePreparation(form())).rejects.toThrow("REDIRECT:/"); expect(mocks.update).not.toHaveBeenCalled();
     mocks.current.mockResolvedValue({id:"self"}); mocks.rate.mockReturnValue(false); expect(await updateGamePreparation(form())).toEqual({ok:false,error:"rate_limited"}); expect(mocks.update).not.toHaveBeenCalled();
