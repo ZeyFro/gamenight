@@ -10,8 +10,8 @@ export async function GET(request: Request) {
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) return new Response(null, { status: 401, headers: { "Cache-Control": "private, no-store" } });
 
-  const db = await getActiveScopedPrisma(user.id);
-  const sessions = await db.session.findMany({
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const sessions = await scopedDb.session.findMany({
     where: {
       date: { gte: wallClockNow() },
       status: { in: ["VOTING", "SCHEDULED"] },
