@@ -50,10 +50,6 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
 | L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
 | L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
-| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
-| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
-| L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
-| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
 ## Lot 5 — Engagement
 
@@ -63,20 +59,20 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
 | L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
 | L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage de fiabilité et bonus/malus XP (montants à proposer avant) | produit | À TOI — montants d’XP à décider (bonus/malus) |
-| L5-05 | Boutique XP : titres, cadres, couleurs | 🟡 Catalogue, achat et équipement par communauté | Aucune | code | PR en cours (`feat/xp-shop`) |
+| L5-05 | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
 
 ## Lot 6 — Compléments communautaires
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L6-01 | Tirage au sort des équipes | 🟡 Tirage des joueurs individuels | Équipes/duos | code | À faire |
-| L6-02 | Annonces Discord de chaque match de tournoi | ✅ Création, lancement, fin, annulation | Annonces par match | code | À faire |
+| L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
+| L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
 | L6-03 | Pronostics sur le gagnant d'un tournoi | 🟡 Pronostics/paris pour les soirées | Les relier aux tournois et matchs | code | À faire |
-| L6-04 | Hall of Fame / Hall of Shame | 🟡 Badges, superlatifs, gages | Musée des exploits et fails, descriptions et médias | code | À faire |
+| L6-04 | Hall of Fame / Hall of Shame | 🟡 Trophées communautaires affichés (#251) | Hall of Shame, descriptions et médias éditables restent absents | code | À faire |
 | L6-05 | Running gags et expressions du serveur | ❌ Pas de glossaire communautaire | Collection éditable par serveur | code | À faire |
 | L6-06 | Chronique de soirée | ❌ Absente | Texte par soirée, archive durable | code | À faire |
 | L6-07 | Cimetière des jeux avec épitaphe | ❌ Absent | Jeux abandonnés, épitaphes par serveur | code | À faire |
-| L6-08 | Quiz et « devine le jeu en trois indices » | ❌ Pas de mini-jeux | Développement du système | code | À faire |
+| L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Sondages éclair | ❌ Votes de soirée/wishlist seulement | Questions, réponses, durée, résultats | code | À faire |
 | L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Détection des baisses et notification | code | À faire |
 | L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Engagement et organisation de l'achat groupé | produit | À TOI — règles de l’achat groupé à décider |
@@ -87,22 +83,22 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L7-01 | Roulette favorisant la tierlist | ❌ Tirage uniforme | Pondération selon les préférences | code | À faire |
-| L7-02 | Roulette évitant les jeux récents | ❌ | Utiliser l'historique de la semaine précédente | code | À faire |
-| L7-03 | Heures par jeu et heures cumulées | ❌ Pas de suivi de durée | Collecte et calcul | code | À faire |
-| L7-04 | Classements fun (heures, régularité) | 🟡 XP, streaks, superlatifs… | Classements par heures et régularité | code | À faire |
-| L7-05 | Quiz Tryharder/Ambianceur/Stratège/Chaos | ❌ | Questionnaire et équilibrage d'équipes | code | À faire |
-| L7-06 | Import Steam groupé | ✅ Import et synchro | Optimisation de l'import groupé | code | À faire |
-| L7-07 | Sorties de jeux attendus | 🟡 Dates IGDB sur les fiches | Suivi et intégration calendrier | code | À faire |
-| L7-08 | Soldes Steam, Game Awards, gratuits de la semaine | ❌ | Sources et événements calendaires | code | À faire |
-| L7-09 | Halloween, Noël, marathon d'été | 🟡 Création manuelle possible | Thèmes ou programmation saisonnière | code | À faire |
-| L7-10 | Charte de fair-play | ❌ | Charte par communauté | code | À faire |
+| L7-01 | Roulette favorisant la tierlist | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
+| L7-02 | Roulette évitant les jeux récents | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
+| L7-03 | Heures par jeu et heures cumulées | ✅ Livré | Aucune | code | Fait (#255, fusionnée) |
+| L7-04 | Classements fun (heures, régularité) | ✅ Livré | Aucune | code | Fait (#256, fusionnée) |
+| L7-05 | Quiz Tryharder/Ambianceur/Stratège/Chaos | ✅ Livré | Aucune | code | Fait (#257, fusionnée) |
+| L7-06 | Import Steam groupé | ✅ Livré | Aucune | code | Fait (#258, fusionnée) |
+| L7-07 | Sorties de jeux attendus | ✅ Livré | Aucune | code | Fait (#259, fusionnée) |
+| L7-08 | Soldes Steam, Game Awards, gratuits de la semaine | ✅ Livré | Aucune | code | Fait (#260, fusionnée) |
+| L7-09 | Halloween, Noël, marathon d'été | ✅ Livré | Aucune | code | Fait (#261, fusionnée) |
+| L7-10 | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
 | L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 « Jouer maintenant » | Petites annonces explicites si ce format est voulu | produit | À TOI — format des petites annonces à confirmer |
-| L7-12 | Glossaire débutants | ❌ | Lexique aggro/tank/GG/carry | code | À faire |
-| L7-13 | PWA hors ligne | 🟡 Manifest présent | Fonctionnement hors ligne non établi | code | À faire |
-| L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Soirées futures avec capacité | Étendre | code | À faire |
-| L7-15 | Promotion de liste d'attente | ✅ Promotion auto | Notification dans l'appli ; pas de MP | code | À faire |
-| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | À faire |
+| L7-12 | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
+| L7-13 | PWA hors ligne | ✅ Livré | Aucune | code | Fait (#265, fusionnée) |
+| L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
+| L7-15 | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
+| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | PR ouverte (#267) |
 | L7-17 | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
 
 ## Fait ou à valider en réel (ignorés par la boucle)
