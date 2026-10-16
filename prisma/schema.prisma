@@ -90,6 +90,9 @@ model User {
   epicDisplayName          String?   @db.VarChar(100)
   battleTag                String?   @db.VarChar(100)
   steamPublic              Boolean   @default(false)
+  inputDevices             String[]  @default([])
+  availablePlatforms       String[]  @default([])
+  microphoneAvailable      Boolean?
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
