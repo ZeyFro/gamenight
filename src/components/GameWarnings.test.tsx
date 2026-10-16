@@ -9,6 +9,10 @@ import { GameWarningsForm } from "./GameWarningsForm";
 beforeEach(() => { vi.clearAllMocks(); mocks.update.mockResolvedValue({ ok: true }); });
 afterEach(cleanup);
 describe("avertissements affichés et modifiables", () => {
+  it("conserve le jour déclaré près de minuit dans la représentation murale", () => {
+    render(<GameWarnings game={{ warningsUpdatedAt: "2026-10-16T23:30:00Z" }} />);
+    expect(screen.getByText(/16\/10\/2026/)).toBeTruthy();
+  });
   it("distingue inconnu, présence et absence déclarée, et échappe les langues", () => {
     const { rerender } = render(<GameWarnings game={{}} />);
     expect(screen.getAllByText("Non renseigné")).toHaveLength(2);
