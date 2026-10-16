@@ -7,6 +7,10 @@ export function isSeatReminderRecipient(capacity: number | null | undefined, cre
   return !hasSeatRsvps || creatorId === userId || confirmedIds.includes(userId);
 }
 
+export function isPromotionDmRecipient(status: string, capacity: number | null | undefined, userId: string, confirmedIds: string[]): boolean {
+  return status === "SCHEDULED" && capacity != null && confirmedIds.includes(userId);
+}
+
 /** Les confirmés gardent leur place ; les autres avancent en FIFO.
  * Un ancien membre n'est jamais promu. Aucun décliné n'est réinscrit. */
 export function planSessionSeats(rows: SeatEntry[], eligibleIds: Set<string>, capacity: number | null): Map<string, SeatStatus> {

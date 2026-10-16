@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planSessionSeats, isSeatReminderRecipient, type SeatEntry } from "./session-seat-plan";
+import { planSessionSeats, isPromotionDmRecipient, isSeatReminderRecipient, type SeatEntry } from "./session-seat-plan";
 const row = (userId: string, status: SeatEntry["status"], time: number): SeatEntry => ({ userId, status, requestedAt: new Date(time) });
 describe("répartition des places", () => {
   it("revalide les rappels en file, sans changer les rappels du créateur ni le parcours historique", () => {
@@ -9,6 +9,12 @@ describe("répartition des places", () => {
     expect(isSeatReminderRecipient(null, "host", "waiting", [])).toBe(true);
     expect(isSeatReminderRecipient(null, "host", "declined", ["confirmed"], true)).toBe(false);
     expect(isSeatReminderRecipient(null, "host", "host", [], true)).toBe(true);
+  });
+  it("ne livre un DM de promotion que si la capacité est active et que le joueur est encore confirmé", () => {
+    expect(isPromotionDmRecipient("SCHEDULED", 2, "alice", ["alice"])).toBe(true);
+    expect(isPromotionDmRecipient("SCHEDULED", 2, "alice", [])).toBe(false);
+    expect(isPromotionDmRecipient("SCHEDULED", null, "alice", ["alice"])).toBe(false);
+    expect(isPromotionDmRecipient("DONE", 2, "alice", ["alice"])).toBe(false);
   });
   it("conserve le confirmé puis promeut le premier en FIFO sans dépasser la capacité", () => {
     const plan = planSessionSeats([row("host", "CONFIRMED", 10), row("b", "WAITLIST", 3), row("a", "WAITLIST", 2)], new Set(["host", "a", "b"]), 2);
