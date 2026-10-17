@@ -5765,6 +5765,24 @@ déclencheur de panneau, pas un lien) aurait cassé la cohérence de cette
 grille pour un gain d'accessibilité mobile nul (le header reste visible
 en scrollant sur toutes les pages).
 
+### Notifications Web Push — navigateur (L6-13)
+
+Le membre active ou retire lui-même chaque appareil dans Profil → Paramètres.
+La livraison réutilise les notifications in-app; elle reste entièrement
+inactive tant que `WEB_PUSH_ENABLED=true` et les trois paramètres VAPID ne
+sont pas fournis. Aucun envoi Discord, cron ou service externe supplémentaire.
+Un utilisateur peut enregistrer au plus cinq appareils; les abonnements
+révoqués par le navigateur sont supprimés à la prochaine tentative.
+
+Un administrateur déploie une paire VAPID persistante (`subject`, clé publique
+et clé privée) puis configure `WEB_PUSH_ENABLED`,
+`WEB_PUSH_VAPID_SUBJECT`, `WEB_PUSH_VAPID_PUBLIC_KEY` et
+`WEB_PUSH_VAPID_PRIVATE_KEY`. Ne jamais régénérer une paire déjà utilisée ni
+committer ces valeurs. La clé privée reste uniquement dans l'environnement
+serveur; `.env.example` ne contient que des noms vides. En l'absence de ces
+valeurs, l'interface affiche que le service est désactivé et l'API refuse les
+nouveaux abonnements. Migration additive `web_push_subscriptions`.
+
 ### Fichiers modifiés/ajoutés
 
 - `prisma/schema.prisma` + migration `add_notifications_and_sound_toggle`

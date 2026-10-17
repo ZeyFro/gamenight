@@ -30,6 +30,8 @@ import {
 import { pageMetadata } from "@/lib/page-title";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { saveGameStyleProfile } from "@/app/profil/game-style-actions";
+import { WebPushSettings } from "@/components/WebPushSettings";
+import { webPushConfig } from "@/lib/web-push-config";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -173,6 +175,13 @@ export default async function ProfilParametresPage({
             initialUrl={user.bannerUrl}
             uploadEnabled={!!process.env.BLOB_READ_WRITE_TOKEN}
           />
+        </Card>
+      </StaggerItem>
+
+      <StaggerItem>
+        <Card className="flex flex-col gap-4">
+          <h2 className="font-semibold text-foreground">Notifications push</h2>
+          <WebPushSettings publicKey={webPushConfig(process.env)?.publicKey ?? null} />
         </Card>
       </StaggerItem>
 
