@@ -67,11 +67,11 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|
 | L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | 🟡 Pronostics/paris pour les soirées | Les relier aux tournois et matchs | code | À faire |
-| L6-04 | Hall of Fame / Hall of Shame | 🟡 Trophées communautaires affichés (#251) | Hall of Shame, descriptions et médias éditables restent absents | code | À faire |
-| L6-05 | Running gags et expressions du serveur | ❌ Pas de glossaire communautaire | Collection éditable par serveur | code | À faire |
-| L6-06 | Chronique de soirée | ❌ Absente | Texte par soirée, archive durable | code | À faire |
-| L6-07 | Cimetière des jeux avec épitaphe | ❌ Absent | Jeux abandonnés, épitaphes par serveur | code | À faire |
+| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Validation finale | code | PR ouverte (#269), CI en cours |
+| L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Validation finale | code | PR ouverte (#270), CI en cours |
+| L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Validation finale | code | PR ouverte (#271), CI en cours |
+| L6-06 | Chronique de soirée | ✅ Chronique privée et archive durable | Validation finale | code | Implémentation locale, PR à publier |
+| L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes communautaires sans modifier la bibliothèque | Validation finale | code | PR ouverte (`feat/community-graveyard-next`) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Sondages éclair | ❌ Votes de soirée/wishlist seulement | Questions, réponses, durée, résultats | code | À faire |
 | L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Détection des baisses et notification | code | À faire |
