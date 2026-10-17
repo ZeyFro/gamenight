@@ -98,7 +98,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-13 | PWA hors ligne | ✅ Livré | Aucune | code | Fait (#265, fusionnée) |
 | L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
-| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | PR ouverte (#267) |
+| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | Fait (#267, fusionnée) |
 | L7-17 | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
 
 ## Fait ou à valider en réel (ignorés par la boucle)
@@ -112,3 +112,4 @@ Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, fi
 | Lot | Ordre | ID | Branche | PR | Résultat |
 |---|---|---|---|---|---|
 | — | — | — | (pile vide) | — | — |
+
