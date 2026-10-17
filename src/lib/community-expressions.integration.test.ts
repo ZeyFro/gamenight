@@ -24,9 +24,9 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     const members = [
-      ["author", "expressions-a", "MEMBER"], ["member", "expressions-a", "MEMBER"],
-      ["admin", "expressions-a", "ADMIN"], ["owner", "expressions-a", "OWNER"],
-      ["outsider", "expressions-b", "OWNER"],
+      ["expression-author", "expressions-a", "MEMBER"], ["expression-member", "expressions-a", "MEMBER"],
+      ["expression-admin", "expressions-a", "ADMIN"], ["expression-owner", "expressions-a", "OWNER"],
+      ["expression-outsider", "expressions-b", "OWNER"],
     ] as const;
     await db.$transaction([
       db.communityExpression.deleteMany({ where: { communityId: { in: ["expressions-a", "expressions-b"] } } }),
@@ -45,41 +45,41 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
   const input = { title: "Encore une !", meaning: "La dernière partie dure longtemps." };
 
   it("crée dans la communauté active et nettoie le texte", async () => {
-    expect(await expressions.saveCommunityExpression("author", null, " Encore une ! ", input.meaning)).toBe("saved");
-    expect(await db.communityExpression.findFirstOrThrow()).toMatchObject({ communityId: "expressions-a", createdById: "author", ...input });
+    expect(await expressions.saveCommunityExpression("expression-author", null, " Encore une ! ", input.meaning)).toBe("saved");
+    expect(await db.communityExpression.findFirstOrThrow()).toMatchObject({ communityId: "expressions-a", createdById: "expression-author", ...input });
   });
 
   it.each(["false", "true"])("isolation %s : aucune lecture/modification/suppression interserveur", async (isolation) => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);
-    await expressions.saveCommunityExpression("author", null, input.title, input.meaning);
+    await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     const row = await db.communityExpression.findFirstOrThrow();
-    expect((await expressions.listCommunityExpressions("outsider"))?.entries).toEqual([]);
-    expect(await expressions.saveCommunityExpression("outsider", row.id, "volé", "non")).toBe("unavailable");
-    expect(await expressions.deleteCommunityExpression("outsider", row.id)).toBe("unavailable");
+    expect((await expressions.listCommunityExpressions("expression-outsider"))?.entries).toEqual([]);
+    expect(await expressions.saveCommunityExpression("expression-outsider", row.id, "volé", "non")).toBe("unavailable");
+    expect(await expressions.deleteCommunityExpression("expression-outsider", row.id)).toBe("unavailable");
     expect(await db.communityExpression.findUnique({ where: { id: row.id } })).toMatchObject(input);
   });
 
   it("refuse un autre membre mais permet l’auteur et les modérateurs", async () => {
-    await expressions.saveCommunityExpression("author", null, input.title, input.meaning);
+    await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     const row = await db.communityExpression.findFirstOrThrow();
-    expect(await expressions.saveCommunityExpression("member", row.id, "non", "non")).toBe("unavailable");
-    expect(await expressions.deleteCommunityExpression("member", row.id)).toBe("unavailable");
-    for (const userId of ["author", "admin", "owner"]) {
+    expect(await expressions.saveCommunityExpression("expression-member", row.id, "non", "non")).toBe("unavailable");
+    expect(await expressions.deleteCommunityExpression("expression-member", row.id)).toBe("unavailable");
+    for (const userId of ["expression-author", "expression-admin", "expression-owner"]) {
       expect(await expressions.saveCommunityExpression(userId, row.id, userId, "sens")).toBe("saved");
     }
-    expect(await expressions.deleteCommunityExpression("admin", row.id)).toBe("deleted");
+    expect(await expressions.deleteCommunityExpression("expression-admin", row.id)).toBe("deleted");
     expect(await db.communityExpression.count()).toBe(0);
   });
 
   it("retient uniquement le serveur choisi pour un membre de plusieurs communautés", async () => {
-    await expressions.saveCommunityExpression("author", null, input.title, input.meaning);
+    await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     const row = await db.communityExpression.findFirstOrThrow();
-    await db.membership.create({ data: { userId: "author", communityId: "expressions-b", status: "ACTIVE", role: "OWNER" } });
-    await db.user.update({ where: { id: "author" }, data: { activeCommunityId: "expressions-b" } });
-    expect(await expressions.listCommunityExpressions("author")).toMatchObject({ community: { id: "expressions-b", name: "Serveur B" }, entries: [] });
-    expect(await expressions.saveCommunityExpression("author", row.id, "non", "non")).toBe("unavailable");
-    expect(await expressions.deleteCommunityExpression("author", row.id)).toBe("unavailable");
-    expect(await expressions.saveCommunityExpression("author", null, "Ancien onglet", "Sens", "expressions-a")).toBe("unavailable");
+    await db.membership.create({ data: { userId: "expression-author", communityId: "expressions-b", status: "ACTIVE", role: "OWNER" } });
+    await db.user.update({ where: { id: "expression-author" }, data: { activeCommunityId: "expressions-b" } });
+    expect(await expressions.listCommunityExpressions("expression-author")).toMatchObject({ community: { id: "expressions-b", name: "Serveur B" }, entries: [] });
+    expect(await expressions.saveCommunityExpression("expression-author", row.id, "non", "non")).toBe("unavailable");
+    expect(await expressions.deleteCommunityExpression("expression-author", row.id)).toBe("unavailable");
+    expect(await expressions.saveCommunityExpression("expression-author", null, "Ancien onglet", "Sens", "expressions-a")).toBe("unavailable");
   });
 
   it.each(["Membership", "Community"])("revalide %s verrouillé lors d’un retrait concurrent", async (table) => {
@@ -88,13 +88,13 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
     const gate = new Promise<void>(resolve => { release = resolve; });
     const ready = new Promise<void>(resolve => { locked = resolve; });
     const blocker = db.$transaction(async tx => {
-      if (table === "Membership") await tx.membership.update({ where: { communityId_userId: { communityId: "expressions-a", userId: "author" } }, data: { status: "REMOVED" } });
+      if (table === "Membership") await tx.membership.update({ where: { communityId_userId: { communityId: "expressions-a", userId: "expression-author" } }, data: { status: "REMOVED" } });
       else await tx.community.update({ where: { id: "expressions-a" }, data: { status: "SUSPENDED" } });
       locked();
       await gate;
     }, { timeout: 15000 });
     await ready;
-    const save = expressions.saveCommunityExpression("author", null, input.title, input.meaning);
+    const save = expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     try {
       await vi.waitFor(async () => {
         const waiting = await db.$queryRaw<{ pid: number }[]>`SELECT pid FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR SHARE%'`;
@@ -106,29 +106,29 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
   }, 15000);
 
   it("refuse toute action sans appartenance active, même isolation désactivée", async () => {
-    await expressions.saveCommunityExpression("author", null, input.title, input.meaning);
+    await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     const row = await db.communityExpression.findFirstOrThrow();
-    await db.membership.update({ where: { communityId_userId: { communityId: "expressions-a", userId: "author" } }, data: { status: "LEFT" } });
-    expect(await expressions.listCommunityExpressions("author")).toBeNull();
-    expect(await expressions.saveCommunityExpression("author", null, input.title, input.meaning)).toBe("unavailable");
-    expect(await expressions.deleteCommunityExpression("author", row.id)).toBe("unavailable");
+    await db.membership.update({ where: { communityId_userId: { communityId: "expressions-a", userId: "expression-author" } }, data: { status: "LEFT" } });
+    expect(await expressions.listCommunityExpressions("expression-author")).toBeNull();
+    expect(await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning)).toBe("unavailable");
+    expect(await expressions.deleteCommunityExpression("expression-author", row.id)).toBe("unavailable");
   });
 
   it("refuse un choix de communauté devenu étranger et une communauté suspendue", async () => {
-    await db.user.update({ where: { id: "author" }, data: { activeCommunityId: "expressions-b" } });
+    await db.user.update({ where: { id: "expression-author" }, data: { activeCommunityId: "expressions-b" } });
     // Avec un seul membership, le sélecteur retient le seul serveur autorisé.
-    expect((await expressions.listCommunityExpressions("author"))?.community.id).toBe("expressions-a");
+    expect((await expressions.listCommunityExpressions("expression-author"))?.community.id).toBe("expressions-a");
     await db.community.update({ where: { id: "expressions-a" }, data: { status: "SUSPENDED" } });
-    expect(await expressions.listCommunityExpressions("author")).toBeNull();
-    expect(await expressions.saveCommunityExpression("author", null, input.title, input.meaning)).toBe("unavailable");
+    expect(await expressions.listCommunityExpressions("expression-author")).toBeNull();
+    expect(await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning)).toBe("unavailable");
   });
 
   it("valide côté serveur et ne fait rien lorsque le drapeau est éteint", async () => {
-    expect(await expressions.saveCommunityExpression("author", null, "x".repeat(121), "sens")).toBe("invalid");
-    expect(await expressions.saveCommunityExpression("author", new File([], "id"), "titre", "sens")).toBe("invalid");
+    expect(await expressions.saveCommunityExpression("expression-author", null, "x".repeat(121), "sens")).toBe("invalid");
+    expect(await expressions.saveCommunityExpression("expression-author", new File([], "id"), "titre", "sens")).toBe("invalid");
     vi.stubEnv("COMMUNITY_EXPRESSIONS_ENABLED", "false");
-    expect(await expressions.listCommunityExpressions("author")).toBeNull();
-    expect(await expressions.saveCommunityExpression("author", null, input.title, input.meaning)).toBe("unavailable");
+    expect(await expressions.listCommunityExpressions("expression-author")).toBeNull();
+    expect(await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning)).toBe("unavailable");
     expect(await db.communityExpression.count()).toBe(0);
   });
 });
