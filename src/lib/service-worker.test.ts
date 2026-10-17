@@ -13,14 +13,18 @@ function loadWorker(fetchImpl: ReturnType<typeof vi.fn>, offlinePage = "offline 
     keys: vi.fn().mockResolvedValue(["gamenight-offline-v0", "unrelated-cache"]),
     delete: vi.fn().mockResolvedValue(true),
   };
+  const showNotification = vi.fn().mockResolvedValue(undefined);
+  const client = { url: "https://gamenight.example/", navigate: vi.fn().mockResolvedValue(undefined), focus: vi.fn().mockResolvedValue(undefined) };
+  const openWindow = vi.fn().mockResolvedValue(client);
   const self = {
     location: { origin: "https://gamenight.example" },
-    clients: { claim: vi.fn() },
+    clients: { claim: vi.fn(), matchAll: vi.fn().mockResolvedValue([client]), openWindow },
+    registration: { showNotification },
     skipWaiting: vi.fn(),
     addEventListener: vi.fn((type: string, listener: (event: never) => void) => { handlers[type] = listener; }),
   };
   runInNewContext(workerSource, { self, caches, fetch: fetchImpl, URL, Promise });
-  return { handlers, caches, cache, self };
+  return { handlers, caches, cache, self, showNotification, client, openWindow };
 }
 
 describe("offline service worker", () => {
@@ -66,6 +70,28 @@ describe("offline service worker", () => {
     await expect(response).resolves.toBe(privatePage);
     expect(worker.cache.match).not.toHaveBeenCalled();
     expect("put" in worker.cache).toBe(false);
+  });
+
+  it("shows push notifications and rejects external click destinations", async () => {
+    const worker = loadWorker(vi.fn());
+    let push: Promise<unknown> | undefined;
+    worker.handlers.push({ data: { json: () => ({ title: "Soirée", body: "Invitation", url: "//evil.example" }) }, waitUntil: (promise: Promise<unknown>) => { push = promise; } } as never);
+    await push;
+    expect(worker.showNotification).toHaveBeenCalledWith("Soirée", { body: "Invitation", data: { url: "/" } });
+
+    let click: Promise<unknown> | undefined;
+    worker.handlers.notificationclick({ notification: { data: { url: "//evil.example" }, close: vi.fn() }, waitUntil: (promise: Promise<unknown>) => { click = promise; } } as never);
+    await click;
+    expect(worker.client.navigate).toHaveBeenCalledWith("https://gamenight.example/");
+    expect(worker.client.focus).toHaveBeenCalledOnce();
+  });
+
+  it("handles empty or malformed push data with a safe default", async () => {
+    const worker = loadWorker(vi.fn());
+    let push: Promise<unknown> | undefined;
+    worker.handlers.push({ data: { json: () => null }, waitUntil: (promise: Promise<unknown>) => { push = promise; } } as never);
+    await push;
+    expect(worker.showNotification).toHaveBeenCalledWith("GameNight", { body: "Nouvelle notification", data: { url: "/" } });
   });
 
   it.each([

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds } from "@/lib/community-admin";
+import { setCommunitySessionGallery } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -58,4 +59,84 @@ export async function setCommunityGuideAction(formData: FormData): Promise<void>
     contacts: formData.get("guideContacts"),
   });
   done(result === "saved" ? "guide-ok" : `guide-${result}`);
+}
+
+export async function setCommunityFreeGamesAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityFreeGames")) done("rate");
+
+  const enabled = formData.get("enabled");
+  const result = await setCommunityFreeGames({
+    communityId: formData.get("communityId"),
+    enabled: enabled === "true" ? true : enabled === "false" ? false : null,
+  });
+  done(result === "saved" ? "free-games-ok" : `free-games-${result}`);
+}
+
+export async function setCommunitySteamPriceAlertsAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunitySteamPriceAlerts")) done("rate");
+  const result = await setCommunitySteamPriceAlerts({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "true",
+    threshold: formData.get("threshold"),
+  });
+  done(result === "saved" ? "price-alerts-ok" : `price-alerts-${result}`);
+}
+
+export async function setCommunityGroupPurchasePlansAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityGroupPurchasePlans")) done("rate");
+  const enabledValue = formData.get("enabled");
+  const result = await setCommunityGroupPurchasePlans({
+    communityId: formData.get("communityId"),
+    enabled: enabledValue === "true" ? true : enabledValue === "false" ? false : null,
+  });
+  done(result === "saved" ? "purchase-plan-ok" : `purchase-plan-${result}`);
+}
+
+export async function setCommunityAttendanceXpAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityAttendanceXp")) done("rate");
+  const result = await setCommunityAttendanceXp({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "true" ? "true" : "false",
+    bonusXp: formData.get("bonusXp"),
+    absencePenaltyXp: formData.get("absencePenaltyXp"),
+  });
+  done(result === "saved" ? "attendance-ok" : `attendance-${result}`);
+}
+
+export async function setCommunityPlayerClassifiedsAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityPlayerClassifieds")) done("rate");
+
+  const enabled = formData.get("enabled");
+  const result = await setCommunityPlayerClassifieds({
+    communityId: formData.get("communityId"),
+    enabled: enabled === "true" ? true : enabled === "false" ? false : null,
+  });
+  done(result === "saved" ? "classifieds-ok" : `classifieds-${result}`);
+}
+
+export async function setCommunitySessionGalleryAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunitySessionGallery")) done("rate");
+  const result = await setCommunitySessionGallery({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "on",
+  });
+  done(result === "saved" ? "gallery-ok" : `gallery-${result}`);
 }

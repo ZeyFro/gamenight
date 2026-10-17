@@ -3,6 +3,7 @@ import type { Notification, NotificationType } from "@prisma/client";
 import { getActiveScopedPrisma, scopedPrisma } from "@/lib/community-scoped-client";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { sendUserWebPush } from "@/lib/web-push-delivery";
 
 export interface CreateNotificationInput {
   communityId?: string | null;
@@ -44,6 +45,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
     const data = await notificationData(input);
     const scopedDb = scopedPrisma(null);
     await scopedDb.notification.create({ data });
+    await deliverWebPush(input);
   } catch (error) {
     logger.error("notifications", error, { userId: input.userId, type: input.type });
   }
@@ -55,8 +57,23 @@ export async function createNotifications(inputs: CreateNotificationInput[]): Pr
     const data = await Promise.all(inputs.map(notificationData));
     const scopedDb = scopedPrisma(null);
     await scopedDb.notification.createMany({ data });
+    for (const input of inputs) await deliverWebPush(input);
   } catch (error) {
     logger.error("notifications", error, { count: inputs.length });
+  }
+}
+
+async function deliverWebPush(input: CreateNotificationInput): Promise<void> {
+  try {
+    const href = notificationHref({
+      type: input.type,
+      relatedSessionId: input.relatedSessionId ?? null,
+      relatedBadgeId: input.relatedBadgeId ?? null,
+      relatedGameId: input.relatedGameId ?? null,
+    });
+    await sendUserWebPush(input.userId, { title: input.title, body: input.message, url: href ?? "/" });
+  } catch {
+    logger.warn("notifications", "Échec de notification push.", { userId: input.userId, type: input.type });
   }
 }
 

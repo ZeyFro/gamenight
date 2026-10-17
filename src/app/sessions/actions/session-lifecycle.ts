@@ -11,6 +11,7 @@ import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { getCurrentUser } from "@/lib/current-user";
+import { deleteSessionGalleryBlobs } from "@/lib/session-gallery";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
@@ -419,13 +420,17 @@ export async function deleteSessionAction(formData: FormData) {
     select: { createdById: true, announceViaBot: true },
   });
   if (!session || session.createdById !== user.id) return;
-
-  await prisma.$transaction(async (tx) => {
+  const galleryPaths = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+    const paths = (await tx.sessionGalleryMedia.findMany({ where: { sessionId }, select: { pathname: true } }))
+      .map((media) => media.pathname);
     if (session.announceViaBot) {
       await enqueueSessionThreadDelete(sessionId, tx);
     }
     await tx.session.delete({ where: { id: sessionId } });
+    return paths;
   });
+  await deleteSessionGalleryBlobs(galleryPaths);
   revalidatePath("/sessions");
   redirect("/sessions");
 }

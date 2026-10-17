@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { processInBatches } from "@/lib/cron-batch";
 import { refreshSteamNowPlaying } from "@/lib/steam-now-playing";
+import { checkWishlistSteamPriceAlerts } from "@/lib/wishlist-price-alerts";
 
 /**
  * Fix "cron Steam surdimensionné" (activité Steam absente chez les autres
@@ -72,6 +73,12 @@ export async function GET(request: Request) {
   // EN PARALLÈLE des lots d'activité : le pire cas de durée de la route (calculé
   // ci-dessus) n'augmente pas, et cette promesse ne rejette jamais.
   const nowPlayingPromise = refreshSteamNowPlaying(users);
+  // Réutilise cette route déjà déclenchée par le cron externe : aucun
+  // nouveau déclencheur Vercel/cron n'est ajouté.
+  const wishlistPriceAlertsPromise = checkWishlistSteamPriceAlerts().catch((error) => {
+    logger.error("cron:steam-library-sync", error, { task: "wishlist-price-alerts" });
+    return { checked: 0, notified: 0, skipped: "error" };
+  });
 
   const { results, processedCount } = await processInBatches(
     users,
@@ -116,11 +123,13 @@ export async function GET(request: Request) {
   if (nowPlaying.enabled) {
     logger.info("cron:steam-library-sync", `en jeu maintenant — ${JSON.stringify(nowPlaying)}`);
   }
+  const wishlistPriceAlerts = await wishlistPriceAlertsPromise;
 
   return NextResponse.json({
     total: users.length,
     processed: processedCount,
     summary,
     nowPlaying,
+    wishlistPriceAlerts,
   });
 }

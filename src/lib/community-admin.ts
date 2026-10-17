@@ -2,6 +2,8 @@ import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { listGuildChannels, verifyChannelDestination, verifyVoiceChannelDestination, type GuildChannel } from "@/lib/discord-rest";
+import { parseSteamPriceAlertThreshold } from "@/lib/wishlist-price-alerts";
+import { parseAttendanceXpSettings } from "@/lib/session-attendance";
 
 /**
  * Multi-communautés — écran d'administration (onglet « Communautés » de
@@ -39,6 +41,62 @@ export async function setCommunityGuide(input: { communityId: unknown; rules: un
   const result = await prisma.community.updateMany({
     where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
     data: { guideRules: rules || null, guideContacts: contacts || null },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunityFreeGames(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: "ACTIVE" },
+    data: { freeGamesEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunitySteamPriceAlerts(input: { communityId: unknown; enabled: unknown; threshold: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const threshold = parseSteamPriceAlertThreshold(input.threshold);
+  if (threshold === null) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { steamPriceAlertsEnabled: input.enabled, steamPriceAlertThreshold: threshold },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunityGroupPurchasePlans(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { groupPurchasePlansEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunityAttendanceXp(input: {
+  communityId: unknown;
+  enabled: unknown;
+  bonusXp: unknown;
+  absencePenaltyXp: unknown;
+}) {
+  if (typeof input.communityId !== "string" || !input.communityId) return "invalid" as const;
+  const settings = parseAttendanceXpSettings(input);
+  if (!settings) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: settings,
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunityPlayerClassifieds(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") {
+    return "invalid" as const;
+  }
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: "ACTIVE" },
+    data: { playerClassifiedsEnabled: input.enabled },
   });
   return result.count ? "saved" as const : "unavailable" as const;
 }
@@ -118,9 +176,18 @@ export interface AdminCommunityRow {
   name: string;
   guideRules: string | null;
   guideContacts: string | null;
+  freeGamesEnabled: boolean;
+  steamPriceAlertsEnabled: boolean;
+  steamPriceAlertThreshold: number;
+  groupPurchasePlansEnabled: boolean;
+  attendanceXpEnabled: boolean;
+  attendanceBonusXp: number;
+  absencePenaltyXp: number;
+  playerClassifiedsEnabled: boolean;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
+  sessionGalleryEnabled: boolean;
   channels: Partial<Record<CommunityChannelCategory, { discordChannelId: string; enabled: boolean }>>;
   /** Salons texte du serveur (liste Discord) ; `null` = indisponible, motif dans `channelsError`. */
   guildChannels: GuildChannel[] | null;
@@ -154,9 +221,18 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         name: c.name,
         guideRules: c.guideRules,
         guideContacts: c.guideContacts,
+        freeGamesEnabled: c.freeGamesEnabled,
+        steamPriceAlertsEnabled: c.steamPriceAlertsEnabled,
+        steamPriceAlertThreshold: c.steamPriceAlertThreshold,
+        groupPurchasePlansEnabled: c.groupPurchasePlansEnabled,
+        attendanceXpEnabled: c.attendanceXpEnabled,
+        attendanceBonusXp: c.attendanceBonusXp,
+        absencePenaltyXp: c.absencePenaltyXp,
+        playerClassifiedsEnabled: c.playerClassifiedsEnabled,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,
+        sessionGalleryEnabled: c.sessionGalleryEnabled,
         channels: Object.fromEntries(
           c.channelConfigs.map((r) => [r.category, { discordChannelId: r.discordChannelId, enabled: r.enabled }])
         ),
@@ -165,4 +241,15 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
       };
     })
   );
+}
+
+export async function setCommunitySessionGallery(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") {
+    return "invalid" as const;
+  }
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: "ACTIVE" },
+    data: { sessionGalleryEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
 }

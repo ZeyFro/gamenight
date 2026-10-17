@@ -1,4 +1,29 @@
-# Reprise autonome du 16 octobre 2026
+# État de reprise — 17 octobre 2026
+
+## Point de contrôle à reprendre en premier
+
+- Travailler dans `C:\Users\mpmax\gamenight\.codex-worktrees\feature-wave`, branche `feat/roadmap-product-basics`; le checkout racine est un autre worktree. Base locale `origin/main` : `e376459d8d37756282af773aa99552c83ff18f0e`. Vérifier le SHA distant avec `git ls-remote origin refs/heads/main` avant toute publication/intégration; aucun force-push.
+- La branche `feat/roadmap-product-basics` est publiée dans la PR #276. Lire `git log --oneline` et le SHA distant avant toute nouvelle mise à jour; aucun force-push.
+- Postgres de test dédié : conteneur `gamenight-reprise-268-pg`, base `gamenight_test`, port `55439`. Il est isolé des conteneurs des autres projets. Les sept migrations du lot ont été appliquées. `prisma validate`, 157 tests ciblés (24 suites) + 5 tests ciblés de suppression, ESLint ciblé, `next build` et `git diff --check` passent localement; le build comprend le typecheck. Le test CI `test:postgres` a échoué en 2/2 956 cas sur `session-lifecycle.delete.test.ts`: la fixture transaction ne simulait pas `$queryRaw` ni `sessionGalleryMedia.findMany`. La fixture est corrigée localement et ses 5 tests passent; la CI doit revalider le nouveau SHA. Aucun autre échec de test n'a été signalé par cette suite.
+- #273 reste bloquée : `verify` vert sur `58ea42e`, Vercel échoue avec `build-rate-limit`/quota 24 h et la PR est `DIRTY`. Une résolution locale existe dans `.codex-worktrees/session-chronicles`, branche `feat/session-chronicles-next`, merge commit `5259d42`; tests ciblés, TSC, lint, Prisma et build passent. Ne pas pousser/fusionner avant expiration du quota et nouveaux contrôles; aucun redéploiement manuel ni contournement.
+- PR #276 : Vercel était vert sur le SHA précédent; après publication du correctif de fixture, attendre les nouveaux contrôles GitHub/Vercel sur la tête courante avant fusion. Ne pas relancer manuellement un déploiement.
+- Pas de paire VAPID trouvée dans les noms de secrets locaux/GitHub consultables; la lecture des variables Vercel a répondu 403 (`mpmaximeparisot-6230s-projects`). Aucune clé créée/affichée. Web Push doit rester désactivé jusqu'à vérification privée de la paire et configuration admin. Plugins réellement utilisés : `gh`/GitHub pour PR/checks, Vercel pour constater le quota et l'accès env refusé; Context7 pour les docs Web Push. Pas d'appel de démonstration.
+- Audit des éléments marqués terminés : musée/Hall of Shame, quiz « Devine le jeu », bibliothèque/wishlist et tournois ont de vrais parcours et tests ciblés. L7-05 a maintenant un quiz de quatre questions et garde l'édition manuelle. La PWA ne cache que `/offline.html`; l'app et les données privées ne sont pas disponibles hors ligne. Garder ce statut explicite.
+- L5-02 est un MVP photos privées (4 Mo, 8/soirée, consentement, accès invités/organisateur réauthentifié); clips et purge distincte restent différés. Le Blob public de bannière n'est pas réutilisé. Le token privé `SESSION_MEDIA_BLOB_TOKEN` n'est pas configuré/vérifiable à cause du 403 Vercel, donc uploads et lectures restent fermés sans lui.
+- Le commit local historique `de7f37524323aecc3e2f2f277995b66ba2b8e5bc` sur `fix/reprise-268` est conservé; son bilan #268 figure dans l'historique ci-dessous. Le commit `05c88bc` est déjà intégré à `origin/main` via #275.
+
+## Historique de reprise
+
+## L6-12 — état local du 17 octobre
+
+- Branche `feat/free-games-l6-12` créée sur `origin/main` `e376459d8d37756282af773aa99552c83ff18f0e`. Sources vérifiées : [page Epic Games Store FR des jeux gratuits](https://store.epicgames.com/fr/free-games) et [documentation officielle Steam Web API](https://partner.steamgames.com/doc/webapi_overview), [IStoreService](https://partner.steamgames.com/doc/webapi/IStoreService). Epic expose une page de boutique, sans flux de données public documenté trouvé; IStoreService exige une clé et ne documente pas un flux giveaway public. La [recherche Steam gratuite](https://store.steampowered.com/search/?maxprice=free) est une page de boutique, pas une API giveaway prise en charge. Aucun scraping ni endpoint non documenté ajouté.
+- Périmètre sûr : curation manuelle d'offres réellement gratuites, lien officiel français, dates de début/fin, affichage in-app aux membres actifs de la communauté. Désactivé par défaut et configurable par admin. Pas de Discord, cron, collecte automatique ni service payant. Le rythme quotidien n'est donc pas automatisé/configurable par tâche; il nécessite une source officielle stable avant une suite.
+- Migration additive `20261017110000_free_game_offers`. Validations locales : `prisma validate`, génération Prisma, 64 tests unitaires/scoping ciblés, ESLint ciblé, `tsc --noEmit`, `git diff --check` passés. Aucun test d'intégration/Postgres exécuté et migration non appliquée, pour laisser le run unique du parent sur le port 55439 intact. Commit local seulement jusqu'à intégration/publication coordonnée; relire le SHA de `origin/main` avant toute publication.
+
+## Reprise du 17 octobre — L7-11
+
+- Branche locale `feat/player-classifieds-l7-11`, issue de `origin/main` `e376459d8d37756282af773aa99552c83ff18f0e`. MVP des petites annonces : jeu + message de 240 caractères, membres actifs de la communauté, expiration logique après 24 h, suppression auteur/admin. Désactivé par défaut par communauté et configurable dans `/admin?tab=communautes` (garde existante `COMMUNITY_ADMIN_ENABLED`). Aucun message externe ni purge automatique.
+- Migration additive `20261017102000_player_classifieds`. 64 tests unitaires/statique ciblés, ESLint des fichiers touchés, `prisma validate`, génération Prisma et `tsc --noEmit` réussissent. Intégration/Postgres et application de migration non lancées : le run unique sur le Postgres dédié 55439 est utilisé par un autre worker. Les lignes expirées sont masquées mais non purgées automatiquement. Branche et commit restent locaux jusqu'à publication dans une PR utile ; reprendre avec `git worktree list`, vérifier `origin/main` et le SHA distant avant tout push.
 
 ## Mission globale — reprise continue sur le deuxième portable
 
@@ -93,3 +118,7 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 - `de7f37524323aecc3e2f2f277995b66ba2b8e5bc` reste conservé sur `fix/reprise-268`; son bilan historique #268 figure déjà dans ce fichier.
 - L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
 - Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.
+
+### L6-11 — plan d'achat collectif indicatif
+
+Worktree `.codex-worktrees/group-buying-plan`, branche `feat/group-buying-plan`, basé sur `origin/main` `e376459`. MVP: activation admin par communauté (off par défaut), date cible obligatoire et note facultative limitée à 300 caractères, modifiables par le proposant d'une entrée wishlist. Les votes « intéressé » restent le seul signal des membres; aucun engagement financier, paiement, achat automatique ni service externe. Migration additive `20261017130000_group_purchase_plans`. Contrôles locaux: 101 tests ciblés (incluant les gardes d'isolation), Prisma validate/generate, TypeScript, ESLint ciblé et diff check réussis. Aucun test PostgreSQL, push ou merge.

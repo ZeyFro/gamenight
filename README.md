@@ -1206,6 +1206,15 @@ créateur — et lui seul — peut saisir un résultat générique : podium
   premier envoi. Une saisie malformée/dupliquée côté client (placement
   choisi deux fois) est de toute façon neutralisée côté serveur en ne
   retenant que la première occurrence rencontrée.
+- **Taux de présence (L5-04)** : les saisies de résultats enregistrent le
+  statut présent/absent de chaque voteur de la proposition gagnante, conservé
+  même après la purge de la soirée. `/profil` affiche le taux par communauté
+  active. Les résultats antérieurs à cette migration ne sont pas reconstitués,
+  car les absences n'y étaient pas conservées. Dans `/admin → Communautés`,
+  un admin peut activer un bonus prudent de 2 XP par présence et un malus de
+  1 XP par absence explicitement décochée à la saisie; tous deux sont
+  désactivés par défaut, réglables de 0 à 20 XP, et une perte ne descend
+  jamais le solde sous zéro.
 - **Page dédiée, pas une modal** (contrairement à `EditSessionDialog`/
   `DeleteSessionDialog`) : ce formulaire va grandir en PR 5/9 avec les
   champs de stats spécifiques au jeu (superlatifs) — une modal serait vite
@@ -2887,6 +2896,22 @@ ci-dessous pour le détail de cette validation serveur). Pas de
 compression automatique dans FIX4 (ajoutée depuis côté client, voir plus
 bas). Preview immédiate avant validation via `URL.createObjectURL` sur
 les deux onglets.
+
+### Galerie privée des soirées
+
+`L5-02` fournit un premier périmètre photo : JPEG/PNG/GIF/WebP, 4 Mo par
+image, 8 images par soirée. Les clips sont différés. Un admin active la
+galerie par communauté depuis `/admin`; l’option est désactivée par défaut.
+L’envoi demande un consentement explicite, les fichiers sont privés et
+chaque lecture repasse par le contrôle créateur/invitation active de la
+soirée. L’uploader ou le créateur peut supprimer une image. Pas de
+notification ni de purge séparée : les blobs suivent la suppression de la
+soirée et sa politique de rétention existante.
+
+Avant activation, configurer `SESSION_MEDIA_BLOB_TOKEN` avec le jeton d’un
+store **Vercel Blob privé** dédié. Le jeton public existant des bannières
+n’est jamais utilisé pour la galerie. Sans ce jeton, l’upload et la lecture
+restent désactivés. Aucun store ni coût n’est créé par le code.
 
 ### Durcissement des bannières (validation réelle + anti-orphelins)
 
@@ -5646,9 +5671,10 @@ standalone`, `theme_color` violet `#8b5cf6`, `background_color` sombre)
 `sharp`). Câblé dans `src/app/layout.tsx` via l'API `Metadata`/`Viewport`
 native de Next (`manifest`, `appleWebApp`, `icons.apple`, `viewport.themeColor`)
 plutôt que des balises `<link>`/`<meta>` posées à la main — Next les génère
-lui-même dans le `<head>` à partir de ces exports. Volontairement **aucun
-service worker** : pas de cache offline, pas de push, juste ce qu'il faut
-pour que le bouton "Ajouter à l'écran d'accueil" apparaisse.
+lui-même dans le `<head>` à partir de ces exports. Le service worker de #265
+met uniquement `/offline.html` en cache et l'affiche lors d'une navigation
+échouée; il ne rend pas l'application ni ses données utilisables hors ligne.
+Le worker `public/service-worker.js` est aussi partagé par Web Push.
 
 ### Pull-to-refresh mobile (U6)
 
@@ -5764,6 +5790,25 @@ routes principales — y ajouter un 7e élément non-navigationnel (un
 déclencheur de panneau, pas un lien) aurait cassé la cohérence de cette
 grille pour un gain d'accessibilité mobile nul (le header reste visible
 en scrollant sur toutes les pages).
+
+### Notifications Web Push — navigateur (L6-13)
+
+Le membre active ou retire lui-même chaque appareil dans Profil → Paramètres.
+La livraison réutilise les notifications in-app; elle reste entièrement
+inactive tant que `WEB_PUSH_ENABLED=true` et les trois paramètres VAPID ne
+sont pas fournis. Aucun envoi Discord, cron ou service externe supplémentaire.
+Un utilisateur peut enregistrer au plus cinq appareils; les abonnements
+révoqués par le navigateur sont supprimés à la prochaine tentative.
+
+Un administrateur déploie une paire VAPID persistante (`subject`, clé publique
+et clé privée) puis configure `WEB_PUSH_ENABLED`,
+`WEB_PUSH_VAPID_SUBJECT`, `WEB_PUSH_VAPID_PUBLIC_KEY` et
+`WEB_PUSH_VAPID_PRIVATE_KEY`. Ne jamais régénérer une paire déjà utilisée ni
+committer ces valeurs. La clé privée reste uniquement dans l'environnement
+serveur; `.env.example` ne contient que des noms vides. En l'absence de ces
+valeurs, l'interface affiche que le service est désactivé et l'API refuse les
+nouveaux abonnements. Migration additive `web_push_subscriptions`.
+Le push et le fallback hors ligne utilisent le même worker `public/service-worker.js`.
 
 ### Fichiers modifiés/ajoutés
 
@@ -6754,6 +6799,20 @@ toutes les 10s, avec indicateur "Actualisation…".
   change, une fiche jeu non) : fetch live à l'affichage de la page pour
   les jeux Steam non encore achetés, silencieusement absent si Steam
   Store est injoignable ou n'a pas de prix (gratuit, retiré du store…).
+- **Alertes L6-10** : option désactivée par défaut par communauté dans
+  `/admin → Communautés`; un admin peut régler le seuil (20 % par défaut,
+  borné à 5–80 %). Le contrôle utilise le prix France (`cc=fr`), tourne
+  via la route `steam-library-sync` déjà déclenchée (aucun nouveau cron
+  Vercel), et vérifie au plus 3 entrées par communauté toutes les 6 h,
+  en rotation. Le proposant et les personnes ayant voté « intéressé »
+  reçoivent une notification in-app; une même entrée a un délai de 7 jours
+  entre alertes. Aucun Discord ni push n'est envoyé.
+
+- **Plan d'achat collectif L6-11 (MVP)** : désactivé par défaut et activable
+  par un admin dans `/admin → Communautés`. Le proposant peut indiquer une
+  date visée et une note courte; le plan est visible avec les votes existants.
+  La date et les votes restent indicatifs : aucune somme, promesse financière,
+  paiement ou action automatique n'est collecté ou déclenché.
 
 ### Fichiers modifiés/ajoutés
 
@@ -12838,6 +12897,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | IGDB via Twitch (recherche, fiche jeu, backfill Coop) ; absentes = backfill sauté (log `warn`) | absentes | `src/lib/igdb.ts:13-14`, `src/lib/backfill-igdb-coop.ts:87` |
 | `DEEPL_API_KEY` | Traduction FR des descriptions IGDB (optionnelle) | absente = description en VO | `src/lib/deepl.ts:17` |
 | `BLOB_READ_WRITE_TOKEN` | Upload d'images de bannière (Vercel Blob) ; absent = upload désactivé | absent | `src/app/profil/actions.ts:194`, `src/app/profil/parametres/page.tsx:122` |
+| `SESSION_MEDIA_BLOB_TOKEN` | Jeton d’un store Vercel Blob privé pour la galerie des soirées ; absent = galerie inaccessible | absent | `src/app/sessions/actions/gallery.ts` |
 
 ### Fournies par la plateforme (ne pas définir à la main)
 

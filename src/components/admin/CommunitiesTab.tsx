@@ -1,9 +1,11 @@
 import type { CommunityChannelCategory } from "@prisma/client";
+import Link from "next/link";
 import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow } from "@/lib/community-admin";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction } from "@/app/admin/communautes/actions";
+import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -28,8 +30,26 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "activate-no_guild": { ok: false, text: "Aucun serveur Discord connu pour cette communauté." },
   "channel-ok": { ok: true, text: "Salon enregistré." },
   "guide-ok": { ok: true, text: "Règles et contacts enregistrés." },
+  "free-games-ok": { ok: true, text: "Configuration des jeux gratuits enregistrée." },
+  "free-games-unavailable": { ok: false, text: "Seule une communauté active peut activer cette fonction." },
+  "free-games-invalid": { ok: false, text: "Demande invalide." },
+  "price-alerts-ok": { ok: true, text: "Alertes Steam enregistrées." },
+  "price-alerts-invalid": { ok: false, text: "Le seuil doit être un pourcentage entier de 5 à 80." },
+  "price-alerts-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
+  "attendance-ok": { ok: true, text: "Réglages de présence enregistrés." },
+  "attendance-invalid": { ok: false, text: "Montants invalides : entre 0 et 20 XP." },
+  "attendance-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
+  "classifieds-ok": { ok: true, text: "Réglage des petites annonces enregistré." },
+  "classifieds-invalid": { ok: false, text: "Demande invalide." },
+  "classifieds-unavailable": { ok: false, text: "Seule une communauté active peut activer les annonces." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
+  "purchase-plan-ok": { ok: true, text: "Plans d'achat collectif mis à jour." },
+  "purchase-plan-invalid": { ok: false, text: "Demande invalide." },
+  "purchase-plan-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
+  "gallery-ok": { ok: true, text: "Réglage de galerie enregistré." },
+  "gallery-invalid": { ok: false, text: "Demande invalide." },
+  "gallery-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "channel-invalid_channel": { ok: false, text: "Identifiant de salon invalide." },
   "channel-not_found": { ok: false, text: "Communauté introuvable." },
   "channel-inactive": { ok: false, text: "Cette communauté ne peut plus recevoir de salon." },
@@ -97,6 +117,69 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
         </form>
       )}
 
+      {c.status === "ACTIVE" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <form action={setCommunityFreeGamesAction} className="flex items-center gap-3">
+            <input type="hidden" name="communityId" value={c.id} />
+            <input type="hidden" name="enabled" value={String(!c.freeGamesEnabled)} />
+            <p className="text-sm text-muted">Jeux gratuits en français : {c.freeGamesEnabled ? "activés" : "désactivés"} (sélection manuelle).</p>
+            <Button type="submit" size="sm">{c.freeGamesEnabled ? "Désactiver" : "Activer"}</Button>
+          </form>
+          <Link href={`/admin/jeux-gratuits?communityId=${encodeURIComponent(c.id)}`} className="text-sm font-medium text-accent">Gérer les offres →</Link>
+        </div>
+      )}
+
+      {editable && (
+        <form action={setCommunitySteamPriceAlertsAction} className="flex flex-col gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <p className="text-sm font-medium text-foreground">Alertes de baisse de prix Steam</p>
+          <p className="text-xs text-muted">Notifications uniquement dans GameNight. Vérification périodique des wishlists (France); une même entrée ne renotifie pas avant 7 jours.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="enabled" value="true" defaultChecked={c.steamPriceAlertsEnabled} className="h-5 w-5 accent-accent" />
+            Activer les alertes pour cette communauté
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">Seuil de réduction (%)
+            <input type="number" name="threshold" min={5} max={80} step={1} required defaultValue={c.steamPriceAlertThreshold} className={SELECT_CLASS} />
+          </label>
+          <Button type="submit" size="sm" className="self-start">Enregistrer les alertes</Button>
+        </form>
+      )}
+
+      {editable && (
+        <form action={setCommunityAttendanceXpAction} className="flex flex-col gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <p className="text-sm font-medium text-foreground">XP de présence</p>
+          <p className="text-xs text-muted">Désactivé par défaut. Le malus ne s&apos;applique qu&apos;aux absences décochées lors de la saisie des résultats, et ne peut pas faire passer l&apos;XP sous zéro.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="enabled" value="true" defaultChecked={c.attendanceXpEnabled} className="h-5 w-5 accent-accent" />
+            Activer le bonus et le malus
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted">Bonus présent (XP)
+              <input type="number" name="bonusXp" min={0} max={20} step={1} required defaultValue={c.attendanceBonusXp} className={SELECT_CLASS} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted">Malus absence (XP)
+              <input type="number" name="absencePenaltyXp" min={0} max={20} step={1} required defaultValue={c.absencePenaltyXp} className={SELECT_CLASS} />
+            </label>
+          </div>
+          <Button type="submit" size="sm" className="self-start">Enregistrer les réglages XP</Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunityPlayerClassifiedsAction} className="flex items-center justify-between gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <input type="hidden" name="enabled" value={String(!c.playerClassifiedsEnabled)} />
+          <p className="text-sm text-muted">
+            Petites annonces de joueurs : {c.playerClassifiedsEnabled ? "activées" : "désactivées"}.
+            Les annonces expirent après 24 h.
+          </p>
+          <Button type="submit" size="sm">
+            {c.playerClassifiedsEnabled ? "Désactiver" : "Activer"}
+          </Button>
+        </form>
+      )}
+
       {editable && (
         <form action={setCommunityGuideAction} className="flex flex-col gap-2 border-t border-border pt-4">
           <input type="hidden" name="communityId" value={c.id} />
@@ -105,6 +188,32 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           <label className="text-sm font-medium" htmlFor={`${c.id}-guideContacts`}>Contacts et moyens de joindre les responsables</label>
           <textarea id={`${c.id}-guideContacts`} name="guideContacts" defaultValue={c.guideContacts ?? ""} maxLength={2000} rows={3} className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
           <Button type="submit" size="sm">Enregistrer pour le guide</Button>
+        </form>
+      )}
+
+      {editable && (
+        <form action={setCommunityGroupPurchasePlansAction} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">Plans d&apos;achat collectif</p>
+            <p className="text-xs text-muted">Organisation indicative depuis la wishlist; aucun paiement ni achat automatique.</p>
+          </div>
+          <select name="enabled" defaultValue={String(c.groupPurchasePlansEnabled)} aria-label={`Plans d'achat collectif pour ${c.name}`} className={SELECT_CLASS}>
+            <option value="false">Désactivés</option>
+            <option value="true">Activés</option>
+          </select>
+          <Button type="submit" size="sm">Enregistrer</Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunitySessionGalleryAction} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="enabled" defaultChecked={c.sessionGalleryEnabled} />
+            <span>Galerie photo privée des soirées (nécessite SESSION_MEDIA_BLOB_TOKEN d’un store privé)</span>
+          </label>
+          <Button type="submit" size="sm">Enregistrer</Button>
         </form>
       )}
 

@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { FadeInView } from "@/components/ui/FadeInView";
 import { XpEvolutionChart, type XpEvolutionPoint } from "@/components/XpEvolutionChart";
 import { pageMetadata } from "@/lib/page-title";
+import { attendanceRatePercent } from "@/lib/session-attendance";
 
 export const metadata = pageMetadata("Mon profil");
 
@@ -38,6 +39,7 @@ export default async function ProfilApercuPage() {
     sessionResults,
     xpBetsWon,
     recentXpEvents,
+    attendanceGroups,
   ] = await Promise.all([
     prisma.session.findFirst({
       where: { AND: [await accessibleSessionWhereFor(user.id), { status: { in: ["VOTING", "SCHEDULED"] } }] },
@@ -91,6 +93,11 @@ export default async function ProfilApercuPage() {
       select: { amount: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
+    scopedDb.sessionAttendance.groupBy({
+      by: ["present"],
+      where: { userId: user.id },
+      _count: { _all: true },
+    }),
   ]);
 
   const pronosticCorrect =
@@ -98,6 +105,9 @@ export default async function ProfilApercuPage() {
   const pronosticTotal = pronosticStats.reduce((sum, s) => sum + s._count._all, 0);
   const pronosticRate =
     pronosticTotal > 0 ? Math.round((pronosticCorrect / pronosticTotal) * 100) : null;
+  const attendanceTotal = attendanceGroups.reduce((sum, group) => sum + group._count._all, 0);
+  const attendancePresent = attendanceGroups.find((group) => group.present)?._count._all ?? 0;
+  const attendanceRate = attendanceRatePercent(attendancePresent, attendanceTotal);
 
   // Amélioration profil (stats) — win rate calculé uniquement sur les
   // soirées compétitives (`placement` non-null) : une soirée coop n'a pas
@@ -205,6 +215,12 @@ export default async function ProfilApercuPage() {
               {winRate === null ? "—" : `${winRate}%`}
             </span>
             <span className="text-[11px] text-muted">Win rate</span>
+          </Card>
+          <Card className="flex flex-col items-center gap-1 p-3 text-center">
+            <span className="text-lg font-bold text-foreground">
+              {attendanceRate === null ? "—" : `${attendanceRate}%`}
+            </span>
+            <span className="text-[11px] text-muted">Présence ({attendancePresent}/{attendanceTotal})</span>
           </Card>
           <Card className="flex flex-col items-center gap-1 p-3 text-center">
             <span className="text-lg font-bold text-foreground">{user.bestStreakCount}</span>
