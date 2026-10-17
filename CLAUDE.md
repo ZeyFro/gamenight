@@ -49,6 +49,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 
 ## Switches d'environnement
 - `TOURNAMENT_PREDICTIONS_ENABLED` : pronostics immuables champion avant lancement et gagnant de match avant résultat ; membres actifs, sans mise ni gain XP ; OFF par défaut, migration `tournament_predictions`
+- `COMMUNITY_EXPRESSIONS_ENABLED` : collection d’expressions et running gags par serveur dans Profil → Lore ; membres actifs uniquement, modération auteur / ADMIN / OWNER, même isolation éteinte ; exige la migration `community_expressions` ; OFF par défaut
 
 - `COMMUNITY_HIGHLIGHTS_ENABLED` : exploits/fails éditables par serveur, liens médias sans upload ; OFF par défaut, migration `community_highlights`.
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
