@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getSessionAccessRole } from "@/lib/session-access";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 
 export async function GET(
   _request: Request,
@@ -15,7 +16,8 @@ export async function GET(
   if (!(await getSessionAccessRole(user.id, sessionId))) return new NextResponse(null, { status: 404 });
   const token = process.env.SESSION_MEDIA_BLOB_TOKEN;
   if (!token) return new NextResponse(null, { status: 404 });
-  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
   if (!session) return new NextResponse(null, { status: 404 });
   const communityId = await statsCommunityIdForSession(session.communityId);
   const community = await prisma.community.findUnique({ where: { id: communityId }, select: { sessionGalleryEnabled: true } });

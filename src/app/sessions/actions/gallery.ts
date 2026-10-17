@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getSessionAccessRole } from "@/lib/session-access";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import {
   detectSessionGalleryMime,
   isSessionGalleryConsent,
@@ -31,7 +32,8 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
   if (file.size > SESSION_GALLERY_MAX_BYTES) redirect(`/sessions/${sessionId}?gallery=trop-lourd`);
   if (!(await getSessionAccessRole(user.id, sessionId))) redirect("/sessions");
 
-  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  const scopedDb = await getScopedPrisma(user.id);
+  const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
   if (!session?.communityId) redirect(`/sessions/${sessionId}?gallery=desactive`);
   const communityId = await statsCommunityIdForSession(session.communityId);
   const community = await prisma.community.findUnique({ where: { id: communityId }, select: { sessionGalleryEnabled: true } });
@@ -60,7 +62,7 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
     });
   } catch {
     // shortcut: Blob cleanup is best-effort after a database outage; add a cleanup queue if orphan volume grows.
-    await del(blob.pathname, { access: "private", token: blobToken }).catch(() => undefined);
+    await del(blob.pathname, { token: blobToken }).catch(() => undefined);
     redirect(`/sessions/${sessionId}?gallery=echec`);
   }
   revalidatePath(`/sessions/${sessionId}`);
@@ -76,14 +78,15 @@ export async function deleteSessionGalleryImageAction(formData: FormData): Promi
   const access = await getSessionAccessRole(user.id, sessionId);
   const blobToken = token();
   if (!access || !blobToken) redirect("/sessions");
+  const scopedDb = await getScopedPrisma(user.id);
   const [session, media] = await Promise.all([
-    prisma.session.findUnique({ where: { id: sessionId }, select: { createdById: true } }),
+    scopedDb.session.findUnique({ where: { id: sessionId }, select: { createdById: true } }),
     prisma.sessionGalleryMedia.findFirst({ where: { id: mediaId, sessionId } }),
   ]);
   if (!session || !media || (media.uploadedById !== user.id && session.createdById !== user.id)) return;
   if (!checkRateLimit(user.id, "deleteSessionGalleryImage")) redirect(`/sessions/${sessionId}?gallery=indisponible`);
   await prisma.sessionGalleryMedia.delete({ where: { id: media.id } });
-  await del(media.pathname, { access: "private", token: blobToken }).catch(() => undefined);
+  await del(media.pathname, { token: blobToken }).catch(() => undefined);
   revalidatePath(`/sessions/${sessionId}`);
   redirect(`/sessions/${sessionId}?gallery=ok`);
 }

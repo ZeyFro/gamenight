@@ -25,7 +25,7 @@ export async function deleteSessionGalleryBlobs(pathnames: string[]): Promise<vo
     logger.warn("session-gallery", "Private Blob cleanup skipped because its token is unavailable.", { count: pathnames.length });
     return;
   }
-  const results = await Promise.allSettled(pathnames.map((pathname) => del(pathname, { access: "private", token })));
+  const results = await Promise.allSettled(pathnames.map((pathname) => del(pathname, { token })));
   const failed = results.filter((result) => result.status === "rejected").length;
   if (failed) logger.warn("session-gallery", "Private Blob cleanup left orphaned files.", { failed, total: pathnames.length });
 }

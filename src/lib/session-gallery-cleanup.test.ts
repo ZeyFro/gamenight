@@ -26,7 +26,7 @@ describe("private session gallery cleanup", () => {
     process.env.SESSION_MEDIA_BLOB_TOKEN = "test-private-token";
     del.mockResolvedValue(undefined);
     await deleteSessionGalleryBlobs(["sessions/one/file"]);
-    expect(del).toHaveBeenCalledWith("sessions/one/file", { access: "private", token: "test-private-token" });
+    expect(del).toHaveBeenCalledWith("sessions/one/file", { token: "test-private-token" });
     expect(warn).not.toHaveBeenCalled();
   });
 });
