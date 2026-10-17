@@ -13,6 +13,7 @@ import {
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 import { attemptDefaultRewardDelivery, persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
+import { absencePenaltyAmount } from "@/lib/session-attendance";
 
 export function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -94,6 +95,42 @@ export async function awardXp(
     return { leveledUp: result.leveledUp, awarded: result.awarded };
   } catch (error) {
     if (isUniqueConstraintViolation(error)) return { leveledUp: false, awarded: false };
+    throw error;
+  }
+}
+
+/** Perte XP idempotente, plafonnée au solde et sans baisse sous zéro. */
+export async function applySessionAbsencePenalty(
+  userId: string,
+  communityId: string | null,
+  sessionId: string,
+  configuredPenalty: number,
+): Promise<boolean> {
+  if (!Number.isInteger(configuredPenalty) || configuredPenalty <= 0) return false;
+  const id = await statsCommunityIdForSession(communityId);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (!(await lockCommunityProgress(tx, id, userId))) return false;
+      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [id], includesDefault: false } : null);
+      await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
+      await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${id} AND "userId" = ${userId} FOR UPDATE`;
+      const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({
+        where: { communityId_userId: { communityId: id, userId } },
+        select: { xpTotal: true },
+      });
+      const amount = absencePenaltyAmount(configuredPenalty, stats.xpTotal);
+      if (amount === 0) return false;
+      await scopedDb.xpEvent.create({
+        data: { communityId: id, userId, reason: "SESSION_ABSENCE", sourceId: sessionId, amount: -amount },
+      });
+      await scopedDb.communityMemberStats.update({
+        where: { communityId_userId: { communityId: id, userId } },
+        data: { xpTotal: { decrement: amount } },
+      });
+      return true;
+    });
+  } catch (error) {
+    if (isUniqueConstraintViolation(error)) return false;
     throw error;
   }
 }

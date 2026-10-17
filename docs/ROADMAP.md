@@ -58,7 +58,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L5-01 | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
 | L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
 | L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
-| L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage de fiabilité et bonus/malus XP (montants à proposer avant) | produit | À TOI — montants d’XP à décider (bonus/malus) |
+| L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (MVP local; validations à la PR) |
 | L5-05 | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
 
 ## Lot 6 — Compléments communautaires

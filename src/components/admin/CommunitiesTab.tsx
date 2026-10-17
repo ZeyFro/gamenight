@@ -4,7 +4,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -35,6 +35,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "price-alerts-ok": { ok: true, text: "Alertes Steam enregistrées." },
   "price-alerts-invalid": { ok: false, text: "Le seuil doit être un pourcentage entier de 5 à 80." },
   "price-alerts-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
+  "attendance-ok": { ok: true, text: "Réglages de présence enregistrés." },
+  "attendance-invalid": { ok: false, text: "Montants invalides : entre 0 et 20 XP." },
+  "attendance-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "purchase-plan-ok": { ok: true, text: "Plans d'achat collectif mis à jour." },
@@ -132,6 +135,27 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
             <input type="number" name="threshold" min={5} max={80} step={1} required defaultValue={c.steamPriceAlertThreshold} className={SELECT_CLASS} />
           </label>
           <Button type="submit" size="sm" className="self-start">Enregistrer les alertes</Button>
+        </form>
+      )}
+
+      {editable && (
+        <form action={setCommunityAttendanceXpAction} className="flex flex-col gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <p className="text-sm font-medium text-foreground">XP de présence</p>
+          <p className="text-xs text-muted">Désactivé par défaut. Le malus ne s&apos;applique qu&apos;aux absences décochées lors de la saisie des résultats, et ne peut pas faire passer l&apos;XP sous zéro.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="enabled" value="true" defaultChecked={c.attendanceXpEnabled} className="h-5 w-5 accent-accent" />
+            Activer le bonus et le malus
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted">Bonus présent (XP)
+              <input type="number" name="bonusXp" min={0} max={20} step={1} required defaultValue={c.attendanceBonusXp} className={SELECT_CLASS} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted">Malus absence (XP)
+              <input type="number" name="absencePenaltyXp" min={0} max={20} step={1} required defaultValue={c.absencePenaltyXp} className={SELECT_CLASS} />
+            </label>
+          </div>
+          <Button type="submit" size="sm" className="self-start">Enregistrer les réglages XP</Button>
         </form>
       )}
 

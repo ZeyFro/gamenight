@@ -50,7 +50,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
   "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "SessionRating", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent",
-  "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction",
+  "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction", "SessionAttendance",
 ]);
 
 /**
@@ -65,7 +65,7 @@ export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "FreeGameOffer",
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
   "WeeklyChallenge", "MonthlyRecap", "Season",
-  "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction",
+  "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction", "SessionAttendance",
 ]);
 
 export class CommunityScopeError extends Error {

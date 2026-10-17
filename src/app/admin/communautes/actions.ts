@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -98,4 +98,18 @@ export async function setCommunityGroupPurchasePlansAction(formData: FormData): 
     enabled: enabledValue === "true" ? true : enabledValue === "false" ? false : null,
   });
   done(result === "saved" ? "purchase-plan-ok" : `purchase-plan-${result}`);
+}
+
+export async function setCommunityAttendanceXpAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityAttendanceXp")) done("rate");
+  const result = await setCommunityAttendanceXp({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "true" ? "true" : "false",
+    bonusXp: formData.get("bonusXp"),
+    absencePenaltyXp: formData.get("absencePenaltyXp"),
+  });
+  done(result === "saved" ? "attendance-ok" : `attendance-${result}`);
 }

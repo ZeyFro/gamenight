@@ -1206,6 +1206,15 @@ créateur — et lui seul — peut saisir un résultat générique : podium
   premier envoi. Une saisie malformée/dupliquée côté client (placement
   choisi deux fois) est de toute façon neutralisée côté serveur en ne
   retenant que la première occurrence rencontrée.
+- **Taux de présence (L5-04)** : les saisies de résultats enregistrent le
+  statut présent/absent de chaque voteur de la proposition gagnante, conservé
+  même après la purge de la soirée. `/profil` affiche le taux par communauté
+  active. Les résultats antérieurs à cette migration ne sont pas reconstitués,
+  car les absences n'y étaient pas conservées. Dans `/admin → Communautés`,
+  un admin peut activer un bonus prudent de 2 XP par présence et un malus de
+  1 XP par absence explicitement décochée à la saisie; tous deux sont
+  désactivés par défaut, réglables de 0 à 20 XP, et une perte ne descend
+  jamais le solde sous zéro.
 - **Page dédiée, pas une modal** (contrairement à `EditSessionDialog`/
   `DeleteSessionDialog`) : ce formulaire va grandir en PR 5/9 avec les
   champs de stats spécifiques au jeu (superlatifs) — une modal serait vite

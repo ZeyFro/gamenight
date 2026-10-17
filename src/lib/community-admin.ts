@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { listGuildChannels, verifyChannelDestination, verifyVoiceChannelDestination, type GuildChannel } from "@/lib/discord-rest";
 import { parseSteamPriceAlertThreshold } from "@/lib/wishlist-price-alerts";
+import { parseAttendanceXpSettings } from "@/lib/session-attendance";
 
 /**
  * Multi-communautés — écran d'administration (onglet « Communautés » de
@@ -45,9 +46,7 @@ export async function setCommunityGuide(input: { communityId: unknown; rules: un
 }
 
 export async function setCommunityFreeGames(input: { communityId: unknown; enabled: unknown }) {
-  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") {
-    return "invalid" as const;
-  }
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
   const result = await prisma.community.updateMany({
     where: { id: input.communityId, status: "ACTIVE" },
     data: { freeGamesEnabled: input.enabled },
@@ -71,6 +70,22 @@ export async function setCommunityGroupPurchasePlans(input: { communityId: unkno
   const result = await prisma.community.updateMany({
     where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
     data: { groupPurchasePlansEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunityAttendanceXp(input: {
+  communityId: unknown;
+  enabled: unknown;
+  bonusXp: unknown;
+  absencePenaltyXp: unknown;
+}) {
+  if (typeof input.communityId !== "string" || !input.communityId) return "invalid" as const;
+  const settings = parseAttendanceXpSettings(input);
+  if (!settings) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: settings,
   });
   return result.count ? "saved" as const : "unavailable" as const;
 }
@@ -154,6 +169,9 @@ export interface AdminCommunityRow {
   steamPriceAlertsEnabled: boolean;
   steamPriceAlertThreshold: number;
   groupPurchasePlansEnabled: boolean;
+  attendanceXpEnabled: boolean;
+  attendanceBonusXp: number;
+  absencePenaltyXp: number;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -194,6 +212,9 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         steamPriceAlertsEnabled: c.steamPriceAlertsEnabled,
         steamPriceAlertThreshold: c.steamPriceAlertThreshold,
         groupPurchasePlansEnabled: c.groupPurchasePlansEnabled,
+        attendanceXpEnabled: c.attendanceXpEnabled,
+        attendanceBonusXp: c.attendanceBonusXp,
+        absencePenaltyXp: c.absencePenaltyXp,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,

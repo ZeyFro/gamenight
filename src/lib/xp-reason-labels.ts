@@ -8,6 +8,8 @@ export const XP_REASON_LABELS: Record<XpReason, string> = {
   AVAILABILITY_FIRST: "a réglé ses disponibilités",
   STEAM_LINK_FIRST: "a lié son compte Steam",
   SESSION_RESULT: "a reçu un bonus de résultats",
+  SESSION_ATTENDANCE: "a été présent à une soirée",
+  SESSION_ABSENCE: "a été absent d'une soirée",
   SUPERLATIVE_AWARD: "a gagné une récompense",
   BADGE_UNLOCKED: "a débloqué un badge",
   CHALLENGE_COMPLETE: "a complété le défi de la semaine",

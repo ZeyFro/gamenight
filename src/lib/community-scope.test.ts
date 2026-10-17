@@ -24,7 +24,7 @@ const COLLECTIVE_MODELS = [
   "CommunityExpression",
   "CommunityHighlight",
   "FreeGameOffer",
-  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
+  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionAttendance", "SessionRating", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",
   "Tournament", "TournamentParticipant", "TournamentMatch", "TournamentPrediction", "ChatMessage", "ChatReaction",

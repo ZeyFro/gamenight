@@ -192,6 +192,7 @@ model User {
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+  sessionAttendances    SessionAttendance[]
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
@@ -657,6 +658,7 @@ model Session {
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]
   results           SessionResult[]
+  attendance        SessionAttendance[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -983,6 +985,8 @@ enum XpReason {
   AVAILABILITY_FIRST
   STEAM_LINK_FIRST
   SESSION_RESULT
+  SESSION_ATTENDANCE
+  SESSION_ABSENCE
   SUPERLATIVE_AWARD
   BADGE_UNLOCKED
   // Sprint 3 (défis hebdo) — voir `WeeklyChallenge`/`src/lib/weekly-challenges.ts`.
@@ -1057,6 +1061,22 @@ model SessionResult {
   // Sert `revanche.ts` (compte les résultats d'un user pour un jeu donné,
   // indépendamment de l'existence de la soirée).
   @@index([userId, gameId])
+}
+
+model SessionAttendance {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  communityId String
+  userId      String
+  present     Boolean
+  createdAt   DateTime @default(now())
+
+  session   Session?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([communityId, userId, present])
 }
 
 model SessionRating {
@@ -2664,6 +2684,9 @@ model Community {
   steamPriceAlertsEnabled Boolean @default(false)
   steamPriceAlertThreshold Int @default(20)
   steamPriceAlertScannedAt DateTime?
+  attendanceXpEnabled Boolean @default(false)
+  attendanceBonusXp Int @default(2)
+  absencePenaltyXp Int @default(1)
   guideRules String? @db.Text
   guideContacts String? @db.Text
   freeGamesEnabled Boolean @default(false)
@@ -2688,6 +2711,7 @@ model Community {
   memberships    Membership[]
   channelConfigs CommunityChannelConfig[]
   sessions       Session[]
+  sessionAttendances SessionAttendance[]
   tournaments    Tournament[]
 
   @@index([status])
