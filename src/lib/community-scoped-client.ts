@@ -41,7 +41,7 @@ import {
 
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
-  "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
+  "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession", "CommunityHighlight",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
   "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "SessionRating", "XpEvent", "LevelUpEvent", "UserBadge", "SessionResult", "Notification", "NotificationEvent",
@@ -54,7 +54,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
-  "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
+  "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek", "CommunityHighlight",
   "WeeklyChallenge", "MonthlyRecap", "Season",
   "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction",
 ]);
