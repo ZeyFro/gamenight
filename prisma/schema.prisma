@@ -38,6 +38,8 @@ enum UserRole {
 }
 
 model User {
+  quickPollsCreated CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
   communityBirthdays CommunityDate[] @relation("CommunityDateMember")
@@ -2599,6 +2601,8 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  quickPolls CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
   sessionRatings SessionRating[]
@@ -2649,6 +2653,36 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+model CommunityQuickPoll {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  question String @db.VarChar(200)
+  options String[]
+  endsAt DateTime
+  createdAt DateTime @default(now())
+  votes CommunityQuickPollVote[]
+
+  @@unique([id, communityId])
+  @@index([communityId, createdAt])
+}
+
+model CommunityQuickPollVote {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  pollId String
+  poll CommunityQuickPoll @relation(fields: [pollId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optionIndex Int
+
+  @@unique([pollId, userId])
+  @@index([communityId, pollId])
 }
 
 // Une proposition de créneau ne crée jamais une Session ni un rappel.
