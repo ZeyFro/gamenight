@@ -51,6 +51,7 @@ export default async function WishlistPage({
 
       <p className="text-sm text-muted">
         <a href="https://store.epicgames.com/free-games?lang=fr" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Voir les jeux gratuits de la semaine sur Epic Games Store →</a>
+        {" · "}<a href="/jeux-gratuits" className="text-accent hover:underline">Sélection Steam/Epic du groupe →</a>
       </p>
 
       {entries.length === 0 ? (

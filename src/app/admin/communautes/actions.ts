@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide, setCommunityFreeGames } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -58,4 +58,18 @@ export async function setCommunityGuideAction(formData: FormData): Promise<void>
     contacts: formData.get("guideContacts"),
   });
   done(result === "saved" ? "guide-ok" : `guide-${result}`);
+}
+
+export async function setCommunityFreeGamesAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityFreeGames")) done("rate");
+
+  const enabled = formData.get("enabled");
+  const result = await setCommunityFreeGames({
+    communityId: formData.get("communityId"),
+    enabled: enabled === "true" ? true : enabled === "false" ? false : null,
+  });
+  done(result === "saved" ? "free-games-ok" : `free-games-${result}`);
 }

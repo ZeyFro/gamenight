@@ -37,6 +37,11 @@ enum UserRole {
   ADMIN
 }
 
+enum FreeGameStore {
+  STEAM
+  EPIC
+}
+
 model User {
   quickPollsCreated CommunityQuickPoll[]
   quickPollVotes CommunityQuickPollVote[]
@@ -260,6 +265,7 @@ model User {
   // V2 ("Jouer maintenant") — voir `InstantSession`/`InstantSessionPresenceInterval`.
   createdInstantSessions   InstantSession[]                  @relation("InstantSessionCreatedBy")
   instantSessionPresence   InstantSessionPresenceInterval[]
+  publishedFreeGameOffers FreeGameOffer[]
 
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts Debt[]
@@ -2652,6 +2658,7 @@ model Community {
   fairPlayCharter String? @db.Text
   guideRules String? @db.Text
   guideContacts String? @db.Text
+  freeGamesEnabled Boolean @default(false)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
@@ -2684,6 +2691,7 @@ model Community {
   rouletteVetoes RouletteVeto[]
   roulettes Roulette[]
   instantSessions InstantSession[]
+  freeGameOffers FreeGameOffer[]
   weeklyChallenges WeeklyChallenge[]
   monthlyRecaps MonthlyRecap[]
   seasons Season[]
@@ -2691,6 +2699,24 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+model FreeGameOffer {
+  id          String        @id @default(cuid())
+  communityId String
+  createdById String
+  store       FreeGameStore
+  title       String        @db.VarChar(120)
+  storeUrl    String        @db.VarChar(500)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime      @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId, startsAt, endsAt])
+  @@index([createdById, communityId])
 }
 
 model CommunityQuickPoll {

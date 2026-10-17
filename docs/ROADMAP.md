@@ -76,7 +76,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Validation finale | code | PR ouverte (#274) |
 | L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Détection des baisses et notification | code | À faire |
 | L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Engagement et organisation de l'achat groupé | produit | À TOI — règles de l’achat groupé à décider |
-| L6-12 | Jeux gratuits Epic/Steam postés automatiquement | ❌ Pas de système | Sources, sélection, publication | code | À faire |
+| L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | MVP manuel local dans `feat/free-games-l6-12`; automatisation quotidienne reportée faute de flux public officiel stable sans clé |
 | L6-13 | Notifications push mobile | ❌ Aucun Web Push | Abonnements et livraison (clés VAPID : secret à créer par toi) | produit | À TOI — clés VAPID à créer par toi |
 
 ## Lot 7 — Compléments (après le lot 6)

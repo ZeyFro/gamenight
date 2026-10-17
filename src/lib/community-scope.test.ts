@@ -23,6 +23,7 @@ const COLLECTIVE_MODELS = [
   "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
+  "FreeGameOffer",
   "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",

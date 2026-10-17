@@ -1,5 +1,11 @@
 # Reprise autonome du 16 octobre 2026
 
+## L6-12 — état local du 17 octobre
+
+- Branche `feat/free-games-l6-12` créée sur `origin/main` `e376459d8d37756282af773aa99552c83ff18f0e`. Sources vérifiées : [page Epic Games Store FR des jeux gratuits](https://store.epicgames.com/fr/free-games) et [documentation officielle Steam Web API](https://partner.steamgames.com/doc/webapi_overview), [IStoreService](https://partner.steamgames.com/doc/webapi/IStoreService). Epic expose une page de boutique, sans flux de données public documenté trouvé; IStoreService exige une clé et ne documente pas un flux giveaway public. La [recherche Steam gratuite](https://store.steampowered.com/search/?maxprice=free) est une page de boutique, pas une API giveaway prise en charge. Aucun scraping ni endpoint non documenté ajouté.
+- Périmètre sûr : curation manuelle d'offres réellement gratuites, lien officiel français, dates de début/fin, affichage in-app aux membres actifs de la communauté. Désactivé par défaut et configurable par admin. Pas de Discord, cron, collecte automatique ni service payant. Le rythme quotidien n'est donc pas automatisé/configurable par tâche; il nécessite une source officielle stable avant une suite.
+- Migration additive `20261017110000_free_game_offers`. Validations locales : `prisma validate`, génération Prisma, 64 tests unitaires/scoping ciblés, ESLint ciblé, `tsc --noEmit`, `git diff --check` passés. Aucun test d'intégration/Postgres exécuté et migration non appliquée, pour laisser le run unique du parent sur le port 55439 intact. Commit local seulement jusqu'à intégration/publication coordonnée; relire le SHA de `origin/main` avant toute publication.
+
 ## Mission globale — reprise continue sur le deuxième portable
 
 - État après la validation de #267 : fusionnée au commit `a53a0bc` le 16 octobre à 20:30:02 UTC, CI [38961360176](https://github.com/ZeyFro/gamenight/actions/runs/38961360176) et Vercel verts. L6-03 publié en Draft [#269](https://github.com/ZeyFro/gamenight/pull/269), SHA `ba94678` ; contrôles du SHA final requis avant fusion.

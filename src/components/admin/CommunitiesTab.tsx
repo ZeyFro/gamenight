@@ -1,9 +1,10 @@
 import type { CommunityChannelCategory } from "@prisma/client";
+import Link from "next/link";
 import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow } from "@/lib/community-admin";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -28,6 +29,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "activate-no_guild": { ok: false, text: "Aucun serveur Discord connu pour cette communauté." },
   "channel-ok": { ok: true, text: "Salon enregistré." },
   "guide-ok": { ok: true, text: "Règles et contacts enregistrés." },
+  "free-games-ok": { ok: true, text: "Configuration des jeux gratuits enregistrée." },
+  "free-games-unavailable": { ok: false, text: "Seule une communauté active peut activer cette fonction." },
+  "free-games-invalid": { ok: false, text: "Demande invalide." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "channel-invalid_channel": { ok: false, text: "Identifiant de salon invalide." },
@@ -95,6 +99,18 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
             Activer la communauté
           </Button>
         </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <form action={setCommunityFreeGamesAction} className="flex items-center gap-3">
+            <input type="hidden" name="communityId" value={c.id} />
+            <input type="hidden" name="enabled" value={String(!c.freeGamesEnabled)} />
+            <p className="text-sm text-muted">Jeux gratuits en français : {c.freeGamesEnabled ? "activés" : "désactivés"} (sélection manuelle).</p>
+            <Button type="submit" size="sm">{c.freeGamesEnabled ? "Désactiver" : "Activer"}</Button>
+          </form>
+          <Link href={`/admin/jeux-gratuits?communityId=${encodeURIComponent(c.id)}`} className="text-sm font-medium text-accent">Gérer les offres →</Link>
+        </div>
       )}
 
       {editable && (
