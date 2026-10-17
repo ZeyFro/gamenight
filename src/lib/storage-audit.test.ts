@@ -7,7 +7,7 @@ const mockDb = vi.hoisted(() => ({
   notification: { count: vi.fn() },
   notificationDelivery: { count: vi.fn(), groupBy: vi.fn() },
   chatMessage: { count: vi.fn() },
-  session: { count: vi.fn(), findMany: vi.fn() },
+  session: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
   tournament: { count: vi.fn(), findMany: vi.fn() },
   instantSession: { count: vi.fn(), findMany: vi.fn() },
   sessionResult: { count: vi.fn() },
@@ -39,6 +39,13 @@ beforeEach(() => {
 });
 
 describe("generateStorageAuditReport", () => {
+  it("compte une chronique durable parmi les soirées conservées et non purgeables", async () => {
+    mockDb.session.findMany.mockResolvedValue([{ id: "archive", status: "DONE", date: new Date(NOW.getTime() - 400 * DAY), superlativeVotingClosed: true }]);
+    mockDb.session.findUnique.mockResolvedValue({ id: "archive", chronicle: "Souvenir" });
+    const report = await generateStorageAuditReport();
+    expect(report.sessions.blockedByChronicle).toBe(1);
+    expect(report.sessions.eligibleForPurge).toBe(0);
+  });
   it("rend un rapport à zéro sur une base vide, sans cycle de saison", async () => {
     const report = await generateStorageAuditReport();
     expect(report.generatedAt).toBe(NOW.toISOString());

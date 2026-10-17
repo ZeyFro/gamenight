@@ -334,7 +334,7 @@ export async function scheduleDiscordCleanupForEligibleEvents(
 /* à la première itération (V2, suite)                                   */
 /* -------------------------------------------------------------------- */
 
-export type SessionPurgeBlockReason = "superlative_voting_pending" | "debt_unpaid";
+export type SessionPurgeBlockReason = "superlative_voting_pending" | "debt_unpaid" | "chronicle";
 
 /**
  * Bloque UNIQUEMENT sur une opération encore active dont la disparition
@@ -364,8 +364,10 @@ export async function sessionPurgeBlockReason(session: {
 }): Promise<SessionPurgeBlockReason | null> {
   const scopedDb = scopedPrisma(await activeRetentionScope());
   if (!session.superlativeVotingClosed) return "superlative_voting_pending";
-  const parent = await scopedDb.session.findUnique({ where: { id: session.id }, select: { id: true } });
+  const parent = await scopedDb.session.findUnique({ where: { id: session.id }, select: { id: true, chronicle: true } });
   if (!parent) return null;
+  // Archive volontaire durable, même si son drapeau d'affichage est désactivé.
+  if (parent.chronicle) return "chronicle";
   // Le parent est autorisé ; toute dette sous sa cascade bloque, même une provenance historique incohérente.
   const unpaidDebt = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Debt" WHERE "sessionId" = ${parent.id} AND "paidAt" IS NULL LIMIT 1
@@ -451,8 +453,8 @@ export async function purgeEligibleSessionsBatch(
     const deleted = await prisma.$transaction(async (tx) => {
       const mutationScope = await lockedRetentionScope(tx, scope);
       const scopedDb = scopedTransactionPrisma(tx, mutationScope);
-      const locked = await tx.$queryRaw<{ id: string; status: string; superlativeVotingClosed: boolean }[]>`
-        SELECT s.id, s.status, s."superlativeVotingClosed" FROM "Session" s WHERE s.id = ${session.id}
+      const locked = await tx.$queryRaw<{ id: string; status: string; superlativeVotingClosed: boolean; chronicle: string | null }[]>`
+        SELECT s.id, s.status, s."superlativeVotingClosed", s.chronicle FROM "Session" s WHERE s.id = ${session.id}
           AND (${!isCommunityIsolationEnabled()} OR EXISTS (SELECT 1 FROM "Community" c
             WHERE c.status = 'ACTIVE' AND c.id = ANY(${mutationScope?.communityIds ?? []}::text[])
               AND (c.id = s."communityId" OR (s."communityId" IS NULL AND ${mutationScope?.includesDefault ?? false} AND c.slug = ${DEFAULT_COMMUNITY_SLUG})))) FOR UPDATE
@@ -461,6 +463,7 @@ export async function purgeEligibleSessionsBatch(
       if (!current) return false; // déjà purgée par un passage concurrent
       if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // ne devrait jamais arriver (statut terminal irréversible), garde défensive
       if (!current.superlativeVotingClosed) return false; // course perdue — résolu entre-temps
+      if (current.chronicle) return false;
       // Parent autorisé et verrouillé : même une dette mal rattachée bloque sa cascade.
       const stillUnpaid = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Debt" WHERE "sessionId" = ${session.id} AND "paidAt" IS NULL LIMIT 1`;
       if (stillUnpaid.length) return false;
@@ -470,7 +473,7 @@ export async function purgeEligibleSessionsBatch(
     });
 
     if (deleted) purgedSessionIds.push(session.id);
-    else blockedSessions.push({ sessionId: session.id, reason: "debt_unpaid" });
+    else blockedSessions.push({ sessionId: session.id, reason: await sessionPurgeBlockReason(session) ?? "debt_unpaid" });
   }
 
   return { candidateSessionIds, purgedSessionIds, blockedSessions, dryRun: opts.dryRun };

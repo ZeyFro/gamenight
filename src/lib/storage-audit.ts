@@ -70,6 +70,7 @@ export interface StorageAuditReport {
      * effacée silencieusement. */
     blockedBySuperlativeVoting: number;
     blockedByUnpaidDebt: number;
+    blockedByChronicle: number;
   };
   tournaments: { total: number; active: number; eligibleForPurge: number; noReliableDate: number };
   /** V2 ("Jouer maintenant") — pas de blocage comme `sessions` ci-dessus
@@ -178,6 +179,7 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
   let sessionsNoDate = 0;
   let sessionsBlockedBySuperlativeVoting = 0;
   let sessionsBlockedByDebt = 0;
+  let sessionsBlockedByChronicle = 0;
   for (const s of terminalSessions) {
     const e = sessionPurgeEligibility(s);
     if (e.eligible) {
@@ -188,6 +190,7 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
         const block = await sessionPurgeBlockReason(s);
         if (block === "superlative_voting_pending") sessionsBlockedBySuperlativeVoting++;
         else if (block === "debt_unpaid") sessionsBlockedByDebt++;
+        else if (block === "chronicle") sessionsBlockedByChronicle++;
         else sessionsEligible++;
       }
     } else if (e.reason === "no_reliable_date") {
@@ -259,6 +262,7 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
       noReliableDate: sessionsNoDate,
       blockedBySuperlativeVoting: sessionsBlockedBySuperlativeVoting,
       blockedByUnpaidDebt: sessionsBlockedByDebt,
+      blockedByChronicle: sessionsBlockedByChronicle,
     },
     tournaments: {
       total: tournamentTotal,

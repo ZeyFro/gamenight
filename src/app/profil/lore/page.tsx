@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDateFr } from "@/lib/wallclock";
+import { isSessionChroniclesEnabled } from "@/lib/session-chronicle-input";
 
 export const metadata = pageMetadata("Lore du groupe");
 
@@ -18,6 +19,7 @@ export default async function GroupLorePage() {
 
   return (
     <FadeInView className="flex flex-col gap-4">
+      {isSessionChroniclesEnabled() && <Link href="/profil/lore/chroniques" className="inline-flex min-h-11 items-center text-sm text-accent">📖 Chroniques de mes soirées</Link>}
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-foreground">🏆 Hall of Fame du groupe</h2>

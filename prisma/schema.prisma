@@ -528,6 +528,7 @@ enum SessionStatus {
 // l'heure de la session ; nul = pas de deadline distincte, seule l'heure
 // de la session ferme le vote (comportement historique).
 model Session {
+  chronicle String? @db.Text
   availabilityPoll SessionAvailabilityPoll?
   id             String        @id @default(cuid())
   date           DateTime
