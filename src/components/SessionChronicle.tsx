@@ -12,7 +12,7 @@ export function SessionChronicle({ sessionId, text, canEdit, result }: { session
     {canEdit && <form action={saveSessionChronicleAction} className="mt-3 flex flex-col gap-2">
       <input type="hidden" name="sessionId" value={sessionId} />
       <label htmlFor="session-chronicle" className="text-sm">Le souvenir ({MAX_SESSION_CHRONICLE_LENGTH.toLocaleString("fr-FR")} caractères maximum)</label>
-      <textarea id="session-chronicle" name="chronicle" maxLength={MAX_SESSION_CHRONICLE_LENGTH} rows={6} defaultValue={text ?? ""} className="rounded-lg border border-border bg-surface p-3 text-foreground" />
+      <textarea id="session-chronicle" name="chronicle" maxLength={MAX_SESSION_CHRONICLE_LENGTH} rows={6} defaultValue={text ?? ""} className="rounded-lg border border-border bg-surface p-3 text-base text-foreground" />
       <p className="text-xs text-muted">Visible uniquement par les personnes autorisées à consulter cette soirée. Une chronique conserve la soirée dans les archives ; effacer le texte permet son nettoyage automatique.</p>
       <Button type="submit" size="sm" className="self-start">Enregistrer la chronique</Button>
     </form>}
