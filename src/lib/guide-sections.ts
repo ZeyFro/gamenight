@@ -1,6 +1,7 @@
 import { isRoulettePlayerFilterEnabled } from "@/lib/roulette-draw";
 import { isVoteVetoEnabled } from "@/lib/session-veto";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
+import { isSessionChroniclesEnabled } from "@/lib/session-chronicle-input";
 
 export type GuideSection = { icon: string; title: string; lines: string[] };
 
@@ -46,6 +47,7 @@ const GLOSSARY_SECTION: GuideSection = {
 
 export function guideSections(input: GuideSection[]): GuideSection[] {
   const soireesLines = [
+    ...(isSessionChroniclesEnabled() ? ["Après une soirée terminée, son créateur peut écrire une chronique privée. Les invités actifs la retrouvent dans Lore du groupe → Chroniques. Son texte conserve la soirée malgré le nettoyage automatique ; effacer la chronique permet à nouveau ce nettoyage."] : []),
     ...(process.env.SESSION_PREPARATION_ENABLED === "true" ? ["Sur une soirée prévue, chaque participant confirme pour lui-même : installé, mis à jour, micro testé et lobby prêt. La checklist affiche la préparation collective."] : []),
     ...(isVoteVetoEnabled() ? [VETO_LINE, ROULETTE_VETO_LINE] : []),
     ...(isRoulettePlayerFilterEnabled() ? [ROULETTE_FILTER_LINE] : []),

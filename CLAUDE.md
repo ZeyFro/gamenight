@@ -48,6 +48,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
 
 ## Switches d'environnement
+- `SESSION_CHRONICLES_ENABLED` : chronique texte des soirées DONE, éditée par le créateur et lisible selon l'accès privé à la soirée ; archive Lore paginée par serveur ; OFF par défaut, migration `session_chronicles`. Toute chronique non vide bloque la purge automatique même flag OFF ; suppression volontaire inchangée.
 - `COMMUNITY_GAME_GRAVEYARD_ENABLED` : cimetière et épitaphes des jeux par serveur dans Profil → Lore, sans retrait de bibliothèque ; membres actifs uniquement, auteur / ADMIN / OWNER pour modifier ou retirer ; exige la migration `community_game_epitaphs` ; OFF par défaut
 - `COMMUNITY_EXPRESSIONS_ENABLED` : collection d’expressions et running gags par serveur dans Profil → Lore ; membres actifs uniquement, modération auteur / ADMIN / OWNER, même isolation éteinte ; exige la migration `community_expressions` ; OFF par défaut
 

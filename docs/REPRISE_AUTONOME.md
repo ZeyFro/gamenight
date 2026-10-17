@@ -84,9 +84,9 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 
 ## Reprise globale — 17 octobre 2026
 
-- #267, #268, #233, #270 et #271 sont fusionnées; #271 est au commit `a6b041b37608aed65600c054787e9b9f4bfce19f`. Les contrôles requis étaient verts avant fusion; les tests de boucle restent simulés.
-- #269 corrige l'échec CI prouvé dans `.env.example` : `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). Valeur vidée; intégration du dernier `main` et contrôles locaux en cours.
-- #272 Cimetière intègre `a6b041b`; 95 tests unitaires/pages/scoping, 25 Postgres (Cimetière/Expressions/Musée), Prisma, TypeScript, lint et diff passent. Merge local prêt à pousser après comparaison du SHA distant.
-- #273 Chroniques et #274 Sondages restent à valider sur le `main` courant avant fusion. Les fixtures CI démontrées comme conflictuelles ont été namespacées; aucun contrôle requis ne sera contourné.
+- #267, #268, #233, #270 et #271 sont fusionnées. #272 Cimetière a passé les contrôles requis et a été fusionnée au commit `ad1aa552d7312f5b1c12c00cd41611cc715fbb3d`.
+- #269 corrige l'échec CI prouvé dans `.env.example`: `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). Après intégration de #272, 93 tests unitaires, 25 Postgres (Pronostics/Expressions/Cimetière), Prisma, TypeScript et ESLint passent. Les fixtures Expressions/Cimetière sont namespacés après conflits avec données partagées. Head `e7f0608`, nouveaux contrôles en cours.
+- #273 Chroniques intègre localement #272 et conserve les liens Lore du Cimetière, Expressions, Musée et Chroniques. 93 tests unitaires et 27 PostgreSQL, Prisma validate/generate, TypeScript et ESLint passent après intégration de #272. Les fixtures Expressions/Cimetière sont namespacés.
+- #274 Sondages doit intégrer #272 avant fusion; 103 tests unitaires et 19 PostgreSQL, Prisma, TypeScript et ESLint avaient passé sur la base précédente.
 - L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
-- Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.
+- Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) reste dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.

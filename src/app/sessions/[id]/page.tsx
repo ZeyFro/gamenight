@@ -1,6 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
+import { SessionChronicle } from "@/components/SessionChronicle";
+import { isSessionChroniclesEnabled } from "@/lib/session-chronicle-input";
 import type { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
@@ -86,13 +88,13 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string; deadline?: string; error?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; chronicle?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord, deadline, error } = await searchParams;
+  const { discord, deadline, error, chronicle } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
   const deadlineAdjusted = deadline === "ajustee";
   const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
@@ -348,6 +350,7 @@ export default async function SessionDetailPage({
       )}
 
       {session.decidedGame && <GameWarnings game={session.decidedGame} />}
+      {session.status === "DONE" && isSessionChroniclesEnabled() && <SessionChronicle sessionId={session.id} text={session.chronicle} canEdit={accessRole === "creator"} result={chronicle} />}
       {ratingSummary && (
         <section aria-label="Note de la soirée" className="rounded-xl border border-border bg-card p-4">
           <p className="mb-3 text-sm text-muted">
