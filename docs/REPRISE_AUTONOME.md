@@ -86,10 +86,9 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 
 ## Reprise globale — 17 octobre 2026
 
-- #267, #268, #233, #270 et #271 sont fusionnées; #271 est au commit `a6b041b37608aed65600c054787e9b9f4bfce19f`. Les portes requises étaient vertes avant fusion; les tests de boucle restent simulés.
-- #269 corrige l'échec CI prouvé dans `.env.example` : `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). La valeur est vide; intégration de #271 en cours de validation locale avant push.
-- #272 Cimetière intègre `a6b041b`; 95 tests unitaires/pages/scoping et 25 tests Postgres Cimetière/Expressions/Musée, Prisma, TypeScript, lint et diff passent. Le merge local attend son push après comparaison du SHA distant.
-- #273 Chroniques intègre #271; les liens des trois fonctionnalités Lore (Musée, Expressions, Chroniques) sont conservés. Le fixture Postgres utilise des IDs/slugs propres après l'échec CI causé par le slug partagé `a`/`b`; `SESSION_CHRONICLES_ENABLED=false` est vide. Validation combinée en cours.
-- #274 Sondages est publié; head distant `9f9cdbf`. Ses contrôles étaient verts sur l'ancienne base; intégrer et valider le `main` courant avant fusion.
-- L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et éligibilité/source). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
+- #267, #268, #233, #270 et #271 sont fusionnées; #271 a été vérifiée au commit `a6b041b`. Les tests de boucle restent simulés.
+- #272 Cimetière a passé `verify`, Vercel et Preview Comments; fusion au commit `ad1aa552d7312f5b1c12c00cd41611cc715fbb3d` après validation locale et comparaison du SHA distant.
+- #269 corrige l'échec CI prouvé dans `.env.example` : `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). 93 tests unitaires et 25 PostgreSQL (Pronostics/Expressions/Cimetière), Prisma, TypeScript et ESLint passent après intégration de #272. Les fixtures Expressions et Cimetière sont namespacés après conflits FK/discordId avec des données partagées.
+- #273 Chroniques a 71 tests unitaires et 18 PostgreSQL verts après namespacing du fixture Expressions; Prisma, TypeScript et ESLint passent. #274 Sondages a 103 tests unitaires et 19 PostgreSQL verts; Prisma, TypeScript et ESLint passent. Leurs branches doivent intégrer #272 avant fusion.
+- L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
 - Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.

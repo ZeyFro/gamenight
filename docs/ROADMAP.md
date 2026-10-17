@@ -67,7 +67,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|
 | L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Validation finale | code | PR ouverte (#269), contrôles en cours |
+| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Validation finale | code | PR ouverte (#269), contrôles à relancer après intégration de #271 |
 | L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
 | L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
 | L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Validation finale | code | PR ouverte (#273) |
