@@ -49,6 +49,8 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 
 ## Switches d'environnement
 - `COMMUNITY_QUICK_POLLS_ENABLED` : sondages éclair par serveur dans Profil → Lore, membres actifs même isolation OFF, 2–6 options immuables, un choix modifiable jusqu’à échéance (7 jours max), résultats agrégés ; aucune notification/XP ; migration `community_quick_polls`, OFF par défaut
+
+- `COMMUNITY_HIGHLIGHTS_ENABLED` : exploits/fails éditables par serveur, liens médias sans upload ; OFF par défaut, migration `community_highlights`.
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)

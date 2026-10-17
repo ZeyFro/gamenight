@@ -67,13 +67,13 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|
 | L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | 🟡 Pronostics/paris pour les soirées | Les relier aux tournois et matchs | code | À faire |
-| L6-04 | Hall of Fame / Hall of Shame | 🟡 Trophées communautaires affichés (#251) | Hall of Shame, descriptions et médias éditables restent absents | code | À faire |
-| L6-05 | Running gags et expressions du serveur | ❌ Pas de glossaire communautaire | Collection éditable par serveur | code | À faire |
-| L6-06 | Chronique de soirée | ❌ Absente | Texte par soirée, archive durable | code | À faire |
-| L6-07 | Cimetière des jeux avec épitaphe | ❌ Absent | Jeux abandonnés, épitaphes par serveur | code | À faire |
+| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Validation finale | code | PR ouverte (#269), contrôles en cours |
+| L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
+| L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Validation finale | code | PR ouverte (#271) |
+| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Validation finale | code | PR ouverte (#273) |
+| L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Validation finale | code | PR ouverte (#272) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
-| L6-09 | Sondages éclair | ❌ Votes de soirée/wishlist seulement | Questions, réponses, durée, résultats | code | À faire |
+| L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Validation finale | code | PR à ouvrir (#274) |
 | L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Détection des baisses et notification | code | À faire |
 | L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Engagement et organisation de l'achat groupé | produit | À TOI — règles de l’achat groupé à décider |
 | L6-12 | Jeux gratuits Epic/Steam postés automatiquement | ❌ Pas de système | Sources, sélection, publication | code | À faire |

@@ -26,71 +26,75 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages éclair : droits, résultats et é
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     await db.$transaction([
-      db.$executeRawUnsafe('TRUNCATE "CommunityQuickPollVote", "CommunityQuickPoll", "CreationIntent", "Membership", "Community", "User" CASCADE'),
+      db.communityQuickPoll.deleteMany({ where: { communityId: { in: ["quick-a", "quick-b"] } } }),
+      db.creationIntent.deleteMany({ where: { actorId: "quick-author", kind: "community-quick-poll" } }),
+      db.membership.deleteMany({ where: { OR: [{ userId: { in: ["quick-author", "quick-member", "quick-outsider"] } }, { communityId: { in: ["quick-a", "quick-b"] } }] } }),
+      db.community.deleteMany({ where: { id: { in: ["quick-a", "quick-b"] } } }),
+      db.user.deleteMany({ where: { id: { in: ["quick-author", "quick-member", "quick-outsider"] } } }),
       db.community.createMany({ data: ["quick-a", "quick-b"].map(id => ({ id, slug: id, name: id, status: "ACTIVE" })) }),
-      db.user.createMany({ data: ["author", "member", "outsider"].map(id => ({ id, discordId: id, discordName: id, activeCommunityId: id === "outsider" ? "quick-b" : "quick-a" })) }),
-      db.membership.createMany({ data: ["author", "member", "outsider"].map(userId => ({ userId, communityId: userId === "outsider" ? "quick-b" : "quick-a", status: "ACTIVE" })) }),
+      db.user.createMany({ data: ["quick-author", "quick-member", "quick-outsider"].map(id => ({ id, discordId: id, discordName: id, activeCommunityId: id === "quick-outsider" ? "quick-b" : "quick-a" })) }),
+      db.membership.createMany({ data: ["quick-author", "quick-member", "quick-outsider"].map(userId => ({ userId, communityId: userId === "quick-outsider" ? "quick-b" : "quick-a", status: "ACTIVE" })) }),
     ]);
   });
   async function create() {
-    expect(await api.createCommunityQuickPoll("author", input)).toBe("saved");
+    expect(await api.createCommunityQuickPoll("quick-author", input)).toBe("saved");
     return db.communityQuickPoll.findFirstOrThrow();
   }
 
   it("crée une seule fois, remplace le vote et présente seulement les résultats agrégés", async () => {
     const key = "quick-poll-double-submit";
-    expect(await Promise.all([api.createCommunityQuickPoll("author", input, undefined, key), api.createCommunityQuickPoll("author", input, undefined, key)])).toEqual(["saved", "saved"]);
+    expect(await Promise.all([api.createCommunityQuickPoll("quick-author", input, undefined, key), api.createCommunityQuickPoll("quick-author", input, undefined, key)])).toEqual(["saved", "saved"]);
     expect(await db.communityQuickPoll.count()).toBe(1);
-    expect(await api.createCommunityQuickPoll("author", { ...input, question: "Réécrit ?", options: ["Autre", "Encore"] }, undefined, key)).toBe("saved");
+    expect(await api.createCommunityQuickPoll("quick-author", { ...input, question: "Réécrit ?", options: ["Autre", "Encore"] }, undefined, key)).toBe("saved");
     const poll = await db.communityQuickPoll.findFirstOrThrow();
     expect(poll.question).toBe(input.question); expect(poll.options).toEqual(input.options);
     expect(poll.endsAt.toISOString()).toBe("2026-10-17T11:00:00.000Z");
-    expect(await api.voteCommunityQuickPoll("author", poll.id, "0")).toBe("saved");
-    expect(await api.voteCommunityQuickPoll("member", poll.id, "1")).toBe("saved");
-    expect(await api.voteCommunityQuickPoll("member", poll.id, "0")).toBe("saved");
+    expect(await api.voteCommunityQuickPoll("quick-author", poll.id, "0")).toBe("saved");
+    expect(await api.voteCommunityQuickPoll("quick-member", poll.id, "1")).toBe("saved");
+    expect(await api.voteCommunityQuickPoll("quick-member", poll.id, "0")).toBe("saved");
     expect(await db.communityQuickPollVote.count()).toBe(2);
-    const page = await api.listCommunityQuickPolls("member");
+    const page = await api.listCommunityQuickPolls("quick-member");
     expect(page?.polls[0]).toMatchObject({ results: [{ label: "Oui", count: 2 }, { label: "Non", count: 0 }], selectedOption: 0, closed: false });
     expect(JSON.stringify(page)).not.toMatch(/userId|createdById|discordName/);
   });
   it.each(["false", "true"])("isole lecture et vote même isolation=%s", async isolation => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);
     const poll = await create();
-    expect((await api.listCommunityQuickPolls("outsider"))?.polls).toEqual([]);
-    expect(await api.voteCommunityQuickPoll("outsider", poll.id, "0")).toBe("unavailable");
+    expect((await api.listCommunityQuickPolls("quick-outsider"))?.polls).toEqual([]);
+    expect(await api.voteCommunityQuickPoll("quick-outsider", poll.id, "0")).toBe("unavailable");
     expect(await db.communityQuickPollVote.count()).toBe(0);
   });
   it("refuse l’option inexistante et ferme à l’instant exact sans cron", async () => {
     const poll = await create();
-    expect(await api.voteCommunityQuickPoll("author", poll.id, "5")).toBe("invalid");
+    expect(await api.voteCommunityQuickPoll("quick-author", poll.id, "5")).toBe("invalid");
     clock.now = new Date(poll.endsAt);
-    expect(await api.voteCommunityQuickPoll("author", poll.id, "0")).toBe("closed");
-    expect((await api.listCommunityQuickPolls("author"))?.polls[0].closed).toBe(true);
+    expect(await api.voteCommunityQuickPoll("quick-author", poll.id, "0")).toBe("closed");
+    expect((await api.listCommunityQuickPolls("quick-author"))?.polls[0].closed).toBe(true);
     expect(await db.communityQuickPollVote.count()).toBe(0);
   });
   it("deux votes concurrents du même membre ne créent qu’un choix", async () => {
     const poll = await create();
-    expect(await Promise.all([api.voteCommunityQuickPoll("member", poll.id, "0"), api.voteCommunityQuickPoll("member", poll.id, "1")])).toEqual(["saved", "saved"]);
+    expect(await Promise.all([api.voteCommunityQuickPoll("quick-member", poll.id, "0"), api.voteCommunityQuickPoll("quick-member", poll.id, "1")])).toEqual(["saved", "saved"]);
     expect(await db.communityQuickPollVote.count()).toBe(1);
-    expect((await api.listCommunityQuickPolls("author"))?.polls[0].results.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect((await api.listCommunityQuickPolls("quick-author"))?.polls[0].results.reduce((sum, row) => sum + row.count, 0)).toBe(1);
   });
   it("refuse un ancien onglet après choix d’un autre serveur", async () => {
     const poll = await create();
-    await db.membership.create({ data: { communityId: "quick-b", userId: "author", status: "ACTIVE" } });
-    await db.user.update({ where: { id: "author" }, data: { activeCommunityId: "quick-b" } });
-    expect(await api.createCommunityQuickPoll("author", input, "quick-a")).toBe("unavailable");
-    expect(await api.voteCommunityQuickPoll("author", poll.id, "0", "quick-a")).toBe("unavailable");
+    await db.membership.create({ data: { communityId: "quick-b", userId: "quick-author", status: "ACTIVE" } });
+    await db.user.update({ where: { id: "quick-author" }, data: { activeCommunityId: "quick-b" } });
+    expect(await api.createCommunityQuickPoll("quick-author", input, "quick-a")).toBe("unavailable");
+    expect(await api.voteCommunityQuickPoll("quick-author", poll.id, "0", "quick-a")).toBe("unavailable");
   });
   it("refuse un membre retiré, une communauté suspendue et le drapeau OFF", async () => {
     const poll = await create();
-    await db.membership.update({ where: { communityId_userId: { communityId: "quick-a", userId: "member" } }, data: { status: "LEFT" } });
-    expect(await api.listCommunityQuickPolls("member")).toBeNull();
-    expect(await api.voteCommunityQuickPoll("member", poll.id, "0")).toBe("unavailable");
+    await db.membership.update({ where: { communityId_userId: { communityId: "quick-a", userId: "quick-member" } }, data: { status: "LEFT" } });
+    expect(await api.listCommunityQuickPolls("quick-member")).toBeNull();
+    expect(await api.voteCommunityQuickPoll("quick-member", poll.id, "0")).toBe("unavailable");
     await db.community.update({ where: { id: "quick-a" }, data: { status: "SUSPENDED" } });
-    expect(await api.createCommunityQuickPoll("author", input)).toBe("unavailable");
+    expect(await api.createCommunityQuickPoll("quick-author", input)).toBe("unavailable");
     vi.stubEnv("COMMUNITY_QUICK_POLLS_ENABLED", "false");
-    expect(await api.createCommunityQuickPoll("outsider", input)).toBe("unavailable");
-    expect(await api.listCommunityQuickPolls("outsider")).toBeNull();
+    expect(await api.createCommunityQuickPoll("quick-outsider", input)).toBe("unavailable");
+    expect(await api.listCommunityQuickPolls("quick-outsider")).toBeNull();
   });
   it("contrôle l’échéance après avoir attendu le verrou du sondage", async () => {
     const poll = await create();
@@ -102,7 +106,7 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages éclair : droits, résultats et é
       locked(); await gate;
     }, { timeout: 15000 });
     await ready;
-    const voting = api.voteCommunityQuickPoll("member", poll.id, "0");
+    const voting = api.voteCommunityQuickPoll("quick-member", poll.id, "0");
     try {
       await vi.waitFor(async () => {
         const waiting = await db.$queryRaw<{ pid: number }[]>`SELECT pid FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE%'`;
@@ -115,6 +119,6 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages éclair : droits, résultats et é
   }, 15000);
   it("la contrainte refuse un vote rattaché au mauvais serveur", async () => {
     const poll = await create();
-    await expect(db.communityQuickPollVote.create({ data: { communityId: "quick-b", pollId: poll.id, userId: "outsider", optionIndex: 0 } })).rejects.toThrow();
+    await expect(db.communityQuickPollVote.create({ data: { communityId: "quick-b", pollId: poll.id, userId: "quick-outsider", optionIndex: 0 } })).rejects.toThrow();
   });
 });

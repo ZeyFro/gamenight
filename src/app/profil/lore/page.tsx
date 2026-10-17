@@ -7,6 +7,7 @@ import { listGroupAchievements } from "@/lib/group-achievements";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDateFr } from "@/lib/wallclock";
 import { isCommunityQuickPollsEnabled } from "@/lib/community-quick-polls-input";
+import { isCommunityHighlightsEnabled } from "@/lib/community-highlights-input";
 
 export const metadata = pageMetadata("Lore du groupe");
 
@@ -31,6 +32,7 @@ export default async function GroupLorePage() {
         </Link>
       </header>
       {isCommunityQuickPollsEnabled() && <Link href="/profil/lore/sondages" className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Sondages éclair du serveur</Link>}
+      {isCommunityHighlightsEnabled() && <Link href="/profil/lore/musee" className="inline-flex min-h-11 items-center text-sm text-accent">Exploits et fails du serveur →</Link>}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {achievements.map((item) => (
           <li key={item.id}>
