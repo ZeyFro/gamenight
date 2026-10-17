@@ -39,6 +39,7 @@ enum UserRole {
 
 model User {
   communityExpressions CommunityExpression[]
+  communityHighlights CommunityHighlight[]
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
   communityBirthdays CommunityDate[] @relation("CommunityDateMember")
@@ -2601,6 +2602,7 @@ enum CommunityChannelCategory {
 
 model Community {
   expressions CommunityExpression[]
+  highlights CommunityHighlight[]
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
   sessionRatings SessionRating[]
@@ -2663,7 +2665,26 @@ model CommunityExpression {
   meaning String @db.VarChar(2000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([communityId, createdAt])
+}
 
+enum CommunityHighlightKind {
+  FAME
+  SHAME
+}
+
+model CommunityHighlight {
+  id String @id @default(cuid())
+  communityId String
+  createdById String
+  kind CommunityHighlightKind
+  title String @db.VarChar(120)
+  description String @db.VarChar(4000)
+  mediaUrl String? @db.VarChar(2048)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
   @@index([communityId, createdAt])
 }
 

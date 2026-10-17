@@ -29,7 +29,10 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
       ["outsider", "expressions-b", "OWNER"],
     ] as const;
     await db.$transaction([
-      db.$executeRawUnsafe('TRUNCATE "CommunityExpression", "Membership", "Community", "User" CASCADE'),
+      db.communityExpression.deleteMany({ where: { communityId: { in: ["expressions-a", "expressions-b"] } } }),
+      db.membership.deleteMany({ where: { OR: [{ userId: { in: members.map(([id]) => id) } }, { communityId: { in: ["expressions-a", "expressions-b"] } }] } }),
+      db.community.deleteMany({ where: { id: { in: ["expressions-a", "expressions-b"] } } }),
+      db.user.deleteMany({ where: { id: { in: members.map(([id]) => id) } } }),
       db.community.createMany({ data: [
         { id: "expressions-a", slug: "expressions-a", name: "Serveur A", status: "ACTIVE" },
         { id: "expressions-b", slug: "expressions-b", name: "Serveur B", status: "ACTIVE" },
