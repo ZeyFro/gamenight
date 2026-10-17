@@ -32,8 +32,17 @@ import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { saveGameStyleProfile } from "@/app/profil/game-style-actions";
 import { WebPushSettings } from "@/components/WebPushSettings";
 import { webPushConfig } from "@/lib/web-push-config";
+import { leadingGameStyles } from "@/lib/game-style-quiz";
 
 export const metadata = pageMetadata("Paramètres");
+
+const GAME_STYLE_QUIZ_QUESTIONS = [
+  { question: "Qu’est-ce qui te motive le plus pendant une partie ?", options: [["tryharder", "Atteindre l’objectif et gagner"], ["ambianceur", "Passer un bon moment ensemble"], ["stratege", "Trouver le meilleur plan"], ["chaos", "Tenter des choses inattendues"]] },
+  { question: "Quand l’équipe est bloquée, tu as plutôt envie de…", options: [["tryharder", "Relancer l’effort pour avancer"], ["ambianceur", "Garder tout le monde de bonne humeur"], ["stratege", "Analyser les options et coordonner"], ["chaos", "Essayer une idée surprenante"]] },
+  { question: "Dans un jeu que tu connais peu, tu préfères…", options: [["tryharder", "Apprendre vite les mécaniques pour progresser"], ["ambianceur", "Découvrir le jeu avec les autres"], ["stratege", "Comprendre les rôles et les possibilités"], ["chaos", "Explorer librement sans trop prévoir"]] },
+  { question: "Ta soirée idéale ressemble plutôt à…", options: [["tryharder", "Des objectifs à relever"], ["ambianceur", "Des échanges et des rires"], ["stratege", "Des décisions à construire ensemble"], ["chaos", "Des rebondissements imprévisibles"]] },
+] as const;
+const GAME_STYLE_LABELS = { tryharder: "Tryharder", ambianceur: "Ambianceur", stratege: "Stratège", chaos: "Chaos" } as const;
 
 /**
  * Onglet "Rappels perso" — en réalité tous les réglages de compte
@@ -127,6 +136,7 @@ export default async function ProfilParametresPage({
     resolveActiveCommunityId(user.id),
   ]);
   const gameStyle = communityId ? await prisma.gameStyleProfile.findUnique({ where: { communityId_userId: { communityId, userId: user.id } } }) : null;
+  const quizLeaders = gameStyle ? leadingGameStyles({ tryharder: gameStyle.tryharder, ambianceur: gameStyle.ambianceur, stratege: gameStyle.stratege, chaos: gameStyle.chaos }).map((axis) => GAME_STYLE_LABELS[axis]) : [];
   const notificationPreferences = await getUserNotificationPreferences({
     silenceReminders: user.silenceReminders,
     notificationPreferences: storedNotificationPreferences,
@@ -139,11 +149,23 @@ export default async function ProfilParametresPage({
         <h2 className="font-semibold">Mon style de jeu en équipe</h2>
         <p className="text-sm text-muted">Évalue chaque tendance de 0 (pas du tout) à 5 (beaucoup). Ces préférences servent à équilibrer les équipes de ta communauté.</p>
         {style === "ok" && <p role="status" className="text-sm text-accent">Profil enregistré.</p>}
+        {style === "quiz_ok" && <p role="status" className="text-sm text-accent">Quiz enregistré : {quizLeaders.length > 0 ? quizLeaders.length === 1 ? `ton style dominant est ${quizLeaders[0]}` : `ton profil est mixte (${quizLeaders.join(" / ")})` : "profil prêt"}. Tu peux toujours ajuster les scores manuellement.</p>}
         {style === "invalide" && <p role="alert" className="text-sm text-destructive">Choisis une valeur entre 0 et 5 pour chaque tendance.</p>}
-        {!communityId ? <p className="text-sm text-muted">Choisis une communauté active pour enregistrer ton profil.</p> : <form action={saveGameStyleProfile} className="flex flex-col gap-3">
-          {([["tryharder", "Tryharder"], ["ambianceur", "Ambianceur"], ["stratege", "Stratège"], ["chaos", "Chaos"]] as const).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 text-sm"><span>{label}</span><input aria-label={label} name={key} type="number" min="0" max="5" required defaultValue={gameStyle?.[key] ?? 0} className="w-20 rounded-lg border border-border bg-background px-3 py-2" /></label>)}
-          <Button type="submit" variant="primary">Enregistrer mon style</Button>
-        </form>}
+        {!communityId ? <p className="text-sm text-muted">Choisis une communauté active pour enregistrer ton profil.</p> : <>
+          <form action={saveGameStyleProfile} className="flex flex-col gap-3">
+            <p className="text-sm text-muted">Quiz rapide : choisis la réponse qui te ressemble le plus. Chaque réponse ajoute un point au style associé ; les égalités donnent un profil mixte. Les scores servent à équilibrer la roulette et restent modifiables ci-dessous.</p>
+            <input type="hidden" name="quiz" value="true" />
+            {GAME_STYLE_QUIZ_QUESTIONS.map(({ question, options }, index) => <label key={question} className="flex flex-col gap-1 text-sm"><span>{index + 1}. {question}</span><select name="quizAnswer" required defaultValue="" className="min-h-11 rounded-lg border border-border bg-background px-3 text-base text-foreground"><option value="" disabled>Choisir une réponse</option>{options.map(([axis, label]) => <option key={axis} value={axis}>{label}</option>)}</select></label>)}
+            <Button type="submit" variant="primary">Calculer mon profil</Button>
+          </form>
+          <details className="border-t border-border pt-4">
+            <summary className="cursor-pointer text-sm font-medium">Modifier mes scores manuellement</summary>
+            <form action={saveGameStyleProfile} className="mt-3 flex flex-col gap-3">
+              {([["tryharder", "Tryharder"], ["ambianceur", "Ambianceur"], ["stratege", "Stratège"], ["chaos", "Chaos"]] as const).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 text-sm"><span>{label}</span><input aria-label={label} name={key} type="number" min="0" max="5" required defaultValue={gameStyle?.[key] ?? 0} className="w-20 rounded-lg border border-border bg-background px-3 py-2" /></label>)}
+              <Button type="submit" variant="primary">Enregistrer mon style</Button>
+            </form>
+          </details>
+        </>}
       </Card></StaggerItem>
       <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
       <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
