@@ -2,6 +2,7 @@ import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { listGuildChannels, verifyChannelDestination, verifyVoiceChannelDestination, type GuildChannel } from "@/lib/discord-rest";
+import { parseSteamPriceAlertThreshold } from "@/lib/wishlist-price-alerts";
 
 /**
  * Multi-communautés — écran d'administration (onglet « Communautés » de
@@ -50,6 +51,17 @@ export async function setCommunityFreeGames(input: { communityId: unknown; enabl
   const result = await prisma.community.updateMany({
     where: { id: input.communityId, status: "ACTIVE" },
     data: { freeGamesEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
+export async function setCommunitySteamPriceAlerts(input: { communityId: unknown; enabled: unknown; threshold: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const threshold = parseSteamPriceAlertThreshold(input.threshold);
+  if (threshold === null) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { steamPriceAlertsEnabled: input.enabled, steamPriceAlertThreshold: threshold },
   });
   return result.count ? "saved" as const : "unavailable" as const;
 }
@@ -130,6 +142,8 @@ export interface AdminCommunityRow {
   guideRules: string | null;
   guideContacts: string | null;
   freeGamesEnabled: boolean;
+  steamPriceAlertsEnabled: boolean;
+  steamPriceAlertThreshold: number;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -167,6 +181,8 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         guideRules: c.guideRules,
         guideContacts: c.guideContacts,
         freeGamesEnabled: c.freeGamesEnabled,
+        steamPriceAlertsEnabled: c.steamPriceAlertsEnabled,
+        steamPriceAlertThreshold: c.steamPriceAlertThreshold,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,

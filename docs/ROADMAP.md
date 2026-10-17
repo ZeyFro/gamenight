@@ -74,7 +74,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Validation finale | code | PR ouverte (#272) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Validation finale | code | PR ouverte (#274) |
-| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Détection des baisses et notification | code | À faire |
+| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (MVP local; validations à la PR) |
 | L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Engagement et organisation de l'achat groupé | produit | À TOI — règles de l’achat groupé à décider |
 | L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | MVP manuel local dans `feat/free-games-l6-12`; automatisation quotidienne reportée faute de flux public officiel stable sans clé |
 | L6-13 | Notifications push mobile | ❌ Aucun Web Push | Abonnements et livraison (clés VAPID : secret à créer par toi) | produit | À TOI — clés VAPID à créer par toi |

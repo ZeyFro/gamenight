@@ -33,6 +33,7 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   SUPERLATIVE_AWARD: "🏆",
   DEBT: "💀",
   INSTANT_SESSION_INVITE: "🎮",
+  WISHLIST_PRICE_DROP: "🏷️",
 };
 
 /**
@@ -56,6 +57,7 @@ const TYPE_DOT_COLORS: Record<NotificationType, string> = {
   XP_BET: "bg-orange-500",
   SUPERLATIVE_AWARD: "bg-orange-500",
   INSTANT_SESSION_INVITE: "bg-orange-500",
+  WISHLIST_PRICE_DROP: "bg-emerald-500",
 };
 
 /**

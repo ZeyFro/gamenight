@@ -1471,6 +1471,7 @@ enum NotificationType {
   // éditée après coup — aucun mécanisme d'édition n'existe pour
   // `Notification` nulle part ailleurs dans cette app).
   INSTANT_SESSION_INVITE
+  WISHLIST_PRICE_DROP
 }
 
 model Notification {
@@ -2288,6 +2289,8 @@ model GameWishlist {
   createdAt     DateTime  @default(now())
   purchasedById String?
   purchasedAt   DateTime?
+  priceAlertCheckedAt DateTime?
+  priceAlertNotifiedAt DateTime?
 
   game        Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
   proposedBy  User               @relation("WishlistProposedBy", fields: [proposedById], references: [id])
@@ -2656,6 +2659,9 @@ model Community {
   slug String @unique
   name String
   fairPlayCharter String? @db.Text
+  steamPriceAlertsEnabled Boolean @default(false)
+  steamPriceAlertThreshold Int @default(20)
+  steamPriceAlertScannedAt DateTime?
   guideRules String? @db.Text
   guideContacts String? @db.Text
   freeGamesEnabled Boolean @default(false)

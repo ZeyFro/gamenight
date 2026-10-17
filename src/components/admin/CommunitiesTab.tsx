@@ -4,7 +4,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -32,6 +32,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "free-games-ok": { ok: true, text: "Configuration des jeux gratuits enregistrée." },
   "free-games-unavailable": { ok: false, text: "Seule une communauté active peut activer cette fonction." },
   "free-games-invalid": { ok: false, text: "Demande invalide." },
+  "price-alerts-ok": { ok: true, text: "Alertes Steam enregistrées." },
+  "price-alerts-invalid": { ok: false, text: "Le seuil doit être un pourcentage entier de 5 à 80." },
+  "price-alerts-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "channel-invalid_channel": { ok: false, text: "Identifiant de salon invalide." },
@@ -111,6 +114,22 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           </form>
           <Link href={`/admin/jeux-gratuits?communityId=${encodeURIComponent(c.id)}`} className="text-sm font-medium text-accent">Gérer les offres →</Link>
         </div>
+      )}
+
+      {editable && (
+        <form action={setCommunitySteamPriceAlertsAction} className="flex flex-col gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <p className="text-sm font-medium text-foreground">Alertes de baisse de prix Steam</p>
+          <p className="text-xs text-muted">Notifications uniquement dans GameNight. Vérification périodique des wishlists (France); une même entrée ne renotifie pas avant 7 jours.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="enabled" value="true" defaultChecked={c.steamPriceAlertsEnabled} className="h-5 w-5 accent-accent" />
+            Activer les alertes pour cette communauté
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">Seuil de réduction (%)
+            <input type="number" name="threshold" min={5} max={80} step={1} required defaultValue={c.steamPriceAlertThreshold} className={SELECT_CLASS} />
+          </label>
+          <Button type="submit" size="sm" className="self-start">Enregistrer les alertes</Button>
+        </form>
       )}
 
       {editable && (

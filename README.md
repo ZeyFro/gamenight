@@ -6772,6 +6772,14 @@ toutes les 10s, avec indicateur "Actualisation…".
   change, une fiche jeu non) : fetch live à l'affichage de la page pour
   les jeux Steam non encore achetés, silencieusement absent si Steam
   Store est injoignable ou n'a pas de prix (gratuit, retiré du store…).
+- **Alertes L6-10** : option désactivée par défaut par communauté dans
+  `/admin → Communautés`; un admin peut régler le seuil (20 % par défaut,
+  borné à 5–80 %). Le contrôle utilise le prix France (`cc=fr`), tourne
+  via la route `steam-library-sync` déjà déclenchée (aucun nouveau cron
+  Vercel), et vérifie au plus 3 entrées par communauté toutes les 6 h,
+  en rotation. Le proposant et les personnes ayant voté « intéressé »
+  reçoivent une notification in-app; une même entrée a un délai de 7 jours
+  entre alertes. Aucun Discord ni push n'est envoyé.
 
 ### Fichiers modifiés/ajoutés
 

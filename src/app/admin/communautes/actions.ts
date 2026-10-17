@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide, setCommunityFreeGames } from "@/lib/community-admin";
+import { setCommunitySteamPriceAlerts } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -72,4 +73,17 @@ export async function setCommunityFreeGamesAction(formData: FormData): Promise<v
     enabled: enabled === "true" ? true : enabled === "false" ? false : null,
   });
   done(result === "saved" ? "free-games-ok" : `free-games-${result}`);
+}
+
+export async function setCommunitySteamPriceAlertsAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunitySteamPriceAlerts")) done("rate");
+  const result = await setCommunitySteamPriceAlerts({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "true",
+    threshold: formData.get("threshold"),
+  });
+  done(result === "saved" ? "price-alerts-ok" : `price-alerts-${result}`);
 }
