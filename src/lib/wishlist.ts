@@ -17,6 +17,10 @@ export interface WishlistEntryDTO {
   interestedCount: number;
   notInterestedCount: number;
   myVote: boolean | null;
+  canManagePurchasePlan: boolean;
+  purchasePlansEnabled: boolean;
+  purchasePlanTargetDate: Date | null;
+  purchasePlanNote: string | null;
 }
 
 export interface WishlistSteamOffer {
@@ -42,6 +46,7 @@ export async function getWishlist(currentUserId: string): Promise<WishlistEntryD
       game: { select: { id: true, name: true, coverUrl: true, steamAppId: true } },
       proposedBy: { select: { discordName: true } },
       purchasedBy: { select: { discordName: true } },
+      community: { select: { groupPurchasePlansEnabled: true } },
       votes: { select: { userId: true, interested: true } },
     },
   });
@@ -59,6 +64,10 @@ export async function getWishlist(currentUserId: string): Promise<WishlistEntryD
     interestedCount: e.votes.filter((v) => v.interested).length,
     notInterestedCount: e.votes.filter((v) => !v.interested).length,
     myVote: e.votes.find((v) => v.userId === currentUserId)?.interested ?? null,
+    canManagePurchasePlan: e.proposedById === currentUserId,
+    purchasePlansEnabled: e.community.groupPurchasePlansEnabled,
+    purchasePlanTargetDate: e.groupPurchaseTargetDate,
+    purchasePlanNote: e.groupPurchaseNote,
   }));
 
   return mapped.sort((a, b) => b.interestedCount - a.interestedCount);

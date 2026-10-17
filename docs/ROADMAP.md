@@ -67,17 +67,17 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|
 | L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Validation finale | code | PR ouverte (#269), contrôles à relancer après intégration de #271 |
+| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
 | L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
 | L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
 | L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Validation finale | code | PR ouverte (#273) |
-| L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Validation finale | code | PR ouverte (#272) |
+| L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Aucune | code | Fait (#272, fusionnée) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
-| L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Validation finale | code | PR ouverte (#274) |
-| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (MVP local; validations à la PR) |
-| L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Engagement et organisation de l'achat groupé | produit | À TOI — règles de l’achat groupé à décider |
-| L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | MVP manuel local dans `feat/free-games-l6-12`; automatisation quotidienne reportée faute de flux public officiel stable sans clé |
-| L6-13 | Notifications push mobile | ❌ Aucun Web Push | Abonnements et livraison (clés VAPID : secret à créer par toi) | produit | À TOI — clés VAPID à créer par toi |
+| L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
+| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait localement, publication en attente des contrôles Vercel |
+| L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Fait localement, publication en attente des contrôles Vercel |
+| L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | MVP manuel local; automatisation différée faute de flux public officiel stable |
+| L6-13 | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Code prêt localement, livraison désactivée et publication en attente des contrôles Vercel |
 
 ## Lot 7 — Compléments (après le lot 6)
 

@@ -99,3 +99,7 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 - `de7f37524323aecc3e2f2f277995b66ba2b8e5bc` reste conservé sur `fix/reprise-268`; son bilan historique #268 figure déjà dans ce fichier.
 - L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
 - Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.
+
+### L6-11 — plan d'achat collectif indicatif
+
+Worktree `.codex-worktrees/group-buying-plan`, branche `feat/group-buying-plan`, basé sur `origin/main` `e376459`. MVP: activation admin par communauté (off par défaut), date cible obligatoire et note facultative limitée à 300 caractères, modifiables par le proposant d'une entrée wishlist. Les votes « intéressé » restent le seul signal des membres; aucun engagement financier, paiement, achat automatique ni service externe. Migration additive `20261017130000_group_purchase_plans`. Contrôles locaux: 101 tests ciblés (incluant les gardes d'isolation), Prisma validate/generate, TypeScript, ESLint ciblé et diff check réussis. Aucun test PostgreSQL, push ou merge.

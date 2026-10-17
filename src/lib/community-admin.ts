@@ -66,6 +66,15 @@ export async function setCommunitySteamPriceAlerts(input: { communityId: unknown
   return result.count ? "saved" as const : "unavailable" as const;
 }
 
+export async function setCommunityGroupPurchasePlans(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { groupPurchasePlansEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
 /** Identifiant Discord (snowflake) : chiffres seuls, jamais d'espace. */
 function isSnowflake(value: string): boolean {
   return /^\d{17,20}$/.test(value);
@@ -144,6 +153,7 @@ export interface AdminCommunityRow {
   freeGamesEnabled: boolean;
   steamPriceAlertsEnabled: boolean;
   steamPriceAlertThreshold: number;
+  groupPurchasePlansEnabled: boolean;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -183,6 +193,7 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         freeGamesEnabled: c.freeGamesEnabled,
         steamPriceAlertsEnabled: c.steamPriceAlertsEnabled,
         steamPriceAlertThreshold: c.steamPriceAlertThreshold,
+        groupPurchasePlansEnabled: c.groupPurchasePlansEnabled,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,

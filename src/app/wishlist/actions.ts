@@ -16,6 +16,7 @@ import {
   VALIDATION_ERROR_KEY,
 } from "@/lib/validations";
 import { RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import { parseWishlistPurchasePlanInput } from "@/lib/wishlist-purchase-plan";
 
 /** Même contrat que `ToggleVoteResult` (src/app/sessions/actions.ts) — mise à jour optimiste côté client, défaite si `ok: false`. */
 export interface VoteWishlistResult {
@@ -135,4 +136,42 @@ export async function voteWishlistAction(formData: FormData): Promise<VoteWishli
 
   revalidatePath("/wishlist");
   return { ok: true };
+}
+
+export async function saveWishlistPurchasePlanAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!checkRateLimit(user.id, "saveWishlistPurchasePlan")) redirect("/wishlist?plan=rate_limited");
+
+  const wishlistId = String(formData.get("wishlistId") ?? "");
+  const plan = parseWishlistPurchasePlanInput(formData.get("targetDate"), formData.get("note"));
+  if (!wishlistId || !plan) redirect("/wishlist?plan=invalid");
+
+  const scopedDb = await getActiveScopedPrisma(user.id);
+  const wishlist = await scopedDb.gameWishlist.findUnique({
+    where: { id: wishlistId },
+    select: {
+      id: true,
+      proposedById: true,
+      purchasedById: true,
+      community: { select: { groupPurchasePlansEnabled: true } },
+    },
+  });
+  if (!wishlist || !wishlist.community.groupPurchasePlansEnabled || wishlist.purchasedById) {
+    redirect("/wishlist?plan=unavailable");
+  }
+  if (wishlist.proposedById !== user.id) redirect("/wishlist?plan=forbidden");
+
+  const updated = await scopedDb.gameWishlist.updateMany({
+    where: {
+      id: wishlist.id,
+      proposedById: user.id,
+      purchasedById: null,
+      community: { is: { groupPurchasePlansEnabled: true } },
+    },
+    data: { groupPurchaseTargetDate: plan.targetDate, groupPurchaseNote: plan.note },
+  });
+  if (updated.count !== 1) redirect("/wishlist?plan=unavailable");
+  revalidatePath("/wishlist");
+  redirect("/wishlist?plan=saved");
 }

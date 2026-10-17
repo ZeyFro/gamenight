@@ -6781,6 +6781,12 @@ toutes les 10s, avec indicateur "Actualisation…".
   reçoivent une notification in-app; une même entrée a un délai de 7 jours
   entre alertes. Aucun Discord ni push n'est envoyé.
 
+- **Plan d'achat collectif L6-11 (MVP)** : désactivé par défaut et activable
+  par un admin dans `/admin → Communautés`. Le proposant peut indiquer une
+  date visée et une note courte; le plan est visible avec les votes existants.
+  La date et les votes restent indicatifs : aucune somme, promesse financière,
+  paiement ou action automatique n'est collecté ou déclenché.
+
 ### Fichiers modifiés/ajoutés
 
 - `prisma/schema.prisma` — `ChatMessage`, `ChatReaction`,

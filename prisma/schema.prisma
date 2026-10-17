@@ -2291,6 +2291,8 @@ model GameWishlist {
   purchasedAt   DateTime?
   priceAlertCheckedAt DateTime?
   priceAlertNotifiedAt DateTime?
+  groupPurchaseTargetDate DateTime?
+  groupPurchaseNote String? @db.VarChar(300)
 
   game        Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
   proposedBy  User               @relation("WishlistProposedBy", fields: [proposedById], references: [id])
@@ -2665,6 +2667,7 @@ model Community {
   guideRules String? @db.Text
   guideContacts String? @db.Text
   freeGamesEnabled Boolean @default(false)
+  groupPurchasePlansEnabled Boolean @default(false)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.

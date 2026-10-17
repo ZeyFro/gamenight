@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide, setCommunityFreeGames } from "@/lib/community-admin";
-import { setCommunitySteamPriceAlerts } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -86,4 +85,17 @@ export async function setCommunitySteamPriceAlertsAction(formData: FormData): Pr
     threshold: formData.get("threshold"),
   });
   done(result === "saved" ? "price-alerts-ok" : `price-alerts-${result}`);
+}
+
+export async function setCommunityGroupPurchasePlansAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityGroupPurchasePlans")) done("rate");
+  const enabledValue = formData.get("enabled");
+  const result = await setCommunityGroupPurchasePlans({
+    communityId: formData.get("communityId"),
+    enabled: enabledValue === "true" ? true : enabledValue === "false" ? false : null,
+  });
+  done(result === "saved" ? "purchase-plan-ok" : `purchase-plan-${result}`);
 }

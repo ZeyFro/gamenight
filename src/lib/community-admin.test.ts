@@ -27,6 +27,7 @@ import {
   isCommunityAdminEnabled,
   parseChannelCategory,
   setCommunityGuide,
+  setCommunityGroupPurchasePlans,
   setCommunityChannel,
 } from "./community-admin";
 
@@ -84,6 +85,21 @@ describe("setCommunityGuide", () => {
     expect(communityUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { guideRules: null, guideContacts: null },
     }));
+  });
+});
+
+describe("setCommunityGroupPurchasePlans", () => {
+  beforeEach(() => communityUpdateMany.mockReset().mockResolvedValue({ count: 1 }));
+
+  it("toggles only an editable community and rejects malformed settings", async () => {
+    expect(await setCommunityGroupPurchasePlans({ communityId: "c-b", enabled: true })).toBe("saved");
+    expect(communityUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c-b", status: { in: ["PENDING", "ACTIVE"] } },
+      data: { groupPurchasePlansEnabled: true },
+    });
+    expect(await setCommunityGroupPurchasePlans({ communityId: "", enabled: true })).toBe("invalid");
+    expect(await setCommunityGroupPurchasePlans({ communityId: "c-b", enabled: "true" })).toBe("invalid");
+    expect(communityUpdateMany).toHaveBeenCalledTimes(1);
   });
 });
 
