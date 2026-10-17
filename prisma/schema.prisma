@@ -38,6 +38,8 @@ enum UserRole {
 }
 
 model User {
+  quickPollsCreated CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
   communityExpressions CommunityExpression[]
   communityHighlights CommunityHighlight[]
@@ -2619,6 +2621,8 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  quickPolls CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
   expressions CommunityExpression[]
   highlights CommunityHighlight[]
@@ -2674,6 +2678,36 @@ model Community {
   groupActiveWeeks GroupActiveWeek[]
 }
 
+model CommunityQuickPoll {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  question String @db.VarChar(200)
+  options String[]
+  endsAt DateTime
+  createdAt DateTime @default(now())
+  votes CommunityQuickPollVote[]
+
+  @@unique([id, communityId])
+  @@index([communityId, createdAt])
+}
+
+model CommunityQuickPollVote {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  pollId String
+  poll CommunityQuickPoll @relation(fields: [pollId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optionIndex Int
+
+  @@unique([pollId, userId])
+  @@index([communityId, pollId])
+}
+
 model CommunityGameEpitaph {
   id String @id @default(cuid())
   communityId String
@@ -2701,7 +2735,6 @@ model CommunityExpression {
   updatedAt DateTime @updatedAt
   @@index([communityId, createdAt])
 }
-
 enum CommunityHighlightKind {
   FAME
   SHAME

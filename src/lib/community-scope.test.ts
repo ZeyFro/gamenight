@@ -19,6 +19,7 @@ import { join, relative, sep } from "node:path";
  */
 
 const COLLECTIVE_MODELS = [
+  "CommunityQuickPoll", "CommunityQuickPollVote",
   "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",

@@ -86,9 +86,10 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 
 ## Reprise globale — 17 octobre 2026
 
-- #267, #268, #233, #270 et #271 sont fusionnées; #271 a été vérifiée au commit `a6b041b`. Les tests de boucle restent simulés.
-- #272 Cimetière a passé `verify`, Vercel et Preview Comments; fusion au commit `ad1aa552d7312f5b1c12c00cd41611cc715fbb3d` après validation locale et comparaison du SHA distant.
-- #269 corrige le problème `.env.example` prouvé (2 769 autres tests réussis). Après intégration de #272, 93 tests unitaires, 25 PostgreSQL, Prisma, TypeScript et ESLint passent. `verify` a échoué uniquement au comptage SQL : N=5 comptait 32 événements contre 31 pour N=1; les autres bornes passaient. Le test tolère maintenant un événement tardif au maximum; 12 cas ciblés et ESLint repassent. Correctif local prêt; push retenu pendant le quota Vercel.
-- #273 Chroniques a 71 tests unitaires et 18 PostgreSQL verts après namespacing du fixture Expressions; Prisma, TypeScript et ESLint passent. #274 Sondages a 103 tests unitaires et 19 PostgreSQL verts; Prisma, TypeScript et ESLint passent. Leurs branches doivent intégrer #272 avant fusion.
+- #267, #268, #233, #270, #271 et #272 sont fusionnées. #269 a passé `verify`, Vercel et Preview Comments sur le head corrigé `9829ec2`, puis a été fusionnée au commit `f95b027`.
+- #273 Chroniques : `verify` passe sur `58ea42e`, Vercel échoue avec `Deployment rate limited — retry in 24 hours`. Aucun retry ni déploiement manuel; les tâches indépendantes continuent.
+- #274 Sondages avait passé ses contrôles sur `28bd567` et intégrait `ad1aa55`. La fusion de #269 a recréé des conflits dans `CLAUDE.md` et ce fichier; le worktree réintègre `origin/main` `f95b027`, en conservant les deux switches et historiques. Les anciens checks ne valident pas le nouveau merge; relancer après publication.
+- L7-15 / #275 : notification de promotion conservée in-app, sans MP; tête `b1c1a7d` contient aussi la tolérance d'un événement Prisma tardif (cause CI prouvée sur 32 contre 31). Vérifications locales ciblées 12/12 et 23/23 PostgreSQL, TypeScript, ESLint ciblé et diff --check réussis. Nouveau `verify` en cours (run `39013669006`); Vercel et Preview Comments verts.
+- L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
 - L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
 - Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.
