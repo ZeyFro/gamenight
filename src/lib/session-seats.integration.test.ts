@@ -43,12 +43,13 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "CONFIRMED" });
     expect(await db.notification.count({ where: { userId: "alice" } })).toBe(1);
   });
-  it("met le DM en file dans la transaction de chaque promotion", async () => {
+  it("notifie la promotion dans l'application sans envoyer de DM", async () => {
     await db.session.update({ where: { id: "s" }, data: { announceViaBot: true } });
     await join("alice");
     await leave("host");
-    expect(mocks.promotionDm).toHaveBeenCalledOnce();
-    expect(mocks.promotionDm).toHaveBeenCalledWith("s", "alice", false, expect.any(Object));
+    expect(await db.notification.count({ where: { userId: "alice" } })).toBe(1);
+    expect(mocks.promotionDm).not.toHaveBeenCalled();
+    expect(mocks.enqueue).toHaveBeenCalledTimes(2);
   });
   it("deux retries Discord ne rejouent pas une ancienne réponse après un désistement", async () => {
     await db.sessionSeat.deleteMany({}); const origin = await discordOrigin();
@@ -101,7 +102,7 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
   });
   it("le reçu de réponse fait partie du commit, et disparaît en cas de rollback", async () => {
     const origin = await discordOrigin(); await db.sessionSeat.deleteMany({}); await db.session.update({ where: { id: "s" }, data: { announceViaBot: true } });
-    mocks.promotionDm.mockRejectedValueOnce(new Error("enqueue failure"));
+    mocks.enqueue.mockRejectedValueOnce(new Error("enqueue failure"));
     await expect(change("alice", "s", { kind: "join" }, origin)).rejects.toThrow("enqueue failure");
     expect(await db.sessionSeat.count()).toBe(0); expect(await db.notificationEvent.count({ where: { eventType: "SESSION_RSVP" } })).toBe(0);
     expect(await change("alice", "s", { kind: "join" }, origin)).toMatchObject({ ok: true, status: "CONFIRMED" });
