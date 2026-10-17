@@ -2072,6 +2072,7 @@ model Tournament {
   champion     User?                   @relation("TournamentChampion", fields: [championId], references: [id])
   participants TournamentParticipant[]
   matches      TournamentMatch[]
+  predictions  TournamentPrediction[]
 
   // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
   // — même contrat que `Session.announceViaBot` (voir son commentaire pour
@@ -2141,6 +2142,21 @@ model Tournament {
 // `eliminatedAt` : posé dès la perte du premier match, purement informatif
 // pour l'affichage ("éliminé") — la position réelle dans le bracket vit
 // sur `TournamentMatch`, pas ici.
+model TournamentPrediction {
+  id String @id @default(cuid())
+  communityId String
+  tournamentId String
+  voterId String
+  predictedUserId String
+  // "champion" ou identifiant de match ; une seule cible immuable par voteur.
+  target String
+  createdAt DateTime @default(now())
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, target, voterId])
+  @@index([communityId])
+}
+
 model TournamentParticipant {
   id           String    @id @default(cuid())
   tournamentId String
