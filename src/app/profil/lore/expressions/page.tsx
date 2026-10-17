@@ -23,9 +23,9 @@ function ExpressionFields({ id, title = "", meaning = "" }: { id: string; title?
   return (
     <>
       <label htmlFor={`${id}-title`} className="text-sm font-medium">Expression ou running gag</label>
-      <input id={`${id}-title`} name="title" required maxLength={MAX_EXPRESSION_TITLE_LENGTH} defaultValue={title} className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
+      <input id={`${id}-title`} name="title" required maxLength={MAX_EXPRESSION_TITLE_LENGTH} defaultValue={title} className="w-full rounded-lg border border-border bg-background p-3 text-base sm:text-sm" />
       <label htmlFor={`${id}-meaning`} className="text-sm font-medium">Sens et histoire</label>
-      <textarea id={`${id}-meaning`} name="meaning" required maxLength={MAX_EXPRESSION_MEANING_LENGTH} rows={4} defaultValue={meaning} className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
+      <textarea id={`${id}-meaning`} name="meaning" required maxLength={MAX_EXPRESSION_MEANING_LENGTH} rows={4} defaultValue={meaning} className="w-full rounded-lg border border-border bg-background p-3 text-base sm:text-sm" />
     </>
   );
 }
