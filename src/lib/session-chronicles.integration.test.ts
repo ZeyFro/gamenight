@@ -26,68 +26,68 @@ describe.skipIf(!TEST_DATABASE_URL)("chroniques privées : droits, archivage et 
     (await import("./default-community")).resetDefaultCommunityIdCache();
     // Nettoyage limité aux fixtures : TRUNCATE CASCADE réécrit une centaine de tables.
     await db.$transaction(async tx => {
-      const users = ["alice", "guest", "stranger", "admin", "other", "both"];
+      const users = ["chronicle-alice", "chronicle-guest", "chronicle-stranger", "chronicle-admin", "chronicle-other", "chronicle-both"];
       await tx.session.deleteMany({ where: { createdById: { in: users } } });
       await tx.user.deleteMany({ where: { id: { in: users } } });
-      await tx.community.deleteMany({ where: { id: { in: ["a", "b"] } } });
-      await tx.community.createMany({ data: ["a", "b"].map(id => ({ id, slug: id, name: id, status: "ACTIVE" as const })) });
+      await tx.community.deleteMany({ where: { id: { in: ["chronicle-a", "chronicle-b"] } } });
+      await tx.community.createMany({ data: ["chronicle-a", "chronicle-b"].map(id => ({ id, slug: id, name: id, status: "ACTIVE" as const })) });
       defaultCommunityId = (await tx.community.upsert({ where: { slug: "default" }, create: { slug: "default", name: "Default", status: "ACTIVE" }, update: { status: "ACTIVE" } })).id;
-      await tx.user.createMany({ data: users.map(id => ({ id, discordId: id, discordName: id, role: id === "admin" ? "ADMIN" as const : "USER" as const })) });
-      await tx.membership.createMany({ data: [...users.map(id => ({ userId: id, communityId: id === "other" ? "b" : "a" })), { userId: "both", communityId: "b" }] });
-      await tx.user.update({ where: { id: "both" }, data: { activeCommunityId: "a" } });
+      await tx.user.createMany({ data: users.map(id => ({ id, discordId: id, discordName: id, role: id === "chronicle-admin" ? "ADMIN" as const : "USER" as const })) });
+      await tx.membership.createMany({ data: [...users.map(id => ({ userId: id, communityId: id === "chronicle-other" ? "chronicle-b" : "chronicle-a" })), { userId: "chronicle-both", communityId: "chronicle-b" }] });
+      await tx.user.update({ where: { id: "chronicle-both" }, data: { activeCommunityId: "chronicle-a" } });
     });
   });
-  const session = (communityId = "a", createdById = "alice", chronicle: string | null = null, status: import("@prisma/client").SessionStatus = "DONE") => db.session.create({ data: { communityId, createdById, chronicle, status, date: new Date("2020-01-01"), superlativeVotingClosed: true } });
-  const invite = (sessionId: string, userId: string) => db.sessionInvite.create({ data: { sessionId, userId, invitedById: "alice" } });
+  const session = (communityId = "chronicle-a", createdById = "chronicle-alice", chronicle: string | null = null, status: import("@prisma/client").SessionStatus = "DONE") => db.session.create({ data: { communityId, createdById, chronicle, status, date: new Date("2020-01-01"), superlativeVotingClosed: true } });
+  const invite = (sessionId: string, userId: string) => db.sessionInvite.create({ data: { sessionId, userId, invitedById: "chronicle-alice" } });
 
   it("seul le créateur édite ; un invité actif lit l'archive privée", async () => {
     const row = await session();
-    await invite(row.id, "guest");
-    expect(await api.saveSessionChronicle("alice", row.id, " Le clutch final ")).toBe(true);
-    expect(await api.saveSessionChronicle("guest", row.id, "Réécriture")).toBe(false);
-    expect(await api.saveSessionChronicle("admin", row.id, "Réécriture")).toBe(false);
-    expect((await api.listSessionChronicles("guest", 1))?.items.map(item => item.chronicle)).toEqual(["Le clutch final"]);
-    expect((await api.listSessionChronicles("stranger", 1))?.items).toEqual([]);
-    expect((await api.listSessionChronicles("admin", 1))?.items).toEqual([]);
-    await db.sessionInvite.update({ where: { sessionId_userId: { sessionId: row.id, userId: "guest" } }, data: { status: "REVOKED" } });
-    expect((await api.listSessionChronicles("guest", 1))?.items).toEqual([]);
+    await invite(row.id, "chronicle-guest");
+    expect(await api.saveSessionChronicle("chronicle-alice", row.id, " Le clutch final ")).toBe(true);
+    expect(await api.saveSessionChronicle("chronicle-guest", row.id, "Réécriture")).toBe(false);
+    expect(await api.saveSessionChronicle("chronicle-admin", row.id, "Réécriture")).toBe(false);
+    expect((await api.listSessionChronicles("chronicle-guest", 1))?.items.map(item => item.chronicle)).toEqual(["Le clutch final"]);
+    expect((await api.listSessionChronicles("chronicle-stranger", 1))?.items).toEqual([]);
+    expect((await api.listSessionChronicles("chronicle-admin", 1))?.items).toEqual([]);
+    await db.sessionInvite.update({ where: { sessionId_userId: { sessionId: row.id, userId: "chronicle-guest" } }, data: { status: "REVOKED" } });
+    expect((await api.listSessionChronicles("chronicle-guest", 1))?.items).toEqual([]);
   });
   it.each(["true", "false"])("borne l'archive à son serveur actif même isolation=%s", async isolation => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);
-    const a = await session("a", "both", "Serveur A");
-    await session("b", "both", "Serveur B");
-    expect((await api.listSessionChronicles("both", 1))?.items.map(item => item.id)).toEqual([a.id]);
-    expect((await api.listSessionChronicles("other", 1))?.items).toEqual([]);
-    expect(await api.saveSessionChronicle("other", a.id, "Intrusion")).toBe(false);
-    await db.membership.update({ where: { communityId_userId: { communityId: "a", userId: "both" } }, data: { status: "LEFT" } });
-    expect(await api.saveSessionChronicle("both", a.id, "Après départ")).toBe(false);
-    await db.membership.update({ where: { communityId_userId: { communityId: "a", userId: "both" } }, data: { status: "ACTIVE" } });
-    const oldCommunitySession = await session("a", "both");
-    await db.user.update({ where: { id: "both" }, data: { activeCommunityId: "b" } });
-    expect(await api.saveSessionChronicle("both", oldCommunitySession.id, "Depuis un ancien serveur")).toBe(false);
+    const a = await session("chronicle-a", "chronicle-both", "Serveur A");
+    await session("chronicle-b", "chronicle-both", "Serveur B");
+    expect((await api.listSessionChronicles("chronicle-both", 1))?.items.map(item => item.id)).toEqual([a.id]);
+    expect((await api.listSessionChronicles("chronicle-other", 1))?.items).toEqual([]);
+    expect(await api.saveSessionChronicle("chronicle-other", a.id, "Intrusion")).toBe(false);
+    await db.membership.update({ where: { communityId_userId: { communityId: "chronicle-a", userId: "chronicle-both" } }, data: { status: "LEFT" } });
+    expect(await api.saveSessionChronicle("chronicle-both", a.id, "Après départ")).toBe(false);
+    await db.membership.update({ where: { communityId_userId: { communityId: "chronicle-a", userId: "chronicle-both" } }, data: { status: "ACTIVE" } });
+    const oldCommunitySession = await session("chronicle-a", "chronicle-both");
+    await db.user.update({ where: { id: "chronicle-both" }, data: { activeCommunityId: "chronicle-b" } });
+    expect(await api.saveSessionChronicle("chronicle-both", oldCommunitySession.id, "Depuis un ancien serveur")).toBe(false);
   });
   it("refuse soirées non terminées, saisie trop longue, serveur suspendu et flag OFF", async () => {
     for (const status of ["VOTING", "SCHEDULED", "CANCELLED"] as const) {
-      expect(await api.saveSessionChronicle("alice", (await session("a", "alice", null, status)).id, "Texte")).toBe(false);
+      expect(await api.saveSessionChronicle("chronicle-alice", (await session("chronicle-a", "chronicle-alice", null, status)).id, "Texte")).toBe(false);
     }
     const row = await session();
-    expect(await api.saveSessionChronicle("alice", row.id, "x".repeat(10001))).toBe(false);
-    await db.community.update({ where: { id: "a" }, data: { status: "SUSPENDED" } });
-    expect(await api.saveSessionChronicle("alice", row.id, "Texte")).toBe(false);
-    expect(await api.listSessionChronicles("alice", 1)).toBeNull();
+    expect(await api.saveSessionChronicle("chronicle-alice", row.id, "x".repeat(10001))).toBe(false);
+    await db.community.update({ where: { id: "chronicle-a" }, data: { status: "SUSPENDED" } });
+    expect(await api.saveSessionChronicle("chronicle-alice", row.id, "Texte")).toBe(false);
+    expect(await api.listSessionChronicles("chronicle-alice", 1)).toBeNull();
     vi.stubEnv("SESSION_CHRONICLES_ENABLED", "false");
-    expect(await api.saveSessionChronicle("alice", row.id, "Texte")).toBe(false);
-    expect(await api.listSessionChronicles("alice", 1)).toBeNull();
+    expect(await api.saveSessionChronicle("chronicle-alice", row.id, "Texte")).toBe(false);
+    expect(await api.listSessionChronicles("chronicle-alice", 1)).toBeNull();
   });
   it("préserve l'accès des soirées historiques rattachées au serveur default", async () => {
-    await db.membership.create({ data: { communityId: defaultCommunityId, userId: "alice" } });
-    await db.user.update({ where: { id: "alice" }, data: { activeCommunityId: defaultCommunityId } });
-    const row = await db.session.create({ data: { communityId: null, createdById: "alice", date: new Date(), status: "DONE" } });
-    expect(await api.saveSessionChronicle("alice", row.id, "Souvenir historique")).toBe(true);
-    expect((await api.listSessionChronicles("alice", 1))?.items.map(item => item.id)).toEqual([row.id]);
+    await db.membership.create({ data: { communityId: defaultCommunityId, userId: "chronicle-alice" } });
+    await db.user.update({ where: { id: "chronicle-alice" }, data: { activeCommunityId: defaultCommunityId } });
+    const row = await db.session.create({ data: { communityId: null, createdById: "chronicle-alice", date: new Date(), status: "DONE" } });
+    expect(await api.saveSessionChronicle("chronicle-alice", row.id, "Souvenir historique")).toBe(true);
+    expect((await api.listSessionChronicles("chronicle-alice", 1))?.items.map(item => item.id)).toEqual([row.id]);
   });
   it("conserve la chronique à la purge même flag OFF, jusqu'à effacement volontaire", async () => {
-    const archived = await session("a", "alice", "Souvenir durable");
+    const archived = await session("chronicle-a", "chronicle-alice", "Souvenir durable");
     const plain = await session();
     vi.stubEnv("SESSION_CHRONICLES_ENABLED", "false");
     const retention = await import("./retention");
@@ -97,20 +97,20 @@ describe.skipIf(!TEST_DATABASE_URL)("chroniques privées : droits, archivage et 
     expect(purged.purgedSessionIds).toContain(plain.id);
     expect(await db.session.findUnique({ where: { id: archived.id } })).not.toBeNull();
     vi.stubEnv("SESSION_CHRONICLES_ENABLED", "true");
-    expect(await api.saveSessionChronicle("alice", archived.id, " \n ")).toBe(true);
+    expect(await api.saveSessionChronicle("chronicle-alice", archived.id, " \n ")).toBe(true);
     await retention.purgeEligibleSessionsBatch({ dryRun: false });
     expect(await db.session.findUnique({ where: { id: archived.id } })).toBeNull();
   });
   it("pagine seulement les chroniques accessibles, pas les soirées privées d'autrui", async () => {
-    await db.session.createMany({ data: Array.from({ length: 22 }, (_, i) => ({ communityId: "a", createdById: "alice", chronicle: `Souvenir ${i}`, status: "DONE" as const, date: new Date("2020-01-01"), superlativeVotingClosed: true })) });
-    await session("a", "stranger", "Privé");
-    const first = await api.listSessionChronicles("alice", 1);
-    const second = await api.listSessionChronicles("alice", 2);
+    await db.session.createMany({ data: Array.from({ length: 22 }, (_, i) => ({ communityId: "chronicle-a", createdById: "chronicle-alice", chronicle: `Souvenir ${i}`, status: "DONE" as const, date: new Date("2020-01-01"), superlativeVotingClosed: true })) });
+    await session("chronicle-a", "chronicle-stranger", "Privé");
+    const first = await api.listSessionChronicles("chronicle-alice", 1);
+    const second = await api.listSessionChronicles("chronicle-alice", 2);
     expect(first?.items).toHaveLength(20);
     expect(first?.hasNext).toBe(true);
     expect(second?.items).toHaveLength(2);
     expect(second?.hasNext).toBe(false);
-    expect(await api.listSessionChronicles("alice", -1)).toBeNull();
+    expect(await api.listSessionChronicles("chronicle-alice", -1)).toBeNull();
   });
   it("relit sous verrou une chronique enregistrée pendant la purge", async () => {
     const row = await session();
