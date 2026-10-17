@@ -187,6 +187,7 @@ export interface AdminCommunityRow {
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
+  sessionGalleryEnabled: boolean;
   channels: Partial<Record<CommunityChannelCategory, { discordChannelId: string; enabled: boolean }>>;
   /** Salons texte du serveur (liste Discord) ; `null` = indisponible, motif dans `channelsError`. */
   guildChannels: GuildChannel[] | null;
@@ -231,6 +232,7 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,
+        sessionGalleryEnabled: c.sessionGalleryEnabled,
         channels: Object.fromEntries(
           c.channelConfigs.map((r) => [r.category, { discordChannelId: r.discordChannelId, enabled: r.enabled }])
         ),
@@ -239,4 +241,15 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
       };
     })
   );
+}
+
+export async function setCommunitySessionGallery(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") {
+    return "invalid" as const;
+  }
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: "ACTIVE" },
+    data: { sessionGalleryEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
 }

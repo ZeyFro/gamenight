@@ -58,6 +58,7 @@ import { GameWarnings } from "@/components/GameWarnings";
 
 import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
+import { SessionGallery } from "@/components/sessions/SessionGallery";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -86,13 +87,13 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string; deadline?: string; error?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; gallery?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord, deadline, error } = await searchParams;
+  const { discord, deadline, error, gallery } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
   const deadlineAdjusted = deadline === "ajustee";
   const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
@@ -119,6 +120,17 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const galleryCommunityId = await statsCommunityIdForSession(session.communityId);
+  const galleryCommunity = await prisma.community.findUnique({ where: { id: galleryCommunityId }, select: { sessionGalleryEnabled: true } });
+  const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
+  const galleryStorageReady = !!process.env.SESSION_MEDIA_BLOB_TOKEN;
+  const galleryImages = galleryEnabled && galleryStorageReady
+    ? await prisma.sessionGalleryMedia.findMany({
+        where: { sessionId: session.id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, uploadedById: true, mimeType: true, createdAt: true },
+      })
+    : [];
   let ratingSummary: { average: number | null; count: number; own: number | null } | null = null;
   if (session.status === "DONE") {
     const scopedDb = await getScopedPrisma(user.id);
@@ -820,6 +832,17 @@ export default async function SessionDetailPage({
       )}
 
       {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
+
+      {galleryEnabled && (
+        <SessionGallery
+          sessionId={session.id}
+          userId={user.id}
+          creatorId={session.createdById}
+          images={galleryImages}
+          result={gallery}
+          storageReady={galleryStorageReady}
+        />
+      )}
 
       <section className="flex min-h-0 flex-col gap-3">
         <h2 className="text-lg font-semibold text-foreground">💬 Chat</h2>

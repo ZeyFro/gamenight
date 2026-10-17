@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds } from "@/lib/community-admin";
+import { setCommunitySessionGallery } from "@/lib/community-admin";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -126,4 +127,16 @@ export async function setCommunityPlayerClassifiedsAction(formData: FormData): P
     enabled: enabled === "true" ? true : enabled === "false" ? false : null,
   });
   done(result === "saved" ? "classifieds-ok" : `classifieds-${result}`);
+}
+
+export async function setCommunitySessionGalleryAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunitySessionGallery")) done("rate");
+  const result = await setCommunitySessionGallery({
+    communityId: formData.get("communityId"),
+    enabled: formData.get("enabled") === "on",
+  });
+  done(result === "saved" ? "gallery-ok" : `gallery-${result}`);
 }

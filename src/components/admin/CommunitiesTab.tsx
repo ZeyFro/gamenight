@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction } from "@/app/admin/communautes/actions";
+import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -46,6 +47,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "purchase-plan-ok": { ok: true, text: "Plans d'achat collectif mis à jour." },
   "purchase-plan-invalid": { ok: false, text: "Demande invalide." },
   "purchase-plan-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
+  "gallery-ok": { ok: true, text: "Réglage de galerie enregistré." },
+  "gallery-invalid": { ok: false, text: "Demande invalide." },
+  "gallery-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "channel-invalid_channel": { ok: false, text: "Identifiant de salon invalide." },
   "channel-not_found": { ok: false, text: "Communauté introuvable." },
   "channel-inactive": { ok: false, text: "Cette communauté ne peut plus recevoir de salon." },
@@ -198,6 +202,17 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
             <option value="false">Désactivés</option>
             <option value="true">Activés</option>
           </select>
+          <Button type="submit" size="sm">Enregistrer</Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunitySessionGalleryAction} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="enabled" defaultChecked={c.sessionGalleryEnabled} />
+            <span>Galerie photo privée des soirées (nécessite SESSION_MEDIA_BLOB_TOKEN d’un store privé)</span>
+          </label>
           <Button type="submit" size="sm">Enregistrer</Button>
         </form>
       )}

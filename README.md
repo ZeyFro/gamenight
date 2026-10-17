@@ -2897,6 +2897,22 @@ compression automatique dans FIX4 (ajoutée depuis côté client, voir plus
 bas). Preview immédiate avant validation via `URL.createObjectURL` sur
 les deux onglets.
 
+### Galerie privée des soirées
+
+`L5-02` fournit un premier périmètre photo : JPEG/PNG/GIF/WebP, 4 Mo par
+image, 8 images par soirée. Les clips sont différés. Un admin active la
+galerie par communauté depuis `/admin`; l’option est désactivée par défaut.
+L’envoi demande un consentement explicite, les fichiers sont privés et
+chaque lecture repasse par le contrôle créateur/invitation active de la
+soirée. L’uploader ou le créateur peut supprimer une image. Pas de
+notification ni de purge séparée : les blobs suivent la suppression de la
+soirée et sa politique de rétention existante.
+
+Avant activation, configurer `SESSION_MEDIA_BLOB_TOKEN` avec le jeton d’un
+store **Vercel Blob privé** dédié. Le jeton public existant des bannières
+n’est jamais utilisé pour la galerie. Sans ce jeton, l’upload et la lecture
+restent désactivés. Aucun store ni coût n’est créé par le code.
+
 ### Durcissement des bannières (validation réelle + anti-orphelins)
 
 `file.type` (le MIME déclaré par le navigateur au moment du `<input
@@ -12881,6 +12897,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | IGDB via Twitch (recherche, fiche jeu, backfill Coop) ; absentes = backfill sauté (log `warn`) | absentes | `src/lib/igdb.ts:13-14`, `src/lib/backfill-igdb-coop.ts:87` |
 | `DEEPL_API_KEY` | Traduction FR des descriptions IGDB (optionnelle) | absente = description en VO | `src/lib/deepl.ts:17` |
 | `BLOB_READ_WRITE_TOKEN` | Upload d'images de bannière (Vercel Blob) ; absent = upload désactivé | absent | `src/app/profil/actions.ts:194`, `src/app/profil/parametres/page.tsx:122` |
+| `SESSION_MEDIA_BLOB_TOKEN` | Jeton d’un store Vercel Blob privé pour la galerie des soirées ; absent = galerie inaccessible | absent | `src/app/sessions/actions/gallery.ts` |
 
 ### Fournies par la plateforme (ne pas définir à la main)
 

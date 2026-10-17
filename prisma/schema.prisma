@@ -43,6 +43,7 @@ enum FreeGameStore {
 }
 
 model User {
+  sessionGalleryMedia SessionGalleryMedia[]
   quickPollsCreated CommunityQuickPoll[]
   quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
@@ -544,6 +545,7 @@ enum SessionStatus {
 // l'heure de la session ; nul = pas de deadline distincte, seule l'heure
 // de la session ferme le vote (comportement historique).
 model Session {
+  galleryMedia SessionGalleryMedia[]
   availabilityPoll SessionAvailabilityPoll?
   id             String        @id @default(cuid())
   date           DateTime
@@ -2700,6 +2702,7 @@ model Community {
   discordGuildId String?         @unique
   iconHash       String?
   status         CommunityStatus @default(PENDING)
+  sessionGalleryEnabled Boolean @default(false)
 
   // Qui a ajouté le bot (le payload `APPLICATION_AUTHORIZED` ne porte que
   // l'utilisateur ; Discord exige `MANAGE_GUILD` pour une installation serveur).
@@ -2771,6 +2774,20 @@ model PlayerClassified {
 
   @@index([communityId, expiresAt])
   @@index([createdById, communityId])
+}
+
+model SessionGalleryMedia {
+  id           String   @id @default(cuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  pathname     String   @unique
+  mimeType     String   @db.VarChar(32)
+  sizeBytes    Int
+  createdAt    DateTime @default(now())
+
+  @@index([sessionId, createdAt])
 }
 
 model CommunityQuickPoll {
