@@ -84,10 +84,9 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 
 ## Reprise globale — 17 octobre 2026
 
-- #267, #268, #233, #270 et #271 sont fusionnées; #271 est au commit `a6b041b37608aed65600c054787e9b9f4bfce19f`. Les contrôles requis étaient verts avant fusion; les tests de boucle restent simulés.
-- #269 corrige l'échec CI prouvé dans `.env.example`: `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). Après intégration de #271, 78 tests unitaires et 16 PostgreSQL passent; Prisma validate/generate, TypeScript et ESLint verts. Fixture Expressions namespacé après conflit FK avec `Game.addedById`. Push `f2545a3`.
-- #272 Cimetière intègre `a6b041b`; 95 tests unitaires/pages/scoping et 25 Postgres (Cimetière/Expressions/Musée), Prisma, TypeScript, lint et diff passent. Push `1e69561`.
-- #273 Chroniques intègre #271; 71 tests unitaires et 18 PostgreSQL passent après namespacing du fixture Expressions; Prisma, TypeScript et ESLint verts. Push `e0fd183`.
-- #274 Sondages intègre maintenant #271 localement. Schéma, guide, Lore et listes de modèles communautaires gardent à la fois Sondages et Expressions; validation à relancer avant push. Migration additive relue manuellement; relecture antérieure par l'auteur seulement.
+- #267, #268, #233, #270 et #271 sont fusionnées. #272 Cimetière a passé `verify`, Vercel et Preview Comments; fusion au commit `ad1aa552d7312f5b1c12c00cd41611cc715fbb3d`.
+- #269 corrige l'échec CI prouvé dans `.env.example` (`TOURNAMENT_PREDICTIONS_ENABLED=false`; 2 769 autres tests réussis). Après intégration de #272, 93 tests unitaires, 25 PostgreSQL, Prisma, TypeScript et ESLint passent; head `e7f0608`, `verify` en cours, Vercel vert.
+- #273 Chroniques intègre #272. 93 tests unitaires et 27 PostgreSQL, Prisma, TypeScript et ESLint passent; head `58ea42e`. `verify` est en cours, Vercel bloque sur la limite de builds (`retry in 24 hours`); aucun redéploiement manuel ni push supplémentaire avant levée du quota.
+- #274 Sondages intègre #272 localement; 118 tests unitaires et 28 PostgreSQL, Prisma, TypeScript et ESLint passent. Le push est retenu pendant le quota Vercel; le head distant reste sur l'ancienne base. La migration additive est relue; revue précédente du code par son auteur seulement.
 - L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
-- Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.
+- Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) reste dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun contournement.

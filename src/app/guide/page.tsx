@@ -6,6 +6,7 @@ import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
 import { ButtonLink } from "@/components/ui/Button";
 import { isCommunityQuickPollsEnabled } from "@/lib/community-quick-polls-input";
+import { isCommunityGameGraveyardEnabled } from "@/lib/community-game-graveyard-input";
 import { isCommunityExpressionsEnabled } from "@/lib/community-expressions-input";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
@@ -115,6 +116,7 @@ export default async function GuidePage() {
 
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
       {isCommunityQuickPollsEnabled() && <Card><h2 className="font-semibold">Sondages éclair</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Sondages éclair, pose une question avec 2 à 6 réponses fixes et une durée allant d’une minute à sept jours. Chaque membre actif dispose d’un choix modifiable avant l’échéance. Les résultats agrégés sont visibles immédiatement, sans afficher les noms des votants. Aucun message Discord ni gain d’XP n’est envoyé.</p></Card>}
+      {isCommunityGameGraveyardEnabled() && <Card><h2 className="font-semibold">Cimetière des jeux</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Cimetière, écris une épitaphe pour un jeu possédé ou déjà joué par ton serveur. Une seule épitaphe existe par jeu et par serveur ; son auteur, les administrateurs et les propriétaires peuvent la modifier ou la retirer. Les jeux restent dans les bibliothèques.</p></Card>}
       {isCommunityExpressionsEnabled() && <Card><h2 className="font-semibold">Expressions du serveur</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Expressions et running gags, les membres actifs partagent les expressions de leur serveur et leur sens. L’auteur peut les modifier ou les supprimer, ainsi que les administrateurs et propriétaires de la communauté. Le nom du serveur est affiché pour éviter de mélanger les histoires.</p></Card>}
       <ButtonLink href="/charte" variant="ghost">Lire la charte de fair-play du serveur</ButtonLink>
       {(communityGuide?.guideRules || communityGuide?.guideContacts) && (
