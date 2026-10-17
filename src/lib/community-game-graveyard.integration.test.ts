@@ -27,7 +27,11 @@ describe.skipIf(!TEST_DATABASE_URL)("cimetière : droits et isolation Postgres",
       ["outsider", "grave-b", "OWNER"],
     ] as const;
     await db.$transaction([
-      db.$executeRawUnsafe('TRUNCATE "CommunityGameEpitaph", "Game", "Membership", "Community", "User" CASCADE'),
+      db.communityGameEpitaph.deleteMany({ where: { communityId: { in: ["grave-a", "grave-b"] } } }),
+      db.userGame.deleteMany({ where: { userId: { in: members.map(([id]) => id) } } }),
+      db.community.deleteMany({ where: { id: { in: ["grave-a", "grave-b"] } } }),
+      db.game.deleteMany({ where: { id: { in: ["owned", "played", "foreign", "forgotten"] } } }),
+      db.user.deleteMany({ where: { id: { in: members.map(([id]) => id) } } }),
       db.community.createMany({ data: ["grave-a", "grave-b"].map(id => ({ id, slug: id, name: id, status: "ACTIVE" })) }),
       db.user.createMany({ data: members.map(([id, communityId]) => ({ id, discordId: id, discordName: id, activeCommunityId: communityId })) }),
       db.membership.createMany({ data: members.map(([userId, communityId, role]) => ({ userId, communityId, status: "ACTIVE", role })) }),
