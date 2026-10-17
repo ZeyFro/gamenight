@@ -21,10 +21,16 @@ import {
 } from "../actions";
 import { pageMetadata } from "@/lib/page-title";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { isTournamentPredictionsEnabled } from "@/lib/tournament-prediction-rules";
+import { TournamentPredictions } from "@/components/tournaments/TournamentPredictions";
+import { findActiveMembership } from "@/lib/community-access";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
 
 export const metadata = pageMetadata("Tournoi");
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
+  prediction: "Pronostic refusé : la cible est fermée, déjà choisie ou inaccessible. Actualise la page.",
   rate_limited: RATE_LIMIT_MESSAGE,
   scores: "Scores refusés : renseigne les deux scores, entre 0 et 999, avec le score le plus élevé pour le gagnant.",
 };
@@ -82,6 +88,10 @@ export default async function TournoiDetailPage({
   });
   if (!tournament) notFound();
 
+  const predictionsEnabled = isTournamentPredictionsEnabled() && !!(await findActiveMembership(user.id, await statsCommunityIdForSession(tournament.communityId)));
+  const scopedDb = predictionsEnabled ? await getScopedPrisma(user.id) : null;
+  const predictions = scopedDb ? await scopedDb.tournamentPrediction.findMany({ where: { tournamentId: id, voterId: user.id } }) : [];
+
   const isCreator = tournament.createdById === user.id;
   const isRegistered = tournament.participants.some((p) => p.userId === user.id);
   const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
@@ -106,6 +116,8 @@ export default async function TournoiDetailPage({
       {errorMessage && (
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p>
       )}
+
+      {predictionsEnabled && <TournamentPredictions tournament={tournament} predictions={predictions} />}
 
       {announceStatus && (
         <Card className="flex flex-col gap-2 text-sm">

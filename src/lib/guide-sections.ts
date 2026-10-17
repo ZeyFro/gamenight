@@ -1,6 +1,7 @@
 import { isRoulettePlayerFilterEnabled } from "@/lib/roulette-draw";
 import { isVoteVetoEnabled } from "@/lib/session-veto";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
+import { isTournamentPredictionsEnabled } from "@/lib/tournament-prediction-rules";
 
 export type GuideSection = { icon: string; title: string; lines: string[] };
 
@@ -57,12 +58,14 @@ export function guideSections(input: GuideSection[]): GuideSection[] {
     ...(process.env.COMMUNITY_HIGHLIGHTS_ENABLED === "true" ? [{ icon: "🏆", title: "Exploits et fails", lines: ["Dans Profil → Lore du groupe → Exploits et fails, publie un souvenir du serveur avec une description et un lien HTTPS facultatif vers une image ou un clip. L’auteur et les modérateurs du serveur peuvent le modifier ou le supprimer."] }] : []),
   ];
   if (process.env.GUIDE_V2_ENABLED !== "true") return withGlossary;
-  if (!isTournamentScoresEnabled()) return [...withGlossary, ...EXTRA_SECTIONS];
   return [
     ...withGlossary,
     ...EXTRA_SECTIONS.map((s) =>
       s.title === "Tournois"
-        ? { ...s, lines: [...s.lines, "Tu peux ajouter le score du match (facultatif) : il s'affiche dans le bracket."] }
+        ? { ...s, lines: [...s.lines,
+          ...(isTournamentScoresEnabled() ? ["Tu peux ajouter le score du match (facultatif) : il s'affiche dans le bracket."] : []),
+          ...(isTournamentPredictionsEnabled() ? ["Pronostique le champion avant le lancement, puis chaque match dont les deux joueurs sont connus avant son résultat. Un choix définitif par cible, sans mise ni gain d’XP."] : []),
+        ] }
         : s
     ),
   ];
