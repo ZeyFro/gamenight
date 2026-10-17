@@ -5,6 +5,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { guideSections, type GuideSection } from "@/lib/guide-sections";
 import { pageMetadata } from "@/lib/page-title";
 import { ButtonLink } from "@/components/ui/Button";
+import { isCommunityGameGraveyardEnabled } from "@/lib/community-game-graveyard-input";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
 
@@ -112,6 +113,7 @@ export default async function GuidePage() {
       </div>
 
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
+      {isCommunityGameGraveyardEnabled() && <Card><h2 className="font-semibold">Cimetière des jeux</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Cimetière, écris une épitaphe pour un jeu possédé ou déjà joué par ton serveur. Une seule épitaphe existe par jeu et par serveur ; son auteur, les administrateurs et les propriétaires peuvent la modifier ou la retirer. Les jeux restent dans les bibliothèques.</p></Card>}
       <ButtonLink href="/charte" variant="ghost">Lire la charte de fair-play du serveur</ButtonLink>
       {(communityGuide?.guideRules || communityGuide?.guideContacts) && (
         <Card className="flex flex-col gap-3">

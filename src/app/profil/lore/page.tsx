@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { listGroupAchievements } from "@/lib/group-achievements";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDateFr } from "@/lib/wallclock";
+import { isCommunityGameGraveyardEnabled } from "@/lib/community-game-graveyard-input";
 
 export const metadata = pageMetadata("Lore du groupe");
 
@@ -29,6 +30,7 @@ export default async function GroupLorePage() {
           🕵️ Devine le jeu
         </Link>
       </header>
+      {isCommunityGameGraveyardEnabled() && <Link href="/profil/lore/cimetiere" className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Cimetière des jeux du serveur</Link>}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {achievements.map((item) => (
           <li key={item.id}>

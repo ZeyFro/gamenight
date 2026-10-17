@@ -38,6 +38,7 @@ enum UserRole {
 }
 
 model User {
+  gameEpitaphs CommunityGameEpitaph[]
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
   communityBirthdays CommunityDate[] @relation("CommunityDateMember")
@@ -336,6 +337,7 @@ enum GameSource {
 }
 
 model Game {
+  epitaphs CommunityGameEpitaph[]
   // Relevé de préparation déclaré, indépendant des prix Steam consultés.
   preparationCost       String? @db.VarChar(10)
   preparationPrice      String? @db.VarChar(120)
@@ -2599,6 +2601,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  gameEpitaphs CommunityGameEpitaph[]
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
   sessionRatings SessionRating[]
@@ -2649,6 +2652,22 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+model CommunityGameEpitaph {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  gameId String
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  epitaph String @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([communityId, gameId])
+  @@index([communityId, createdAt])
 }
 
 // Une proposition de créneau ne crée jamais une Session ni un rappel.
