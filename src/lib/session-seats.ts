@@ -3,7 +3,7 @@ import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-cl
 import { getIsolationScope, communityMemberUserWhere } from "@/lib/community-isolation";
 import { accessibleSessionWhere } from "@/lib/session-access";
 import { lockCreationMembers } from "@/lib/creation-intent";
-import { enqueueSessionAnnounceUpdate, enqueueSessionPromotionDm } from "@/lib/session-announce";
+import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
 import { wallClockNow } from "@/lib/wallclock";
 import { planSessionSeats, type SeatStatus } from "@/lib/session-seat-plan";
 
@@ -118,7 +118,6 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
       await scopedDb.sessionSeat.update({ where: { id: row.id }, data: { status } });
       if (status === "CONFIRMED") {
         await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
-        if (row.status === "WAITLIST" && session.announceViaBot) await enqueueSessionPromotionDm(sessionId, row.userId, session.createdViaRoulette, scopedDb);
       }
     }
     if (changed && session.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, scopedDb);
