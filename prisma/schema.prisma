@@ -267,6 +267,7 @@ model User {
   createdInstantSessions   InstantSession[]                  @relation("InstantSessionCreatedBy")
   instantSessionPresence   InstantSessionPresenceInterval[]
   publishedFreeGameOffers FreeGameOffer[]
+  createdPlayerClassifieds PlayerClassified[]
 
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts Debt[]
@@ -420,6 +421,7 @@ model Game {
 
   // V2 ("Jouer maintenant") — voir `InstantSession`.
   instantSessions InstantSession[]
+  playerClassifieds PlayerClassified[]
 
   // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
   // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
@@ -2691,6 +2693,7 @@ model Community {
   guideContacts String? @db.Text
   freeGamesEnabled Boolean @default(false)
   groupPurchasePlansEnabled Boolean @default(false)
+  playerClassifiedsEnabled Boolean @default(false)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
@@ -2725,6 +2728,7 @@ model Community {
   roulettes Roulette[]
   instantSessions InstantSession[]
   freeGameOffers FreeGameOffer[]
+  playerClassifieds PlayerClassified[]
   weeklyChallenges WeeklyChallenge[]
   monthlyRecaps MonthlyRecap[]
   seasons Season[]
@@ -2749,6 +2753,23 @@ model FreeGameOffer {
   createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([communityId, startsAt, endsAt])
+  @@index([createdById, communityId])
+}
+
+model PlayerClassified {
+  id          String   @id @default(cuid())
+  communityId String
+  gameId      String
+  createdById String
+  message     String   @db.VarChar(240)
+  createdAt   DateTime
+  expiresAt   DateTime
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId, expiresAt])
   @@index([createdById, communityId])
 }
 

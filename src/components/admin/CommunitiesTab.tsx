@@ -4,7 +4,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
@@ -38,6 +38,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "attendance-ok": { ok: true, text: "Réglages de présence enregistrés." },
   "attendance-invalid": { ok: false, text: "Montants invalides : entre 0 et 20 XP." },
   "attendance-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
+  "classifieds-ok": { ok: true, text: "Réglage des petites annonces enregistré." },
+  "classifieds-invalid": { ok: false, text: "Demande invalide." },
+  "classifieds-unavailable": { ok: false, text: "Seule une communauté active peut activer les annonces." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "purchase-plan-ok": { ok: true, text: "Plans d'achat collectif mis à jour." },
@@ -156,6 +159,20 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
             </label>
           </div>
           <Button type="submit" size="sm" className="self-start">Enregistrer les réglages XP</Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunityPlayerClassifiedsAction} className="flex items-center justify-between gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <input type="hidden" name="enabled" value={String(!c.playerClassifiedsEnabled)} />
+          <p className="text-sm text-muted">
+            Petites annonces de joueurs : {c.playerClassifiedsEnabled ? "activées" : "désactivées"}.
+            Les annonces expirent après 24 h.
+          </p>
+          <Button type="submit" size="sm">
+            {c.playerClassifiedsEnabled ? "Désactiver" : "Activer"}
+          </Button>
         </form>
       )}
 

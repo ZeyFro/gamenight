@@ -93,7 +93,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-08 | Soldes Steam, Game Awards, gratuits de la semaine | ✅ Livré | Aucune | code | Fait (#260, fusionnée) |
 | L7-09 | Halloween, Noël, marathon d'été | ✅ Livré | Aucune | code | Fait (#261, fusionnée) |
 | L7-10 | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
-| L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 « Jouer maintenant » | Petites annonces explicites si ce format est voulu | produit | À TOI — format des petites annonces à confirmer |
+| L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Implémenté localement dans `feat/player-classifieds-l7-11`, en attente des validations et de publication |
 | L7-12 | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
 | L7-13 | PWA hors ligne | ✅ Livré | Aucune | code | Fait (#265, fusionnée) |
 | L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |

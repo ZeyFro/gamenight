@@ -90,6 +90,17 @@ export async function setCommunityAttendanceXp(input: {
   return result.count ? "saved" as const : "unavailable" as const;
 }
 
+export async function setCommunityPlayerClassifieds(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") {
+    return "invalid" as const;
+  }
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: "ACTIVE" },
+    data: { playerClassifiedsEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
 /** Identifiant Discord (snowflake) : chiffres seuls, jamais d'espace. */
 function isSnowflake(value: string): boolean {
   return /^\d{17,20}$/.test(value);
@@ -172,6 +183,7 @@ export interface AdminCommunityRow {
   attendanceXpEnabled: boolean;
   attendanceBonusXp: number;
   absencePenaltyXp: number;
+  playerClassifiedsEnabled: boolean;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -215,6 +227,7 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         attendanceXpEnabled: c.attendanceXpEnabled,
         attendanceBonusXp: c.attendanceBonusXp,
         absencePenaltyXp: c.absencePenaltyXp,
+        playerClassifiedsEnabled: c.playerClassifiedsEnabled,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,

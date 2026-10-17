@@ -6,6 +6,11 @@
 - Périmètre sûr : curation manuelle d'offres réellement gratuites, lien officiel français, dates de début/fin, affichage in-app aux membres actifs de la communauté. Désactivé par défaut et configurable par admin. Pas de Discord, cron, collecte automatique ni service payant. Le rythme quotidien n'est donc pas automatisé/configurable par tâche; il nécessite une source officielle stable avant une suite.
 - Migration additive `20261017110000_free_game_offers`. Validations locales : `prisma validate`, génération Prisma, 64 tests unitaires/scoping ciblés, ESLint ciblé, `tsc --noEmit`, `git diff --check` passés. Aucun test d'intégration/Postgres exécuté et migration non appliquée, pour laisser le run unique du parent sur le port 55439 intact. Commit local seulement jusqu'à intégration/publication coordonnée; relire le SHA de `origin/main` avant toute publication.
 
+## Reprise du 17 octobre — L7-11
+
+- Branche locale `feat/player-classifieds-l7-11`, issue de `origin/main` `e376459d8d37756282af773aa99552c83ff18f0e`. MVP des petites annonces : jeu + message de 240 caractères, membres actifs de la communauté, expiration logique après 24 h, suppression auteur/admin. Désactivé par défaut par communauté et configurable dans `/admin?tab=communautes` (garde existante `COMMUNITY_ADMIN_ENABLED`). Aucun message externe ni purge automatique.
+- Migration additive `20261017102000_player_classifieds`. 64 tests unitaires/statique ciblés, ESLint des fichiers touchés, `prisma validate`, génération Prisma et `tsc --noEmit` réussissent. Intégration/Postgres et application de migration non lancées : le run unique sur le Postgres dédié 55439 est utilisé par un autre worker. Les lignes expirées sont masquées mais non purgées automatiquement. Branche et commit restent locaux jusqu'à publication dans une PR utile ; reprendre avec `git worktree list`, vérifier `origin/main` et le SHA distant avant tout push.
+
 ## Mission globale — reprise continue sur le deuxième portable
 
 - État après la validation de #267 : fusionnée au commit `a53a0bc` le 16 octobre à 20:30:02 UTC, CI [38961360176](https://github.com/ZeyFro/gamenight/actions/runs/38961360176) et Vercel verts. L6-03 publié en Draft [#269](https://github.com/ZeyFro/gamenight/pull/269), SHA `ba94678` ; contrôles du SHA final requis avant fusion.
