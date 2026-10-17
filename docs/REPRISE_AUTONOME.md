@@ -84,10 +84,9 @@ Vérifications : 33 tests ciblés de porte réussis ; `scripts/roadmap-selfcheck
 
 ## Reprise globale — 17 octobre 2026
 
-- #267, #268, #233 et #270 sont fusionnées; #270 est au commit `e2ee7993e1eecd24e0e835967b4d99142583b47e`. #233 avait `verify`, Vercel et Preview Comments verts; ses auto-vérifications restent simulées.
-- #269 a corrigé le seul échec CI de `.env.example` (2 769 autres tests réussis); la valeur `TOURNAMENT_PREDICTIONS_ENABLED` est vide. L'intégration locale de `e2ee799` est prête, avec 80 tests unitaires/scoping et TypeScript verts; le lint passe. Push CAS puis nouveaux contrôles requis.
-- #271 Expressions, head `1d9890c`, conserve aussi le Musée après intégration de `e2ee799`. Les 72 tests unitaires/pages + 16 tests Postgres, TypeScript, lint et Prisma passent. `verify` et Vercel sont en cours; merge bloqué jusqu'aux contrôles verts.
-- #272 Cimetière a intégré localement `e2ee799`; Prisma, TypeScript, lint, 66 tests unitaires/scoping et 9 tests Postgres passent. Le fixture global `TRUNCATE ... CASCADE` a été remplacé par le nettoyage ciblé. Push CAS à faire. #273 Chroniques (SHA `9f22058`) reste basé sur `9b591e2` et doit intégrer le main courant.
-- L6-09 Sondages est implémenté dans `feat/community-quick-polls-next` au SHA `a843a4e6651630faaaa89b28e4a909d73c8cf18d`; 93 tests ciblés et 9 PostgreSQL verts, Prisma/typegen/TypeScript/lint verts. Pas encore de PR; build local et navigateur authentifié non testés.
-- L6-10 promotions et L6-12 jeux gratuits restent en attente de décisions produit; L6-11 achat groupé, L6-13 push (secret VAPID) et L5-02/L5-04 requièrent aussi des décisions/secret. Continuer les lots indépendants.
-- Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) reste dédié à cette reprise; aucun conteneur d'autres projets n'a été modifié. Tout quota Vercel rouge bloque la fusion sans relance manuelle répétée ni contournement.
+- #267, #268, #233, #270 et #271 sont fusionnées; #271 est au commit `a6b041b37608aed65600c054787e9b9f4bfce19f`. Les contrôles requis étaient verts avant fusion; les tests de boucle restent simulés.
+- #269 corrige l'échec CI prouvé dans `.env.example` : `TOURNAMENT_PREDICTIONS_ENABLED=false` violait `env-example-no-secrets.test.ts` (2 769 autres tests réussis). Valeur vidée; intégration du dernier `main` et contrôles locaux en cours.
+- #272 Cimetière intègre `a6b041b`; 95 tests unitaires/pages/scoping, 25 Postgres (Cimetière/Expressions/Musée), Prisma, TypeScript, lint et diff passent. Merge local prêt à pousser après comparaison du SHA distant.
+- #273 Chroniques et #274 Sondages restent à valider sur le `main` courant avant fusion. Les fixtures CI démontrées comme conflictuelles ont été namespacées; aucun contrôle requis ne sera contourné.
+- L6-10 alertes de prix et L6-12 jeux gratuits attendent des choix produit (seuil, audience, région, cadence et source/éligibilité). L6-11 achat groupé, L6-13 Web Push (clés VAPID à fournir) et L5-02/L5-04 demandent aussi décisions ou secrets.
+- Le Postgres `gamenight-reprise-268-pg` (`gamenight_test`, port 55439) est dédié à cette reprise; aucun conteneur d'un autre projet n'a été touché. Les contrôles Vercel restent requis; aucun déploiement manuel répété ni contournement.

@@ -20,6 +20,7 @@ import { join, relative, sep } from "node:path";
 
 const COLLECTIVE_MODELS = [
   "CommunityGameEpitaph",
+  "CommunityExpression",
   "CommunityHighlight",
   "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",

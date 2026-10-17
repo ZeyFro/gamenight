@@ -39,6 +39,7 @@ enum UserRole {
 
 model User {
   gameEpitaphs CommunityGameEpitaph[]
+  communityExpressions CommunityExpression[]
   communityHighlights CommunityHighlight[]
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
@@ -2603,6 +2604,7 @@ enum CommunityChannelCategory {
 
 model Community {
   gameEpitaphs CommunityGameEpitaph[]
+  expressions CommunityExpression[]
   highlights CommunityHighlight[]
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
@@ -2671,6 +2673,19 @@ model CommunityGameEpitaph {
   @@unique([communityId, gameId])
 }
 
+model CommunityExpression {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  meaning String @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([communityId, createdAt])
+}
+
 enum CommunityHighlightKind {
   FAME
   SHAME
@@ -2688,7 +2703,6 @@ model CommunityHighlight {
   updatedAt DateTime @updatedAt
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
-
   @@index([communityId, createdAt])
 }
 
