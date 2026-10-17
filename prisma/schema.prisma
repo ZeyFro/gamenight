@@ -38,6 +38,7 @@ enum UserRole {
 }
 
 model User {
+  communityHighlights CommunityHighlight[]
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
   communityBirthdays CommunityDate[] @relation("CommunityDateMember")
@@ -2599,6 +2600,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  highlights CommunityHighlight[]
   availabilityPolls SessionAvailabilityPoll[]
   dates CommunityDate[]
   sessionRatings SessionRating[]
@@ -2649,6 +2651,27 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+enum CommunityHighlightKind {
+  FAME
+  SHAME
+}
+
+model CommunityHighlight {
+  id String @id @default(cuid())
+  communityId String
+  createdById String
+  kind CommunityHighlightKind
+  title String @db.VarChar(120)
+  description String @db.VarChar(4000)
+  mediaUrl String? @db.VarChar(2048)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
 }
 
 // Une proposition de créneau ne crée jamais une Session ni un rappel.
