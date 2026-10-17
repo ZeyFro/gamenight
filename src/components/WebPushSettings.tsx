@@ -28,7 +28,7 @@ export function WebPushSettings({ publicKey }: { publicKey: string | null }) {
     setBusy(true);
     setMessage("");
     try {
-      const registration = await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.register("/service-worker.js");
       const current = await registration.pushManager.getSubscription();
       if (current) {
         const response = await fetch("/api/push/subscription", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ endpoint: current.endpoint }) });

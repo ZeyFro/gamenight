@@ -56,9 +56,9 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
 | L5-01 | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
-| L5-02 | Galerie de screenshots et clips | ❌ Pas de souvenirs par soirée | Upload, affichage, permissions, rétention (limites de taille/type à valider) | produit | À TOI — limites de taille et de type d’upload à décider |
+| L5-02 | Galerie de screenshots et clips | 🟡 Galerie photo privée | Images JPEG/PNG/GIF/WebP, 4 Mo, 8 par soirée, consentement, participants actifs; toggle admin OFF; clips et purge séparée différés | code | Implémentée localement; exige `SESSION_MEDIA_BLOB_TOKEN` d'un store privé, inaccessible à vérifier (Vercel 403); publication groupée à faire |
 | L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
-| L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (MVP local; validations à la PR) |
+| L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Implémenté localement; validations groupées passées, publication à faire |
 | L5-05 | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
 
 ## Lot 6 — Compléments communautaires
@@ -70,14 +70,14 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
 | L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
 | L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
-| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Validation finale | code | PR ouverte (#273) |
+| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Nouveaux contrôles après résolution locale | code | #273 en attente : quota Vercel 24 h; résolution locale prête, aucun nouveau déploiement |
 | L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Aucune | code | Fait (#272, fusionnée) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
-| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait localement, publication en attente des contrôles Vercel |
-| L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Fait localement, publication en attente des contrôles Vercel |
+| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Implémenté localement; validations groupées passées, publication à faire |
+| L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Implémenté localement; validations groupées passées, publication à faire |
 | L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | MVP manuel local; automatisation différée faute de flux public officiel stable |
-| L6-13 | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Code prêt localement, livraison désactivée et publication en attente des contrôles Vercel |
+| L6-13 | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Implémenté et testé localement; livraison OFF; Vercel env inaccessible (403), paire VAPID non vérifiée en privé |
 
 ## Lot 7 — Compléments (après le lot 6)
 
@@ -87,15 +87,15 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-02 | Roulette évitant les jeux récents | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
 | L7-03 | Heures par jeu et heures cumulées | ✅ Livré | Aucune | code | Fait (#255, fusionnée) |
 | L7-04 | Classements fun (heures, régularité) | ✅ Livré | Aucune | code | Fait (#256, fusionnée) |
-| L7-05 | Quiz Tryharder/Ambianceur/Stratège/Chaos | ✅ Livré | Aucune | code | Fait (#257, fusionnée) |
+| L7-05 | Quiz Tryharder/Ambianceur/Stratège/Chaos | ✅ Quiz court à quatre questions, profil dominant/mixte réutilisé par la roulette; édition manuelle conservée | Aucune | code | Amélioration implémentée localement; tests ciblés passés, publication groupée à faire |
 | L7-06 | Import Steam groupé | ✅ Livré | Aucune | code | Fait (#258, fusionnée) |
 | L7-07 | Sorties de jeux attendus | ✅ Livré | Aucune | code | Fait (#259, fusionnée) |
 | L7-08 | Soldes Steam, Game Awards, gratuits de la semaine | ✅ Livré | Aucune | code | Fait (#260, fusionnée) |
 | L7-09 | Halloween, Noël, marathon d'été | ✅ Livré | Aucune | code | Fait (#261, fusionnée) |
 | L7-10 | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
-| L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Implémenté localement dans `feat/player-classifieds-l7-11`, en attente des validations et de publication |
+| L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Implémenté localement; validations ciblées passées, publication groupée à faire |
 | L7-12 | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
-| L7-13 | PWA hors ligne | ✅ Livré | Aucune | code | Fait (#265, fusionnée) |
+| L7-13 | PWA hors ligne | 🟡 Fallback hors ligne | L'application et ses données ne sont pas disponibles sans réseau; ne pas mettre en cache de réponses privées sans décision de sécurité | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
 | L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
 | L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | Fait (#267, fusionnée) |

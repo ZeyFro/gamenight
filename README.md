@@ -5655,9 +5655,10 @@ standalone`, `theme_color` violet `#8b5cf6`, `background_color` sombre)
 `sharp`). Câblé dans `src/app/layout.tsx` via l'API `Metadata`/`Viewport`
 native de Next (`manifest`, `appleWebApp`, `icons.apple`, `viewport.themeColor`)
 plutôt que des balises `<link>`/`<meta>` posées à la main — Next les génère
-lui-même dans le `<head>` à partir de ces exports. Volontairement **aucun
-service worker** : pas de cache offline, pas de push, juste ce qu'il faut
-pour que le bouton "Ajouter à l'écran d'accueil" apparaisse.
+lui-même dans le `<head>` à partir de ces exports. Le service worker de #265
+met uniquement `/offline.html` en cache et l'affiche lors d'une navigation
+échouée; il ne rend pas l'application ni ses données utilisables hors ligne.
+Le worker `public/service-worker.js` est aussi partagé par Web Push.
 
 ### Pull-to-refresh mobile (U6)
 
@@ -5791,6 +5792,7 @@ committer ces valeurs. La clé privée reste uniquement dans l'environnement
 serveur; `.env.example` ne contient que des noms vides. En l'absence de ces
 valeurs, l'interface affiche que le service est désactivé et l'API refuse les
 nouveaux abonnements. Migration additive `web_push_subscriptions`.
+Le push et le fallback hors ligne utilisent le même worker `public/service-worker.js`.
 
 ### Fichiers modifiés/ajoutés
 
