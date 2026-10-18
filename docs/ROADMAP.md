@@ -6,7 +6,8 @@ Règles de travail des sessions manuelles : `docs/ROADMAP-claude-code.md` (non c
 ## Fonctionnement de la boucle
 
 - **Objectif** : finir toute la feuille de route, sans limite de durée. La boucle ne s’arrête que s’il n’y a plus d’élément `À faire` de nature `code`, ou après 2 échecs consécutifs (remis à zéro dès qu’un élément réussit).
-- **Statuts** : `À faire` · `PR ouverte` · `Fait` · `ÉCHEC — raison` · `À TOI — raison` (blocage humain : secret, service externe, décision produit, validation).
+- Livraison (colonne dédiée) : Livré et testé = code présent et couvert par les validations automatisées documentées ; Livré mais désactivé = activation ou configuration manquante ; Partiellement livré = périmètre incomplet ; Non implémenté = aucun parcours fonctionnel pour le périmètre restant.
+- Statut reste le suivi de la boucle et des PR : Fait signifie que le lot/PR décrit est fusionné, pas que toute la fonctionnalité est activée ou validée en production. La disponibilité réelle dépend des flags, des secrets et des essais authentifiés.
 - **Choix** : premier élément `À faire` de Nature `code`, lots 1 → 7, dans l’ordre des tableaux. Le statut du fichier fait foi.
 - **Pile de PR** : chaque élément part de la branche du dernier élément réussi (build, lint et tests verts) et sa PR Draft a cette branche pour base ; le premier part de `origin/main`. `/next-item` lit ce fichier **sur la pointe de la pile**, où les statuts s’accumulent. Un élément en échec n’est jamais une base : son statut `ÉCHEC` est écrit sur une branche de statut seul, partie de la pointe.
 - **Pas de plafond de PR** : il remplace l’arrêt par lot du brief `ROADMAP-claude-code.md` (qui reste valable pour les sessions manuelles et n’est pas modifié). La numérotation de ce fichier (lots 1→7) n’est pas celle du brief : ici ce fichier fait foi.
@@ -18,90 +19,90 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 ## Lot 1 — Fiabilité
 
-| ID | Élément | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|
-| L1-01 | Rappels après changement de date (✅ rappels 24 h / 2 h configurables) | Corriger les rappels après changement de date ; option 1 h | code | Fait (#229) |
-| L1-02 | Périmètre communautaire de la bibliothèque | Isoler jeux, possesseurs et compteurs par serveur | code | Fait (#228) |
+| ID | Livraison | Élément | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|
+| L1-01 | Partiellement livré | Rappels après changement de date (✅ rappels 24 h / 2 h configurables) | Corriger les rappels après changement de date ; option 1 h | code | Fait (#229) |
+| L1-02 | Partiellement livré | Périmètre communautaire de la bibliothèque | Isoler jeux, possesseurs et compteurs par serveur | code | Fait (#228) |
 
 ## Lot 2 — Organisation
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L2-01 | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
-| L2-02 | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L2-01 | Partiellement livré | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
+| L2-02 | Partiellement livré | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
 
 ## Lot 3 — Carnet et préparation
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L3-01 | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | Fait (#235) |
-| L3-02 | Manette/clavier, micro, plateformes disponibles | ❌ Aucun carnet structuré | Formulaire et affichage aux autres membres | code | Fait (#236) |
-| L3-03 | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
-| L3-04 | Avertissements : jumpscares, mal des transports, langue | ✅ Avertissements visibles avant participation | Aucune | code | Fait (#239 ; PR #238 fusionnée) |
-| L3-05 | Gratuit/payant et taille du téléchargement | 🟡 Prix Steam dans la wishlist | Infos de préparation fiables sur les fiches ; taille absente | code | Fait (#239) |
-| L3-06 | Checklist installé / mis à jour / micro / lobby | ✅ Checklist individuelle sur les soirées prévues | Aucune | code | Fait (#240) |
-| L3-07 | Temps de préparation | ✅ Durée estimée sur les fiches jeu | Aucune | code | Fait (#241) |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L3-01 | Partiellement livré | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | Fait (#235) |
+| L3-02 | Livré et testé | Manette/clavier, micro, plateformes disponibles | ✅ Carnet matériel, plateformes et micro sur le profil | Aucune | code | Fait (#236) |
+| L3-03 | Partiellement livré | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
+| L3-04 | Livré et testé | Avertissements : jumpscares, mal des transports, langue | ✅ Avertissements visibles avant participation | Aucune | code | Fait (#239 ; PR #238 fusionnée) |
+| L3-05 | Livré et testé | Gratuit/payant et taille du téléchargement | ✅ Coût, prix, volume, plateforme et source déclarés sur la fiche jeu | Saisie communautaire; pas de catalogue automatique ni de garantie de fraîcheur | code | Fait (#239) |
+| L3-06 | Livré mais désactivé | Checklist installé / mis à jour / micro / lobby | ✅ Checklist individuelle sur les soirées prévues | Aucune | code | Fait (#240) |
+| L3-07 | Livré mais désactivé | Temps de préparation | ✅ Durée estimée sur les fiches jeu | Aucune | code | Fait (#241) |
 
 ## Lot 4 — Calendrier pratique
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L4-01 | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
-| L4-02 | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
-| L4-03 | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
-| L4-04 | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L4-01 | Partiellement livré | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
+| L4-02 | Partiellement livré | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-03 | Livré et testé | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
+| L4-04 | Livré mais désactivé | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
 ## Lot 5 — Engagement
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L5-01 | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
-| L5-02 | Galerie de screenshots et clips | 🟡 Galerie photo privée | Images JPEG/PNG/GIF/WebP, 4 Mo, 8 par soirée, consentement, participants actifs; toggle admin OFF; clips et purge séparée différés | code | Fait (#276, fusionnée); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN` |
-| L5-03 | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
-| L5-04 | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (#276, fusionnée) |
-| L5-05 | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L5-01 | Livré et testé | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
+| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie photo privée | Images JPEG/PNG/GIF/WebP, 4 Mo, 8 par soirée, consentement, participants actifs; toggle admin OFF; clips et purge séparée différés | code | Fait (#276, fusionnée); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN` |
+| L5-03 | Livré et testé | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
+| L5-04 | Livré mais désactivé | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (#276, fusionnée) |
+| L5-05 | Livré et testé | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
 
 ## Lot 6 — Compléments communautaires
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L6-01 | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
-| L6-02 | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
-| L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
-| L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
-| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Aucune | code | Fait (#273, fusionnée dans `fd95637`; CI verte sur `fbaa830`) |
-| L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Aucune | code | Fait (#272, fusionnée) |
-| L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
-| L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
-| L6-10 | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (#276, fusionnée) |
-| L6-11 | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Fait (#276, fusionnée) |
-| L6-12 | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | Fait (#276, fusionnée) pour la curation manuelle; automatisation différée faute de flux public officiel stable |
-| L6-13 | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Implémenté et testé localement; livraison OFF; Vercel env inaccessible (403), paire VAPID non vérifiée en privé |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L6-01 | Livré et testé | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
+| L6-02 | Livré mais désactivé | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
+| L6-03 | Livré mais désactivé | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
+| L6-04 | Livré mais désactivé | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
+| L6-05 | Livré mais désactivé | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
+| L6-06 | Livré mais désactivé | Chronique de soirée | ✅ Archives éditoriales par soirée | Aucune | code | Fait (#273, fusionnée dans `fd95637`; CI verte sur `fbaa830`) |
+| L6-07 | Livré mais désactivé | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Aucune | code | Fait (#272, fusionnée) |
+| L6-08 | Livré et testé | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
+| L6-09 | Livré mais désactivé | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
+| L6-10 | Livré mais désactivé | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (#276, fusionnée) |
+| L6-11 | Partiellement livré | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Fait (#276, fusionnée) |
+| L6-12 | Partiellement livré | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | Fait (#276, fusionnée) pour la curation manuelle; automatisation différée faute de flux public officiel stable |
+| L6-13 | Livré mais désactivé | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Fait (#276, fusionnée); activation non vérifiée (403), paire VAPID non vérifiée |
 
 ## Lot 7 — Compléments (après le lot 6)
 
-| ID | Élément | État actuel | Ce qui reste | Nature | Statut |
-|---|---|---|---|---|---|
-| L7-01 | Roulette favorisant la tierlist | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
-| L7-02 | Roulette évitant les jeux récents | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
-| L7-03 | Heures par jeu et heures cumulées | ✅ Livré | Aucune | code | Fait (#255, fusionnée) |
-| L7-04 | Classements fun (heures, régularité) | ✅ Livré | Aucune | code | Fait (#256, fusionnée) |
-| L7-05 | Quiz Tryharder/Ambianceur/Stratège/Chaos | ✅ Quiz court à quatre questions, profil dominant/mixte réutilisé par la roulette; édition manuelle conservée | Aucune | code | Fait (#276, fusionnée) |
-| L7-06 | Import Steam groupé | ✅ Livré | Aucune | code | Fait (#258, fusionnée) |
-| L7-07 | Sorties de jeux attendus | ✅ Livré | Aucune | code | Fait (#259, fusionnée) |
-| L7-08 | Soldes Steam, Game Awards, gratuits de la semaine | ✅ Livré | Aucune | code | Fait (#260, fusionnée) |
-| L7-09 | Halloween, Noël, marathon d'été | ✅ Livré | Aucune | code | Fait (#261, fusionnée) |
-| L7-10 | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
-| L7-11 | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Fait (#276, fusionnée) |
-| L7-12 | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
-| L7-13 | PWA hors ligne | 🟡 Fallback hors ligne | L'application et ses données ne sont pas disponibles sans réseau; ne pas mettre en cache de réponses privées sans décision de sécurité | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
-| L7-14 | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
-| L7-15 | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
-| L7-16 | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | Fait (#267, fusionnée) |
-| L7-17 | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
+| ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
+|---|---|---|---|---|---|---|
+| L7-01 | Livré et testé | Roulette favorisant la tierlist | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
+| L7-02 | Livré et testé | Roulette évitant les jeux récents | ✅ Livré | Aucune | code | Fait (#254, fusionnée) |
+| L7-03 | Livré et testé | Heures par jeu et heures cumulées | ✅ Livré | Aucune | code | Fait (#255, fusionnée) |
+| L7-04 | Livré et testé | Classements fun (heures, régularité) | ✅ Livré | Aucune | code | Fait (#256, fusionnée) |
+| L7-05 | Livré et testé | Quiz Tryharder/Ambianceur/Stratège/Chaos | ✅ Quiz court à quatre questions, profil dominant/mixte réutilisé par la roulette; édition manuelle conservée | Aucune | code | Fait (#276, fusionnée) |
+| L7-06 | Livré et testé | Import Steam groupé | ✅ Livré | Aucune | code | Fait (#258, fusionnée) |
+| L7-07 | Livré et testé | Sorties de jeux attendus | ✅ Livré | Aucune | code | Fait (#259, fusionnée) |
+| L7-08 | Livré et testé | Soldes Steam, Game Awards, gratuits de la semaine | ✅ Livré | Aucune | code | Fait (#260, fusionnée) |
+| L7-09 | Livré et testé | Halloween, Noël, marathon d'été | ✅ Livré | Aucune | code | Fait (#261, fusionnée) |
+| L7-10 | Livré et testé | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
+| L7-11 | Partiellement livré | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Fait (#276, fusionnée) |
+| L7-12 | Livré et testé | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
+| L7-13 | Partiellement livré | PWA hors ligne | 🟡 Fallback hors ligne | L'application et ses données ne sont pas disponibles sans réseau; ne pas mettre en cache de réponses privées sans décision de sécurité | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
+| L7-14 | Livré et testé | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
+| L7-15 | Livré et testé | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
+| L7-16 | Partiellement livré | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | Fait (#267, fusionnée) |
+| L7-17 | Partiellement livré | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
 
-## Fait ou à valider en réel (ignorés par la boucle)
+## Parcours livrés à valider en réel (ignorés par la boucle)
 
 Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, filtre joueurs, relance sans doublon (#227) · Historique des soirées · Jeux les plus joués et stats du groupe (compléter les indicateurs : validation) · Wrapped mensuel (le Wrapped annuel serait un ajout distinct) · Vote MVP · Saisons et reset (vérifier en réel) · Bracket visuel · Saisie des scores (`TOURNAMENT_SCORES_ENABLED`, vérifier l'activation) · Annonces de tournoi · Popup/MP Steam et planning · Rappels (voir L1-01).
 
