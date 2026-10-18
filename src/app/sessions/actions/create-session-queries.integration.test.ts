@@ -30,6 +30,7 @@ if (!TEST_DATABASE_URL) {
 const MAX_QUERIES_BOT = 33;
 const MAX_QUERIES_WEBHOOK = 32;
 const MAX_QUERIES_ISOLATION = 38;
+const QUERY_EVENT_BOUNDARY = "/* create-session-query-boundary */";
 
 describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (intégration Postgres)", () => {
   let db: import("@prisma/client").PrismaClient;
@@ -104,16 +105,21 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
   }
 
   async function measure(label: string, guestIds: string[]): Promise<number> {
-    // Écarte les événements Prisma tardifs des fixtures avant de remettre le compteur à zéro.
+    // Attend un marqueur Prisma après les fixtures pour vider les événements de requête déjà terminés.
+    await db.$queryRawUnsafe(`SELECT 1 ${QUERY_EVENT_BOUNDARY}`);
     await new Promise<void>((resolve) => setImmediate(resolve));
     queries.length = 0;
     await expect(createSession(form(guestIds))).rejects.toThrow(/^REDIRECT:\/sessions\/(?!\?)/);
-    const total = queries.length;
-    const tx = queries.filter((q) => q === "BEGIN" || q === "COMMIT" || q === "ROLLBACK").length;
+    // La même barrière garantit que les événements du parcours sont émis avant le compte final.
+    await db.$queryRawUnsafe(`SELECT 1 ${QUERY_EVENT_BOUNDARY}`);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const measuredQueries = queries.filter((q) => !q.includes(QUERY_EVENT_BOUNDARY));
+    const total = measuredQueries.length;
+    const tx = measuredQueries.filter((q) => q === "BEGIN" || q === "COMMIT" || q === "ROLLBACK").length;
     counts.set(label, total);
-    statements.set(label, [...queries]);
+    statements.set(label, measuredQueries);
     console.log(`[create-session-queries] ${label} requêtes=${total} (dont BEGIN/COMMIT/ROLLBACK=${tx})`);
-    if (process.env.CREATE_SESSION_QUERIES_VERBOSE === "true") console.log(queries.join("\n"));
+    if (process.env.CREATE_SESSION_QUERIES_VERBOSE === "true") console.log(measuredQueries.join("\n"));
     return total;
   }
 
