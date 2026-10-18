@@ -24,6 +24,7 @@ describe("RankAvatar tooltip layout", () => {
 
   it("shifts an opened tooltip left when its right edge would leave the viewport", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: 373 });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       if (this.getAttribute("role") === "tooltip") {
         return { x: 199, y: 0, left: 199, top: 0, right: 416, bottom: 30, width: 217, height: 30, toJSON: () => ({}) };
@@ -34,8 +35,10 @@ describe("RankAvatar tooltip layout", () => {
     const { getByRole } = render(<RankAvatar src={null} alt="Player" level={4} rank={rankForLevel(4)} />);
     const tooltip = getByRole("tooltip", { hidden: true });
 
+    expect(tooltip.className.split(" ")).toContain("w-max");
+
     fireEvent.click(getByRole("button"));
 
-    expect(tooltip.style.left).toBe("calc(50% - 34px)");
+    expect(tooltip.style.left).toBe("calc(50% - 51px)");
   });
 });
