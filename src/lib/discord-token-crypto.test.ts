@@ -102,7 +102,8 @@ describe("decryptToken — rejets", () => {
   it("rejette un ciphertext modifié", () => {
     const envelope = encryptToken("mon-jeton", KEY);
     const [prefix, version, iv, tag, ciphertext] = envelope.split(":");
-    const tampered = [prefix, version, iv, tag, ciphertext.slice(0, -2) + "AA"].join(":");
+    const tamperedCiphertext = `${ciphertext[0] === "A" ? "B" : "A"}${ciphertext.slice(1)}`;
+    const tampered = [prefix, version, iv, tag, tamperedCiphertext].join(":");
     expect(decryptToken(tampered, KEY)).toEqual({ status: "invalid", reason: "auth-tag-mismatch" });
   });
 
