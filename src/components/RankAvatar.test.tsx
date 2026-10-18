@@ -34,6 +34,8 @@ describe("RankAvatar tooltip layout", () => {
     const { getByRole } = render(<RankAvatar src={null} alt="Player" level={4} rank={rankForLevel(4)} />);
     const tooltip = getByRole("tooltip", { hidden: true });
 
+    expect(tooltip.className.split(" ")).toContain("w-max");
+
     fireEvent.click(getByRole("button"));
 
     expect(tooltip.style.left).toBe("calc(50% - 34px)");

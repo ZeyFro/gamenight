@@ -104,7 +104,7 @@ export function RankAvatar({
           role="tooltip"
           aria-hidden={!tooltipOpen}
           style={{ left: `calc(50% + ${tooltipOffset}px)` }}
-          className={`pointer-events-none absolute top-full z-20 mt-2 -translate-x-1/2 max-w-[calc(100vw-1rem)] whitespace-normal rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 ${tooltipOpen ? "block opacity-100" : "hidden opacity-0 group-hover/rank:block group-focus-visible/rank:block group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100"}`}
+          className={`pointer-events-none absolute top-full z-20 mt-2 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 whitespace-normal rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 ${tooltipOpen ? "block opacity-100" : "hidden opacity-0 group-hover/rank:block group-focus-visible/rank:block group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100"}`}
         >
           Rang : {rank.name} — accédé au niveau {rank.minLevel}
         </span>
