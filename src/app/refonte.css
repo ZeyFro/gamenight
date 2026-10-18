@@ -63,6 +63,7 @@ h1,h2,h3,.gn-sidebar-brand { font-family:var(--font-display),var(--font-sans),sa
 .gn-home-sections { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
 .gn-home-sections>div { min-width:0; }
 .gn-home-overview,.gn-home-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; grid-column:1/-1; align-items:start; }
+.gn-home-overview>div,.gn-home-pair>div { min-width:0; }
 .gn-home-overview { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); }
 .gn-home-play-column { display:flex; flex-direction:column; gap:16px; }
 .gn-home-play-column>a:first-child { display:block; }

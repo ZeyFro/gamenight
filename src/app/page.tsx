@@ -21,7 +21,7 @@ import { setDebtGageAction, markDebtPaidAction } from "@/app/dettes/actions";
 import { getMonthlyRecap } from "@/lib/monthly-recap";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { ensureActiveSeasonExistsForViewer, getSeasonProgress } from "@/lib/seasons";
-import { getActiveTournament } from "@/lib/tournaments";
+import { getActiveTournament, getActiveTournamentStatusLabel } from "@/lib/tournaments";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -558,15 +558,14 @@ async function HomeContent({
           </StaggerItem>
         )}
 
-        {/* Sprint 5 (Tournois Bracket) — tournoi actif (inscriptions
-            ouvertes OU en cours), masquée s'il n'y en a aucun. */}
+        {/* Sprint 5 (Tournois Bracket) — tournoi actif, masqué s'il n'y en a aucun. */}
         {activeTournament && (
           <StaggerItem>
             <Link href={`/tournois/${activeTournament.id}`}>
               <Card className="card-glow flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">
-                    🏆 Tournoi en cours : {activeTournament.name}
+                    🏆 {getActiveTournamentStatusLabel(activeTournament.status)} : {activeTournament.name}
                   </p>
                   <p className="truncate text-xs text-muted">{activeTournament.gameName}</p>
                 </div>
