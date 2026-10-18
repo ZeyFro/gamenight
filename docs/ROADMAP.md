@@ -70,7 +70,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-03 | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
 | L6-04 | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
 | L6-05 | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
-| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Nouveaux contrôles après résolution locale | code | #273 en attente : quota Vercel 24 h; résolution locale prête, aucun nouveau déploiement |
+| L6-06 | Chronique de soirée | ✅ Archives éditoriales par soirée | Contrôles du nouveau SHA après réintégration de main | code | PR ouverte #273 : branche publiée récupérée, `origin/main` `8c1525f` intégré; validation locale complète verte |
 | L6-07 | Cimetière des jeux avec épitaphe | ✅ Épitaphes de jeux par serveur | Aucune | code | Fait (#272, fusionnée) |
 | L6-08 | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
@@ -111,5 +111,5 @@ Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, fi
 
 | Lot | Ordre | ID | Branche | PR | Résultat |
 |---|---|---|---|---|---|
-| — | — | — | (pile vide) | — | — |
+| 6 | 1 | L6-06 | `feat/session-chronicles-next` | #273 | `origin/main` `8c1525f` intégré; suite Postgres 2 972/2 972, typecheck, lint et build verts; consulter la PR pour le contrôle CI du SHA courant |
 
