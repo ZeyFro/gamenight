@@ -5,7 +5,18 @@ import {
   computeMatchLoser,
   computeNextSlot,
   isTournamentVisibleInHistory,
+  getActiveTournamentStatusLabel,
 } from "@/lib/tournaments";
+
+describe("getActiveTournamentStatusLabel", () => {
+  it("announces open registration instead of calling it in progress", () => {
+    expect(getActiveTournamentStatusLabel("REGISTRATION")).toBe("Inscriptions ouvertes");
+  });
+
+  it("labels a bracket that has started as in progress", () => {
+    expect(getActiveTournamentStatusLabel("IN_PROGRESS")).toBe("Tournoi en cours");
+  });
+});
 
 describe("bracketSizeFor (Sprint 5, Tournois Bracket)", () => {
   it("retourne maxPlayers tel quel quand c'est déjà une puissance de 2", () => {

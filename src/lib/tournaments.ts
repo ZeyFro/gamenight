@@ -335,15 +335,20 @@ export async function generateBracket(tournamentId: string): Promise<void> {
   await prisma.$transaction((tx) => buildBracketInTransaction(tx, tournamentId));
 }
 
-/** Home ("🏆 Tournoi en cours", cf. spec) — le tournoi actif le plus récent, tous statuts hors `DONE`. */
-export async function getActiveTournament(viewerId: string): Promise<{ id: string; name: string; gameName: string } | null> {
+export function getActiveTournamentStatusLabel(status: "REGISTRATION" | "IN_PROGRESS"): string {
+  return status === "REGISTRATION" ? "Inscriptions ouvertes" : "Tournoi en cours";
+}
+
+/** Home — le tournoi actif le plus récent, tous statuts hors `DONE`. */
+export async function getActiveTournament(viewerId: string): Promise<{ id: string; name: string; gameName: string; status: "REGISTRATION" | "IN_PROGRESS" } | null> {
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const tournament = await scopedDb.tournament.findFirst({
     where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, game: { select: { name: true } } },
+    select: { id: true, name: true, status: true, game: { select: { name: true } } },
   });
-  return tournament ? { id: tournament.id, name: tournament.name, gameName: tournament.game.name } : null;
+  if (!tournament || (tournament.status !== "REGISTRATION" && tournament.status !== "IN_PROGRESS")) return null;
+  return { id: tournament.id, name: tournament.name, gameName: tournament.game.name, status: tournament.status };
 }
 
 export interface DeclareWinnerResult {

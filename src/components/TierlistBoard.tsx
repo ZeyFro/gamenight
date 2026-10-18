@@ -34,19 +34,27 @@ function GameCover({
   size?: number;
   className?: string;
 }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
   return (
     <div
       style={{ width: size, height: size }}
       title={game.name}
       className={`relative shrink-0 overflow-hidden rounded-lg border border-border bg-background ${className}`}
     >
-      {game.coverUrl ? (
+      {game.coverUrl && failedUrl !== game.coverUrl ? (
         <Image
           src={game.coverUrl}
           alt={game.name}
           fill
           sizes={`${size}px`}
           className="object-cover"
+          ref={(img) => {
+            if (img && img.complete && img.naturalWidth === 0 && img.naturalHeight === 0) {
+              setFailedUrl(game.coverUrl);
+            }
+          }}
+          onError={() => setFailedUrl(game.coverUrl)}
         />
       ) : (
         <span className="flex h-full items-center justify-center p-1 text-center text-[9px] leading-tight text-muted">
