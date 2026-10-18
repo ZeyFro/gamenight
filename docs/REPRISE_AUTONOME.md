@@ -1,16 +1,24 @@
-# État de reprise — 18 octobre 2026
+# État de reprise — 18 octobre 2026, 17:55 UTC
 
-## Point de contrôle à reprendre en premier
+## État actuel
 
-- Le checkout racine était propre sur `feat/prix-telechargement-jeux` (34 commits derrière `origin/main`); aucun changement local récupérable du portable précédent. Base mise à jour et revalidée avant publication : `origin/main` `8c1525f31928a55bf85ff772bd2cf900a5fef6fd`. Le travail continue dans les worktrees gérés, depuis les branches publiées.
-- #273 est toujours l'unique PR ouverte. Sa branche publiée `feat/session-chronicles-next` (`58ea42e`) contient la fonctionnalité du portable; elle a été réintégrée localement à `origin/main`. La différence restante est limitée aux chroniques et à deux corrections de fixtures d'intégration révélées par la suite complète. Attendre les contrôles du SHA poussé avant fusion.
-- Préparation locale : `npm ci` réussi. Le conteneur Postgres 16 `gamenight-test-pg` utilise seulement `127.0.0.1:55439`; les 107 migrations sont appliquées à `gamenight_test` dans ce conteneur. Recréer/valider selon `CLAUDE.md`; `TEST_DATABASE_URL` doit viser cette adresse. Ne jamais utiliser Neon pour les tests.
-- Contrôles locaux sur la réintégration : `npm run test:postgres` 2 972/2 972 réussis (une suite, environ 15 minutes), `npm test` 1 923 réussis et 1 046 ignorés faute de `TEST_DATABASE_URL`, `prisma validate`, `next typegen`, `tsc --noEmit`, `npm run lint`, `npx next build` et `git diff --check` réussis.
-- L'ancien head de #273 avait `verify` vert et un échec de déploiement Vercel par quota journalier (24 h). L'accès aux détails du projet Vercel répond 403; ne pas lire les valeurs d'environnement ni relancer manuellement le déploiement. Vérifier les contrôles publiés sur le nouveau SHA avant fusion. Neon `gamenight` est joignable en lecture de métadonnées; seule sa branche production a été consultée, aucune valeur ni donnée n'a été lue.
-- Web Push reste désactivé tant que les clés VAPID ne sont pas configurées. Le Blob privé des photos de soirée reste fermé sans `SESSION_MEDIA_BLOB_TOKEN`. La PWA ne cache que `/offline.html`; l'application et ses données privées ne sont pas disponibles hors ligne.
-- Continuer les éléments `code` de `docs/ROADMAP.md` dans l'ordre, sans traiter les lignes `À TOI` qui demandent une décision ou un secret. Vérifier le SHA distant avant chaque push et les contrôles du dernier SHA avant chaque fusion; push normal uniquement.
+- `origin/main` : `fd95637f03a8bf4a347fd87b5d771816a309a0c1`. #276 est déjà incluse dans `8c1525f`; #273 vient de fusionner dans `fd95637`. La recherche GitHub ne retourne aucune PR ouverte.
+- Le portable précédent n'a laissé aucun changement récupérable. Le checkout racine reste propre sur `feat/prix-telechargement-jeux`, 34 commits derrière `main`. La reprise a utilisé le worktree géré `C:\Users\Mousiouf\.codex\worktrees\a33e\gamenight`; il est maintenant sur une branche documentaire issue de `fd95637`.
+- Dépendances installées avec `npm ci`. PostgreSQL 16 local `gamenight-test-pg` est actif sur `127.0.0.1:55439`, base `gamenight_test`, 107 migrations appliquées. Docker l'expose uniquement sur loopback; consommation observée après les tests : 124 MiB. Pour les tests Postgres, `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test`. N'exécuter qu'une suite Postgres à la fois et ne jamais viser Neon.
+- Contrôles locaux de #273 au SHA publié `fbaa830`: suite Postgres 2 972/2 972; `npm test` 1 923 réussis et 1 046 ignorés sans `TEST_DATABASE_URL`; Prisma validate, Next typegen, TypeScript, lint, build et `git diff --check` réussis. CI complète GitHub verte sur ce même SHA : migration de service, suites Postgres et unitaires, typecheck, lint et build.
+- Preview Vercel du SHA #273 : Ready. L'API d'administration du projet Vercel répond 403; aucune variable ou donnée secrète n'a été lue. Les métadonnées du projet Neon `gamenight` ont été consultées; aucune donnée ni valeur de connexion n'a été lue et aucune migration n'a été appliquée sur Neon.
+- `npm ci` a signalé 9 vulnérabilités élevées préexistantes; aucun audit correctif automatique n'a été appliqué.
+- La PR #273 a corrigé deux fixtures révélées par la suite complète : noms de communauté isolés dans le test des highlights et assertions de notifications comparées à leur état initial dans la préparation de soirée. Le timeout d'un backfill reproduit seul passe; aucune modification de code n'y a été apportée.
 
-## Historique de reprise
+## Reprise suivante
+
+- Lire `CLAUDE.md`, `.claude/commands/next-item.md` et `docs/ROADMAP.md`. La feuille de route ne comporte actuellement aucune ligne `À faire` de nature `code`; les décisions humaines et validations réelles restent signalées par `À TOI`/`validation`. Ne pas démarrer une tâche en se basant sur les lignes de l'archive ci-dessous.
+- La paire VAPID et le jeton Blob privé ne sont pas configurés/vérifiables par cette session; Push et téléversement galerie restent fermés sans leurs secrets. La PWA n'a que le fallback `/offline.html`; elle n'est pas utilisable hors ligne. Ne pas faire d'essai Discord réel sans validation humaine.
+- Avant chaque push, vérifier le SHA distant; push normal seulement. Avant une fusion, vérifier les contrôles requis verts sur la tête exacte, relire le SHA et utiliser la fusion conditionnée à la tête. Garder les suites Postgres locales strictement en série.
+
+## Historique archivé — ne pas utiliser comme état courant
+
+Les notes suivantes documentent des sessions et branches antérieures. Leurs SHA, worktrees, PR ouvertes et résultats « en cours » sont historiques et ne décrivent pas le poste actuel.
 
 ## L6-12 — état local du 17 octobre
 
