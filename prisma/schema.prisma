@@ -37,7 +37,15 @@ enum UserRole {
   ADMIN
 }
 
+enum FreeGameStore {
+  STEAM
+  EPIC
+}
+
 model User {
+  sessionGalleryMedia SessionGalleryMedia[]
+  quickPollsCreated CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
   communityExpressions CommunityExpression[]
   communityHighlights CommunityHighlight[]
@@ -185,6 +193,7 @@ model User {
   createdSessions       Session[]
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
+  sessionAttendances    SessionAttendance[]
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
@@ -241,6 +250,7 @@ model User {
 
   // Sprint 2 PR-C — historique des notifications in-app (voir `Notification`).
   notifications Notification[]
+  webPushSubscriptions WebPushSubscription[]
 
   // Préférences de sollicitations personnelles par catégorie. Une ligne
   // explicite prime sur `silenceReminders`; l'ancien booléen reste présent
@@ -257,6 +267,8 @@ model User {
   // V2 ("Jouer maintenant") — voir `InstantSession`/`InstantSessionPresenceInterval`.
   createdInstantSessions   InstantSession[]                  @relation("InstantSessionCreatedBy")
   instantSessionPresence   InstantSessionPresenceInterval[]
+  publishedFreeGameOffers FreeGameOffer[]
+  createdPlayerClassifieds PlayerClassified[]
 
   // Sprint 3 (dettes/gage) — voir `Debt`.
   debts Debt[]
@@ -410,6 +422,7 @@ model Game {
 
   // V2 ("Jouer maintenant") — voir `InstantSession`.
   instantSessions InstantSession[]
+  playerClassifieds PlayerClassified[]
 
   // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
   // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
@@ -533,6 +546,7 @@ enum SessionStatus {
 // de la session ferme le vote (comportement historique).
 model Session {
   chronicle String? @db.Text
+  galleryMedia SessionGalleryMedia[]
   availabilityPoll SessionAvailabilityPoll?
   id             String        @id @default(cuid())
   date           DateTime
@@ -649,6 +663,7 @@ model Session {
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
   proposals         Proposal[]
   results           SessionResult[]
+  attendance        SessionAttendance[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -975,6 +990,8 @@ enum XpReason {
   AVAILABILITY_FIRST
   STEAM_LINK_FIRST
   SESSION_RESULT
+  SESSION_ATTENDANCE
+  SESSION_ABSENCE
   SUPERLATIVE_AWARD
   BADGE_UNLOCKED
   // Sprint 3 (défis hebdo) — voir `WeeklyChallenge`/`src/lib/weekly-challenges.ts`.
@@ -1049,6 +1066,22 @@ model SessionResult {
   // Sert `revanche.ts` (compte les résultats d'un user pour un jeu donné,
   // indépendamment de l'existence de la soirée).
   @@index([userId, gameId])
+}
+
+model SessionAttendance {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  communityId String
+  userId      String
+  present     Boolean
+  createdAt   DateTime @default(now())
+
+  session   Session?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([communityId, userId, present])
 }
 
 model SessionRating {
@@ -1463,6 +1496,7 @@ enum NotificationType {
   // éditée après coup — aucun mécanisme d'édition n'existe pour
   // `Notification` nulle part ailleurs dans cette app).
   INSTANT_SESSION_INVITE
+  WISHLIST_PRICE_DROP
 }
 
 model Notification {
@@ -1490,6 +1524,20 @@ model Notification {
 
   @@index([userId, read])
   @@index([userId, createdAt])
+}
+
+model WebPushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.Text
+  auth      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Sprint 3 (FEATURE 6) — tags libres que chaque pote s'attribue lui-même
@@ -2073,6 +2121,7 @@ model Tournament {
   champion     User?                   @relation("TournamentChampion", fields: [championId], references: [id])
   participants TournamentParticipant[]
   matches      TournamentMatch[]
+  predictions  TournamentPrediction[]
 
   // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
   // — même contrat que `Session.announceViaBot` (voir son commentaire pour
@@ -2142,6 +2191,21 @@ model Tournament {
 // `eliminatedAt` : posé dès la perte du premier match, purement informatif
 // pour l'affichage ("éliminé") — la position réelle dans le bracket vit
 // sur `TournamentMatch`, pas ici.
+model TournamentPrediction {
+  id String @id @default(cuid())
+  communityId String
+  tournamentId String
+  voterId String
+  predictedUserId String
+  // "champion" ou identifiant de match ; une seule cible immuable par voteur.
+  target String
+  createdAt DateTime @default(now())
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, target, voterId])
+  @@index([communityId])
+}
+
 model TournamentParticipant {
   id           String    @id @default(cuid())
   tournamentId String
@@ -2250,6 +2314,10 @@ model GameWishlist {
   createdAt     DateTime  @default(now())
   purchasedById String?
   purchasedAt   DateTime?
+  priceAlertCheckedAt DateTime?
+  priceAlertNotifiedAt DateTime?
+  groupPurchaseTargetDate DateTime?
+  groupPurchaseNote String? @db.VarChar(300)
 
   game        Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
   proposedBy  User               @relation("WishlistProposedBy", fields: [proposedById], references: [id])
@@ -2604,6 +2672,8 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  quickPolls CommunityQuickPoll[]
+  quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
   expressions CommunityExpression[]
   highlights CommunityHighlight[]
@@ -2616,14 +2686,24 @@ model Community {
   slug String @unique
   name String
   fairPlayCharter String? @db.Text
+  steamPriceAlertsEnabled Boolean @default(false)
+  steamPriceAlertThreshold Int @default(20)
+  steamPriceAlertScannedAt DateTime?
+  attendanceXpEnabled Boolean @default(false)
+  attendanceBonusXp Int @default(2)
+  absencePenaltyXp Int @default(1)
   guideRules String? @db.Text
   guideContacts String? @db.Text
+  freeGamesEnabled Boolean @default(false)
+  groupPurchasePlansEnabled Boolean @default(false)
+  playerClassifiedsEnabled Boolean @default(false)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
   discordGuildId String?         @unique
   iconHash       String?
   status         CommunityStatus @default(PENDING)
+  sessionGalleryEnabled Boolean @default(false)
 
   // Qui a ajouté le bot (le payload `APPLICATION_AUTHORIZED` ne porte que
   // l'utilisateur ; Discord exige `MANAGE_GUILD` pour une installation serveur).
@@ -2638,6 +2718,7 @@ model Community {
   memberships    Membership[]
   channelConfigs CommunityChannelConfig[]
   sessions       Session[]
+  sessionAttendances SessionAttendance[]
   tournaments    Tournament[]
 
   @@index([status])
@@ -2650,6 +2731,8 @@ model Community {
   rouletteVetoes RouletteVeto[]
   roulettes Roulette[]
   instantSessions InstantSession[]
+  freeGameOffers FreeGameOffer[]
+  playerClassifieds PlayerClassified[]
   weeklyChallenges WeeklyChallenge[]
   monthlyRecaps MonthlyRecap[]
   seasons Season[]
@@ -2657,6 +2740,85 @@ model Community {
   groupSessionStats GroupSessionStats[]
   groupGameStats GroupGameStat[]
   groupActiveWeeks GroupActiveWeek[]
+}
+
+model FreeGameOffer {
+  id          String        @id @default(cuid())
+  communityId String
+  createdById String
+  store       FreeGameStore
+  title       String        @db.VarChar(120)
+  storeUrl    String        @db.VarChar(500)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime      @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId, startsAt, endsAt])
+  @@index([createdById, communityId])
+}
+
+model PlayerClassified {
+  id          String   @id @default(cuid())
+  communityId String
+  gameId      String
+  createdById String
+  message     String   @db.VarChar(240)
+  createdAt   DateTime
+  expiresAt   DateTime
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([communityId, expiresAt])
+  @@index([createdById, communityId])
+}
+
+model SessionGalleryMedia {
+  id           String   @id @default(cuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  pathname     String   @unique
+  mimeType     String   @db.VarChar(32)
+  sizeBytes    Int
+  createdAt    DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model CommunityQuickPoll {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  question String @db.VarChar(200)
+  options String[]
+  endsAt DateTime
+  createdAt DateTime @default(now())
+  votes CommunityQuickPollVote[]
+
+  @@unique([id, communityId])
+  @@index([communityId, createdAt])
+}
+
+model CommunityQuickPollVote {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  pollId String
+  poll CommunityQuickPoll @relation(fields: [pollId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optionIndex Int
+
+  @@unique([pollId, userId])
+  @@index([communityId, pollId])
 }
 
 model CommunityGameEpitaph {
@@ -2686,7 +2848,6 @@ model CommunityExpression {
   updatedAt DateTime @updatedAt
   @@index([communityId, createdAt])
 }
-
 enum CommunityHighlightKind {
   FAME
   SHAME

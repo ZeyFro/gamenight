@@ -7,8 +7,12 @@ const {
   revalidatePath,
   sessionFindUnique,
   sessionDelete,
+  galleryMediaFindMany,
+  deleteSessionGalleryBlobs,
+  queryRaw,
   transactionFn,
   enqueueSessionThreadDelete,
+  transactionCommitted,
 } = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   checkRateLimit: vi.fn(),
@@ -18,8 +22,12 @@ const {
   revalidatePath: vi.fn(),
   sessionFindUnique: vi.fn(),
   sessionDelete: vi.fn(),
+  galleryMediaFindMany: vi.fn(),
+  deleteSessionGalleryBlobs: vi.fn(),
+  queryRaw: vi.fn(),
   transactionFn: vi.fn(),
   enqueueSessionThreadDelete: vi.fn(),
+  transactionCommitted: { value: false },
 }));
 
 vi.mock("@/lib/current-user", () => ({ getCurrentUser }));
@@ -38,6 +46,7 @@ vi.mock("@/lib/session-announce", () => ({
   enqueueSessionInviteSyncForNewInvites: vi.fn(),
   enqueueSessionThreadDelete,
 }));
+vi.mock("@/lib/session-gallery", () => ({ deleteSessionGalleryBlobs }));
 vi.mock("@/lib/xp-actions", () => ({ awardXp: vi.fn() }));
 vi.mock("@/lib/sessions", () => ({
   cancelSession: vi.fn(),
@@ -77,9 +86,9 @@ import { deleteSessionAction } from "./session-lifecycle";
  * manuelle définitive du fil privé") : ces tests vérifient uniquement le
  * comportement PROPRE à l'action serveur — autorisation créateur,
  * `enqueueSessionThreadDelete` déclenché UNIQUEMENT si `announceViaBot`,
- * et surtout que l'enqueue et la suppression de la ligne `Session`
- * vivent DANS LA MÊME TRANSACTION (jamais deux appels séquentiels
- * distincts hors transaction).
+ * que l'enqueue et la suppression de la ligne `Session` vivent DANS LA
+ * MÊME TRANSACTION, et que la suppression externe des Blob a lieu APRÈS
+ * le commit de la transaction.
  */
 describe("deleteSessionAction", () => {
   beforeEach(() => {
@@ -89,7 +98,17 @@ describe("deleteSessionAction", () => {
     // callback avec un `tx` factice exposant les mêmes méthodes mockées,
     // pour observer que les DEUX opérations passent bien par LUI.
     transactionFn.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
-      return callback({ session: { delete: sessionDelete } });
+      const result = await callback({
+        $queryRaw: queryRaw.mockResolvedValue([]),
+        session: { delete: sessionDelete },
+        sessionGalleryMedia: { findMany: galleryMediaFindMany.mockResolvedValue([]) },
+      });
+      transactionCommitted.value = true;
+      return result;
+    });
+    transactionCommitted.value = false;
+    deleteSessionGalleryBlobs.mockImplementation(async () => {
+      expect(transactionCommitted.value).toBe(true);
     });
   });
 
@@ -129,6 +148,8 @@ describe("deleteSessionAction", () => {
     await expect(deleteSessionAction(formData("session-1"))).rejects.toThrow("REDIRECT:/sessions");
 
     expect(transactionFn).toHaveBeenCalledTimes(1);
+    expect(deleteSessionGalleryBlobs).toHaveBeenCalledWith([]);
+    expect(transactionCommitted.value).toBe(true);
     expect(enqueueSessionThreadDelete).toHaveBeenCalledWith("session-1", expect.anything());
     expect(sessionDelete).toHaveBeenCalledWith({ where: { id: "session-1" } });
     // Ordre : l'enqueue AVANT la suppression (jamais l'inverse — voir le

@@ -19,13 +19,16 @@ import { join, relative, sep } from "node:path";
  */
 
 const COLLECTIVE_MODELS = [
+  "CommunityQuickPoll", "CommunityQuickPollVote",
   "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
-  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionRating", "Pronostic", "XpBet", "Debt",
+  "FreeGameOffer",
+  "SessionPreparation", "Session", "SessionInvite", "SessionSeat", "Proposal", "Vote", "SessionResult", "SessionAttendance", "SessionRating", "Pronostic", "XpBet", "Debt",
+  "PlayerClassified",
   "SuperlativeVote", "SuperlativeAward", "SuperlativeCategory", "GameStatType", "Superlative",
   "MessageTemplate", "Roulette", "RouletteEntry", "InstantSession", "InstantSessionPresenceInterval",
-  "Tournament", "TournamentParticipant", "TournamentMatch", "ChatMessage", "ChatReaction",
+  "Tournament", "TournamentParticipant", "TournamentMatch", "TournamentPrediction", "ChatMessage", "ChatReaction",
   "GameWishlist", "GameWishlistVote", "XpEvent", "LevelUpEvent", "Season", "SeasonSnapshot",
   "MonthlyRecap", "WeeklyChallenge", "GroupAchievement", "GroupSessionStats", "GroupGameStat",
   "GroupActiveWeek", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "SessionAvailabilityPollParticipant", "SessionAvailabilityPollSlot", "SessionAvailabilityPollResponse",

@@ -110,9 +110,11 @@ describe.skipIf(!TEST_DATABASE_URL)("préparation : persistance et isolation Pos
       game: await db.game.findUniqueOrThrow({ where: { id: "game" } }),
     });
     const before = await snapshot();
+    const eventCount = await db.notificationEvent.count();
+    const deliveryCount = await db.notificationDelivery.count();
     await change("alice", input); await change("alice", { ...input, field: "updated" }); await change("alice", { ...input, checked: false });
     expect(await snapshot()).toEqual(before);
-    expect(await db.notificationEvent.count()).toBe(0); expect(await db.notificationDelivery.count()).toBe(0);
+    expect(await db.notificationEvent.count()).toBe(eventCount); expect(await db.notificationDelivery.count()).toBe(deliveryCount);
   });
   it("un changement de jeu sépare les cases, désactiver le flag conserve les données", async () => {
     await change("alice", input);

@@ -49,10 +49,13 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 
 ## Switches d'environnement
 - `SESSION_CHRONICLES_ENABLED` : chronique texte des soirées DONE, éditée par le créateur et lisible selon l'accès privé à la soirée ; archive Lore paginée par serveur ; OFF par défaut, migration `session_chronicles`. Toute chronique non vide bloque la purge automatique même flag OFF ; suppression volontaire inchangée.
+- `TOURNAMENT_PREDICTIONS_ENABLED` : pronostics immuables champion avant lancement et gagnant de match avant résultat ; membres actifs, sans mise ni gain XP ; OFF par défaut, migration `tournament_predictions`
+- `COMMUNITY_QUICK_POLLS_ENABLED` : sondages éclair par serveur dans Profil → Lore, membres actifs même isolation OFF, 2–6 options immuables, un choix modifiable jusqu’à échéance (7 jours max), résultats agrégés ; aucune notification/XP ; migration `community_quick_polls`, OFF par défaut
 - `COMMUNITY_GAME_GRAVEYARD_ENABLED` : cimetière et épitaphes des jeux par serveur dans Profil → Lore, sans retrait de bibliothèque ; membres actifs uniquement, auteur / ADMIN / OWNER pour modifier ou retirer ; exige la migration `community_game_epitaphs` ; OFF par défaut
 - `COMMUNITY_EXPRESSIONS_ENABLED` : collection d’expressions et running gags par serveur dans Profil → Lore ; membres actifs uniquement, modération auteur / ADMIN / OWNER, même isolation éteinte ; exige la migration `community_expressions` ; OFF par défaut
 
 - `COMMUNITY_HIGHLIGHTS_ENABLED` : exploits/fails éditables par serveur, liens médias sans upload ; OFF par défaut, migration `community_highlights`.
+- `WEB_PUSH_ENABLED` + `WEB_PUSH_VAPID_SUBJECT` / `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_PRIVATE_KEY` : Web Push uniquement après opt-in par appareil ; toutes les valeurs sont requises et le drapeau doit valoir `true`. Garder la clé privée dans l'environnement serveur, jamais dans le dépôt; migration `web_push_subscriptions`.
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)

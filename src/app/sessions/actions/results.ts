@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { awardXp } from "@/lib/xp-actions";
+import { applySessionAbsencePenalty, awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { checkRevancheAfterSessionResults } from "@/lib/revanche";
 import { detectDebts } from "@/lib/debts";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -50,11 +51,23 @@ export async function submitSessionResultsAction(formData: FormData) {
   if (session.status !== "DONE" || !session.decidedGameId) return;
 
   const alreadySubmitted =
-    (await scopedDb.sessionResult.count({ where: { sessionId } })) > 0;
+    (await scopedDb.sessionResult.count({ where: { sessionId } })) > 0 ||
+    (await scopedDb.sessionAttendance.count({ where: { sessionId } })) > 0;
   if (alreadySubmitted) return;
 
   const participantVotes = (await getWinningProposalParticipants(sessionId, session.decidedGameId)).map(person => ({ userId: person.id }));
   if (participantVotes.length === 0) return;
+  const attendanceCommunityId = session.communityId ?? await getDefaultCommunityId();
+  const attendanceSettings = await prisma.community.findUnique({
+    where: { id: attendanceCommunityId },
+    select: { attendanceXpEnabled: true, attendanceBonusXp: true, absencePenaltyXp: true },
+  });
+  const attendance = participantVotes.map(({ userId }) => ({
+    sessionId,
+    communityId: attendanceCommunityId,
+    userId,
+    present: formData.get(`present-${userId}`) === "1",
+  }));
 
   const isCoop = session.decidedGame?.isCoop ?? false;
   const placementAmounts: Record<number, number> = {
@@ -78,7 +91,14 @@ export async function submitSessionResultsAction(formData: FormData) {
     const present = formData.get(`present-${participantId}`) === "1";
     if (!present) {
       absentIds.push(participantId);
+      if (attendanceSettings?.attendanceXpEnabled) {
+        await applySessionAbsencePenalty(participantId, attendanceCommunityId, sessionId, attendanceSettings.absencePenaltyXp);
+      }
       continue;
+    }
+
+    if (attendanceSettings?.attendanceXpEnabled && attendanceSettings.attendanceBonusXp > 0) {
+      await awardXp(participantId, attendanceCommunityId, "SESSION_ATTENDANCE", sessionId, attendanceSettings.attendanceBonusXp, { applyStreak: false });
     }
 
     let placement: number | null = null;
@@ -125,6 +145,8 @@ export async function submitSessionResultsAction(formData: FormData) {
       ownLeveledUp = xpResult?.leveledUp ?? false;
     }
   }
+
+  await scopedDb.sessionAttendance.createMany({ data: attendance, skipDuplicates: true });
 
   if (session.decidedGame) {
     await detectDebts(sessionId, absentIds, session.decidedGame.name, session.date, session.communityId);

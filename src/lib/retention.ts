@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { cronCommunityScope, communityIdFilter, isCommunityIsolationEnabled, type IsolationScope } from "@/lib/community-isolation";
 import { DEFAULT_COMMUNITY_SLUG, getDefaultCommunityId } from "@/lib/default-community";
+import { deleteSessionGalleryBlobs } from "@/lib/session-gallery";
 import { wallClockNow } from "@/lib/wallclock";
 import { HISTORY_VISIBILITY_WINDOW_DAYS, isWithinHistoryWindow } from "@/lib/history-visibility";
 import { getActiveSeason } from "@/lib/seasons";
@@ -450,7 +451,7 @@ export async function purgeEligibleSessionsBatch(
       await enqueueSessionThreadDelete(session.id);
     }
 
-    const deleted = await prisma.$transaction(async (tx) => {
+    const deletedGalleryPaths = await prisma.$transaction(async (tx) => {
       const mutationScope = await lockedRetentionScope(tx, scope);
       const scopedDb = scopedTransactionPrisma(tx, mutationScope);
       const locked = await tx.$queryRaw<{ id: string; status: string; superlativeVotingClosed: boolean; chronicle: string | null }[]>`
@@ -460,19 +461,24 @@ export async function purgeEligibleSessionsBatch(
               AND (c.id = s."communityId" OR (s."communityId" IS NULL AND ${mutationScope?.includesDefault ?? false} AND c.slug = ${DEFAULT_COMMUNITY_SLUG})))) FOR UPDATE
       `;
       const current = locked[0];
-      if (!current) return false; // déjà purgée par un passage concurrent
-      if (current.status !== "DONE" && current.status !== "CANCELLED") return false; // ne devrait jamais arriver (statut terminal irréversible), garde défensive
-      if (!current.superlativeVotingClosed) return false; // course perdue — résolu entre-temps
-      if (current.chronicle) return false;
+      if (!current) return null; // déjà purgée par un passage concurrent
+      if (current.status !== "DONE" && current.status !== "CANCELLED") return null; // ne devrait jamais arriver (statut terminal irréversible), garde défensive
+      if (!current.superlativeVotingClosed) return null; // course perdue — résolu entre-temps
+      if (current.chronicle) return null;
       // Parent autorisé et verrouillé : même une dette mal rattachée bloque sa cascade.
       const stillUnpaid = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Debt" WHERE "sessionId" = ${session.id} AND "paidAt" IS NULL LIMIT 1`;
-      if (stillUnpaid.length) return false;
+      if (stillUnpaid.length) return null;
 
+      const galleryPaths = (await tx.sessionGalleryMedia.findMany({ where: { sessionId: session.id }, select: { pathname: true } }))
+        .map((media) => media.pathname);
       await scopedDb.session.delete({ where: { id: session.id } });
-      return true;
+      return galleryPaths;
     });
 
-    if (deleted) purgedSessionIds.push(session.id);
+    if (deletedGalleryPaths !== null) {
+      purgedSessionIds.push(session.id);
+      await deleteSessionGalleryBlobs(deletedGalleryPaths);
+    }
     else blockedSessions.push({ sessionId: session.id, reason: await sessionPurgeBlockReason(session) ?? "debt_unpaid" });
   }
 
