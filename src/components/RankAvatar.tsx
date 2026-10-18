@@ -83,7 +83,7 @@ export function RankAvatar({
         <span
           role="tooltip"
           aria-hidden={!tooltipOpen}
-          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100 ${tooltipOpen ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 ${tooltipOpen ? "block opacity-100" : "hidden opacity-0 group-hover/rank:block group-focus-visible/rank:block group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100"}`}
         >
           Rang : {rank.name} — accédé au niveau {rank.minLevel}
         </span>
