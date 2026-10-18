@@ -1,9 +1,9 @@
-# État de reprise — 18 octobre 2026, 17:55 UTC
+# État de reprise — 18 octobre 2026, 18:10 UTC
 
 ## État actuel
 
-- `origin/main` : `fd95637f03a8bf4a347fd87b5d771816a309a0c1`. #276 est déjà incluse dans `8c1525f`; #273 vient de fusionner dans `fd95637`. La recherche GitHub ne retourne aucune PR ouverte.
-- Le portable précédent n'a laissé aucun changement récupérable. Le checkout racine reste propre sur `feat/prix-telechargement-jeux`, 34 commits derrière `main`. La reprise a utilisé le worktree géré `C:\Users\Mousiouf\.codex\worktrees\a33e\gamenight`; il est maintenant sur une branche documentaire issue de `fd95637`.
+- Base connue après #277 : `main` au commit `cccd9c04cc85cfc326050080f8cc94d6103cd0de`; #276 est incluse dans `8c1525f`, #273 dans `fd95637`, et le handover/roadmap ont été publiés par #277. Au contrôle après cette fusion, GitHub ne retournait aucune PR ouverte.
+- Le portable précédent n'a laissé aucun changement récupérable. Au relevé, le checkout racine était propre sur `feat/prix-telechargement-jeux`, 34 commits derrière son upstream de même nom (pas derrière `main`); ne pas l'utiliser comme base. La reprise a utilisé le worktree géré `C:\Users\Mousiouf\.codex\worktrees\a33e\gamenight`, créé depuis le `main` après #273; le travail documentaire #277 a aussi été fait dans ce worktree.
 - Dépendances installées avec `npm ci`. PostgreSQL 16 local `gamenight-test-pg` est actif sur `127.0.0.1:55439`, base `gamenight_test`, 107 migrations appliquées. Docker l'expose uniquement sur loopback; consommation observée après les tests : 124 MiB. Pour les tests Postgres, `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test`. N'exécuter qu'une suite Postgres à la fois et ne jamais viser Neon.
 - Contrôles locaux de #273 au SHA publié `fbaa830`: suite Postgres 2 972/2 972; `npm test` 1 923 réussis et 1 046 ignorés sans `TEST_DATABASE_URL`; Prisma validate, Next typegen, TypeScript, lint, build et `git diff --check` réussis. CI complète GitHub verte sur ce même SHA : migration de service, suites Postgres et unitaires, typecheck, lint et build.
 - Preview Vercel du SHA #273 : Ready. L'API d'administration du projet Vercel répond 403; aucune variable ou donnée secrète n'a été lue. Les métadonnées du projet Neon `gamenight` ont été consultées; aucune donnée ni valeur de connexion n'a été lue et aucune migration n'a été appliquée sur Neon.
