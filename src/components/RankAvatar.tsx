@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
 import type { Rank } from "@/lib/xp";
@@ -62,6 +62,19 @@ export function RankAvatar({
   size?: number;
 }) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipOffset, setTooltipOffset] = useState(0);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (!tooltipOpen) return;
+
+    const rect = tooltipRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const shiftRight = Math.max(0, 8 - rect.left);
+    const shiftLeft = Math.min(0, window.innerWidth - 8 - (rect.right + shiftRight));
+    setTooltipOffset(shiftRight + shiftLeft);
+  }, [tooltipOpen]);
 
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -69,8 +82,14 @@ export function RankAvatar({
       {frameColor && <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-full border-2" style={{ borderColor: frameColor }} />}
       <button
         type="button"
-        onClick={() => setTooltipOpen((open) => !open)}
-        onBlur={() => setTooltipOpen(false)}
+        onClick={() => {
+          if (tooltipOpen) setTooltipOffset(0);
+          setTooltipOpen((open) => !open);
+        }}
+        onBlur={() => {
+          setTooltipOpen(false);
+          setTooltipOffset(0);
+        }}
         aria-label={`Rang : ${rank.name} — accédé au niveau ${rank.minLevel}`}
         className="group/rank block cursor-pointer rounded-full border-0 bg-transparent p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
@@ -81,9 +100,11 @@ export function RankAvatar({
           className={`ring-4 ring-offset-2 ring-offset-background ${rank.ringClass}`}
         />
         <span
+          ref={tooltipRef}
           role="tooltip"
           aria-hidden={!tooltipOpen}
-          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 ${tooltipOpen ? "block opacity-100" : "hidden opacity-0 group-hover/rank:block group-focus-visible/rank:block group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100"}`}
+          style={{ left: `calc(50% + ${tooltipOffset}px)` }}
+          className={`pointer-events-none absolute top-full z-20 mt-2 -translate-x-1/2 max-w-[calc(100vw-1rem)] whitespace-normal rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-normal text-foreground shadow-lg transition-opacity duration-150 ${tooltipOpen ? "block opacity-100" : "hidden opacity-0 group-hover/rank:block group-focus-visible/rank:block group-hover/rank:opacity-100 group-focus-visible/rank:opacity-100"}`}
         >
           Rang : {rank.name} — accédé au niveau {rank.minLevel}
         </span>
