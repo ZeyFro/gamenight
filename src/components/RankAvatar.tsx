@@ -71,8 +71,9 @@ export function RankAvatar({
     const rect = tooltipRef.current?.getBoundingClientRect();
     if (!rect) return;
 
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     const shiftRight = Math.max(0, 8 - rect.left);
-    const shiftLeft = Math.min(0, window.innerWidth - 8 - (rect.right + shiftRight));
+    const shiftLeft = Math.min(0, viewportWidth - 8 - (rect.right + shiftRight));
     setTooltipOffset(shiftRight + shiftLeft);
   }, [tooltipOpen]);
 
