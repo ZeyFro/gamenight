@@ -48,7 +48,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
 | L4-01 | Livré mais désactivé | Export Google/Apple Calendar (iCal) | ✅ Téléchargement ponctuel; abonnement privé révocable par serveur | Export disponible; abonnement exige `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens`; essai calendrier tiers non vérifié | code | Export Fait (#242); abonnement Fait (#286, fusionnée) |
-| L4-02 | Partiellement livré | Rituels récurrents | ✅ Séries hebdomadaires/mensuelles; annulation groupée des occurrences futures des nouvelles séries | Annulation exige `SESSION_SERIES_CANCEL_ENABLED` et migration; édition groupée des dates/cadences et traitement des exceptions à cadrer | code | Création Fait (#243); annulation Fait (#287, fusionnée) |
+| L4-02 | Partiellement livré | Rituels récurrents | ✅ Séries hebdomadaires/mensuelles; annulation groupée des occurrences futures des nouvelles séries | Annulation exige `SESSION_SERIES_CANCEL_ENABLED` et migration; proposition à valider : éditer les occurrences futures seulement, sans modifier le passé ni les exceptions individuelles | code | Création Fait (#243); annulation Fait (#287, fusionnée) |
 | L4-03 | Livré et testé | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
 | L4-04 | Livré mais désactivé | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
@@ -57,7 +57,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
 | L5-01 | Livré et testé | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
-| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie privée photo et MP4 | Images et clips MP4, 4 Mo par média, 8 médias par soirée, consentement, participants actifs; clips OFF par `SESSION_VIDEO_ENABLED`; purge séparée différée | code | Base galerie livrée (#276); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN`; clips dans #288 (OFF par défaut) |
+| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie privée photo et MP4 | Images et clips MP4, 4 Mo par média, 8 médias par soirée, consentement, participants actifs; clips OFF par `SESSION_VIDEO_ENABLED`; proposition à valider : conserver les médias tant que la soirée existe puis les supprimer avec elle | code | Base galerie livrée (#276); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN`; clips dans #288 (OFF par défaut); suppression en cascade à valider |
 | L5-03 | Livré et testé | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
 | L5-04 | Livré mais désactivé | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (#276, fusionnée) |
 | L5-05 | Livré et testé | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
@@ -76,7 +76,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-08 | Livré et testé | Quiz et « devine le jeu en trois indices » | ✅ Livré | Aucune | code | Fait (#252, fusionnée) |
 | L6-09 | Livré mais désactivé | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
 | L6-10 | Livré mais désactivé | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (#276, fusionnée) |
-| L6-11 | Partiellement livré | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; aucun engagement financier ni achat automatique | code | Fait (#276, fusionnée) |
+| L6-11 | Partiellement livré | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; proposition à valider : coordination sans paiement intégré, engagement financier ni achat automatique | code | Fait (#276, fusionnée) |
 | L6-12 | Partiellement livré | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | Fait (#276, fusionnée) pour la curation manuelle; automatisation différée faute de flux public officiel stable |
 | L6-13 | Livré mais désactivé | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Fait (#276, fusionnée); activation non vérifiée (403), paire VAPID non vérifiée |
 
@@ -96,11 +96,22 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-10 | Livré et testé | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
 | L7-11 | Partiellement livré | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Fait (#276, fusionnée) |
 | L7-12 | Livré et testé | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
-| L7-13 | Partiellement livré | PWA hors ligne | 🟡 Fallback hors ligne | L'application et ses données ne sont pas disponibles sans réseau; ne pas mettre en cache de réponses privées sans décision de sécurité | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
+| L7-13 | Partiellement livré | PWA hors ligne | 🟡 Fallback hors ligne | Proposition à valider : shell public uniquement; aucune donnée privée ni réponse authentifiée en cache | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
 | L7-14 | Livré et testé | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Livré et testé | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
 | L7-16 | Livré et testé | Guide du nouveau : règles et contacts par serveur | ✅ Règles et contacts administrables, affichés dans le guide du serveur | Migration, contenu admin et parcours authentifié à vérifier; ne pas activer l’isolation pour cette reprise | code | Fait (#267, fusionnée) |
-| L7-17 | Partiellement livré | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
+| L7-17 | Partiellement livré | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Proposition à valider : modèles par communauté et mentions contrôlées par ses administrateurs; valider les messages réels et les règles | validation | À TOI — validation humaine des messages réels |
+
+## Propositions de cadrage produit — validation du propriétaire requise
+
+Ces orientations restent des propositions; elles ne sont ni arbitrées par le propriétaire ni mises en œuvre. Les fonctions existantes et les validations manquantes gardent leur statut séparé.
+
+- Séries : éditer les occurrences futures seulement; préserver le passé et les exceptions individuelles.
+- Hors ligne : shell public uniquement; aucune donnée privée mise en cache.
+- Galerie : conserver les médias avec la soirée et les supprimer avec elle; pas de purge autonome.
+- Achats collectifs : coordination sans paiement intégré.
+- Jeux gratuits : curation manuelle en attendant une source adaptée.
+- Discord : modèles par communauté; contrôle des mentions par ses administrateurs.
 
 ## Parcours livrés à valider en réel (ignorés par la boucle)
 

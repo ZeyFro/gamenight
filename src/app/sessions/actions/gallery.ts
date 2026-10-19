@@ -1,14 +1,16 @@
 "use server";
 
 import { del, put } from "@vercel/blob";
+import type { CommunityRole } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getSessionAccessRole } from "@/lib/session-access";
+import { canManageSessionContent } from "@/lib/session-content-access";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import {
   detectSessionGalleryMime,
   isSessionVideoEnabled,
@@ -31,11 +33,11 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
     redirect(`/sessions/${sessionId}?gallery=indisponible`);
   }
   if (file.size > SESSION_GALLERY_MAX_BYTES) redirect(`/sessions/${sessionId}?gallery=trop-lourd`);
-  if (!(await getSessionAccessRole(user.id, sessionId))) redirect("/sessions");
+  if (!await canManageSessionContent(user.id, sessionId)) redirect("/sessions");
 
   const scopedDb = await getScopedPrisma(user.id);
   const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
-  if (!session?.communityId) redirect(`/sessions/${sessionId}?gallery=desactive`);
+  if (!session) redirect(`/sessions/${sessionId}?gallery=desactive`);
   const communityId = await statsCommunityIdForSession(session.communityId);
   const community = await prisma.community.findUnique({ where: { id: communityId }, select: { sessionGalleryEnabled: true } });
   if (!community?.sessionGalleryEnabled) redirect(`/sessions/${sessionId}?gallery=desactive`);
@@ -59,9 +61,26 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
     redirect(`/sessions/${sessionId}?gallery=indisponible`);
   }
   try {
-    await prisma.sessionGalleryMedia.create({
-      data: { sessionId, uploadedById: user.id, pathname: blob.pathname, mimeType, sizeBytes: file.size },
+    const inserted = await prisma.$transaction(async tx => {
+      // Aucun verrou pendant Blob : droits et capacité sont relus après l'envoi, jusqu'au commit.
+      const [community] = await tx.$queryRaw<{ status: string; sessionGalleryEnabled: boolean }[]>`SELECT status, "sessionGalleryEnabled" FROM "Community" WHERE id = ${communityId} FOR SHARE`;
+      const [member] = await tx.$queryRaw<{ status: string; role: CommunityRole }[]>`SELECT status, role FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${user.id} FOR SHARE`;
+      if (community?.status !== "ACTIVE" || !community.sessionGalleryEnabled) return false;
+      if (isCommunityIsolationEnabled() && member?.status !== "ACTIVE") return false;
+      const [current] = await tx.$queryRaw<{ createdById: string; communityId: string | null }[]>`SELECT "createdById", "communityId" FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      if (!current || current.communityId !== session.communityId) return false;
+      if (current.createdById !== user.id) {
+        if (member?.status !== "ACTIVE" || (member.role !== "ADMIN" && member.role !== "OWNER")) return false;
+        const [invite] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM "SessionInvite" WHERE "sessionId" = ${sessionId} AND "userId" = ${user.id} FOR SHARE`;
+        if (invite?.status !== "ACTIVE") return false;
+      }
+      if (await tx.sessionGalleryMedia.count({ where: { sessionId } }) >= SESSION_GALLERY_MAX_ITEMS) return false;
+      await tx.sessionGalleryMedia.create({
+        data: { sessionId, uploadedById: user.id, pathname: blob.pathname, mimeType, sizeBytes: file.size },
+      });
+      return true;
     });
+    if (!inserted) throw new Error("Gallery access or capacity changed during upload");
   } catch {
     // shortcut: Blob cleanup is best-effort after a database outage; add a cleanup queue if orphan volume grows.
     await del(blob.pathname, { token: blobToken }).catch(() => undefined);
@@ -77,15 +96,10 @@ export async function deleteSessionGalleryImageAction(formData: FormData): Promi
   const sessionId = formData.get("sessionId");
   const mediaId = formData.get("mediaId");
   if (typeof sessionId !== "string" || !sessionId || typeof mediaId !== "string" || !mediaId) return;
-  const access = await getSessionAccessRole(user.id, sessionId);
   const blobToken = token();
-  if (!access || !blobToken) redirect("/sessions");
-  const scopedDb = await getScopedPrisma(user.id);
-  const [session, media] = await Promise.all([
-    scopedDb.session.findUnique({ where: { id: sessionId }, select: { createdById: true } }),
-    prisma.sessionGalleryMedia.findFirst({ where: { id: mediaId, sessionId } }),
-  ]);
-  if (!session || !media || (media.uploadedById !== user.id && session.createdById !== user.id)) return;
+  if (!blobToken || !await canManageSessionContent(user.id, sessionId)) redirect("/sessions");
+  const media = await prisma.sessionGalleryMedia.findFirst({ where: { id: mediaId, sessionId } });
+  if (!media) return;
   if (!checkRateLimit(user.id, "deleteSessionGalleryImage")) redirect(`/sessions/${sessionId}?gallery=indisponible`);
   await prisma.sessionGalleryMedia.delete({ where: { id: media.id } });
   await del(media.pathname, { token: blobToken }).catch(() => undefined);

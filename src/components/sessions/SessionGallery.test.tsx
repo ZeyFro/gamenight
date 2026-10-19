@@ -18,7 +18,7 @@ describe("session gallery video clips", () => {
   afterEach(cleanup);
 
   it("shows private MP4 controls and a download fallback only when videos are enabled", () => {
-    render(<SessionGallery sessionId="session-1" userId="member-1" creatorId="creator-1" images={media} storageReady videosEnabled />);
+    render(<SessionGallery sessionId="session-1" canManage images={media} storageReady videosEnabled />);
 
     const video = document.querySelector("video");
     expect(video).not.toBeNull();
@@ -31,10 +31,23 @@ describe("session gallery video clips", () => {
   });
 
   it("keeps the photo-only UI while videos are disabled", () => {
-    render(<SessionGallery sessionId="session-1" userId="member-1" creatorId="creator-1" images={media} storageReady videosEnabled={false} />);
+    render(<SessionGallery sessionId="session-1" canManage images={media} storageReady videosEnabled={false} />);
 
     expect(document.querySelector("video")).toBeNull();
     expect(screen.getByText(/Les clips vidéo ne sont pas encore pris en charge/)).toBeTruthy();
     expect((screen.getByLabelText("Ajouter une photo") as HTMLInputElement).accept).not.toContain("video/mp4");
+  });
+
+  it("does not offer gallery management to an invited member", () => {
+    render(<SessionGallery sessionId="session-1" canManage={false} images={media} storageReady videosEnabled />);
+
+    expect(screen.queryByLabelText("Ajouter un média")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Supprimer" })).toBeNull();
+  });
+
+  it("offers upload and deletion to an authorized community moderator", () => {
+    render(<SessionGallery sessionId="session-1" canManage images={media} storageReady videosEnabled />);
+    expect(screen.getByLabelText("Ajouter un média")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Supprimer" })).toHaveLength(2);
   });
 });

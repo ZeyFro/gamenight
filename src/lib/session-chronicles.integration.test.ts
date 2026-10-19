@@ -40,7 +40,7 @@ describe.skipIf(!TEST_DATABASE_URL)("chroniques privées : droits, archivage et 
   const session = (communityId = "chronicle-a", createdById = "chronicle-alice", chronicle: string | null = null, status: import("@prisma/client").SessionStatus = "DONE") => db.session.create({ data: { communityId, createdById, chronicle, status, date: new Date("2020-01-01"), superlativeVotingClosed: true } });
   const invite = (sessionId: string, userId: string) => db.sessionInvite.create({ data: { sessionId, userId, invitedById: "chronicle-alice" } });
 
-  it("seul le créateur édite ; un invité actif lit l'archive privée", async () => {
+  it("le créateur édite ; un invité ordinaire et un admin global n'ont pas ce droit", async () => {
     const row = await session();
     await invite(row.id, "chronicle-guest");
     expect(await api.saveSessionChronicle("chronicle-alice", row.id, " Le clutch final ")).toBe(true);
@@ -51,6 +51,17 @@ describe.skipIf(!TEST_DATABASE_URL)("chroniques privées : droits, archivage et 
     expect((await api.listSessionChronicles("chronicle-admin", 1))?.items).toEqual([]);
     await db.sessionInvite.update({ where: { sessionId_userId: { sessionId: row.id, userId: "chronicle-guest" } }, data: { status: "REVOKED" } });
     expect((await api.listSessionChronicles("chronicle-guest", 1))?.items).toEqual([]);
+  });
+  it.each(["ADMIN", "OWNER"] as const)("un %s communautaire invité édite sans donner accès aux autres admins", async role => {
+    const row = await session();
+    await db.membership.update({ where: { communityId_userId: { communityId: "chronicle-a", userId: "chronicle-admin" } }, data: { role } });
+    expect(await api.saveSessionChronicle("chronicle-admin", row.id, "Sans invitation")).toBe(false);
+    await invite(row.id, "chronicle-admin");
+    expect(await api.saveSessionChronicle("chronicle-admin", row.id, "Souvenir modéré")).toBe(true);
+    expect((await db.session.findUniqueOrThrow({ where: { id: row.id } })).chronicle).toBe("Souvenir modéré");
+    await db.sessionInvite.update({ where: { sessionId_userId: { sessionId: row.id, userId: "chronicle-admin" } }, data: { status: "REVOKED" } });
+    expect(await api.saveSessionChronicle("chronicle-admin", row.id, "Invitation retirée")).toBe(false);
+    expect((await db.session.findUniqueOrThrow({ where: { id: row.id } })).chronicle).toBe("Souvenir modéré");
   });
   it.each(["true", "false"])("borne l'archive à son serveur actif même isolation=%s", async isolation => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);

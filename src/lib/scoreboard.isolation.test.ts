@@ -107,15 +107,29 @@ describe("getFunLeaderboards — isolation communautaire", () => {
     gameStatsFindMany.mockReset().mockResolvedValue([]);
   });
 
+  it("sans communauté, renvoie les trois classements vides sans lecture", async () => {
+    await expect(getFunLeaderboards({ communityId: null })).resolves.toEqual({
+      gamesByPlayTime: [],
+      gamesByPlayCount: [],
+      playersByStreak: [],
+    });
+    expect(userFindMany).not.toHaveBeenCalled();
+    expect(gameStatsFindMany).not.toHaveBeenCalled();
+  });
+
   it("restreint heures et séries aux données de la communauté sélectionnée", async () => {
-    gameStatsFindMany.mockResolvedValue([{ gameId: "g1", totalPlayMinutes: 180, game: { name: "Catan", coverUrl: null } }]);
+    gameStatsFindMany
+      .mockResolvedValueOnce([{ gameId: "g1", totalPlayMinutes: 180, game: { name: "Catan", coverUrl: null } }])
+      .mockResolvedValueOnce([{ gameId: "g2", playCount: 4, game: { name: "Mario Kart", coverUrl: null } }]);
     statsFindMany.mockResolvedValue([{ userId: "a", streakCount: 12, user: { discordName: "Alice", discordAvatar: null, color: "#fff" } }]);
 
     await expect(getFunLeaderboards({ communityId: "c-b" })).resolves.toEqual({
       gamesByPlayTime: [{ gameId: "g1", name: "Catan", coverUrl: null, totalPlayMinutes: 180 }],
+      gamesByPlayCount: [{ gameId: "g2", name: "Mario Kart", playCount: 4 }],
       playersByStreak: [{ userId: "a", discordName: "Alice", discordAvatar: null, color: "#fff", streakCount: 12 }],
     });
-    expect(gameStatsFindMany.mock.calls[0][0].where).toMatchObject({ communityId: "c-b", totalPlayMinutes: { gt: 0 } });
+    expect(gameStatsFindMany.mock.calls[0][0]).toMatchObject({ where: { communityId: "c-b", totalPlayMinutes: { gt: 0 } }, orderBy: { totalPlayMinutes: "desc" } });
+    expect(gameStatsFindMany.mock.calls[1][0]).toMatchObject({ where: { communityId: "c-b", playCount: { gt: 0 } }, orderBy: [{ playCount: "desc" }, { gameId: "asc" }] });
     expect(statsFindMany.mock.calls[0][0].where).toMatchObject({ communityId: "c-b", userId: { in: ["a", "b"] }, streakCount: { gt: 0 } });
     expect(userFindMany.mock.calls[0][0].where.memberships.some).toMatchObject({ communityId: "c-b", status: "ACTIVE" });
   });

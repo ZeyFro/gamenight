@@ -200,7 +200,7 @@ export default async function ClassementPage({
           </Stagger>
         </div>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Card className="p-4">
           <h2 className="font-semibold text-foreground">Jeux les plus joués</h2>
           <p className="mt-1 text-xs text-muted">Temps déclaré par la communauté, cumulatif.</p>
@@ -214,6 +214,20 @@ export default async function ClassementPage({
               ))}
             </ol>
           ) : <p className="mt-3 text-sm text-muted">Aucune durée déclarée.</p>}
+        </Card>
+        <Card className="p-4">
+          <h2 className="font-semibold text-foreground">Jeux les plus rejoués</h2>
+          <p className="mt-1 text-xs text-muted">Nombre de soirées terminées par jeu, cumulatif.</p>
+          {funLeaderboards.gamesByPlayCount.length ? (
+            <ol className="mt-3 space-y-2 text-sm">
+              {funLeaderboards.gamesByPlayCount.map((game, index) => (
+                <li key={game.gameId} className="flex justify-between gap-3">
+                  <span className="truncate text-foreground">{index + 1}. {game.name}</span>
+                  <span className="shrink-0 tabular-nums text-muted">{game.playCount} soirée{game.playCount === 1 ? "" : "s"}</span>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="mt-3 text-sm text-muted">Aucune soirée terminée.</p>}
         </Card>
         <Card className="p-4">
           <h2 className="font-semibold text-foreground">Joueurs les plus réguliers</h2>
