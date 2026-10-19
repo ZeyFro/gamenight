@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   communityFindUnique: vi.fn(),
   galleryCount: vi.fn(),
   galleryCreate: vi.fn(),
+  galleryFindFirst: vi.fn(),
+  galleryDelete: vi.fn(),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`); }),
   revalidatePath: vi.fn(),
 }));
@@ -26,11 +28,11 @@ vi.mock("@/lib/community-scoped-client", () => ({ getScopedPrisma: mocks.getScop
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     community: { findUnique: mocks.communityFindUnique },
-    sessionGalleryMedia: { count: mocks.galleryCount, create: mocks.galleryCreate },
+    sessionGalleryMedia: { count: mocks.galleryCount, create: mocks.galleryCreate, findFirst: mocks.galleryFindFirst, delete: mocks.galleryDelete },
   },
 }));
 
-import { uploadSessionGalleryImageAction } from "./gallery";
+import { deleteSessionGalleryImageAction, uploadSessionGalleryImageAction } from "./gallery";
 
 const mp4 = new File([Uint8Array.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 0, 0, 0, 0])], "clip.mp4", { type: "video/mp4" });
 
@@ -42,13 +44,15 @@ describe("session gallery video uploads", () => {
     vi.stubEnv("SESSION_VIDEO_ENABLED", "false");
     mocks.getCurrentUser.mockResolvedValue({ id: "member-1" });
     mocks.checkRateLimit.mockReturnValue(true);
-    mocks.getSessionAccessRole.mockResolvedValue("INVITEE");
+    mocks.getSessionAccessRole.mockResolvedValue("creator");
     mocks.statsCommunityIdForSession.mockResolvedValue("community-1");
-    mocks.getScopedPrisma.mockResolvedValue({ session: { findUnique: vi.fn().mockResolvedValue({ communityId: "community-1" }) } });
+    mocks.getScopedPrisma.mockResolvedValue({ session: { findUnique: vi.fn().mockResolvedValue({ communityId: "community-1", createdById: "creator-1" }) } });
     mocks.communityFindUnique.mockResolvedValue({ sessionGalleryEnabled: true });
     mocks.galleryCount.mockResolvedValue(0);
     mocks.put.mockResolvedValue({ pathname: "sessions/session-1/clip" });
     mocks.galleryCreate.mockResolvedValue({ id: "media-1" });
+    mocks.galleryFindFirst.mockResolvedValue({ id: "media-1", uploadedById: "member-1", pathname: "sessions/session-1/media" });
+    mocks.galleryDelete.mockResolvedValue({ id: "media-1" });
   });
 
   it("rejects MP4 uploads while the feature flag is off", async () => {
@@ -59,6 +63,29 @@ describe("session gallery video uploads", () => {
 
     await expect(uploadSessionGalleryImageAction(form)).rejects.toThrow("REDIRECT:/sessions/session-1?gallery=video-desactive");
     expect(mocks.put).not.toHaveBeenCalled();
+  });
+
+  it("rejects gallery uploads by invited guests", async () => {
+    vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+    mocks.getSessionAccessRole.mockResolvedValue("guest");
+    const form = new FormData();
+    form.set("sessionId", "session-1");
+    form.set("media", mp4);
+    form.set("consent", "on");
+
+    await expect(uploadSessionGalleryImageAction(form)).rejects.toThrow("REDIRECT:/sessions");
+    expect(mocks.put).not.toHaveBeenCalled();
+  });
+
+  it("does not let an invited uploader delete gallery media", async () => {
+    mocks.getSessionAccessRole.mockResolvedValue("guest");
+    const form = new FormData();
+    form.set("sessionId", "session-1");
+    form.set("mediaId", "media-1");
+
+    await expect(deleteSessionGalleryImageAction(form)).resolves.toBeUndefined();
+    expect(mocks.galleryDelete).not.toHaveBeenCalled();
+    expect(mocks.del).not.toHaveBeenCalled();
   });
 
   it("stores MP4 privately after consent when videos are enabled", async () => {

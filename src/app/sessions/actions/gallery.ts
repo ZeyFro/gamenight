@@ -31,7 +31,7 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
     redirect(`/sessions/${sessionId}?gallery=indisponible`);
   }
   if (file.size > SESSION_GALLERY_MAX_BYTES) redirect(`/sessions/${sessionId}?gallery=trop-lourd`);
-  if (!(await getSessionAccessRole(user.id, sessionId))) redirect("/sessions");
+  if ((await getSessionAccessRole(user.id, sessionId)) !== "creator") redirect("/sessions");
 
   const scopedDb = await getScopedPrisma(user.id);
   const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
@@ -85,7 +85,7 @@ export async function deleteSessionGalleryImageAction(formData: FormData): Promi
     scopedDb.session.findUnique({ where: { id: sessionId }, select: { createdById: true } }),
     prisma.sessionGalleryMedia.findFirst({ where: { id: mediaId, sessionId } }),
   ]);
-  if (!session || !media || (media.uploadedById !== user.id && session.createdById !== user.id)) return;
+  if (!session || !media || session.createdById !== user.id) return;
   if (!checkRateLimit(user.id, "deleteSessionGalleryImage")) redirect(`/sessions/${sessionId}?gallery=indisponible`);
   await prisma.sessionGalleryMedia.delete({ where: { id: media.id } });
   await del(media.pathname, { token: blobToken }).catch(() => undefined);
