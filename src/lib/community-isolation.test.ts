@@ -139,13 +139,13 @@ describe("community-isolation", () => {
 
     it("communauté donnée : ses membres ACTIVE", async () => {
       await expect(communityMemberUserWhere("c-b")).resolves.toEqual({
-        memberships: { some: { communityId: "c-b", status: "ACTIVE" } },
+        memberships: { some: { communityId: "c-b", status: "ACTIVE", community: { status: "ACTIVE" } } },
       });
     });
 
     it("null (= `default`) : résout l'id de la communauté par défaut", async () => {
       await expect(communityMemberUserWhere(null)).resolves.toEqual({
-        memberships: { some: { communityId: "c-def", status: "ACTIVE" } },
+        memberships: { some: { communityId: "c-def", status: "ACTIVE", community: { status: "ACTIVE" } } },
       });
       expect(communityFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: "default" } }));
     });

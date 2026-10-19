@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandCommunityDates, expandGameAwards, expandGameReleaseDates, type CommunityDateInput } from "./community-dates";
+import { expandCommunityDates, expandGameAwards, expandGameReleaseDates, expandSeasonalEvents, type CommunityDateInput } from "./community-dates";
 
 const date = (fields: Partial<CommunityDateInput>): CommunityDateInput => ({
   id: "date", title: "Soirée importante", kind: "IMPORTANT", date: new Date("2026-12-31T00:00:00Z"),
@@ -42,5 +42,20 @@ describe("expandGameAwards", () => {
       expect.objectContaining({ id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS", date: new Date("2026-12-10T00:00:00Z") }),
     ]);
     expect(expandGameAwards(new Date("2026-12-11T00:00:00Z"), new Date("2026-12-12T00:00:00Z"))).toEqual([]);
+  });
+});
+
+describe("expandSeasonalEvents", () => {
+  it("shows the existing annual event dates only inside the requested range", () => {
+    const events = expandSeasonalEvents(new Date("2026-07-01T00:00:00Z"), new Date("2026-10-26T00:00:00Z"));
+    expect(events.map(({ id, title, date }) => [id, title, date.toISOString()])).toEqual([
+      ["seasonal:2026-7-1", "Marathon d’été", "2026-07-01T00:00:00.000Z"],
+      ["seasonal:2026-10-25", "Thème Halloween", "2026-10-25T00:00:00.000Z"],
+    ]);
+    expect(expandSeasonalEvents(new Date("2026-12-21T00:00:00Z"), new Date("2027-01-01T00:00:00Z"))).toEqual([]);
+    expect(expandSeasonalEvents(new Date("2026-12-20T00:00:00Z"), new Date("2026-12-21T00:00:00Z")).map(({ title }) => title)).toEqual(["Thème de Noël"]);
+    expect(expandSeasonalEvents(new Date("2026-10-25T00:00:00Z"), new Date("2027-10-26T00:00:00Z")).map(({ id }) => id)).toEqual([
+      "seasonal:2026-10-25", "seasonal:2026-12-20", "seasonal:2027-7-1", "seasonal:2027-10-25",
+    ]);
   });
 });

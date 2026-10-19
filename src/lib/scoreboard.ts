@@ -11,6 +11,7 @@ export type ScoreboardPeriod = (typeof SCOREBOARD_PERIODS)[number];
 
 export interface FunLeaderboards {
   gamesByPlayTime: { gameId: string; name: string; coverUrl: string | null; totalPlayMinutes: number }[];
+  gamesByPlayCount: { gameId: string; name: string; playCount: number }[];
   playersByStreak: { userId: string; discordName: string; discordAvatar: string | null; color: string; streakCount: number }[];
 }
 
@@ -183,10 +184,10 @@ export async function getScoreboard(
   }));
 }
 
-/** Classements annexes communautaires : temps déclaré par jeu et streak actif des membres. */
+/** Classements annexes communautaires : temps et nombre de soirées par jeu, plus streak actif des membres. */
 export async function getFunLeaderboards(options: { communityId?: string | null } = {}): Promise<FunLeaderboards> {
   const requestedId = options.communityId;
-  if (requestedId === null) return { gamesByPlayTime: [], playersByStreak: [] };
+  if (requestedId === null) return { gamesByPlayTime: [], gamesByPlayCount: [], playersByStreak: [] };
   const communityId = requestedId ?? await getDefaultCommunityId();
   const [community, scopedDb, usersRaw] = await Promise.all([
     prisma.community.findUnique({ where: { id: communityId }, select: { status: true } }),
@@ -196,13 +197,19 @@ export async function getFunLeaderboards(options: { communityId?: string | null 
       select: { id: true },
     }),
   ]);
-  if (community?.status !== "ACTIVE") return { gamesByPlayTime: [], playersByStreak: [] };
-  const [games, players] = await Promise.all([
+  if (community?.status !== "ACTIVE") return { gamesByPlayTime: [], gamesByPlayCount: [], playersByStreak: [] };
+  const [games, gamesByPlayCount, players] = await Promise.all([
     scopedDb.groupGameStat.findMany({
       where: { communityId, totalPlayMinutes: { gt: 0 } },
       orderBy: { totalPlayMinutes: "desc" },
       take: 5,
       select: { gameId: true, totalPlayMinutes: true, game: { select: { name: true, coverUrl: true } } },
+    }),
+    scopedDb.groupGameStat.findMany({
+      where: { communityId, playCount: { gt: 0 } },
+      orderBy: [{ playCount: "desc" }, { gameId: "asc" }],
+      take: 5,
+      select: { gameId: true, playCount: true, game: { select: { name: true } } },
     }),
     scopedDb.communityMemberStats.findMany({
       where: { communityId, userId: { in: usersRaw.map((user) => user.id) }, streakCount: { gt: 0 }, streakLastActiveAt: { gte: new Date(Date.now() - ACTIVE_STREAK_WINDOW_MS) } },
@@ -213,6 +220,7 @@ export async function getFunLeaderboards(options: { communityId?: string | null 
   ]);
   return {
     gamesByPlayTime: games.map((game) => ({ gameId: game.gameId, name: game.game.name, coverUrl: game.game.coverUrl, totalPlayMinutes: game.totalPlayMinutes })),
+    gamesByPlayCount: gamesByPlayCount.map((game) => ({ gameId: game.gameId, name: game.game.name, playCount: game.playCount })),
     playersByStreak: players.map((player) => ({ userId: player.userId, ...player.user, streakCount: player.streakCount })),
   };
 }

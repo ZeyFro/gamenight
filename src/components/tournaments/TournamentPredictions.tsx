@@ -2,7 +2,7 @@ import type { TournamentStatus } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { submitTournamentPredictionAction } from "@/app/tournois/prediction-actions";
-import { canPredictTournamentTarget, predictionWinner } from "@/lib/tournament-prediction-rules";
+import { canPredictTournamentTarget, predictionWinner, tournamentPredictionPoints } from "@/lib/tournament-prediction-rules";
 
 type Player = { id: string; discordName: string };
 type Match = { id: string; round: number; position: number; player1Id: string | null; player2Id: string | null; winnerId: string | null; completedAt: Date | null; player1: Player | null; player2: Player | null };
@@ -15,13 +15,24 @@ export function TournamentPredictions({ tournament, predictions }: {
     { id: "champion", label: "Champion du tournoi", players: participants, match: null as Match | null },
     ...tournament.matches.map(match => ({ id: match.id, label: `Round ${match.round}, match ${match.position + 1}`, players: [match.player1, match.player2].filter((p): p is Player => !!p), match })),
   ];
+  const points = predictions.reduce((total, prediction) => {
+    const target = targets.find(candidate => candidate.id === prediction.target);
+    if (!target) return total;
+    const winner = predictionWinner(tournament.status, target.id === "champion" ? tournament.championId : null, target.match?.winnerId ?? null);
+    return total + tournamentPredictionPoints(winner, prediction.predictedUserId);
+  }, 0);
   return <Card>
     <h2 className="font-semibold text-foreground">Tes pronostics</h2>
-    <p className="my-2 text-sm text-muted">Un choix définitif par cible, sans mise ni gain d’XP. Le champion se choisit avant le lancement ; les matchs dès que les deux joueurs sont connus.</p>
+    <p className="my-2 text-sm text-muted">1 point fictif par pronostic correct résolu. Aucun gain d’XP ni mise. Score fictif : {points} {points === 1 ? "point" : "points"}. Le champion se choisit avant le lancement ; les matchs dès que les deux joueurs sont connus.</p>
     <div className="flex flex-col gap-4">{targets.map(target => {
       const prediction = predictions.find(p => p.target === target.id);
       const winner = predictionWinner(tournament.status, target.id === "champion" ? tournament.championId : null, target.match?.winnerId ?? null);
-      if (prediction) return <p key={target.id} className="text-sm">{target.label} : {target.players.find(p => p.id === prediction.predictedUserId)?.discordName ?? "Ancien participant"} — {tournament.status === "CANCELLED" ? "annulé" : winner ? (winner === prediction.predictedUserId ? "réussi ✓" : "manqué") : "en attente"}</p>;
+      if (prediction) {
+        const points = winner === null ? null : tournamentPredictionPoints(winner, prediction.predictedUserId);
+        const result = tournament.status === "CANCELLED" ? "annulé" : winner ? (points ? "réussi ✓" : "manqué") : "en attente";
+        const pointLabel = points === null ? "" : ` (${points ? "+1 point" : "0 point"})`;
+        return <p key={target.id} className="text-sm">{target.label} : {target.players.find(p => p.id === prediction.predictedUserId)?.discordName ?? "Ancien participant"} — {result}{pointLabel}</p>;
+      }
       if (!target.players.some(player => canPredictTournamentTarget(tournament.status, participants.map(p => p.id), player.id, target.match))) return null;
       return <form key={target.id} action={submitTournamentPredictionAction} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="tournamentId" value={tournament.id} />

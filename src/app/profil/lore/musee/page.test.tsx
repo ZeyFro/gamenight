@@ -21,9 +21,16 @@ describe("musée : rendu serveur", () => {
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>alert(1)");
     expect(html).toContain('href="https://example.org/clip"');
-    expect(html).toContain('name="communityId" value="a"');
     expect(html).not.toContain("Modifier ou supprimer");
-    expect(html).toContain('name="creationKey"');
+    expect(html).not.toContain("Publier");
+    expect(html).not.toContain('name="creationKey"');
+  });
+
+  it("ne propose pas d'édition à un ancien auteur sans rôle de modération", async () => {
+    currentUser.mockResolvedValue({ id: "other" });
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(html).not.toContain("Modifier ou supprimer");
+    expect(html).not.toContain("Publier");
   });
 
   it("propose la modération et la pagination au rôle autorisé", async () => {
@@ -31,6 +38,9 @@ describe("musée : rendu serveur", () => {
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ page: "2" }) }));
     expect(list).toHaveBeenCalledWith("alice", 2);
     expect(html).toContain("Modifier ou supprimer");
+    expect(html).toContain("Publier");
+    expect(html).toContain('name="communityId" value="a"');
+    expect(html).toContain('name="creationKey"');
     expect(html).toContain("?page=1");
     expect(html).toContain("?page=3");
   });

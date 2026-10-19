@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma, scopedPrisma } from "@/lib/community-scoped-client";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
@@ -30,6 +31,7 @@ export async function checkWishlistSteamPriceAlerts(): Promise<{ checked: number
   try {
     const communities = await prisma.community.findMany({
       where: {
+        status: "ACTIVE",
         steamPriceAlertsEnabled: true,
         OR: [{ steamPriceAlertScannedAt: null }, { steamPriceAlertScannedAt: { lt: scanCutoff } }],
       },
@@ -43,6 +45,7 @@ export async function checkWishlistSteamPriceAlerts(): Promise<{ checked: number
       const claimed = await prisma.community.updateMany({
         where: {
           id: community.id,
+          status: "ACTIVE",
           steamPriceAlertsEnabled: true,
           OR: [{ steamPriceAlertScannedAt: null }, { steamPriceAlertScannedAt: { lt: scanCutoff } }],
         },
@@ -89,6 +92,19 @@ export async function checkWishlistSteamPriceAlerts(): Promise<{ checked: number
           now,
         )) {
           sent = await prisma.$transaction(async (tx) => {
+            const activeCommunity = await tx.$queryRaw<Array<{ id: string }>>`
+              SELECT "id" FROM "Community"
+              WHERE "id" = ${community.id} AND "status" = 'ACTIVE' AND "steamPriceAlertsEnabled" = true
+              FOR SHARE`;
+            if (activeCommunity.length === 0) return false;
+            const activeMemberships = await tx.$queryRaw<Array<{ userId: string }>>`
+              SELECT "userId" FROM "Membership"
+              WHERE "communityId" = ${community.id}
+                AND "userId" IN (${Prisma.join(recipients)})
+                AND "status" = 'ACTIVE'
+              ORDER BY "userId"
+              FOR SHARE`;
+            if (activeMemberships.length === 0) return false;
             const scopedDb = scopedTransactionPrisma(tx, null);
             const claimedEntry = await scopedDb.gameWishlist.updateMany({
               where: {
@@ -99,7 +115,7 @@ export async function checkWishlistSteamPriceAlerts(): Promise<{ checked: number
             });
             if (claimedEntry.count !== 1) return false;
             await scopedDb.notification.createMany({
-              data: recipients.map((userId) => ({
+              data: activeMemberships.map(({ userId }) => ({
                 userId,
                 communityId: community.id,
                 type: "WISHLIST_PRICE_DROP" as const,

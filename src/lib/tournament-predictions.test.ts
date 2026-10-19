@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isTournamentPredictionsEnabled, predictionWinner, canPredictTournamentTarget } from "./tournament-prediction-rules";
+import { isTournamentPredictionsEnabled, predictionWinner, canPredictTournamentTarget, tournamentPredictionPoints } from "./tournament-prediction-rules";
 
 afterEach(() => vi.unstubAllEnvs());
 describe("pronostics de tournoi", () => {
@@ -28,5 +28,10 @@ describe("pronostics de tournoi", () => {
     expect(predictionWinner("IN_PROGRESS", null, "b")).toBe("b");
     expect(predictionWinner("CANCELLED", "a", "b")).toBe(null);
     expect(predictionWinner("REGISTRATION", "a", null)).toBe(null);
+  });
+  it("attribue un point fictif uniquement au pronostic correct résolu", () => {
+    expect(tournamentPredictionPoints("alice", "alice")).toBe(1);
+    expect(tournamentPredictionPoints("alice", "bob")).toBe(0);
+    expect(tournamentPredictionPoints(null, "alice")).toBe(0);
   });
 });

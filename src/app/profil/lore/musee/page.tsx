@@ -35,16 +35,16 @@ export default async function CommunityMuseumPage({ searchParams }: { searchPara
       <p className="mt-2 text-sm text-muted">Les grands moments et les ratés du serveur, racontés avec bienveillance. Les médias restent des liens : aucun fichier n’est envoyé ici.</p></header>
     {query.saved && <p role="status" className="text-sm text-accent">Souvenir enregistré.</p>}
     {query.error && <p role="alert" className="text-sm text-destructive">{query.error === "rate" ? "Doucement, réessaie dans un instant." : "Souvenir refusé : vérifie les champs et ton accès au serveur."}</p>}
-    <Card><h2 className="mb-3 font-semibold">Ajouter un souvenir</h2><form action={saveHighlightAction} className="flex flex-col gap-3">
+    {result.canModerate && <Card><h2 className="mb-3 font-semibold">Ajouter un souvenir</h2><form action={saveHighlightAction} className="flex flex-col gap-3">
       <input type="hidden" name="communityId" value={result.communityId} /><input type="hidden" name="creationKey" value={randomUUID()} /><Fields /><Button type="submit">Publier</Button>
-    </form></Card>
+    </form></Card>}
     {result.items.length === 0 && <p className="text-sm text-muted">Aucun souvenir sur cette page. À vous d’écrire le premier !</p>}
     {result.items.map(item => <Card key={item.id} className="flex flex-col gap-3">
       <h2 className="font-semibold">{item.kind === "FAME" ? "🏆" : "🙈"} {item.title}</h2>
       <p className="whitespace-pre-wrap text-sm text-muted">{item.description}</p>
       <p className="text-xs text-faint">Raconté par {item.createdBy.discordName}</p>
       {item.mediaUrl && <a href={item.mediaUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-sm text-accent">Voir l’image ou le clip ↗</a>}
-      {(item.createdById === user.id || result.canModerate) && <details><summary className="cursor-pointer py-3 text-sm">Modifier ou supprimer</summary>
+      {result.canModerate && <details><summary className="cursor-pointer py-3 text-sm">Modifier ou supprimer</summary>
         <form action={saveHighlightAction} className="flex flex-col gap-3"><input type="hidden" name="communityId" value={result.communityId} /><input type="hidden" name="id" value={item.id} /><Fields item={item} /><Button type="submit" size="sm">Enregistrer</Button></form>
         <form action={deleteHighlightAction} className="mt-3"><input type="hidden" name="communityId" value={result.communityId} /><input type="hidden" name="id" value={item.id} /><Button type="submit" size="sm" variant="destructive">Supprimer ce souvenir</Button></form>
       </details>}

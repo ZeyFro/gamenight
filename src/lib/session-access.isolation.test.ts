@@ -118,7 +118,7 @@ describe("session-access — isolation par communauté", () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
       await inviteToSession("s1", "owner", "guest");
       expect(mocks.userFindFirst).toHaveBeenCalledWith({
-        where: { id: "guest", memberships: { some: { communityId: "c-b", status: "ACTIVE" } } },
+        where: { id: "guest", memberships: { some: { communityId: "c-b", status: "ACTIVE", community: { status: "ACTIVE" } } } },
         select: { id: true },
       });
       expect(mocks.inviteUpsert).toHaveBeenCalledOnce();
@@ -136,7 +136,7 @@ describe("session-access — isolation par communauté", () => {
       mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner", communityId: null });
       await inviteToSession("s1", "owner", "guest");
       expect(mocks.userFindFirst).toHaveBeenCalledWith({
-        where: { id: "guest", memberships: { some: { communityId: "c-def", status: "ACTIVE" } } },
+        where: { id: "guest", memberships: { some: { communityId: "c-def", status: "ACTIVE", community: { status: "ACTIVE" } } } },
         select: { id: true },
       });
     });

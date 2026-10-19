@@ -19,16 +19,14 @@ const RESULT: Record<string, string> = {
 
 export function SessionGallery({
   sessionId,
-  userId,
-  creatorId,
+  canManage,
   images,
   result,
   storageReady,
   videosEnabled,
 }: {
   sessionId: string;
-  userId: string;
-  creatorId: string;
+  canManage: boolean;
   images: GalleryMedia[];
   result?: string;
   storageReady: boolean;
@@ -76,7 +74,7 @@ export function SessionGallery({
                   className="aspect-[4/3] w-full rounded-lg object-cover"
                 />
               )}
-              {(item.uploadedById === userId || creatorId === userId) && (
+              {canManage && (
                 <form action={deleteSessionGalleryImageAction}>
                   <input type="hidden" name="sessionId" value={sessionId} />
                   <input type="hidden" name="mediaId" value={item.id} />
@@ -86,7 +84,7 @@ export function SessionGallery({
             </figure>
           ))}
         </div>
-        {storageReady && images.length < SESSION_GALLERY_MAX_ITEMS && (
+        {canManage && storageReady && images.length < SESSION_GALLERY_MAX_ITEMS && (
           <form action={uploadSessionGalleryImageAction} className="flex flex-col gap-3 border-t border-border pt-4">
             <input type="hidden" name="sessionId" value={sessionId} />
             <label htmlFor={`${sessionId}-media`} className="text-sm font-medium">{videosEnabled ? "Ajouter un média" : "Ajouter une photo"}</label>

@@ -46,7 +46,8 @@ export async function saveCommunityBirthdayAction(formData: FormData): Promise<v
     create: { communityId, createdById: user.id, memberId: user.id, kind: "BIRTHDAY", date: storedDate(date, true), repeatsAnnually: true },
     update: { date: storedDate(date, true) },
   });
-  await returnToCalendar(date);
+  // L’année de naissance ne doit pas apparaître dans l’URL après enregistrement.
+  await returnToCalendar();
 }
 
 export async function createCommunityDateAction(formData: FormData): Promise<void> {
