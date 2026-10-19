@@ -21,23 +21,23 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Livraison | Élément | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|
-| L1-01 | Partiellement livré | Rappels après changement de date (✅ rappels 24 h / 2 h configurables) | Corriger les rappels après changement de date ; option 1 h | code | Fait (#229) |
-| L1-02 | Partiellement livré | Périmètre communautaire de la bibliothèque | Isoler jeux, possesseurs et compteurs par serveur | code | Fait (#228) |
+| L1-01 | Livré et testé | Rappels réarmés après changement de date; préréglage 1 h inclus | Recette réelle des rappels non exécutée ici; aucun envoi Discord autorisé | code | Fait (#229) |
+| L1-02 | Livré et testé | Bibliothèque collective, possesseurs et compteurs filtrés par communauté active | Code conditionné par l’isolation; garder celle-ci désactivée, recette multi-compte non vérifiée | code | Fait (#228) |
 
 ## Lot 2 — Organisation
 
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
-| L2-01 | Partiellement livré | Sondage de disponibilités type When2meet | 🟡 Suggestions de trois créneaux à partir des plannings | Vrai sondage par soirée, grille de réponses, choix collectif | code | Fait (#232) |
-| L2-02 | Partiellement livré | Jeux possédés par tous les participants choisis | 🟡 Bibliothèque de groupe, possesseurs et filtres | Intersection exacte des joueurs sélectionnés, limitée à leur communauté | code | Fait (#234) |
+| L2-01 | Livré et testé | Sondage de disponibilités type When2meet | ✅ Créneaux, réponses individuelles, grille et conversion en soirée | Migration et parcours authentifié à vérifier sur Preview; pas de flag dédié | code | Fait (#232) |
+| L2-02 | Livré et testé | Jeux possédés par tous les participants choisis | ✅ Intersection exacte des possessions des joueurs sélectionnés | Recette authentifiée non vérifiée; périmètre global historique si isolation OFF | code | Fait (#234) |
 
 ## Lot 3 — Carnet et préparation
 
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
-| L3-01 | Partiellement livré | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | 🟡 Liaison et identifiant Steam | Ajouter les autres identifiants au profil | code | Fait (#235) |
+| L3-01 | Livré et testé | Identifiants Steam, PSN, Xbox, Switch, Epic, Battle.net | ✅ Identifiants déclaratifs hors Steam, édition profil et affichage aux potes | Migration et parcours authentifié à vérifier; pas de vérification de propriété hors Steam | code | Fait (#235) |
 | L3-02 | Livré et testé | Manette/clavier, micro, plateformes disponibles | ✅ Carnet matériel, plateformes et micro sur le profil | Aucune | code | Fait (#236) |
-| L3-03 | Partiellement livré | Préférences et jeux refusés | 🟡 Tags configurables (Coop, FPS, Chill, Horreur…) | Refus explicites (« pas d'horreur ») et usage dans les suggestions | code | Fait (#237) |
+| L3-03 | Livré et testé | Préférences et jeux refusés | ✅ Refus de catégories/jeux et classement des suggestions des participants choisis | Migration et recette authentifiée à vérifier; ne modifie pas les votes ni les roulettes | code | Fait (#237) |
 | L3-04 | Livré et testé | Avertissements : jumpscares, mal des transports, langue | ✅ Avertissements visibles avant participation | Aucune | code | Fait (#239 ; PR #238 fusionnée) |
 | L3-05 | Livré et testé | Gratuit/payant et taille du téléchargement | ✅ Coût, prix, volume, plateforme et source déclarés sur la fiche jeu | Saisie communautaire; pas de catalogue automatique ni de garantie de fraîcheur | code | Fait (#239) |
 | L3-06 | Livré mais désactivé | Checklist installé / mis à jour / micro / lobby | ✅ Checklist individuelle sur les soirées prévues | Aucune | code | Fait (#240) |
@@ -99,7 +99,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L7-13 | Partiellement livré | PWA hors ligne | 🟡 Fallback hors ligne | L'application et ses données ne sont pas disponibles sans réseau; ne pas mettre en cache de réponses privées sans décision de sécurité | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
 | L7-14 | Livré et testé | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Livré et testé | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
-| L7-16 | Partiellement livré | Guide du nouveau : règles et contacts par serveur | ✅ Guide et assistant | Règles/contacts propres à chaque serveur | code | Fait (#267, fusionnée) |
+| L7-16 | Livré et testé | Guide du nouveau : règles et contacts par serveur | ✅ Règles et contacts administrables, affichés dans le guide du serveur | Migration, contenu admin et parcours authentifié à vérifier; ne pas activer l’isolation pour cette reprise | code | Fait (#267, fusionnée) |
 | L7-17 | Partiellement livré | Messages personnalisés et pings du bot | 🟡 Modèles fil/MP | Valider les messages réels et les règles ; modèles partagés entre serveurs | validation | À TOI — validation humaine des messages réels |
 
 ## Parcours livrés à valider en réel (ignorés par la boucle)

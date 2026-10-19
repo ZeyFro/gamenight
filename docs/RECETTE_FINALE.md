@@ -1,6 +1,6 @@
 # Recette finale GameNight — état et critères
 
-Audit documentaire du dépôt sur la branche main récupérée le 18 octobre 2026. Ce document compare le code et ses tests aux parcours décrits dans README.md, ROADMAP.md et .env.example. La page publique a été vérifiée avec Firecrawl; les parcours authentifiés attendent la connexion Discord humaine. Les flags Vercel Preview/Production restent inaccessibles (403 sur les deux connecteurs Vercel).
+Audit documentaire réconcilié le 19 octobre 2026 avec `origin/main` à `b30e8ef` (PR #281–284 fusionnées). Ce document compare le code et ses tests aux parcours décrits dans README.md, ROADMAP.md et .env.example. La vérification publique Firecrawl et les refus Vercel 403 décrits plus bas sont historiques, depuis un autre poste; ils n’ont pas été rejoués sur le portable 1. Les parcours authentifiés, les migrations distantes et les flags Preview/Production restent non vérifiés ici. La CI et la preview vertes de #284 ne prouvent pas ces parcours.
 
 ## Comment lire les états
 
@@ -11,23 +11,33 @@ Audit documentaire du dépôt sur la branche main récupérée le 18 octobre 202
 
 La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut reste le suivi de la PR et ne vaut pas validation de disponibilité.
 
+## Validation locale ciblée — portable 1, 19 octobre 2026
+
+- Base de code : `b30e8ef`, avec les corrections documentaires de cette reprise. Aucune correction applicative nécessaire après ces tests.
+- Destination vérifiée avant migration et tests : nouveau conteneur `gamenight-portable1-pg`, image `postgres:16-alpine` (PostgreSQL 16.15), port hôte `127.0.0.1:55440`, base `gamenight_portable1_test`. Les 107 migrations existantes ont été appliquées. L’ancien `gamenight-test-pg` reste arrêté et intact; le service local 5432 n’est pas utilisé.
+- `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55440/gamenight_portable1_test npx vitest run src/lib/session-availability-poll.integration.test.ts src/lib/game-library.integration.test.ts src/lib/game-suggestions.integration.test.ts --no-file-parallelism --maxWorkers=1` : **39 tests réussis, aucun ignoré**. Ces scénarios vérifient notamment la conversion concurrente en une seule soirée avec invitations exactes, l’intersection des possessions sélectionnées et les refus de jeux/catégories dans les suggestions. Les accès réseau sont interdits par les doubles de test.
+- Tests ciblés de `session-availability-poll.test.ts`, `game-preferences.test.ts`, pages bibliothèque groupe/suggestions et actions de préférences : **28 tests réussis, aucun ignoré**, cinq fichiers exécutés en série.
+- Limite : ces intégrations et tests de pages ne constituent pas une recette dans un navigateur connecté à Discord. Aucun message réel ni écriture de production; aucune variable d’isolation déployée modifiée. Les valeurs ON/OFF des scénarios d’isolation sont des simulations locales au processus de test.
+- Preview : les métadonnées listent un déploiement Ready de #284, tête `cbfccc66`; la lecture du projet avec le scope `mpmaximeparisot-6230s-projects` retourne **403 forbidden**, et le recours CLI échoue car `vercel` n’est pas installé sur ce poste. Neon liste `production` comme branche par défaut prête, `preview-gamenight` archivée et une sauvegarde. Le rattachement DB de la Preview et ses migrations n’ont donc pas été établis : **aucune recette avec écriture n’y a été lancée**.
+
 ## Inventaire fonctionnel
 
 | Fonction | État | Utilisable dans le code livré | Configuration nécessaire | Reste à développer ou valider |
 |---|---|---|---|---|
-| Catalogue, bibliothèque personnelle et inventaire | Partiellement livré | Bibliothèque et import Steam existent; les fiches coût/taille/source sont saisissables | Connexion Steam et services utilisés; état production non vérifié | La bibliothèque personnelle et le catalogue restent partagés entre communautés; intersection exacte pour une liste choisie de joueurs incomplète |
+| Catalogue, bibliothèque personnelle et inventaire | Livré et testé | Catalogue global, bibliothèque personnelle, import Steam et intersection exacte des possessions sélectionnées; bibliothèque collective, possesseurs et compteurs scopés quand l’isolation est active | Connexion Steam; périmètre global historique si isolation OFF | Recette authentifiée et multi-compte non vérifiée; garder l’isolation désactivée |
 | Wishlist | Livré et testé | Ajout et suivi communautaire par jeu | Vérifier l’activation et les migrations déployées dans Vercel | Recette authentifiée et vérification de l’isolation en environnement de test |
-| Carnet des joueurs | Livré et testé | Commandes, plateformes et disponibilité du micro sur le profil | Connexion et profil utilisateur | Le carnet ne filtre pas automatiquement les suggestions; identifiants PSN/Xbox/Switch/Epic/Battle.net non livrés |
-| Préférences et refus | Partiellement livré | Tags de préférences configurables | Aucune activation distante vérifiée | Refus explicites de genres et utilisation dans les suggestions |
+| Carnet des joueurs | Livré et testé | Commandes, plateformes, micro et identifiants PSN/Xbox/Switch/Epic/Battle.net déclaratifs sur le profil | Connexion, profil et migration des identifiants | Recette authentifiée non vérifiée; les identifiants hors Steam ne sont pas des liaisons OAuth ni des preuves de propriété |
+| Préférences et refus | Livré et testé | Préférences, refus de catégories et jeux nommés utilisés dans /bibliotheque/suggestions pour les participants choisis | Migrations correspondantes; pas de flag dédié | Recette authentifiée non vérifiée; votes et roulettes ne sont pas modifiés par ce parcours |
 | Préparation d’un jeu | Livré mais désactivé | Coût, prix, volume, plateforme, source et durée estimée sur une fiche possédée | GAME_PREPARATION_TIME_ENABLED pour la durée | Les valeurs sont déclarées par des membres, sans import officiel ni garantie de fraîcheur |
 | Checklist de soirée | Livré mais désactivé | Installation, mise à jour, micro et lobby pour une soirée planifiée | SESSION_PREPARATION_ENABLED et migration session_preparation | Activer seulement après vérification de la migration et des communautés |
-| Organisation et disponibilités | Partiellement livré | Suggestions de créneaux, création de séries hebdomadaires/mensuelles | Compte connecté; autres états non vérifiés | Pas de vrai sondage collectif par soirée; pas d’édition groupée des séries |
+| Organisation et disponibilités | Partiellement livré | Suggestions, sondage collectif avec réponses individuelles et conversion en soirée; séries hebdomadaires/mensuelles | Compte connecté et migration session_availability_polls | Recette authentifiée non vérifiée; édition groupée des séries non livrée |
 | Roulette | Livré et testé | Roulette de base, pondération tierlist et évitement des jeux récents | État des flags non confirmé | Filtre par nombre de joueurs et veto exigent ROULETTE_PLAYER_FILTER_ENABLED et VOTE_VETO_ENABLED |
 | Récompenses et engagement | Livré mais désactivé | Notes, quêtes, boutique XP; saisie de présence | Réglages communauté pour bonus/malus; état de production non vérifié | Les récompenses présence sont désactivées par défaut; aucune transaction financière |
 | Wishlist et achats à plusieurs | Partiellement livré | Votes d’intérêt et plan indicatif | COMMUNITY_ISOLATION_ENABLED ne doit pas être activé avant la fin des contrôles; flags d’alertes à vérifier | Aucun paiement, engagement financier ou achat automatique |
 | Offres et promotions | Partiellement livré | Prix Steam consultables; curation manuelle d’offres gratuites possible | Flags d’alertes/executor; configuration production à vérifier | Publication automatique des offres gratuites : Non implémenté |
 | Tournois | Livré mais désactivé | Création, bracket et tirage des équipes; annonces possibles | TOURNAMENT_PREDICTIONS_ENABLED, TOURNAMENT_SCORES_ENABLED et configuration Discord pour les sous-parcours concernés | Les pronostics et la saisie de scores sont off par défaut; aucun essai Discord authentifié |
 | Lore et contenu communautaire | Livré mais désactivé | Chroniques, expressions, épitaphes, sondages et highlights ont du code et des tests | Flags de chaque domaine et migrations correspondantes | Activer après revue des flags et test d’accès multi-compte; aucun parcours réel vérifié |
+| Guide par serveur | Livré et testé | Règles et contacts éditables par admin, affichés dans /guide | COMMUNITY_ADMIN_ENABLED pour l’édition, migration et contenu saisi; affichage selon la communauté résolue | Recette authentifiée non vérifiée; aucune activation de l’isolation dans cette reprise |
 | Calendrier | Partiellement livré | Téléchargement ponctuel iCal des soirées et dates serveur | Session authentifiée | Abonnement calendrier avec mises à jour : Non implémenté |
 | Galerie privée | Partiellement livré | Images JPEG/PNG/GIF/WebP, limites documentées, consentement et accès des participants | SESSION_MEDIA_BLOB_TOKEN et activation admin de la galerie | Clip vidéo : Non implémenté; purge séparée différée; état distant de l’activation non vérifié |
 | Accueil | Partiellement livré | Accueil courant; variantes récentes présentes dans le code | HOME_V2_ENABLED pour /accueil-v2 | HOME_V2_ENABLED est désactivé par défaut; comparaison authentifiée manquante |
@@ -43,8 +53,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | App et données réellement utilisables sans réseau | Non implémenté; seul le fallback offline existe |
 | Abonnement iCal continu | Non implémenté |
 | Publication automatique des offres Epic/Steam gratuites | Non implémenté; la curation manuelle existe |
-| Intersection stricte des jeux possédés par les joueurs sélectionnés | Partiellement livré |
-| Sondage collectif de disponibilités par soirée | Non implémenté |
+| Édition groupée des séries récurrentes | Non implémenté |
 | Paiement/achat groupé intégré | Non implémenté |
 
 ## Recette navigateur authentifiée à exécuter
