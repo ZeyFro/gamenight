@@ -22,7 +22,7 @@ export default async function FreeGamesPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎁 Jeux gratuits</h1>
-          <p className="mt-1 text-sm text-muted">Sélection française ajoutée manuellement par les admins; vérifie les conditions sur la boutique avant de réclamer.</p>
+          <p className="mt-1 text-sm text-muted">Vérifie la gratuité, les conditions et la disponibilité dans ta région sur la boutique.</p>
         </div>
         <Link href="/wishlist" className="text-sm font-medium text-accent">Wishlist →</Link>
       </div>
@@ -30,7 +30,7 @@ export default async function FreeGamesPage() {
       {!communityId ? (
         <Card className="text-sm text-muted">Les offres ne sont pas activées pour ta communauté.</Card>
       ) : offers.length === 0 ? (
-        <EmptyState icon="🎁" title="Aucune offre gratuite en cours." />
+        <EmptyState icon="🎁" title="Aucune offre affichée pour le moment." />
       ) : (
         <ul className="flex flex-col gap-3">
           {offers.map((offer) => (
@@ -38,7 +38,11 @@ export default async function FreeGamesPage() {
               <Card className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-medium text-foreground">{offer.title}</p>
-                  <p className="text-xs text-muted">{offer.store === "STEAM" ? "Steam" : "Epic Games Store"} · gratuit jusqu&apos;au {formatDateTimeFr(offer.endsAt)}</p>
+                  {offer.source === "gamerpower" ? (
+                    <p className="text-xs text-muted">{offer.store === "STEAM" ? "Steam" : "Epic Games Store"} · signalée active par <a href="https://www.gamerpower.com/" target="_blank" rel="noopener noreferrer" className="underline">GamerPower</a> · vérifie les conditions sur la boutique</p>
+                  ) : (
+                    <p className="text-xs text-muted">{offer.store === "STEAM" ? "Steam" : "Epic Games Store"} · gratuit jusqu&apos;au {formatDateTimeFr(offer.endsAt)}</p>
+                  )}
                 </div>
                 <a href={offer.storeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-sm font-medium text-accent underline">Réclamer ↗</a>
               </Card>
