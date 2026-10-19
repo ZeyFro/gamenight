@@ -58,12 +58,13 @@ describe.skipIf(!TEST_DATABASE_URL)("musée communautaire : droits et isolation"
   });
 
   it("refuse un formulaire ouvert sur un autre serveur", async () => {
-    expect(await api.saveCommunityHighlight("highlight-alice", null, input, { communityId: "highlight-b" })).toBe(false);
+    expect(await api.saveCommunityHighlight("highlight-admin", null, input, { communityId: "highlight-b" })).toBe(false);
     expect(await db.communityHighlight.count()).toBe(0);
   });
 
   it.each(["true", "false"])("isole lecture et mutations même isolation=%s", async (isolation) => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);
+    await db.membership.update({ where: { communityId_userId: { communityId: "highlight-b", userId: "highlight-other" } }, data: { role: "ADMIN" } });
     await api.saveCommunityHighlight("highlight-admin", null, input);
     const id = (await api.listCommunityHighlights("highlight-alice", 1))!.items[0].id;
     expect((await api.listCommunityHighlights("highlight-other", 1))?.items).toHaveLength(0);
@@ -76,12 +77,13 @@ describe.skipIf(!TEST_DATABASE_URL)("musée communautaire : droits et isolation"
   });
 
   it("refuse membre retiré, communauté suspendue, saisie invalide et flag OFF", async () => {
-    expect(await api.saveCommunityHighlight("highlight-alice", null, { ...input, mediaUrl: "javascript:alert(1)" })).toBe(false);
-    await db.membership.update({ where: { communityId_userId: { communityId: "highlight-a", userId: "highlight-alice" } }, data: { status: "REMOVED" } });
-    expect(await api.saveCommunityHighlight("highlight-alice", null, input)).toBe(false);
-    expect(await api.listCommunityHighlights("highlight-alice", 1)).toBeNull();
+    expect(await api.saveCommunityHighlight("highlight-admin", null, { ...input, mediaUrl: "javascript:alert(1)" })).toBe(false);
+    await db.membership.update({ where: { communityId_userId: { communityId: "highlight-a", userId: "highlight-admin" } }, data: { status: "REMOVED" } });
+    expect(await api.saveCommunityHighlight("highlight-admin", null, input)).toBe(false);
+    expect(await api.listCommunityHighlights("highlight-admin", 1)).toBeNull();
+    await db.membership.update({ where: { communityId_userId: { communityId: "highlight-a", userId: "highlight-admin" } }, data: { status: "ACTIVE" } });
     await db.community.update({ where: { id: "highlight-a" }, data: { status: "SUSPENDED" } });
-    expect(await api.saveCommunityHighlight("highlight-bob", null, input)).toBe(false);
+    expect(await api.saveCommunityHighlight("highlight-admin", null, input)).toBe(false);
     vi.stubEnv("COMMUNITY_HIGHLIGHTS_ENABLED", "false");
     expect(await api.listCommunityHighlights("highlight-other", 1)).toBeNull();
     expect(await db.communityHighlight.count()).toBe(0);
