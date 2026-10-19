@@ -23,6 +23,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts`: 12/12 réussi.
 - `npm exec -- vitest run src/lib/scoreboard.isolation.test.ts`: 10/10 réussi après le classement par soirées rejouées; ESLint ciblé et `git diff --check` verts.
 - Carnet joueur sans DB : identifiants, équipement, préférences, quiz et composants profil 40/40; disponibilité/sondage 15/15 (`availability.test.ts`, `session-availability-poll.test.ts`). Aucun parcours privé multi-compte navigateur validé.
+- Tournois sans DB/Discord : bracket, scores, tirage d’équipes, RSVP, pronostics et composants 44/44; les annonces Discord réelles et les parcours authentifiés restent non vérifiés.
 - `community-domains.integration.test.ts -t "récap : même mois" --pool=forks --maxWorkers=1`: 1/1 réussi sur PostgreSQL local dédié après contrôle lecture seule du conteneur, port et base; aucun autre worker PostgreSQL lancé.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
