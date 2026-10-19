@@ -26,7 +26,7 @@ export async function getShopState(userId: string, communityId: string) {
     db.communityMemberCosmetic.findMany({ where: { communityId, userId }, select: { itemId: true } }),
   ]);
   return {
-    balance: stats?.xpTotal ?? 0,
+    balance: stats?.xpBalance ?? 0,
     ownedIds: new Set(owned.map((item) => item.itemId)),
     equipped: {
       TITLE: stats?.equippedTitleId ?? null,
@@ -72,13 +72,13 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
 
     const stats = await tx.communityMemberStats.findUniqueOrThrow({
       where: { communityId_userId: { communityId, userId } },
-      select: { xpTotal: true },
+      select: { xpBalance: true },
     });
-    if (stats.xpTotal < item.price) return "insufficient" as const;
+    if (stats.xpBalance < item.price) return "insufficient" as const;
 
     await tx.communityMemberStats.update({
       where: { communityId_userId: { communityId, userId } },
-      data: { xpTotal: { decrement: item.price } },
+      data: { xpBalance: { decrement: item.price } },
     });
     await tx.xpEvent.create({
       data: { communityId, userId, reason: "SHOP_PURCHASE", sourceId: itemId, amount: -item.price },

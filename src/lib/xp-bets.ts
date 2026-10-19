@@ -20,12 +20,12 @@ class InsufficientBalanceError extends Error {}
  * voterId])`). La mise est déduite du solde IMMÉDIATEMENT (mise "en jeu",
  * jamais négative : `isValidBetAmount` garantit `amount <= 50% du solde`
  * avant tout écriture). `allIn` fige si la mise valait le max autorisé au
- * moment du pari — nécessaire pour le badge "All In", `xpTotal` pouvant
+ * moment du pari — nécessaire pour le badge "All In", `xpBalance` pouvant
  * changer après coup (cf. commentaire sur le modèle `XpBet`).
  *
  * Fix bug remonté (solde négatif, PR "Fiabilise la clôture des saisons")
- * — la vérification ci-dessus (`isValidBetAmount(amount, voter.xpTotal)`)
- * lit `xpTotal` HORS transaction, donc potentiellement périmée si le solde
+ * — une vérification `isValidBetAmount(amount, voter.xpBalance)` qui
+ * lit `xpBalance` HORS transaction est potentiellement périmée si le solde
  * change avant l'écriture réelle (autre pari, ou clôture de saison —
  * `finalizeSeasonIfDue`, `src/lib/seasons.ts`, qui verrouille les lignes
  * `User` via `SELECT ... FOR UPDATE`). Un pari dont le débit attend ce
@@ -55,17 +55,19 @@ export async function placeBet(
       if (isCommunityIsolationEnabled() && !(await lockCommunityProgress(tx, communityId, targetUserId))) return false;
       const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId: voterId }], skipDuplicates: true });
-      const locked = await tx.$queryRaw<{ xpTotal: number }[]>`
-        SELECT "xpTotal" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE
+      const locked = await tx.$queryRaw<{ xpBalance: number }[]>`
+        SELECT "xpBalance" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE
       `;
-      const currentXpTotal = locked[0]?.xpTotal;
-      if (currentXpTotal === undefined || !isValidBetAmount(amount, currentXpTotal)) throw new InsufficientBalanceError();
+      const currentBalance = locked[0]?.xpBalance;
+      if (currentBalance === undefined || !isValidBetAmount(amount, currentBalance)) throw new InsufficientBalanceError();
       await scopedDb.xpBet.create({ data: {
         communityId, sessionId, voterId, targetUserId, amount,
-        allIn: amount === maxBetAmount(currentXpTotal), gameName: session.decidedGame?.name ?? null,
+        allIn: amount === maxBetAmount(currentBalance), gameName: session.decidedGame?.name ?? null,
       } });
       await scopedDb.communityMemberStats.update({
-        where: { communityId_userId: { communityId, userId: voterId } }, data: { xpTotal: { decrement: amount } },
+        where: { communityId_userId: { communityId, userId: voterId } },
+        // Les paris gardent leur effet existant sur la progression.
+        data: { xpTotal: { decrement: amount }, xpBalance: { decrement: amount } },
       });
       return true;
     });

@@ -7,13 +7,14 @@ import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 
 export interface CommunityProgress {
   xpTotal: number;
+  xpBalance: number;
   streakCount: number;
   streakLastActiveAt: Date | null;
   bestStreakCount: number;
   tournamentsParticipatedCount: number;
 }
 export const ZERO_MEMBER_STATS: CommunityProgress = {
-  xpTotal: 0, streakCount: 0, streakLastActiveAt: null,
+  xpTotal: 0, xpBalance: 0, streakCount: 0, streakLastActiveAt: null,
   bestStreakCount: 0, tournamentsParticipatedCount: 0,
 };
 

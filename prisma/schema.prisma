@@ -1012,6 +1012,7 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  // Débit du solde dépensable seulement ; exclu des agrégats de progression.
   SHOP_PURCHASE
   // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
   // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
@@ -1910,7 +1911,10 @@ model UserLifetimeStats {
 model CommunityMemberStats {
   communityId String
   userId String
+  // Progression de la saison, indépendante des dépenses de boutique.
   xpTotal Int @default(0)
+  // Réserve dépensable, remise à zéro avec la saison.
+  xpBalance Int @default(0)
   streakCount Int @default(0)
   streakLastActiveAt DateTime?
   bestStreakCount Int @default(0)

@@ -31,7 +31,7 @@ function describe(xp: number) {
 /**
  * Formulaire de correction d'XP : saisie de la nouvelle valeur (remplacement, pas un
  * delta) et d'une raison facultative, puis confirmation en deux temps (même gabarit
- * que `ForceReloginCard`) montrant le solde, le niveau et le rang avant → après.
+ * que `ForceReloginCard`) montrant la progression, le niveau et le rang avant → après.
  */
 export function XpAdjustForm({
   communityId,
@@ -69,7 +69,7 @@ export function XpAdjustForm({
           aria-describedby="xp-adjust-hint"
         />
         <span id="xp-adjust-hint" className="text-xs font-normal text-muted">
-          Remplace le solde actuel ({currentXp.toLocaleString("fr-FR")} XP). Entier de 0 à 10 000 000.
+          Remplace la progression actuelle ({currentXp.toLocaleString("fr-FR")} XP). Le même écart est appliqué au solde dépensable, sans passer sous zéro. Entier de 0 à 10 000 000.
         </span>
       </label>
       <label className="flex flex-col gap-1 text-sm font-medium text-foreground">

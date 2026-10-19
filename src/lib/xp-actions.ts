@@ -19,7 +19,7 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-/** Ledger, solde et niveau atomiques ; l'incrément fournit le vrai solde précédent. */
+/** Ledger, progression, solde et niveau atomiques ; l'incrément fournit le vrai solde précédent. */
 export async function awardXp(
   userId: string, communityId: string | null, reason: XpReason,
   sourceId: string, baseAmount: number,
@@ -71,7 +71,8 @@ export async function awardXp(
         await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
       }
       const updated = await scopedDb.communityMemberStats.update({
-        where: { communityId_userId: { communityId: id, userId } }, data: { xpTotal: { increment: amount } },
+        where: { communityId_userId: { communityId: id, userId } },
+        data: { xpTotal: { increment: amount }, xpBalance: { increment: amount } },
       });
       const beforeLevel = levelForXp(updated.xpTotal - amount);
       const afterLevel = levelForXp(updated.xpTotal);
@@ -116,7 +117,7 @@ export async function applySessionAbsencePenalty(
       await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${id} AND "userId" = ${userId} FOR UPDATE`;
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({
         where: { communityId_userId: { communityId: id, userId } },
-        select: { xpTotal: true },
+        select: { xpTotal: true, xpBalance: true },
       });
       const amount = absencePenaltyAmount(configuredPenalty, stats.xpTotal);
       if (amount === 0) return false;
@@ -125,7 +126,7 @@ export async function applySessionAbsencePenalty(
       });
       await scopedDb.communityMemberStats.update({
         where: { communityId_userId: { communityId: id, userId } },
-        data: { xpTotal: { decrement: amount } },
+        data: { xpTotal: { decrement: amount }, xpBalance: Math.max(0, stats.xpBalance - amount) },
       });
       return true;
     });
