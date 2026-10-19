@@ -18,10 +18,11 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 ## Vérifications acquises
 
-- `npm exec vitest run src/app/sessions/actions/gallery.test.ts src/components/sessions/SessionGallery.test.tsx`: 7/7 réussi avant le dernier ajout Lore.
-- `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts src/lib/community-highlights.integration.test.ts`: 12 réussis, 6 intégrations PostgreSQL ignorées faute de `TEST_DATABASE_URL`.
-- ESLint ciblé et `git diff --check` verts avant le dernier ajout Lore; les relancer après modification.
-- La recette locale authentifiée de #289 est déjà acquise et ne doit pas être rejouée. Les intégrations PostgreSQL doivent rester sérielles et n’être exécutées qu’avec destination locale/isolée confirmée.
+- `npm exec vitest run src/app/sessions/actions/gallery.test.ts src/components/sessions/SessionGallery.test.tsx`: 7/7 réussi.
+- `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts`: 12/12 réussi.
+- `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
+- ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
+- La recette locale authentifiée de #289 est déjà acquise et ne doit pas être rejouée. Toute suite Postgres ultérieure reste sérielle et nécessite la vérification de destination adaptée avant les écritures.
 - `gh pr checks 290` n’a rapporté aucun contrôle; l’API branch protection de `main` a retourné 404 « Branch not protected ». Re-vérifier les checks GitHub pour le nouveau SHA, sans polling en boucle.
 
 ## Prochaine action exacte
@@ -29,7 +30,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 1. Vérifier l’état et les tests ciblés ci-dessus; si verts, `git add` uniquement les changements de code/test et les deux documents de suivi, commit puis push de la branche PR #290.
 2. Revoir les permissions de galerie : décider à partir des rôles déjà définis si `ADMIN`/`OWNER` de la communauté peuvent gérer les médias et les voir sans devenir invité d’une soirée privée. Ne pas accorder un bypass global de lecture des soirées. Tant que ce point n’est pas résolu, garder la PR brouillon.
 3. Continuer les tâches indépendantes dans l’ordre : carnet/préparation, progression/boutique, puis autres exigences selon `docs/MISSION-20261019.md`. Distinguer validation manquante de fonction absente; aucun changement de scope documentaire pour simuler une livraison.
-4. Avant toute recette PostgreSQL, inspecter localement et sans afficher le secret la cible `TEST_DATABASE_URL`; le handoff indique que le conteneur dédié `gamenight-portable1-pg` écoute sur `127.0.0.1:55440`, base `gamenight_portable1_test`, mais ne pas présumer qu’il est encore lancé.
+4. Pour les changements Lore, les six intégrations Postgres sont déjà acquises; ne pas les rejouer sans changement pertinent. Pour une autre suite, le conteneur dédié `gamenight-portable1-pg` doit encore être vérifié avant toute écriture, car son état peut changer.
 5. Pour toute nouvelle PR, tests pertinents au dernier commit, revue, checks GitHub et statut de déploiement requis avant fusion. Si un blocage demeure, garder la PR brouillon et consigner la cause précise dans ce fichier et `docs/MISSION-20261019.md`.
 
 ## Interventions humaines probablement requises
