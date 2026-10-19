@@ -1,4 +1,28 @@
-# État de reprise — 18 octobre 2026, 18:10 UTC
+# État de reprise — portable 1, 19 octobre 2026, 07:09 UTC
+
+## Relevé courant du portable 1
+
+- PC fixe arrêté. Son `HANDOFF.md` final n’est pas disponible ici et n’a pas été utilisé. Les chemins, services locaux et autorisations de sessions précédentes ci-dessous sont historiques, pas des prérequis vérifiés sur ce portable.
+- `git fetch origin main` effectué : `origin/main` = `b30e8ef6ac67d43df1fe2dce1d5a9bf5589236ab`. GitHub confirme #281–284 fusionnées et aucune PR ouverte au relevé du 19 octobre. #281 corrige accueil mobile, statut des tournois et repli des couvertures; #282–284 corrigent le débordement et la largeur des infobulles de rang.
+- Worktree dédié : `C:\Users\mparisot\gamenight\.codex-worktrees\reprise-portable1`, branche `docs/reprise-portable1`, créée sur ce `origin/main`. Checkout racine conservé sur `chore/roadmap-fusion-auto` à `edb7860`, avec modification locale de `.gitignore` et fichiers non suivis. Aucun stash, nettoyage, changement de branche racine ni suppression d’ancien worktree.
+- Lot de reprise présenté avant modification : réconciliation documentaire seulement. `ROADMAP.md` et `RECETTE_FINALE.md` distinguent désormais les parcours déjà livrés (rappels 1 h/replanification, bibliothèque scopée, sondages collectifs, intersection, identifiants, refus/suggestions, guide serveur), la configuration non vérifiée et les vrais sous-périmètres manquants.
+- Preuve distante lue une fois : #284, tête `cbfccc66f846294eaa2b866eec65c2c6eefec817`, check `verify` réussi, [CI 39172323945](https://github.com/ZeyFro/gamenight/actions/runs/39172323945), [preview Vercel réussie](https://vercel.com/mpmaximeparisot-6230s-projects/gamenight/4hx4ZyVhAsDqAyczqq9FxbVavEXT). Ce résultat concerne cette tête de PR, pas une exécution locale ni une recette de production.
+- Vérification locale : lecture ciblée du code et des tests, revue indépendante en lecture seule des sept lignes de roadmap corrigées, `git diff --check` réussi. Aucun npm ci, test, build, migration ou suite Postgres lancé pour ce lot documentaire. Aucun secret lu. Les prérequis de galerie (`SESSION_MEDIA_BLOB_TOKEN`) et de Push (`WEB_PUSH_ENABLED`, `WEB_PUSH_VAPID_*`) sont confirmés dans le code; leurs valeurs distantes ne sont pas vérifiées.
+- Restes de code identifiés : clips vidéo, application/données réellement hors ligne, abonnement iCal continu, édition groupée des séries, automatisation des offres gratuites. Paiement intégré et modèles bot propres à chaque serveur nécessitent un cadrage produit; ne pas les déduire d’un statut `Fait`. Les MVP achat groupé et petites annonces existent déjà.
+- Prochain lot proposé : recette ciblée en Preview des parcours déjà livrés d’organisation (sondage → soirée, intersection et suggestions avec refus), après confirmation d’une Preview avec données jetables et migrations prêtes. Commencer par vérifier les accès/configurations; si indisponibles, consigner le blocage avant toute écriture. Aucun message Discord réel, aucune écriture de recette en production, aucune activation de l’isolation communautaire.
+- Reprise locale : `Set-Location C:\Users\mparisot\gamenight\.codex-worktrees\reprise-portable1`, puis `git status --short --branch`. Relire GitHub et la base distante avant toute publication. Aucune PR ouverte, aucun push ni merge effectué pour ce lot.
+
+### Suite de la reprise — validation locale du 19 octobre
+
+- Autorisation actuelle du propriétaire : poursuivre la recette isolée, corriger les défauts démontrés, publier puis fusionner après contrôles requis verts sur le dernier SHA, et traiter les restes exécutables. Aucun envoi Discord réel, aucune écriture de recette en production, aucune activation de l’isolation communautaire.
+- Les deux inventaires indépendants ont été consultés : aucun item `À faire` de nature `code` dans la roadmap; les sous-périmètres différés sont à examiner explicitement. Environnement local : Node/npm utilisables, Docker disponible, Chrome/Edge installés, pas de Playwright/agent-browser ni CLI Vercel. Le service PostgreSQL 5432 non identifié n’est pas utilisé.
+- `npm ci` effectué une seule fois dans ce worktree, client Prisma généré; cinq alertes npm élevées signalées, aucun correctif automatique de dépendances. Ne pas recommencer l’installation sans besoin nouveau.
+- Preview : accès au détail du projet refusé par le connecteur (`403 forbidden`, scope `mpmaximeparisot-6230s-projects`); recours CLI impossible (`vercel` non reconnu). Les seules branches Neon listées sont production, une Preview archivée et une sauvegarde. Destination DB Preview non prouvée : aucune écriture distante tentée.
+- PostgreSQL de recette créé séparément : conteneur `gamenight-portable1-pg`, PostgreSQL 16.15, loopback `127.0.0.1:55440`, base `gamenight_portable1_test` vérifiée par `current_database()` avant les migrations/tests. 107 migrations appliquées; ancien conteneur 55439 laissé arrêté. Ne jamais lancer deux suites Postgres simultanément.
+- Résultats sur `b30e8ef` : intégrations sondage → soirée, bibliothèque et suggestions **39/39**; logique et pages/actions ciblées **28/28**, aucun test ignoré. Exécution séquentielle avec `--no-file-parallelism --maxWorkers=1`; appels réseau simulés/interdits. Aucun défaut applicatif reproduit. Détail et limites dans `docs/RECETTE_FINALE.md`.
+- Après livraison du bilan, premier sous-périmètre à examiner : abonnement iCal continu avec lien révocable et accès revalidés. Le calendrier ponctuel existe déjà; ne pas le réimplémenter.
+
+## Relevé précédent — autre poste, 18 octobre 2026
 
 ## État actuel
 
