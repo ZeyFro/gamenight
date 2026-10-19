@@ -19,3 +19,7 @@ export function predictionWinner(status: TournamentStatus, championId: string | 
   if (status === "CANCELLED") return null;
   return matchWinnerId ?? (status === "DONE" ? championId : null);
 }
+
+export function tournamentPredictionPoints(winnerId: string | null, predictedUserId: string): number {
+  return winnerId !== null && winnerId === predictedUserId ? 1 : 0;
+}
