@@ -2,6 +2,13 @@
 
 ## Suite locale — 19 octobre 2026, 08:00 UTC
 
+### Livraison au 19 octobre, 08:17 UTC
+
+- #286 est fusionnée; production Vercel `READY` sur `8b3958d`, sans recette distante ni activation du flag.
+- #287 annulation fusionnée dans `e50dfb6`, après `verify` et Vercel réussis sur `2603ce0` ([CI 39220365340](https://github.com/ZeyFro/gamenight/actions/runs/39220365340)). Le flag reste OFF; migration additive et revues indépendantes décrites dans `ANNULATION_SERIES.md`.
+- #288 clips MP4 : code intégré au nouveau main dans `session-clips-next`. 16 tests spécifiques (26 avec garde API), TypeScript, lint ciblé et build de la combinaison réussis; flux fragmentés, taille réelle et Range vérifiés. Revue indépendante sans blocage. Attendre les contrôles du dernier SHA avant fusion; ne pas réutiliser un ancien vert. Voir `CLIPS_VIDEO.md`.
+- Restes non exécutables sans entrée supplémentaire : politique des exceptions pour édition groupée des dates/cadences; choix des données privées éventuellement disponibles hors ligne; source officielle stable pour automatiser les offres gratuites; durée et périmètre d’une purge dédiée. Les demandes de choix ne valent pas approbation implicite. Configuration distante, Push sur appareil, calendrier tiers et parcours Discord authentifiés restent non vérifiés. Aucun secret ni flag ne doit être déduit de la présence du code.
+
 - #285 fusionnée (`2590f4c`). #286 abonnement iCal privé fusionnée à 08:05 UTC (`8b3958d`) après CI et Vercel verts sur `ad34a3d` ([run 39218687237](https://github.com/ZeyFro/gamenight/actions/runs/39218687237)). Sa première CI a démontré une garde statique non adaptée au nouveau jeton : reconnaissance bornée du seul feed corrigée, 12 tests réussis. Abonnement réel Google/Apple non vérifié.
 - Lot annulation des futures occurrences prêt dans `reprise-portable1`, branche `feat/cancel-recurring-sessions`, basé sur la tête #286. Migration additive 109 appliquée exclusivement au Docker dédié `gamenight-portable1-pg`, port lié à `127.0.0.1:55440`, base `gamenight_portable1_test`. Destination recontrôlée avant écritures. Voir `ANNULATION_SERIES.md` pour périmètre et preuves : 26 intégrations, 97 tests ciblés, puis 33 intégrations complémentaires, Prisma, TypeScript, lint et build Next direct réussis. Revues backend/SQL/UI sans blocage.
 - Preview toujours inutilisable pour une recette sûre : accès projet Vercel refusé dans le scope essayé, CLI absent, branche Neon Preview archivée et destination de recette non prouvée. Aucune écriture distante. Recette locale effectuée; parcours navigateur authentifié et abonnement réel à un calendrier restent non vérifiés.

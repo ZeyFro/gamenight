@@ -63,6 +63,7 @@ import { GameWarnings } from "@/components/GameWarnings";
 import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
 import { SessionGallery } from "@/components/sessions/SessionGallery";
+import { isSessionVideoEnabled } from "@/lib/session-gallery";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -128,9 +129,10 @@ export default async function SessionDetailPage({
   const galleryCommunity = await prisma.community.findUnique({ where: { id: galleryCommunityId }, select: { sessionGalleryEnabled: true } });
   const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
   const galleryStorageReady = !!process.env.SESSION_MEDIA_BLOB_TOKEN;
+  const galleryVideosEnabled = isSessionVideoEnabled();
   const galleryImages = galleryEnabled && galleryStorageReady
     ? await prisma.sessionGalleryMedia.findMany({
-        where: { sessionId: session.id },
+        where: { sessionId: session.id, ...(galleryVideosEnabled ? {} : { mimeType: { not: "video/mp4" } }) },
         orderBy: { createdAt: "asc" },
         select: { id: true, uploadedById: true, mimeType: true, createdAt: true },
       })
@@ -847,6 +849,7 @@ export default async function SessionDetailPage({
           images={galleryImages}
           result={gallery}
           storageReady={galleryStorageReady}
+          videosEnabled={galleryVideosEnabled}
         />
       )}
 

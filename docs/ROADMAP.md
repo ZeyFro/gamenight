@@ -47,8 +47,8 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
-| L4-01 | Livré mais désactivé | Export Google/Apple Calendar (iCal) | ✅ Téléchargement ponctuel; abonnement privé révocable par serveur | Export disponible; abonnement exige `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens`; essai calendrier tiers non vérifié | code | Export Fait (#242); abonnement ajouté par le lot `calendar-subscriptions` |
-| L4-02 | Partiellement livré | Rituels récurrents | ✅ Séries hebdomadaires/mensuelles; annulation groupée des occurrences futures des nouvelles séries | Annulation exige `SESSION_SERIES_CANCEL_ENABLED` et migration; édition groupée des dates/cadences et traitement des exceptions à cadrer | code | Création Fait (#243); annulation ajoutée par le lot `cancel-recurring-sessions` |
+| L4-01 | Livré mais désactivé | Export Google/Apple Calendar (iCal) | ✅ Téléchargement ponctuel; abonnement privé révocable par serveur | Export disponible; abonnement exige `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens`; essai calendrier tiers non vérifié | code | Export Fait (#242); abonnement Fait (#286, fusionnée) |
+| L4-02 | Partiellement livré | Rituels récurrents | ✅ Séries hebdomadaires/mensuelles; annulation groupée des occurrences futures des nouvelles séries | Annulation exige `SESSION_SERIES_CANCEL_ENABLED` et migration; édition groupée des dates/cadences et traitement des exceptions à cadrer | code | Création Fait (#243); annulation Fait (#287, fusionnée) |
 | L4-03 | Livré et testé | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
 | L4-04 | Livré mais désactivé | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
@@ -57,7 +57,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
 | L5-01 | Livré et testé | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
-| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie photo privée | Images JPEG/PNG/GIF/WebP, 4 Mo, 8 par soirée, consentement, participants actifs; toggle admin OFF; clips et purge séparée différés | code | Fait (#276, fusionnée); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN` |
+| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie privée photo et MP4 | Images et clips MP4, 4 Mo par média, 8 médias par soirée, consentement, participants actifs; clips OFF par `SESSION_VIDEO_ENABLED`; purge séparée différée | code | Base galerie livrée (#276); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN`; clips dans #288 (OFF par défaut) |
 | L5-03 | Livré et testé | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
 | L5-04 | Livré mais désactivé | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (#276, fusionnée) |
 | L5-05 | Livré et testé | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |

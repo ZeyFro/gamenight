@@ -11,6 +11,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import {
   detectSessionGalleryMime,
+  isSessionVideoEnabled,
   isSessionGalleryConsent,
   SESSION_GALLERY_MAX_BYTES,
   SESSION_GALLERY_MAX_ITEMS,
@@ -42,8 +43,9 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
     redirect(`/sessions/${sessionId}?gallery=pleine`);
   }
 
-  const mimeType = detectSessionGalleryMime(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+  const mimeType = detectSessionGalleryMime(new Uint8Array(await file.slice(0, 16).arrayBuffer()), file.size);
   if (!mimeType) redirect(`/sessions/${sessionId}?gallery=format`);
+  if (mimeType === "video/mp4" && !isSessionVideoEnabled()) redirect(`/sessions/${sessionId}?gallery=video-desactive`);
   const pathname = `sessions/${sessionId}/${crypto.randomUUID()}`;
   let blob: Awaited<ReturnType<typeof put>>;
   try {
