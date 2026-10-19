@@ -24,6 +24,8 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
 - Audits XP sans migration : `superlative-voting.test.ts`, `seasons.test.ts`, `xp.test.ts` 42/42; `community-progress-views.integration.test.ts` 12/12 et `xp-shop.integration.test.ts` 3/3, séquentiellement sur Postgres local. L’achat est confirmé comme décrémentant la même valeur utilisée pour le rang.
 - Intégrations locales additionnelles, chacune séquentielle : `game-warnings.integration.test.ts` 4/4; `session-lifecycle.integration.test.ts` 10/10. Elles confirment warning `motionSickness` et création de soirée sans rôle admin côté action.
+- PWA/Push unitaires : service worker/config/delivery/subscription 16/16; le service worker ne met en cache que `/offline.html`; Push réel reste non configuré.
+- Une tentative de test mensuel `community-domains.integration.test.ts -t "récap : même mois"` a échoué au seeding (slug `default` déjà existant); `-t` n’avait pas été transmis au premier lancement et le processus interrompu a pu chevaucher le second. Lecture seule après incident : lignes de test `a,b,default`, aucune requête active. Ne pas rerun ni nettoyer cette base tant qu’un plan de nettoyage local contrôlé n’est pas fait.
 - La recette locale authentifiée de #289 est déjà acquise et ne doit pas être rejouée. Toute suite Postgres ultérieure reste sérielle et nécessite la vérification de destination adaptée avant les écritures.
 - `gh pr checks 290` n’a rapporté aucun contrôle; l’API branch protection de `main` a retourné 404 « Branch not protected ». Re-vérifier les checks GitHub pour le nouveau SHA, sans polling en boucle.
 
