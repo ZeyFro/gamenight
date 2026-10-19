@@ -21,6 +21,19 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     expect(screen.getByRole("button", { name: "Retirer du calendrier" })).toBeTruthy();
   });
 
+  it("ne propose pas la suppression d’un anniversaire tiers aux admins ni d’un repère saisonnier", () => {
+    const data = days.map((day) => day.date.toISOString() === selectedDate.toISOString()
+      ? { ...day, communityDates: [
+        { id: "birthday-other", title: "Anniversaire · Ami", kind: "BIRTHDAY" as const, date: selectedDate, createdById: "ami" },
+        { id: "seasonal:2026-10-25", title: "Thème Halloween", kind: "SEASONAL" as const, date: selectedDate, createdById: "system" },
+      ] }
+      : day);
+    render(<EventCalendar days={data} selectedDate={selectedDate} today={selectedDate} mode="collectif" view="mois" totalUsers={2} viewerId="admin" canManageCommunityDates />);
+    expect(screen.getAllByText("Anniversaire · Ami").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Thème Halloween").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Retirer du calendrier" })).toBeNull();
+  });
+
   it("ouvre les événements gaming globaux sur leur source officielle", () => {
     const data = days.map((day) => day.date.toISOString() === selectedDate.toISOString()
       ? { ...day, communityDates: [{ id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS" as const, date: selectedDate, createdById: "system", href: "https://thegameawards.com/" }] }

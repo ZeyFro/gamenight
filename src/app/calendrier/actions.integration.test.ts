@@ -58,7 +58,7 @@ describe.skipIf(!TEST_DATABASE_URL)("dates communautaires : autorisation et port
   };
 
   it("enregistre uniquement le jour et le mois du membre authentifié, jamais un id fourni par le formulaire", async () => {
-    await expect(saveBirthday(form({ date: "1996-02-29", memberId: outsiderId }))).rejects.toThrow("REDIRECT:/calendrier?date=1996-02-29");
+    await expect(saveBirthday(form({ date: "1996-02-29", memberId: outsiderId }))).rejects.toThrow(/^REDIRECT:\/calendrier$/);
     const birthday = await db.communityDate.findFirstOrThrow();
     expect(birthday).toMatchObject({ communityId, memberId, createdById: memberId, kind: "BIRTHDAY", title: null, repeatsAnnually: true });
     expect(birthday.date.toISOString()).toBe("2000-02-29T00:00:00.000Z");

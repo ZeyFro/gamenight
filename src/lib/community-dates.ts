@@ -11,7 +11,7 @@ export interface CommunityDateInput {
 export interface CalendarCommunityDate {
   id: string;
   title: string;
-  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS";
+  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS" | "SEASONAL";
   date: Date;
   createdById: string;
   href?: string;
@@ -39,6 +39,28 @@ export function expandGameAwards(start: Date, endExclusive: Date): CalendarCommu
     id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS",
     date, createdById: "system", href: "https://thegameawards.com/",
   }];
+}
+
+export function expandSeasonalEvents(start: Date, endExclusive: Date): CalendarCommunityDate[] {
+  const annualEvents = [
+    { month: 6, day: 1, title: "Marathon d’été" },
+    { month: 9, day: 25, title: "Thème Halloween" },
+    { month: 11, day: 20, title: "Thème de Noël" },
+  ];
+  const events: CalendarCommunityDate[] = [];
+  for (let year = start.getUTCFullYear(); year <= endExclusive.getUTCFullYear(); year++) {
+    for (const event of annualEvents) {
+      const date = new Date(Date.UTC(year, event.month, event.day));
+      if (date >= start && date < endExclusive) events.push({
+        id: `seasonal:${year}-${event.month + 1}-${event.day}`,
+        title: event.title,
+        kind: "SEASONAL",
+        date,
+        createdById: "system",
+      });
+    }
+  }
+  return events;
 }
 
 export function expandCommunityDates(rows: CommunityDateInput[], start: Date, endExclusive: Date): CalendarCommunityDate[] {
