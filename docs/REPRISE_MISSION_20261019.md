@@ -13,6 +13,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 - Upload et suppression des médias de galerie réservés au créateur côté actions serveur; les contrôles correspondants sont cachés aux invités côté interface.
 - Création, modification et suppression de Lore communautaire réservées aux membres `ADMIN`/`OWNER` de la communauté. Les membres restent lecteurs.
+- `/classement` expose aussi le nombre de soirées terminées par jeu, trié par `GroupGameStat.playCount`, à côté du temps déclaré et de la régularité. Les agrégats restent limités à la communauté sélectionnée; aucune migration ni donnée historique modifiée.
 - `docs/MISSION-20261019.md` suit chaque exigence et sépare code, tests, recette, configuration et preuve. Les décisions encore ambiguës y sont listées.
 - `docs/ROADMAP.md` garde les cadrages antérieurs comme propositions à valider; ne pas les transformer en décisions sans réponse explicite.
 
@@ -20,6 +21,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 - `npm exec vitest run src/app/sessions/actions/gallery.test.ts src/components/sessions/SessionGallery.test.tsx`: 7/7 réussi.
 - `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts`: 12/12 réussi.
+- `npm exec -- vitest run src/lib/scoreboard.isolation.test.ts`: 10/10 réussi après le classement par soirées rejouées; ESLint ciblé et `git diff --check` verts.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
 - Audits XP sans migration : `superlative-voting.test.ts`, `seasons.test.ts`, `xp.test.ts` 42/42; `community-progress-views.integration.test.ts` 12/12 et `xp-shop.integration.test.ts` 3/3, séquentiellement sur Postgres local. L’achat est confirmé comme décrémentant la même valeur utilisée pour le rang.
@@ -32,7 +34,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 ## Prochaine action exacte
 
-1. Vérifier l’état et les tests ciblés ci-dessus; si verts, `git add` uniquement les changements de code/test et les deux documents de suivi, commit puis push de la branche PR #290.
+1. Le classement par soirées rejouées est testé et prêt à publier avec les deux documents de suivi; vérifier les checks une fois le nouveau SHA poussé, sans polling en boucle.
 2. Revoir les permissions de galerie : décider à partir des rôles déjà définis si `ADMIN`/`OWNER` de la communauté peuvent gérer les médias et les voir sans devenir invité d’une soirée privée. Ne pas accorder un bypass global de lecture des soirées. Tant que ce point n’est pas résolu, garder la PR brouillon. Pour la recette navigateur, il faut rétablir l’autorisation du connecteur Vercel sur l’équipe/projet concernés (voir 403 ci-dessus) ou fournir un accès navigateur humain au Preview protégé; ne pas modifier les protections Vercel.
 3. Décision économique à conserver dans la liste commune : `xpTotal` sert à la fois de score/niveau et de solde acheté/misé, et la saison le remet à zéro. Ne pas séparer ces rôles ni migrer les valeurs sans arbitrer l’effet sur rang, pari, pénalité et solde au reset; continuer entre-temps les fonctions indépendantes.
 4. Continuer les tâches indépendantes selon `docs/MISSION-20261019.md`; distinguer validation manquante de fonction absente et ne pas réduire le périmètre par documentation.
