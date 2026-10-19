@@ -1,66 +1,44 @@
-# Point de reprise — mission GameNight du 19 octobre 2026
+# Point de reprise — GameNight, PC fixe, 19 octobre 2026
 
-Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. Le quota restant n’était pas observable; ne pas déduire ni annoncer de pourcentage.
+Ce fichier est publié après chaque lot. Échéance utilisateur : 20 octobre 2026 à 00 h Europe/Paris. Aucun périmètre Mangas Origines. Quota restant non observable : aucun pourcentage annoncé.
 
-## État Git et PR
+## État et contraintes persistantes
 
-- Worktree : `.codex-worktrees/reprise-portable1`, branche `work/mission-complete-20261019`, basée sur `origin/main` `babf958c869a745ad20f02b9c4d58326a9a0bdd8` (#289 fusionnée).
-- PR brouillon : [#290 — Durcir la galerie et compléter les classements communautaires](https://github.com/ZeyFro/gamenight/pull/290). Ne pas fusionner tant que la politique admin n’est pas complétée, les validations nécessaires ne sont pas vertes au dernier SHA et aucun défaut bloquant ne reste.
-- Préserver `fix/recette-locale-authentifiee`, les autres worktrees, `docs/ROADMAP.md` et `logs/HANDOFF_PORTABLE1.md` (ignoré par Git). Ne pas faire de nettoyage distant.
-- Aucune récupération d’ancienne Preview à poursuivre; pas d’écriture Production, aucun message Discord réel, pas d’activation de flag.
+- Checkout racine C:/Users/Mousiouf/gamenight préservé sur feat/prix-telechargement-jeux, SHA73f2e1f; HANDOFF.md non suivi conservé. Trois anciens worktrees 23f2, 978b et a33e conservés et propres au relevé initial.
+- Worktree de reprise : C:/Users/Mousiouf/.codex/worktrees/mission-fixe-20261019/gamenight, branche work/mission-fixe-20261019. Il poursuit sans réécriture la branche publiée work/mission-complete-20261019 de PR #290, base origin/main babf958 (#289).
+- #290 était brouillon au SHA329fc2d, CI verify et Vercel/Preview Comments SUCCESS. Métadonnées Vercel READY confirmées pour ce SHA. Les nouveaux commits doivent obtenir leurs propres contrôles avant fusion.
+- L'utilisateur autorise explicitement fusion après tests adaptés, revue et contrôles requis verts au dernier SHA, puis vérification du déploiement. Pas de force-push, contournement ou migration Production.
+- Toute écriture de recette reste sur PostgreSQL local; jamais de message Discord réel, activation de flag Production, désactivation protection Vercel ou nettoyage distant. Ne récupérer aucune ancienne Preview et ne supprimer aucune branche Neon.
+- Les recettes authentifiées #289 sont acquises et ne sont pas rejouées.
 
-## Travail déjà fait dans la PR
+## Lot #290 — permissions et classements
 
-- Upload et suppression des médias de galerie réservés au créateur côté actions serveur; les contrôles correspondants sont cachés aux invités côté interface.
-- Création, modification et suppression de Lore communautaire réservées aux membres `ADMIN`/`OWNER` de la communauté. Les membres restent lecteurs.
-- `/classement` expose aussi le nombre de soirées terminées par jeu, trié par `GroupGameStat.playCount`, à côté du temps déclaré et de la régularité. Les agrégats restent limités à la communauté sélectionnée; aucune migration ni donnée historique modifiée.
-- `docs/MISSION-20261019.md` suit chaque exigence et sépare code, tests, recette, configuration et preuve. Les décisions encore ambiguës y sont listées.
-- `docs/ROADMAP.md` garde les cadrages antérieurs comme propositions à valider; ne pas les transformer en décisions sans réponse explicite.
+- Galerie et chronique : créateur ou ADMIN/OWNER communautaire déjà autorisé à accéder à la soirée privée. Un admin sans invitation reste refusé; le seul rôle admin global ne donne aucun droit de gestion.
+- Lore communautaire Fame/Shame : ADMIN/OWNER. Il n'existe aucun lien soirée dans ce modèle, donc être créateur d'une autre soirée n'accorde aucun droit global.
+- Musée : formulaires réservés aux personnes réellement autorisées côté serveur. Classements : temps déclaré, nombre de soirées rejouées et régularité, isolés par communauté.
+- Tests PostgreSQL PC fixe : chroniques + highlights 16/16 en série après vérification du conteneur/binding/base. Tests unitaires supplémentaires et contrôles finaux consignés dans la PR et le tableau.
+- Nouvelle recette scripts/recette-contenus.mjs passée sur Next local3102 + cinq comptes : gestion créateur/admin invité, lecture membre et admin global, admin tiers 404, modification chronique et publication musée persistées, révocation immédiate, musée mobile390x844 sans débordement et zéro NotificationDelivery pour la soirée.
+- La recette n'envoie aucun Blob. Le stockage réel et les clips réels restent une validation externe manquante. AUTH_SECRET éphémère en mémoire, cookie local synthétique; ceci ne valide pas OAuth Discord réel.
+- Dépendances existantes réutilisées par junction; aucun npm ci. Next dev utilise --webpack car Turbopack refuse les junctions hors de sa racine. Le script arrête seulement son propre serveur et navigateur; fixtures locales conservées.
 
-## Vérifications acquises
+## Suite indépendante
 
-- `npm exec vitest run src/app/sessions/actions/gallery.test.ts src/components/sessions/SessionGallery.test.tsx`: 7/7 réussi.
-- `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts`: 12/12 réussi.
-- `npm exec -- vitest run src/lib/scoreboard.isolation.test.ts`: 10/10 réussi après le classement par soirées rejouées; ESLint ciblé et `git diff --check` verts.
-- Carnet joueur sans DB : identifiants, équipement, préférences, quiz et composants profil 40/40; disponibilité/sondage 15/15 (`availability.test.ts`, `session-availability-poll.test.ts`). Aucun parcours privé multi-compte navigateur validé.
-- Tournois sans DB/Discord : bracket, scores, tirage d’équipes, RSVP, pronostics et composants 44/44; les annonces Discord réelles et les parcours authentifiés restent non vérifiés.
-- Mini-jeu existant « devine le jeu » (trois indices) : logique, composant et page 7/7; aucun quiz de connaissances distinct trouvé. Dessin proposé en attente de validation avant code.
-- Sondages éclair, validation d’entrée et action serveur avec doubles : `community-quick-polls-input.test.ts` et `sondages/actions.test.ts` 30/30; aucune écriture Postgres/Discord.
-- Dates calendrier et consentement anniversaires : `calendar-dates.test.ts` + `community-dates.test.ts` 17/17; test navigateur/visibilité multi-compte restant.
-- Export iCal et routes protégées : `ical-calendar.test.ts`, `calendar-feed.test.ts`, `api-routes-auth.test.ts` 17/17; aucun import réel dans Google Calendar ou Apple Calendar.
-- Présence, bonus/pénalités et paramètres communautaires : `session-attendance.test.ts` + `community-admin.test.ts` 43/43; aucune valeur d’économie modifiée.
-- Préparation jeux/soirées sans DB : actions, champs de prix/gratuité/inconnu, checklist et guide/components 37/37; configuration `SESSION_PREPARATION_ENABLED`/`GAME_PREPARATION_TIME_ENABLED` et recette authentifiée manquantes.
-- LFG/petites annonces : service et contrôle d’accès `player-classifieds.test.ts` + `.access.test.ts` 5/5; flag communautaire et parcours navigateur non vérifiés.
-- Roulette/veto/tirage, composants et préférences Discord avec doubles : 50/50 sans Postgres ni message réel; flags/configuration et recette Discord manquants.
-- Galerie image/MP4 : actions, composants, route privée/range et règles de format/flag 19/19 avec Blob simulé; aucun Blob réel, flag activé ou rôle admin galerie ajouté.
-- Bibliothèques/wishlist : page groupe, suggestions et cron Steam pleine 15/15; alertes prix 4/4; `community-library-stats.integration.test.ts` 13/13 et `game-library.integration.test.ts` 17/17 sur le Postgres local dédié, exécutés en série après confirmation de la destination. La recette multi-compte Preview reste non vérifiée.
-- Guide/charte : `guide-sections.test.ts`, `fair-play-charter.test.ts`, action `charte/actions.test.ts` 15/15; contenu configuré et parcours navigateur/mobile non validés.
-- Lien du salon vocal selon la configuration communautaire : `community-channels.test.ts` 35/35; salon et ouverture cliente Discord réels non testés.
-- Rappels/RSVP Discord : schedule, contenu, transport et interactions 68/68 avec doubles; aucun message réel, cron ou webhook vérifié.
-- Séries récurrentes : logique d’occurrences et annulation `session-recurrence.test.ts` + test d’action 8/8; l’édition des séries futures n’est pas implémentée ni validée comme décision.
-- `community-domains.integration.test.ts -t "récap : même mois" --pool=forks --maxWorkers=1`: 1/1 réussi sur PostgreSQL local dédié après contrôle lecture seule du conteneur, port et base; aucun autre worker PostgreSQL lancé.
-- `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
-- ESLint ciblé et `git diff --check` verts pour les changements de code; après le classement par `playCount`, `next typegen`, `tsc --noEmit` et `next build` passent. Aucun `npm ci` ni script de migration n'a été relancé.
-- Audits XP sans migration : `superlative-voting.test.ts`, `seasons.test.ts`, `xp.test.ts` 42/42; `community-progress-views.integration.test.ts` 12/12 et `xp-shop.integration.test.ts` 3/3, séquentiellement sur Postgres local. L’achat est confirmé comme décrémentant la même valeur utilisée pour le rang.
-- Intégrations locales additionnelles, chacune séquentielle : `game-warnings.integration.test.ts` 4/4; `session-lifecycle.integration.test.ts` 10/10. Elles confirment warning `motionSickness` et création de soirée sans rôle admin côté action.
-- PWA/Push unitaires : service worker/config/delivery/subscription 16/16; le service worker ne met en cache que `/offline.html`; Push réel reste non configuré.
-- Le test mensuel `community-domains.integration.test.ts -t "récap : même mois"` a d’abord échoué au seeding (slug `default` déjà existant). Après confirmation en lecture seule de la DB dédiée et zéro requête concurrente, un lancement isolé `--pool=forks --maxWorkers=1` a passé 1/1 (21 ignorés); aucun nettoyage manuel de la base. La cause du premier incident n’est pas démontrée, un chevauchement de processus est possible.
-- La recette locale authentifiée de #289 est déjà acquise et ne doit pas être rejouée. Toute suite Postgres ultérieure reste sérielle et nécessite la vérification de destination adaptée avant les écritures.
-- Vérification antérieure : l’API branch protection de `main` a retourné 404 « Branch not protected ». Les checks associés à la PR sont apparus ensuite; voir l’état daté ci-dessous et ne pas poller en boucle.
-- Mise à jour 19 octobre : PR #290 reste brouillon. Le code fonctionnel a été vérifié sur `993678b9feb5a67bc741bcb476fe967795b2f5be`; le checkpoint documentaire suivant (`16c01aafca1a4c9350fc861364d6d50a8d759ca1`) ne modifie que ces deux fichiers de suivi. Sur le commit de code, Vercel et Vercel Preview Comments passent. Au checkpoint documentaire, Preview Comments passe mais Vercel est `PENDING`. Aucun de ces statuts ne vaut recette navigateur : le connecteur ne peut toujours pas lire l’URL protégée (`read_protection_bypass`), et aucune suite E2E n’existe dans le dépôt. Avec l’équipe explicite `team_gho4DTcbV8MSZicSAIroYF9c`, l’API deployment est refusée 403; `vercel` CLI n’est pas installé. Ne pas reconnecter sans changement de permissions/portée.
+- Grades/boutique : défaut confirmé, l'achat décrémente actuellement xpTotal utilisé par les rangs. Choix utilisateur explicite : conserver la progression lors d'un achat. Correctif séparé fix/xp-balance-20261019, worktree C:/Users/Mousiouf/.codex/worktrees/xp-balance-20261019/gamenight; solde distinct, initialisé au total actuel, sans restitution historique inventée.
+- Cette séparation ajoute une migration. scripts/build.mjs exécute migrate deploy hors Preview : PR BROUILLON uniquement, aucune fusion tant que migration Production interdite. Les autres paramètres économiques existants sont conservés, sans nouvelle pénalité arbitraire.
+- Offres gratuites automatiques : absence confirmée; curation manuelle seule. Le GET Node GamerPower depuis ce PC répond200 (Steam et Epic) : ancien problème TLS du portable non reproduit, aucune protection TLS désactivée. Source autorisée avec attribution, mais API pouvant contenir des offres à points et des dates N/A; filtre d'éligibilité nécessaire. Recherche Epic primaire accessible depuis Node, pas de contrat public stable présumé.
+- Pas de quiz de connaissances distinct à ajouter : le quiz carnet Tryharder/Ambianceur/Stratège/Chaos est livré; rester dans la demande initiale.
+- Tableau exhaustif : docs/MISSION-20261019.md (exigence → code → tests → recette → activation → preuve/blocage). Les anciennes preuves du portable y sont conservées. Présent dans le code ne signifie pas activé ou validé réellement.
 
-## Prochaine action exacte
+## PostgreSQL et coordination
 
-1. Sur le dernier commit fonctionnel, Vercel et Vercel Preview Comments passent. Le checkpoint documentaire déclenche un nouveau statut Vercel qui était `PENDING` lors de la dernière lecture; une seule vérification ultérieure suffit. PR #290 reste brouillon; il n'existe pas de preuve E2E navigateur ni de validation multi-compte Preview.
-2. Revoir les permissions de galerie : décider à partir des rôles déjà définis si `ADMIN`/`OWNER` de la communauté peuvent gérer les médias et les voir sans devenir invité d’une soirée privée. Ne pas accorder un bypass global de lecture des soirées. Tant que ce point n’est pas résolu, garder la PR brouillon. Pour la recette navigateur, il faut rétablir l’autorisation du connecteur Vercel sur l’équipe/projet concernés (voir 403 ci-dessus) ou fournir un accès navigateur humain au Preview protégé; ne pas modifier les protections Vercel.
-3. Décision économique à conserver dans la liste commune : `xpTotal` sert à la fois de score/niveau et de solde acheté/misé, et la saison le remet à zéro. Ne pas séparer ces rôles ni migrer les valeurs sans arbitrer l’effet sur rang, pari, pénalité et solde au reset; continuer entre-temps les fonctions indépendantes.
-4. Continuer les tâches indépendantes selon `docs/MISSION-20261019.md`; distinguer validation manquante de fonction absente et ne pas réduire le périmètre par documentation.
-5. Les six intégrations Postgres Lore sont acquises; ne pas les rejouer sans changement pertinent. Pour une autre suite, revalider la cible avant écriture et ne jamais lancer deux suites PostgreSQL en parallèle.
-6. Pour toute nouvelle PR, tests pertinents au dernier commit, revue, checks GitHub et statut de déploiement requis avant fusion. Si un blocage demeure, garder la PR brouillon et consigner la cause précise dans ce fichier et `docs/MISSION-20261019.md`.
+- Conteneur conservé gamenight-test-pg, uniquement127.0.0.1:55439, base gamenight_test. Identité vérifiée par current_database() et aucune connexion concurrente avant première écriture. Les deux migrations déjà publiées iCal/annulation ont été appliquées uniquement à cette base locale.
+- Toujours un seul processus de tests PostgreSQL; les suites historiques partagent/vident des tables. Chaque agent doit demander le créneau au coordinateur et le libérer explicitement.
+- Le worktree XP dispose de son propre client Prisma, isolé des dépendances partagées; hash partagé23f2 inchangé après génération.
 
-## Interventions humaines probablement requises
+## Interventions externes à distinguer
 
-- Vérifier au navigateur un utilisateur administrateur communautaire et un invité non-créateur; distinguer admin communautaire d’admin global pour la galerie.
-- Vercel : `get_deployment(id)` sans équipe retourne les métadonnées; avec l’équipe explicite, l’API renvoie 403 `forbidden` sur `mpmaximeparisot-6230s-projects` (team ID `team_gho4DTcbV8MSZicSAIroYF9c`). Projet `gamenight` (`prj_mYqfA5QbVptMFRgAbtw18vE23cSo`); le déploiement est créé par le compte Vercel `mpmaximeparisot-6230`. L’appel alias/URL échoue à l’étape d’accès du connecteur (`read_protection_bypass`), donc la protection HTTP du site elle-même n’a pas été vérifiée. Action humaine : dans les paramètres Apps de ChatGPT/Codex, reconnecter Vercel avec le compte ayant accès à cette équipe et autoriser la lecture du projet `gamenight`; à défaut, accorder à ce compte un rôle de lecture sur ce projet/équipe. Ne pas désactiver ni élargir la protection Vercel. Le CLI Vercel n’est pas installé; aucune reconnexion n’a été relancée.
-- Neon Preview reste bloquée par l’accès/configuration déjà décrits dans `logs/HANDOFF_PORTABLE1.md`; ne pas reconnecter pour les lectures projet qui réussissent déjà. N’utiliser aucune Preview DB avant confirmation privée de sa destination isolée.
-- Offres Epic/Steam : le lecteur web a pu voir un exemple officiel Steam; `end_date` peut valoir `N/A`, pas de champ de région, et l’exemple exige des points alors que les règles excluent les offres à points/crédits. L’API autorise l’usage commercial avec attribution, mais aucun filtre ni couverture régionale fiable n’est validé. L’accès direct depuis le poste reste bloqué par `AuthenticationException: UntrustedRoot`; ne pas désactiver TLS. L’automatisation reste absente.
+- Blob privé : configuration et vraie lecture/envoi médias non validés; aucun token réel utilisé.
+- Discord : vérifier manuellement les vrais messages/rappels/RSVP, canaux et vocal; textes définitifs plus tard. Aucun envoi réel ici.
+- Push : VAPID et opt-in navigateur réels à configurer/valider; aucune activation Production.
+- iCal : import tiers Google/Apple non effectué; abonnement local/jetons peuvent être testés isolément.
+- Vercel : Chrome Production est authentifié pour recette read-only. Le connecteur lit les métadonnées sans team explicite; accès Preview protégé et portée équipe restent une limitation déjà documentée. Ne pas reconnecter ni modifier protection sans nécessité.

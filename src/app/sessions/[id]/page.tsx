@@ -64,6 +64,7 @@ import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
 import { SessionGallery } from "@/components/sessions/SessionGallery";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
+import { canManageSessionContent } from "@/lib/session-content-access";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -130,6 +131,7 @@ export default async function SessionDetailPage({
   const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
   const galleryStorageReady = !!process.env.SESSION_MEDIA_BLOB_TOKEN;
   const galleryVideosEnabled = isSessionVideoEnabled();
+  const canManageContent = await canManageSessionContent(user.id, session.id);
   const galleryImages = galleryEnabled && galleryStorageReady
     ? await prisma.sessionGalleryMedia.findMany({
         where: { sessionId: session.id, ...(galleryVideosEnabled ? {} : { mimeType: { not: "video/mp4" } }) },
@@ -366,7 +368,7 @@ export default async function SessionDetailPage({
       )}
 
       {session.decidedGame && <GameWarnings game={session.decidedGame} />}
-      {session.status === "DONE" && isSessionChroniclesEnabled() && <SessionChronicle sessionId={session.id} text={session.chronicle} canEdit={accessRole === "creator"} result={chronicle} />}
+      {session.status === "DONE" && isSessionChroniclesEnabled() && <SessionChronicle sessionId={session.id} text={session.chronicle} canEdit={canManageContent} result={chronicle} />}
       {ratingSummary && (
         <section aria-label="Note de la soirée" className="rounded-xl border border-border bg-card p-4">
           <p className="mb-3 text-sm text-muted">
@@ -844,8 +846,7 @@ export default async function SessionDetailPage({
       {galleryEnabled && (
         <SessionGallery
           sessionId={session.id}
-          userId={user.id}
-          creatorId={session.createdById}
+          canManage={canManageContent}
           images={galleryImages}
           result={gallery}
           storageReady={galleryStorageReady}

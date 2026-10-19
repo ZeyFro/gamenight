@@ -33,7 +33,7 @@ describe("community highlight moderation", () => {
     mocks.deleteMany.mockResolvedValue({ count: 1 });
   });
 
-  const input = { kind: "FAME", title: "Sauvetage", description: "Souvenir validé." };
+  const input = { kind: "FAME", title: "Sauvetage", description: "Souvenir validé.", mediaUrl: "" };
 
   it("refuses member creation, editing and deletion", async () => {
     expect(await saveCommunityHighlight("member", null, input)).toBe(false);
