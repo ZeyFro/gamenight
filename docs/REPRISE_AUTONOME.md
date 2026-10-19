@@ -2,6 +2,14 @@
 
 ## Suite locale — 19 octobre 2026, 08:00 UTC
 
+### Recette authentifiée locale — suite après #288
+
+- `reprise-portable1`, branche `fix/recette-locale-authentifiee`, basée sur `origin/main` `139aaa9`. #286–288 fusionnées, CI/Vercel au dernier SHA et productions READY déjà acquis; aucun de ces contrôles relancé.
+- Nouveau Vercel MCP disponible, mais `get_project` avec projet/équipe connus confirme `403 forbidden` sur `mpmaximeparisot-6230s-projects`. Pas de retry inchangé, env pull ou écriture distante.
+- Blocage local corrigé : `TEST_DATABASE_URL` choisit un client PostgreSQL direct uniquement hors production, après validation protocole/boucle locale. Valeur invalide refusée; production conserve Neon. Huit tests couvrent ces branches. Aucun provider de test ou flag ajouté.
+- Recette Edge réelle complète réussie : création sondage, réponse invitée, refus du tiers, conversion en soirée, intersection des deux bibliothèques choisies, refus explicite/catégorie dans les suggestions et accès anonyme refusé. JWT de fixtures avec secret éphémère, environnement sans identifiants externes, requêtes navigateur externes bloquées. Aucun Discord réel; aucune livraison liée à la soirée. Serveur arrêté après recette. Protocole et limites : `RECETTE_LOCALE_AUTHENTIFIEE.md`.
+- Défaut démontré par le navigateur : clés React identiques entre chat et cloche du header. Préfixes distincts conservant le remontage par communauté; test de régression rouge puis vert. Next dev ajoutait des consignes à CLAUDE.md : `agentRules:false` évite cette modification, seul ajout généré restauré.
+
 ### Livraison au 19 octobre, 08:17 UTC
 
 - #286 est fusionnée; production Vercel `READY` sur `8b3958d`, sans recette distante ni activation du flag.

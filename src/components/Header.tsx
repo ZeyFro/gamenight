@@ -71,7 +71,7 @@ async function renderHeader() {
             <Link href="/profil" className="gn-header-xp hidden xl:flex">✦ Niveau {levelForXp(user.xpTotal)} <span className="text-muted">· {user.xpTotal.toLocaleString("fr-FR")} XP</span></Link>
             {currentUser && (
               <ChatPanel
-                key={communityId ?? "none"}
+                key={`chat:${communityId ?? "none"}`}
                 currentUserId={currentUser.id}
                 currentUserName={currentUser.discordName}
                 currentUserAvatar={currentUser.discordAvatar}
@@ -79,7 +79,7 @@ async function renderHeader() {
                 initialMessages={initialChatMessages}
               />
             )}
-            <NotificationBell key={communityId ?? "none"} initialUnreadCount={unreadCount} notifications={notifications} />
+            <NotificationBell key={`notifications:${communityId ?? "none"}`} initialUnreadCount={unreadCount} notifications={notifications} />
             <Link href="/profil" aria-label="Ouvrir mon profil" className="hidden sm:block"><Avatar src={user.discordAvatar} alt="" size={32} /></Link>
           </div>
         )}
