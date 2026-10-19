@@ -46,4 +46,4 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 - Vérifier au navigateur un utilisateur administrateur communautaire et un invité non-créateur; distinguer admin communautaire d’admin global pour la galerie.
 - Vercel/Neon Preview reste bloquée par l’accès/configuration déjà décrits dans `logs/HANDOFF_PORTABLE1.md`; ne pas reconnecter pour les lectures projet qui réussissent déjà. N’utiliser aucune Preview avant confirmation privée de sa destination isolée.
-- Fournir la source autorisée et les conditions d’usage pour les offres Epic/Steam automatiques; le code de curation manuelle ne remplace pas cette exigence.
+- Pour les offres Epic/Steam, autoriser l’accès sortant TLS à `www.gamerpower.com` depuis l’environnement de recette ou transmettre la spécification primaire actuelle de la réponse API, notamment expiration/région. La candidate permet un usage commercial avec attribution, mais l’import reste non codé tant que le schéma et la couverture régionale ne sont pas vérifiés.
