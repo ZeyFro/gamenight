@@ -34,22 +34,25 @@ describe.skipIf(!TEST_DATABASE_URL)("musée communautaire : droits et isolation"
   });
 
   it("crée, lit, édite puis supprime un souvenir de son serveur", async () => {
-    expect(await api.saveCommunityHighlight("highlight-alice", null, input)).toBe(true);
+    expect(await api.saveCommunityHighlight("highlight-admin", null, input)).toBe(true);
     const page = await api.listCommunityHighlights("highlight-alice", 1);
     expect(page?.communityName).toBe("highlight-a");
     expect(page?.items).toHaveLength(1);
     const id = page!.items[0].id;
-    expect(await api.saveCommunityHighlight("highlight-alice", id, { ...input, kind: "FAME", title: "Sauvetage" })).toBe(true);
+    expect(await api.saveCommunityHighlight("highlight-alice", null, input)).toBe(false);
+    expect(await api.saveCommunityHighlight("highlight-alice", id, { ...input, kind: "FAME", title: "Sauvetage" })).toBe(false);
+    expect(await api.saveCommunityHighlight("highlight-admin", id, { ...input, kind: "FAME", title: "Sauvetage" })).toBe(true);
     expect((await api.listCommunityHighlights("highlight-alice", 1))?.items[0].title).toBe("Sauvetage");
-    expect(await api.deleteCommunityHighlight("highlight-alice", id)).toBe(true);
+    expect(await api.deleteCommunityHighlight("highlight-alice", id)).toBe(false);
+    expect(await api.deleteCommunityHighlight("highlight-admin", id)).toBe(true);
     expect((await api.listCommunityHighlights("highlight-alice", 1))?.items).toHaveLength(0);
   });
 
   it("ne publie qu'une fois une double soumission du même formulaire", async () => {
     const key = "highlight-double-submit";
     expect(await Promise.all([
-      api.saveCommunityHighlight("highlight-alice", null, input, { creationKey: key }),
-      api.saveCommunityHighlight("highlight-alice", null, input, { creationKey: key }),
+      api.saveCommunityHighlight("highlight-admin", null, input, { creationKey: key }),
+      api.saveCommunityHighlight("highlight-admin", null, input, { creationKey: key }),
     ])).toEqual([true, true]);
     expect(await db.communityHighlight.count()).toBe(1);
   });
@@ -61,7 +64,7 @@ describe.skipIf(!TEST_DATABASE_URL)("musée communautaire : droits et isolation"
 
   it.each(["true", "false"])("isole lecture et mutations même isolation=%s", async (isolation) => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", isolation);
-    await api.saveCommunityHighlight("highlight-alice", null, input);
+    await api.saveCommunityHighlight("highlight-admin", null, input);
     const id = (await api.listCommunityHighlights("highlight-alice", 1))!.items[0].id;
     expect((await api.listCommunityHighlights("highlight-other", 1))?.items).toHaveLength(0);
     expect(await api.saveCommunityHighlight("highlight-other", id, input)).toBe(false);

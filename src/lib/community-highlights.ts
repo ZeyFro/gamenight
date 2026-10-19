@@ -39,6 +39,7 @@ export async function saveCommunityHighlight(userId: string, id: string | null, 
   return await withHighlights(userId, async (scopedDb, access) => {
     const now = wallClockNow();
     if (!id) {
+      if (!access.canModerate) return false;
       const saved = await createOnce(userId, "community-highlight", options?.creationKey,
         async () => scopedDb.communityHighlight.create({ data: { ...parsed.data, communityId: access.communityId, createdById: userId, createdAt: now, updatedAt: now } }),
         row => row.id,
@@ -47,8 +48,9 @@ export async function saveCommunityHighlight(userId: string, id: string | null, 
       );
       return !!saved.result;
     }
+    if (!access.canModerate) return false;
     const result = await scopedDb.communityHighlight.updateMany({
-      where: { id, communityId: access.communityId, ...(access.canModerate ? {} : { createdById: userId }) },
+      where: { id, communityId: access.communityId },
       data: { ...parsed.data, updatedAt: now },
     });
     return result.count === 1;
@@ -58,8 +60,9 @@ export async function saveCommunityHighlight(userId: string, id: string | null, 
 export async function deleteCommunityHighlight(userId: string, id: string, communityId?: string): Promise<boolean> {
   if (!id || id.length > 128) return false;
   return await withHighlights(userId, async (scopedDb, access) => {
+    if (!access.canModerate) return false;
     const result = await scopedDb.communityHighlight.deleteMany({
-      where: { id, communityId: access.communityId, ...(access.canModerate ? {} : { createdById: userId }) },
+      where: { id, communityId: access.communityId },
     });
     return result.count === 1;
   }, communityId) ?? false;
