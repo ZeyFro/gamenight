@@ -32,6 +32,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - Préparation jeux/soirées sans DB : actions, champs de prix/gratuité/inconnu, checklist et guide/components 37/37; configuration `SESSION_PREPARATION_ENABLED`/`GAME_PREPARATION_TIME_ENABLED` et recette authentifiée manquantes.
 - LFG/petites annonces : service et contrôle d’accès `player-classifieds.test.ts` + `.access.test.ts` 5/5; flag communautaire et parcours navigateur non vérifiés.
 - Roulette/veto/tirage, composants et préférences Discord avec doubles : 50/50 sans Postgres ni message réel; flags/configuration et recette Discord manquants.
+- Galerie image/MP4 : actions, composants, route privée/range et règles de format/flag 19/19 avec Blob simulé; aucun Blob réel, flag activé ou rôle admin galerie ajouté.
 - `community-domains.integration.test.ts -t "récap : même mois" --pool=forks --maxWorkers=1`: 1/1 réussi sur PostgreSQL local dédié après contrôle lecture seule du conteneur, port et base; aucun autre worker PostgreSQL lancé.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
