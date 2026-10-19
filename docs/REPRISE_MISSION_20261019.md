@@ -26,6 +26,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - Tournois sans DB/Discord : bracket, scores, tirage d’équipes, RSVP, pronostics et composants 44/44; les annonces Discord réelles et les parcours authentifiés restent non vérifiés.
 - Mini-jeu existant « devine le jeu » (trois indices) : logique, composant et page 7/7; aucun quiz de connaissances distinct trouvé. Dessin proposé en attente de validation avant code.
 - Sondages éclair, validation d’entrée et action serveur avec doubles : `community-quick-polls-input.test.ts` et `sondages/actions.test.ts` 30/30; aucune écriture Postgres/Discord.
+- Dates calendrier et consentement anniversaires : `calendar-dates.test.ts` + `community-dates.test.ts` 17/17; test navigateur/visibilité multi-compte restant.
 - `community-domains.integration.test.ts -t "récap : même mois" --pool=forks --maxWorkers=1`: 1/1 réussi sur PostgreSQL local dédié après contrôle lecture seule du conteneur, port et base; aucun autre worker PostgreSQL lancé.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
