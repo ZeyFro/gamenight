@@ -6,6 +6,14 @@ const base = [{ icon: "📅", title: "Calendrier", lines: ["a"] }];
 describe("guideSections (GUIDE_V2_ENABLED)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("décrit l’annulation des occurrences futures seulement quand le flag est actif", () => {
+    const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
+    vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "false");
+    expect(guideSections(soirees)[0].lines).toHaveLength(1);
+    vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "true");
+    expect(guideSections(soirees)[0].lines.join(" ")).toContain("occurrences futures");
+  });
+
   it("explique le lien iCal privé et sa révocation seulement quand l’abonnement est actif", () => {
     vi.stubEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "false");
     expect(guideSections(base)[0].lines.join(" ")).not.toContain("abonnement");

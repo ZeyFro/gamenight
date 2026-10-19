@@ -1,6 +1,14 @@
 # État de reprise — portable 1, 19 octobre 2026, 07:09 UTC
 
-## Relevé courant du portable 1
+## Suite locale — 19 octobre 2026, 08:00 UTC
+
+- #285 fusionnée (`2590f4c`). #286 abonnement iCal privé : tête `ad34a3d`, Vercel vert; CI encore en cours au relevé. Aucun résultat anticipé. Sa première CI a démontré une garde statique non adaptée au nouveau jeton : reconnaissance bornée du seul feed corrigée, 12 tests réussis.
+- Lot annulation des futures occurrences prêt dans `reprise-portable1`, branche `feat/cancel-recurring-sessions`, basé sur la tête #286. Migration additive 109 appliquée exclusivement au Docker dédié `gamenight-portable1-pg`, port lié à `127.0.0.1:55440`, base `gamenight_portable1_test`. Destination recontrôlée avant écritures. Voir `ANNULATION_SERIES.md` pour périmètre et preuves : 26 intégrations, 97 tests ciblés, puis 33 intégrations complémentaires, Prisma, TypeScript, lint et build Next direct réussis. Revues backend/SQL/UI sans blocage.
+- Preview toujours inutilisable pour une recette sûre : accès projet Vercel refusé dans le scope essayé, CLI absent, branche Neon Preview archivée et destination de recette non prouvée. Aucune écriture distante. Recette locale effectuée; parcours navigateur authentifié et abonnement réel à un calendrier restent non vérifiés.
+- Clips vidéo préparés séparément dans `session-clips-next`; aucun changement du checkout racine ni suppression de worktree. Les flags iCal, annulation et vidéo restent OFF. Aucun Discord réel et aucune activation de l’isolation.
+- Audit npm existant : cinq alertes hautes sur la chaîne ESLint/fast-glob/micromatch/braces; correction automatique proposée par npm incompatible avec la version actuelle de Next. Pas de downgrade aveugle.
+
+## Relevé initial du portable 1
 
 - PC fixe arrêté. Son `HANDOFF.md` final n’est pas disponible ici et n’a pas été utilisé. Les chemins, services locaux et autorisations de sessions précédentes ci-dessous sont historiques, pas des prérequis vérifiés sur ce portable.
 - `git fetch origin main` effectué : `origin/main` = `b30e8ef6ac67d43df1fe2dce1d5a9bf5589236ab`. GitHub confirme #281–284 fusionnées et aucune PR ouverte au relevé du 19 octobre. #281 corrige accueil mobile, statut des tournois et repli des couvertures; #282–284 corrigent le débordement et la largeur des infobulles de rang.

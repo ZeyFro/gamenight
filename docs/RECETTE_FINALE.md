@@ -30,7 +30,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | Préférences et refus | Livré et testé | Préférences, refus de catégories et jeux nommés utilisés dans /bibliotheque/suggestions pour les participants choisis | Migrations correspondantes; pas de flag dédié | Recette authentifiée non vérifiée; votes et roulettes ne sont pas modifiés par ce parcours |
 | Préparation d’un jeu | Livré mais désactivé | Coût, prix, volume, plateforme, source et durée estimée sur une fiche possédée | GAME_PREPARATION_TIME_ENABLED pour la durée | Les valeurs sont déclarées par des membres, sans import officiel ni garantie de fraîcheur |
 | Checklist de soirée | Livré mais désactivé | Installation, mise à jour, micro et lobby pour une soirée planifiée | SESSION_PREPARATION_ENABLED et migration session_preparation | Activer seulement après vérification de la migration et des communautés |
-| Organisation et disponibilités | Partiellement livré | Suggestions, sondage collectif avec réponses individuelles et conversion en soirée; séries hebdomadaires/mensuelles | Compte connecté et migration session_availability_polls | Recette authentifiée non vérifiée; édition groupée des séries non livrée |
+| Organisation et disponibilités | Partiellement livré | Suggestions, sondage collectif et conversion en soirée; séries hebdomadaires/mensuelles et annulation des occurrences futures | Compte connecté et migration session_availability_polls; annulation groupée : SESSION_SERIES_CANCEL_ENABLED et migration recurring_session_cancellation | Recette authentifiée non vérifiée; édition groupée des dates/cadences non livrée, exceptions à cadrer |
 | Roulette | Livré et testé | Roulette de base, pondération tierlist et évitement des jeux récents | État des flags non confirmé | Filtre par nombre de joueurs et veto exigent ROULETTE_PLAYER_FILTER_ENABLED et VOTE_VETO_ENABLED |
 | Récompenses et engagement | Livré mais désactivé | Notes, quêtes, boutique XP; saisie de présence | Réglages communauté pour bonus/malus; état de production non vérifié | Les récompenses présence sont désactivées par défaut; aucune transaction financière |
 | Wishlist et achats à plusieurs | Partiellement livré | Votes d’intérêt et plan indicatif | COMMUNITY_ISOLATION_ENABLED ne doit pas être activé avant la fin des contrôles; flags d’alertes à vérifier | Aucun paiement, engagement financier ou achat automatique |
@@ -52,7 +52,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | Clips vidéo dans la galerie | Non implémenté |
 | App et données réellement utilisables sans réseau | Non implémenté; seul le fallback offline existe |
 | Publication automatique des offres Epic/Steam gratuites | Non implémenté; la curation manuelle existe |
-| Édition groupée des séries récurrentes | Non implémenté |
+| Édition groupée des dates/cadences récurrentes | Non implémenté; annulation groupée des occurrences futures livrée |
 | Paiement/achat groupé intégré | Non implémenté |
 
 ## Recette navigateur authentifiée à exécuter
@@ -127,6 +127,7 @@ Les noms ci-dessous sont ceux présents dans .env.example et le code. Pour les f
 | ROULETTE_PLAYER_FILTER_ENABLED | Filtre joueurs, relance sans doublon; pas de migration | OFF si absent | Tests dédiés | Inconnu (403) | Inconnu (403) |
 | SESSION_CHRONICLES_ENABLED | Chroniques; migration session_chronicles | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |
 | SESSION_PREPARATION_ENABLED | Checklist de soirée; migration session_preparation | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |
+| SESSION_SERIES_CANCEL_ENABLED | Annulation des occurrences futures des nouvelles séries; migration recurring_session_cancellation | OFF si absent | Intégrations et tests locaux ciblés; CI du lot à confirmer | Non vérifié | Non vérifié; aucune activation effectuée |
 | SKIP_LINK_ENABLED | Lien d’évitement du contenu principal pour navigation clavier | OFF si absent | Tests UI ciblés | Inconnu (403) | Inconnu (403) |
 | STEAM_NOW_PLAYING_ENABLED | Présence Steam dans /potes; migration steam_now_playing et clé Steam requises | OFF si absent | Tests isolés | Inconnu (403) | Inconnu (403) |
 | TOURNAMENT_PREDICTIONS_ENABLED | Pronostics; migration tournament_predictions | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |

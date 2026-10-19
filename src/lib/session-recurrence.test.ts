@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { recurringSessionDates } from "./session-recurrence";
+import { isRecurringSeriesCancellationEnabled, recurringSessionDates } from "./session-recurrence";
 
 describe("recurringSessionDates", () => {
+  it("enables group cancellation only for the exact true flag", () => {
+    expect(isRecurringSeriesCancellationEnabled({})).toBe(false);
+    expect(isRecurringSeriesCancellationEnabled({ SESSION_SERIES_CANCEL_ENABLED: "TRUE" })).toBe(false);
+    expect(isRecurringSeriesCancellationEnabled({ SESSION_SERIES_CANCEL_ENABLED: "true" })).toBe(true);
+  });
+
   it("keeps weekly wall-clock time and weekday", () => {
     const dates = recurringSessionDates(new Date("2026-10-16T20:30:00Z"), "weekly", 4);
     expect(dates.map((date) => date.toISOString())).toEqual([
