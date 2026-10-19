@@ -37,6 +37,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - Guide/charte : `guide-sections.test.ts`, `fair-play-charter.test.ts`, action `charte/actions.test.ts` 15/15; contenu configuré et parcours navigateur/mobile non validés.
 - Lien du salon vocal selon la configuration communautaire : `community-channels.test.ts` 35/35; salon et ouverture cliente Discord réels non testés.
 - Rappels/RSVP Discord : schedule, contenu, transport et interactions 68/68 avec doubles; aucun message réel, cron ou webhook vérifié.
+- Séries récurrentes : logique d’occurrences et annulation `session-recurrence.test.ts` + test d’action 8/8; l’édition des séries futures n’est pas implémentée ni validée comme décision.
 - `community-domains.integration.test.ts -t "récap : même mois" --pool=forks --maxWorkers=1`: 1/1 réussi sur PostgreSQL local dédié après contrôle lecture seule du conteneur, port et base; aucun autre worker PostgreSQL lancé.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
