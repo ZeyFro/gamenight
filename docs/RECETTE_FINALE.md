@@ -30,7 +30,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | Préférences et refus | Livré et testé | Préférences, refus de catégories et jeux nommés utilisés dans /bibliotheque/suggestions pour les participants choisis | Migrations correspondantes; pas de flag dédié | Recette authentifiée non vérifiée; votes et roulettes ne sont pas modifiés par ce parcours |
 | Préparation d’un jeu | Livré mais désactivé | Coût, prix, volume, plateforme, source et durée estimée sur une fiche possédée | GAME_PREPARATION_TIME_ENABLED pour la durée | Les valeurs sont déclarées par des membres, sans import officiel ni garantie de fraîcheur |
 | Checklist de soirée | Livré mais désactivé | Installation, mise à jour, micro et lobby pour une soirée planifiée | SESSION_PREPARATION_ENABLED et migration session_preparation | Activer seulement après vérification de la migration et des communautés |
-| Organisation et disponibilités | Partiellement livré | Suggestions, sondage collectif avec réponses individuelles et conversion en soirée; séries hebdomadaires/mensuelles | Compte connecté et migration session_availability_polls | Recette authentifiée non vérifiée; édition groupée des séries non livrée |
+| Organisation et disponibilités | Partiellement livré | Suggestions, sondage collectif et conversion en soirée; séries hebdomadaires/mensuelles et annulation des occurrences futures | Compte connecté et migration session_availability_polls; annulation groupée : SESSION_SERIES_CANCEL_ENABLED et migration recurring_session_cancellation | Recette authentifiée non vérifiée; édition groupée des dates/cadences non livrée, exceptions à cadrer |
 | Roulette | Livré et testé | Roulette de base, pondération tierlist et évitement des jeux récents | État des flags non confirmé | Filtre par nombre de joueurs et veto exigent ROULETTE_PLAYER_FILTER_ENABLED et VOTE_VETO_ENABLED |
 | Récompenses et engagement | Livré mais désactivé | Notes, quêtes, boutique XP; saisie de présence | Réglages communauté pour bonus/malus; état de production non vérifié | Les récompenses présence sont désactivées par défaut; aucune transaction financière |
 | Wishlist et achats à plusieurs | Partiellement livré | Votes d’intérêt et plan indicatif | COMMUNITY_ISOLATION_ENABLED ne doit pas être activé avant la fin des contrôles; flags d’alertes à vérifier | Aucun paiement, engagement financier ou achat automatique |
@@ -38,7 +38,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | Tournois | Livré mais désactivé | Création, bracket et tirage des équipes; annonces possibles | TOURNAMENT_PREDICTIONS_ENABLED, TOURNAMENT_SCORES_ENABLED et configuration Discord pour les sous-parcours concernés | Les pronostics et la saisie de scores sont off par défaut; aucun essai Discord authentifié |
 | Lore et contenu communautaire | Livré mais désactivé | Chroniques, expressions, épitaphes, sondages et highlights ont du code et des tests | Flags de chaque domaine et migrations correspondantes | Activer après revue des flags et test d’accès multi-compte; aucun parcours réel vérifié |
 | Guide par serveur | Livré et testé | Règles et contacts éditables par admin, affichés dans /guide | COMMUNITY_ADMIN_ENABLED pour l’édition, migration et contenu saisi; affichage selon la communauté résolue | Recette authentifiée non vérifiée; aucune activation de l’isolation dans cette reprise |
-| Calendrier | Partiellement livré | Téléchargement ponctuel iCal des soirées et dates serveur | Session authentifiée | Abonnement calendrier avec mises à jour : Non implémenté |
+| Calendrier | Livré mais désactivé | Téléchargement ponctuel iCal; abonnement privé révocable des soirées accessibles du serveur choisi | Session pour l’export; `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens` pour l’abonnement | 3 intégrations locales et 92 tests ciblés du lot abonnement réussis; essai Google/Apple Calendar non vérifié, rafraîchissement et cache dépendent du client |
 | Galerie privée | Partiellement livré | Images JPEG/PNG/GIF/WebP et clips MP4, limites communes de 4 Mo/8 médias, consentement, accès participant et lecture Range | SESSION_MEDIA_BLOB_TOKEN, SESSION_VIDEO_ENABLED exact `true` et activation admin de la galerie | Clips désactivés par défaut; aucun codec/durée garanti; purge séparée différée; état distant de l’activation non vérifié |
 | Accueil | Partiellement livré | Accueil courant; variantes récentes présentes dans le code | HOME_V2_ENABLED pour /accueil-v2 | HOME_V2_ENABLED est désactivé par défaut; comparaison authentifiée manquante |
 | Mobile et notifications | Livré mais désactivé | Interface web responsive/PWA shell; code Web Push | WEB_PUSH_ENABLED et paire VAPID persistante | Abonnement Push jamais vérifié sur un appareil; expérience navigateur authentifiée manquante |
@@ -51,9 +51,8 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 |---|---|
 | Clips vidéo dans la galerie | Non implémenté |
 | App et données réellement utilisables sans réseau | Non implémenté; seul le fallback offline existe |
-| Abonnement iCal continu | Non implémenté |
 | Publication automatique des offres Epic/Steam gratuites | Non implémenté; la curation manuelle existe |
-| Édition groupée des séries récurrentes | Non implémenté |
+| Édition groupée des dates/cadences récurrentes | Non implémenté; annulation groupée des occurrences futures livrée |
 | Paiement/achat groupé intégré | Non implémenté |
 
 ## Recette navigateur authentifiée à exécuter
@@ -99,6 +98,7 @@ Les noms ci-dessous sont ceux présents dans .env.example et le code. Pour les f
 | Flag | Fonction / condition documentée | Local par défaut | CI | Preview | Production |
 |---|---|---|---|---|---|
 | COMMUNITY_ADMIN_ENABLED | Onglet d’administration des communautés; nécessite droits admin et accès Discord aux salons | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
+| CALENDAR_SUBSCRIPTIONS_ENABLED | Abonnement iCal privé révocable par serveur; migration calendar_feed_tokens; voir ABONNEMENT_CALENDRIER.md | OFF si absent | Tests ciblés locaux; CI du lot à confirmer | Non vérifié | Non vérifié; aucune activation effectuée |
 | COMMUNITY_AUTO_CREATE_ENABLED | Création de communauté PENDING; webhook Discord signé et cron requis | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_CHANNELS_ENABLED | Salons Discord par communauté; nécessite configuration des salons | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_EXPRESSIONS_ENABLED | Expressions/running gags; migration community_expressions | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
@@ -127,6 +127,7 @@ Les noms ci-dessous sont ceux présents dans .env.example et le code. Pour les f
 | ROULETTE_PLAYER_FILTER_ENABLED | Filtre joueurs, relance sans doublon; pas de migration | OFF si absent | Tests dédiés | Inconnu (403) | Inconnu (403) |
 | SESSION_CHRONICLES_ENABLED | Chroniques; migration session_chronicles | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |
 | SESSION_PREPARATION_ENABLED | Checklist de soirée; migration session_preparation | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |
+| SESSION_SERIES_CANCEL_ENABLED | Annulation des occurrences futures des nouvelles séries; migration recurring_session_cancellation | OFF si absent | Intégrations et tests locaux ciblés; CI du lot à confirmer | Non vérifié | Non vérifié; aucune activation effectuée |
 | SKIP_LINK_ENABLED | Lien d’évitement du contenu principal pour navigation clavier | OFF si absent | Tests UI ciblés | Inconnu (403) | Inconnu (403) |
 | STEAM_NOW_PLAYING_ENABLED | Présence Steam dans /potes; migration steam_now_playing et clé Steam requises | OFF si absent | Tests isolés | Inconnu (403) | Inconnu (403) |
 | TOURNAMENT_PREDICTIONS_ENABLED | Pronostics; migration tournament_predictions | OFF si absent | Tests Postgres dédiés | Inconnu (403) | Inconnu (403) |

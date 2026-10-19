@@ -1,6 +1,14 @@
 # État de reprise — portable 1, 19 octobre 2026, 07:09 UTC
 
-## Relevé courant du portable 1
+## Suite locale — 19 octobre 2026, 08:00 UTC
+
+- #285 fusionnée (`2590f4c`). #286 abonnement iCal privé : tête `ad34a3d`, Vercel vert; CI encore en cours au relevé. Aucun résultat anticipé. Sa première CI a démontré une garde statique non adaptée au nouveau jeton : reconnaissance bornée du seul feed corrigée, 12 tests réussis.
+- Lot annulation des futures occurrences prêt dans `reprise-portable1`, branche `feat/cancel-recurring-sessions`, basé sur la tête #286. Migration additive 109 appliquée exclusivement au Docker dédié `gamenight-portable1-pg`, port lié à `127.0.0.1:55440`, base `gamenight_portable1_test`. Destination recontrôlée avant écritures. Voir `ANNULATION_SERIES.md` pour périmètre et preuves : 26 intégrations, 97 tests ciblés, puis 33 intégrations complémentaires, Prisma, TypeScript, lint et build Next direct réussis. Revues backend/SQL/UI sans blocage.
+- Preview toujours inutilisable pour une recette sûre : accès projet Vercel refusé dans le scope essayé, CLI absent, branche Neon Preview archivée et destination de recette non prouvée. Aucune écriture distante. Recette locale effectuée; parcours navigateur authentifié et abonnement réel à un calendrier restent non vérifiés.
+- Clips vidéo préparés séparément dans `session-clips-next`; aucun changement du checkout racine ni suppression de worktree. Les flags iCal, annulation et vidéo restent OFF. Aucun Discord réel et aucune activation de l’isolation.
+- Audit npm existant : cinq alertes hautes sur la chaîne ESLint/fast-glob/micromatch/braces; correction automatique proposée par npm incompatible avec la version actuelle de Next. Pas de downgrade aveugle.
+
+## Relevé initial du portable 1
 
 - PC fixe arrêté. Son `HANDOFF.md` final n’est pas disponible ici et n’a pas été utilisé. Les chemins, services locaux et autorisations de sessions précédentes ci-dessous sont historiques, pas des prérequis vérifiés sur ce portable.
 - `git fetch origin main` effectué : `origin/main` = `b30e8ef6ac67d43df1fe2dce1d5a9bf5589236ab`. GitHub confirme #281–284 fusionnées et aucune PR ouverte au relevé du 19 octobre. #281 corrige accueil mobile, statut des tournois et repli des couvertures; #282–284 corrigent le débordement et la largeur des infobulles de rang.
@@ -20,7 +28,14 @@
 - Preview : accès au détail du projet refusé par le connecteur (`403 forbidden`, scope `mpmaximeparisot-6230s-projects`); recours CLI impossible (`vercel` non reconnu). Les seules branches Neon listées sont production, une Preview archivée et une sauvegarde. Destination DB Preview non prouvée : aucune écriture distante tentée.
 - PostgreSQL de recette créé séparément : conteneur `gamenight-portable1-pg`, PostgreSQL 16.15, loopback `127.0.0.1:55440`, base `gamenight_portable1_test` vérifiée par `current_database()` avant les migrations/tests. 107 migrations appliquées; ancien conteneur 55439 laissé arrêté. Ne jamais lancer deux suites Postgres simultanément.
 - Résultats sur `b30e8ef` : intégrations sondage → soirée, bibliothèque et suggestions **39/39**; logique et pages/actions ciblées **28/28**, aucun test ignoré. Exécution séquentielle avec `--no-file-parallelism --maxWorkers=1`; appels réseau simulés/interdits. Aucun défaut applicatif reproduit. Détail et limites dans `docs/RECETTE_FINALE.md`.
-- Après livraison du bilan, premier sous-périmètre à examiner : abonnement iCal continu avec lien révocable et accès revalidés. Le calendrier ponctuel existe déjà; ne pas le réimplémenter.
+- Bilan livré par [#285](https://github.com/ZeyFro/gamenight/pull/285), fusionnée le 19 octobre à 07:35 UTC dans `2590f4ca882351c33b8299a84ea3a44fbae0007c`, après `verify` et Vercel verts sur `0b47335` ([CI](https://github.com/ZeyFro/gamenight/actions/runs/39215392684)).
+
+### Lot abonnement iCal — branche `feat/calendar-subscriptions`
+
+- Base actualisée : `origin/main` après #285, `2590f4c`. L4-01 étendu par un flux privé révocable, lié au serveur choisi, derrière `CALENDAR_SUBSCRIPTIONS_ENABLED` OFF. Aucun secret supplémentaire; modèle et migration additive `20261019140000_calendar_feed_tokens` revus indépendamment.
+- Validation locale : migration sur le seul Docker 55440 (108 migrations), trois scénarios d’intégration réussis, 92 tests ciblés unité/pages/actions/route/gardes réussis, aucun ignoré. Prisma validate/generate, typegen, TypeScript, lint, build Next direct et diff check réussis. Les défauts de fixture des premiers runs sont corrigés; détails dans `docs/ABONNEMENT_CALENDRIER.md`.
+- Recette navigateur authentifiée et abonnement dans une application calendrier tierce non exécutés. Aucun flag distant activé, aucune recette de production ni envoi Discord.
+- Prochain lot concret : annulation groupée des occurrences futures des nouvelles séries récurrentes. L’édition groupée des horaires reste à cadrer (décalage des dates, régénération de cadence, conservation des exceptions).
 
 ## Relevé précédent — autre poste, 18 octobre 2026
 

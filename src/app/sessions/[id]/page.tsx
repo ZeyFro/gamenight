@@ -36,6 +36,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { DeleteSessionDialog } from "@/components/DeleteSessionDialog";
+import { CancelRecurringSessionsDialog } from "@/components/sessions/CancelRecurringSessionsDialog";
+import { isRecurringSeriesCancellationEnabled } from "@/lib/session-recurrence";
 import { EditSessionDialog } from "@/components/EditSessionDialog";
 import { DrawSessionGameDialog } from "@/components/sessions/DrawSessionGameDialog";
 import { WithdrawProposalDialog } from "@/components/WithdrawProposalDialog";
@@ -687,6 +689,7 @@ export default async function SessionDetailPage({
             👥 Gérer les invités
           </ButtonLink>
           <DeleteSessionDialog sessionId={session.id} hasThread={session.announceViaBot} />
+          {isRecurringSeriesCancellationEnabled() && session.recurrenceGroupId && <CancelRecurringSessionsDialog sessionId={session.id} />}
         </div>
       )}
 

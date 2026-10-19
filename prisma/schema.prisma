@@ -52,6 +52,7 @@ model User {
   availabilityPollsCreated SessionAvailabilityPoll[] @relation("AvailabilityPollCreator")
   communityDatesCreated CommunityDate[] @relation("CommunityDateCreator")
   communityBirthdays CommunityDate[] @relation("CommunityDateMember")
+  calendarFeedTokens CalendarFeedToken[]
   availabilityPollParticipations SessionAvailabilityPollParticipant[]
   id                       String    @id @default(cuid())
   discordId                String    @unique
@@ -657,7 +658,12 @@ model Session {
   communityId String?
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
 
+  // Sessions créées comme occurrences d'une même création récurrente. Null
+  // pour les anciennes séries et quand la gestion groupée est désactivée.
+  recurrenceGroupId String?
+
   @@index([communityId])
+  @@index([recurrenceGroupId])
 
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
@@ -1538,6 +1544,21 @@ model WebPushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model CalendarFeedToken {
+  id          String     @id @default(cuid())
+  userId      String
+  communityId String
+  tokenHash   String     @unique @db.VarChar(64)
+  createdAt   DateTime   @default(now())
+  revokedAt   DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@index([communityId])
 }
 
 // Sprint 3 (FEATURE 6) — tags libres que chaque pote s'attribue lui-même
@@ -2718,6 +2739,7 @@ model Community {
   memberships    Membership[]
   channelConfigs CommunityChannelConfig[]
   sessions       Session[]
+  calendarFeedTokens CalendarFeedToken[]
   sessionAttendances SessionAttendance[]
   tournaments    Tournament[]
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Chantier confidentialité des soirées — preuve d'intégration Postgres
@@ -57,8 +57,12 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
   afterAll(async () => {
     await db.$disconnect();
   });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
   beforeEach(async () => {
+    vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "false");
+    vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
+    vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Réseau interdit dans cette intégration."); }));
     await db.$executeRawUnsafe(
       `TRUNCATE "NotificationDelivery", "NotificationEvent", "SessionInvite", "Vote", "Proposal", "Session", "XpEvent", "User" CASCADE`
     );
@@ -106,12 +110,13 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     expect(await db.xpEvent.count({ where: { userId: creator.id, reason: "CREATE_SESSION" } })).toBe(3);
   });
 
-  it("crée une série mensuelle atomique et rejoue la même intention sans dupliquer les occurrences", async () => {
+  it.each([false, true])("crée une série mensuelle atomique et rejoue la même intention sans dupliquer les occurrences (gestion groupée %s)", async (enabled) => {
+    vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", String(enabled));
     await db.community.upsert({ where: { slug: "default" }, update: { status: "ACTIVE" }, create: { slug: "default", name: "default", status: "ACTIVE" } });
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
     const creator = await makeUser();
     currentUserMock.mockResolvedValue(creator);
-    const form = formData({ date: "2026-11-07", time: "20:00", recurrence: "monthly", recurrenceCount: "4" });
+    const form = formData({ date: "2026-11-07", time: "20:00", recurrence: "monthly", recurrenceCount: "4", recurrenceGroupId: "forged" });
 
     for (let attempt = 0; attempt < 2; attempt++) {
       await expect(createSession(form)).rejects.toThrow(/^REDIRECT:\/sessions\//);
@@ -122,6 +127,11 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
       "2026-11-07T20:00:00.000Z", "2026-12-05T20:00:00.000Z",
       "2027-01-02T20:00:00.000Z", "2027-02-06T20:00:00.000Z",
     ]);
+    expect(new Set(sessions.map((session) => session.recurrenceGroupId)).size).toBe(1);
+    if (enabled) {
+      expect(sessions[0].recurrenceGroupId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(sessions[0].recurrenceGroupId).not.toBe("forged");
+    } else expect(sessions.every((session) => session.recurrenceGroupId === null)).toBe(true);
   });
 
   it("persiste EXACTEMENT les potes cochés — jamais plus, jamais moins, jamais 'tout le monde'", async () => {

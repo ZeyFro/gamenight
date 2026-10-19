@@ -61,6 +61,8 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
 - `GAME_PREPARATION_TIME_ENABLED` : affiche et autorise la saisie d'une durée estimée (1–10 080 minutes) sourcée sur la fiche jeu ; OFF par défaut
+- `CALENDAR_SUBSCRIPTIONS_ENABLED` : abonnement iCal privé et révocable par serveur depuis `/calendrier`; migration `calendar_feed_tokens`, membre et communauté ACTIVE requis à chaque lecture; OFF par défaut
+- `SESSION_SERIES_CANCEL_ENABLED` : associe les nouvelles séries récurrentes et permet à leur créateur d’annuler les occurrences futures en vote/planifiées après confirmation; migration `recurring_session_cancellation`, anciennes séries indépendantes; OFF par défaut
 - `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` · `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` : annonces soirées / tournois via le bot ; exigent aussi `DISCORD_BOT_GUILD_ID` et le salon (`…_SESSION_CHANNEL_ID` / `…_TOURNAMENT_CHANNEL_ID`)
 - `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
 - `COMMUNITY_AUTO_CREATE_ENABLED` : création automatique de communautés PENDING (webhook d'événements Discord « application autorisée » + cron `community-guild-sync`) ; exige `DISCORD_APP_PUBLIC_KEY` (signature Ed25519 du webhook)

@@ -18,6 +18,8 @@ import { prisma } from "@/lib/prisma";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { saveCommunityBirthdayAction, createCommunityDateAction } from "./actions";
 import { Button } from "@/components/ui/Button";
+import { CalendarSubscription } from "@/components/calendar/CalendarSubscription";
+import { isCalendarFeedEnabled } from "@/lib/calendar-feed";
 
 export const metadata = pageMetadata("Calendrier");
 
@@ -112,6 +114,8 @@ async function CalendrierContent({
           Télécharger les soirées à venir (.ics)
         </a>
       </div>
+
+      {isCalendarFeedEnabled() && <CalendarSubscription />}
 
       <div className="grid gap-4 md:grid-cols-2">
         {canShareBirthday && <form action={saveCommunityBirthdayAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">

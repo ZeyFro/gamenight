@@ -47,8 +47,8 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
-| L4-01 | Partiellement livré | Export Google/Apple Calendar (iCal) | ✅ Téléchargement iCal des soirées futures accessibles | Abonnement continu hors périmètre de cet export | code | Fait (#242, fusionnée) |
-| L4-02 | Partiellement livré | Rituels récurrents | ✅ Création de séries hebdomadaires ou mensuelles | Gestion groupée ultérieure hors périmètre | code | Fait (#243, fusionnée) |
+| L4-01 | Livré mais désactivé | Export Google/Apple Calendar (iCal) | ✅ Téléchargement ponctuel; abonnement privé révocable par serveur | Export disponible; abonnement exige `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens`; essai calendrier tiers non vérifié | code | Export Fait (#242); abonnement ajouté par le lot `calendar-subscriptions` |
+| L4-02 | Partiellement livré | Rituels récurrents | ✅ Séries hebdomadaires/mensuelles; annulation groupée des occurrences futures des nouvelles séries | Annulation exige `SESSION_SERIES_CANCEL_ENABLED` et migration; édition groupée des dates/cadences et traitement des exceptions à cadrer | code | Création Fait (#243); annulation ajoutée par le lot `cancel-recurring-sessions` |
 | L4-03 | Livré et testé | Anniversaires et dates importantes du serveur | ✅ Dates serveur et anniversaires opt-in dans le calendrier | Aucune | code | Fait (#245, fusionnée) |
 | L4-04 | Livré mais désactivé | Bouton « Rejoindre le vocal » | ✅ Salon vocal vérifié et lien depuis la soirée | Validation Discord réelle par un administrateur | code | Fait (#246, fusionnée) |
 
