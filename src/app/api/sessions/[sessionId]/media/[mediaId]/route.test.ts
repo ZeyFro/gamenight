@@ -28,7 +28,7 @@ import { GET } from "./route";
 describe("private session gallery image route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access in test"); }));
+    vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access in test"); }));
     vi.stubEnv("SESSION_MEDIA_BLOB_TOKEN", "private-test-token");
     mocks.getCurrentUser.mockResolvedValue({ id: "member-1" });
     mocks.getSessionAccessRole.mockResolvedValue("INVITEE");
@@ -131,6 +131,26 @@ describe("private session gallery image route", () => {
 
     expect(response.status).toBe(404);
     expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { chunks: ["ab", "cde"], size: 5, status: 206, body: "bcd" },
+    { chunks: ["ab", "cde"], size: 4, status: 404, body: "" },
+    { chunks: ["ab", "c"], size: 5, status: 404, body: "" },
+  ])("checks streamed size and ranges across chunk boundaries: $size/$status", async ({ chunks, size, status, body }) => {
+    vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+    mocks.mediaFindFirst.mockResolvedValue({ pathname: "sessions/session-1/clip-1", mimeType: "video/mp4", sizeBytes: size });
+    mocks.get.mockResolvedValue({ statusCode: 200, stream: new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+        controller.close();
+      },
+    }) });
+    const response = await GET(new Request("https://gamenight.test/video", { headers: { Range: "bytes=1-3" } }), {
+      params: Promise.resolve({ sessionId: "session-1", mediaId: "clip-1" }),
+    });
+    expect(response.status).toBe(status);
+    expect(await response.text()).toBe(body);
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
