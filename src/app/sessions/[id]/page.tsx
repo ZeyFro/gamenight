@@ -280,7 +280,8 @@ export default async function SessionDetailPage({
 
   const availability = await getProposalAvailability(
     session.date,
-    session.proposals.map((p) => p.game)
+    session.proposals.map((p) => p.game),
+    session.communityId
   );
 
   const votingOpen = isVotingOpen(session);

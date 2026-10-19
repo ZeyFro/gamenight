@@ -17,7 +17,7 @@ import {
   enqueueSessionValidated,
 } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { inviteToSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
@@ -340,7 +340,8 @@ export async function closeSession(
 
   const availability = await getProposalAvailability(
     session.date,
-    session.proposals.map((p) => p.game)
+    session.proposals.map((p) => p.game),
+    session.communityId
   );
   const decision = await claimSessionCloseWithAnnounce(
     session,
@@ -465,7 +466,8 @@ export async function drawSessionGame(
 
   const availability = await getProposalAvailability(
     session.date,
-    session.proposals.map((p) => p.game)
+    session.proposals.map((p) => p.game),
+    session.communityId
   );
   const jouableProposals = session.proposals.filter((p) => availability.get(p.gameId)?.jouable);
   const announceViaBot = session.announceViaBot;
@@ -822,20 +824,21 @@ export interface ProposalAvailability {
 
 /**
  * Pour une session et une liste de gameId proposés, calcule par jeu qui le
- * possède (UserGame.owned=true) et qui, parmi ces possesseurs, est dispo à
+ * possède dans sa communauté active (quand l'isolation est activée) et qui, parmi ces possesseurs, est dispo à
  * la date/heure de la session (WeeklyAvailability croisée avec
  * AvailabilityOverride). "Jouable" = nombre de dispos-possesseurs dans la
  * fourchette [minPlayers, maxPlayers] du jeu (spec §6 F5).
  */
 export async function getProposalAvailability(
   sessionDate: Date,
-  games: Pick<Game, "id" | "minPlayers" | "maxPlayers">[]
+  games: Pick<Game, "id" | "minPlayers" | "maxPlayers">[],
+  communityId: string | null
 ): Promise<Map<string, ProposalAvailability>> {
   const gameIds = games.map((g) => g.id);
   if (gameIds.length === 0) return new Map();
 
   const ownerRows = await prisma.userGame.findMany({
-    where: { gameId: { in: gameIds }, owned: true },
+    where: { gameId: { in: gameIds }, owned: true, user: await communityMemberUserWhere(communityId) },
     include: {
       user: {
         include: { weeklyAvailability: true, availabilityOverrides: true },

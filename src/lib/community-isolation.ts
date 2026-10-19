@@ -88,7 +88,7 @@ export async function communityMemberUserWhere(communityId: string | null): Prom
     if (!fallback) return { id: { in: [] } };
     id = fallback.id;
   }
-  return { memberships: { some: { communityId: id, status: "ACTIVE" } } };
+  return { memberships: { some: { communityId: id, status: "ACTIVE", community: { status: "ACTIVE" } } } };
 }
 
 /**

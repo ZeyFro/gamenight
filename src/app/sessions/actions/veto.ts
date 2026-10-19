@@ -54,7 +54,8 @@ export async function setVeto(formData: FormData): Promise<VetoResult> {
 
   const availability = await getProposalAvailability(
     session.date,
-    session.proposals.map((p) => p.game)
+    session.proposals.map((p) => p.game),
+    session.communityId
   );
   const jouableIds = session.proposals.filter((p) => availability.get(p.gameId)?.jouable).map((p) => p.id);
   const communityId = session.communityId ?? (await getDefaultCommunityId());
