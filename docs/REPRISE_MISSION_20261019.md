@@ -34,6 +34,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - Roulette/veto/tirage, composants et préférences Discord avec doubles : 50/50 sans Postgres ni message réel; flags/configuration et recette Discord manquants.
 - Galerie image/MP4 : actions, composants, route privée/range et règles de format/flag 19/19 avec Blob simulé; aucun Blob réel, flag activé ou rôle admin galerie ajouté.
 - Bibliothèques/wishlist : page groupe, suggestions et cron Steam pleine 15/15; alertes prix 4/4; `community-library-stats.integration.test.ts` 13/13 Postgres local dédié en série. `game-library.integration.test.ts` et multi-compte Preview restent non vérifiés.
+- Mise à jour bibliothèque : `game-library.integration.test.ts` passe 17/17 sur le Postgres dédié confirmé en lecture seule, sans worker concurrent; env `TEST_DATABASE_URL` retiré après exécution.
 - Guide/charte : `guide-sections.test.ts`, `fair-play-charter.test.ts`, action `charte/actions.test.ts` 15/15; contenu configuré et parcours navigateur/mobile non validés.
 - Lien du salon vocal selon la configuration communautaire : `community-channels.test.ts` 35/35; salon et ouverture cliente Discord réels non testés.
 - Rappels/RSVP Discord : schedule, contenu, transport et interactions 68/68 avec doubles; aucun message réel, cron ou webhook vérifié.
