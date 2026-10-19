@@ -8,7 +8,7 @@ import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { creationMemberUserWhere, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import type { WeeklySlot, OverrideForDate } from "@/lib/availability";
-import { expandCommunityDates, expandGameAwards, expandGameReleaseDates, type CalendarCommunityDate } from "@/lib/community-dates";
+import { expandCommunityDates, expandGameAwards, expandGameReleaseDates, expandSeasonalEvents, type CalendarCommunityDate } from "@/lib/community-dates";
 
 /**
  * Données du calendrier collectif (PR 4/4, sous-PR 1). Grille horaire —
@@ -183,6 +183,7 @@ export async function getCalendarData(
   const calendarDates = [
     ...expandCommunityDates(dateRows, rangeStart, rangeEndExclusive),
     ...expandGameAwards(rangeStart, rangeEndExclusive),
+    ...expandSeasonalEvents(rangeStart, rangeEndExclusive),
     ...expandGameReleaseDates(gameReleaseRows.map((row) => ({
       id: row.id,
       gameId: row.game.id,

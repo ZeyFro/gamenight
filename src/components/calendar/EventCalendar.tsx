@@ -77,9 +77,9 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
               <span className="text-xs text-accent">{event.kind === "GAME_RELEASE" ? "Date de sortie IGDB" : "Événement gaming"}</span><h4>{event.title}</h4><small>Ouvrir la fiche du jeu →</small>
             </Link>
           : <div key={event.id} className="gn-agenda-event">
-            <span className="text-xs text-accent">{event.kind === "BIRTHDAY" ? "Anniversaire" : "Date du serveur"}</span>
+            <span className="text-xs text-accent">{event.kind === "BIRTHDAY" ? "Anniversaire" : event.kind === "SEASONAL" ? "Événement saisonnier" : "Date du serveur"}</span>
             <h4>{event.title}</h4>
-            {(event.createdById === viewerId || canManageCommunityDates) && <form action={deleteCommunityDateAction}>
+            {(event.kind === "BIRTHDAY" ? event.createdById === viewerId : event.kind === "IMPORTANT" && (event.createdById === viewerId || canManageCommunityDates)) && <form action={deleteCommunityDateAction}>
               <input type="hidden" name="id" value={event.id} />
               <button type="submit" className="mt-2 text-xs text-muted underline">Retirer du calendrier</button>
             </form>}
