@@ -41,6 +41,7 @@ import {
 
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
+  "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
@@ -59,6 +60,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
+  "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",

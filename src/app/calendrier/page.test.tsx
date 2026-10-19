@@ -26,8 +26,9 @@ vi.mock("@/components/ui/Button", () => ({
 }));
 import CalendrierPage from "./page";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 beforeEach(() => {
+  vi.stubEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "false");
   getCalendarData.mockReset();
   getCalendarData.mockImplementation(async (_start, _end, _viewer, visibleIds?: string[]): Promise<CalendarData> => {
     const users = [
@@ -41,6 +42,15 @@ beforeEach(() => {
 });
 
 describe("calendrier : la grille suit le mode de disponibilité sélectionné", () => {
+  it("garde le téléchargement et ne propose l’abonnement que lorsque son flag est actif", async () => {
+    render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08" }) }));
+    expect(screen.queryByRole("heading", { name: "S’abonner aux soirées" })).toBeNull();
+    cleanup(); vi.stubEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "true");
+    render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08" }) }));
+    expect(screen.getByRole("heading", { name: "S’abonner aux soirées" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Révoquer le lien de ce serveur" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Télécharger les soirées à venir (.ics)" })).toBeTruthy();
+  });
   it("en semaine, ne charge que les sept jours affichés, pas tout le mois", async () => {
     render(await CalendrierPage({ searchParams: Promise.resolve({ date: "2026-10-08", vue: "semaine" }) }));
     expect(getCalendarData.mock.calls[0][0]).toEqual(new Date("2026-10-05T00:00:00Z"));

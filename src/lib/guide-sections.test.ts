@@ -6,6 +6,13 @@ const base = [{ icon: "📅", title: "Calendrier", lines: ["a"] }];
 describe("guideSections (GUIDE_V2_ENABLED)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("explique le lien iCal privé et sa révocation seulement quand l’abonnement est actif", () => {
+    vi.stubEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "false");
+    expect(guideSections(base)[0].lines.join(" ")).not.toContain("abonnement");
+    vi.stubEnv("CALENDAR_SUBSCRIPTIONS_ENABLED", "true");
+    expect(guideSections(base)[0].lines.join(" ")).toContain("révoquer");
+  });
+
   it("éteint par défaut : sections d'origine inchangées", () => {
     vi.stubEnv("GUIDE_V2_ENABLED", "");
     expect(guideSections(base).map((section) => section.title)).toEqual(["Calendrier", "Glossaire débutants"]);

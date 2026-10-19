@@ -56,13 +56,17 @@ describe("routes /api hors cron et backfill", () => {
   });
 
   it.each(all.filter((r) => !(r.name in PUBLIC_EXCEPTIONS)))(
-    "$name exige une session ou le secret cron",
-    ({ file }) => {
+    "$name vérifie une session, le secret cron ou le jeton iCal dédié",
+    ({ file, name }) => {
       const src = readFileSync(file, "utf8");
+      // Ce bearer est une authentification : le helper revalide propriétaire,
+      // communauté et invitations. Aucune autre route ne bénéficie de ce chemin.
+      const calendarFeed = name === "calendrier/feed/[token]" &&
+        /from ["']@\/lib\/calendar-feed["']/.test(src) && /\bawait readCalendarFeed\(token,/.test(src);
       const ok =
         /\b(?:getValidSession|auth)\(\)/.test(src) || /\bgetCurrentUser\(/.test(src) ||
-        /\b(?:verifyCronRequest|checkCronAuth)\(/.test(src);
-      expect(ok, `${file} ne vérifie ni session ni secret cron`).toBe(true);
+        /\b(?:verifyCronRequest|checkCronAuth)\(/.test(src) || calendarFeed;
+      expect(ok, `${file} ne vérifie aucun mécanisme d’authentification reconnu`).toBe(true);
     }
   );
 });
