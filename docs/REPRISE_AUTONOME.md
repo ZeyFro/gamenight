@@ -20,7 +20,14 @@
 - Preview : accès au détail du projet refusé par le connecteur (`403 forbidden`, scope `mpmaximeparisot-6230s-projects`); recours CLI impossible (`vercel` non reconnu). Les seules branches Neon listées sont production, une Preview archivée et une sauvegarde. Destination DB Preview non prouvée : aucune écriture distante tentée.
 - PostgreSQL de recette créé séparément : conteneur `gamenight-portable1-pg`, PostgreSQL 16.15, loopback `127.0.0.1:55440`, base `gamenight_portable1_test` vérifiée par `current_database()` avant les migrations/tests. 107 migrations appliquées; ancien conteneur 55439 laissé arrêté. Ne jamais lancer deux suites Postgres simultanément.
 - Résultats sur `b30e8ef` : intégrations sondage → soirée, bibliothèque et suggestions **39/39**; logique et pages/actions ciblées **28/28**, aucun test ignoré. Exécution séquentielle avec `--no-file-parallelism --maxWorkers=1`; appels réseau simulés/interdits. Aucun défaut applicatif reproduit. Détail et limites dans `docs/RECETTE_FINALE.md`.
-- Après livraison du bilan, premier sous-périmètre à examiner : abonnement iCal continu avec lien révocable et accès revalidés. Le calendrier ponctuel existe déjà; ne pas le réimplémenter.
+- Bilan livré par [#285](https://github.com/ZeyFro/gamenight/pull/285), fusionnée le 19 octobre à 07:35 UTC dans `2590f4ca882351c33b8299a84ea3a44fbae0007c`, après `verify` et Vercel verts sur `0b47335` ([CI](https://github.com/ZeyFro/gamenight/actions/runs/39215392684)).
+
+### Lot abonnement iCal — branche `feat/calendar-subscriptions`
+
+- Base actualisée : `origin/main` après #285, `2590f4c`. L4-01 étendu par un flux privé révocable, lié au serveur choisi, derrière `CALENDAR_SUBSCRIPTIONS_ENABLED` OFF. Aucun secret supplémentaire; modèle et migration additive `20261019140000_calendar_feed_tokens` revus indépendamment.
+- Validation locale : migration sur le seul Docker 55440 (108 migrations), trois scénarios d’intégration réussis, 92 tests ciblés unité/pages/actions/route/gardes réussis, aucun ignoré. Prisma validate/generate, typegen, TypeScript, lint, build Next direct et diff check réussis. Les défauts de fixture des premiers runs sont corrigés; détails dans `docs/ABONNEMENT_CALENDRIER.md`.
+- Recette navigateur authentifiée et abonnement dans une application calendrier tierce non exécutés. Aucun flag distant activé, aucune recette de production ni envoi Discord.
+- Prochain lot concret : annulation groupée des occurrences futures des nouvelles séries récurrentes. L’édition groupée des horaires reste à cadrer (décalage des dates, régénération de cadence, conservation des exceptions).
 
 ## Relevé précédent — autre poste, 18 octobre 2026
 

@@ -56,7 +56,10 @@ export function guideSections(input: GuideSection[]): GuideSection[] {
   const base = soireesLines.length
     ? input.map((s) => (s.title === "Soirées" ? { ...s, lines: [...s.lines, ...soireesLines] } : s))
     : input;
-  const withGlossary = [...base, GLOSSARY_SECTION,
+  const withCalendar = process.env.CALENDAR_SUBSCRIPTIONS_ENABLED === "true"
+    ? base.map((section) => section.title === "Calendrier" ? { ...section, lines: [...section.lines, "Crée un lien privé d’abonnement iCal pour les soirées à venir du serveur choisi. Ajoute-le par URL dans ton application calendrier. Tu peux renouveler ou révoquer le lien depuis le calendrier; garde-le secret, et pense au cache conservé par ton application."] } : section)
+    : base;
+  const withGlossary = [...withCalendar, GLOSSARY_SECTION,
     ...(process.env.COMMUNITY_HIGHLIGHTS_ENABLED === "true" ? [{ icon: "🏆", title: "Exploits et fails", lines: ["Dans Profil → Lore du groupe → Exploits et fails, publie un souvenir du serveur avec une description et un lien HTTPS facultatif vers une image ou un clip. L’auteur et les modérateurs du serveur peuvent le modifier ou le supprimer."] }] : []),
   ];
   if (process.env.GUIDE_V2_ENABLED !== "true") return withGlossary;

@@ -38,7 +38,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 | Tournois | Livré mais désactivé | Création, bracket et tirage des équipes; annonces possibles | TOURNAMENT_PREDICTIONS_ENABLED, TOURNAMENT_SCORES_ENABLED et configuration Discord pour les sous-parcours concernés | Les pronostics et la saisie de scores sont off par défaut; aucun essai Discord authentifié |
 | Lore et contenu communautaire | Livré mais désactivé | Chroniques, expressions, épitaphes, sondages et highlights ont du code et des tests | Flags de chaque domaine et migrations correspondantes | Activer après revue des flags et test d’accès multi-compte; aucun parcours réel vérifié |
 | Guide par serveur | Livré et testé | Règles et contacts éditables par admin, affichés dans /guide | COMMUNITY_ADMIN_ENABLED pour l’édition, migration et contenu saisi; affichage selon la communauté résolue | Recette authentifiée non vérifiée; aucune activation de l’isolation dans cette reprise |
-| Calendrier | Partiellement livré | Téléchargement ponctuel iCal des soirées et dates serveur | Session authentifiée | Abonnement calendrier avec mises à jour : Non implémenté |
+| Calendrier | Livré mais désactivé | Téléchargement ponctuel iCal; abonnement privé révocable des soirées accessibles du serveur choisi | Session pour l’export; `CALENDAR_SUBSCRIPTIONS_ENABLED` et migration `calendar_feed_tokens` pour l’abonnement | 3 intégrations locales et 92 tests ciblés du lot abonnement réussis; essai Google/Apple Calendar non vérifié, rafraîchissement et cache dépendent du client |
 | Galerie privée | Partiellement livré | Images JPEG/PNG/GIF/WebP, limites documentées, consentement et accès des participants | SESSION_MEDIA_BLOB_TOKEN et activation admin de la galerie | Clip vidéo : Non implémenté; purge séparée différée; état distant de l’activation non vérifié |
 | Accueil | Partiellement livré | Accueil courant; variantes récentes présentes dans le code | HOME_V2_ENABLED pour /accueil-v2 | HOME_V2_ENABLED est désactivé par défaut; comparaison authentifiée manquante |
 | Mobile et notifications | Livré mais désactivé | Interface web responsive/PWA shell; code Web Push | WEB_PUSH_ENABLED et paire VAPID persistante | Abonnement Push jamais vérifié sur un appareil; expérience navigateur authentifiée manquante |
@@ -51,7 +51,6 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 |---|---|
 | Clips vidéo dans la galerie | Non implémenté |
 | App et données réellement utilisables sans réseau | Non implémenté; seul le fallback offline existe |
-| Abonnement iCal continu | Non implémenté |
 | Publication automatique des offres Epic/Steam gratuites | Non implémenté; la curation manuelle existe |
 | Édition groupée des séries récurrentes | Non implémenté |
 | Paiement/achat groupé intégré | Non implémenté |
@@ -99,6 +98,7 @@ Les noms ci-dessous sont ceux présents dans .env.example et le code. Pour les f
 | Flag | Fonction / condition documentée | Local par défaut | CI | Preview | Production |
 |---|---|---|---|---|---|
 | COMMUNITY_ADMIN_ENABLED | Onglet d’administration des communautés; nécessite droits admin et accès Discord aux salons | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
+| CALENDAR_SUBSCRIPTIONS_ENABLED | Abonnement iCal privé révocable par serveur; migration calendar_feed_tokens; voir ABONNEMENT_CALENDRIER.md | OFF si absent | Tests ciblés locaux; CI du lot à confirmer | Non vérifié | Non vérifié; aucune activation effectuée |
 | COMMUNITY_AUTO_CREATE_ENABLED | Création de communauté PENDING; webhook Discord signé et cron requis | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_CHANNELS_ENABLED | Salons Discord par communauté; nécessite configuration des salons | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_EXPRESSIONS_ENABLED | Expressions/running gags; migration community_expressions | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
