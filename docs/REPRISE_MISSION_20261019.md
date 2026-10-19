@@ -25,9 +25,19 @@ Ce fichier est publié après chaque lot. Échéance utilisateur : 20 octobre 20
 
 - Grades/boutique : défaut confirmé, l'achat décrémente actuellement xpTotal utilisé par les rangs. Choix utilisateur explicite : conserver la progression lors d'un achat. Correctif séparé fix/xp-balance-20261019, worktree C:/Users/Mousiouf/.codex/worktrees/xp-balance-20261019/gamenight; solde distinct, initialisé au total actuel, sans restitution historique inventée.
 - Cette séparation ajoute une migration. scripts/build.mjs exécute migrate deploy hors Preview : PR BROUILLON uniquement, aucune fusion tant que migration Production interdite. Les autres paramètres économiques existants sont conservés, sans nouvelle pénalité arbitraire.
-- Offres gratuites automatiques : absence confirmée; curation manuelle seule. Le GET Node GamerPower depuis ce PC répond200 (Steam et Epic) : ancien problème TLS du portable non reproduit, aucune protection TLS désactivée. Source autorisée avec attribution, mais API pouvant contenir des offres à points et des dates N/A; filtre d'éligibilité nécessaire. Recherche Epic primaire accessible depuis Node, pas de contrat public stable présumé.
+- Offres gratuites automatiques : flux GamerPower in-app livré par #292, fusionné dans `80c2b63`; curation manuelle prioritaire conservée. OFF sauf `FREE_GAME_FEED_ENABLED=true` et `freeGamesEnabled` communautaire. Filtres d'éligibilité, redirection bornée vers Steam/Epic officiels, attribution et déduplication présents; aucune expiration ou disponibilité régionale garantie. GET source observé depuis le PC fixe et CI/Preview vertes; intégration live dans l'application non validée. Les promotions payantes Epic ne bloquent pas ce flux gratuit.
 - Pas de quiz de connaissances distinct à ajouter : le quiz carnet Tryharder/Ambianceur/Stratège/Chaos est livré; rester dans la demande initiale.
 - Tableau exhaustif : docs/MISSION-20261019.md (exigence → code → tests → recette → activation → preuve/blocage). Les anciennes preuves du portable y sont conservées. Présent dans le code ne signifie pas activé ou validé réellement.
+
+## Recoupement du périmètre — base `main` `1c939ac`
+
+- Clips MP4 : code livré (#288), permissions et capacité revérifiées (#290); Blob réel et codecs sur appareil restent à valider. Le message galerie flag OFF indique désormais que les clips sont désactivés, pas absents.
+- Veto : vote et roulette asynchrone exigent `VOTE_VETO_ENABLED`. Le filtre par nombre et la relance instantanée utilisent `ROULETTE_PLAYER_FILTER_ENABLED`; activer ce dernier seul n'active pas les vetos. Recette réelle restante, aucune activation Production.
+- MVP multicatégorie : formulaire et action traitent toutes les catégories actives; finalisation et récompenses par catégorie existent. Le test `superlative-voting.test.ts` ne prouve pas une finalisation complète multicatégorie; une recette locale authentifiée de ce parcours reste utile, sans rejouer #289.
+- Présence : taux et pénalités reposent sur la saisie du créateur. Aucun collecteur de présence Discord/vocale n'est implémenté; ce reste fonctionnel est distinct du bouton vocal et de l'indicateur Steam « En jeu ».
+- Pronostics : points fictifs livrés par #295, fusion `3397b9a`, déploiement Production exact en succès; parcours authentifié et flag non validés. Aucun XP ni point stocké.
+- Prochaines tâches indépendantes : recette locale du veto et du vote multicatégorie, puis validations externes Blob/Push/iCal/Discord uniquement dans les limites autorisées. Ne pas relancer la recherche d'anciennes données Preview ni ajouter un quiz de connaissances distinct.
+- Lot local `docs/scope-reconciliation-20261019`, worktree dédié de même nom : 4/4 tests galerie verts après échec attendu sur le texte précédent, ESLint ciblé et diff check réussis. Dépendances identiques réutilisées par junction; aucune réinstallation, DB, migration, activation ou recette externe. Publication confiée au coordinateur après revue.
 
 ## PostgreSQL et coordination
 

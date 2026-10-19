@@ -57,9 +57,9 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | ID | Livraison | Élément | État actuel | Ce qui reste | Nature | Statut |
 |---|---|---|---|---|---|---|
 | L5-01 | Livré et testé | Note de la soirée | ✅ Notes individuelles (1–5) après une soirée terminée, moyenne visible aux invités | Aucune | code | Fait (#247, fusionnée) |
-| L5-02 | Partiellement livré | Galerie de screenshots et clips | 🟡 Galerie privée photo et MP4 | Images et clips MP4, 4 Mo par média, 8 médias par soirée, consentement, participants actifs; clips OFF par `SESSION_VIDEO_ENABLED`; proposition à valider : conserver les médias tant que la soirée existe puis les supprimer avec elle | code | Base galerie livrée (#276); upload fermé sans `SESSION_MEDIA_BLOB_TOKEN`; clips dans #288 (OFF par défaut); suppression en cascade à valider |
+| L5-02 | Livré mais désactivé | Galerie de screenshots et clips | Galerie privée photo et MP4 : 4 Mo par média, 8 médias par soirée, consentement; gestion créateur ou ADMIN/OWNER déjà autorisé à voir la soirée | `SESSION_MEDIA_BLOB_TOKEN`, galerie communautaire activée et `SESSION_VIDEO_ENABLED=true` pour les clips; upload/lecture Blob et codecs réels non validés. Nettoyage lié à la suppression de soirée présent, sans purge autonome | code | Galerie #276, clips #288 et permissions #290 fusionnés; tests locaux et recette multi-compte acquis, aucun upload Blob réel |
 | L5-03 | Livré et testé | Quêtes hebdomadaires automatiques | ✅ Deux jeux différents ou arrivée d'un nouveau membre, suivi à la clôture | Aucune | code | Fait (#248, fusionnée) |
-| L5-04 | Livré mais désactivé | Taux de présence | 🟡 Présence/résultats et gages | Pourcentage mesuré à partir des saisies de présence, bonus +2 XP / absence −1 XP réglables par communauté; désactivés par défaut, absence débitée uniquement après saisie explicite par le créateur | code | Fait (#276, fusionnée) |
+| L5-04 | Partiellement livré | Taux de présence | Présence déclarée par le créateur, pourcentage calculé depuis ces saisies, bonus et pénalités configurables | Présence Discord ou vocale réellement mesurée non implémentée; ce manque exige un collecteur, pas seulement un flag. Bonus +2 XP / absence −1 XP existants, désactivés par défaut; conserver les paramètres sans activation arbitraire | code | Déclaratif #276 fusionné; collecte Discord absente, parcours et activation non validés |
 | L5-05 | Livré et testé | Boutique XP : titres, cadres, couleurs | ✅ Livré | Aucune | code | Fait (#249, fusionnée) |
 
 ## Lot 6 — Compléments communautaires
@@ -68,7 +68,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 |---|---|---|---|---|---|---|
 | L6-01 | Livré et testé | Tirage au sort des équipes | ✅ Livré | Aucune | code | Fait (#250, fusionnée) |
 | L6-02 | Livré mais désactivé | Annonces Discord de chaque match de tournoi | ✅ Livré | Aucune | code | Fait (#268, fusionnée) |
-| L6-03 | Livré mais désactivé | Pronostics sur le gagnant d'un tournoi | ✅ Pronostics champion et match | Aucune | code | Fait (#269, fusionnée) |
+| L6-03 | Livré mais désactivé | Pronostics sur le gagnant d'un tournoi | Pronostics champion/match et score personnel fictif : 1 point par cible correcte résolue, sans mise ni XP | `TOURNAMENT_PREDICTIONS_ENABLED`; parcours authentifié à valider | code | Pronostics #269 et points #295 fusionnés; tests ciblés 11/11 et CI verte |
 | L6-04 | Livré mais désactivé | Hall of Fame / Hall of Shame | ✅ Musée exploits/fails, descriptions et liens médias | Aucune | code | Fait (#270, fusionnée) |
 | L6-05 | Livré mais désactivé | Running gags et expressions du serveur | ✅ Collection éditable par serveur | Aucune | code | Fait (#271, fusionnée) |
 | L6-06 | Livré mais désactivé | Chronique de soirée | ✅ Archives éditoriales par soirée | Aucune | code | Fait (#273, fusionnée dans `fd95637`; CI verte sur `fbaa830`) |
@@ -77,7 +77,7 @@ PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs
 | L6-09 | Livré mais désactivé | Sondages éclair | ✅ Sondages communautaires à échéance | Aucune | code | Fait (#274, fusionnée) |
 | L6-10 | Livré mais désactivé | Alertes de promotion | 🟡 Prix Steam consultables | Seuil configurable (20 % par défaut), Steam France, notification in-app, délai de 7 jours; option désactivée par défaut | code | Fait (#276, fusionnée) |
 | L6-11 | Partiellement livré | « On l'achète à plusieurs » | 🟡 Votes d'intérêt collectif | Plan indicatif par date et note, administrable par communauté; proposition à valider : coordination sans paiement intégré, engagement financier ni achat automatique | code | Fait (#276, fusionnée) |
-| L6-12 | Partiellement livré | Jeux gratuits Epic/Steam postés automatiquement | 🟡 Curation en app | Offres Steam/Epic en français, dates de validité, publication in-app par admin et toggle désactivé par défaut | code | Fait (#276, fusionnée) pour la curation manuelle; automatisation différée faute de flux public officiel stable |
+| L6-12 | Livré mais désactivé | Jeux gratuits Epic/Steam postés automatiquement | Catalogue in-app automatique GamerPower filtré, liens boutiques officiels; curation manuelle prioritaire et doublons retirés | `FREE_GAME_FEED_ENABLED=true` et `freeGamesEnabled` communautaire, OFF par défaut; cache 15 min, relevés de plus de 30 min ignorés. Aucune expiration ou disponibilité régionale garantie; intégration live non validée, aucun message Discord | code | Curation #276 et automatisation #292 fusionnées; CI/Preview vertes. Les promotions payantes Epic sont un sujet distinct |
 | L6-13 | Livré mais désactivé | Notifications push mobile | 🟡 Implémentation Web Push locale; worker partagé avec PWA | Configurer une paire VAPID persistante et activer par environnement; aucun secret trouvé dans les sources accessibles | produit | Fait (#276, fusionnée); activation non vérifiée (403), paire VAPID non vérifiée |
 
 ## Lot 7 — Compléments (après le lot 6)
@@ -110,7 +110,7 @@ Ces orientations restent des propositions; elles ne sont ni arbitrées par le pr
 - Hors ligne : shell public uniquement; aucune donnée privée mise en cache.
 - Galerie : conserver les médias avec la soirée et les supprimer avec elle; pas de purge autonome.
 - Achats collectifs : coordination sans paiement intégré.
-- Jeux gratuits : curation manuelle en attendant une source adaptée.
+- Jeux gratuits : curation manuelle conservée et flux GamerPower in-app livré (#292), deux réglages OFF par défaut; gratuité, conditions et région restent à vérifier sur la boutique. Aucune publication Discord ajoutée.
 - Discord : modèles par communauté; contrôle des mentions par ses administrateurs.
 
 ## Parcours livrés à valider en réel (ignorés par la boucle)
