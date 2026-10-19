@@ -2,6 +2,12 @@
 
 Audit documentaire réconcilié le 19 octobre 2026 avec `origin/main` à `b30e8ef` (PR #281–284 fusionnées). Ce document compare le code et ses tests aux parcours décrits dans README.md, ROADMAP.md et .env.example. La vérification publique Firecrawl et les refus Vercel 403 décrits plus bas sont historiques, depuis un autre poste; ils n’ont pas été rejoués sur le portable 1. Les parcours authentifiés, les migrations distantes et les flags Preview/Production restent non vérifiés ici. La CI et la preview vertes de #284 ne prouvent pas ces parcours.
 
+## Recette navigateur locale — 19 octobre 2026
+
+La recette authentifiée est désormais exécutable avec Next dev, le PostgreSQL dédié du portable et des sessions JWT de comptes fictifs, sans OAuth réel ni activation de flag. Edge a validé le parcours sondage → réponse invitée → soirée, l’intersection de deux bibliothèques choisies et les suggestions excluant refus explicite et catégorie. Un tiers reçoit la page introuvable sans contenu privé; un visiteur anonyme revient à l’accueil. Aucune erreur JavaScript et aucune livraison Discord liée à la soirée. Voir [le protocole reproductible](RECETTE_LOCALE_AUTHENTIFIEE.md).
+
+La Preview distante reste bloquée : le nouvel outil Vercel confirme `403 forbidden` pour le scope du projet; destination PostgreSQL de recette distante non prouvée. Aucun test distant, secret déployé, flag ou donnée de production modifié. Ces preuves locales ne valident ni OAuth Discord réel, ni Google/Apple Calendar, ni Push ou Blob sur appareil.
+
 ## Comment lire les états
 
 - Livré et testé : code présent et couvert par les validations automatisées du dépôt. Cela ne prouve pas que le parcours a été exécuté avec un compte Discord réel ni que la configuration de production l’active.
