@@ -1,5 +1,7 @@
 # Séparation de la progression et du solde XP
 
+Décision de publication préparée : [opération exacte, impact, sauvegarde/restauration et bascule des writers](XP-ROLLOUT-DECISION-20261019.md). Aucune migration Production n'est autorisée par cette note.
+
 Objectif autorisé : un achat conserve niveau et grade, tout en débitant une réserve dépensable distincte. Garder l'apparence et les règles existantes des autres événements.
 
 Plan : prouver le défaut par tests unitaires rouges, ajouter `xpBalance` initialisé au `xpTotal` existant, mettre à jour tous les writers/lecteurs financiers et les agrégats de progression, compléter les fixtures et tests, puis vérifications ciblées et revue. Tests PostgreSQL uniquement après créneau coordonné avec root.
