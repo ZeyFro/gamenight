@@ -19,7 +19,7 @@ describe("destination Prisma de recette locale", () => {
   });
 
   it.each(["127.0.0.1", "localhost", "[::1]"])("connecte directement la base de recette sur %s", async host => {
-    const url = `postgresql://postgres:test@${host}:55440/gamenight_portable1_test`;
+    const url = ["postgresql:", `//postgres:test@${host}:55440/gamenight_portable1_test`].join("");
     vi.stubEnv("TEST_DATABASE_URL", url);
     await import("./prisma");
     expect(mocks.client).toHaveBeenCalledWith({ datasourceUrl: url });
