@@ -22,6 +22,7 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 - `npm exec vitest run src/lib/community-highlights.authorization.test.ts src/lib/community-highlights.test.ts`: 12/12 réussi.
 - `src/lib/community-highlights.integration.test.ts`: 6/6 réussi sur le Postgres dédié. Avant exécution, vérification lecture seule : conteneur `gamenight-portable1-pg`, port exposé `127.0.0.1:55440`, `current_database()=gamenight_portable1_test`; DSN construit seulement en mémoire et jamais imprimé.
 - ESLint ciblé et `git diff --check` verts au dernier commit avant les présentes seules mises à jour documentaires.
+- Audits XP sans migration : `superlative-voting.test.ts`, `seasons.test.ts`, `xp.test.ts` 42/42; `community-progress-views.integration.test.ts` 12/12 et `xp-shop.integration.test.ts` 3/3, séquentiellement sur Postgres local. L’achat est confirmé comme décrémentant la même valeur utilisée pour le rang.
 - La recette locale authentifiée de #289 est déjà acquise et ne doit pas être rejouée. Toute suite Postgres ultérieure reste sérielle et nécessite la vérification de destination adaptée avant les écritures.
 - `gh pr checks 290` n’a rapporté aucun contrôle; l’API branch protection de `main` a retourné 404 « Branch not protected ». Re-vérifier les checks GitHub pour le nouveau SHA, sans polling en boucle.
 
@@ -29,9 +30,10 @@ Ce point est suivi dans Git afin de survivre à une reprise sur un autre poste. 
 
 1. Vérifier l’état et les tests ciblés ci-dessus; si verts, `git add` uniquement les changements de code/test et les deux documents de suivi, commit puis push de la branche PR #290.
 2. Revoir les permissions de galerie : décider à partir des rôles déjà définis si `ADMIN`/`OWNER` de la communauté peuvent gérer les médias et les voir sans devenir invité d’une soirée privée. Ne pas accorder un bypass global de lecture des soirées. Tant que ce point n’est pas résolu, garder la PR brouillon.
-3. Continuer les tâches indépendantes dans l’ordre : carnet/préparation, progression/boutique, puis autres exigences selon `docs/MISSION-20261019.md`. Distinguer validation manquante de fonction absente; aucun changement de scope documentaire pour simuler une livraison.
-4. Pour les changements Lore, les six intégrations Postgres sont déjà acquises; ne pas les rejouer sans changement pertinent. Pour une autre suite, le conteneur dédié `gamenight-portable1-pg` doit encore être vérifié avant toute écriture, car son état peut changer.
-5. Pour toute nouvelle PR, tests pertinents au dernier commit, revue, checks GitHub et statut de déploiement requis avant fusion. Si un blocage demeure, garder la PR brouillon et consigner la cause précise dans ce fichier et `docs/MISSION-20261019.md`.
+3. Décision économique à conserver dans la liste commune : `xpTotal` sert à la fois de score/niveau et de solde acheté/misé, et la saison le remet à zéro. Ne pas séparer ces rôles ni migrer les valeurs sans arbitrer l’effet sur rang, pari, pénalité et solde au reset; continuer entre-temps les fonctions indépendantes.
+4. Continuer les tâches indépendantes selon `docs/MISSION-20261019.md`; distinguer validation manquante de fonction absente et ne pas réduire le périmètre par documentation.
+5. Les six intégrations Postgres Lore sont acquises; ne pas les rejouer sans changement pertinent. Pour une autre suite, revalider la cible avant écriture et ne jamais lancer deux suites PostgreSQL en parallèle.
+6. Pour toute nouvelle PR, tests pertinents au dernier commit, revue, checks GitHub et statut de déploiement requis avant fusion. Si un blocage demeure, garder la PR brouillon et consigner la cause précise dans ce fichier et `docs/MISSION-20261019.md`.
 
 ## Interventions humaines probablement requises
 
