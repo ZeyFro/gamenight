@@ -13,6 +13,7 @@ const {
   transactionFn,
   enqueueSessionThreadDelete,
   transactionCommitted,
+  cancelRecurringSessions,
 } = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   checkRateLimit: vi.fn(),
@@ -28,6 +29,7 @@ const {
   transactionFn: vi.fn(),
   enqueueSessionThreadDelete: vi.fn(),
   transactionCommitted: { value: false },
+  cancelRecurringSessions: vi.fn(),
 }));
 
 vi.mock("@/lib/current-user", () => ({ getCurrentUser }));
@@ -50,6 +52,7 @@ vi.mock("@/lib/session-gallery", () => ({ deleteSessionGalleryBlobs }));
 vi.mock("@/lib/xp-actions", () => ({ awardXp: vi.fn() }));
 vi.mock("@/lib/sessions", () => ({
   cancelSession: vi.fn(),
+  cancelRecurringSessions,
   closeSession: vi.fn(),
   markSessionDone: vi.fn(),
   resendSessionAnnouncement: vi.fn(),

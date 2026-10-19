@@ -8,7 +8,7 @@ import { enqueueSessionCreationDeliveries, enqueueSessionInviteSyncForNewInvites
 export type VotingSessionInput = Pick<Session,
   "createdById" | "communityId" | "date" | "votingDeadline" |
   "customReminderMessage" | "reminderTimings" | "announceViaBot"
-> & { notifiedUserIds: string[] };
+> & { notifiedUserIds: string[]; recurrenceGroupId?: string | null };
 
 /** Création et intentions bot atomiques, sans appel réseau. La transaction
  * appartient à l'appelant : formulaire habituel ou choix final d'un sondage.

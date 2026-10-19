@@ -26,6 +26,9 @@ import { checkSessionsParticipatedBadges } from "@/lib/badges";
 import { checkGroupAchievements } from "@/lib/group-achievements";
 import { completeWeeklyChallenge } from "@/lib/weekly-challenges";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { getIsolationScope } from "@/lib/community-isolation";
+import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { isRecurringSeriesCancellationEnabled } from "@/lib/session-recurrence";
 import { excludeVetoed, isVoteVetoEnabled } from "@/lib/session-veto";
 import { loadVetoedProposalIds } from "@/lib/session-veto-db";
 import { logger } from "@/lib/logger";
@@ -568,6 +571,58 @@ export async function cancelSession(sessionId: string): Promise<void> {
     }
   });
   await closeThreadOnEndSafely("session", sessionId);
+}
+
+/** Annule atomiquement les occurrences futures visibles du créateur et queue les éditions bot sans appel réseau. */
+export async function cancelRecurringSessions(sessionId: string, userId: string): Promise<string[] | null> {
+  if (!isRecurringSeriesCancellationEnabled()) return null;
+  const scopedDb = await getScopedPrisma(userId);
+  const source = await scopedDb.session.findFirst({
+    where: { id: sessionId, createdById: userId },
+    select: { recurrenceGroupId: true, communityId: true },
+  });
+  if (!source?.recurrenceGroupId) return null;
+
+  const scope = await getIsolationScope(userId);
+  const canceledIds = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id" FROM "Session"
+      WHERE "recurrenceGroupId" = ${source.recurrenceGroupId}
+        AND "createdById" = ${userId}
+        AND "communityId" IS NOT DISTINCT FROM ${source.communityId}
+      ORDER BY "id" FOR UPDATE
+    `;
+    const scopedDb = scopedTransactionPrisma(tx, scope);
+    const authorized = await scopedDb.session.findFirst({
+      where: {
+        id: sessionId,
+        createdById: userId,
+        recurrenceGroupId: source.recurrenceGroupId,
+        communityId: source.communityId,
+      },
+      select: { id: true },
+    });
+    if (!authorized) return null;
+
+    const canceled = await scopedDb.session.updateManyAndReturn({
+      where: {
+        recurrenceGroupId: source.recurrenceGroupId,
+        createdById: userId,
+        communityId: source.communityId,
+        date: { gte: wallClockNow() },
+        status: { in: ["VOTING", "SCHEDULED"] },
+      },
+      data: { status: "CANCELLED" },
+      select: { id: true, announceViaBot: true },
+    });
+    for (const session of canceled) {
+      if (session.announceViaBot) await enqueueSessionAnnounceUpdate(session.id, tx);
+    }
+    return canceled.map((session) => session.id);
+  });
+  if (canceledIds === null) return null;
+  for (const canceledId of canceledIds) await closeThreadOnEndSafely("session", canceledId);
+  return canceledIds;
 }
 
 export async function markSessionDone(

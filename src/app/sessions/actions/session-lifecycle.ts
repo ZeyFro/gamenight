@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { resumeCreation } from "@/lib/creation-resume";
 
 import { createOnce, creationKey } from "@/lib/creation-intent";
@@ -14,7 +16,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { deleteSessionGalleryBlobs } from "@/lib/session-gallery";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
-import { recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
+import { isRecurringSeriesCancellationEnabled, recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
@@ -27,6 +29,7 @@ import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import {
   cancelSession,
+  cancelRecurringSessions,
   closeSession,
   markSessionDone,
   resendSessionAnnouncement,
@@ -94,6 +97,7 @@ export async function createSession(formData: FormData) {
   const occurrenceDates = recurrenceValue
     ? recurringSessionDates(date, recurrenceValue as SessionRecurrence, recurrenceCount)
     : [date];
+  const recurrenceGroupId = recurrenceValue && isRecurringSeriesCancellationEnabled() ? randomUUID() : null;
 
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
@@ -142,7 +146,7 @@ export async function createSession(formData: FormData) {
   // annulée — préféré à une session silencieusement jamais annoncée :
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
-  // shortcut: a series contains 2–12 independent sessions with no later series editing; add a persisted series model if users need bulk changes.
+  // shortcut: grouped cancellation covers future occurrences only; add recurrence rules before supporting grouped schedule edits.
   const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
     const sessions = [];
     for (const occurrenceDate of occurrenceDates) {
@@ -155,6 +159,7 @@ export async function createSession(formData: FormData) {
         createdById: user.id,
         announceViaBot,
         communityId,
+        recurrenceGroupId,
       }));
     }
     return sessions[0];
@@ -381,6 +386,27 @@ export async function cancelSessionAction(formData: FormData) {
   await cancelSession(sessionId);
   revalidatePath(`/sessions/${sessionId}`);
   revalidatePath("/sessions");
+}
+
+export type CancelRecurringSessionsState = { error: string | null };
+
+export async function cancelRecurringSessionsAction(
+  _previous: CancelRecurringSessionsState,
+  formData: FormData
+): Promise<CancelRecurringSessionsState> {
+  if (!isRecurringSeriesCancellationEnabled()) return { error: "L’annulation groupée est désactivée." };
+  const user = await getCurrentUser();
+  if (!user) return { error: "Connecte-toi pour annuler cette série." };
+  if (!checkRateLimit(user.id, "cancelRecurringSessions")) return { error: "Trop de demandes. Réessaie dans un instant." };
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!sessionId || await cancelRecurringSessions(sessionId, user.id) === null) {
+    return { error: "Cette série est inaccessible." };
+  }
+  revalidatePath(`/sessions/${sessionId}`);
+  revalidatePath("/sessions");
+  revalidatePath("/calendrier");
+  redirect("/sessions");
 }
 
 /**

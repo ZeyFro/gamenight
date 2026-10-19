@@ -1,5 +1,11 @@
 export type SessionRecurrence = "weekly" | "monthly";
 
+export function isRecurringSeriesCancellationEnabled(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return env.SESSION_SERIES_CANCEL_ENABLED === "true";
+}
+
 export function recurringSessionDates(first: Date, recurrence: SessionRecurrence, count: number): Date[] {
   if (!Number.isInteger(count) || count < 2 || count > 12) throw new RangeError("count must be between 2 and 12");
   return Array.from({ length: count }, (_, index) => {
