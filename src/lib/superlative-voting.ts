@@ -3,7 +3,7 @@ import { cronCommunityScope } from "@/lib/community-isolation";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
-import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
+import { awardXp } from "@/lib/xp-actions";
 import { announceSessionAwards } from "@/lib/discord-session-awards";
 import { checkSuperlativesWonBadges } from "@/lib/badges";
 import { resolvePronostics } from "@/lib/pronostics";
@@ -183,7 +183,10 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
       })),
     });
   } catch (error) {
-    if (!isUniqueConstraintViolation(error)) throw error;
+    const prismaError = error as { code?: string; meta?: { target?: unknown } };
+    const target = prismaError.meta?.target;
+    if (prismaError.code !== "P2002" || !Array.isArray(target) ||
+      !target.includes("sessionId") || !target.includes("categoryId")) throw error;
     return;
   }
 
