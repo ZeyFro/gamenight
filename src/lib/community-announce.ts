@@ -3,12 +3,12 @@ import { z } from "zod";
 import type { CommunityChannelCategory, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG, getDefaultCommunityId } from "@/lib/default-community";
-import { isCommunityChannelsEnabled, resolveSessionAnnounceConfig, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
+import { isCommunityChannelsEnabled, resolveFreeGamesAnnounceConfig, resolveSessionAnnounceConfig, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import { postToDiscord, webhookAllowedMentions, type DiscordEmbed, type PostToDiscordResult } from "@/lib/discord";
 import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
 import type { DeliveryResolver } from "@/lib/notification-executor";
 import { logger } from "@/lib/logger";
-import { isRewardWebhookConfigured } from "@/lib/discord-rest";
+import { isRewardWebhookConfigured, NO_MENTIONS } from "@/lib/discord-rest";
 
 /** Annonces système : la destination dépend du serveur, jamais du lecteur ni d'un repli interserveurs. */
 export async function postToCommunity(
@@ -65,7 +65,7 @@ async function recipientsAreActive(communityId: string, discordIds: string[]): P
 }
 
 const announcePayload = z.object({
-  channelCategory: z.enum(["SESSION", "TOURNAMENT"]),
+  channelCategory: z.enum(["SESSION", "TOURNAMENT", "FREE_GAMES"]),
   content: z.string().optional(),
   recipientDiscordIds: z.array(z.string()).optional(),
   embed: z.object({
@@ -85,34 +85,39 @@ async function resolveCommunityReward(
     const payload = announcePayload.safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
     const category = payload.data.channelCategory;
-    const botEnabled = process.env[category === "SESSION" ? "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED" : "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED"] === "true";
+    if (category === "FREE_GAMES" && delivery.transport !== "BOT") return { eligible: false, reason: "not_configured" };
+    const botEnabled = process.env[category === "SESSION" ? "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED" : category === "TOURNAMENT" ? "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED" : "DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED"] === "true";
     if ((!immediateDefaultWebhook && process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true") ||
       (immediateDefaultWebhook && delivery.transport !== "WEBHOOK")) {
       return { eligible: false, reason: "not_configured" };
     }
     const community = await prisma.community.findUnique({
-      where: { id: event.communityId }, select: { status: true, slug: true, discordGuildId: true },
+      where: { id: event.communityId }, select: { status: true, slug: true, discordGuildId: true, freeGamesEnabled: true },
     });
     if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
+    if (category === "FREE_GAMES" && (!community.freeGamesEnabled || process.env.FREE_GAME_FEED_ENABLED !== "true")) return { eligible: false, reason: "expired" };
     if (!isCommunityChannelsEnabled() && community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "configuration_unavailable" };
     const recipientDiscordIds = payload.data.recipientDiscordIds ?? [];
     if (!(await recipientsAreActive(event.communityId, recipientDiscordIds))) return { eligible: false, reason: "expired" };
+    const allowedMentions = category === "FREE_GAMES" ? NO_MENTIONS : webhookAllowedMentions(payload.data.content);
     if (delivery.transport === "WEBHOOK") {
       // Le transport choisi au commit reste autoritaire, même après activation du bot.
       if (community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "not_configured" };
       if (!isRewardWebhookConfigured()) return { eligible: false, reason: "configuration_unavailable" };
       return { eligible: true, action: { kind: "send_reward_webhook",
-        message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions: webhookAllowedMentions(payload.data.content) },
+        message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions },
       } };
     }
     if (!botEnabled) return { eligible: false, reason: "configuration_unavailable" };
     const destination = category === "TOURNAMENT"
       ? await resolveTournamentAnnounceConfig(event.communityId)
-      : await resolveSessionAnnounceConfig(event.communityId);
+      : category === "FREE_GAMES"
+        ? await resolveFreeGamesAnnounceConfig(event.communityId)
+        : await resolveSessionAnnounceConfig(event.communityId);
     if (!destination || !process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     if (community.slug !== DEFAULT_COMMUNITY_SLUG && destination.guildId !== community.discordGuildId) return { eligible: false, reason: "not_configured" };
     return { eligible: true, action: { kind: "send_channel_message_verified", ...destination,
-      message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions: webhookAllowedMentions(payload.data.content) },
+      message: { content: payload.data.content, embeds: [payload.data.embed], allowedMentions },
     } };
 }
 

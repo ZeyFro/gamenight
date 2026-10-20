@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolveInput } from "@/lib/notification-executor";
 
-const { community, defaultId, postDiscord, createEvent, enqueue, destination, transaction, recipients } = vi.hoisted(() => ({
+const { community, defaultId, postDiscord, createEvent, enqueue, destination, freeGamesDestination, transaction, recipients } = vi.hoisted(() => ({
   community: vi.fn(), defaultId: vi.fn(), postDiscord: vi.fn(), createEvent: vi.fn(), enqueue: vi.fn(),
-  destination: vi.fn(), transaction: vi.fn(),
+  destination: vi.fn(), freeGamesDestination: vi.fn(), transaction: vi.fn(),
   recipients: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { community: { findUnique: community }, user: { findMany: recipients }, $transaction: transaction } }));
@@ -11,6 +11,7 @@ vi.mock("@/lib/default-community", () => ({ DEFAULT_COMMUNITY_SLUG: "default", g
 vi.mock("@/lib/community-channels", () => ({
   isCommunityChannelsEnabled: () => process.env.COMMUNITY_CHANNELS_ENABLED === "true",
   resolveSessionAnnounceConfig: destination, resolveTournamentAnnounceConfig: destination,
+  resolveFreeGamesAnnounceConfig: freeGamesDestination,
 }));
 vi.mock("@/lib/discord", async () => ({ ...(await vi.importActual<typeof import("./discord")>("./discord")), postToDiscord: postDiscord }));
 vi.mock("@/lib/notification-delivery", () => ({ createNotificationEvent: createEvent, enqueueDelivery: enqueue }));
@@ -29,9 +30,11 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
   for (const flag of ["COMMUNITY_CHANNELS_ENABLED", "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "NOTIFICATION_EXECUTOR_ENABLED"])
     vi.stubEnv(flag, "true");
+  vi.stubEnv("FREE_GAME_FEED_ENABLED", "true");
   community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b" });
   defaultId.mockResolvedValue("default-id");
   destination.mockResolvedValue({ guildId: "guild-b", channelId: "channel-b" });
+  freeGamesDestination.mockResolvedValue({ guildId: "guild-b", channelId: "free-game-channel" });
   postDiscord.mockResolvedValue({ ok: true });
   transaction.mockImplementation(async (callback) => callback({}));
   createEvent.mockResolvedValue({ id: "event" });
@@ -88,6 +91,19 @@ describe("annonces système : file communautaire sans réseau depuis l'action", 
 });
 
 describe("résolveur : droit et destination relus à la livraison", () => {
+  it("offres gratuites : exige les flags, la communauté active et son salon dédié", async () => {
+    const request = input();
+    request.event.payload = { channelCategory: "FREE_GAMES", embed, content: "Jeu gratuit : https://store.steampowered.com/app/620/" };
+    community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b", freeGamesEnabled: true });
+    vi.stubEnv("DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED", "true");
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toMatchObject({
+      eligible: true, action: { kind: "send_channel_message_verified", channelId: "free-game-channel", guildId: "guild-b",
+        message: { allowedMentions: { parse: [] } } },
+    });
+    vi.stubEnv("FREE_GAME_FEED_ENABLED", "false");
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "expired" });
+  });
+
   it("outbox webhook : default seulement, transport conservé après activation du bot", async () => {
     community.mockResolvedValue({ slug: "default", status: "ACTIVE" });
     vi.stubEnv("DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "false");

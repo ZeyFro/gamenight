@@ -26,6 +26,7 @@ import {
   isTournamentAnnounceViaBotEnabledFor,
   pickCreationCommunityId,
   resolveSessionAnnounceConfig,
+  resolveFreeGamesAnnounceConfig,
   resolveTournamentAnnounceConfig,
   resolveVoiceChannelUrl,
 } from "./community-channels";
@@ -58,6 +59,21 @@ describe("community-channels", () => {
     communityFindUnique.mockResolvedValue(community({ discordGuildId: "333333333333333333", channelConfigs: [{ discordChannelId: "444444444444444444", enabled: true }] }));
     await expect(resolveVoiceChannelUrl("c-b")).resolves.toBe("https://discord.com/channels/333333333333333333/444444444444444444");
     expect(communityFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "c-b" }, include: expect.any(Object) }));
+  });
+
+  it("résout le salon des jeux gratuits de la communauté active sans emprunter un autre salon", async () => {
+    communityFindUnique.mockResolvedValue(community({
+      discordGuildId: "333333333333333333",
+      channelConfigs: [{ discordChannelId: "444444444444444444", enabled: true }],
+    }));
+    await expect(resolveFreeGamesAnnounceConfig("c-b")).resolves.toEqual({
+      guildId: "333333333333333333", channelId: "444444444444444444",
+    });
+    expect(communityFindUnique).toHaveBeenCalledWith({
+      where: { id: "c-b" }, include: { channelConfigs: { where: { category: "FREE_GAMES" } } },
+    });
+    communityFindUnique.mockResolvedValue(community({ channelConfigs: [] }));
+    await expect(resolveFreeGamesAnnounceConfig("c-b")).resolves.toBeNull();
   });
 
   it("ne renvoie aucun lien vocal si la feature est désactivée", async () => {
