@@ -99,6 +99,17 @@ distincte. Les cookies OAuth anciens ne sont pas enrichis lors d'un rendu.
 `jwt`, `session` et les pages ne consultent pas Discord pour l'appartenance.
 Le cron des profils garde son rôle distinct de rafraîchissement des avatars.
 
+**Limite connue (S0, isolation éteinte)** : S0 admet un membre ACTIVE d'une
+communauté B même si `COMMUNITY_ISOLATION_ENABLED` est éteint. Or éteinte, tout
+est « aucun filtre » : ce membre lit les tournois et le canal global de la
+communauté `default`, y écrit (messages ; `communityId` nul = par défaut) et sa
+visite crée sa ligne de statistiques dans `default`. Il en va de même du compte
+de secours `ADMIN_DISCORD_IDS` sans Membership. Seules les soirées privées
+(invitation) et `requireMembership` (404) tiennent. Isolation allumée, aucun
+de ces accès n'existe. Tant que ce n'est pas corrigé : n'avoir aucune seconde
+communauté ACTIVE avec isolation éteinte. Décrit par
+`src/lib/s0-access-controls.integration.test.ts` (cas « ÉCART CONNU »).
+
 | Situation à la connexion fraîche | Traitement |
 | --- | --- |
 | Guild connu et communauté ACTIVE | Membership créé MEMBER ; LEFT réactivé ; rôle existant conservé ; `lastVerifiedAt` mis à jour. |
