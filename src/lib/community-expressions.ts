@@ -32,28 +32,18 @@ export async function listCommunityExpressions(userId: string) {
   });
 }
 
-function editableExpressionWhere(userId: string, communityId: string, id: string): Prisma.CommunityExpressionWhereInput {
-  return {
-    id, communityId,
-    community: { status: "ACTIVE", memberships: { some: { userId, status: "ACTIVE" } } },
-    OR: [
-      { createdById: userId },
-      { community: { memberships: { some: { userId, status: "ACTIVE", role: { in: ["ADMIN", "OWNER"] } } } } },
-    ],
-  };
-}
-
 export async function saveCommunityExpression(userId: string, id: unknown, title: unknown, meaning: unknown, expectedCommunityId?: string) {
   const data = parseCommunityExpression(title, meaning);
   if (!data || (id !== null && (typeof id !== "string" || !id || id.length > 100))) return "invalid" as const;
   return await withExpressions(userId, async (scopedDb, access) => {
+    if (access.role !== "ADMIN" && access.role !== "OWNER") return "unavailable" as const;
     const now = wallClockNow();
     if (id === null) {
       await scopedDb.communityExpression.create({ data: { ...data, communityId: access.community.id, createdById: userId, createdAt: now, updatedAt: now } });
       return "saved" as const;
     }
     const result = await scopedDb.communityExpression.updateMany({
-      where: editableExpressionWhere(userId, access.community.id, id),
+      where: { id, communityId: access.community.id },
       data: { ...data, updatedAt: now },
     });
     return result.count ? "saved" as const : "unavailable" as const;
@@ -63,7 +53,8 @@ export async function saveCommunityExpression(userId: string, id: unknown, title
 export async function deleteCommunityExpression(userId: string, id: unknown, expectedCommunityId?: string) {
   if (typeof id !== "string" || !id || id.length > 100) return "invalid" as const;
   return await withExpressions(userId, async (scopedDb, access) => {
-    const result = await scopedDb.communityExpression.deleteMany({ where: editableExpressionWhere(userId, access.community.id, id) });
+    if (access.role !== "ADMIN" && access.role !== "OWNER") return "unavailable" as const;
+    const result = await scopedDb.communityExpression.deleteMany({ where: { id, communityId: access.community.id } });
     return result.count ? "deleted" as const : "unavailable" as const;
   }, expectedCommunityId) ?? "unavailable";
 }

@@ -35,6 +35,7 @@ export default async function CommunityExpressionsPage({ searchParams }: { searc
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const collection = await listCommunityExpressions(user.id);
+  const canManage = collection?.role === "ADMIN" || collection?.role === "OWNER";
   const message = MESSAGES[(await searchParams).result ?? ""];
   return (
     <div className="flex flex-col gap-4">
@@ -48,24 +49,23 @@ export default async function CommunityExpressionsPage({ searchParams }: { searc
         <Card><p className="text-sm text-muted">Choisis une communauté dont tu es membre actif pour consulter ses expressions.</p><Link href="/serveurs" className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">Choisir un serveur</Link></Card>
       ) : (
         <>
-          <Card>
+          {canManage && <Card>
             <h3 className="mb-3 font-semibold">Ajouter une expression</h3>
             <form action={saveCommunityExpressionAction} className="flex flex-col gap-2">
               <input type="hidden" name="communityId" value={collection.community.id} />
               <ExpressionFields id="new-expression" />
               <Button type="submit" size="sm" className="mt-2 self-start">Ajouter au serveur</Button>
             </form>
-          </Card>
-          {collection.entries.length === 0 && <p className="text-sm text-muted">Aucune expression pour ce serveur. Raconte la première !</p>}
+          </Card>}
+          {collection.entries.length === 0 && <p className="text-sm text-muted">Aucune expression pour ce serveur.</p>}
           <ul className="flex flex-col gap-3">
             {collection.entries.map((entry) => {
-              const canEdit = entry.createdById === user.id || collection.role === "ADMIN" || collection.role === "OWNER";
               return (
                 <li key={entry.id}>
                   <Card className="flex flex-col gap-3">
                     <h3 className="break-words font-semibold">{entry.title}</h3>
                     <p className="whitespace-pre-wrap break-words text-sm text-muted">{entry.meaning}</p>
-                    {canEdit && (
+                    {canManage && (
                       <details>
                         <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-accent">Modifier ou supprimer</summary>
                         <form action={saveCommunityExpressionAction} className="flex flex-col gap-2">
