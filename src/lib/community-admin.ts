@@ -12,7 +12,8 @@ import { parseAttendanceXpSettings } from "@/lib/session-attendance";
  *
  * Deux écritures seulement, toutes revalidées en base à chaque appel :
  *  - `activateCommunity` : PENDING → ACTIVE (jamais depuis un autre statut) ;
- *  - `setCommunityChannel` : salon SESSION / TOURNAMENT d'une communauté. Le
+ *  - `setCommunityChannel` : salon SESSION / TOURNAMENT / FREE_GAMES et
+ *    canal vocal d'une communauté. Le
  *    salon n'est enregistré qu'après un `GET` Discord réel
  *    (`verifyChannelDestination`) confirmant qu'il appartient au serveur de la
  *    communauté et accepte les fils. Aucun message n'est envoyé.
@@ -23,7 +24,7 @@ export function isCommunityAdminEnabled(env: Record<string, string | undefined> 
   return env.COMMUNITY_ADMIN_ENABLED === "true";
 }
 
-export const ADMIN_CHANNEL_CATEGORIES: readonly CommunityChannelCategory[] = ["SESSION", "TOURNAMENT", "VOICE"];
+export const ADMIN_CHANNEL_CATEGORIES: readonly CommunityChannelCategory[] = ["SESSION", "TOURNAMENT", "VOICE", "FREE_GAMES"];
 
 export function parseChannelCategory(value: unknown): CommunityChannelCategory | null {
   return ADMIN_CHANNEL_CATEGORIES.find((c) => c === value) ?? null;

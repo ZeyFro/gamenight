@@ -2126,6 +2126,11 @@ enum TournamentStatus {
   CANCELLED
 }
 
+enum TournamentFormat {
+  INDIVIDUAL
+  TEAMS
+}
+
 model Tournament {
   id          String           @id @default(cuid())
   name        String
@@ -2133,6 +2138,7 @@ model Tournament {
   gameId      String
   status      TournamentStatus @default(REGISTRATION)
   maxPlayers  Int
+  format      TournamentFormat @default(INDIVIDUAL)
   createdAt   DateTime         @default(now())
 
   // Dénormalisé, posé par `finalizeTournament` (src/lib/tournaments.ts) en
@@ -2140,11 +2146,15 @@ model Tournament {
   // de la finale" (le round le plus élevé, variable selon `maxPlayers`)
   // à chaque lecture pour savoir qui a gagné (affichage, badges).
   championId String?
+  championTeamId String? @unique
 
   createdBy    User                    @relation(fields: [createdById], references: [id])
   game         Game                    @relation(fields: [gameId], references: [id])
   champion     User?                   @relation("TournamentChampion", fields: [championId], references: [id])
+  championTeam TournamentTeam?         @relation("TournamentTeamChampion", fields: [championTeamId], references: [id], onDelete: SetNull)
   participants TournamentParticipant[]
+  teams        TournamentTeam[]
+  teamMembers  TournamentTeamMember[]
   matches      TournamentMatch[]
   predictions  TournamentPrediction[]
 
@@ -2240,8 +2250,39 @@ model TournamentParticipant {
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMembership TournamentTeamMember?
 
   @@unique([tournamentId, userId])
+}
+
+model TournamentTeam {
+  id           String @id @default(cuid())
+  tournamentId String
+  name         String
+  position     Int
+
+  tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  members     TournamentTeamMember[]
+  championOf  Tournament? @relation("TournamentTeamChampion")
+  matchesAsTeam1 TournamentMatch[] @relation("TournamentMatchTeam1")
+  matchesAsTeam2 TournamentMatch[] @relation("TournamentMatchTeam2")
+  wonMatches  TournamentMatch[] @relation("TournamentMatchTeamWinner")
+
+  @@unique([tournamentId, position])
+}
+
+model TournamentTeamMember {
+  id           String @id @default(cuid())
+  tournamentId String
+  teamId       String
+  userId       String
+
+  team        TournamentTeam        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  participant TournamentParticipant @relation(fields: [tournamentId, userId], references: [tournamentId, userId], onDelete: Cascade)
+  tournament  Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([teamId])
 }
 
 // Un match du bracket. `round` 1-indexé (1 = premier tour, ex.
@@ -2263,6 +2304,9 @@ model TournamentMatch {
   player1Id    String?
   player2Id    String?
   winnerId     String?
+  team1Id      String?
+  team2Id      String?
+  winnerTeamId String?
   scheduledAt  DateTime?
   completedAt  DateTime?
   // Scores optionnels (TOURNAMENT_SCORES_ENABLED) : player1 / player2.
@@ -2273,6 +2317,9 @@ model TournamentMatch {
   player1    User?      @relation("TournamentMatchPlayer1", fields: [player1Id], references: [id])
   player2    User?      @relation("TournamentMatchPlayer2", fields: [player2Id], references: [id])
   winner     User?      @relation("TournamentMatchWinner", fields: [winnerId], references: [id])
+  team1      TournamentTeam? @relation("TournamentMatchTeam1", fields: [team1Id], references: [id], onDelete: SetNull)
+  team2      TournamentTeam? @relation("TournamentMatchTeam2", fields: [team2Id], references: [id], onDelete: SetNull)
+  winnerTeam TournamentTeam? @relation("TournamentMatchTeamWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
 
   @@unique([tournamentId, round, position])
 }
@@ -2694,6 +2741,7 @@ enum CommunityChannelCategory {
   SESSION
   TOURNAMENT
   VOICE
+  FREE_GAMES
 }
 
 model Community {

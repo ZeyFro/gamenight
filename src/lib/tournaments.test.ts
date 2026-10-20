@@ -6,6 +6,8 @@ import {
   computeNextSlot,
   isTournamentVisibleInHistory,
   getActiveTournamentStatusLabel,
+  pairTournamentParticipants,
+  tournamentBracketSize,
 } from "@/lib/tournaments";
 
 describe("getActiveTournamentStatusLabel", () => {
@@ -15,6 +17,23 @@ describe("getActiveTournamentStatusLabel", () => {
 
   it("labels a bracket that has started as in progress", () => {
     expect(getActiveTournamentStatusLabel("IN_PROGRESS")).toBe("Tournoi en cours");
+  });
+});
+
+describe("pairTournamentParticipants", () => {
+  it("persists players in pairs and rejects an incomplete team bracket", () => {
+    expect(pairTournamentParticipants(["a", "b", "c", "d"])).toEqual([["a", "b"], ["c", "d"]]);
+    expect(pairTournamentParticipants(["a", "b", "c"])).toBeNull();
+    expect(pairTournamentParticipants(["a", "b"])).toBeNull();
+  });
+});
+
+describe("tournamentBracketSize", () => {
+  it("sizes team brackets by duos while preserving individual brackets", () => {
+    expect(tournamentBracketSize(4, "TEAMS")).toBe(2);
+    expect(tournamentBracketSize(6, "TEAMS")).toBe(4);
+    expect(tournamentBracketSize(8, "TEAMS")).toBe(4);
+    expect(tournamentBracketSize(6, "INDIVIDUAL")).toBe(8);
   });
 });
 

@@ -20,6 +20,7 @@ const CATEGORY_LABELS: Record<CommunityChannelCategory, string> = {
   SESSION: "Salon des soirées",
   TOURNAMENT: "Salon des tournois",
   VOICE: "Salon vocal",
+  FREE_GAMES: "Salon des jeux gratuits",
 };
 
 /** Messages du retour d'action (`?r=`), codes produits par `src/app/admin/communautes/actions.ts`. */

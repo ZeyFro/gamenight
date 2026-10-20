@@ -2563,6 +2563,12 @@ Le test de rétention (`retention.integration.test.ts`) et l'ordre des clés son
 
 Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. Les lignes de `CommunityChannelConfig` s'écrivent depuis l'onglet « Communautés » de `/admin` (voir « Administration des communautés », drapeau `COMMUNITY_ADMIN_ENABLED`) ; le salon doit appartenir au serveur de la communauté, vérifié à l'enregistrement et à l'envoi.
 
+### Publication automatique des jeux gratuits sur Discord
+
+Le cron `/api/cron/free-game-discord` ajoute les offres GamerPower actives à l'outbox, avec une intention unique par communauté et offre. Il ne publie rien si l'un de ces réglages est inactif : `FREE_GAME_FEED_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED` ou `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED`; la communauté doit aussi avoir `freeGamesEnabled=true` et un salon `FREE_GAMES` enregistré dans `/admin`.
+
+Les deux routes cron doivent être planifiées séparément (collecte des offres toutes les 15 minutes, exécuteur selon sa fréquence habituelle) avec `CRON_SECRET`. Le bot a besoin de `VIEW_CHANNEL` et `SEND_MESSAGES` dans le salon; `EMBED_LINKS` permet l'affichage enrichi. La route ne vérifie pas les droits Discord en prévol : l'API peut confirmer un refus lors d'un envoi. Aucun réglage ni planificateur Production n'est activé par ce code.
+
 ### Isolation des données par communauté (PR4)
 
 Éteinte par défaut : `COMMUNITY_ISOLATION_ENABLED` doit valoir exactement `true`. Allumée, l'utilisateur ne voit que les données des communautés `ACTIVE` où il a un `Membership` `ACTIVE` (relu en base à chaque requête) ; les anciens `communityId = null` désignent `default`. Fail-closed : sans aucune communauté, rien n'est visible. Éteinte, le client collectif reste transparent ; la progression PR B utilise néanmoins explicitement `default` pour les vues et la communauté du parent pour les récompenses dérivées.
@@ -6622,6 +6628,15 @@ joueurs → bracket à 8 slots, avec 2 "byes"). `generateBracket` :
 finalistes" = perdants du round `totalRounds - 1`, formule qui généralise
 correctement au bracket à 4 comme à 8), badges ("Champion de tournoi" 1
 victoire, "Gladiateur" 5 participations), annonce Discord.
+
+Les tournois peuvent aussi être créés en mode équipes : au lancement,
+les inscrits sont tirés au sort en duos persistés pour ce tournoi, puis le
+bracket oppose ces équipes. Un membre d'une équipe du match ou le créateur
+peut déclarer le résultat; les deux membres de l'équipe perdante sont
+éliminés ensemble et les deux membres des équipes récompensées reçoivent
+l'XP de leur place. Il faut au moins quatre inscrits et un nombre pair;
+avec 6 places, le bracket à quatre équipes comprend un bye. Les pronostics
+restent réservés aux tournois individuels.
 
 ### Atomicité inscription / désinscription / lancement (fix concurrence, round 2)
 
@@ -12855,6 +12870,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | Variable | Rôle | Défaut | Lue dans |
 | :-- | :-- | :-- | :-- |
 | `NOTIFICATION_EXECUTOR_ENABLED` | Sans elle l'executor ne réclame ni n'envoie rien (`{enabled:false, processed:0}`) | éteint | `src/app/api/cron/notification-executor/route.ts:95` |
+| `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED` | Autorise le cron GamerPower à ajouter les offres au salon `FREE_GAMES` ; exige aussi le feed, les salons communauté, l'executor et `freeGamesEnabled` | éteint | `src/lib/free-game-discord.ts` |
 | `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` | Annonces de soirées via le bot (fil dédié) ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_SESSION_CHANNEL_ID`, sinon repli webhook | éteint | `src/lib/discord-bot-config.ts:46` |
 | `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` | Annonces de tournois via le bot ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | éteint | `src/lib/discord-bot-config.ts:73`, `src/app/tournois/actions.ts:110` |
 | `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` | Invitation « Jouer maintenant » par MP (aucun salon requis) | éteint | `src/lib/discord-bot-config.ts:86` |
@@ -12934,6 +12950,7 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/close-sessions` | GET | non déclaré (défaut 300 s) | synchrone | toutes les 15 min | `cron:close-sessions` (erreurs par tâche/session) |
 | `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | toutes les 15 min | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
 | `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | toutes les 15 min (filet : l'envoi courant part par événement, `after()`) | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
+| `/api/cron/free-game-discord` | GET | 60 s | synchrone (création idempotente d'intentions d'envoi) | à configurer toutes les 15 min, flags OFF | `cron:free-game-discord` (`Passage terminé.`) ; `{enabled:false}` si éteint |
 | `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | toutes les 15 min | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
 | `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
 | `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 15 min | `cron:steam-library-sync` |

@@ -71,11 +71,12 @@ export async function createTournamentAction(formData: FormData) {
     name: String(formData.get("name") ?? ""),
     gameId: String(formData.get("gameId") ?? ""),
     maxPlayers: String(formData.get("maxPlayers") ?? ""),
+    format: String(formData.get("format") ?? "INDIVIDUAL"),
   });
   if (!input.success) {
     redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
   }
-  const { name, gameId, maxPlayers } = input.data;
+  const { name, gameId, maxPlayers, format } = input.data;
 
   const game = await prisma.game.findUnique({ where: { id: gameId }, select: { name: true } });
   if (!game) redirect(`/tournois/creer?error=${VALIDATION_ERROR_KEY}`);
@@ -140,6 +141,7 @@ export async function createTournamentAction(formData: FormData) {
         name,
         gameId,
         maxPlayers,
+        format,
         createdById: user.id,
         announceViaBot,
         communityId,
@@ -315,11 +317,12 @@ export async function launchTournamentAction(formData: FormData) {
   const scopedDb = await getScopedPrisma(user.id);
   const tournament = await scopedDb.tournament.findUnique({
     where: { id: tournamentId },
-    select: { createdById: true, status: true },
+    select: { createdById: true, status: true, format: true, participants: { select: { userId: true } } },
   });
   if (!tournament || tournament.createdById !== user.id || tournament.status !== "REGISTRATION") {
     return;
   }
+  if (tournament.format === "TEAMS" && (tournament.participants.length < 4 || tournament.participants.length % 2 !== 0)) return;
 
   await generateBracket(tournamentId);
   revalidatePath(`/tournois/${tournamentId}`);
