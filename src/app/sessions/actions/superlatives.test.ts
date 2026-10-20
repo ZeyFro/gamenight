@@ -37,10 +37,12 @@ import { submitSuperlativeVotesAction } from "./superlatives";
 
 const categories = ["mvp", "fun", "clutch"];
 
-function form(votes: Record<string, string>) {
+function form(votes: Partial<Record<string, string>>) {
   const data = new FormData();
   data.set("sessionId", "s1");
-  for (const [category, userId] of Object.entries(votes)) data.set(`vote-${category}`, userId);
+  for (const [category, userId] of Object.entries(votes)) {
+    if (userId !== undefined) data.set(`vote-${category}`, userId);
+  }
   return data;
 }
 
