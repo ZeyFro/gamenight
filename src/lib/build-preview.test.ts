@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
-describe("build : migrations protégées en Preview", () => {
+describe("build : migrations séparées du déploiement", () => {
   it.each(["preview", "production", "development", ""])("exécute le script réel, environnement %s, processus enfants simulés", (environment) => {
     const folder = mkdtempSync(join(tmpdir(), "gamenight-preview-build-"));
     const shim = join(folder, "shim.mjs"), trace = join(folder, "trace.json");
@@ -20,10 +20,10 @@ syncBuiltinESMExports();`);
       expect(run.status, run.stderr).toBe(0);
       const calls = JSON.parse(readFileSync(trace, "utf8")) as string[][];
       expect(calls).toEqual([
-        environment === "preview" ? ["node_modules/prisma/build/index.js", "generate"] : ["node_modules/prisma/build/index.js", "migrate", "deploy"],
+        ["node_modules/prisma/build/index.js", "generate"],
         ["node_modules/next/dist/bin/next", "build"],
       ]);
-      if (environment === "preview") expect(calls.flat()).not.toContain("migrate");
+      expect(calls.flat()).not.toContain("migrate");
     } finally { rmSync(folder, { recursive: true }); }
   });
 });
