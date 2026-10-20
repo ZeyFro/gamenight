@@ -1,10 +1,10 @@
 import { communityMemberUserWhere, isMemberOfCommunity } from "@/lib/community-isolation";
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { randomUUID } from "crypto";
-import type { Tournament, TournamentMatch, TournamentParticipant, User } from "@prisma/client";
+import type { Tournament, TournamentMatch, TournamentParticipant, TournamentTeam, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { bracketSizeFor, totalRoundsFor } from "@/lib/tournaments";
+import { totalRoundsFor, tournamentBracketSize } from "@/lib/tournaments";
 import { isTournamentDirectMessageEnabled } from "@/lib/discord-bot-config";
 import { resolveTournamentAnnounceConfig } from "@/lib/community-channels";
 import {
@@ -602,18 +602,24 @@ type TournamentWithMatches = Tournament & {
   matches: (TournamentMatch & {
     player1: Pick<User, "discordName"> | null;
     player2: Pick<User, "discordName"> | null;
+    team1: Pick<TournamentTeam, "name"> | null;
+    team2: Pick<TournamentTeam, "name"> | null;
   })[];
   participants: TournamentParticipant[];
   game: { name: string };
   champion: User | null;
+  championTeam: Pick<TournamentTeam, "name"> | null;
 };
 
 async function loadTournament(tournamentId: string): Promise<TournamentWithMatches | null> {
   return prisma.tournament.findUnique({
     where: { id: tournamentId },
     include: {
-      matches: { include: { player1: { select: { discordName: true } }, player2: { select: { discordName: true } } } },
-      participants: true, game: { select: { name: true } }, champion: true,
+      matches: { include: {
+        player1: { select: { discordName: true } }, player2: { select: { discordName: true } },
+        team1: { select: { name: true } }, team2: { select: { name: true } },
+      } },
+      participants: true, game: { select: { name: true } }, champion: true, championTeam: { select: { name: true } },
     },
   });
 }
@@ -678,7 +684,7 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches | 
         description: `Sur ${tournament.game.name}`,
         color: 0xf59e0b,
         fields: [
-          { name: "Champion", value: tournament.champion?.discordName ?? "—" },
+          { name: "Champion", value: tournament.championTeam?.name ?? tournament.champion?.discordName ?? "—" },
           { name: "Lien", value: url },
         ],
       },
@@ -687,7 +693,7 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches | 
   }
 
   if (tournament.status === "IN_PROGRESS") {
-    const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
+    const totalRounds = totalRoundsFor(tournamentBracketSize(tournament.maxPlayers, tournament.format));
     return {
       embed: {
         title: `🏆 Tournoi ${tournament.name} — en cours`,
@@ -1331,7 +1337,7 @@ async function resolveThreadSummary(
   const thread = await findSentDelivery(threadSlot(tournamentId));
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
-  if (tournament.status !== "DONE" || !tournament.championId) {
+  if (tournament.status !== "DONE" || !(tournament.championId || tournament.championTeamId)) {
     // Résumé enqueue avant que la finalisation n'ait (encore) committé la
     // lecture qu'il voit, ou tournoi redevenu incohérent entre-temps —
     // jamais de sens à publier un résumé sans résultat, différé, retenté
@@ -1343,37 +1349,40 @@ async function resolveThreadSummary(
     return { eligible: false, reason: "dependency_not_ready" };
   }
 
-  const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
+  const teamMode = tournament.format === "TEAMS";
+  const totalRounds = totalRoundsFor(tournamentBracketSize(tournament.maxPlayers, tournament.format));
   const finalMatch = tournament.matches.find((m) => m.round === totalRounds);
-  const runnerUpId =
-    finalMatch && finalMatch.winnerId
-      ? finalMatch.player1Id === finalMatch.winnerId
-        ? finalMatch.player2Id
-        : finalMatch.player1Id
-      : null;
+  const runnerUpId = teamMode
+    ? finalMatch?.winnerTeamId ? finalMatch.team1Id === finalMatch.winnerTeamId ? finalMatch.team2Id : finalMatch.team1Id : null
+    : finalMatch?.winnerId ? finalMatch.player1Id === finalMatch.winnerId ? finalMatch.player2Id : finalMatch.player1Id : null;
   const runnerUp = runnerUpId
-    ? await prisma.user.findUnique({ where: { id: runnerUpId }, select: { discordName: true } })
+    ? teamMode
+      ? await prisma.tournamentTeam.findUnique({ where: { id: runnerUpId }, select: { name: true } })
+      : await prisma.user.findUnique({ where: { id: runnerUpId }, select: { discordName: true } })
     : null;
 
   const semifinalRound = totalRounds - 1;
   const semifinalLoserIds = tournament.matches
-    .filter((m) => m.round === semifinalRound && m.winnerId)
-    .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
+    .filter((m) => m.round === semifinalRound && (teamMode ? m.winnerTeamId : m.winnerId))
+    .map((m) => teamMode
+      ? m.team1Id === m.winnerTeamId ? m.team2Id : m.team1Id
+      : m.player1Id === m.winnerId ? m.player2Id : m.player1Id)
     .filter((id): id is string => id !== null && id !== runnerUpId);
-  const semifinalists =
-    semifinalLoserIds.length > 0
-      ? await prisma.user.findMany({ where: { id: { in: semifinalLoserIds } }, select: { discordName: true } })
-      : [];
+  const semifinalists = semifinalLoserIds.length > 0
+    ? teamMode
+      ? await prisma.tournamentTeam.findMany({ where: { id: { in: semifinalLoserIds } }, select: { name: true } })
+      : await prisma.user.findMany({ where: { id: { in: semifinalLoserIds } }, select: { discordName: true } })
+    : [];
 
   const embed: DiscordRestEmbed = {
     title: `🎮 Résumé — ${tournament.name}`,
     description: `Sur ${tournament.game.name} — GG à tous les participants !`,
     color: 0xf59e0b,
     fields: [
-      { name: "🏆 Champion", value: tournament.champion?.discordName ?? "—" },
-      ...(runnerUp ? [{ name: "🥈 Finaliste", value: runnerUp.discordName }] : []),
+      { name: "🏆 Champion", value: tournament.championTeam?.name ?? tournament.champion?.discordName ?? "—" },
+      ...(runnerUp ? [{ name: "🥈 Finaliste", value: "name" in runnerUp ? runnerUp.name : runnerUp.discordName }] : []),
       ...(semifinalists.length > 0
-        ? [{ name: "🥉 Demi-finalistes", value: semifinalists.map((u) => u.discordName).join(", ") }]
+        ? [{ name: "🥉 Demi-finalistes", value: semifinalists.map((u) => "name" in u ? u.name : u.discordName).join(", ") }]
         : []),
     ],
   };
@@ -1392,7 +1401,30 @@ async function resolveMatchResult(matchId: string, tournament: TournamentWithMat
   if (!thread?.discordThreadId) return { eligible: false, reason: "dependency_not_ready" };
 
   const match = tournament.matches.find((candidate) => candidate.id === matchId);
-  if (!match?.completedAt || !match.winnerId) return { eligible: false, reason: "unresolvable" };
+  const teamMode = tournament.format === "TEAMS";
+  const winnerId = teamMode ? match?.winnerTeamId : match?.winnerId;
+  if (!match?.completedAt || !winnerId) return { eligible: false, reason: "unresolvable" };
+  if (teamMode) {
+    const winner = winnerId === match.team1Id ? match.team1 : winnerId === match.team2Id ? match.team2 : null;
+    const opponent = winnerId === match.team1Id ? match.team2 : match.team1;
+    if (!winner) return { eligible: false, reason: "unresolvable" };
+    const winnerIsTeam1 = winnerId === match.team1Id;
+    const result = opponent ? `bat ${opponent.name}` : "remporte le match par forfait";
+    const score = opponent && match.score1 !== null && match.score2 !== null
+      ? ` (${winnerIsTeam1 ? match.score1 : match.score2}–${winnerIsTeam1 ? match.score2 : match.score1})`
+      : "";
+    return {
+      eligible: true,
+      action: {
+        kind: "send_thread_message",
+        threadId: thread.discordThreadId,
+        message: {
+          content: `🏆 ${tournament.name} — manche ${match.round}, match ${match.position + 1} : ${winner.name} ${result}${score}.`,
+          allowedMentions: NO_MENTIONS,
+        },
+      },
+    };
+  }
   const winner = match.winnerId === match.player1Id ? match.player1 : match.winnerId === match.player2Id ? match.player2 : null;
   if (!winner) return { eligible: false, reason: "unresolvable" };
   const winnerIsPlayer1 = match.winnerId === match.player1Id;

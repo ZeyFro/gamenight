@@ -6629,6 +6629,15 @@ finalistes" = perdants du round `totalRounds - 1`, formule qui généralise
 correctement au bracket à 4 comme à 8), badges ("Champion de tournoi" 1
 victoire, "Gladiateur" 5 participations), annonce Discord.
 
+Les tournois peuvent aussi être créés en mode équipes : au lancement,
+les inscrits sont tirés au sort en duos persistés pour ce tournoi, puis le
+bracket oppose ces équipes. Un membre d'une équipe du match ou le créateur
+peut déclarer le résultat; les deux membres de l'équipe perdante sont
+éliminés ensemble et les deux membres des équipes récompensées reçoivent
+l'XP de leur place. Il faut au moins quatre inscrits et un nombre pair;
+avec 6 places, le bracket à quatre équipes comprend un bye. Les pronostics
+restent réservés aux tournois individuels.
+
 ### Atomicité inscription / désinscription / lancement (fix concurrence, round 2)
 
 `declareWinner`/`advanceWinner` étaient déjà protégés (claim atomique sur

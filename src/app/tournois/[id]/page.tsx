@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { communityIdFilter, getIsolationScope } from "@/lib/community-isolation";
-import { totalRoundsFor, bracketSizeFor } from "@/lib/tournaments";
+import { totalRoundsFor, tournamentBracketSize } from "@/lib/tournaments";
 import { getTournamentAnnounceStatus } from "@/lib/tournament-announce";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { formatDateTimeFr } from "@/lib/wallclock";
@@ -74,6 +74,7 @@ export default async function TournoiDetailPage({
       game: { select: { name: true, coverUrl: true } },
       createdBy: { select: { discordName: true } },
       champion: { select: { discordName: true, discordAvatar: true } },
+      championTeam: { select: { name: true } },
       participants: {
         include: { user: { select: { id: true, discordName: true, discordAvatar: true } } },
         orderBy: { seed: "asc" },
@@ -82,19 +83,55 @@ export default async function TournoiDetailPage({
         include: {
           player1: { select: { id: true, discordName: true, discordAvatar: true } },
           player2: { select: { id: true, discordName: true, discordAvatar: true } },
+          team1: {
+            include: {
+              members: {
+                include: {
+                  participant: { include: { user: { select: { id: true, discordName: true } } } },
+                },
+              },
+            },
+          },
+          team2: {
+            include: {
+              members: {
+                include: {
+                  participant: { include: { user: { select: { id: true, discordName: true } } } },
+                },
+              },
+            },
+          },
         },
       },
     },
   });
   if (!tournament) notFound();
 
-  const predictionsEnabled = isTournamentPredictionsEnabled() && !!(await findActiveMembership(user.id, await statsCommunityIdForSession(tournament.communityId)));
+  const predictionsEnabled = tournament.format === "INDIVIDUAL" && isTournamentPredictionsEnabled() && !!(await findActiveMembership(user.id, await statsCommunityIdForSession(tournament.communityId)));
   const scopedDb = predictionsEnabled ? await getScopedPrisma(user.id) : null;
   const predictions = scopedDb ? await scopedDb.tournamentPrediction.findMany({ where: { tournamentId: id, voterId: user.id } }) : [];
 
   const isCreator = tournament.createdById === user.id;
   const isRegistered = tournament.participants.some((p) => p.userId === user.id);
-  const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
+  const totalRounds = totalRoundsFor(tournamentBracketSize(tournament.maxPlayers, tournament.format));
+  const bracketMatches = tournament.format === "TEAMS"
+    ? tournament.matches.map((match) => ({
+        ...match,
+        player1: match.team1 ? {
+          id: match.team1.id,
+          discordName: `${match.team1.name} · ${match.team1.members.map((m) => m.participant.user.discordName).join(" + ")}`,
+          discordAvatar: null,
+          memberIds: match.team1.members.map((m) => m.participant.user.id),
+        } : null,
+        player2: match.team2 ? {
+          id: match.team2.id,
+          discordName: `${match.team2.name} · ${match.team2.members.map((m) => m.participant.user.discordName).join(" + ")}`,
+          discordAvatar: null,
+          memberIds: match.team2.members.map((m) => m.participant.user.id),
+        } : null,
+        winnerId: match.winnerTeamId,
+      }))
+    : tournament.matches;
 
   // V2 (délai/état d'envoi) — statut RÉEL de l'annonce/du fil, jamais
   // présenté comme instantané (voir `getTournamentAnnounceStatus`,
@@ -118,6 +155,9 @@ export default async function TournoiDetailPage({
       )}
 
       {predictionsEnabled && <TournamentPredictions tournament={tournament} predictions={predictions} />}
+      {tournament.format === "TEAMS" && isTournamentPredictionsEnabled() && (
+        <p className="text-xs text-muted">Les pronostics individuels ne sont pas proposés pour les tournois en équipes.</p>
+      )}
 
       {announceStatus && (
         <Card className="flex flex-col gap-2 text-sm">
@@ -165,18 +205,14 @@ export default async function TournoiDetailPage({
         </div>
       )}
 
-      {tournament.status === "DONE" && tournament.champion && (
+      {tournament.status === "DONE" && (tournament.champion || tournament.championTeam) && (
         <Card className="card-glow flex flex-col items-center gap-3 text-center">
           <span className="text-4xl" aria-hidden>
             🏆
           </span>
-          <Avatar
-            src={tournament.champion.discordAvatar}
-            alt={tournament.champion.discordName}
-            size={56}
-          />
+          {tournament.champion && <Avatar src={tournament.champion.discordAvatar} alt={tournament.champion.discordName} size={56} />}
           <p className="text-lg font-semibold text-foreground">
-            {tournament.champion.discordName} remporte le tournoi !
+            {tournament.championTeam?.name ?? tournament.champion?.discordName} remporte le tournoi !
           </p>
         </Card>
       )}
@@ -223,7 +259,8 @@ export default async function TournoiDetailPage({
               )
             )}
 
-            {isCreator && tournament.participants.length >= 2 && (
+            {isCreator && tournament.participants.length >= (tournament.format === "TEAMS" ? 4 : 2) &&
+              (tournament.format !== "TEAMS" || tournament.participants.length % 2 === 0) && (
               <form action={launchTournamentAction} className="flex-1">
                 <input type="hidden" name="tournamentId" value={tournament.id} />
                 <Button type="submit" variant="secondary" fullWidthOnMobile>
@@ -239,7 +276,7 @@ export default async function TournoiDetailPage({
         tournament.status === "DONE" ||
         tournament.status === "CANCELLED") && (
         <TournamentBracket
-          matches={tournament.matches}
+          matches={bracketMatches}
           totalRounds={totalRounds}
           currentUserId={user.id}
           isCreator={isCreator}

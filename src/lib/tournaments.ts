@@ -82,6 +82,10 @@ export function bracketSizeFor(maxPlayers: number): number {
   return size;
 }
 
+export function tournamentBracketSize(maxPlayers: number, format: "INDIVIDUAL" | "TEAMS"): number {
+  return bracketSizeFor(format === "TEAMS" ? maxPlayers / 2 : maxPlayers);
+}
+
 /** Nombre de rounds pour une taille de bracket donnée (4 → 2, 8 → 3). */
 export function totalRoundsFor(bracketSize: number): number {
   return Math.log2(bracketSize);
@@ -94,6 +98,12 @@ function shuffle<T>(arr: T[]): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+/** Les équipes d'un tournoi sont figées au lancement : deux inscrits par équipe. */
+export function pairTournamentParticipants<T>(participants: T[]): T[][] | null {
+  if (participants.length < 4 || participants.length % 2 !== 0) return null;
+  return Array.from({ length: participants.length / 2 }, (_, i) => participants.slice(i * 2, i * 2 + 2));
 }
 
 /**
@@ -147,7 +157,8 @@ async function advanceWinner(
   position: number,
   winnerId: string,
   totalRounds: number,
-  announceViaBot: boolean
+  announceViaBot: boolean,
+  teamMode = false
 ): Promise<{ tournamentFinalized: boolean }> {
   if (round >= totalRounds) {
     // Revue ciblée V2 (courses annulation/clôture) — CONDITIONNÉ sur
@@ -162,7 +173,9 @@ async function advanceWinner(
     // badges) est retenue si l'annulation n'a pas gagné la course.
     const claim = await tx.tournament.updateMany({
       where: { id: tournamentId, status: "IN_PROGRESS" },
-      data: { status: "DONE", championId: winnerId },
+      data: teamMode
+        ? { status: "DONE", championTeamId: winnerId }
+        : { status: "DONE", championId: winnerId },
     });
     if (claim.count !== 1) return { tournamentFinalized: false };
     // Chantier annonces tournois (étend #99) — enqueue DANS CETTE MÊME
@@ -180,9 +193,10 @@ async function advanceWinner(
 
   const { nextRound, nextPosition, field } = computeNextSlot(round, position);
 
+  const nextField = teamMode ? field === "player1Id" ? "team1Id" : "team2Id" : field;
   await tx.tournamentMatch.update({
     where: { tournamentId_round_position: { tournamentId, round: nextRound, position: nextPosition } },
-    data: { [field]: winnerId },
+    data: { [nextField]: winnerId },
   });
   return { tournamentFinalized: false };
 }
@@ -192,6 +206,7 @@ interface LockedTournamentRow {
   status: string;
   maxPlayers: number;
   announceViaBot: boolean;
+  format: "INDIVIDUAL" | "TEAMS";
 }
 
 /**
@@ -231,20 +246,21 @@ export async function buildBracketInTransaction(
   tournamentId: string
 ): Promise<void> {
   const locked = await tx.$queryRaw<LockedTournamentRow[]>`
-    SELECT id, status, "maxPlayers", "announceViaBot" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    SELECT id, status, "maxPlayers", "announceViaBot", format FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
   `;
   const tournament = locked[0];
   if (!tournament || tournament.status !== "REGISTRATION") return;
 
   const participants = await tx.tournamentParticipant.findMany({ where: { tournamentId } });
 
-  const bracketSize = bracketSizeFor(tournament.maxPlayers);
+  const bracketSize = tournamentBracketSize(tournament.maxPlayers, tournament.format);
   const totalRounds = totalRoundsFor(bracketSize);
   const matchCount = bracketSize / 2;
   // Lancement anticipé (avant que toutes les places soient prises) avec
   // trop peu de participants pour remplir au moins un joueur par match —
   // no-op plutôt qu'un bracket avec des matchs entièrement vides.
-  if (participants.length < matchCount) return;
+  if (tournament.format === "TEAMS" && !pairTournamentParticipants(participants)) return;
+  if (participants.length < (tournament.format === "TEAMS" ? 4 : matchCount)) return;
 
   const shuffled = shuffle(participants);
 
@@ -254,13 +270,36 @@ export async function buildBracketInTransaction(
   // regrouper en fin de liste (qui viderait complètement les derniers
   // matchs, ex. 6 joueurs sur un bracket à 8 slots avec un remplissage
   // séquentiel naïf).
-  const round1Matches: { position: number; player1Id: string | null; player2Id: string | null }[] =
-    [];
+  let competitors: { id: string; memberIds: string[] }[];
+  if (tournament.format === "TEAMS") {
+    const pairs = pairTournamentParticipants(shuffled)!;
+    competitors = [];
+    for (const [i, pair] of pairs.entries()) {
+      const team = await tx.tournamentTeam.create({
+        data: { tournamentId, name: `Équipe ${i + 1}`, position: i + 1 },
+        select: { id: true },
+      });
+      await tx.tournamentTeamMember.createMany({
+        data: pair.map((p) => ({ tournamentId, teamId: team.id, userId: p.userId })),
+      });
+      competitors.push({ id: team.id, memberIds: pair.map((p) => p.userId) });
+    }
+  } else {
+    competitors = shuffled.map((p) => ({ id: p.userId, memberIds: [p.userId] }));
+  }
+
+  const round1Matches: { position: number; player1Id: string | null; player2Id: string | null; team1Id: string | null; team2Id: string | null }[] = [];
   for (let i = 0; i < matchCount; i++) {
-    const player1 = shuffled[i]?.userId ?? null;
+    const competitor1 = competitors[i]?.id ?? null;
     const player2Index = matchCount + i;
-    const player2 = shuffled[player2Index]?.userId ?? null;
-    round1Matches.push({ position: i, player1Id: player1, player2Id: player2 });
+    const competitor2 = competitors[player2Index]?.id ?? null;
+    round1Matches.push({
+      position: i,
+      player1Id: tournament.format === "INDIVIDUAL" ? competitor1 : null,
+      player2Id: tournament.format === "INDIVIDUAL" ? competitor2 : null,
+      team1Id: tournament.format === "TEAMS" ? competitor1 : null,
+      team2Id: tournament.format === "TEAMS" ? competitor2 : null,
+    });
   }
 
   await tx.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
@@ -288,6 +327,8 @@ export async function buildBracketInTransaction(
       position: m.position,
       player1Id: m.player1Id,
       player2Id: m.player2Id,
+      team1Id: m.team1Id,
+      team2Id: m.team2Id,
     })),
   });
 
@@ -305,17 +346,20 @@ export async function buildBracketInTransaction(
   // Byes : un seul joueur sur les deux slots du match → avance sans jouer,
   // résolu immédiatement (jamais affiché comme un vrai match à jouer côté UI).
   for (const m of round1Matches) {
-    const winner =
-      m.player1Id && !m.player2Id ? m.player1Id : !m.player1Id && m.player2Id ? m.player2Id : null;
+    const slot1 = tournament.format === "TEAMS" ? m.team1Id : m.player1Id;
+    const slot2 = tournament.format === "TEAMS" ? m.team2Id : m.player2Id;
+    const winner = slot1 && !slot2 ? slot1 : !slot1 && slot2 ? slot2 : null;
     if (!winner) continue;
     await tx.tournamentMatch.update({
       where: { tournamentId_round_position: { tournamentId, round: 1, position: m.position } },
-      data: { winnerId: winner, completedAt: wallClockNow() },
+      data: tournament.format === "TEAMS"
+        ? { winnerTeamId: winner, completedAt: wallClockNow() }
+        : { winnerId: winner, completedAt: wallClockNow() },
     });
     // `tournamentFinalized` volontairement ignoré : structurellement
     // inatteignable ici (totalRounds vaut toujours 2 ou 3, donc round 1
     // < totalRounds systématiquement — voir docstring ci-dessus).
-    await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds, tournament.announceViaBot);
+    await advanceWinner(tx, tournamentId, 1, m.position, winner, totalRounds, tournament.announceViaBot, tournament.format === "TEAMS");
   }
 }
 
@@ -397,28 +441,36 @@ export async function declareWinner(
 ): Promise<DeclareWinnerResult> {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
-    include: { tournament: true },
+    include: { tournament: true, team1: { include: { members: true } }, team2: { include: { members: true } } },
   });
   if (!match || !(await isMemberOfCommunity(actorUserId, match.tournament.communityId)) || match.tournament.status !== "IN_PROGRESS") return { ok: false, tournamentDone: false };
   // Raccourci : évite d'ouvrir une transaction pour un clic manifestement
   // périmé (page pas rafraîchie). Ne garantit rien à lui seul contre la
   // course — la vraie protection est le claim transactionnel plus bas.
   if (match.completedAt) return { ok: false, tournamentDone: false };
-  if (winnerId !== match.player1Id && winnerId !== match.player2Id) {
+  const teamMode = match.tournament.format === "TEAMS";
+  const winnerInMatch = teamMode
+    ? winnerId === match.team1Id || winnerId === match.team2Id
+    : winnerId === match.player1Id || winnerId === match.player2Id;
+  if (!winnerInMatch) {
     return { ok: false, tournamentDone: false };
   }
 
   const isCreator = match.tournament.createdById === actorUserId;
-  const isPlayer = actorUserId === match.player1Id || actorUserId === match.player2Id;
+  const isPlayer = teamMode
+    ? Boolean(match.team1?.members.some((member) => member.userId === actorUserId) || match.team2?.members.some((member) => member.userId === actorUserId))
+    : actorUserId === match.player1Id || actorUserId === match.player2Id;
   if (!isCreator && !isPlayer) return { ok: false, tournamentDone: false };
 
   if (scores) {
-    const error = scoreConsistencyError(winnerId === match.player1Id ? 1 : 2, scores.score1, scores.score2);
+    const error = scoreConsistencyError(winnerId === (teamMode ? match.team1Id : match.player1Id) ? 1 : 2, scores.score1, scores.score2);
     if (error) return { ok: false, tournamentDone: false, error };
   }
 
-  const loserId = computeMatchLoser(winnerId, match.player1Id, match.player2Id);
-  const totalRounds = totalRoundsFor(bracketSizeFor(match.tournament.maxPlayers));
+  const loserId = teamMode
+    ? winnerId === match.team1Id ? match.team2Id : match.team1Id
+    : computeMatchLoser(winnerId, match.player1Id, match.player2Id);
+  const totalRounds = totalRoundsFor(tournamentBracketSize(match.tournament.maxPlayers, match.tournament.format));
 
   let claimed = false;
   let tournamentFinalized = false;
@@ -426,15 +478,21 @@ export async function declareWinner(
   await prisma.$transaction(async (tx) => {
     const claim = await tx.tournamentMatch.updateMany({
       where: { id: matchId, completedAt: null },
-      data: { winnerId, completedAt: wallClockNow(), ...scores },
+      data: { ...(teamMode ? { winnerTeamId: winnerId } : { winnerId }), completedAt: wallClockNow(), ...scores },
     });
     if (claim.count !== 1) return; // course perdue — le match a déjà été tranché
 
     claimed = true;
 
-    if (loserId) {
+    if (loserId && !teamMode) {
       await tx.tournamentParticipant.updateMany({
         where: { tournamentId: match.tournamentId, userId: loserId },
+        data: { eliminatedAt: wallClockNow() },
+      });
+    } else if (loserId) {
+      const members = await tx.tournamentTeamMember.findMany({ where: { teamId: loserId }, select: { userId: true } });
+      await tx.tournamentParticipant.updateMany({
+        where: { tournamentId: match.tournamentId, userId: { in: members.map((m) => m.userId) } },
         data: { eliminatedAt: wallClockNow() },
       });
     }
@@ -446,7 +504,8 @@ export async function declareWinner(
       match.position,
       winnerId,
       totalRounds,
-      match.tournament.announceViaBot
+      match.tournament.announceViaBot,
+      teamMode
     );
     if (match.tournament.announceViaBot) {
       await enqueueTournamentMatchResult(match.tournamentId, matchId, tx);
@@ -488,39 +547,40 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
   try {
     const tournament = await prisma.tournament.findUnique({
       where: { id: tournamentId },
-      include: { game: true, matches: true },
+      include: { game: true, matches: true, championTeam: { include: { members: true } } },
     });
     if (!tournament) return;
 
-    const totalRounds = totalRoundsFor(bracketSizeFor(tournament.maxPlayers));
+    const teamMode = tournament.format === "TEAMS";
+    const totalRounds = totalRoundsFor(tournamentBracketSize(tournament.maxPlayers, tournament.format));
     const finalMatch = tournament.matches.find((m) => m.round === totalRounds);
-    const runnerUpId =
-      finalMatch && finalMatch.winnerId
-        ? finalMatch.player1Id === finalMatch.winnerId
-          ? finalMatch.player2Id
-          : finalMatch.player1Id
-        : null;
-
-    const semifinalRound = totalRounds - 1;
+    const runnerUpId = teamMode
+      ? finalMatch?.winnerTeamId ? finalMatch.team1Id === finalMatch.winnerTeamId ? finalMatch.team2Id : finalMatch.team1Id : null
+      : finalMatch?.winnerId ? finalMatch.player1Id === finalMatch.winnerId ? finalMatch.player2Id : finalMatch.player1Id : null;
     const semifinalLoserIds = tournament.matches
-      .filter((m) => m.round === semifinalRound && m.winnerId)
-      .map((m) => (m.player1Id === m.winnerId ? m.player2Id : m.player1Id))
+      .filter((m) => m.round === totalRounds - 1 && (teamMode ? m.winnerTeamId : m.winnerId))
+      .map((m) => teamMode
+        ? m.team1Id === m.winnerTeamId ? m.team2Id : m.team1Id
+        : m.player1Id === m.winnerId ? m.player2Id : m.player1Id)
       .filter((id): id is string => id !== null);
 
-    await awardXp(championId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:1st`, XP_AMOUNTS.TOURNAMENT_1ST);
-    if (runnerUpId) {
-      await awardXp(runnerUpId, tournament.communityId,
-        "TOURNAMENT_RESULT",
-        `${tournamentId}:2nd`,
-        XP_AMOUNTS.TOURNAMENT_2ND
-      );
-    }
-    for (const loserId of semifinalLoserIds) {
-      await awardXp(loserId, tournament.communityId,
-        "TOURNAMENT_RESULT",
-        `${tournamentId}:semi:${loserId}`,
-        XP_AMOUNTS.TOURNAMENT_SEMIFINALIST
-      );
+    const award = async (userId: string, place: string, amount: number) =>
+      awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:${place}${teamMode ? `:${userId}` : ""}`, amount);
+    const championMembers = teamMode
+      ? (tournament.championTeam?.members.map((m) => m.userId) ?? [])
+      : [championId];
+    for (const userId of championMembers) await award(userId, "1st", XP_AMOUNTS.TOURNAMENT_1ST);
+    const runnerUpMembers = runnerUpId
+      ? teamMode
+        ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: runnerUpId }, select: { userId: true } })).map((m) => m.userId)
+        : [runnerUpId]
+      : [];
+    for (const userId of runnerUpMembers) await award(userId, "2nd", XP_AMOUNTS.TOURNAMENT_2ND);
+    const semifinalLoserMembers = teamMode
+      ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: { in: semifinalLoserIds } }, select: { userId: true } })).map((m) => m.userId)
+      : semifinalLoserIds;
+    for (const userId of semifinalLoserMembers) {
+      await awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:semi:${userId}`, XP_AMOUNTS.TOURNAMENT_SEMIFINALIST);
     }
 
     const participantIds = await prisma.tournamentParticipant.findMany({
@@ -538,10 +598,12 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
     // rappeler le webhook ici enverrait un SECOND message pour la même
     // clôture, jamais les deux transports à la fois pour un même tournoi.
     if (!tournament.announceViaBot) {
-      const champion = await prisma.user.findUnique({ where: { id: championId } });
-      if (champion) {
+      const championName = teamMode
+        ? tournament.championTeam?.name
+        : (await prisma.user.findUnique({ where: { id: championId } }))?.discordName;
+      if (championName) {
         const result = await postToCommunity(tournament.communityId, {
-          title: `🏆 ${champion.discordName} remporte le tournoi ${tournament.name} !`,
+          title: `🏆 ${championName} remporte le tournoi ${tournament.name} !`,
           description: `Sur ${tournament.game.name} — GG à tous les participants !`,
           color: ACCENT_COLOR,
         });

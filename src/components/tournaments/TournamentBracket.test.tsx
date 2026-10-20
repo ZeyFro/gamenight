@@ -25,6 +25,17 @@ describe("TournamentBracket (scores)", () => {
     expect(screen.getByRole("button", { name: "Bob gagne" })).toBeTruthy();
   });
 
+  it("permet à un membre d'une équipe de déclarer le résultat", () => {
+    const match: BracketMatch = {
+      ...playable,
+      player1: { id: "team-1", discordName: "Équipe 1 · Alice + Alex", discordAvatar: null, memberIds: ["u3", "u4"] },
+      player2: { id: "team-2", discordName: "Équipe 2 · Bob + Bea", discordAvatar: null, memberIds: ["u5", "u6"] },
+    };
+    render(<TournamentBracket matches={[match]} totalRounds={1} currentUserId="u3" isCreator={false} />);
+    expect(screen.getByRole("button", { name: "Équipe 1 · Alice + Alex gagne" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Équipe 2 · Bob + Bea gagne" })).toBeTruthy();
+  });
+
   it("drapeau éteint : un score existant n'est pas affiché", () => {
     renderBracket(done, false);
     expect(screen.queryByLabelText("Score : 5")).toBeNull();
