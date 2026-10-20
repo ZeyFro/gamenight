@@ -7,20 +7,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * porte de connexion multi-serveurs ne refuse pas tout le monde.
  */
 
-const { findUnique, create, update } = vi.hoisted(() => ({
+const { findUnique, create, update, userFindMany, membershipCreateMany } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  userFindMany: vi.fn(),
+  membershipCreateMany: vi.fn(),
 }));
-vi.mock("@/lib/prisma", () => ({ prisma: { community: { findUnique, create, update } } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    community: { findUnique, create, update },
+    user: { findMany: userFindMany },
+    membership: { createMany: membershipCreateMany, count: vi.fn() },
+  },
+}));
 
-import { ensureDefaultCommunityRecord } from "./default-community";
+import { ensureDefaultCommunity, ensureDefaultCommunityRecord } from "./default-community";
 
 describe("ensureDefaultCommunityRecord", () => {
   beforeEach(() => {
     findUnique.mockReset().mockResolvedValue(null);
     create.mockReset().mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
     update.mockReset().mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
+    userFindMany.mockReset();
+    membershipCreateMany.mockReset();
     vi.unstubAllEnvs();
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
   });
@@ -64,5 +74,21 @@ describe("ensureDefaultCommunityRecord", () => {
   it("toute autre erreur de création remonte (le signIn refuse alors, fail-closed)", async () => {
     create.mockRejectedValue(new Error("db down"));
     await expect(ensureDefaultCommunityRecord()).rejects.toThrow("db down");
+  });
+
+  it.each([
+    {},
+    { AUTH_REQUIRE_GUILD_MEMBER: "true" },
+    { AUTH_REQUIRE_GUILD_MEMBER: "false", COMMUNITY_ISOLATION_ENABLED: "false", COMMUNITY_PICKER_ENABLED: "false" },
+    { COMMUNITY_ISOLATION_ENABLED: "true", COMMUNITY_PICKER_ENABLED: "true" },
+  ])("ensureDefaultCommunity ne rattache personne (membershipsCreated 0) pour les variables %j", async (env) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    userFindMany.mockResolvedValue([{ id: "u1", discordId: "1", role: "USER" }]);
+
+    const result = await ensureDefaultCommunity();
+
+    expect(result).toEqual({ communityId: "c1", created: true, membershipsCreated: 0 });
+    expect(userFindMany).not.toHaveBeenCalled();
+    expect(membershipCreateMany).not.toHaveBeenCalled();
   });
 });

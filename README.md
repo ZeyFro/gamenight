@@ -125,7 +125,7 @@ Puis remplir chaque variable :
 | `DEEPL_API_KEY` | *(Optionnelle)* [deepl.com/pro-api](https://www.deepl.com/pro-api) → créer un compte gratuit (plan **Free**, 500k caractères/mois) → clé dans le compte, onglet API. Traduit en français la description IGDB de la fiche jeu. Sans cette variable : description affichée en anglais (VO), aucun crash. |
 | `CRON_SECRET` | *(Recommandée en prod)* Valeur aléatoire au choix (ex. `openssl rand -hex 32`). Protège toutes les routes `/api/cron/*`/`/api/backfill/*` — **absente = routes désactivées (503)**, voir la section dédiée pour la configuration du cron externe. |
 | `ADMIN_DISCORD_IDS` | Ton `discordId` (mode développeur Discord → clic droit sur ton profil → **Copier l'ID utilisateur**), et ceux d'autres admins si besoin, séparés par des virgules. Donne accès à `/admin` — voir la section « Rôle admin » ci-dessous. |
-| `AUTH_REQUIRE_GUILD_MEMBER` | *(Optionnelle)* `true` exact = un **nouveau** compte doit avoir un Membership autorisé dans une communauté ACTIVE, confirmé par OAuth `guilds` (`/users/@me/guilds`, paginé). Existants/admins exemptés de cette admission, jamais de la frontière communautaire. Erreur ou liste partielle = connexion fraîche refusée sans révoquer les Membership. Isolation/picker ON synchronisent également les comptes existants ; tous trois OFF = login historique sans appel guilds. Voir [rollout](docs/COMMUNITY_ROLLOUT.md). |
+| `AUTH_REQUIRE_GUILD_MEMBER` | *(Obsolète, sans effet — laissée en place, ignorée.)* La connexion est **fermée par défaut** (S0) : un compte Discord sans appartenance à une communauté ACTIVE (communauté ACTIVE dont le `discordGuildId` figure dans sa liste OAuth `guilds`, `/users/@me/guilds`, paginée) ne peut pas ouvrir de session, quelle que soit la valeur de cette variable et des drapeaux isolation/picker. Les `discordId` de `ADMIN_DISCORD_IDS` passent toujours, même si l'API Discord échoue (filet anti-verrouillage). Erreur ou liste partielle = connexion refusée (admins exceptés) sans révoquer les Membership. Une session déjà ouverte reste valable jusqu'à son expiration (reconnexion forcée admin à part). Seul `ADMIN_DISCORD_IDS` fait office de filet à la connexion : un compte promu admin en base (`User.role`) sans communauté est refusé. Voir [rollout](docs/COMMUNITY_ROLLOUT.md). |
 
 Le tableau complet (variables V2, interrupteurs, défauts, fichier de lecture) est dans « V2 — Référence : variables d'environnement », en fin de document.
 
@@ -2433,8 +2433,8 @@ obligatoire sur l'existant).
 | :-- | :-- |
 | `Community` | Une communauté : `slug` unique (futur `/c/[slug]/…`), `discordGuildId` unique, statut `PENDING` (bot ajouté, en attente d'activation) / `ACTIVE` / `SUSPENDED` / `LEFT` (bot retiré, `leftAt` = départ des 30 jours de conservation) / `ARCHIVED`. |
 | `CommunityChannelConfig` | Salon Discord par communauté et par catégorie (`SESSION`, `TOURNAMENT`) ; remplacera `DISCORD_BOT_*_CHANNEL_ID`. |
-| `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. Un seul OWNER actif (garanti en code). |
-| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de seed-reconcile) crée/conserve default et son guild historique. Isolation/picker/porte AUTH OFF : rattachement historique des comptes sans aucun Membership, rôles OWNER/ADMIN/MEMBER acquis. Dès que l'un est ON : aucun rattachement automatique ; OAuth `guilds` est la source d'admission. Les statuts/rôles existants ne sont pas écrasés par le seed. |
+| `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. |
+| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de seed-reconcile) crée/conserve default et son guild historique. Aucun rattachement automatique (S0) : OAuth `guilds` est l'unique source d'appartenance, les rôles existants sont acquis. Les statuts/rôles existants ne sont pas écrasés par le seed. |
 | `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
 | `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. `EXISTING_EXCEPTIONS` fige **185 couples fichier/modèle** (84 fichiers, 37 modèles collectifs), à vider au fil des PR de filtrage (jamais allonger). |
 
@@ -2505,8 +2505,8 @@ dans le callback OAuth frais : une page courte = un appel, pagination après
 pages. Le matcher ne parcourt pas toutes les communautés : guilds de
 l'utilisateur intersectés avec les communautés connues ACTIVE en base.
 
-Isolation, picker ou porte AUTH actifs : profil/Membership transactionnels,
-comptes existants compris, LEFT réactivé, REMOVED préservé, communauté suspendue
+Toujours (S0) : profil et Membership transactionnels ; sans serveur autorisé :
+connexion refusée (admins exceptés). Comptes existants compris, LEFT réactivé, REMOVED préservé, communauté suspendue
 exclue. Départ constaté à la prochaine connexion fraîche, préférence invalide
 effacée ; erreur/page partielle = aucun changement d'appartenance. Sans serveur
 autorisé : aucune donnée collective. Plusieurs serveurs sans choix valide avec
@@ -12886,7 +12886,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
-| `AUTH_REQUIRE_GUILD_MEMBER` | Porte OAuth `guilds` : nouveau compte sans communauté ACTIVE autorisée refusé ; existants/admins exemptés de l'admission uniquement. Snapshot partiel/en erreur refusé sans révocation. | éteint | `src/auth.ts`, `src/lib/discord-user-guilds.ts`, `src/lib/community-oauth.ts` |
+| `AUTH_REQUIRE_GUILD_MEMBER` | Sans effet (S0) : connexion fermée par défaut, compte sans communauté ACTIVE refusé (existants compris), `ADMIN_DISCORD_IDS` toujours accepté. Snapshot partiel/en erreur refusé sans révocation (admins exceptés). | sans objet | `src/auth.ts`, `src/lib/discord-user-guilds.ts`, `src/lib/community-oauth.ts` |
 | `DISCORD_BOT_SESSION_CHANNEL_ID` | Salon des soirées | absent | `src/lib/discord-bot-config.ts:34` |
 | `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | Salon des tournois | absent | `src/lib/discord-bot-config.ts:66` |
 | `DISCORD_BOT_TOKEN` | Jeton du bot (REST : fils, MP, rafraîchissement de profils en repli) | absent (⇒ `null`, bot inutilisable) | `src/lib/discord-rest.ts:162`, `src/lib/discord-profile.ts:380` |

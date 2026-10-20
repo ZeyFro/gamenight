@@ -81,9 +81,11 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
       expect(afterOne.badges).toBeGreaterThan(0);
       expect(afterOne.tags).toBeGreaterThan(0);
       expect(afterOne.seasons).toBe(1);
-      // Multi-communautés (PR A) : communauté par défaut + un Membership par utilisateur.
+      // Multi-communautés : communauté par défaut créée, mais AUCUN Membership
+      // automatique (connexion fermée par défaut, S0) : seule une connexion avec
+      // instantané Discord complet crée une appartenance.
       expect(afterOne.communities).toBe(1);
-      expect(afterOne.memberships).toBe(2);
+      expect(afterOne.memberships).toBe(0);
 
       const second = await runSeedReconciliation();
       expect(second.stopReason).toBe("completed");

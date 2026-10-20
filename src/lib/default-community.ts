@@ -1,6 +1,5 @@
-import type { Community, CommunityRole } from "@prisma/client";
+import type { Community } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { parseAdminDiscordIds } from "@/lib/admin-rules";
 
 /**
  * Multi-communautés, PR A — la communauté historique devient la communauté
@@ -12,13 +11,11 @@ import { parseAdminDiscordIds } from "@/lib/admin-rules";
  * depuis `DISCORD_BOT_GUILD_ID` tant qu'il est vide (décision : la communauté
  * par défaut garde sa configuration d'environnement au début).
  *
- * Seuls les utilisateurs sans AUCUN Membership (comptes historiques) sont
- * rattachés à la communauté par défaut.
- *
- * Rôles des nouveaux Memberships : le premier `ADMIN_DISCORD_IDS` présent en
- * base devient OWNER s'il n'y a pas déjà un OWNER actif (un seul, garanti
- * ici et non en base) ; les autres admins (variable ou `User.role`) → ADMIN ;
- * le reste → MEMBER.
+ * Aucun Membership n'est créé ici (connexion fermée par défaut, S0) : seule une
+ * connexion avec instantané Discord complet (`syncOAuthMemberships`, appelé par
+ * `src/auth.ts`) crée une appartenance, dont la communauté par défaut si le
+ * serveur du compte correspond. Les comptes historiques sans appartenance
+ * reviennent donc par leur prochaine connexion.
  */
 
 export const DEFAULT_COMMUNITY_SLUG = "default";
@@ -75,43 +72,9 @@ export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityRe
   const created = justCreated === true;
   const communityId = community.id;
 
-  // After rollout, a zero-membership account is not a legacy default member.
-  // Only a fresh complete OAuth guild snapshot may grant that membership.
-  if (
-    process.env.AUTH_REQUIRE_GUILD_MEMBER === "true" ||
-    process.env.COMMUNITY_ISOLATION_ENABLED === "true" ||
-    process.env.COMMUNITY_PICKER_ENABLED === "true"
-  ) {
-    return { communityId, created, membershipsCreated: 0 };
-  }
-
-  // Seuls les utilisateurs SANS AUCUN Membership (comptes historiques) sont
-  // rattachés à la communauté par défaut : un compte confirmé uniquement sur
-  // un autre serveur (porte de connexion multi-serveurs) n'y entre pas.
-  const usersWithout = await prisma.user.findMany({
-    where: { memberships: { none: {} } },
-    select: { id: true, discordId: true, role: true },
-  });
-  if (usersWithout.length === 0) return { communityId, created, membershipsCreated: 0 };
-
-  const adminIds = parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS);
-  const hasActiveOwner =
-    (await prisma.membership.count({ where: { communityId, role: "OWNER", status: "ACTIVE" } })) > 0;
-  const ownerDiscordId = hasActiveOwner
-    ? null
-    : ([...adminIds].find((id) => usersWithout.some((u) => u.discordId === id)) ?? null);
-
-  const roleOf = (u: (typeof usersWithout)[number]): CommunityRole => {
-    if (u.discordId === ownerDiscordId) return "OWNER";
-    if (adminIds.has(u.discordId) || u.role === "ADMIN") return "ADMIN";
-    return "MEMBER";
-  };
-
-  const { count } = await prisma.membership.createMany({
-    data: usersWithout.map((u) => ({ communityId, userId: u.id, role: roleOf(u) })),
-    skipDuplicates: true,
-  });
-  return { communityId, created, membershipsCreated: count };
+  // Aucun rattachement automatique : seule une connexion avec instantané
+  // Discord complet (`syncOAuthMemberships`, src/auth.ts) crée une appartenance.
+  return { communityId, created, membershipsCreated: 0 };
 }
 
 let cachedDefaultCommunityId: string | null = null;
