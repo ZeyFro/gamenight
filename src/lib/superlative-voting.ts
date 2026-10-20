@@ -3,7 +3,7 @@ import { cronCommunityScope } from "@/lib/community-isolation";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
-import { awardXp } from "@/lib/xp-actions";
+import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { announceSessionAwards } from "@/lib/discord-session-awards";
 import { checkSuperlativesWonBadges } from "@/lib/badges";
 import { resolvePronostics } from "@/lib/pronostics";
@@ -170,17 +170,22 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   // purge de la soirée.
   const decidedGameName = session.decidedGame.name;
   const sessionDate = session.date;
-  await scopedDb.superlativeAward.createMany({
-    data: awards.map((a) => ({
-      ...withCommunity(session.communityId),
-      sessionId,
-      categoryId: a.categoryId,
-      winnerUserId: a.winnerUserId,
-      voteCount: a.voteCount,
-      gameName: decidedGameName,
-      sessionDate,
-    })),
-  });
+  try {
+    await scopedDb.superlativeAward.createMany({
+      data: awards.map((a) => ({
+        ...withCommunity(session.communityId),
+        sessionId,
+        categoryId: a.categoryId,
+        winnerUserId: a.winnerUserId,
+        voteCount: a.voteCount,
+        gameName: decidedGameName,
+        sessionDate,
+      })),
+    });
+  } catch (error) {
+    if (!isUniqueConstraintViolation(error)) throw error;
+    return;
+  }
 
   for (const award of awards) {
     const category = categories.find((c) => c.id === award.categoryId);
