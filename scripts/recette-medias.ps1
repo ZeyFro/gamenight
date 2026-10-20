@@ -1,3 +1,4 @@
+param([string]$Script = 'scripts/recette-medias.mjs')
 $ErrorActionPreference = 'Stop'
 # Exiger un créneau PostgreSQL/Next exclusif avant ce lanceur; aucune migration ici.
 if ($env:DOCKER_HOST) { throw 'DOCKER_HOST distant interdit.' }
@@ -14,7 +15,7 @@ $previousPlaywright = $env:PLAYWRIGHT_MODULE_PATH
 try {
   $env:TEST_DATABASE_URL = $recipeDatabase
   $env:PLAYWRIGHT_MODULE_PATH = $recipeTools
-  node scripts/recette-medias.mjs
+  node $Script
   if ($LASTEXITCODE -ne 0) { throw 'Recette médias échouée.' }
 } finally {
   $env:TEST_DATABASE_URL = $previousDatabase
