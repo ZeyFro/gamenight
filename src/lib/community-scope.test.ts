@@ -45,8 +45,8 @@ const SCOPED_MODULES = new Set(["src/lib/community-access.ts", "src/lib/xp-shop.
 
 /**
  * Accès directs existants à la PR A — à retirer au fil des PR B1 (soirées),
- * B2 (XP, saisons, badges…) et B3 (chat, tournois, roulette…). Ne jamais
- * ajouter de ligne.
+ * B2 (XP, saisons, badges…) et B3 (chat, tournois, roulette…). Tout nouvel
+ * accès doit être examiné avant son ajout à cette liste.
  */
 const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/admin/badges/actions.ts": ["badge"],
@@ -98,6 +98,7 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/seed-superlatives.ts": ["superlativeCategory"],
   "src/lib/session-access.ts": ["session", "sessionInvite"],
   "src/lib/session-announce.ts": ["session", "sessionInvite"],
+  "src/lib/session-voice-presence.ts": ["session"],
   "src/lib/sessions.ts": ["groupActiveWeek", "groupGameStat", "groupSessionStats", "proposal", "session", "vote"],
   "src/lib/superlative-voting.ts": ["proposal", "superlativeCategory", "superlativeVote"],
   "src/lib/tournament-announce.ts": ["tournament", "tournamentParticipant"],

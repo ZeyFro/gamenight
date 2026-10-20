@@ -58,6 +58,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - `WEB_PUSH_ENABLED` + `WEB_PUSH_VAPID_SUBJECT` / `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_PRIVATE_KEY` : Web Push uniquement après opt-in par appareil ; toutes les valeurs sont requises et le drapeau doit valoir `true`. Garder la clé privée dans l'environnement serveur, jamais dans le dépôt; migration `web_push_subscriptions`.
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
 - `SESSION_VIDEO_ENABLED` : clips MP4 privés dans la galerie des soirées ; OFF par défaut, limite commune de 4 Mo et 8 médias, exige aussi `SESSION_MEDIA_BLOB_TOKEN` et l’activation de la galerie par communauté ; durée et codecs non garantis
+- `VOICE_PRESENCE_ENABLED` : intervalles vocaux associés à une soirée configurée ; OFF par défaut, exige guild/salons/session explicites et décision de consentement/rétention avant toute collecte ; migration `session_voice_presence` incluse mais non appliquée
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
 - `GAME_PREPARATION_TIME_ENABLED` : affiche et autorise la saisie d'une durée estimée (1–10 080 minutes) sourcée sur la fiche jeu ; OFF par défaut
