@@ -46,3 +46,25 @@ Aucun défaut applicatif démontré : aucun correctif de l'application n'a été
 - Les captures mobiles vérifient le débordement, pas l'esthétique.
 - Le transport Blob simulé et l'absence d'appel externe ne valident pas Vercel Blob réel, ni Discord, ni Web Push, ni OAuth Discord : aucune de ces intégrations n'a été appelée (simulation != validation réelle).
 - Next en mode `dev` (webpack), pas le build de production.
+
+## Compléments (`recette-complements.mjs`) : 21/21 étapes
+
+Deux serveurs Next successifs (jamais en parallèle) : phase A `VOTE_VETO_ENABLED` + `CALENDAR_SUBSCRIPTIONS_ENABLED` allumés, phase B tous flags éteints. Lancement : `... recette-medias.ps1 -Script scripts/recette-complements.mjs`.
+
+| Domaine | Vérifié |
+| --- | --- |
+| Roulette asynchrone tirée | résultat et bouton veto pour un participant ; invité non participant sans bouton ; autre communauté sans le jeu |
+| Veto de roulette | relance sans le jeu vetoé (roulette, soirée et proposition à jour), un seul veto par personne, échec explicite « aucun autre jeu à tirer » quand tous les jeux sont vetoés |
+| Veto flag OFF | aucun bouton sur la soirée de vote (jeux toujours JOUABLES) ni sur la roulette, résultat inchangé, 0 veto en base |
+| Abonnement calendrier | création d'un lien privé, flux `.ics` sans cookie (`no-store`, `noindex`), soirée d'une autre communauté absente, renouvellement invalide l'ancien lien, révocation, lien malformé 404, jeton stocké haché ; flag OFF : section absente et ancien flux 404 |
+| ADMIN distinct d'OWNER | l'ADMIN voit le formulaire serveur, crée une date, retire la date d'un autre ; le MEMBER ne voit pas « Retirer » sur la date d'un autre mais retire son propre anniversaire |
+| POST forgé | rejeu de la vraie requête `createCommunityDateAction` par un MEMBER : aucune date créée (témoin positif OWNER : créée) ; rejeu de la suppression avec l'identifiant d'une date d'autrui par un MEMBER : date conservée (témoin positif ADMIN : supprimée) |
+| Notifications | 0 livraison envoyée (exécuteur éteint, HTTP externe bloqué) ; des livraisons restent en file (veto de roulette) et n'ont pas été traitées |
+
+Défaut démontré et corrigé (commit séparé) : sur `/roulette/[id]` en mobile 390x844, le halo « radar » de la roue faisait défiler la page horizontalement pendant la rotation (`scrollWidth` 391 à 449 pour 390). Correctif : `overflow-x-clip` sur le conteneur de la page ; la recette passe ensuite à 390 <= 390.
+
+Limites ajoutées :
+- En mode dev, StrictMode double l'effet de `RouletteResultAnimation` (garde `started`) : la roue reste sur « La roue tourne… » et le résultat animé n'apparaît pas. Probablement propre au mode dev (en production l'effet ne s'exécute qu'une fois) mais NON vérifié sur un build de production ; hors périmètre, non corrigé.
+- Le même halo existe dans `RouletteWizard` (roulette instantanée) : non testé en mobile.
+- Veto de roulette : `ROULETTE_PLAYER_FILTER_ENABLED` non testé ; l'édition d'annonce Discord n'est pas vérifiée au-delà de la mise en file.
+- Rejeu forgé du veto de soirée avec le flag OFF non testé (identifiant d'action non conservé entre deux serveurs) ; seul l'état de l'interface et de la base est vérifié.
