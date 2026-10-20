@@ -43,7 +43,7 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
             const selected = sameUtcDate(day.date, selectedDate);
             const label = DAY.format(day.date);
             return <div key={day.date.toISOString()} className={`gn-calendar-day ${selected ? "selected" : ""} ${day.date.getUTCMonth() !== selectedDate.getUTCMonth() ? "outside" : ""}`}>
-              <Link prefetch={false} scroll={false} href={href(day.date)} className="gn-calendar-date" aria-label={`Afficher ${label}`} aria-current={sameUtcDate(day.date, today) ? "date" : undefined} aria-pressed={selected}>{day.date.getUTCDate()}</Link>
+              <Link prefetch={false} scroll={false} href={href(day.date)} className="gn-calendar-date" aria-label={`Afficher ${label}${selected ? ", date sélectionnée" : ""}`} aria-current={sameUtcDate(day.date, today) ? "date" : undefined}>{day.date.getUTCDate()}</Link>
               <div className="gn-calendar-chips">
                 {day.sessions.slice(0, 2).map((session) => <Link prefetch={false} href={`/sessions/${session.id}`} className="gn-calendar-event" key={session.id}><b>{session.decidedGameName ?? `Soirée · ${SESSION_STATUS_LABELS[session.status].label}`}</b><span>{TIME.format(session.date)}</span></Link>)}
                 {day.roulettes?.slice(0, 1).map((roulette) => <Link prefetch={false} href={`/roulette/${roulette.id}`} className="gn-calendar-event roulette" key={roulette.id}><b>Roulette</b><span>{TIME.format(roulette.scheduledAt)}</span></Link>)}

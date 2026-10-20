@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 /**
  * Config minimale (Sprint 1, fiabilisation — chantier "Tests automatisés").
@@ -27,6 +29,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(dirname, "./src"),
+      "server-only": require.resolve("next/dist/compiled/server-only/empty"),
     },
   },
   test: {

@@ -7,7 +7,7 @@ vi.mock("@/lib/prisma", async () => {
   if (TEST_DATABASE_URL) {
     const destination = new URL(TEST_DATABASE_URL);
     if (!["postgres:", "postgresql:"].includes(destination.protocol) ||
-      destination.hostname !== "127.0.0.1" || destination.port !== "55439" ||
+      destination.hostname !== "127.0.0.1" || !["55439", "55443"].includes(destination.port) ||
       destination.pathname !== "/gamenight_test") {
       throw new Error("Finalisation MVP : PostgreSQL de test dédié 127.0.0.1:55439/gamenight_test uniquement.");
     }
@@ -18,6 +18,7 @@ vi.mock("@/lib/prisma", async () => {
 // Seul le transport Discord est simulé : votes, awards, XP, stats et notifications restent réels.
 vi.mock("@/lib/discord-session-awards", () => ({ announceSessionAwards: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/discord-level-up", () => ({ announceLevelUp: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/web-push-delivery", () => ({ sendUserWebPush: vi.fn().mockResolvedValue(undefined) }));
 
 if (!TEST_DATABASE_URL) console.warn("[superlative-voting] PostgreSQL local absent : finalisation MVP SKIPPÉE.");
 
@@ -98,6 +99,24 @@ describe.skipIf(!TEST_DATABASE_URL)("finalisation réelle des récompenses multi
       .toEqual(players.map(userId => ({ userId, xpTotal: (userId === "alice" ? 13 : 0) + (userId === funWinner ? 29 : 0) })));
     expect(await db.notification.count({ where: { communityId, relatedSessionId: sessionId, type: "SUPERLATIVE_AWARD" } })).toBe(2);
     expect(await db.xpEvent.count({ where: { communityId: "mvp-default" } })).toBe(0);
+  });
+
+  it("finalise une seule fois quand deux lectures déclenchent la clôture simultanément", async () => {
+    await db.superlativeVote.createMany({ data: ["charlie", "dana"].flatMap(voterUserId => [
+      { sessionId, categoryId: "mvp-category", voterUserId, votedForUserId: "alice" },
+      { sessionId, categoryId: "fun-category", voterUserId, votedForUserId: "bob" },
+    ]) });
+
+    await expect(Promise.all([
+      voting.forceFinalizeSuperlativeVoting(sessionId),
+      voting.forceFinalizeSuperlativeVoting(sessionId),
+    ])).resolves.toBeDefined();
+
+    expect(await db.superlativeAward.count({ where: { sessionId } })).toBe(2);
+    expect(await db.xpEvent.count({ where: { communityId, reason: "SUPERLATIVE_AWARD" } })).toBe(2);
+    expect(await db.notification.count({ where: { communityId, relatedSessionId: sessionId, type: "SUPERLATIVE_AWARD" } })).toBe(2);
+    expect(await db.session.findUniqueOrThrow({ where: { id: sessionId }, select: { superlativeVotingClosed: true } }))
+      .toEqual({ superlativeVotingClosed: true });
   });
 
   it("départage les ex-aequo sans créer plusieurs awards ni crédits pour une catégorie", async () => {
