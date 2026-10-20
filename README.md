@@ -12861,6 +12861,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | Variable | Rôle | Défaut | Lue dans |
 | :-- | :-- | :-- | :-- |
 | `NOTIFICATION_EXECUTOR_ENABLED` | Sans elle l'executor ne réclame ni n'envoie rien (`{enabled:false, processed:0}`) | éteint | `src/app/api/cron/notification-executor/route.ts:95` |
+| `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED` | Autorise le cron GamerPower à ajouter les offres au salon `FREE_GAMES` ; exige aussi le feed, les salons communauté, l'executor et `freeGamesEnabled` | éteint | `src/lib/free-game-discord.ts` |
 | `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` | Annonces de soirées via le bot (fil dédié) ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_SESSION_CHANNEL_ID`, sinon repli webhook | éteint | `src/lib/discord-bot-config.ts:46` |
 | `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` | Annonces de tournois via le bot ; exige aussi `DISCORD_BOT_GUILD_ID` + `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | éteint | `src/lib/discord-bot-config.ts:73`, `src/app/tournois/actions.ts:110` |
 | `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` | Invitation « Jouer maintenant » par MP (aucun salon requis) | éteint | `src/lib/discord-bot-config.ts:86` |
@@ -12940,6 +12941,7 @@ répondent donc `202` et travaillent dans `after()`.
 | `/api/cron/close-sessions` | GET | non déclaré (défaut 300 s) | synchrone | toutes les 15 min | `cron:close-sessions` (erreurs par tâche/session) |
 | `/api/cron/reminders` | GET | 60 s | synchrone (verrou `CronLock`) | toutes les 15 min | `cron:reminders` (`Handler appelé`, `already_running`, échecs d'enqueue) |
 | `/api/cron/notification-executor` | GET | 60 s | synchrone (batch ≤ 25 livraisons / 50 s) | toutes les 15 min (filet : l'envoi courant part par événement, `after()`) | `cron:notification-executor` (`Batch terminé.` + résumé) ; `{enabled:false}` si éteint |
+| `/api/cron/free-game-discord` | GET | 60 s | synchrone (création idempotente d'intentions d'envoi) | à configurer toutes les 15 min, flags OFF | `cron:free-game-discord` (`Passage terminé.`) ; `{enabled:false}` si éteint |
 | `/api/cron/discord-thread-cleanup` | GET | 60 s | synchrone | toutes les 15 min | `cron:discord-thread-cleanup` (`Passage terminé.`, `archiveFailed`) |
 | `/api/cron/retention-cleanup` | GET | 60 s | synchrone (verrou `CronLock`) | aucun job cron-job.org configuré à ce jour | `cron:retention-cleanup` (`Passage terminé.`) |
 | `/api/cron/steam-library-sync` | GET | 45 s (budget interne 25 s) | synchrone | toutes les 15 min | `cron:steam-library-sync` |
