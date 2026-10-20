@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 const url = process.env.TEST_DATABASE_URL;
 const mocks = vi.hoisted(() => ({ requireAdmin: vi.fn() }));
 vi.mock("@/lib/admin", () => ({ requireAdmin: mocks.requireAdmin }));
