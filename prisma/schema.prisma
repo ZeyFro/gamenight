@@ -2690,6 +2690,7 @@ enum CommunityChannelCategory {
   SESSION
   TOURNAMENT
   VOICE
+  FREE_GAMES
 }
 
 model Community {

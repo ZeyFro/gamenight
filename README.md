@@ -2563,6 +2563,12 @@ Le test de rétention (`retention.integration.test.ts`) et l'ordre des clés son
 
 Branchements : création de soirée (`createSession`), soirée issue d'une roulette, création de tournoi (destination figée sur le tournoi comme avant), résolveurs d'envoi soirées et tournois (communauté relue au moment de l'envoi), page des invitations. Les lignes de `CommunityChannelConfig` s'écrivent depuis l'onglet « Communautés » de `/admin` (voir « Administration des communautés », drapeau `COMMUNITY_ADMIN_ENABLED`) ; le salon doit appartenir au serveur de la communauté, vérifié à l'enregistrement et à l'envoi.
 
+### Publication automatique des jeux gratuits sur Discord
+
+Le cron `/api/cron/free-game-discord` ajoute les offres GamerPower actives à l'outbox, avec une intention unique par communauté et offre. Il ne publie rien si l'un de ces réglages est inactif : `FREE_GAME_FEED_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED` ou `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED`; la communauté doit aussi avoir `freeGamesEnabled=true` et un salon `FREE_GAMES` enregistré dans `/admin`.
+
+Les deux routes cron doivent être planifiées séparément (collecte des offres toutes les 15 minutes, exécuteur selon sa fréquence habituelle) avec `CRON_SECRET`. Le bot a besoin de `VIEW_CHANNEL` et `SEND_MESSAGES` dans le salon; `EMBED_LINKS` permet l'affichage enrichi. La route ne vérifie pas les droits Discord en prévol : l'API peut confirmer un refus lors d'un envoi. Aucun réglage ni planificateur Production n'est activé par ce code.
+
 ### Isolation des données par communauté (PR4)
 
 Éteinte par défaut : `COMMUNITY_ISOLATION_ENABLED` doit valoir exactement `true`. Allumée, l'utilisateur ne voit que les données des communautés `ACTIVE` où il a un `Membership` `ACTIVE` (relu en base à chaque requête) ; les anciens `communityId = null` désignent `default`. Fail-closed : sans aucune communauté, rien n'est visible. Éteinte, le client collectif reste transparent ; la progression PR B utilise néanmoins explicitement `default` pour les vues et la communauté du parent pour les récompenses dérivées.
