@@ -112,6 +112,7 @@ async function fetchStoreOffers(platform: StorePlatform): Promise<{ offers: Auto
     .map((offer) => String(offer.id));
   const resolved = await Promise.all(candidates.map(async (candidate) => {
     const destination = await resolveOfficialStoreUrl(candidate.open_giveaway_url);
+    if (destination?.store !== (platform === "steam" ? "STEAM" : "EPIC")) return null;
     return destination ? {
       id: `gamerpower-${destination.store.toLowerCase()}-${candidate.id}`,
       store: destination.store,
