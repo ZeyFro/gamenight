@@ -146,7 +146,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       socket = null;
       clearHeartbeat();
       if (stopped) return;
-      if ([4004, 4013, 4014].includes(event.code ?? 0)) {
+      if ([4004, 4010, 4011, 4012, 4013, 4014].includes(event.code ?? 0)) {
         stopped = true;
         if (active.size) options.onGap("fatal_close");
         active.clear();

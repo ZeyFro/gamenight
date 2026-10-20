@@ -120,4 +120,20 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     removeHandlers();
     expect(listeners.size).toBe(0);
   });
+
+  it("stops retrying after a fatal Gateway close code", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeSocket[] = [];
+    const onFatal = vi.fn();
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl: async () => "wss://gateway.discord.gg",
+      onInterval: vi.fn(), onGap: vi.fn(), onFatal,
+    });
+    await collector.start();
+    sockets[0].close(4014);
+    expect(onFatal).toHaveBeenCalledWith(4014);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+  });
 });
