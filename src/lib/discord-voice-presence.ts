@@ -1,6 +1,6 @@
-export type VoiceVisit = { channelId: string; startedAt: number };
+export type VoiceVisit = { channelId: string; startedAt: number; partial?: true };
 export type VoiceStateEvent = { memberKey: string; channelId: string | null; at: number };
-export type VoiceInterval = { memberKey: string; channelId: string; startedAt: number; endedAt: number };
+export type VoiceInterval = { memberKey: string; channelId: string; startedAt: number; endedAt: number; partial?: true };
 
 // shortcut: active visits exist only in memory; choose durable recovery after scope and retention are approved.
 export function applyVoiceState(active: ReadonlyMap<string, VoiceVisit>, event: VoiceStateEvent): {
@@ -17,6 +17,6 @@ export function applyVoiceState(active: ReadonlyMap<string, VoiceVisit>, event: 
   else next.delete(event.memberKey);
   return {
     active: next,
-    closed: previous ? { memberKey: event.memberKey, channelId: previous.channelId, startedAt: previous.startedAt, endedAt: event.at } : null,
+    closed: previous ? { memberKey: event.memberKey, channelId: previous.channelId, startedAt: previous.startedAt, endedAt: event.at, ...(previous.partial && { partial: true }) } : null,
   };
 }
