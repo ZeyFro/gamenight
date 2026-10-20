@@ -48,7 +48,8 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     render(<EventCalendar days={days} selectedDate={selectedDate} today={selectedDate} mode="individuel" pote="ami" view="mois" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
     expect(screen.getByRole("link", { name: "Semaine" }).getAttribute("href")).toBe("/calendrier?date=2026-10-08&mode=individuel&pote=ami&vue=semaine");
     expect(screen.getByRole("link", { name: "Mois suivant" }).getAttribute("href")).toContain("date=2026-11-01&mode=individuel&pote=ami");
-    expect(screen.getByRole("link", { name: /Afficher jeudi 8 octobre/ }).getAttribute("aria-pressed")).toBe("true");
+    const selectedDateLink = screen.getByRole("link", { name: "Afficher jeudi 8 octobre, date sélectionnée" });
+    expect(selectedDateLink.hasAttribute("aria-pressed")).toBe(false);
   });
   it("affiche sept jours lundi-dimanche et les flèches de semaine", () => {
     render(<EventCalendar days={days} selectedDate={selectedDate} today={selectedDate} mode="collectif" potes="a,b" view="semaine" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
