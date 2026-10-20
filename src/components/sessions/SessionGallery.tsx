@@ -47,7 +47,7 @@ export function SessionGallery({
         <p className="text-sm text-muted">
           {videosEnabled
             ? "Photos JPEG, PNG, GIF ou WebP et clips MP4 : 4 Mo maximum par média, 8 médias par soirée. Seuls les invités actifs et le créateur peuvent les voir."
-            : "Photos JPEG, PNG, GIF ou WebP : 4 Mo maximum par image, 8 images par soirée. Seuls les invités actifs et le créateur peuvent les voir. Les clips vidéo ne sont pas encore pris en charge."}
+            : "Photos JPEG, PNG, GIF ou WebP : 4 Mo maximum par image, 8 images par soirée. Seuls les invités actifs et le créateur peuvent les voir. Les clips vidéo sont désactivés pour le moment."}
         </p>
         {resultText && <p role="status" className="text-sm text-muted">{resultText}</p>}
         {!storageReady && <p role="status" className="text-sm text-muted">Le stockage Blob privé n’est pas configuré.</p>}

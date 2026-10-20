@@ -34,7 +34,7 @@ describe("session gallery video clips", () => {
     render(<SessionGallery sessionId="session-1" canManage images={media} storageReady videosEnabled={false} />);
 
     expect(document.querySelector("video")).toBeNull();
-    expect(screen.getByText(/Les clips vidéo ne sont pas encore pris en charge/)).toBeTruthy();
+    expect(screen.getByText(/Les clips vidéo sont désactivés pour le moment/)).toBeTruthy();
     expect((screen.getByLabelText("Ajouter une photo") as HTMLInputElement).accept).not.toContain("video/mp4");
   });
 
