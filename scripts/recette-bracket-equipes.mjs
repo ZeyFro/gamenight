@@ -1,7 +1,7 @@
 // Recette locale du rendu du bracket par équipes, sans appel Discord.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdirSync, openSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
@@ -14,6 +14,11 @@ assert.equal(database.hostname, "127.0.0.1");
 assert.equal(database.port, "55441");
 assert.equal(database.pathname, "/gamenight_bracket_recipe");
 assert.ok(process.env.PLAYWRIGHT_MODULE_PATH, "playwright-core existant requis");
+assert.ok(!process.env.DOCKER_HOST, "DOCKER_HOST distant interdit");
+const container = "gamenight-bracket-recipe-pg";
+const containerAddresses = execFileSync("docker", ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", container], { encoding: "utf8" }).trim().split(/\s+/).filter(Boolean);
+assert.ok(containerAddresses.length > 0, "Conteneur PostgreSQL local dédié introuvable");
+assert.deepEqual(execFileSync("docker", ["port", container, "5432/tcp"], { encoding: "utf8" }).trim().split(/\s+/), ["127.0.0.1:55441"]);
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE_PATH);
 const db = new PrismaClient({ datasourceUrl: database.href });
 const origin = "http://127.0.0.1:3103";
@@ -26,7 +31,7 @@ try {
   const [target] = await db.$queryRaw`SELECT current_database() AS name, inet_server_addr()::text AS address, inet_server_port() AS port`;
   assert.equal(target.name, "gamenight_bracket_recipe");
   assert.equal(target.port, 5432);
-  assert.ok(target.address, "Adresse du serveur PostgreSQL indisponible");
+  assert.ok(containerAddresses.includes(target.address), "La base ne correspond pas à l'adresse du conteneur PostgreSQL local dédié");
   await assert.rejects(fetch(origin), "Port 3103 déjà occupé");
 
   const community = await db.community.create({ data: { slug: run, name: run, status: "ACTIVE" } });

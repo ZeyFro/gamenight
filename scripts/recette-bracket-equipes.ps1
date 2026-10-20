@@ -1,8 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $containerName = 'gamenight-bracket-recipe-pg'
 $databaseName = 'gamenight_bracket_recipe'
-$portMapping = docker port $containerName '5432/tcp'
-if ($LASTEXITCODE -ne 0 -or $portMapping -notcontains '127.0.0.1:55441') { throw 'La base locale dédiée doit écouter uniquement sur 127.0.0.1:55441.' }
+if ($env:DOCKER_HOST) { throw 'DOCKER_HOST distant interdit pour cette recette.' }
+$dockerHost = docker context inspect --format '{{.Endpoints.docker.Host}}'
+$localDockerHost = $dockerHost.StartsWith('npipe://') -or $dockerHost.StartsWith('unix://') -or $dockerHost.StartsWith('\\.\pipe\')
+if ($LASTEXITCODE -ne 0 -or -not $localDockerHost) { throw 'Le contexte Docker doit être local.' }
+$portMappings = @(docker port $containerName '5432/tcp')
+if ($LASTEXITCODE -ne 0 -or $portMappings.Count -ne 1 -or $portMappings[0] -ne '127.0.0.1:55441') { throw 'La base locale dédiée doit écouter uniquement sur 127.0.0.1:55441.' }
 if ((docker inspect --format '{{.State.Running}}' $containerName) -ne 'true') { throw 'Le conteneur PostgreSQL local dédié doit déjà fonctionner.' }
 
 $envRows = docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' $containerName
@@ -18,7 +22,7 @@ try {
   $env:DATABASE_URL = $databaseUrl
   $env:TEST_DATABASE_URL = $databaseUrl
   $env:PLAYWRIGHT_MODULE_PATH = $playwrightModule
-  node --input-type=module -e 'import { PrismaClient } from "@prisma/client"; const db = new PrismaClient({ datasourceUrl: process.env.TEST_DATABASE_URL }); try { const [row] = await db.$queryRawUnsafe("SELECT current_database() AS name, inet_server_addr()::text AS address, inet_server_port() AS port"); if (row.name !== "gamenight_bracket_recipe" || !row.address || row.port !== 5432) throw new Error("Cible PostgreSQL locale inattendue"); console.log(`Cible locale vérifiée: ${row.name}, port ${row.port}`); } finally { await db.$disconnect(); }'
+  node --input-type=module -e 'import { execFileSync } from "node:child_process"; import { PrismaClient } from "@prisma/client"; if (process.env.DOCKER_HOST) throw new Error("DOCKER_HOST distant interdit"); const host = execFileSync("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], { encoding: "utf8" }).trim(); if (!(host.startsWith("npipe://") || host.startsWith("unix://") || host.startsWith("\\\\.\\pipe\\"))) throw new Error("Contexte Docker distant interdit"); const mappings = execFileSync("docker", ["port", "gamenight-bracket-recipe-pg", "5432/tcp"], { encoding: "utf8" }).trim().split(/\s+/); if (mappings.length !== 1 || mappings[0] !== "127.0.0.1:55441") throw new Error("Binding PostgreSQL local inattendu"); const addresses = execFileSync("docker", ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "gamenight-bracket-recipe-pg"], { encoding: "utf8" }).trim().split(/\s+/).filter(Boolean); const db = new PrismaClient({ datasourceUrl: process.env.TEST_DATABASE_URL }); try { const [row] = await db.$queryRawUnsafe("SELECT current_database() AS name, inet_server_addr()::text AS address, inet_server_port() AS port"); if (row.name !== "gamenight_bracket_recipe" || row.port !== 5432 || !addresses.includes(row.address)) throw new Error("Cible PostgreSQL locale inattendue"); console.log(`Cible locale vérifiée: ${row.name}, port ${row.port}`); } finally { await db.$disconnect(); }'
   if ($LASTEXITCODE -ne 0) { throw 'Échec de vérification de la base PostgreSQL.' }
   npx prisma migrate deploy
   if ($LASTEXITCODE -ne 0) { throw 'Échec des migrations sur la base locale dédiée.' }
