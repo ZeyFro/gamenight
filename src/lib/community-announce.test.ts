@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolveInput } from "@/lib/notification-executor";
 
-const { community, defaultId, postDiscord, createEvent, enqueue, destination, freeGamesDestination, transaction, recipients } = vi.hoisted(() => ({
+const { community, defaultId, postDiscord, createEvent, enqueue, destination, freeGamesDestination, transaction, recipients, offerStatus } = vi.hoisted(() => ({
   community: vi.fn(), defaultId: vi.fn(), postDiscord: vi.fn(), createEvent: vi.fn(), enqueue: vi.fn(),
   destination: vi.fn(), freeGamesDestination: vi.fn(), transaction: vi.fn(),
-  recipients: vi.fn(),
+  recipients: vi.fn(), offerStatus: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { community: { findUnique: community }, user: { findMany: recipients }, $transaction: transaction } }));
 vi.mock("@/lib/default-community", () => ({ DEFAULT_COMMUNITY_SLUG: "default", getDefaultCommunityId: defaultId }));
@@ -15,6 +15,7 @@ vi.mock("@/lib/community-channels", () => ({
 }));
 vi.mock("@/lib/discord", async () => ({ ...(await vi.importActual<typeof import("./discord")>("./discord")), postToDiscord: postDiscord }));
 vi.mock("@/lib/notification-delivery", () => ({ createNotificationEvent: createEvent, enqueueDelivery: enqueue }));
+vi.mock("@/lib/gamerpower-free-games", () => ({ getAutomaticFreeGameOfferStatus: offerStatus }));
 import { communitySystemAnnounceResolver, postToCommunity } from "./community-announce";
 
 const embed = { title: "Badge", color: 123 };
@@ -39,6 +40,7 @@ beforeEach(() => {
   transaction.mockImplementation(async (callback) => callback({}));
   createEvent.mockResolvedValue({ id: "event" });
   enqueue.mockResolvedValue({});
+  offerStatus.mockResolvedValue("active");
   recipients.mockResolvedValue([{ discordId: "123" }]);
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Aucun réseau dans ces tests"); }));
 });
@@ -93,6 +95,7 @@ describe("annonces système : file communautaire sans réseau depuis l'action", 
 describe("résolveur : droit et destination relus à la livraison", () => {
   it("offres gratuites : exige les flags, la communauté active et son salon dédié", async () => {
     const request = input();
+    request.event.sourceId = "gamerpower-steam-42";
     request.event.payload = { channelCategory: "FREE_GAMES", embed, content: "Jeu gratuit : https://store.steampowered.com/app/620/" };
     community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b", freeGamesEnabled: true });
     vi.stubEnv("DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED", "true");
@@ -100,8 +103,33 @@ describe("résolveur : droit et destination relus à la livraison", () => {
       eligible: true, action: { kind: "send_channel_message_verified", channelId: "free-game-channel", guildId: "guild-b",
         message: { allowedMentions: { parse: [] } } },
     });
+    expect(offerStatus).toHaveBeenCalledWith("gamerpower-steam-42");
     vi.stubEnv("FREE_GAME_FEED_ENABLED", "false");
     await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "expired" });
+  });
+
+  it("ne livre pas une offre disparue de la dernière réponse active de la source", async () => {
+    const request = input();
+    request.event.sourceId = "gamerpower-steam-42";
+    request.event.payload = { channelCategory: "FREE_GAMES", embed, content: "Jeu gratuit" };
+    community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b", freeGamesEnabled: true });
+    vi.stubEnv("DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED", "true");
+    offerStatus.mockResolvedValue("expired");
+
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "expired" });
+    expect(freeGamesDestination).not.toHaveBeenCalled();
+  });
+
+  it("diffère une offre si sa source est momentanément indisponible", async () => {
+    const request = input();
+    request.event.sourceId = "gamerpower-steam-42";
+    request.event.payload = { channelCategory: "FREE_GAMES", embed, content: "Jeu gratuit" };
+    community.mockResolvedValue({ slug: "b", status: "ACTIVE", discordGuildId: "guild-b", freeGamesEnabled: true });
+    vi.stubEnv("DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED", "true");
+    offerStatus.mockResolvedValue("unavailable");
+
+    await expect(communitySystemAnnounceResolver.resolve(request)).resolves.toEqual({ eligible: false, reason: "configuration_unavailable" });
+    expect(freeGamesDestination).not.toHaveBeenCalled();
   });
 
   it("outbox webhook : default seulement, transport conservé après activation du bot", async () => {

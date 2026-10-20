@@ -96,6 +96,12 @@ async function resolveCommunityReward(
     });
     if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
     if (category === "FREE_GAMES" && (!community.freeGamesEnabled || process.env.FREE_GAME_FEED_ENABLED !== "true")) return { eligible: false, reason: "expired" };
+    if (category === "FREE_GAMES") {
+      const { getAutomaticFreeGameOfferStatus } = await import("@/lib/gamerpower-free-games");
+      const offerStatus = await getAutomaticFreeGameOfferStatus(event.sourceId);
+      if (offerStatus === "expired") return { eligible: false, reason: "expired" };
+      if (offerStatus === "unavailable") return { eligible: false, reason: "configuration_unavailable" };
+    }
     if (!isCommunityChannelsEnabled() && community.slug !== DEFAULT_COMMUNITY_SLUG) return { eligible: false, reason: "configuration_unavailable" };
     const recipientDiscordIds = payload.data.recipientDiscordIds ?? [];
     if (!(await recipientsAreActive(event.communityId, recipientDiscordIds))) return { eligible: false, reason: "expired" };
