@@ -9,7 +9,6 @@ import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-del
 import type { DeliveryResolver } from "@/lib/notification-executor";
 import { logger } from "@/lib/logger";
 import { isRewardWebhookConfigured, NO_MENTIONS } from "@/lib/discord-rest";
-import { getAutomaticFreeGameOfferStatus } from "@/lib/gamerpower-free-games";
 
 /** Annonces système : la destination dépend du serveur, jamais du lecteur ni d'un repli interserveurs. */
 export async function postToCommunity(
@@ -98,6 +97,7 @@ async function resolveCommunityReward(
     if (community?.status !== "ACTIVE") return { eligible: false, reason: "expired" };
     if (category === "FREE_GAMES" && (!community.freeGamesEnabled || process.env.FREE_GAME_FEED_ENABLED !== "true")) return { eligible: false, reason: "expired" };
     if (category === "FREE_GAMES") {
+      const { getAutomaticFreeGameOfferStatus } = await import("@/lib/gamerpower-free-games");
       const offerStatus = await getAutomaticFreeGameOfferStatus(event.sourceId);
       if (offerStatus === "expired") return { eligible: false, reason: "expired" };
       if (offerStatus === "unavailable") return { eligible: false, reason: "configuration_unavailable" };
