@@ -71,7 +71,8 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
         {selectedDay?.communityDates.map((event) => event.href
           ? event.href.startsWith("https://")
             ? <a key={event.id} href={event.href} target="_blank" rel="noopener noreferrer" className="gn-agenda-event">
-              <span className="text-xs text-accent">Événement gaming</span><h4>{event.title}</h4><small>Ouvrir le site officiel →</small>
+              <span className="text-xs text-accent">{event.kind === "STEAM_SALE" ? "Repère Steam · Toute la journée" : "Événement gaming"}</span><h4>{event.title}</h4>
+              {event.kind === "STEAM_SALE" && <p>Réductions selon les jeux.</p>}<small>Ouvrir le site officiel →</small>
             </a>
             : <Link prefetch={false} key={event.id} href={event.href} className="gn-agenda-event">
               <span className="text-xs text-accent">{event.kind === "GAME_RELEASE" ? "Date de sortie IGDB" : "Événement gaming"}</span><h4>{event.title}</h4><small>Ouvrir la fiche du jeu →</small>
