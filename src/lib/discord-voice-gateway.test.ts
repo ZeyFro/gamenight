@@ -94,6 +94,9 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     });
     await collector.start();
     sockets[0].emit(10, { heartbeat_interval: 1_000 });
+    sockets[0].emit(1, null);
+    expect(sockets[0].sent.some(packet => packet.op === 1)).toBe(true);
+    sockets[0].emit(11, null);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(sockets[0].sent.some(packet => packet.op === 1)).toBe(true);
     await vi.advanceTimersByTimeAsync(1_000);

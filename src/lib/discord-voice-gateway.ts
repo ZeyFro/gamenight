@@ -49,6 +49,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   let heartbeat: ReturnType<typeof setTimeout> | null = null;
   let reconnect: ReturnType<typeof setTimeout> | null = null;
   let awaitingAck = false;
+  let heartbeatInterval = 0;
   let sequence: number | null = null;
   let session: { id: string; url: string } | null = null;
   let initialUrl = "";
@@ -87,6 +88,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if (packet.op === 10) {
         const interval = (packet.d as { heartbeat_interval?: number })?.heartbeat_interval;
         if (!Number.isFinite(interval) || !interval || interval < 1_000) { next.close(4000); return; }
+        heartbeatInterval = interval;
         clearHeartbeat();
         heartbeat = setTimeout(() => beat(interval), Math.floor(interval * Math.random()));
         if (session && sequence !== null) send(6, { token: config.token, session_id: session.id, seq: sequence });
@@ -94,7 +96,13 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
         return;
       }
       if (packet.op === 11) { awaitingAck = false; return; }
-      if (packet.op === 1) { send(1, sequence); return; }
+      if (packet.op === 1) {
+        clearHeartbeat();
+        send(1, sequence);
+        awaitingAck = true;
+        heartbeat = setTimeout(() => beat(heartbeatInterval), heartbeatInterval);
+        return;
+      }
       if (packet.op === 7 || packet.op === 9) {
         if (packet.op === 9 && packet.d !== true) {
           options.onGap("resume_failed");
