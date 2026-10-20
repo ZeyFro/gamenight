@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     community: { findUnique, create, update },
     user: { findMany: userFindMany },
-    membership: { createMany: membershipCreateMany, count: vi.fn() },
+    membership: { createMany: membershipCreateMany },
   },
 }));
 

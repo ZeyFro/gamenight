@@ -104,6 +104,14 @@ describe("S0 — connexion fermée par défaut", () => {
     expect(txUpsert).toHaveBeenCalledOnce();
     await expect(mocks.transaction.mock.results[0].value).rejects.toThrow("No authorized community");
   });
+  it("l'existence du compte est lue DANS la transaction (client tx), jamais via le client global", async () => {
+    const txFindUnique = vi.fn().mockResolvedValue({ id: "user" });
+    mocks.transaction.mockImplementation(async (fn) => fn({ user: { upsert: mocks.upsert, findUnique: txFindUnique } }));
+    expect(await call()).toBe(false);
+    expect(txFindUnique).toHaveBeenCalledOnce();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    await expect(mocks.transaction.mock.results[0].value).resolves.toBe(false); // existant : pas de retour arrière
+  });
   it("compte déjà en base sans communauté : refusé, la synchronisation (départs) n'est pas annulée", async () => {
     mocks.findUnique.mockResolvedValue({ id: "user" });
     expect(await call()).toBe(false);

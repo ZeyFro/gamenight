@@ -2434,7 +2434,7 @@ obligatoire sur l'existant).
 | `Community` | Une communauté : `slug` unique (futur `/c/[slug]/…`), `discordGuildId` unique, statut `PENDING` (bot ajouté, en attente d'activation) / `ACTIVE` / `SUSPENDED` / `LEFT` (bot retiré, `leftAt` = départ des 30 jours de conservation) / `ARCHIVED`. |
 | `CommunityChannelConfig` | Salon Discord par communauté et par catégorie (`SESSION`, `TOURNAMENT`) ; remplacera `DISCORD_BOT_*_CHANNEL_ID`. |
 | `Membership` | Appartenance utilisateur ↔ communauté : rôle `OWNER` / `ADMIN` / `MEMBER`, statut `ACTIVE` / `LEFT` / `REMOVED`. |
-| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de seed-reconcile) crée/conserve default et son guild historique. Aucun rattachement automatique (S0) : OAuth `guilds` est l'unique source d'appartenance, les rôles existants sont acquis. Les statuts/rôles existants ne sont pas écrasés par le seed. |
+| `src/lib/default-community.ts` | `ensureDefaultCommunity` (12e tâche de seed-reconcile) crée/conserve default et son guild historique. Aucun rattachement automatique (S0) : OAuth `guilds` est l'unique source d'appartenance ; les statuts/rôles existants ne sont pas écrasés par le seed. |
 | `src/lib/community-access.ts` | Point de contrôle : `requireMembership(communityId)` / `requireCommunityRole(communityId, min)`. Exige un Membership ACTIVE dans une communauté ACTIVE, relus en base à chaque appel (jamais dans le JWT) ; tout refus = 404 indistinct. Pas encore appelé par les pages (PR suivantes). |
 | `src/lib/community-scope.test.ts` | Garde-fou statique : échoue si un nouveau code appelle `prisma.<modèle collectif>.<op>(…)` directement. `EXISTING_EXCEPTIONS` fige **185 couples fichier/modèle** (84 fichiers, 37 modèles collectifs), à vider au fil des PR de filtrage (jamais allonger). |
 
@@ -2505,7 +2505,7 @@ dans le callback OAuth frais : une page courte = un appel, pagination après
 pages. Le matcher ne parcourt pas toutes les communautés : guilds de
 l'utilisateur intersectés avec les communautés connues ACTIVE en base.
 
-Toujours (S0) : profil et Membership transactionnels ; sans serveur autorisé :
+Toujours (S0) : profil et Membership transactionnels (admin sans instantané Discord : simple upsert) ; sans serveur autorisé :
 connexion refusée (admins exceptés). Comptes existants compris, LEFT réactivé, REMOVED préservé, communauté suspendue
 exclue. Départ constaté à la prochaine connexion fraîche, préférence invalide
 effacée ; erreur/page partielle = aucun changement d'appartenance. Sans serveur
@@ -12886,7 +12886,7 @@ La colonne « présente dans `.env.example` » dit seulement si le nom y figure 
 | `RETENTION_CLEANUP_ENABLED` | Active `/api/cron/retention-cleanup` | éteint | `src/app/api/cron/retention-cleanup/route.ts:56` |
 | `RETENTION_CLEANUP_MODE` | `execute` = purge réelle ; toute autre valeur = dry-run | dry-run | `src/app/api/cron/retention-cleanup/route.ts:61` |
 | `DISCORD_BOT_GUILD_ID` | Serveur Discord unique de l'app (partagé soirées/tournois) | absent (⇒ chemin bot inactif) | `src/lib/discord-bot-config.ts:33`, `:65` |
-| `AUTH_REQUIRE_GUILD_MEMBER` | Sans effet (S0) : connexion fermée par défaut, compte sans communauté ACTIVE refusé (existants compris), `ADMIN_DISCORD_IDS` toujours accepté. Snapshot partiel/en erreur refusé sans révocation (admins exceptés). | sans objet | `src/auth.ts`, `src/lib/discord-user-guilds.ts`, `src/lib/community-oauth.ts` |
+| `AUTH_REQUIRE_GUILD_MEMBER` | Sans effet (S0) : connexion fermée par défaut, compte sans communauté ACTIVE refusé (existants compris), `ADMIN_DISCORD_IDS` toujours accepté (sauf base indisponible ; Membership REMOVED compris dans les refus). Snapshot partiel/en erreur refusé sans révocation (admins exceptés). | sans objet | `src/auth.ts`, `src/lib/discord-user-guilds.ts`, `src/lib/community-oauth.ts` |
 | `DISCORD_BOT_SESSION_CHANNEL_ID` | Salon des soirées | absent | `src/lib/discord-bot-config.ts:34` |
 | `DISCORD_BOT_TOURNAMENT_CHANNEL_ID` | Salon des tournois | absent | `src/lib/discord-bot-config.ts:66` |
 | `DISCORD_BOT_TOKEN` | Jeton du bot (REST : fils, MP, rafraîchissement de profils en repli) | absent (⇒ `null`, bot inutilisable) | `src/lib/discord-rest.ts:162`, `src/lib/discord-profile.ts:380` |

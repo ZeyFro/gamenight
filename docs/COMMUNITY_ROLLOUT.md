@@ -150,8 +150,9 @@ Les rôles OWNER/ADMIN de communauté ne sont plus attribués automatiquement (l
    lancer l'existant `/api/backfill/seed-reconcile`, authentifié Bearer
    `CRON_SECRET`, et attendre son log final (202 lance le travail après réponse).
    Vérifier `Community.slug=default`, status ACTIVE, `discordGuildId` du serveur
-   historique correct, Membership historiques et `CommunityMemberStats` acquis.
-   Un LEFT/REMOVED déjà présent ne doit pas être écrasé.
+   historique correct et `CommunityMemberStats` acquis. Le seed ne crée aucun
+   Membership (S0) : vérifier seulement que ceux déjà en base sont intacts. Un
+   LEFT/REMOVED déjà présent ne doit pas être écrasé.
 5. Préparer un environnement d'essai avec application/bot Discord et base
    **séparés** ; ne pas brancher un bot de production sur des tests. Ne jamais
    considérer un benchmark local ou un build Preview comme un test de production.
@@ -290,7 +291,9 @@ appartenance ; ne déclencher aucune reconnexion globale par ajout de serveur.
    bouton. Identifier la ligne par son guild configuré, vérifier la cible et
    sauvegarder son statut, puis modifier cette seule ligne dans une transaction.
    Ne pas changer son guild, reparent les données ou supprimer les Membership.
-   Setup/OAuth ne doivent pas contourner cette suspension. Les résolveurs
+   Setup/OAuth ne doivent pas contourner cette suspension. S0 : suspendre une
+   communauté empêche la reconnexion de ses membres sans autre communauté ACTIVE
+   (admins exceptés) ; ne jamais suspendre `default`. Les résolveurs
    revalident le statut et les destinataires avant les prochains envois.
 3. Corriger la configuration et reprendre sur une cohorte, puis restaurer les
    flags/crons nécessaires et le statut après vérification autorisée. Les flags
@@ -385,7 +388,8 @@ indexé. L'admin et les crons système ont encore des inventaires globaux,
 notamment un appel salons par guild pour l'écran admin : ce n'est pas un
 travail exécuté à chaque connexion/page/session utilisateur.
 
-Validation ciblée avant le dernier ajustement du guard seed : 196 tests
+Historique antérieur à S0 (mécanisme « guard seed » / porte AUTH seule supprimé,
+chiffres non rejoués pour S0). Validation ciblée avant le dernier ajustement du guard seed : 196 tests
 auth/isolation/intégration dans 12 fichiers, puis 94 tests de chemins finaux
 dans sept fichiers. Après le test isolant spécifiquement la porte AUTH seule,
 les suites OAuth et seed/default ont encore passé 26 tests sur deux fichiers.

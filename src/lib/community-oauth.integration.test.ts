@@ -1,5 +1,6 @@
 import type { AuthConfig } from "@auth/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "@/lib/logger";
 
 const url = process.env.TEST_DATABASE_URL;
 const captured = vi.hoisted(() => ({ config: null as AuthConfig | null }));
@@ -132,9 +133,19 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
   it.each(["true", "false", ""])("new denied account is rolled back, never becomes an exempt existing account (AUTH_REQUIRE_GUILD_MEMBER=%j)", async (value) => {
     vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", value);
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json([])));
-    expect(await signIn("new-account")).toBe(false);
-    expect(await db.user.findUnique({ where: { discordId: "new-account" } })).toBeNull();
-    expect(await signIn("new-account")).toBe(false);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const error = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await signIn("new-account")).toBe(false);
+      expect(await db.user.findUnique({ where: { discordId: "new-account" } })).toBeNull();
+      expect(await signIn("new-account")).toBe(false);
+      // Prisma doit renvoyer NotAdmitted intacte : warn neutre, jamais error.
+      expect(warn).toHaveBeenCalledWith("auth", "OAuth login denied: no ACTIVE community.", { discordId: "new-account" });
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
   describe("S0 — connexion fermée par défaut (comptes fictifs, serveurs simulés)", () => {
     const stubGuilds = (list: string[]) => vi.stubGlobal("fetch", vi.fn(async () => Response.json(list.map((id) => ({ id })))));

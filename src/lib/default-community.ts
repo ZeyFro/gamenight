@@ -6,8 +6,7 @@ import { prisma } from "@/lib/prisma";
  * « par défaut ». Idempotent : appelé à chaque passage de
  * `/api/backfill/seed-reconcile` (12e tâche de `runSeedReconciliation`), il
  * crée ce qui manque et ne modifie JAMAIS l'existant (statut de la
- * communauté, Memberships déjà présents : un LEFT reste LEFT, un rôle changé
- * à la main reste tel quel). Seule exception : `discordGuildId` est complété
+ * communauté). Seule exception : `discordGuildId` est complété
  * depuis `DISCORD_BOT_GUILD_ID` tant qu'il est vide (décision : la communauté
  * par défaut garde sa configuration d'environnement au début).
  *
@@ -24,6 +23,7 @@ const DEFAULT_COMMUNITY_NAME = "GameNight";
 export interface EnsureDefaultCommunityResult {
   communityId: string;
   created: boolean;
+  /** Toujours 0 (S0) : conservé pour les journaux et tests existants. */
   membershipsCreated: number;
 }
 
