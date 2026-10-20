@@ -16,7 +16,6 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
   sessionVoicePresenceInterval: { upsert: mocks.intervalUpsert, groupBy: mocks.intervalGroupBy },
 } }));
 vi.mock("@/lib/session-access", () => ({ getSessionAccessRole: mocks.accessRole }));
-vi.mock("@/lib/community-isolation", () => ({ communityMemberUserWhere: vi.fn(async () => ({ memberships: { some: { status: "ACTIVE" } } })) }));
 
 import { readSessionVoicePresence, sessionVoiceConfig, storeSessionVoiceInterval } from "./session-voice-presence";
 
@@ -29,8 +28,10 @@ const env = {
 const interval = { memberKey: "789012345678901234", channelId: "456789012345678901", startedAt: 1_800_000, endedAt: 1_860_000 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   process.env.VOICE_PRESENCE_ENABLED = "true";
+  process.env.COMMUNITY_ISOLATION_ENABLED = "false";
+  mocks.userFindFirst.mockResolvedValue({ id: "user-1" });
 });
 
 describe("voice presence session link (synthetic DB doubles)", () => {
@@ -44,7 +45,6 @@ describe("voice presence session link (synthetic DB doubles)", () => {
   it("requires a configured session, community guild and enabled voice channel", async () => {
     const config = sessionVoiceConfig(env)!;
     mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
-  mocks.userFindFirst.mockResolvedValue({ id: "user-1" });
     mocks.sessionFindFirst.mockResolvedValue(null);
     expect(await storeSessionVoiceInterval(config, { ...interval, channelId: "000000000000000000" })).toBe(false);
     expect(mocks.sessionFindFirst).not.toHaveBeenCalled();
@@ -56,7 +56,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
   it("stores a deduplicated interval only for an invited member of the configured session", async () => {
     const config = sessionVoiceConfig(env)!;
     mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
-    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
     mocks.intervalUpsert.mockResolvedValue({});
     expect(await storeSessionVoiceInterval(config, { ...interval, partial: true })).toBe(true);
     expect(mocks.intervalUpsert).toHaveBeenCalledWith(expect.objectContaining({
@@ -72,7 +72,19 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.userFindFirst.mockResolvedValue(null);
     expect(await storeSessionVoiceInterval(config, interval)).toBe(false);
     expect(mocks.intervalUpsert).not.toHaveBeenCalled();
-    expect(mocks.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ memberships: { some: { status: "ACTIVE" } } }) }));
+    expect(mocks.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ memberships: { some: { communityId: "community-1", status: "ACTIVE" } } }) }));
+  });
+
+  it.each([
+    ["2026-07-14T18:10:00Z", "2026-07-14T20:10:00Z"],
+    ["2026-01-15T19:10:00Z", "2026-01-15T20:10:00Z"],
+  ])("compares the session's Paris wall clock but stores the real instant (%s)", async (instant, wallClock) => {
+    mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
+    const startedAt = new Date(instant);
+    await storeSessionVoiceInterval(sessionVoiceConfig(env), { ...interval, startedAt: +startedAt, endedAt: +startedAt + 60_000 });
+    expect(mocks.sessionFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ date: { lte: new Date(wallClock) } }) }));
+    expect(mocks.intervalUpsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ startedAt }) }));
   });
 
   it("shows session totals to the creator only, and keeps the flag gate", async () => {

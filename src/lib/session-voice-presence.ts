@@ -1,7 +1,6 @@
 import type { VoiceInterval } from "./discord-voice-presence";
 import { prisma } from "@/lib/prisma";
-import { getSessionAccessRole } from "@/lib/session-access";
-import { communityMemberUserWhere } from "@/lib/community-isolation";
+import { toWallClock } from "@/lib/wallclock";
 
 export type SessionVoiceConfig = { guildId: string; channelIds: readonly string[]; sessionId: string };
 
@@ -31,7 +30,7 @@ export async function storeSessionVoiceInterval(
     where: {
       id: config.sessionId,
       status: "SCHEDULED",
-      date: { lte: new Date(interval.startedAt) },
+      date: { lte: toWallClock(new Date(interval.startedAt)) },
       community: { is: {
         discordGuildId: config.guildId,
         status: "ACTIVE",
@@ -44,9 +43,9 @@ export async function storeSessionVoiceInterval(
     },
     select: { id: true, communityId: true },
   });
-  if (!session) return false;
+  if (!session?.communityId) return false;
   const member = await prisma.user.findFirst({
-    where: { id: user.id, ...await communityMemberUserWhere(session.communityId) },
+    where: { id: user.id, memberships: { some: { communityId: session.communityId, status: "ACTIVE" } } },
     select: { id: true },
   });
   if (!member) return false;
@@ -71,7 +70,9 @@ export async function storeSessionVoiceInterval(
 }
 
 export async function readSessionVoicePresence(sessionId: string, viewerId: string) {
-  if (process.env.VOICE_PRESENCE_ENABLED !== "true" || await getSessionAccessRole(viewerId, sessionId) !== "creator") return null;
+  if (process.env.VOICE_PRESENCE_ENABLED !== "true") return null;
+  const { getSessionAccessRole } = await import("@/lib/session-access");
+  if (await getSessionAccessRole(viewerId, sessionId) !== "creator") return null;
   const totals = await prisma.sessionVoicePresenceInterval.groupBy({
     by: ["userId"],
     where: { sessionId },
