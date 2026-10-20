@@ -57,6 +57,7 @@ export default async function TournoisPage({
     include: {
       game: { select: { name: true, coverUrl: true } },
       champion: { select: { discordName: true, discordAvatar: true } },
+      championTeam: { select: { name: true } },
       participants: { select: { userId: true } },
       matches: { select: { completedAt: true } },
     },
@@ -104,10 +105,10 @@ export default async function TournoisPage({
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-foreground">{t.name}</p>
                       <p className="truncate text-sm text-muted">{t.game.name}</p>
-                      {t.status === "DONE" && t.champion ? (
+                      {t.status === "DONE" && (t.champion || t.championTeam) ? (
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-accent">
-                          <Avatar src={t.champion.discordAvatar} alt={t.champion.discordName} size={18} />
-                          Champion : {t.champion.discordName}
+                          {t.champion && <Avatar src={t.champion.discordAvatar} alt={t.champion.discordName} size={18} />}
+                          Champion : {t.championTeam?.name ?? t.champion?.discordName}
                         </p>
                       ) : (
                         <p className="mt-1 text-xs text-muted">

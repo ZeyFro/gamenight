@@ -6,8 +6,8 @@ import { isTournamentPredictionsEnabled, canPredictTournamentTarget } from "./to
 export async function submitTournamentPrediction(userId: string, tournamentId: string, target: string, predictedUserId: string): Promise<boolean> {
   if (!isTournamentPredictionsEnabled()) return false;
   const scopedDb = await getScopedPrisma(userId);
-  const visible = await scopedDb.tournament.findUnique({ where: { id: tournamentId }, select: { communityId: true } });
-  if (!visible) return false;
+  const visible = await scopedDb.tournament.findUnique({ where: { id: tournamentId }, select: { communityId: true, format: true } });
+  if (!visible || visible.format !== "INDIVIDUAL") return false;
   const communityId = await statsCommunityIdForSession(visible.communityId);
   return prisma.$transaction(async (tx) => {
     // Ordre de declareWinner : match puis tournoi, pour éviter un interblocage en finale.

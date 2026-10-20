@@ -130,6 +130,7 @@ export const createTournamentSchema = z.object({
   name: z.string().trim().min(1, "Nom manquant.").max(60, "Nom trop long (max 60 caractères)."),
   gameId: idSchema,
   maxPlayers: z.coerce.number().int().refine((n) => [4, 6, 8].includes(n), "4, 6 ou 8 joueurs uniquement."),
+  format: z.enum(["INDIVIDUAL", "TEAMS"]).default("INDIVIDUAL"),
 });
 
 /** Sprint 5 (Tournois Bracket) — `declareWinnerAction`. */

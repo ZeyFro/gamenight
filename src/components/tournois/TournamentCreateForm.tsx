@@ -57,6 +57,16 @@ export function TournamentCreateForm({
 
       <TournamentGameField localGames={localGames} selected={selected} onSelectedChange={setSelected} />
 
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xs text-muted">Format</legend>
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input type="radio" name="format" value="INDIVIDUAL" defaultChecked /> Chacun pour soi
+        </label>
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input type="radio" name="format" value="TEAMS" /> Équipes de 2 tirées au lancement
+        </label>
+      </fieldset>
+
       <div className="flex flex-col gap-2">
         <span className="text-xs text-muted">Nombre de places</span>
         <div className="grid grid-cols-3 gap-2">

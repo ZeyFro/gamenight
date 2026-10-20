@@ -8,6 +8,7 @@ export interface BracketPlayer {
   id: string;
   discordName: string;
   discordAvatar: string | null;
+  memberIds?: string[];
 }
 
 export interface BracketMatch {
@@ -106,8 +107,9 @@ function BracketNode({
   const match = matchesByKey.get(`${round}:${position}`);
   if (!match) return null;
 
-  const canDeclare =
-    interactive && (isCreator || match.player1?.id === currentUserId || match.player2?.id === currentUserId);
+  const canDeclare = Boolean(
+    interactive && (isCreator || match.player1?.id === currentUserId || match.player2?.id === currentUserId || match.player1?.memberIds?.includes(currentUserId) || match.player2?.memberIds?.includes(currentUserId))
+  );
 
   const box = (
     <div className="flex flex-col gap-1.5">

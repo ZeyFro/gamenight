@@ -109,6 +109,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
         status: "REGISTRATION" | "IN_PROGRESS" | "DONE" | "CANCELLED";
         announceViaBot: boolean;
         maxPlayers: number;
+        format: "INDIVIDUAL" | "TEAMS";
         championId: string | null;
         discordGuildId: string | null;
         discordChannelId: string | null;
@@ -123,6 +124,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
           createdById: creatorId,
           status: overrides.status ?? "REGISTRATION",
           maxPlayers: overrides.maxPlayers ?? 4,
+          format: overrides.format ?? "INDIVIDUAL",
           announceViaBot,
           championId: overrides.championId ?? null,
           // Même contrat que `createTournamentAction` : destination figée
@@ -298,6 +300,39 @@ describe.skipIf(!TEST_DATABASE_URL)(
         // de ce module, jamais dupliqué ni modifié ici).
         const stored = await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } });
         expect(stored.championId).toBeTruthy();
+      });
+    });
+
+    describe("résultat de tournoi en équipes", () => {
+      it("annonce les noms des équipes via HTTP simulé, sans mention", async () => {
+        const creator = await makeUser();
+        const game = await makeGame(creator.id);
+        const tournament = await makeTournament(creator.id, game.id, { format: "TEAMS", maxPlayers: 6 });
+        const players = await Promise.all(["a", "b", "c", "d", "e", "f"].map(() => makeUser()));
+        for (const player of players) await makeParticipant(tournament.id, player.id);
+
+        await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
+        mockVerifiedSendOk("chan-tournois");
+        await processOne();
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
+        await processOne();
+        await launchBracket(tournament.id);
+        mockSendOk("chan-tournois");
+        await processOne(); // EDIT lancement
+
+        const match = await db.tournamentMatch.findFirstOrThrow({
+          where: { tournamentId: tournament.id, round: 1, team1Id: { not: null }, team2Id: { not: null } },
+          include: { team1: true, team2: true },
+        });
+        const winner = await db.tournamentTeam.findUniqueOrThrow({ where: { id: match.team1Id! }, include: { members: true } });
+        await tournamentsLib.declareWinner(match.id, winner.id, winner.members[0].userId);
+
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "message-match-result", channel_id: "thread-1" }));
+        const sent = await processOne();
+        expect(sent?.outcome).toBe("sent");
+        const body = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
+        expect(body.content).toContain(`${winner.name} bat ${match.team2!.name}`);
+        expect(body.allowed_mentions).toEqual({ parse: [] });
       });
     });
 
