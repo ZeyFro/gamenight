@@ -162,6 +162,20 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
     });
   }
 
+  async function discoverGateway(generation: number, fetchUrl: (token: string) => Promise<string>) {
+    try {
+      const url = gatewayUrl(await fetchUrl(config.token));
+      if (stopped || generation !== startGeneration) return;
+      initialUrl = url;
+      retryMs = 1_000;
+      connect(initialUrl);
+    } catch {
+      if (stopped || generation !== startGeneration) return;
+      reconnect = setTimeout(() => { void discoverGateway(generation, fetchUrl); }, retryMs);
+      retryMs = Math.min(retryMs * 2, 30_000);
+    }
+  }
+
   return {
     async start() {
       if (!stopped) return;
@@ -173,8 +187,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
           if (!response.ok) throw new Error(`Discord Gateway lookup failed (${response.status})`);
           return (await response.json() as { url: string }).url;
         });
-        initialUrl = gatewayUrl(await fetchUrl(config.token));
-        if (!stopped && generation === startGeneration) connect(initialUrl);
+        await discoverGateway(generation, fetchUrl);
       } catch (error) {
         if (generation === startGeneration) stopped = true;
         throw error;

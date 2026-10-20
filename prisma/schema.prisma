@@ -195,6 +195,7 @@ model User {
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
   sessionAttendances    SessionAttendance[]
+  sessionVoicePresence  SessionVoicePresenceInterval[]
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
@@ -670,6 +671,7 @@ model Session {
   proposals         Proposal[]
   results           SessionResult[]
   attendance        SessionAttendance[]
+  voicePresence     SessionVoicePresenceInterval[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -1088,6 +1090,26 @@ model SessionAttendance {
 
   @@unique([sessionId, userId])
   @@index([communityId, userId, present])
+}
+
+// Intervalles vocaux d'une soirée. La collecte reste derrière
+// VOICE_PRESENCE_ENABLED et ne doit pas être activée avant décision de
+// consentement et de rétention.
+model SessionVoicePresenceInterval {
+  id              String   @id @default(cuid())
+  sessionId       String
+  userId          String
+  channelId       String   @db.VarChar(20)
+  startedAt       DateTime
+  durationSeconds Int
+  partial         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId, channelId, startedAt])
+  @@index([sessionId, userId])
 }
 
 model SessionRating {

@@ -65,6 +65,7 @@ import { SessionPreparationPanel } from "@/components/sessions/SessionPreparatio
 import { SessionGallery } from "@/components/sessions/SessionGallery";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
+import { readSessionVoicePresence } from "@/lib/session-voice-presence";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -126,6 +127,7 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const voicePresence = await readSessionVoicePresence(session.id, user.id);
   const galleryCommunityId = await statsCommunityIdForSession(session.communityId);
   const galleryCommunity = await prisma.community.findUnique({ where: { id: galleryCommunityId }, select: { sessionGalleryEnabled: true } });
   const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
@@ -381,6 +383,21 @@ export default async function SessionDetailPage({
         </section>
       )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
+      {voicePresence && (
+        <section aria-label="Présence vocale" className="rounded-xl border border-border bg-card p-4">
+          <h2 className="font-semibold">Présence vocale Discord</h2>
+          {voicePresence.length ? (
+            <ul className="mt-2 space-y-1 text-sm">
+              {voicePresence.map(member => (
+                <li key={member.userId}>
+                  {member.name} — {member.durationSeconds < 60 ? "moins d’une minute" : `${Math.floor(member.durationSeconds / 60)} min`}
+                  {member.partial && <span className="text-muted"> (mesure partielle)</span>}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mt-2 text-sm text-muted">Aucune durée enregistrée.</p>}
+        </section>
+      )}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">

@@ -136,4 +136,25 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(1);
   });
+
+  it("retries Gateway discovery after a temporary HTTP failure", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeSocket[] = [];
+    const fetchGatewayUrl = vi.fn()
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValue("wss://gateway.discord.gg");
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl,
+      onInterval: vi.fn(), onGap: vi.fn(), onFatal: vi.fn(),
+    });
+    await collector.start();
+    expect(fetchGatewayUrl).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchGatewayUrl).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(1);
+    collector.stop();
+  });
 });
