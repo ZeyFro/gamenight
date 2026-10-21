@@ -18,33 +18,18 @@ import {
 } from "@/lib/reminders";
 
 /**
- * `maxDuration` EXPLICITE de 60s — même convention que les routes de
- * backfill IGDB/Steam/actus
- * (`src/app/api/backfill/{igdb-coop,steam-store,game-news}/route.ts`).
- * Ce n'est PAS le plafond du plan : sur Hobby avec Fluid compute, le défaut
- * et le maximum Vercel sont de 300s (doc Vercel, « Duration limits »).
- * Déclarée ici (auparavant implicite) car c'est cette valeur de 60s qui
- * sert de base au bail du verrou `CronLock` (voir `src/lib/cron-lock.ts`) :
- * une exécution ne peut de toute façon jamais dépasser cette valeur.
+ * Durée maximale de 60 s : le bail du CronLock s'appuie sur cette limite.
+ * Route de rappels des sessions, appelée par un ordonnanceur externe dont
+ * la cadence est configurée hors dépôt (voir docs/CRONS.md). Aucun
+ * déclencheur Vercel Cron n’est défini dans le dépôt.
+ *
+ * La route échoue de façon fermée si CRON_SECRET manque ou si l’en-tête
+ * Authorization: Bearer CRON_SECRET n’est pas valide. Ses interrupteurs
+ * fonctionnels restent indépendants de cette authentification.
  */
 export const maxDuration = 60;
 
 /**
- * Route destinée à être appelée toutes les 15 min par un cron externe
- * (ex. cron-job.org — voir README, section F7). Pas de Vercel Cron ici :
- * le plan Hobby impose un minimum d'une exécution par jour, incompatible
- * avec le pas de 15 min dont F7 a besoin. Un seul appel gère tous les
- * timings de rappel de chaque session (`Session.reminderTimings`,
- * configurable par le créateur depuis PR 31/2·4 — remplace les deux
- * fenêtres fixes 24h/2h). Fail closed (`verifyCronRequest`) : 503 si
- * `CRON_SECRET` n'est pas configurée, 401 sans l'en-tête
- * `Authorization: Bearer <CRON_SECRET>` (à renseigner manuellement dans la
- * config du cron externe), pour éviter qu'un tiers déclenche des rappels
- * en tapant l'URL. Sans cron externe configuré,
- * personne n'appelle jamais cette route : aucun rappel ne part, mais rien
- * ne plante ailleurs dans l'app — dégradation silencieuse, comme pour
- * DISCORD_WEBHOOK_URL non configurée (F6).
- *
  * Fix bug remonté (cron "Rappels" en Échec + Inactif sur cron-job.org
  * depuis le 21/08 — date de la migration Vercel Cron → cron externe,
  * `git log`, aucun renommage de route depuis) — cette route n'avait ni
@@ -54,7 +39,7 @@ export const maxDuration = 60;
  * réponse. cron-job.org désactive automatiquement un job après plusieurs
  * échecs consécutifs — un job resté "Inactif" depuis reste inactif tant
  * que personne ne le réactive manuellement dans son tableau de bord, un
- * changement de code ne peut pas le faire à sa place (voir README).
+ * changement de code ne peut pas le faire à sa place (voir docs/CRONS.md).
  * Même remède que `refresh-discord-profiles` (PR précédente) : log
  * "Handler appelé." avant toute condition, et la cause exacte remonte
  * maintenant dans le JSON de réponse (`error`) plutôt que de dépendre
@@ -93,7 +78,7 @@ export const maxDuration = 60;
  * devrait jamais se produire en pratique (la ligne est créée par la
  * migration `20260914120000_add_cron_lock`, appliquée avant tout
  * déploiement). Limites résiduelles assumées et documentées dans
- * `cron-lock.ts` et le README : un doublon reste possible si une
+ * `cron-lock.ts` et docs/CRONS.md : un doublon reste possible si une
  * exécution dépasse elle-même le bail du verrou, et un rappel peut rester
  * manqué si la prochaine exécution qui réussit arrive après la date de la
  * session (comportement de filtrage inchangé, déjà présent avant ce fix).
@@ -200,10 +185,10 @@ export async function GET(request: Request) {
                 // `WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY`, src/lib/discord.ts).
                 // Traité comme "traité avec succès" pour `remindersSent` :
                 // un échec RÉEL (webhook down) était auparavant réessayé au
-                // prochain passage (15 min), ce qui a du sens — mais ce
+                // prochain passage externe, ce qui a du sens — mais ce
                 // résultat-ci ne changera JAMAIS d'issue en retentant, le
                 // retenter indéfiniment ne ferait que ré-écrire les mêmes
-                // notifications internes toutes les 15 min jusqu'à la
+                // notifications internes à chaque passage jusqu'à la
                 // session, sans jamais aboutir à un vrai envoi.
                 if (!result.ok && result.error === WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY) return true;
                 return result.ok;

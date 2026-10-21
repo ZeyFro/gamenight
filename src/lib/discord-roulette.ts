@@ -31,7 +31,7 @@ import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
  * (avant tirage) n'a donc plus AUCUNE annonce Discord du tout tant
  * qu'aucun mécanisme privé dédié (fil privé par roulette, membership
  * synchronisée) n'existe pour elle — documenté comme point ouvert dans le
- * README.
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md.
  */
 function skippedByPrivacy(context: string): PostToDiscordResult {
   logger.info(

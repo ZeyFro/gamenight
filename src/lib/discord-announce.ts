@@ -28,7 +28,7 @@ export type ProposalWithVotesAndGame = Proposal & {
  * restreintes en plus aux invités encore ACTIFS
  * (`filterByActiveSessionInvite`), même garantie que le chemin bot : un
  * retrait doit couper toute NOUVELLE notification, webhook ou bot. Voir
- * le README ("Transition et retour arrière") pour la portée exacte de
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md ("Transition et retour arrière") pour la portée exacte de
  * cette limite (aucune annonce Discord du tout pour une soirée restée
  * sur ce chemin, tant qu'un mécanisme privé dédié n'existe pas pour lui).
  */

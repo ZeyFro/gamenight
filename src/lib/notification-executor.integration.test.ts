@@ -10,7 +10,7 @@ import type { DeliveryResolver } from "./notification-executor";
  * partie Discord suit le même principe que `discord-rest.test.ts` (mock de
  * `fetch`, jamais de mock de Prisma pour cette partie-là non plus).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert), y compris les tests de route
  * (authentification/désactivation) : la route importe la chaîne complète
  * jusqu'à `@/lib/prisma`, donc ils partagent le même mock que le reste de

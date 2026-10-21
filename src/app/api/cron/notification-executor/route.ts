@@ -41,7 +41,7 @@ export const maxDuration = 60;
  *
  * Ne modifie pas `/api/cron/close-sessions` ni aucune route existante.
  * Aucun cron externe n'est configuré par cette PR, aucune variable n'est
- * définie sur Vercel — voir le README pour la procédure d'activation
+ * définie sur Vercel — voir docs/COMMUNITY_ROLLOUT.md pour la procédure d'activation
  * future (documentée, pas exécutée).
  */
 export async function GET(request: Request) {

@@ -1,5 +1,7 @@
 # Bascule multi-serveurs et ouverture à The Tower
 
+> **Contexte historique à revalider avant toute opération.** Ce runbook décrit le plan de rollout initial et les constats rapportés les 7–8 octobre ; il ne prouve pas les réglages distants actuels. Les nombres de migrations, états de The Tower et cadences cités plus loin sont des instantanés de cette période. #309 a corrigé depuis le défaut P1 d’accès collectif décrit dans la section de sécurité ci-dessous. Les flags, migrations et destinations restent à vérifier dans un environnement de recette avant toute bascule.
+
 Complément du 8 octobre : [stabilisation V2, mesures et diagnostics opérateur](STABILISATION_V2.md).
 Les builds Preview ne lancent plus de migration ; la procédure de production
 est conservée. Aucun flag ni réglage distant n’a été changé par ce chantier.
@@ -20,7 +22,7 @@ déclaré prêt sur la seule base des tests simulés ci-dessous.
 l’appelant, acquitte immédiatement la commande avec une réponse différée
 éphémère, puis travaille dans `after()` (route 120 s, budget 90 s). Il lit le
 vrai nom et l’icône du guild, y compris sur une communauté déjà ACTIVE et sur
-default ; la synchronisation quotidienne existante actualise ensuite ces
+default ; le cron community-guild-sync actualise ensuite ces
 métadonnées sans changer les slugs, appartenances ou XP.
 
 Avant toute création, le bot doit avoir Gérer les salons, Voir les salons,
@@ -99,16 +101,9 @@ distincte. Les cookies OAuth anciens ne sont pas enrichis lors d'un rendu.
 `jwt`, `session` et les pages ne consultent pas Discord pour l'appartenance.
 Le cron des profils garde son rôle distinct de rafraîchissement des avatars.
 
-**Limite connue (S0, isolation éteinte)** : S0 admet un membre ACTIVE d'une
-communauté B même si `COMMUNITY_ISOLATION_ENABLED` est éteint. Or éteinte, tout
-est « aucun filtre » : ce membre lit les tournois et le canal global de la
-communauté `default`, y écrit (messages ; `communityId` nul = par défaut) et sa
-visite crée sa ligne de statistiques dans `default`. Il en va de même du compte
-de secours `ADMIN_DISCORD_IDS` sans Membership. Seules les soirées privées
-(invitation) et `requireMembership` (404) tiennent. Isolation allumée, aucun
-de ces accès n'existe. Tant que ce n'est pas corrigé : n'avoir aucune seconde
-communauté ACTIVE avec isolation éteinte. Décrit par
-`src/lib/s0-access-controls.integration.test.ts` (cas « ÉCART CONNU »).
+**État après #309** : le défaut P1 où un membre B-only ou un administrateur sans Membership pouvait lire ou écrire les données collectives de default même avec l’isolation éteinte a été corrigé dans [la PR #309](https://github.com/ZeyFro/gamenight/pull/309). Les contrôles d’accès consultent les Membership ; les scénarios B-only et admin sans Membership sont couverts dans [s0-access-controls.integration.test.ts](../src/lib/s0-access-controls.integration.test.ts). Voir aussi [la réconciliation sécurité](SECURITE_CLAUDE.md).
+
+Un ancien JWT n’est pas invalidé au seul déploiement : l’accès dépend de la Membership vérifiée en base, et un membre dont elle reste ACTIVE peut continuer jusqu’à l’expiration du JWT. La reconnexion forcée globale existe mais n’a pas été déclenchée. La course entre deux premières connexions reste une hypothèse non vérifiée, sans sévérité attribuée.
 
 | Situation à la connexion fraîche | Traitement |
 | --- | --- |
@@ -147,16 +142,16 @@ Les rôles OWNER/ADMIN de communauté ne sont plus attribués automatiquement (l
 
 ## Préconditions et sauvegarde — à effectuer réellement par l'opérateur
 
-1. Valider/revoir puis déployer cette PR dans une étape autorisée séparée.
-   Les checks GitHub/Vercel seuls ne valident pas les chemins Discord réels.
+1. Revoir le commit exact et autoriser séparément tout déploiement du lot de rollout ; les contrôles GitHub/Vercel seuls ne valident pas les parcours Discord réels.
 2. Prendre une sauvegarde restaurable de la base, vérifier son intégrité et
    noter le commit, les migrations appliquées, les flags et la configuration
    des crons. Conserver la procédure de restauration ; aucun rollback SQL de
    migration A/B n'est prévu. Ne jamais redéployer le code antérieur aux clés A/B.
-3. Vérifier `_prisma_migrations` (72 migrations acquises), les clés communautaires,
-   les statistiques historiques de default, la provenance nullable historique,
-   les rôles admin/OWNER et les intentions REWARD existantes. Cette PR n'ajoute
-   ni ne modifie de migration et ne demande aucun backfill de progression neuf.
+3. Comparer les migrations appliquées à la base avec celles suivies dans
+   `prisma/migrations`, puis contrôler les clés communautaires, les statistiques
+   historiques de `default`, la provenance nullable, les rôles admin/OWNER et les
+   intentions REWARD. Cette réconciliation n'ajoute ni ne modifie de migration
+   et ne demande aucun backfill de progression neuf.
 4. Tant que isolation/picker sont OFF et qu'aucun second serveur n'est ACTIVE,
    lancer l'existant `/api/backfill/seed-reconcile`, authentifié Bearer
    `CRON_SECRET`, et attendre son log final (202 lance le travail après réponse).
@@ -174,7 +169,7 @@ Les rôles OWNER/ADMIN de communauté ne sont plus attribués automatiquement (l
 
 ## Portail Discord, commandes, installation et salons
 
-Ces opérations sont **à vérifier réellement**, aucune exécutée dans cette PR.
+Ces opérations sont **à vérifier réellement**, aucune exécutée lors de cette réconciliation documentaire.
 
 1. Dans le Developer Portal, activer l'installation **serveur** (Guild Install),
    avec scopes d'installation `bot` et `applications.commands`. La connexion
@@ -227,12 +222,12 @@ que la frontière d'accès soit opérationnelle.
 
 | Ordre | Action opérateur | Contrôle avant de continuer |
 | --- | --- | --- |
-| 1 | Déployer le login guilds (porte fermée par défaut) ; sauvegarde et seed ci-dessus. | Login default/OAuth issuers fonctionne ; les comptes historiques ne passent que s'ils sont sur le serveur de la communauté `default` ET que `default.discordGuildId` est renseigné (variable `DISCORD_BOT_GUILD_ID` en Production ET en Preview). |
+| 1 | Déployer le login avec une cohorte de recette limitée. | Vérifier l’association Discord de default et une Membership ACTIVE ; un compte admin sans Membership ne reçoit pas d’accès collectif. |
 | 2 | `COMMUNITY_ADMIN_ENABLED=true` ; configurer et vérifier les salons default et ceux du guild d'essai encore PENDING. | L'admin plateforme n'accorde pas un accès collectif à un non-membre ; salons étrangers refusés. |
 | 3 | `COMMUNITY_CHANNELS_ENABLED=true`, flags globaux bot SESSION/TOURNAMENT appropriés, `NOTIFICATION_EXECUTOR_ENABLED=true`. | Annonces default dans son guild ; crons authentifiés installés, aucune destination empruntée par un autre guild. |
 | 4 | Dans la fenêtre contrôlée, activer `COMMUNITY_ISOLATION_ENABLED=true` et `COMMUNITY_PICKER_ENABLED=true` ensemble. | Membres default rattachés par leur dernière connexion OAuth ; zéro serveur ferme les parcours ; plusieurs serveurs sans choix ne donnent rien. |
-| 5 | Utiliser **une seule fois**, après validation des étapes précédentes, le mécanisme existant `forceReloginAt` via Réglages admin/route admin autorisée. | Un ancien JWT est refusé ; nouvelle connexion autorise `guilds`, peuple/revalide les Membership et évite une boucle. Cette action globale peut annoncer la reconnexion sur Discord : opération réelle distincte, non exécutée ici. |
-| 6 | Aucune action : la porte est fermée par défaut (S0), `AUTH_REQUIRE_GUILD_MEMBER` est sans effet. | Compte sans guild autorisé refusé, ancien compris ; admin `ADMIN_DISCORD_IDS` accepté sans accès collectif. |
+| 5 | Décider séparément si une reconnexion forcée est nécessaire. | Les accès consultent déjà les Membership en base après #309 ; l’action globale peut notifier sur Discord et n’a pas été lancée ici. |
+| 6 | Aucune action de migration ou d’activation n’est implicite. | Sans Membership autorisée, l’accès est refusé ; ADMIN_DISCORD_IDS donne les droits d’administration mais pas les données collectives sans Membership. |
 | 7 | `COMMUNITY_AUTO_CREATE_ENABLED=true`, webhook et cron `community-guild-sync`, puis `COMMUNITY_SETUP_COMMAND_ENABLED=true`. | Guilds nouveaux seulement PENDING tant qu'aucun setup/admin autorisé n'a activé ; setup OFF n'agit pas. |
 | 8 | Installer ou relancer setup sur The Tower, puis connexions fraîches de la cohorte limitée. | Setup complète ACTIVE sans doublons ; deux serveurs en parallèle satisfont la matrice réelle suivante. |
 
@@ -246,12 +241,7 @@ Ne pas retirer la configuration du transport WEBHOOK tant que des intentions
 WEBHOOK restent en attente, même après activation du bot. Vérifier les reprises
 admin REWARD et la purge sans renotification selon le document PR B.
 
-Crons requis : notification-executor chaque minute via cron externe (Vercel
-Hobby ne fournit pas cette cadence), community-guild-sync quotidien pour les
-installations/départs du bot, refresh-discord-profiles selon la cadence existante.
-Conserver les autres crons métier/retention existants et leurs flags ; les
-cleanups commencent en dry-run. `CRON_SECRET` absent → 503, non une réussite.
-Ne pas ajouter de job cron ni de secret par serveur.
+Configurer hors dépôt les tâches externes nécessaires aux fonctionnalités choisies. Les routes et méthodes sont dans [CRONS.md](CRONS.md) ; le dépôt ne fixe ni fréquence ni état de configuration. CRON_SECRET absent : les routes protégées répondent 503. Aucun job ni secret par serveur n’est ajouté par ce document.
 
 ## Essai limité et critère d'ouverture — encore non effectués réellement
 
@@ -310,12 +300,14 @@ appartenance ; ne déclencher aucune reconnexion globale par ajout de serveur.
    flags/crons nécessaires et le statut après vérification autorisée. Les flags
    bot OFF/config absente gardent les intentions REWARD en attente ; certains
    autres résolveurs ont des échecs terminaux nécessitant un réessai admin.
-4. **Ne jamais éteindre l'isolation pour “revenir au mono-serveur” une fois que
-   des données nondefault existent** : le client flags OFF est transparent,
-   même si ces communautés sont suspendues. Suspendre seul n'efface pas cette
-   fuite potentielle lorsque l'isolation est OFF. Un retour complet aux flags
-   OFF exigerait une restauration/quarantaine contrôlée, pas une simple bascule.
-5. Aucun DROP, down-migration ni modification des 72 migrations. Un rollback
+4. Ne pas traiter le retour de `COMMUNITY_ISOLATION_ENABLED` à OFF comme un
+   rollback complet lorsque des données nondefault existent : les jobs système
+   repassent alors au seul périmètre `default` (`listCronCommunityIds`). Après
+   #309, les accès collectifs des utilisateurs restent vérifiés par Membership
+   même avec ce flag OFF. Avant un retour arrière, vérifier séparément le
+   périmètre des jobs et la visibilité des données ; suspendre une communauté
+   ne supprime ni ne migre ses données.
+5. Aucun DROP, down-migration ni modification des migrations existantes. Un retour arrière applicatif conserve les migrations acquises.
    de code doit rester compatible A/B et conserver le correctif issuer OAuth ;
    privilégier suspension et correction ciblée. Un restore de sauvegarde est
    une décision DBA séparée, avec perte des données postérieures à traiter.

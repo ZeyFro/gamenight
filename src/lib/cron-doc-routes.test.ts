@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Garde-fou de dérive : toute route `/api/cron/*` et `/api/backfill/*` doit
- * figurer dans le tableau « V2 — Référence : routes cron et backfill » du
- * README (fréquence, durée max, comportement). Sans lui, chaque nouvelle route
- * oublie le tableau, qui fait foi pour configurer cron-job.org.
+ * figurer dans le tableau « Routes cron et backfill » du
+ * document CRONS (routes et méthodes). Sans lui, chaque nouvelle route
+ * oublie le tableau, qui décrit les méthodes disponibles.
  */
 
-const SECTION_TITLE = "## V2 — Référence : routes cron et backfill";
+const SECTION_TITLE = "## Routes cron et backfill";
 
 function routePaths(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -25,12 +25,12 @@ function apiRoutes(prefix: "cron" | "backfill"): string[] {
     .sort();
 }
 
-const readme = readFileSync("README.md", "utf8");
-const start = readme.indexOf(SECTION_TITLE);
-const end = readme.indexOf("\n## ", start + SECTION_TITLE.length);
-const section = start === -1 ? "" : readme.slice(start, end === -1 ? undefined : end);
+const cronsDoc = readFileSync("docs/CRONS.md", "utf8");
+const start = cronsDoc.indexOf(SECTION_TITLE);
+const end = cronsDoc.indexOf("\n## ", start + SECTION_TITLE.length);
+const section = start === -1 ? "" : cronsDoc.slice(start, end === -1 ? undefined : end);
 
-describe("README « routes cron et backfill » ↔ routes API", () => {
+describe("document CRONS « routes cron et backfill » ↔ routes API", () => {
   it("trouve la section de référence et au moins une route de chaque famille", () => {
     expect(start, `Titre introuvable : ${SECTION_TITLE}`).toBeGreaterThanOrEqual(0);
     expect(apiRoutes("cron").length).toBeGreaterThan(0);
@@ -40,7 +40,7 @@ describe("README « routes cron et backfill » ↔ routes API", () => {
   it.each([...apiRoutes("cron"), ...apiRoutes("backfill")])(
     "%s est citée dans le tableau de référence",
     (route) => {
-      expect(section, `Ajouter ${route} au tableau du README`).toContain(`\`${route}\``);
+      expect(section, `Ajouter ${route} au tableau du document CRONS`).toContain(`\`${route}\``);
     }
   );
 

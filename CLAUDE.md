@@ -1,12 +1,11 @@
 # GameNight
 
-App de soirées jeux entre potes. Détails fonctionnels : `README.md`, `SPEC-gamenight.md`.
+Application privée de soirées jeux, en français. Lire [README.md](README.md) pour le produit et la stack, [docs/INDEX.md](docs/INDEX.md) pour les guides, et [docs/REPRISE_AUTONOME.md](docs/REPRISE_AUTONOME.md) comme unique point de reprise actif.
 
-## État du projet
-V1 terminée (périmètre `SPEC` §6). V2 (bot Discord : fils, MP, nettoyage, « Jouer maintenant ») en cours de **stabilisation** : PR #121 à #128 mergées (backfill IGDB Coop, tests du nettoyage des fils, « Jouer maintenant » durée max 3 h et 500 « use server », avatar/klipy/rotation Steam, crons longs en 202 + `after()`, test de rappel sans date en dur). Phase 6 : docs de fin de V2 (README : MP #116, tableau des env, tableau des crons, « Reporté après V2 »).
+Les états de lots, rapports et CODEX-PROGRESS datés sont historiques : ils sont archivés sous docs/archive/ et ne décrivent pas le statut courant.
 
 ## Stack
-Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon · Auth.js v5 (Discord OAuth) · Vercel Hobby (pas de cron < 1/jour : crons externes) · Vitest.
+Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (adaptateur Neon sur le chemin de déploiement) · Auth.js v5 (Discord OAuth) · Vercel · Vitest.
 
 ## Commandes
 - `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` hors `VERCEL_ENV=preview` : jamais sans `DATABASE_URL` locale pour la validation)
@@ -36,8 +35,8 @@ Next.js 16 (App Router) · React 19 · Prisma 6 (adapter Neon) · Postgres Neon 
 - `GameWishlist`, `GroupAchievement`, `GroupSessionStats`, `GroupGameStat`, `GroupActiveWeek` : `communityId` OBLIGATOIRE et dans la clé (PR9), jamais `null` : communauté par défaut = `getDefaultCommunityId()`, aussi isolation éteinte. Trophées annoncés sur Discord pour `default` seulement.
 - `auth()` appelé depuis un composant serveur ou une server action jette les `Set-Cookie` : rien n'y est persisté dans le JWT (`src/auth.ts`).
 - `/api/backfill/igdb-coop` accepte GET et POST (`Authorization: Bearer <CRON_SECRET>`) et répond 202 ; le traitement tourne dans `after()`.
-- cron-job.org coupe à 30 s : les routes longues répondent 202 et travaillent dans `after()` (`seed-reconcile`, `steam-library-full-sync`, `igdb-coop` : `maxDuration` 300, budget 240 s ; `steam-store`, `game-news` : 60 s). Un `début` sans `fin` dans les logs = coupure plateforme. Tableau complet : README « Référence : routes cron et backfill ».
-- Connexion fermée par défaut (S0) : un compte sans Membership ACTIVE dans une communauté ACTIVE (`discordGuildId` dans sa liste OAuth `guilds`, REMOVED compris) est refusé, `AUTH_REQUIRE_GUILD_MEMBER` est sans effet ; les `ADMIN_DISCORD_IDS` passent toujours, sauf base indisponible (`src/auth.ts`).
+- Les routes longues répondent 202 et travaillent dans after() quand leur code l’exige. Les routes et méthodes sont répertoriées dans docs/CRONS.md ; les cadences relèvent de la configuration externe.
+- Connexion fermée par défaut (S0) : un compte sans Membership ACTIVE dans une communauté ACTIVE (`discordGuildId` dans sa liste OAuth `guilds`, REMOVED compris) est refusé, `AUTH_REQUIRE_GUILD_MEMBER` est sans effet ; les `ADMIN_DISCORD_IDS` peuvent ouvrir une session même sans Membership, sauf base indisponible. Cette exception de connexion n'accorde pas l'accès aux données collectives, qui exigent toujours une Membership (`src/auth.ts`, `src/lib/community-isolation.ts`).
 - klipy : les liens de page (`klipy.com/…`) sont refusés, seuls les liens d'image (`static.klipy.com/…`) fonctionnent (`src/lib/banner-url.ts`).
 
 ## Notifications Discord
@@ -71,7 +70,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `COMMUNITY_AUTO_CREATE_ENABLED` : création automatique de communautés PENDING (webhook d'événements Discord « application autorisée » + cron `community-guild-sync`) ; exige `DISCORD_APP_PUBLIC_KEY` (signature Ed25519 du webhook)
 - `COMMUNITY_SETUP_COMMAND_ENABLED` : commande Discord `/gamenight setup` (permission « Gérer le serveur », endpoint `/api/discord/interactions`) qui active la communauté de son serveur sans validation manuelle ; exige `DISCORD_APP_PUBLIC_KEY` ; le PING de l'endpoint est acquitté même éteint
 - `COMMUNITY_CHANNELS_ENABLED` : salons d'annonce par communauté (`CommunityChannelConfig`) pour soirées et tournois ; éteint = variables `DISCORD_BOT_*` seules, allumé = repli sur elles uniquement pour la communauté `default`
-- `COMMUNITY_ISOLATION_ENABLED` : isolation des soirées, tournois, potes et classements par communauté (Membership ACTIVE) ; éteint = aucun filtre. Couverture partielle (voir README, PR4) : ne pas activer en production avant la fin du backlog
+- `COMMUNITY_ISOLATION_ENABLED` active les filtres communautaires étendus ; la garde d’accès Membership aux données collectives de default reste appliquée même flag OFF après la correction #309. Suivre docs/COMMUNITY_ROLLOUT.md et docs/SECURITE_CLAUDE.md avant activation.
 - `COMMUNITY_PICKER_ENABLED` : sélecteur de serveur `/serveurs` (0 serveur = message, 1 = redirection, plusieurs = choix) et porte sur accueil, `/sessions`, `/tournois`, `/classement` ; `User.activeCommunityId` est une préférence revalidée contre les Membership ACTIFS, jamais une autorisation ; exige la migration `add_user_active_community`
 - `COMMUNITY_ADMIN_ENABLED` : onglet « Communautés » de `/admin` (admins) : activer une communauté PENDING et choisir ses salons SESSION / TOURNAMENT, vérifiés auprès de Discord ; sans migration ; les salons ne servent qu'avec `COMMUNITY_CHANNELS_ENABLED`
 - `DISCORD_DM_SESSION_ENABLED` · `DISCORD_DM_TOURNAMENT_ENABLED` · `DISCORD_DM_ROULETTE_ENABLED` : création de nouveaux MP (les MP déjà en file sont traités) ; les MP de soirée exigent aussi le chemin bot soirées

@@ -129,7 +129,7 @@ export function isUserOwnedBannerPathname(pathname: string | null, userId: strin
  * `false` pour toute URL externe, tout blob d'un autre user, et tout
  * ancien blob au format pré-namespace (délibérément laissé orphelin —
  * préférable à un risque de suppression côté mauvais utilisateur, cf.
- * README).
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md).
  */
 export function canDeleteBannerBlob(url: string, userId: string): boolean {
   if (!isOwnBlobUrl(url)) return false;

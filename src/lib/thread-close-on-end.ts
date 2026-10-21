@@ -6,8 +6,7 @@ import { logger } from "@/lib/logger";
  * actif seulement si la valeur vaut exactement `true`).
  *
  * Ce que ça ajoute : le nettoyage automatique existant
- * (`discord-thread-cleanup.ts`, cron toutes les 15 min) archive et verrouille
- * le fil au passage SUIVANT du cron ; avec ce drapeau l'archivage est
+ * (discord-thread-cleanup.ts) archive et verrouille le fil lors d’un passage externe ; avec ce drapeau l’archivage est
  * programmé dès que la soirée / le tournoi passe DONE ou CANCELLED. La
  * suppression 24 h plus tard, les réessais, les échecs Discord et
  * l'idempotence restent portés, inchangés, par le chemin existant (le cron

@@ -46,7 +46,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 // pour tout `InvalidCheck`/`CallbackRouteError` (voir `auth.ts`, callback
 // `logger.error`, qui logue la vraie cause côté serveur). `trustHost`
 // est déjà activé et `AUTH_URL` déjà documentée comme requise (voir
-// README) — les deux pistes de fix habituelles pour ce type d'erreur.
+// docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md) — les deux pistes de fix habituelles pour ce type d'erreur.
 // La cause la plus probable restante pour un sous-ensemble d'utilisateurs
 // seulement : le cookie PKCE ne survit pas à l'aller-retour vers Discord
 // dans le navigateur intégré de l'appli Discord (ou d'une appli tierce),
@@ -196,9 +196,8 @@ async function HomeContent({
   ]);
 
   // Une soirée au vote échu est clôturée AVANT l'affichage. La vérification part
-  // en même temps que les lectures : dans le cas courant (aucune soirée échue,
-  // le cron `close-sessions` passe toutes les 15 minutes) elles sont déjà
-  // prêtes ; sinon on clôture puis on relit, pour ne jamais afficher l'état d'avant.
+  // en même temps que les lectures : si aucune soirée n'est échue, elles sont
+  // déjà prêtes ; sinon on clôture puis on relit, pour ne jamais afficher l'état d'avant.
   const [dueSession, firstReads] = await Promise.all([
     accessibleSessionWhereFor(user.id).then((accessibleWhere) =>
       scopedDb.session.findFirst({
@@ -305,7 +304,7 @@ async function HomeContent({
       <Stagger className="gn-home-sections" staggerDelay={0.04}>
         {/* Prochaine soirée + Stats du groupe côte à côte sur desktop —
             l'espace vide à gauche/droite était le retour le plus fréquent
-            en desktop (cf. README, section dédiée). */}
+            en desktop (cf. docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, section dédiée). */}
         <div className="gn-home-overview">
         <StaggerItem className="gn-home-play-column">
           {nextSession ? (

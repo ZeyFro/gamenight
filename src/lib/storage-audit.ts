@@ -168,7 +168,7 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
   // terminales (jamais toute la table) : au-delà d'un volume raisonnable
   // pour ce groupe d'amis, un audit exact nécessiterait un agrégat SQL dédié
   // par date, hors périmètre de cette PR (l'app ne vise pas des volumes
-  // nécessitant ça — voir le README pour la limite assumée).
+  // nécessitant ça — voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la limite assumée).
   const AUDIT_SAMPLE_SIZE = 2000;
   const terminalSessions = await scopedDb.session.findMany({
     where: { status: { in: ["DONE", "CANCELLED"] } },
@@ -220,7 +220,7 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
 
   // V2 ("Jouer maintenant") — même échantillonnage borné que
   // sessions/tournois ci-dessus, même raison (limite assumée documentée
-  // dans le README).
+  // dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md).
   const [instantSessionTotal, activeInstantSessions, terminalInstantSessions] = await Promise.all([
     scopedDb.instantSession.count(),
     scopedDb.instantSession.count({ where: { status: "ACTIVE" } }),
@@ -292,6 +292,6 @@ export async function generateStorageAuditReport(userId?: string): Promise<Stora
         "Aucune pièce jointe détenue par l'application pour les soirées/tournois/messages de chat (ChatMessage.content est un simple texte). Vercel Blob (banner-blob.ts) sert UNIQUEMENT la bannière de profil utilisateur, hors périmètre de cette politique.",
     },
     scopeNote:
-      "Session/Tournament/InstantSession sont RÉELLEMENT supprimées 7 jours après leur fin (Session sauf blocage explicite : dette impayée, vote de superlatifs pas encore clôturé — voir ci-dessus ; InstantSession sans condition bloquante équivalente). SessionResult/SuperlativeAward/Pronostic/XpBet SURVIVENT à la suppression d'une Session (résumé durable, jamais copiés dans une table séparée). L'XP de participation à une InstantSession (XpEvent) survit de la même façon, déjà sans FK — voir le README.",
+      "Session/Tournament/InstantSession sont RÉELLEMENT supprimées 7 jours après leur fin (Session sauf blocage explicite : dette impayée, vote de superlatifs pas encore clôturé — voir ci-dessus ; InstantSession sans condition bloquante équivalente). SessionResult/SuperlativeAward/Pronostic/XpBet SURVIVENT à la suppression d'une Session (résumé durable, jamais copiés dans une table séparée). L'XP de participation à une InstantSession (XpEvent) survit de la même façon, déjà sans FK.",
   };
 }

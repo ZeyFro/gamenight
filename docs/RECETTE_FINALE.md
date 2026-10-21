@@ -1,6 +1,6 @@
 # Recette finale GameNight — état et critères
 
-Audit documentaire réconcilié le 19 octobre 2026 avec `origin/main` à `b30e8ef` (PR #281–284 fusionnées). Ce document compare le code et ses tests aux parcours décrits dans README.md, ROADMAP.md et .env.example. La vérification publique Firecrawl et les refus Vercel 403 décrits plus bas sont historiques, depuis un autre poste; ils n’ont pas été rejoués sur le portable 1. Les parcours authentifiés, les migrations distantes et les flags Preview/Production restent non vérifiés ici. La CI et la preview vertes de #284 ne prouvent pas ces parcours.
+Audit documentaire réconcilié le 19 octobre 2026 avec `origin/main` à `b30e8ef` (PR #281–284 fusionnées). Ce document compare le code et ses tests aux parcours décrits dans README.md, ROADMAP.md et .env.example. La vérification publique Firecrawl et les refus Vercel 403 décrits plus bas sont historiques, depuis un autre poste; ils n’ont pas été rejoués sur le portable 1. Les parcours authentifiés, les migrations distantes et les flags Preview/Production restent non vérifiés ici. La CI et la preview vertes de #284 ne prouvent pas ces parcours. Mise à jour après #309 : le constat P1 sur les accès collectifs est corrigé et documenté dans [SECURITE_CLAUDE.md](SECURITE_CLAUDE.md) ; les configurations Preview/Production restent non vérifiées.
 
 ## Recette navigateur locale — 19 octobre 2026
 
@@ -30,7 +30,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 
 | Fonction | État | Utilisable dans le code livré | Configuration nécessaire | Reste à développer ou valider |
 |---|---|---|---|---|
-| Catalogue, bibliothèque personnelle et inventaire | Livré et testé | Catalogue global, bibliothèque personnelle, import Steam et intersection exacte des possessions sélectionnées; bibliothèque collective, possesseurs et compteurs scopés quand l’isolation est active | Connexion Steam; périmètre global historique si isolation OFF | Recette authentifiée et multi-compte non vérifiée; garder l’isolation désactivée |
+| Catalogue, bibliothèque personnelle et inventaire | Livré et testé | Catalogue global, bibliothèque personnelle, import Steam et intersection exacte des possessions sélectionnées; vues collectives limitées aux Memberships actives après #309, quel que soit le flag d’isolation | Connexion Steam et Membership dans la communauté concernée | Recette authentifiée et multi-compte non vérifiée; valider le changement de flag en préproduction |
 | Wishlist | Livré et testé | Ajout et suivi communautaire par jeu | Vérifier l’activation et les migrations déployées dans Vercel | Recette authentifiée et vérification de l’isolation en environnement de test |
 | Carnet des joueurs | Livré et testé | Commandes, plateformes, micro et identifiants PSN/Xbox/Switch/Epic/Battle.net déclaratifs sur le profil | Connexion, profil et migration des identifiants | Recette authentifiée non vérifiée; les identifiants hors Steam ne sont pas des liaisons OAuth ni des preuves de propriété |
 | Préférences et refus | Livré et testé | Préférences, refus de catégories et jeux nommés utilisés dans /bibliotheque/suggestions pour les participants choisis | Migrations correspondantes; pas de flag dédié | Recette authentifiée non vérifiée; votes et roulettes ne sont pas modifiés par ce parcours |
@@ -66,7 +66,7 @@ La colonne Livraison de ROADMAP.md décrit la fonctionnalité. Sa colonne Statut
 ### Préconditions et sécurité
 
 1. Utiliser un déploiement Preview et une communauté Discord de recette avec données jetables. Ne pas faire les actions d’écriture ci-dessous en Production.
-2. Garder COMMUNITY_ISOLATION_ENABLED désactivé en Production. Le README documente une couverture d’isolation encore partielle; l’activer prématurément peut exposer des données d’une communauté aux membres d’une autre.
+2. Pour toute recette multi-communauté, suivre [COMMUNITY_ROLLOUT.md](COMMUNITY_ROLLOUT.md) et valider le périmètre dans un environnement de recette. Le défaut P1 #309 est corrigé dans le code ; les flags et migrations distants restent non vérifiés ici.
 3. Pour une recette réelle, ouvrir l’URL Preview du projet GameNight et cliquer « Se connecter avec Discord ». Autoriser l’application avec le compte de recette, puis attendre le retour sur GameNight. Ne pas transmettre de mot de passe, code OAuth ou cookie dans le chat.
 4. Préparer deux comptes de test membres de communautés distinctes. Vérifier les refus d’accès croisés avant toute activation limitée de l’isolation, sur Preview seulement et après revue de docs/COMMUNITY_ROLLOUT.md.
 5. Vérifier les migrations Preview avant les parcours checklist, chroniques, calendrier, pronostics, scores, galerie et Push. Le statut des migrations distantes n’est pas accessible dans cette session.
@@ -110,7 +110,7 @@ Les noms ci-dessous sont ceux présents dans .env.example et le code. Pour les f
 | COMMUNITY_EXPRESSIONS_ENABLED | Expressions/running gags; migration community_expressions | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_GAME_GRAVEYARD_ENABLED | Épitaphes; migration community_game_epitaphs | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_HIGHLIGHTS_ENABLED | Hall of Fame/Shame; migration community_highlights | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
-| COMMUNITY_ISOLATION_ENABLED | Filtrage des domaines collectifs par memberships actifs; couverture documentée partielle | OFF si absent | Scénarios dédiés | Inconnu (403) | Inconnu (403); ne pas activer |
+| COMMUNITY_ISOLATION_ENABLED | Filtres étendus ; la Membership reste exigée pour l’accès collectif même flag OFF après #309 | OFF si absent | Cas B-only et admin sans Membership couverts ; couverture multi-communauté globale non exhaustive | Inconnu (403) | Inconnu (403); état distant non vérifié, valider en préproduction avant changement |
 | COMMUNITY_PICKER_ENABLED | Choix de communauté; migration add_user_active_community et isolation effective requises | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_QUICK_POLLS_ENABLED | Sondages éclair; migration community_quick_polls | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |
 | COMMUNITY_SETUP_COMMAND_ENABLED | /gamenight setup; permission Discord et clé de signature requises | OFF si absent | Tests ciblés; stubs si concernés | Inconnu (403) | Inconnu (403) |

@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * jamais une liste vide transformée en "tout le monde", jamais un invité
  * de plus ou de moins que ce qui a été explicitement coché au formulaire.
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente.
  */
 

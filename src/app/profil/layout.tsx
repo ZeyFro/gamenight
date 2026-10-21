@@ -52,7 +52,7 @@ function StreakStatCard({ value }: { value: number }) {
  *
  * Bannière en `background-image` CSS plutôt que `next/image` : `bannerUrl`
  * est une URL externe arbitraire saisie par l'utilisateur (voir
- * `/profil/parametres` et le README pour la décision "URL uniquement,
+ * `/profil/parametres` et docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la décision "URL uniquement,
  * pas d'upload") — `next/image` exige une liste blanche de domaines dans
  * `next.config.ts`, ce qu'on ne peut pas maintenir pour une URL
  * complètement libre. Une balise CSS classique n'a pas cette contrainte

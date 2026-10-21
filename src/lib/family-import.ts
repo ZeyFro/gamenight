@@ -99,7 +99,7 @@ function looksLikeNoise(line: string): boolean {
  * durées de jeu, dates de dernière session, etc. entremêlées sur la même
  * ligne qu'un nom) : seules les lignes reconnues comme du "bruit" pur
  * (nombres/dates/URLs) sont filtrées, pas un vrai nettoyage ligne par
- * ligne — limite assumée et documentée dans le README plutôt qu'un
+ * ligne — limite assumée et documentée dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md plutôt qu'un
  * parseur HTML/DOM impossible à écrire pour du texte brut collé.
  */
 export function parseGameNamesFromText(text: string): string[] {

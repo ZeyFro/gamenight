@@ -5,7 +5,7 @@
  * — bien au-delà des ~75s estimés en PR 32.6 pour ~48 jeux. Un backfill
  * réseau ne devrait jamais faire partie du chemin critique d'un
  * déploiement : déclenché à la place par `POST /api/backfill/steam-store`,
- * protégé par `CRON_SECRET`, appelé par un cron externe (voir README).
+ * protégé par `CRON_SECRET`, appelé par un cron externe (voir docs/CRONS.md).
  *
  * Contrairement à `prisma/backfill-steam-coop.mjs` (script Node/ESM
  * autonome, conservé pour un lancement local via `npm run

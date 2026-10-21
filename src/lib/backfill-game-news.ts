@@ -3,8 +3,8 @@
  * philosophie que `runSteamCoopBackfill` (jamais dans le chemin critique
  * d'un déploiement, jamais appelé à un chargement de page) : déclenché
  * par `POST /api/backfill/game-news`, protégé par `CRON_SECRET`, appelé
- * par le même cron externe quotidien que les autres backfills Steam (voir
- * README) — pas un cron dédié séparé, cf. énoncé "1 fois par jour max".
+ * par un ordonnanceur externe (cadence non définie par le dépôt, voir
+ * docs/CRONS.md) — pas un cron dédié séparé.
  *
  * Portée : les 10 jeux les plus joués du groupe (le plus de soirées
  * `DONE`, même `groupBy` que `getGroupStats` dans `src/lib/home.ts`)

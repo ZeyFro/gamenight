@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
  * dépôt (voir leurs commentaires de fichier, notamment
  * `session-access.integration.test.ts`).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente. `auth()` (Auth.js/Discord) est mocké : aucun flux
  * OAuth réel n'est testable ici, seule l'interaction avec Prisma et
  * `shouldForceRelogin` l'est.

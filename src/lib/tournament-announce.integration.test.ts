@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * ciblent directement la référence du message réellement créé) — un seul
  * `POST`/`PATCH` suffit à les simuler, comme avant cette revue.
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert).
  */
 
