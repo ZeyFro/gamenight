@@ -21,13 +21,13 @@ function fakeDocker(output) {
 }
 
 for (const endpoint of ["npipe:////./pipe/docker_engine", "unix:///var/run/docker.sock"]) {
-  assert.doesNotThrow(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`)));
+  assert.doesNotThrow(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`), {}));
 }
 for (const endpoint of ["ssh://docker.example", "tcp://127.0.0.1:2375", "npipe:////server/pipe/docker_engine", ""]) {
-  assert.throws(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`)), /Docker local requis/);
+  assert.throws(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`), {}), /Docker local requis/);
 }
 let dockerCalled = false;
-assert.throws(() => assertLocalDockerContext(() => { dockerCalled = true; return "npipe:////./pipe/docker_engine"; }, { DOCKER_HOST: "tcp://docker.example:2376" }), /DOCKER_HOST distant interdit/);
+assert.throws(() => assertLocalDockerContext(() => { dockerCalled = true; return "npipe:////./pipe/docker_engine"; }, { DOCKER_HOST: "tcp://docker.example:2376" }), /DOCKER_HOST défini interdit/);
 assert.equal(dockerCalled, false, "DOCKER_HOST doit être refusé avant toute commande Docker");
 const explicitTarget = {
   GAMENIGHT_RECIPE_PG_CONTAINER: "gamenight-recipe-fresh",
@@ -55,7 +55,7 @@ try {
     encoding: "utf8",
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr + result.stdout, /DOCKER_HOST distant interdit/);
+  assert.match(result.stderr + result.stdout, /DOCKER_HOST défini interdit/);
 } finally {
   rmSync(xpTemporaryDirectory, { recursive: true, force: true });
 }
