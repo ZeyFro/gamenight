@@ -11,7 +11,7 @@ export interface CommunityDateInput {
 export interface CalendarCommunityDate {
   id: string;
   title: string;
-  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS" | "SEASONAL";
+  kind: "BIRTHDAY" | "IMPORTANT" | "GAME_RELEASE" | "GAME_AWARDS" | "SEASONAL" | "STEAM_SALE";
   date: Date;
   createdById: string;
   href?: string;
@@ -39,6 +39,26 @@ export function expandGameAwards(start: Date, endExclusive: Date): CalendarCommu
     id: "game-awards:2026", title: "The Game Awards 2026", kind: "GAME_AWARDS",
     date, createdById: "system", href: "https://thegameawards.com/",
   }];
+}
+
+export function expandSteamSales(start: Date, endExclusive: Date): CalendarCommunityDate[] {
+  // shortcut: dates publiées vérifiées le 20 octobre 2026 ; compléter à la prochaine annonce Steam.
+  const sales = [
+    { id: "winter-2026", title: "Soldes Steam d’hiver 2026", start: "2026-12-17", end: "2027-01-04" },
+    { id: "spring-2027", title: "Soldes Steam de printemps 2027", start: "2027-03-18", end: "2027-03-25" },
+    { id: "summer-2027", title: "Soldes Steam d’été 2027", start: "2027-06-24", end: "2027-07-08" },
+  ];
+  const events: CalendarCommunityDate[] = [];
+  for (const sale of sales) {
+    for (const [boundary, label, day] of [["start", "Début", sale.start], ["end", "Fin", sale.end]]) {
+      const date = new Date(`${day}T00:00:00.000Z`);
+      if (date >= start && date < endExclusive) events.push({
+        id: `steam-sale:${sale.id}:${boundary}`, title: `${label} · ${sale.title}`, kind: "STEAM_SALE",
+        date, createdById: "system", href: "https://partner.steamgames.com/doc/marketing/discounts/seasonalsales",
+      });
+    }
+  }
+  return events;
 }
 
 export function expandSeasonalEvents(start: Date, endExclusive: Date): CalendarCommunityDate[] {
