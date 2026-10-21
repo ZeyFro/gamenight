@@ -42,7 +42,7 @@ describe("session voice collector bridge (fake Gateway only)", () => {
     now = 61_000;
     sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 3, "VOICE_STATE_UPDATE");
     expect(persist).toHaveBeenCalledWith(
-      { guildId: "123456789012345678", channelIds: ["456789012345678901"], sessionId: "session-test" },
+      { guildId: "123456789012345678", defaultGuildId: "", channelIds: ["456789012345678901"], sessionId: "session-test" },
       { memberKey: "789012345678901234", channelId: "456789012345678901", startedAt: 1_000, endedAt: 61_000 },
     );
     await collector!.stop();

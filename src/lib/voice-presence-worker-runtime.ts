@@ -61,6 +61,7 @@ export async function startVoicePresenceWorkerRuntime(
       const collector = createSessionVoiceCollector({
         VOICE_PRESENCE_ENABLED: "true",
         DISCORD_BOT_TOKEN: config.token,
+        DISCORD_BOT_GUILD_ID: process.env.DISCORD_BOT_GUILD_ID,
         VOICE_PRESENCE_GUILD_ID: target.guildId,
         VOICE_PRESENCE_CHANNEL_IDS: target.channelIds.join(","),
         VOICE_PRESENCE_SESSION_ID: target.sessionId,

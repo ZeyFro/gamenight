@@ -80,10 +80,11 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
       { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
     );
 
+    await runtime.stop();
     expect(mocks.createSessionVoiceCollector).toHaveBeenCalledWith(expect.objectContaining({
       VOICE_PRESENCE_GUILD_ID: "123456789012345678",
+      DISCORD_BOT_GUILD_ID: "123456789012345678",
     }), expect.any(Object));
-    await runtime.stop();
   });
 
   it("surfaces startup failure without forwarding database error details to Next logs", async () => {

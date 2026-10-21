@@ -55,6 +55,7 @@ beforeEach(() => {
     sessionVoicePresenceInterval: { upsert: mocks.intervalUpsert },
   }));
   process.env.VOICE_PRESENCE_ENABLED = "true";
+  process.env.DISCORD_BOT_GUILD_ID = "";
 });
 
 describe("voice presence session link (synthetic DB doubles)", () => {
@@ -73,6 +74,61 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     expect(mocks.sessionFindFirst).not.toHaveBeenCalled();
     expect(await storeSessionVoiceInterval(config, interval)).toBe(false);
     expect(mocks.sessionFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: "session-test", status: "SCHEDULED", OR: expect.any(Array) }) }));
+    expect(mocks.intervalUpsert).not.toHaveBeenCalled();
+  });
+
+  it("stores intervals for the default community through its configured bot guild fallback", async () => {
+    const fallbackGuildId = env.VOICE_PRESENCE_GUILD_ID;
+    process.env.DISCORD_BOT_GUILD_ID = fallbackGuildId;
+    const config = sessionVoiceConfig({ ...env, DISCORD_BOT_GUILD_ID: fallbackGuildId })!;
+    mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
+    mocks.intervalUpsert.mockResolvedValue({});
+    mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join("");
+      if (query.includes('FROM "User"')) return [{ id: "user-1" }];
+      if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1" }];
+      if (query.includes('FROM "Community"')) {
+        return values.at(-1) === true && query.includes('"slug" = \'default\'') && query.includes('"discordGuildId" IS NULL')
+          ? [{ id: "community-1" }]
+          : [];
+      }
+      if (query.includes('FROM "CommunityChannelConfig"')) return [{ id: "voice-config" }];
+      if (query.includes('FROM "SessionInvite"')) return [{ id: "invite-1" }];
+      if (query.includes('FROM "Membership"')) return [{ userId: "user-1" }];
+      return [];
+    });
+
+    expect(await storeSessionVoiceInterval(config, interval)).toBe(true);
+    expect(mocks.sessionFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ community: { is: expect.objectContaining({
+        OR: [
+          { discordGuildId: fallbackGuildId },
+          { slug: "default", discordGuildId: null },
+        ],
+      }) } }),
+    }));
+    expect(mocks.intervalUpsert).toHaveBeenCalledOnce();
+  });
+
+  it("does not use the default-community fallback for another bot guild", async () => {
+    const config = sessionVoiceConfig({ ...env, DISCORD_BOT_GUILD_ID: "987654321098765432" })!;
+    mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
+    mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join("");
+      if (query.includes('FROM "User"')) return [{ id: "user-1" }];
+      if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1" }];
+      if (query.includes('FROM "Community"')) {
+        return values.at(-1) === true ? [{ id: "community-1" }] : [];
+      }
+      if (query.includes('FROM "CommunityChannelConfig"')) return [{ id: "voice-config" }];
+      if (query.includes('FROM "SessionInvite"')) return [{ id: "invite-1" }];
+      if (query.includes('FROM "Membership"')) return [{ userId: "user-1" }];
+      return [];
+    });
+
+    expect(await storeSessionVoiceInterval(config, interval)).toBe(false);
     expect(mocks.intervalUpsert).not.toHaveBeenCalled();
   });
 

@@ -4,7 +4,7 @@ import { getSessionAccessRole } from "@/lib/session-access";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { toWallClock } from "@/lib/wallclock";
 
-export type SessionVoiceConfig = { guildId: string; channelIds: readonly string[]; sessionId: string };
+export type SessionVoiceConfig = { guildId: string; defaultGuildId?: string; channelIds: readonly string[]; sessionId: string };
 
 export function sessionVoiceConfig(env: Record<string, string | undefined>): SessionVoiceConfig | null {
   if (env.VOICE_PRESENCE_ENABLED !== "true") return null;
@@ -14,7 +14,7 @@ export function sessionVoiceConfig(env: Record<string, string | undefined>): Ses
   if (!/^\d{17,20}$/.test(guildId) || !sessionId || !channelIds.length || channelIds.some(id => !/^\d{17,20}$/.test(id))) {
     throw new Error("Voice presence session configuration incomplete");
   }
-  return { guildId, channelIds, sessionId };
+  return { guildId, defaultGuildId: env.DISCORD_BOT_GUILD_ID?.trim() ?? "", channelIds, sessionId };
 }
 
 export async function storeSessionVoiceInterval(
@@ -25,6 +25,10 @@ export async function storeSessionVoiceInterval(
   if (!/^\d{17,20}$/.test(interval.memberKey) || !Number.isFinite(interval.startedAt) || !Number.isFinite(interval.endedAt) || interval.endedAt <= interval.startedAt) return false;
   const durationSeconds = Math.floor((interval.endedAt - interval.startedAt) / 1_000);
   if (durationSeconds < 1) return false;
+  const usesDefaultGuildFallback = config.defaultGuildId === config.guildId;
+  const communityGuildFilter = usesDefaultGuildFallback
+    ? { OR: [{ discordGuildId: config.guildId }, { slug: "default", discordGuildId: null }] }
+    : { discordGuildId: config.guildId };
 
   const user = await prisma.user.findUnique({ where: { discordId: interval.memberKey }, select: { id: true } });
   if (!user) return false;
@@ -34,7 +38,7 @@ export async function storeSessionVoiceInterval(
       status: "SCHEDULED",
       date: { lte: toWallClock(new Date(interval.startedAt)) },
       community: { is: {
-        discordGuildId: config.guildId,
+        ...communityGuildFilter,
         status: "ACTIVE",
         channelConfigs: { some: { category: "VOICE", discordChannelId: interval.channelId, enabled: true } },
       } },
@@ -93,7 +97,10 @@ export async function storeSessionVoiceInterval(
       SELECT id FROM "Community"
       WHERE id = ${currentSession.communityId}
         AND status = 'ACTIVE'
-        AND "discordGuildId" = ${config.guildId}
+        AND (
+          "discordGuildId" = ${config.guildId}
+          OR ("slug" = 'default' AND "discordGuildId" IS NULL AND ${usesDefaultGuildFallback})
+        )
       FOR SHARE
     `;
     if (!communities.length) return false;
