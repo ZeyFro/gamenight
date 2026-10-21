@@ -22,10 +22,22 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { ensureDefaultCommunity, ensureDefaultCommunityRecord } from "./default-community";
+import {
+  ensureDefaultCommunity,
+  ensureDefaultCommunityRecord,
+  findExistingDefaultCommunityId,
+  getDefaultCommunityId,
+  resetDefaultCommunityIdCache,
+} from "./default-community";
+import * as defaultCommunityModule from "./default-community";
+
+const rememberDefaultCommunityIdFromLookup = (defaultCommunityModule as unknown as {
+  rememberDefaultCommunityIdFromLookup?: (community: { id: string; slug: string }) => void;
+}).rememberDefaultCommunityIdFromLookup;
 
 describe("ensureDefaultCommunityRecord", () => {
   beforeEach(() => {
+    resetDefaultCommunityIdCache();
     findUnique.mockReset().mockResolvedValue(null);
     create.mockReset().mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
     update.mockReset().mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
@@ -33,6 +45,63 @@ describe("ensureDefaultCommunityRecord", () => {
     membershipCreateMany.mockReset();
     vi.unstubAllEnvs();
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
+  });
+
+  it("résout l'ID default sans créer la communauté et réutilise son cache positif", async () => {
+    findUnique.mockResolvedValue({ id: "c1" });
+
+    await expect(findExistingDefaultCommunityId()).resolves.toBe("c1");
+    await expect(findExistingDefaultCommunityId()).resolves.toBe("c1");
+
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { slug: "default" },
+      select: { id: true },
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("une absence reste non mise en cache et ne déclenche jamais le bootstrap", async () => {
+    findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "c1" });
+
+    await expect(findExistingDefaultCommunityId()).resolves.toBeNull();
+    await expect(findExistingDefaultCommunityId()).resolves.toBe("c1");
+
+    expect(findUnique).toHaveBeenCalledTimes(2);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("lit dans le client transactionnel fourni lorsque le cache est froid", async () => {
+    const txFindUnique = vi.fn().mockResolvedValue({ id: "tx-c1" });
+    const transactionClient = { community: { findUnique: txFindUnique } } as unknown as Parameters<typeof findExistingDefaultCommunityId>[0];
+
+    await expect(findExistingDefaultCommunityId(transactionClient)).resolves.toBe("tx-c1");
+
+    expect(txFindUnique).toHaveBeenCalledWith({
+      where: { slug: "default" },
+      select: { id: true },
+    });
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("partage le cache positif établi par le getter historique", async () => {
+    findUnique.mockResolvedValue({ id: "c1" });
+
+    await expect(getDefaultCommunityId()).resolves.toBe("c1");
+    await expect(findExistingDefaultCommunityId()).resolves.toBe("c1");
+
+    expect(findUnique).toHaveBeenCalledOnce();
+  });
+
+  it("mémorise un ID uniquement quand la ligne lue porte le slug default", async () => {
+    expect(rememberDefaultCommunityIdFromLookup).toBeTypeOf("function");
+    rememberDefaultCommunityIdFromLookup!({ id: "c-default", slug: "default" });
+    rememberDefaultCommunityIdFromLookup!({ id: "c-b", slug: "serveur-b" });
+
+    await expect(findExistingDefaultCommunityId()).resolves.toBe("c-default");
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("0 communauté : crée `default` ACTIVE avec discordGuildId = DISCORD_BOT_GUILD_ID", async () => {

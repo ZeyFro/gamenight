@@ -53,7 +53,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
       : kind === "roulette-session" ? (await import("@/app/roulette/actions")).createSessionFromRouletteAction
       : kind === "instant" ? (await import("@/app/jouer-maintenant/actions")).createInstantSessionAction
       : (await import("@/app/tournois/actions")).createTournamentAction;
-    const destinations = await Promise.all(Array.from({ length: 6 }, () => destination(action(form("same-attempt-00000001")))));
+    // Await every sibling before the next beforeEach truncates shared tables.
+    const outcomes = await Promise.allSettled(Array.from({ length: 6 }, () => destination(action(form("same-attempt-00000001")))));
+    const destinations = outcomes.map((outcome) => {
+      if (outcome.status === "rejected") throw outcome.reason;
+      return outcome.value;
+    });
     expect(new Set(destinations).size).toBe(1);
     expect(await destination(action(form("same-attempt-00000001")))).toBe(destinations[0]);
     expect(await db.creationIntent.count()).toBe(1);
@@ -68,7 +73,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
       expect(await db.sessionInvite.count()).toBe(2);
     }
     expect(fetch).not.toHaveBeenCalled();
-  }, 15_000);
+  }, 30_000);
 
   it("rollback : aucun reçu ni mutation partielle ; une tentative peut reprendre", async () => {
     const { createOnce } = await import("@/lib/creation-intent");

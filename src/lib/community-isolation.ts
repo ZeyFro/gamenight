@@ -1,7 +1,7 @@
 import { communityRead } from "@/lib/community-read-context";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { DEFAULT_COMMUNITY_SLUG, findExistingDefaultCommunityId } from "@/lib/default-community";
 import { getActiveCommunityState, isCommunityPickerEnabled } from "@/lib/community-picker";
 
 /**
@@ -75,12 +75,8 @@ export async function memberUserWhereFor(userId: string): Promise<Prisma.UserWhe
 export async function communityMemberUserWhere(communityId: string | null): Promise<Prisma.UserWhereInput> {
   let id = communityId;
   if (id === null) {
-    const fallback = await prisma.community.findUnique({
-      where: { slug: DEFAULT_COMMUNITY_SLUG },
-      select: { id: true },
-    });
-    if (!fallback) return { id: { in: [] } };
-    id = fallback.id;
+    id = await findExistingDefaultCommunityId();
+    if (!id) return { id: { in: [] } };
   }
   return { memberships: { some: { communityId: id, status: "ACTIVE", community: { status: "ACTIVE" } } } };
 }
@@ -178,12 +174,8 @@ export async function listCronCommunityIds(): Promise<string[]> {
 export async function isMemberOfCommunity(userId: string, communityId: string | null): Promise<boolean> {
   let id = communityId;
   if (id === null) {
-    const community = await prisma.community.findUnique({
-      where: { slug: DEFAULT_COMMUNITY_SLUG },
-      select: { id: true },
-    });
-    if (!community) return false;
-    id = community.id;
+    id = await findExistingDefaultCommunityId();
+    if (!id) return false;
   }
   return (await prisma.membership.findFirst({
     where: { userId, communityId: id, status: "ACTIVE", community: { status: "ACTIVE" } },

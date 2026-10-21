@@ -33,11 +33,13 @@ import {
   memberUserWhere,
   resolveActiveCommunityId,
 } from "./community-isolation";
+import { resetDefaultCommunityIdCache } from "./default-community";
 
 const m = (communityId: string, slug: string) => ({ communityId, community: { slug } });
 
 describe("community-isolation", () => {
   beforeEach(() => {
+    resetDefaultCommunityIdCache();
     membershipFindMany.mockReset().mockResolvedValue([]);
     membershipFindFirst.mockReset().mockResolvedValue(null);
     communityFindUnique.mockReset().mockResolvedValue({ id: "c-def" });
@@ -304,6 +306,19 @@ describe("community-isolation", () => {
       expect(membershipFindFirst).toHaveBeenCalledWith(expect.objectContaining({
         where: { userId: "u1", communityId: "c-def", status: "ACTIVE", community: { status: "ACTIVE" } },
       }));
+    });
+
+    it("réutilise l'ID default positif sans mettre en cache l'adhésion active", async () => {
+      membershipFindFirst.mockResolvedValueOnce({ id: "m1" }).mockResolvedValueOnce(null);
+
+      await expect(isMemberOfCommunity("u1", null)).resolves.toBe(true);
+      await expect(isMemberOfCommunity("u1", null)).resolves.toBe(false);
+      await expect(communityMemberUserWhere(null)).resolves.toEqual({
+        memberships: { some: { communityId: "c-def", status: "ACTIVE", community: { status: "ACTIVE" } } },
+      });
+
+      expect(communityFindUnique).toHaveBeenCalledTimes(1);
+      expect(membershipFindFirst).toHaveBeenCalledTimes(2);
     });
   });
 });

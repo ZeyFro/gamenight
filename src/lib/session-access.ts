@@ -218,18 +218,16 @@ export async function filterByActiveSessionInvite<T extends { id: string }>(
   if (candidates.length === 0) return [];
   const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
   if (!session) return [];
-  const members = await prisma.user.findMany({
-    where: { id: { in: candidates.map((candidate) => candidate.id) }, ...(await communityMemberUserWhere(session.communityId)) },
+  const eligibleMembers = await prisma.user.findMany({
+    where: {
+      id: { in: candidates.map((candidate) => candidate.id) },
+      AND: [
+        await communityMemberUserWhere(session.communityId),
+        { OR: [{ id: creatorId }, { sessionInvitesReceived: { some: { sessionId, status: "ACTIVE" } } }] },
+      ],
+    },
     select: { id: true },
   });
-  const memberIds = new Set(members.map((member) => member.id));
-  const toCheck = candidates.filter((candidate) => candidate.id !== creatorId && memberIds.has(candidate.id));
-  if (toCheck.length === 0) return candidates.filter((candidate) => candidate.id === creatorId && memberIds.has(candidate.id));
-
-  const active = await prisma.sessionInvite.findMany({
-    where: { sessionId, status: "ACTIVE", userId: { in: toCheck.map((c) => c.id) } },
-    select: { userId: true },
-  });
-  const activeIds = new Set(active.map((i) => i.userId));
-  return candidates.filter((candidate) => memberIds.has(candidate.id) && (candidate.id === creatorId || activeIds.has(candidate.id)));
+  const eligibleIds = new Set(eligibleMembers.map((member) => member.id));
+  return candidates.filter((candidate) => eligibleIds.has(candidate.id));
 }

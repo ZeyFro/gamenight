@@ -1,7 +1,8 @@
 import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
-import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { DEFAULT_COMMUNITY_SLUG, rememberDefaultCommunityIdFromLookup } from "@/lib/default-community";
+import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId, communityMemberUserWhere } from "@/lib/community-isolation";
+import { isCommunityPickerEnabled } from "@/lib/community-picker";
 import {
   getSessionAnnounceConfig,
   getTournamentAnnounceConfig,
@@ -136,4 +137,56 @@ export async function pickCreationCommunityId(userId: string): Promise<string | 
     return null;
   }
   return resolveActiveCommunityId(userId);
+}
+
+/** Choisit la communauté de création et préfiltre les invités dans la même lecture quand les sélecteurs sont éteints. */
+export async function pickCreationCommunityAndRecipients(
+  userId: string,
+  candidateIds: string[],
+): Promise<{ communityId: string | null; notifiedUserIds: string[] }> {
+  if (candidateIds.length && !isCommunityChannelsEnabled() && !isCommunityIsolationEnabled() && !isCommunityPickerEnabled()) {
+    const [selection] = await prisma.$queryRaw<Array<{
+      communityId: string;
+      communitySlug: string;
+      notifiedUserIds: string[];
+    }>>`
+      WITH creator_community AS MATERIALIZED (
+        SELECT m."communityId", c.slug, m."joinedAt"
+        FROM "Membership" m
+        JOIN "Community" c ON c.id = m."communityId"
+        WHERE m."userId" = ${userId} AND m.status = 'ACTIVE' AND c.status = 'ACTIVE'
+        ORDER BY (c.slug = ${DEFAULT_COMMUNITY_SLUG}) DESC, m."joinedAt" ASC
+        LIMIT 1
+      )
+      SELECT creator_community."communityId",
+             creator_community.slug AS "communitySlug",
+             ARRAY(
+               SELECT invitee.id
+               FROM "User" invitee
+               JOIN "Membership" invitee_membership
+                 ON invitee_membership."userId" = invitee.id
+                AND invitee_membership."communityId" = creator_community."communityId"
+                AND invitee_membership.status = 'ACTIVE'
+               WHERE invitee.id = ANY(${[...new Set(candidateIds)]}::text[])
+               ORDER BY invitee.id
+             ) AS "notifiedUserIds"
+      FROM creator_community
+    `;
+
+    if (!selection) return { communityId: null, notifiedUserIds: [] };
+    rememberDefaultCommunityIdFromLookup({ id: selection.communityId, slug: selection.communitySlug });
+    return {
+      communityId: selection.communitySlug === DEFAULT_COMMUNITY_SLUG ? null : selection.communityId,
+      notifiedUserIds: selection.notifiedUserIds,
+    };
+  }
+
+  const communityId = await pickCreationCommunityId(userId);
+  const notifiedUserIds = candidateIds.length
+    ? (await prisma.user.findMany({
+        where: { AND: [{ id: { in: candidateIds } }, await communityMemberUserWhere(communityId)] },
+        select: { id: true },
+      })).map(({ id }) => id)
+    : [];
+  return { communityId, notifiedUserIds };
 }

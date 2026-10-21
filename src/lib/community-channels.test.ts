@@ -9,18 +9,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * partir dans le salon d'une autre communauté).
  */
 
-const { communityFindUnique, membershipFindMany, membershipFindFirst } = vi.hoisted(() => ({
+const { communityFindUnique, membershipFindMany, membershipFindFirst, queryRaw } = vi.hoisted(() => ({
   communityFindUnique: vi.fn(),
   membershipFindMany: vi.fn(),
   membershipFindFirst: vi.fn(),
+  queryRaw: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     community: { findUnique: communityFindUnique },
     membership: { findMany: membershipFindMany, findFirst: membershipFindFirst },
+    $queryRaw: queryRaw,
   },
 }));
 
+import * as communityChannels from "./community-channels";
 import {
   isCommunityChannelsEnabled,
   isSessionAnnounceViaBotEnabledFor,
@@ -31,6 +34,14 @@ import {
   resolveTournamentAnnounceConfig,
   resolveVoiceChannelUrl,
 } from "./community-channels";
+import { findExistingDefaultCommunityId, resetDefaultCommunityIdCache } from "./default-community";
+
+const pickCreationCommunityAndRecipients = (communityChannels as unknown as {
+  pickCreationCommunityAndRecipients?: (userId: string, candidateIds: string[]) => Promise<{
+    communityId: string | null;
+    notifiedUserIds: string[];
+  }>;
+}).pickCreationCommunityAndRecipients;
 
 const ENV_SESSION = { guildId: "111", channelId: "900" };
 const ENV_TOURNAMENT = { guildId: "111", channelId: "901" };
@@ -47,9 +58,11 @@ const withRow = (channelId: string, enabled = true) => [{ discordChannelId: chan
 
 describe("community-channels", () => {
   beforeEach(() => {
+    resetDefaultCommunityIdCache();
     communityFindUnique.mockReset().mockResolvedValue(null);
     membershipFindMany.mockReset().mockResolvedValue([]);
     membershipFindFirst.mockReset().mockResolvedValue(null);
+    queryRaw.mockReset().mockResolvedValue([]);
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
     vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "900");
     vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "901");
@@ -295,6 +308,58 @@ describe("community-channels", () => {
     it("plusieurs sans la communauté par défaut : la plus ancienne", async () => {
       membershipFindMany.mockResolvedValue([membership("c-b", "serveur-b"), membership("c-c", "serveur-c")]);
       await expect(pickCreationCommunityId("u1")).resolves.toBe("c-b");
+    });
+  });
+
+  describe("pickCreationCommunityAndRecipients", () => {
+    beforeEach(() => {
+      vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "false");
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+    });
+
+    it("default : conserve le rattachement null et filtre les candidats sur default dans la même requête", async () => {
+      expect(pickCreationCommunityAndRecipients).toBeTypeOf("function");
+      queryRaw.mockResolvedValueOnce([
+        { communityId: "c-default", communitySlug: "default", notifiedUserIds: ["guest-default"] },
+      ]);
+
+      await expect(pickCreationCommunityAndRecipients!("creator", ["guest-default", "guest-b"])).resolves.toEqual({
+        communityId: null,
+        notifiedUserIds: ["guest-default"],
+      });
+      expect(queryRaw).toHaveBeenCalledOnce();
+      const sql = queryRaw.mock.calls[0][0].join("?");
+      expect(sql).toContain('m."userId" = ? AND m.status = \'ACTIVE\' AND c.status = \'ACTIVE\'');
+      expect(sql).toContain('invitee_membership."communityId" = creator_community."communityId"');
+      expect(sql).toContain("ARRAY(");
+      await expect(findExistingDefaultCommunityId()).resolves.toBe("c-default");
+      expect(communityFindUnique).not.toHaveBeenCalled();
+      expect(membershipFindFirst).not.toHaveBeenCalled();
+      expect(membershipFindMany).not.toHaveBeenCalled();
+    });
+
+    it("B-only : choisit B et ne laisse entrer aucun candidat default", async () => {
+      queryRaw.mockResolvedValueOnce([
+        { communityId: "c-b", communitySlug: "serveur-b", notifiedUserIds: ["guest-b"] },
+      ]);
+
+      await expect(pickCreationCommunityAndRecipients!("creator", ["guest-b", "guest-default"])).resolves.toEqual({
+        communityId: "c-b",
+        notifiedUserIds: ["guest-b"],
+      });
+      const sql = queryRaw.mock.calls[0][0].join("?");
+      expect(sql).toContain('invitee_membership."communityId" = creator_community."communityId"');
+      expect(sql).toContain('invitee_membership.status = \'ACTIVE\'');
+      expect(sql).toContain('ORDER BY (c.slug = ?) DESC, m."joinedAt" ASC');
+    });
+
+    it("sans membership actif du créateur, n'accorde ni default ni invités", async () => {
+      await expect(pickCreationCommunityAndRecipients!("creator", ["guest-default"])).resolves.toEqual({
+        communityId: null,
+        notifiedUserIds: [],
+      });
+      expect(queryRaw).toHaveBeenCalledOnce();
     });
   });
 });

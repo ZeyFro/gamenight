@@ -1,4 +1,4 @@
-import type { Community } from "@prisma/client";
+import type { Community, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -78,6 +78,25 @@ export async function ensureDefaultCommunity(): Promise<EnsureDefaultCommunityRe
 }
 
 let cachedDefaultCommunityId: string | null = null;
+
+/** Lookup-only default ID for access checks and transactions; never bootstraps the row. */
+export async function findExistingDefaultCommunityId(
+  client: Pick<Prisma.TransactionClient, "community"> = prisma,
+): Promise<string | null> {
+  if (cachedDefaultCommunityId) return cachedDefaultCommunityId;
+  const community = await client.community.findUnique({
+    where: { slug: DEFAULT_COMMUNITY_SLUG },
+    select: { id: true },
+  });
+  if (!community) return null;
+  cachedDefaultCommunityId = community.id;
+  return community.id;
+}
+
+/** Cache a positive ID only when it came from a row verified as the default community. */
+export function rememberDefaultCommunityIdFromLookup(community: Pick<Community, "id" | "slug">): void {
+  if (community.slug === DEFAULT_COMMUNITY_SLUG) cachedDefaultCommunityId = community.id;
+}
 
 /**
  * Identifiant de la communauté par défaut (créée si elle manque). Mis en cache
