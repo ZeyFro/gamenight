@@ -143,15 +143,15 @@ Les rôles OWNER/ADMIN de communauté ne sont plus attribués automatiquement (l
 ## Préconditions et sauvegarde — à effectuer réellement par l'opérateur
 
 1. Revoir le commit exact et autoriser séparément tout déploiement du lot de rollout ; les contrôles GitHub/Vercel seuls ne valident pas les parcours Discord réels.
-   Les checks GitHub/Vercel seuls ne valident pas les chemins Discord réels.
 2. Prendre une sauvegarde restaurable de la base, vérifier son intégrité et
    noter le commit, les migrations appliquées, les flags et la configuration
    des crons. Conserver la procédure de restauration ; aucun rollback SQL de
    migration A/B n'est prévu. Ne jamais redéployer le code antérieur aux clés A/B.
-3. Comparer les migrations appliquées à la base avec celles suivies dans prisma/migrations ; contrôler aussi les clés communautaires, statistiques historiques, provenance nullable, rôles admin/OWNER et intentions REWARD.
-   les statistiques historiques de default, la provenance nullable historique,
-   les rôles admin/OWNER et les intentions REWARD existantes. Cette PR n'ajoute
-   ni ne modifie de migration et ne demande aucun backfill de progression neuf.
+3. Comparer les migrations appliquées à la base avec celles suivies dans
+   `prisma/migrations`, puis contrôler les clés communautaires, les statistiques
+   historiques de `default`, la provenance nullable, les rôles admin/OWNER et les
+   intentions REWARD. Cette réconciliation n'ajoute ni ne modifie de migration
+   et ne demande aucun backfill de progression neuf.
 4. Tant que isolation/picker sont OFF et qu'aucun second serveur n'est ACTIVE,
    lancer l'existant `/api/backfill/seed-reconcile`, authentifié Bearer
    `CRON_SECRET`, et attendre son log final (202 lance le travail après réponse).
