@@ -6,6 +6,13 @@ const base = [{ icon: "📅", title: "Calendrier", lines: ["a"] }];
 describe("guideSections (GUIDE_V2_ENABLED)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("réserve la gestion des exploits aux administrateurs et propriétaires communautaires", () => {
+    vi.stubEnv("COMMUNITY_HIGHLIGHTS_ENABLED", "true");
+    const text = guideSections(base).find(section => section.title === "Exploits et fails")!.lines.join(" ");
+    expect(text).toContain("Seuls les administrateurs et propriétaires de la communauté");
+    expect(text).not.toContain("L’auteur");
+  });
+
   it("décrit l’annulation des occurrences futures seulement quand le flag est actif", () => {
     const soirees = [{ icon: "🎯", title: "Soirées", lines: ["a"] }];
     vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "false");
