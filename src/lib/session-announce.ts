@@ -1,6 +1,6 @@
 import { sessionMessage } from "@/lib/session-message";
 import { sessionRsvpComponents } from "@/lib/session-rsvp-components";
-import { communityMemberUserWhere, isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
+import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { notificationEventMatchesSource } from "@/lib/notification-delivery";
 import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 import { randomUUID } from "crypto";
@@ -1147,11 +1147,11 @@ export function resolveInvitedCandidates<U extends { id: string }>(
  *
  * Chantier confidentialité des soirées — troisième filtre RESTRICTIF
  * ajouté : `filterByActiveSessionInvite` (src/lib/session-access.ts)
- * retire quiconque n'a plus d'invitation `ACTIVE` sur cette soirée. Un
- * retrait d'invité doit couper toute NOUVELLE mention/notification, même
- * pour une livraison déjà enqueue avant le retrait — relu ici depuis la
- * base à CHAQUE appel, jamais mis en cache, exactement comme les deux
- * autres filtres.
+ * retire quiconque n'a plus d'invitation `ACTIVE` ou d'adhésion `ACTIVE`
+ * dans la communauté de cette soirée. Une révocation doit couper toute
+ * NOUVELLE mention/notification, même pour une livraison déjà enqueue
+ * avant le retrait — relu depuis la base à CHAQUE appel, jamais mis en
+ * cache, exactement comme les deux autres filtres.
  */
 async function resolveEligibleMentions<
   T extends { id: string; discordId: string; silenceReminders: boolean },
@@ -1162,12 +1162,8 @@ async function resolveEligibleMentions<
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
   const invited = await filterByActiveSessionInvite(session.id, session.createdById, restricted);
-  const members = isCommunityIsolationEnabled() && invited.length ? await prisma.user.findMany({
-    where: { id: { in: invited.map((u) => u.id) }, ...(await communityMemberUserWhere(session.communityId)) }, select: { id: true },
-  }) : invited;
-  const current = new Set(members.map((u) => u.id));
   const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
-  return filterUsersByNotificationPreference(invited.filter((u) => current.has(u.id)), category);
+  return filterUsersByNotificationPreference(invited, category);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
@@ -1300,6 +1296,7 @@ async function buildMessageContent(
     await createNotifications(
       eligible.map((u) => ({
         userId: u.id,
+        communityId: session.communityId,
         type: notificationType,
         title: notificationTitle,
         message: notificationMessage,

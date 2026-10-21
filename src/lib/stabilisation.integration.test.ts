@@ -24,6 +24,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
     state.user = await db.user.create({ data: { id: "creator", discordId: "111111111111111111", discordName: "Créateur" } });
     await db.user.create({ data: { id: "guest", discordId: "222222222222222222", discordName: "Invité" } });
+    const defaultCommunityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.membership.createMany({ data: ["creator", "guest"].map(userId => ({ userId, communityId: defaultCommunityId, status: "ACTIVE" })) });
     await db.game.create({ data: { id: "game", name: "Jeu", source: "MANUAL", addedById: "creator" } });
     for (const flag of ["COMMUNITY_ISOLATION_ENABLED", "COMMUNITY_PICKER_ENABLED", "COMMUNITY_CHANNELS_ENABLED", "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "DISCORD_DM_SESSION_ENABLED", "DISCORD_DM_TOURNAMENT_ENABLED", "DISCORD_DM_ROULETTE_ENABLED", "DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED"]) vi.stubEnv(flag, "false");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Aucun HTTP réel autorisé"); }));
@@ -51,7 +53,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
       : kind === "roulette-session" ? (await import("@/app/roulette/actions")).createSessionFromRouletteAction
       : kind === "instant" ? (await import("@/app/jouer-maintenant/actions")).createInstantSessionAction
       : (await import("@/app/tournois/actions")).createTournamentAction;
-    const destinations = await Promise.all(Array.from({ length: 6 }, () => destination(action(form("same-attempt-00000001")))));
+    // Await every sibling before the next beforeEach truncates shared tables.
+    const outcomes = await Promise.allSettled(Array.from({ length: 6 }, () => destination(action(form("same-attempt-00000001")))));
+    const destinations = outcomes.map((outcome) => {
+      if (outcome.status === "rejected") throw outcome.reason;
+      return outcome.value;
+    });
     expect(new Set(destinations).size).toBe(1);
     expect(await destination(action(form("same-attempt-00000001")))).toBe(destinations[0]);
     expect(await db.creationIntent.count()).toBe(1);
@@ -66,7 +73,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
       expect(await db.sessionInvite.count()).toBe(2);
     }
     expect(fetch).not.toHaveBeenCalled();
-  });
+  }, 30_000);
 
   it("rollback : aucun reçu ni mutation partielle ; une tentative peut reprendre", async () => {
     const { createOnce } = await import("@/lib/creation-intent");

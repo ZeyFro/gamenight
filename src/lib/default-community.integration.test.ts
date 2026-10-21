@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Multi-communautés, PR A — rattrapage `ensureDefaultCommunity` : la
- * communauté actuelle devient la communauté « par défaut » (slug `default`,
- * ACTIVE) et chaque utilisateur existant y reçoit un Membership. Idempotent
- * (appelé à chaque passage de `/api/backfill/seed-reconcile`) : ne crée
- * jamais de doublon et ne modifie JAMAIS un Membership existant.
+ * Multi-communautés, PR A — `ensureDefaultCommunity` : la communauté actuelle
+ * devient la communauté « par défaut » (slug `default`, ACTIVE). S0 : plus aucun
+ * rattachement automatique, aucun Membership n'est créé ici (seule une connexion
+ * avec instantané Discord complet en crée un). Idempotent (appelé à chaque
+ * passage de `/api/backfill/seed-reconcile`) : ne crée jamais de doublon.
  *
  * Nécessite `TEST_DATABASE_URL` (Postgres local isolé, jamais Neon) — suite
  * entièrement SKIPPÉE si absente.
@@ -51,85 +51,56 @@ describe.skipIf(!TEST_DATABASE_URL)("ensureDefaultCommunity (Postgres isolée)",
   const makeUser = (discordId: string, role: "USER" | "ADMIN" = "USER") =>
     db.user.create({ data: { discordId, discordName: discordId, role } });
 
-  async function rolesByDiscordId() {
-    const rows = await db.membership.findMany({ include: { user: true } });
-    return Object.fromEntries(rows.map((m) => [m.user.discordId, `${m.role}/${m.status}`]));
-  }
-
-  it("crée la communauté par défaut ACTIVE et un Membership par utilisateur (rôles)", async () => {
-    vi.stubEnv("ADMIN_DISCORD_IDS", "env-admin-1, env-admin-2");
-    vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
-    await makeUser("env-admin-2");
-    await makeUser("env-admin-1");
-    await makeUser("db-admin", "ADMIN");
+  it("crée la communauté par défaut ACTIVE et AUCUN Membership, quel que soit l'état des variables", async () => {
     await makeUser("membre");
+    await makeUser("db-admin", "ADMIN");
+    await makeUser("env-admin-1");
+    const states: Record<string, string>[] = [
+      {},
+      { AUTH_REQUIRE_GUILD_MEMBER: "true" },
+      { AUTH_REQUIRE_GUILD_MEMBER: "false", COMMUNITY_ISOLATION_ENABLED: "false", COMMUNITY_PICKER_ENABLED: "false" },
+      { COMMUNITY_ISOLATION_ENABLED: "true" },
+      { COMMUNITY_PICKER_ENABLED: "true", ADMIN_DISCORD_IDS: "env-admin-1", DISCORD_BOT_GUILD_ID: "111" },
+    ];
+    for (const state of states) {
+      vi.unstubAllEnvs();
+      vi.stubEnv("ADMIN_DISCORD_IDS", "");
+      vi.stubEnv("DISCORD_BOT_GUILD_ID", "");
+      for (const [key, value] of Object.entries(state)) vi.stubEnv(key, value);
 
-    const result = await ensureDefaultCommunity();
+      const result = await ensureDefaultCommunity();
 
+      expect(result.membershipsCreated).toBe(0);
+      expect(await db.membership.count()).toBe(0);
+    }
     const community = await db.community.findUniqueOrThrow({ where: { slug: "default" } });
-    expect(community).toMatchObject({ status: "ACTIVE", discordGuildId: "111" });
-    expect(result).toEqual({ communityId: community.id, created: true, membershipsCreated: 4 });
-    // OWNER = premier de ADMIN_DISCORD_IDS présent en base (ordre de la variable).
-    expect(await rolesByDiscordId()).toEqual({
-      "env-admin-1": "OWNER/ACTIVE",
-      "env-admin-2": "ADMIN/ACTIVE",
-      "db-admin": "ADMIN/ACTIVE",
-      membre: "MEMBER/ACTIVE",
-    });
+    expect(community).toMatchObject({ status: "ACTIVE" });
   });
 
   it("rejoué : aucun doublon, rien de recréé", async () => {
-    await makeUser("membre");
+    vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
     const first = await ensureDefaultCommunity();
+    expect(first).toEqual({ communityId: expect.any(String), created: true, membershipsCreated: 0 });
+    const community = await db.community.findUniqueOrThrow({ where: { slug: "default" } });
+    expect(community).toMatchObject({ status: "ACTIVE", discordGuildId: "111" });
 
     const second = await ensureDefaultCommunity();
 
     expect(second).toEqual({ communityId: first.communityId, created: false, membershipsCreated: 0 });
     expect(await db.community.count()).toBe(1);
-    expect(await db.membership.count()).toBe(1);
   });
 
-  it("ne modifie jamais un Membership existant (LEFT reste LEFT) ; un nouvel utilisateur est ajouté", async () => {
-    vi.stubEnv("ADMIN_DISCORD_IDS", "parti");
-    await makeUser("parti");
+  it("un Membership existant n'est jamais modifié (LEFT reste LEFT) et aucun utilisateur n'est rattaché", async () => {
     const { communityId } = await ensureDefaultCommunity();
-    await db.membership.updateMany({ where: { communityId }, data: { status: "LEFT", role: "MEMBER" } });
+    const parti = await makeUser("parti");
+    await db.membership.create({ data: { communityId, userId: parti.id, status: "LEFT" } });
     await makeUser("nouveau");
 
     const result = await ensureDefaultCommunity();
 
-    expect(result.membershipsCreated).toBe(1);
-    expect(await rolesByDiscordId()).toEqual({ parti: "MEMBER/LEFT", nouveau: "MEMBER/ACTIVE" });
-  });
-
-  it("un compte déjà membre d'une AUTRE communauté (connexion multi-serveurs) n'est pas rattaché à la communauté par défaut", async () => {
-    const other = await db.community.create({
-      data: { slug: "autre", name: "Autre", status: "ACTIVE", discordGuildId: "333" },
-    });
-    const confirmedElsewhere = await makeUser("autre-serveur");
-    await db.membership.create({ data: { communityId: other.id, userId: confirmedElsewhere.id } });
-    await makeUser("historique");
-
-    const result = await ensureDefaultCommunity();
-
-    expect(result.membershipsCreated).toBe(1);
-    const inDefault = await db.membership.findMany({
-      where: { communityId: result.communityId },
-      include: { user: true },
-    });
-    expect(inDefault.map((m) => m.user.discordId)).toEqual(["historique"]);
-  });
-
-  it("un seul OWNER : un admin d'environnement arrivé après coup devient ADMIN", async () => {
-    vi.stubEnv("ADMIN_DISCORD_IDS", "premier,second");
-    await makeUser("premier");
-    await ensureDefaultCommunity();
-    await makeUser("second");
-
-    await ensureDefaultCommunity();
-
-    expect(await rolesByDiscordId()).toEqual({ premier: "OWNER/ACTIVE", second: "ADMIN/ACTIVE" });
-    expect(await db.membership.count({ where: { role: "OWNER" } })).toBe(1);
+    expect(result.membershipsCreated).toBe(0);
+    const rows = await db.membership.findMany({ include: { user: true } });
+    expect(rows.map((m) => `${m.user.discordId}:${m.status}`)).toEqual(["parti:LEFT"]);
   });
 
   it("sans DISCORD_BOT_GUILD_ID : créée sans serveur, puis complétée quand la variable apparaît", async () => {

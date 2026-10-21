@@ -1,5 +1,5 @@
 import { getDefaultCommunityId } from "@/lib/default-community";
-import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 
 /**
  * Multi-communautés, PR9 — communauté à laquelle rattacher une ligne des tables à
@@ -16,10 +16,13 @@ export async function statsCommunityIdForSession(sessionCommunityId: string | nu
 
 /**
  * Communauté d'une ligne créée PAR un utilisateur (proposition de wishlist) :
- * sa communauté active ; la communauté par défaut quand l'isolation est éteinte ;
- * `null` s'il n'a aucune communauté (création refusée).
+ * sa communauté active ; la communauté par défaut quand l'isolation est éteinte
+ * uniquement s'il en est membre ACTIVE ; `null` sans communauté autorisée.
  */
 export async function writeCommunityIdForUser(userId: string): Promise<string | null> {
-  if (!isCommunityIsolationEnabled()) return getDefaultCommunityId();
+  if (!isCommunityIsolationEnabled()) {
+    if (await isMemberOfCommunity(userId, null)) return getDefaultCommunityId();
+    return resolveActiveCommunityId(userId);
+  }
   return resolveActiveCommunityId(userId);
 }

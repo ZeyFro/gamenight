@@ -80,17 +80,17 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect(await library.getGroupLibraryGames(ids.both, [ids.bob, ids.both])).toEqual([]);
   });
 
-  it("OFF : intersection exacte entre serveurs et de trois personnes, pas seulement leur nombre", async () => {
+  it("OFF : aucun fallback global pour un utilisateur sans membership", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    expect((await library.getGroupLibraryGames(ids.none, [ids.alice, ids.bob, ids.both])).map(g => g.name)).toEqual(["shared"]);
+    expect(await library.getGroupLibraryGames(ids.none, [ids.alice, ids.bob, ids.both])).toEqual([]);
     expect(await library.getGroupLibraryGames(ids.none, [ids.alice, ids.bob, ids.left])).toEqual([]);
   });
 
-  it("propose les seuls membres du serveur actif, conserve le roster global sous OFF", async () => {
+  it("propose les seuls membres du serveur actif et ne donne pas de roster global sous OFF", async () => {
     expect((await library.getGroupLibraryMembers(ids.alice)).map(row => row.id).sort()).toEqual([ids.alice, ids.both].sort());
     expect(await library.getGroupLibraryMembers(ids.none)).toEqual([]);
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    expect(await library.getGroupLibraryMembers(ids.none)).toHaveLength(5);
+    expect(await library.getGroupLibraryMembers(ids.none)).toEqual([]);
   });
 
   it("refuse les sélections trop grandes sans élargir aux membres valides", async () => {
@@ -123,11 +123,11 @@ describe.skipIf(!TEST_DATABASE_URL)("bibliothèque et compteurs de la communaut�
     expect(await library.getTotalUserCount(ids.both)).toBe(0);
   });
 
-  it("isolation OFF : conserve les jeux, possesseurs et compteurs historiques globaux", async () => {
+  it("isolation OFF : aucun jeu, possesseur ou compteur global sans membership", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    expect((await library.getGroupLibraryGames(ids.none)).map(g => g.name)).toEqual(["former", "onlyA", "onlyB", "shared"]);
-    expect((await library.getGameOwnerCounts(ids.none)).get(ids.shared)).toBe(3);
-    expect(await library.getTotalUserCount(ids.none)).toBe(5);
-    expect(await library.getGameOwners(ids.none, ids.shared)).toHaveLength(3);
+    expect(await library.getGroupLibraryGames(ids.none)).toEqual([]);
+    expect(await library.getGameOwnerCounts(ids.none)).toEqual(new Map());
+    expect(await library.getTotalUserCount(ids.none)).toBe(0);
+    expect(await library.getGameOwners(ids.none, ids.shared)).toEqual([]);
   });
 });

@@ -10,7 +10,6 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { canManageSessionContent } from "@/lib/session-content-access";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import {
   detectSessionGalleryMime,
   isSessionVideoEnabled,
@@ -66,7 +65,7 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
       const [community] = await tx.$queryRaw<{ status: string; sessionGalleryEnabled: boolean }[]>`SELECT status, "sessionGalleryEnabled" FROM "Community" WHERE id = ${communityId} FOR SHARE`;
       const [member] = await tx.$queryRaw<{ status: string; role: CommunityRole }[]>`SELECT status, role FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${user.id} FOR SHARE`;
       if (community?.status !== "ACTIVE" || !community.sessionGalleryEnabled) return false;
-      if (isCommunityIsolationEnabled() && member?.status !== "ACTIVE") return false;
+      if (member?.status !== "ACTIVE") return false;
       const [current] = await tx.$queryRaw<{ createdById: string; communityId: string | null }[]>`SELECT "createdById", "communityId" FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       if (!current || current.communityId !== session.communityId) return false;
       if (current.createdById !== user.id) {

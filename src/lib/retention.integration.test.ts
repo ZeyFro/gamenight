@@ -1047,7 +1047,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       });
       await sessionsLib.markSessionDone(recent.id, 90);
 
-      const before = await homeLib.getGroupStats("viewer");
+      const before = await homeLib.getGroupStats(user.id);
       expect(before.totalSessionsPlayed).toBe(4);
       expect(before.totalPlayMinutes).toBe(450);
       expect(before.gamePlayTimes).toContainEqual({ gameId: catan.id, name: catan.name, playedMinutes: 360 });
@@ -1057,7 +1057,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       expect(purgeResult.purgedSessionIds).toHaveLength(3); // les 3 soirées Catan, jamais la récente
       expect(await db.session.count()).toBe(1); // seule la soirée Wingspan récente reste
 
-      const after = await homeLib.getGroupStats("viewer");
+      const after = await homeLib.getGroupStats(user.id);
       expect(after).toEqual(before); // STRICTEMENT identique — mêmes données, avant et après purge
     });
 
@@ -1075,7 +1075,7 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
         await sessionsLib.markSessionDone(s.id);
       }
 
-      const before = await homeLib.getGroupStats("viewer");
+      const before = await homeLib.getGroupStats(user.id);
       expect(before.totalSessionsPlayed).toBe(2);
       expect(before.mostPlayedGame).toEqual({ name: game.name, coverUrl: game.coverUrl, count: 2 });
 
@@ -1085,12 +1085,12 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       // donc jamais faire varier ces compteurs.
       const first = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
       expect(first.purgedSessionIds).toHaveLength(1);
-      expect(await homeLib.getGroupStats("viewer")).toEqual(before); // stable après le 1er passage (reprise simulée)
+      expect(await homeLib.getGroupStats(user.id)).toEqual(before); // stable après le 1er passage (reprise simulée)
 
       const second = await retention.purgeEligibleSessionsBatch({ dryRun: false, limit: 1, now });
       expect(second.purgedSessionIds).toHaveLength(1);
       expect(await db.session.count()).toBe(0);
-      expect(await homeLib.getGroupStats("viewer")).toEqual(before); // stable après le 2e passage aussi
+      expect(await homeLib.getGroupStats(user.id)).toEqual(before); // stable après le 2e passage aussi
     });
   });
 

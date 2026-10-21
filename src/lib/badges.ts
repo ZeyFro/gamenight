@@ -1,7 +1,6 @@
 import type { Badge } from "@prisma/client";
 import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { statsCommunityIdForSession, writeCommunityIdForUser } from "@/lib/community-stats";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { durableProgressWhere } from "@/lib/member-stats";
 import { canProgressInCommunity, getMemberStats, lockCommunityProgress } from "@/lib/member-stats";
 import { prisma } from "@/lib/prisma";
@@ -138,7 +137,7 @@ async function unlockMatchingBadges(userId: string, communityId: string | null, 
 async function unlockBadge(userId: string, communityId: string, badge: Badge): Promise<boolean> {
   const unlocked = await prisma.$transaction(async (tx) => {
     if (!(await lockCommunityProgress(tx, communityId, userId))) return false;
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     return (await scopedDb.userBadge.createMany({ data: [{ communityId, userId, badgeId: badge.id }], skipDuplicates: true })).count > 0;
   });
   // Réparer la récompense même après interruption entre badge et XP.

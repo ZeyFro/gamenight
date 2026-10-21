@@ -2,7 +2,6 @@ import type { Prisma, NotificationType } from "@prisma/client";
 import type { DiscordEmbed } from "@/lib/discord";
 import { webhookAllowedMentions } from "@/lib/discord";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { immediateDefaultRewardResolver } from "@/lib/community-announce";
@@ -38,8 +37,7 @@ export async function persistRewardNotice(
   credit: { id: string; communityId: string; userId: string },
   notice: RewardNotice,
 ): Promise<void> {
-  const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled()
-    ? { communityIds: [credit.communityId], includesDefault: false } : null);
+  const scopedDb = scopedTransactionPrisma(tx, { communityIds: [credit.communityId], includesDefault: false });
   const eventId = `xp-reward:${credit.id}`;
   const created = await scopedDb.notificationEvent.createMany({ data: [{
     id: eventId, communityId: credit.communityId, category: "REWARD",

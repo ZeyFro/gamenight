@@ -4,7 +4,6 @@ import {
   communityIdFilter,
   communityMemberUserWhere,
   getIsolationScope,
-  isCommunityIsolationEnabled,
   type IsolationScope,
 } from "@/lib/community-isolation";
 
@@ -47,15 +46,15 @@ export function accessibleSessionWhere(
   const access: Prisma.SessionWhereInput = {
     OR: [{ createdById: userId }, { invites: { some: { userId, status: "ACTIVE" } } }],
   };
-  // Multi-communautés (PR4) : sans portée (isolation éteinte), forme
-  // historique inchangée. Avec portée, l'accès créateur/invité ne suffit
-  // jamais seul : la soirée doit aussi appartenir à une communauté de
-  // l'utilisateur (`AND` jamais vide).
+  // L'accès créateur/invité ne suffit jamais seul sur les appels utilisateur :
+  // la soirée doit aussi appartenir à une communauté active du demandeur.
+  // `null` reste disponible uniquement pour un appelant système explicite;
+  // les accesseurs utilisateur utilisent `accessibleSessionWhereFor`.
   if (!scope) return access;
   return { AND: [access, communityIdFilter(scope)] };
 }
 
-/** `accessibleSessionWhere` avec la portée de communautés de `userId` (relue en base ; aucune lecture si l'isolation est éteinte). */
+/** `accessibleSessionWhere` avec la portée active de `userId`, relue en base quel que soit le flag. */
 export async function accessibleSessionWhereFor(userId: string): Promise<Prisma.SessionWhereInput> {
   return accessibleSessionWhere(userId, await getIsolationScope(userId));
 }
@@ -137,13 +136,11 @@ export async function inviteToSession(
   // Multi-communautés (PR4) : un invité doit être membre ACTIVE de la
   // communauté de la soirée (`null` = communauté par défaut), jamais d'une
   // autre communauté de l'invitant.
-  if (isCommunityIsolationEnabled()) {
-    const member = await db.user.findFirst({
-      where: { id: guestUserId, ...(await communityMemberUserWhere(session.communityId)) },
-      select: { id: true },
-    });
-    if (!member) return null;
-  }
+  const member = await db.user.findFirst({
+    where: { id: guestUserId, ...(await communityMemberUserWhere(session.communityId)) },
+    select: { id: true },
+  });
+  if (!member) return null;
 
   return db.sessionInvite.upsert({
     where: { sessionId_userId: { sessionId, userId: guestUserId } },
@@ -202,10 +199,10 @@ export async function revokeSessionInvite(
 }
 
 /**
- * Restreint `candidates` aux personnes dont l'invitation est ACTUELLEMENT
- * `ACTIVE` sur cette soirée, PLUS le créateur (toujours éligible, jamais
- * besoin d'une ligne `SessionInvite`) — filtre RESTRICTIF uniquement
- * (jamais d'ajout), à composer avec le filtre de préférence
+ * Restreint `candidates` aux personnes membres ACTIVE de la communauté de
+ * cette soirée et dont l'invitation est ACTUELLEMENT `ACTIVE`, PLUS le
+ * créateur (jamais besoin d'une ligne `SessionInvite`) — filtre RESTRICTIF
+ * uniquement (jamais d'ajout), à composer avec le filtre de préférence
  * (`filterUsersByNotificationPreference`) et la sélection `notifiedUserIds`
  * existante dans `resolveEligibleMentions` (session-announce.ts). Relu à
  * CHAQUE appel depuis la base (jamais mis en cache) : une révocation
@@ -218,13 +215,19 @@ export async function filterByActiveSessionInvite<T extends { id: string }>(
   creatorId: string,
   candidates: T[]
 ): Promise<T[]> {
-  const toCheck = candidates.filter((c) => c.id !== creatorId);
-  if (toCheck.length === 0) return candidates.filter((c) => c.id === creatorId);
-
-  const active = await prisma.sessionInvite.findMany({
-    where: { sessionId, status: "ACTIVE", userId: { in: toCheck.map((c) => c.id) } },
-    select: { userId: true },
+  if (candidates.length === 0) return [];
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+  if (!session) return [];
+  const eligibleMembers = await prisma.user.findMany({
+    where: {
+      id: { in: candidates.map((candidate) => candidate.id) },
+      AND: [
+        await communityMemberUserWhere(session.communityId),
+        { OR: [{ id: creatorId }, { sessionInvitesReceived: { some: { sessionId, status: "ACTIVE" } } }] },
+      ],
+    },
+    select: { id: true },
   });
-  const activeIds = new Set(active.map((i) => i.userId));
-  return candidates.filter((c) => c.id === creatorId || activeIds.has(c.id));
+  const eligibleIds = new Set(eligibleMembers.map((member) => member.id));
+  return candidates.filter((candidate) => eligibleIds.has(candidate.id));
 }

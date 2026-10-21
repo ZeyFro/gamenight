@@ -52,15 +52,13 @@ export async function findActiveMembership(
 }
 
 /**
- * Isolation (PR4) — `userId` peut-il voir/agir sur ce tournoi ? Éteinte
- * (`COMMUNITY_ISOLATION_ENABLED` ≠ `true`) : toujours vrai, sans lecture
- * (comportement historique). Allumée : le tournoi doit appartenir à une
- * communauté de l'utilisateur (`communityId = null` = communauté par défaut) ;
- * une autre communauté est indistinguable d'un tournoi inexistant.
+ * `userId` peut-il voir/agir sur ce tournoi ? Toujours limité aux Memberships
+ * ACTIVE de communautés ACTIVE. `communityId = null` désigne les lignes
+ * historiques de `default` ; une autre communauté est indistinguable d'un
+ * tournoi inexistant.
  */
 export async function canAccessTournament(userId: string, tournamentId: string): Promise<boolean> {
   const scope = await getIsolationScope(userId);
-  if (!scope) return true;
   const row = await prisma.tournament.findFirst({
     where: { id: tournamentId, ...communityIdFilter(scope) },
     select: { id: true },
@@ -69,9 +67,8 @@ export async function canAccessTournament(userId: string, tournamentId: string):
 }
 
 /**
- * Communauté du classement. `undefined` = isolation éteinte (tous les
- * utilisateurs, comme avant) ; `null` = isolation allumée mais aucune
- * communauté (classement vide) ; sinon l'id. Une communauté demandée
+ * Communauté du classement. `null` = aucune communauté autorisée
+ * (classement vide) ; sinon l'id. Une communauté demandée
  * explicitement (`?communaute=`) passe par `requireMembership` : 404 si
  * l'utilisateur n'en est pas membre ACTIF — jamais le classement d'une autre.
  */
@@ -79,7 +76,9 @@ export async function getScoreboardCommunityId(
   userId: string,
   requested?: string | null
 ): Promise<string | null | undefined> {
-  if (!isCommunityIsolationEnabled()) return undefined;
+  if (!isCommunityIsolationEnabled()) {
+    return resolveActiveCommunityId(userId);
+  }
   if (requested) return (await requireMembership(requested)).community.id;
   return resolveActiveCommunityId(userId);
 }

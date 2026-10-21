@@ -30,7 +30,6 @@ it("100 then 1000 communities: actual application functions, sequential scenario
   await import("../src/auth");
   vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
   vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
-  vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "false");
   vi.stubEnv("DISCORD_BOT_GUILD_ID", "");
   let queries = 0;
   let unboundedCommunityReads = 0;

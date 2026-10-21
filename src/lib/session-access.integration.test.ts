@@ -65,7 +65,15 @@ describe.skipIf(!TEST_DATABASE_URL)("session-access (intégration Postgres isol�
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    const community = await db.community.upsert({
+      where: { slug: "default" },
+      create: { slug: "default", name: "Défaut", status: "ACTIVE" },
+      update: { status: "ACTIVE" },
+      select: { id: true },
+    });
+    await db.membership.create({ data: { communityId: community.id, userId: user.id, status: "ACTIVE" } });
+    return user;
   }
 
   async function makeSession(creatorId: string, notifiedUserIds: string[] | null = null) {
@@ -239,7 +247,10 @@ describe.skipIf(!TEST_DATABASE_URL)("session-access (intégration Postgres isol�
       const activeGuest = await makeUser();
       const revokedGuest = await makeUser();
       const neverInvited = await makeUser();
-      const session = await makeSession(creator.id);
+      const slug = uniq("serveur");
+      const community = await db.community.upsert({ where: { slug }, create: { slug, name: "Serveur", status: "ACTIVE" }, update: { status: "ACTIVE" } });
+      await db.membership.createMany({ data: [creator, activeGuest, revokedGuest, neverInvited].map((user) => ({ communityId: community.id, userId: user.id, status: "ACTIVE" })) });
+      const session = await db.session.create({ data: { date: new Date(), createdById: creator.id, communityId: community.id } });
       await access.inviteToSession(session.id, creator.id, activeGuest.id);
       await access.inviteToSession(session.id, creator.id, revokedGuest.id);
       await access.revokeSessionInvite(session.id, revokedGuest.id, creator.id);
@@ -251,6 +262,31 @@ describe.skipIf(!TEST_DATABASE_URL)("session-access (intégration Postgres isol�
         neverInvited,
       ]);
       expect(result.map((u) => u.id).sort()).toEqual([creator.id, activeGuest.id].sort());
+    });
+
+    it("isolation OFF : une adhésion révoquée coupe les notifications même si l'invitation de session est encore active", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      const slug = uniq("serveur");
+      const community = await db.community.upsert({ where: { slug }, create: { slug, name: "Serveur", status: "ACTIVE" }, update: { status: "ACTIVE" } });
+      const creator = await makeUser();
+      const activeGuest = await makeUser();
+      const removedGuest = await makeUser();
+      await db.membership.createMany({ data: [
+        { communityId: community.id, userId: creator.id, status: "ACTIVE" },
+        { communityId: community.id, userId: activeGuest.id, status: "ACTIVE" },
+        { communityId: community.id, userId: removedGuest.id, status: "ACTIVE" },
+      ] });
+      const session = await db.session.create({
+        data: { date: new Date(), createdById: creator.id, communityId: community.id },
+      });
+      await db.sessionInvite.createMany({ data: [activeGuest, removedGuest].map((user) => ({
+        sessionId: session.id, userId: user.id, invitedById: creator.id, status: "ACTIVE" as const,
+      })) });
+      await db.membership.update({ where: { communityId_userId: { communityId: community.id, userId: removedGuest.id } }, data: { status: "REMOVED" } });
+
+      const result = await access.filterByActiveSessionInvite(session.id, creator.id, [creator, activeGuest, removedGuest]);
+
+      expect(result.map((user) => user.id).sort()).toEqual([creator.id, activeGuest.id].sort());
     });
   });
 

@@ -19,8 +19,8 @@ import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { isRecurringSeriesCancellationEnabled, recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
-import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/lib/community-channels";
-import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityAndRecipients } from "@/lib/community-channels";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { isRealDiscordFailure } from "@/lib/discord";
 import {
   enqueueSessionThreadDelete,
@@ -112,18 +112,10 @@ export async function createSession(formData: FormData) {
   // change. Sous isolation, sans aucune communauté on refuse (la soirée serait
   // sinon rattachée à `default` sans que le créateur en soit membre) ; seuls
   // des membres de CETTE communauté sont invités/mentionnables.
-  const communityId = await pickCreationCommunityId(user.id);
+  const { communityId, notifiedUserIds } = await pickCreationCommunityAndRecipients(user.id, notifyUserIds);
   if (isCommunityIsolationEnabled() && communityId === null) {
     redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
   }
-  const notifiedUserIds = notifyUserIds.length
-    ? (
-        await prisma.user.findMany({
-          where: { AND: [{ id: { in: notifyUserIds } }, await communityMemberUserWhere(communityId)] },
-          select: { id: true },
-        })
-      ).map((u) => u.id)
-    : [];
 
   // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
   // commentaire du champ dans schema.prisma (chantier annonces bot).

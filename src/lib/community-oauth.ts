@@ -1,11 +1,5 @@
 import type { Prisma } from "@prisma/client";
 
-/** Existing flags only: OFF keeps the historical login without extra HTTP/DB. */
-export function shouldSyncOAuthMemberships(): boolean {
-  return ["AUTH_REQUIRE_GUILD_MEMBER", "COMMUNITY_ISOLATION_ENABLED", "COMMUNITY_PICKER_ENABLED"]
-    .some((key) => process.env[key] === "true");
-}
-
 /** Caller owns the transaction; user lock serializes concurrent fresh logins. */
 export async function syncOAuthMemberships(
   tx: Prisma.TransactionClient,

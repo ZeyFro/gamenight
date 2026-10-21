@@ -30,6 +30,7 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
   let announceLib: typeof import("./instant-session-announce");
   let executorLib: typeof import("./notification-executor");
   let fetchMock: ReturnType<typeof vi.fn>;
+  let defaultCommunityId: string;
 
   beforeAll(async () => {
     const prismaModule = await import("@/lib/prisma");
@@ -55,6 +56,10 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
     await db.$executeRawUnsafe(
       `TRUNCATE "NotificationDelivery", "NotificationEvent", "Notification", "InstantSessionPresenceInterval", "InstantSession", "Game", "User", "GroupSessionStats", "GroupGameStat", "GroupAchievement", "GroupActiveWeek" CASCADE`
     );
+    const defaults = await import("./default-community");
+    defaults.resetDefaultCommunityIdCache();
+    defaultCommunityId = await defaults.getDefaultCommunityId();
+    await db.community.update({ where: { id: defaultCommunityId }, data: { status: "ACTIVE" } });
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
@@ -75,7 +80,9 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
 
   async function makeUser(silenceReminders = false) {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id, silenceReminders } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id, silenceReminders } });
+    await db.membership.create({ data: { communityId: defaultCommunityId, userId: user.id, status: "ACTIVE" } });
+    return user;
   }
   async function makeGame(addedById: string) {
     return db.game.create({ data: { name: uniq("game"), source: "MANUAL", addedById } });
@@ -88,6 +95,44 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
   }
 
   describe("Règles métier", () => {
+    it("isolation OFF : un membre default crée une session explicitement rattachée aux lignes historiques null", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+
+      const result = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.instantSession.communityId).toBeNull();
+    });
+
+    it("isolation OFF : le choix B prime sur l'adhésion default pour la session et ses accès", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
+      const communityB = await db.community.create({ data: { slug: uniq("community-b"), name: "B", status: "ACTIVE" } });
+      const creator = await makeUser();
+      const defaultOnly = await makeUser();
+      await db.membership.create({ data: { communityId: communityB.id, userId: creator.id, status: "ACTIVE" } });
+      await db.user.update({ where: { id: creator.id }, data: { activeCommunityId: communityB.id } });
+      const bOnly = await db.user.create({ data: { discordId: uniq("b-only"), discordName: "B-only" } });
+      await db.membership.create({ data: { communityId: communityB.id, userId: bOnly.id, status: "ACTIVE" } });
+      const game = await makeGame(creator.id);
+
+      const result = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [defaultOnly.id, bOnly.id] });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.instantSession.communityId).toBe(communityB.id);
+      expect(result.instantSession.notifiedUserIds).toEqual([bOnly.id]);
+      const creatorDb = await (await import("./community-scoped-client")).getScopedPrisma(creator.id);
+      const bOnlyDb = await (await import("./community-scoped-client")).getScopedPrisma(bOnly.id);
+      const defaultDb = await (await import("./community-scoped-client")).getScopedPrisma(defaultOnly.id);
+      await expect(creatorDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.not.toBeNull();
+      await expect(bOnlyDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.not.toBeNull();
+      await expect(defaultDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.toBeNull();
+    });
+
     it("le créateur devient participant DÈS LA CRÉATION, dans la même transaction", async () => {
       const creator = await makeUser();
       const game = await makeGame(creator.id);
@@ -172,6 +217,123 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
         before.map((i) => i.startedAt.getTime()).sort()
       );
     });
+
+    it("révocation concurrente : attend le verrou et refuse le changement après Membership LEFT", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+      const creator = await makeUser();
+      const game1 = await makeGame(creator.id);
+      const game2 = await makeGame(creator.id);
+      const created = await lib.createInstantSession({ creatorId: creator.id, gameId: game1.id, notifiedUserIds: [] });
+      if (!created.ok) throw new Error("setup");
+      expect(created.instantSession.communityId).toBe(defaultCommunityId);
+
+      let release!: () => void;
+      let updatedMembership!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const updateStarted = new Promise<void>((resolve) => { updatedMembership = resolve; });
+      const revoke = db.$transaction(async (tx) => {
+        await tx.membership.update({
+          where: { communityId_userId: { communityId: defaultCommunityId, userId: creator.id } },
+          data: { status: "LEFT" },
+        });
+        updatedMembership();
+        await gate;
+      }, { timeout: 15_000 });
+      await updateStarted;
+
+      const change = lib.changeInstantSessionGame(created.instantSession.id, creator.id, game2.id).then(
+        () => ({ status: "fulfilled" as const }),
+        (error: unknown) => ({ status: "rejected" as const, error })
+      );
+      try {
+        await vi.waitFor(async () => {
+          const waiting = await db.$queryRaw<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock'
+              AND query LIKE '%locked_members%'
+              AND query LIKE '%FOR SHARE OF m%'
+          `;
+          expect(waiting.length).toBeGreaterThan(0);
+        }, { timeout: 4_000 });
+      } finally {
+        release();
+        await revoke;
+      }
+
+      const outcome = await change;
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") expect(String(outcome.error)).toMatch(/plus accessible/);
+      await expect(db.membership.findUniqueOrThrow({
+        where: { communityId_userId: { communityId: defaultCommunityId, userId: creator.id } },
+        select: { status: true },
+      })).resolves.toEqual({ status: "LEFT" });
+      await expect(db.instantSession.findUniqueOrThrow({
+        where: { id: created.instantSession.id },
+        select: { gameId: true },
+      })).resolves.toEqual({ gameId: game1.id });
+    }, 15_000);
+
+    it("fin concurrente : attend la fin puis refuse le changement de jeu sans mettre d'EDIT en file", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const game1 = await makeGame(creator.id);
+      const game2 = await makeGame(creator.id);
+      const created = await lib.createInstantSession({
+        creatorId: creator.id,
+        gameId: game1.id,
+        notifiedUserIds: [guest.id],
+      });
+      if (!created.ok) throw new Error("setup");
+
+      let release!: () => void;
+      let endedUpdateHeld!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const updateHeld = new Promise<void>((resolve) => { endedUpdateHeld = resolve; });
+      const end = db.$transaction(async (tx) => {
+        await tx.instantSession.update({
+          where: { id: created.instantSession.id },
+          data: { status: "ENDED", endedAt: new Date(), endedReason: "expired" },
+        });
+        endedUpdateHeld();
+        await gate;
+      }, { timeout: 15_000 });
+      await updateHeld;
+
+      const change = lib.changeInstantSessionGame(created.instantSession.id, creator.id, game2.id).then(
+        (result) => ({ status: "fulfilled" as const, result }),
+        (error: unknown) => ({ status: "rejected" as const, error })
+      );
+      try {
+        await vi.waitFor(async () => {
+          const waiting = await db.$queryRaw<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock'
+              AND query LIKE '%UPDATE%'
+              AND query LIKE '%"InstantSession"%'
+              AND query LIKE '%gameId%'
+          `;
+          expect(waiting.length).toBeGreaterThan(0);
+        }, { timeout: 4_000 });
+      } finally {
+        release();
+        await end;
+      }
+
+      await expect(change).resolves.toEqual({
+        status: "fulfilled",
+        result: { ok: false, reason: "ended" },
+      });
+      await expect(db.instantSession.findUniqueOrThrow({
+        where: { id: created.instantSession.id },
+        select: { status: true, gameId: true },
+      })).resolves.toEqual({ status: "ENDED", gameId: game1.id });
+      await expect(db.notificationDelivery.count({
+        where: { operation: "EDIT", targetSlot: { contains: created.instantSession.id } },
+      })).resolves.toBe(0);
+    }, 15_000);
 
     it("un utilisateur ne peut être membre que d'UNE SEULE session instantanée active à la fois", async () => {
       const user = await makeUser();

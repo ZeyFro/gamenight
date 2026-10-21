@@ -1,12 +1,10 @@
 import { logger } from "@/lib/logger";
 import type { Notification, NotificationType } from "@prisma/client";
-import { getActiveScopedPrisma, scopedPrisma } from "@/lib/community-scoped-client";
-import { getDefaultCommunityId } from "@/lib/default-community";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { getActiveScopedPrisma, scopedPrismaForCommunity } from "@/lib/community-scoped-client";
 import { sendUserWebPush } from "@/lib/web-push-delivery";
 
 export interface CreateNotificationInput {
-  communityId?: string | null;
+  communityId: string | null;
   userId: string;
   type: NotificationType;
   title: string;
@@ -16,16 +14,8 @@ export interface CreateNotificationInput {
   relatedGameId?: string;
 }
 
-async function notificationData(input: CreateNotificationInput) {
-  if (input.communityId !== undefined) return input;
-  // Autorité dérivée de la source métier, jamais de la sélection courante du destinataire.
-  const scopedDb = scopedPrisma(null);
-  const parent = input.relatedSessionId
-    ? input.type === "INSTANT_SESSION_INVITE"
-      ? await scopedDb.instantSession.findUnique({ where: { id: input.relatedSessionId }, select: { communityId: true } })
-      : await scopedDb.session.findUnique({ where: { id: input.relatedSessionId }, select: { communityId: true } })
-    : null;
-  return { ...input, communityId: parent?.communityId ?? await getDefaultCommunityId() };
+function requireNotificationCommunity(input: CreateNotificationInput): void {
+  if (input.communityId === undefined) throw new Error("La communauté de la notification doit être explicite.");
 }
 
 /**
@@ -42,9 +32,9 @@ async function notificationData(input: CreateNotificationInput) {
  */
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
   try {
-    const data = await notificationData(input);
-    const scopedDb = scopedPrisma(null);
-    await scopedDb.notification.create({ data });
+    requireNotificationCommunity(input);
+    const scopedDb = scopedPrismaForCommunity(input.communityId);
+    await scopedDb.notification.create({ data: input });
     await deliverWebPush(input);
   } catch (error) {
     logger.error("notifications", error, { userId: input.userId, type: input.type });
@@ -54,9 +44,13 @@ export async function createNotification(input: CreateNotificationInput): Promis
 export async function createNotifications(inputs: CreateNotificationInput[]): Promise<void> {
   if (inputs.length === 0) return;
   try {
-    const data = await Promise.all(inputs.map(notificationData));
-    const scopedDb = scopedPrisma(null);
-    await scopedDb.notification.createMany({ data });
+    for (const input of inputs) requireNotificationCommunity(input);
+    const groups = new Map<string | null, CreateNotificationInput[]>();
+    for (const input of inputs) groups.set(input.communityId, [...(groups.get(input.communityId) ?? []), input]);
+    for (const [communityId, group] of groups) {
+      const scopedDb = scopedPrismaForCommunity(communityId);
+      await scopedDb.notification.createMany({ data: group });
+    }
     for (const input of inputs) await deliverWebPush(input);
   } catch (error) {
     logger.error("notifications", error, { count: inputs.length });
@@ -144,13 +138,11 @@ export async function groupNotifications(
   >[],
   viewerId?: string
 ): Promise<GroupedNotificationItem[]> {
-  if (isCommunityIsolationEnabled() && !viewerId) return [];
-  const scopedDb = viewerId ? await getActiveScopedPrisma(viewerId) : scopedPrisma(null);
-  if (isCommunityIsolationEnabled()) {
-    const visible = await scopedDb.notification.findMany({ where: { userId: viewerId, id: { in: items.map((item) => item.id) } }, select: { id: true } });
-    const visibleIds = new Set(visible.map((item) => item.id));
-    items = items.filter((item) => visibleIds.has(item.id));
-  }
+  if (!viewerId) return [];
+  const scopedDb = await getActiveScopedPrisma(viewerId);
+  const visible = await scopedDb.notification.findMany({ where: { userId: viewerId, id: { in: items.map((item) => item.id) } }, select: { id: true } });
+  const visibleIds = new Set(visible.map((item) => item.id));
+  items = items.filter((item) => visibleIds.has(item.id));
   const awardSessionIds = [
     ...new Set(
       items
