@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { assertLocalDockerContext } from "./recette-local-docker.mjs";
 
 const baseline = resolve(process.argv[2] ?? "");
 assert.ok(baseline.endsWith("schema.prisma"), "Donner le schéma du checkout main sans migration XP");
@@ -15,6 +16,7 @@ function run(command, args, options = {}) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout.trim();
 }
+assertLocalDockerContext();
 assert.equal(run("docker", ["port", container, "5432/tcp"]), "127.0.0.1:55439");
 const stamp = Date.now();
 const database = `gamenight_xp_rehearsal_${stamp}`;
