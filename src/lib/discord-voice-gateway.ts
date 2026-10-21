@@ -214,6 +214,18 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       startGeneration++;
       if (heartbeat) clearTimeout(heartbeat);
       if (reconnect) clearTimeout(reconnect);
+      const endedAt = now();
+      for (const [memberKey, visit] of active) {
+        if (endedAt > visit.startedAt) {
+          options.onInterval({
+            memberKey,
+            channelId: visit.channelId,
+            startedAt: visit.startedAt,
+            endedAt,
+            partial: true,
+          });
+        }
+      }
       if (active.size) options.onGap("shutdown");
       active.clear();
       socket?.close(1000);

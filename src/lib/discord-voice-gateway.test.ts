@@ -83,6 +83,33 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     collector.stop();
   });
 
+  it("flushes open visits as partial intervals on an orderly stop", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const sockets: FakeSocket[] = [];
+    const onInterval = vi.fn();
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl: async () => "wss://gateway.discord.gg",
+      onInterval, onGap: vi.fn(), onFatal: vi.fn(),
+    });
+    await collector.start();
+    sockets[0].emit(10, { heartbeat_interval: 45_000 });
+    sockets[0].emit(0, { session_id: "test-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
+    sockets[0].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: "456" }, 2, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(5_000);
+
+    collector.stop();
+
+    expect(onInterval).toHaveBeenCalledWith({
+      memberKey: "synthetic-member",
+      channelId: "456",
+      startedAt: 1_000,
+      endedAt: 5_000,
+      partial: true,
+    });
+  });
+
   it("sends heartbeats, closes on a missing acknowledgement, and reconnects", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
