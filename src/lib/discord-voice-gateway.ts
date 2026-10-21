@@ -61,9 +61,9 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   let session: { id: string; url: string } | null = null;
   let initialUrl = "";
   let active = new Map<string, VoiceVisit>();
+  let guildState: "snapshot_pending" | "available" | "unavailable" | "removed" = "snapshot_pending";
   let stopped = true;
   let retryMs = 1_000;
-  let snapshotPending = false;
   let startGeneration = 0;
   const createSocket = options.createSocket ?? (url => new WebSocket(url) as unknown as Socket);
 
@@ -74,6 +74,16 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   }
 
   function send(op: number, d: unknown) { socket?.send(JSON.stringify({ op, d })); }
+
+  function closeActiveVisits(endedAt = now()) {
+    const visits = [...active.entries()];
+    active.clear();
+    for (const [memberKey, visit] of visits) {
+      if (endedAt > visit.startedAt) {
+        options.onInterval({ memberKey, channelId: visit.channelId, startedAt: visit.startedAt, endedAt, partial: true });
+      }
+    }
+  }
 
   function beat(interval: number) {
     if (stopped || !socket) return;
@@ -113,7 +123,9 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if (packet.op === 7 || packet.op === 9) {
         if (packet.op === 9 && packet.d !== true) {
           options.onGap("resume_failed");
-          active.clear(); session = null; sequence = null;
+          closeActiveVisits();
+          guildState = "snapshot_pending";
+          session = null; sequence = null;
         }
         next.close(4000);
         return;
@@ -124,19 +136,30 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if (!data) return;
       if (packet.t === "READY" && typeof data.session_id === "string" && typeof data.resume_gateway_url === "string") {
         session = { id: data.session_id, url: gatewayUrl(data.resume_gateway_url) };
-        snapshotPending = true;
+        guildState = "snapshot_pending";
         retryMs = 1_000;
       } else if (packet.t === "RESUMED") {
         retryMs = 1_000;
-      } else if (packet.t === "GUILD_CREATE" && snapshotPending && data.id === config.guildId && Array.isArray(data.voice_states)) {
-        // shortcut: a fresh snapshot has no join timestamps; intervals beginning here are partial.
-        snapshotPending = false;
+      } else if (packet.t === "GUILD_DELETE" && data.id === config.guildId) {
+        closeActiveVisits();
+        guildState = data.unavailable === true ? "unavailable" : "removed";
+      } else if (packet.t === "GUILD_CREATE" && data.id === config.guildId) {
+        if (data.unavailable === true) {
+          closeActiveVisits();
+          guildState = "unavailable";
+          return;
+        }
+        if (!Array.isArray(data.voice_states)) return;
+        // A Guild Create snapshot has no join times, so it starts partial visits.
+        const snapshotAt = now();
+        closeActiveVisits(snapshotAt);
         for (const state of data.voice_states) {
           if (typeof state.user_id === "string" && typeof state.channel_id === "string" && channels.has(state.channel_id)) {
-            active.set(state.user_id, { channelId: state.channel_id, startedAt: now(), partial: true });
+            active.set(state.user_id, { channelId: state.channel_id, startedAt: snapshotAt, partial: true });
           }
         }
-      } else if (packet.t === "VOICE_STATE_UPDATE" && data.guild_id === config.guildId && typeof data.user_id === "string") {
+        guildState = "available";
+      } else if (packet.t === "VOICE_STATE_UPDATE" && guildState === "available" && data.guild_id === config.guildId && typeof data.user_id === "string") {
         if (data.channel_id !== null && typeof data.channel_id !== "string") return;
         const result = applyVoiceState(active, {
           memberKey: data.user_id,
@@ -156,13 +179,15 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if ([4004, 4010, 4011, 4012, 4013, 4014].includes(event.code ?? 0)) {
         stopped = true;
         if (active.size) options.onGap("fatal_close");
-        active.clear();
+        closeActiveVisits();
         options.onFatal({ kind: "gateway_close", closeCode: event.code ?? 0 });
         return;
       }
       if ([4007, 4009].includes(event.code ?? 0)) {
         options.onGap("resume_failed");
-        active.clear(); session = null; sequence = null;
+        closeActiveVisits();
+        guildState = "snapshot_pending";
+        session = null; sequence = null;
       }
       reconnect = setTimeout(() => connect(session?.url ?? initialUrl), retryMs);
       retryMs = Math.min(retryMs * 2, 30_000);
@@ -214,24 +239,14 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       startGeneration++;
       if (heartbeat) clearTimeout(heartbeat);
       if (reconnect) clearTimeout(reconnect);
-      const endedAt = now();
-      for (const [memberKey, visit] of active) {
-        if (endedAt > visit.startedAt) {
-          options.onInterval({
-            memberKey,
-            channelId: visit.channelId,
-            startedAt: visit.startedAt,
-            endedAt,
-            partial: true,
-          });
-        }
-      }
-      if (active.size) options.onGap("shutdown");
-      active.clear();
+      const hasOpenVisits = active.size > 0;
+      closeActiveVisits();
+      if (hasOpenVisits) options.onGap("shutdown");
       socket?.close(1000);
       socket = null;
       session = null;
       sequence = null;
+      guildState = "snapshot_pending";
     },
   };
 }
