@@ -274,6 +274,67 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
       })).resolves.toEqual({ gameId: game1.id });
     }, 15_000);
 
+    it("fin concurrente : attend la fin puis refuse le changement de jeu sans mettre d'EDIT en file", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+      const creator = await makeUser();
+      const guest = await makeUser();
+      const game1 = await makeGame(creator.id);
+      const game2 = await makeGame(creator.id);
+      const created = await lib.createInstantSession({
+        creatorId: creator.id,
+        gameId: game1.id,
+        notifiedUserIds: [guest.id],
+      });
+      if (!created.ok) throw new Error("setup");
+
+      let release!: () => void;
+      let endedUpdateHeld!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const updateHeld = new Promise<void>((resolve) => { endedUpdateHeld = resolve; });
+      const end = db.$transaction(async (tx) => {
+        await tx.instantSession.update({
+          where: { id: created.instantSession.id },
+          data: { status: "ENDED", endedAt: new Date(), endedReason: "expired" },
+        });
+        endedUpdateHeld();
+        await gate;
+      }, { timeout: 15_000 });
+      await updateHeld;
+
+      const change = lib.changeInstantSessionGame(created.instantSession.id, creator.id, game2.id).then(
+        (result) => ({ status: "fulfilled" as const, result }),
+        (error: unknown) => ({ status: "rejected" as const, error })
+      );
+      try {
+        await vi.waitFor(async () => {
+          const waiting = await db.$queryRaw<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock'
+              AND query LIKE '%UPDATE%'
+              AND query LIKE '%"InstantSession"%'
+              AND query LIKE '%gameId%'
+          `;
+          expect(waiting.length).toBeGreaterThan(0);
+        }, { timeout: 4_000 });
+      } finally {
+        release();
+        await end;
+      }
+
+      await expect(change).resolves.toEqual({
+        status: "fulfilled",
+        result: { ok: false, reason: "ended" },
+      });
+      await expect(db.instantSession.findUniqueOrThrow({
+        where: { id: created.instantSession.id },
+        select: { status: true, gameId: true },
+      })).resolves.toEqual({ status: "ENDED", gameId: game1.id });
+      await expect(db.notificationDelivery.count({
+        where: { operation: "EDIT", targetSlot: { contains: created.instantSession.id } },
+      })).resolves.toBe(0);
+    }, 15_000);
+
     it("un utilisateur ne peut être membre que d'UNE SEULE session instantanée active à la fois", async () => {
       const user = await makeUser();
       const creatorA = await makeUser();

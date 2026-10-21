@@ -320,13 +320,18 @@ export async function changeInstantSessionGame(
   if (session.createdById !== requestedById) return { ok: false, reason: "not_creator" };
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
-  await prisma.$transaction(async tx => {
+  const changed = await prisma.$transaction(async tx => {
     await lockCreationMembers(tx, session.communityId, [requestedById]);
     const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById, tx));
-    await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
+    const updated = await scopedDb.instantSession.updateMany({
+      where: { id: instantSessionId, createdById: requestedById, status: "ACTIVE" },
+      data: { gameId },
+    });
+    if (updated.count === 0) return false;
     await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
+    return true;
   });
-  return { ok: true };
+  return changed ? { ok: true } : { ok: false, reason: "ended" };
 }
 
 /**
