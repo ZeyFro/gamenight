@@ -178,7 +178,7 @@ describe.skipIf(!TEST_DATABASE_URL)("progression : vues et système de deux serv
     expect(await (await import("./scoreboard")).getScoreboard("global", { communityId: ids.b })).toEqual([]);
     expect(await (await import("./member-stats")).getMemberStatsForViewer(ids.shared, ids.shared)).toMatchObject({ xpTotal: 0 });
   });
-  it("historique de saisons : snapshots A seulement, puis default lorsque les flags sont OFF", async () => {
+  it("historique de saisons : snapshots A seulement, puis default si le membre default désactive l'isolation", async () => {
     const page = (await import("@/app/profil/saisons/page")).default;
     for (const c of ["default", "a", "b"]) {
       const season = await db.season.create({ data: { communityId: ids[c], number: 1, name: `Saison-${c}`, startDate: new Date(0), endDate: new Date(1), isActive: false } });
@@ -186,6 +186,7 @@ describe.skipIf(!TEST_DATABASE_URL)("progression : vues et système de deux serv
     }
     const names = (tree: unknown) => elements(tree).map((element) => element.props.children).flat().filter((child) => typeof child === "string" && child.startsWith("Saison-"));
     expect(names(await page())).toEqual(["Saison-a"]);
+    await db.membership.create({ data: { communityId: ids.default, userId: ids.shared, status: "ACTIVE" } });
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     expect(names(await page())).toEqual(["Saison-default"]);
   });
