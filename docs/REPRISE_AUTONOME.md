@@ -1,6 +1,6 @@
 # Point de reprise unique — GameNight
 
-Cette note est l’unique point de reprise courant. Les journaux et reprises datés sous `docs/archive/` sont historiques. Pour l’état d’une PR, de ses contrôles et de sa fusion, suivre le lien GitHub de ce lot et son SHA exact.
+Cette note est l’unique point de reprise courant. Les journaux et reprises datés sous `docs/archive/` sont historiques. Ce lot est publié dans [la PR #314](https://github.com/ZeyFro/gamenight/pull/314) ; son SHA et ses contrôles GitHub font foi pour l’état de publication et de fusion.
 
 ## Lot documentation et sécurité
 
