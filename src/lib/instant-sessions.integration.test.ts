@@ -95,6 +95,44 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
   }
 
   describe("Règles métier", () => {
+    it("isolation OFF : un membre default crée une session explicitement rattachée aux lignes historiques null", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      const creator = await makeUser();
+      const game = await makeGame(creator.id);
+
+      const result = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.instantSession.communityId).toBeNull();
+    });
+
+    it("isolation OFF : le choix B prime sur l'adhésion default pour la session et ses accès", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
+      const communityB = await db.community.create({ data: { slug: uniq("community-b"), name: "B", status: "ACTIVE" } });
+      const creator = await makeUser();
+      const defaultOnly = await makeUser();
+      await db.membership.create({ data: { communityId: communityB.id, userId: creator.id, status: "ACTIVE" } });
+      await db.user.update({ where: { id: creator.id }, data: { activeCommunityId: communityB.id } });
+      const bOnly = await db.user.create({ data: { discordId: uniq("b-only"), discordName: "B-only" } });
+      await db.membership.create({ data: { communityId: communityB.id, userId: bOnly.id, status: "ACTIVE" } });
+      const game = await makeGame(creator.id);
+
+      const result = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [defaultOnly.id, bOnly.id] });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.instantSession.communityId).toBe(communityB.id);
+      expect(result.instantSession.notifiedUserIds).toEqual([bOnly.id]);
+      const creatorDb = await (await import("./community-scoped-client")).getScopedPrisma(creator.id);
+      const bOnlyDb = await (await import("./community-scoped-client")).getScopedPrisma(bOnly.id);
+      const defaultDb = await (await import("./community-scoped-client")).getScopedPrisma(defaultOnly.id);
+      await expect(creatorDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.not.toBeNull();
+      await expect(bOnlyDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.not.toBeNull();
+      await expect(defaultDb.instantSession.findUnique({ where: { id: result.instantSession.id } })).resolves.toBeNull();
+    });
+
     it("le créateur devient participant DÈS LA CRÉATION, dans la même transaction", async () => {
       const creator = await makeUser();
       const game = await makeGame(creator.id);

@@ -170,10 +170,10 @@ describe.skipIf(!TEST_DATABASE_URL)("chat et dettes par communauté (Postgres is
       expect((await db.debt.findFirstOrThrow()).communityId).toBeNull();
     });
 
-    it("détection isolation éteinte : communityId laissé à null", async () => {
+    it("isolation éteinte : une dette hérite toujours de la communauté explicite B", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
       await debts.detectDebts(ids.s2, [ids.bob], "Mario Kart", new Date(), ids.c2);
-      expect((await db.debt.findFirstOrThrow()).communityId).toBeNull();
+      expect((await db.debt.findFirstOrThrow()).communityId).toBe(ids.c2);
     });
 
     it("accueil : seules les dettes de la communauté active ; le badge 💀 suit les communautés de l'utilisateur", async () => {

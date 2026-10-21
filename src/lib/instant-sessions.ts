@@ -3,6 +3,7 @@ import type { InstantSession, Prisma } from "@prisma/client";
 import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
 import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { wallClockNow } from "@/lib/wallclock";
 import { gameWarningsSelect, type GameWarningsData } from "@/lib/game-warnings";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
@@ -149,7 +150,9 @@ export async function createInstantSession(input: {
 }): Promise<CreateInstantSessionResult> {
   const activeCommunityId = await resolveActiveCommunityId(input.creatorId);
   if (activeCommunityId === null) return { ok: false, reason: "not_found" };
-  const legacyDefault = !isCommunityIsolationEnabled() && await isMemberOfCommunity(input.creatorId, null);
+  const legacyDefault = !isCommunityIsolationEnabled()
+    && await isMemberOfCommunity(input.creatorId, null)
+    && activeCommunityId === await getDefaultCommunityId();
   const communityId = legacyDefault ? null : activeCommunityId;
   // Expiration paresseuse d'abord : une session échue mais pas encore
   // réglée par le cron garde l'intervalle de présence du créateur ouvert, ce

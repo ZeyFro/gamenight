@@ -11,6 +11,7 @@ const {
   canAccessSession,
   isMemberOfCommunity,
   resolveActiveCommunityId,
+  getDefaultCommunityId,
 } = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   checkRateLimit: vi.fn(),
@@ -22,12 +23,14 @@ const {
   canAccessSession: vi.fn(),
   isMemberOfCommunity: vi.fn(),
   resolveActiveCommunityId: vi.fn(),
+  getDefaultCommunityId: vi.fn(async () => "community-default"),
 }));
 
 vi.mock("@/lib/current-user", () => ({ getCurrentUser }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit, RATE_LIMIT_ERROR_KEY: "rate_limited" }));
 vi.mock("@/lib/chat", () => ({ getChatMessages }));
 vi.mock("@/lib/session-access", () => ({ canAccessSession }));
+vi.mock("@/lib/default-community", () => ({ getDefaultCommunityId }));
 // PR8 : le client reste scopé par Membership même en isolation OFF.
 vi.mock("@/lib/community-scoped-client", () => {
   const scopedDb = {
@@ -37,7 +40,7 @@ vi.mock("@/lib/community-scoped-client", () => {
   return {
     getScopedPrisma: vi.fn().mockResolvedValue(scopedDb),
     getActiveScopedPrisma: vi.fn().mockResolvedValue(scopedDb),
-    withCommunity: (communityId: string | null) => communityId === null ? {} : { communityId },
+    withCommunity: (communityId: string | null) => ({ communityId }),
   };
 });
 vi.mock("@/lib/community-isolation", () => ({
@@ -137,9 +140,44 @@ describe("actions de chat — canal de soirée réservé aux invités actifs", (
     expect(chatMessageCreate).toHaveBeenCalled();
     expect(chatMessageCreate.mock.calls[0][0].data).toMatchObject({ communityId: "community-b" });
     expect(isMemberOfCommunity).toHaveBeenCalledWith("quiconque", null);
+    expect(getDefaultCommunityId).not.toHaveBeenCalled();
     expect(resolveActiveCommunityId).toHaveBeenCalledWith("quiconque");
     expect(result).toEqual({ ok: true });
     expect(getCurrentUser).toHaveBeenCalledWith();
+  });
+
+  it("sendChatMessageAction : un membre default écrit le canal global avec communityId null en isolation OFF", async () => {
+    getCurrentUser.mockResolvedValue({ id: "membre-default" });
+    resolveActiveCommunityId.mockResolvedValue("community-default");
+    isMemberOfCommunity.mockResolvedValue(true);
+    chatMessageCreate.mockResolvedValue({});
+
+    const fd = new FormData();
+    fd.set("content", "salut");
+    fd.set("sessionId", "");
+    const result = await sendChatMessageAction(fd);
+
+    expect(chatMessageCreate.mock.calls[0][0].data).toMatchObject({ communityId: null });
+    expect(isMemberOfCommunity).toHaveBeenCalledWith("membre-default", null);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("sendChatMessageAction : un membre default+B qui a sélectionné B conserve le chat global dans B", async () => {
+    getCurrentUser.mockResolvedValue({ id: "membre-default-et-b" });
+    isMemberOfCommunity.mockResolvedValue(true);
+    chatMessageCreate.mockResolvedValue({});
+
+    const fd = new FormData();
+    fd.set("content", "salut");
+    fd.set("sessionId", "");
+    const result = await sendChatMessageAction(fd);
+
+    expect(resolveActiveCommunityId).toHaveBeenCalledWith("membre-default-et-b");
+    expect(isMemberOfCommunity).toHaveBeenCalledWith("membre-default-et-b", null);
+    expect(getDefaultCommunityId).toHaveBeenCalledOnce();
+    expect(chatMessageCreate.mock.calls[0][0].data).toMatchObject({ communityId: "community-b" });
+    expect(chatMessageCreate.mock.calls[0][0].data.communityId).not.toBeNull();
+    expect(result).toEqual({ ok: true });
   });
 
   it("toggleReactionAction : refuse une réaction sur un message d'une soirée à laquelle l'appelant n'a pas accès", async () => {

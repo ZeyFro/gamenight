@@ -95,9 +95,12 @@ describe("session-access — isolation par communauté", () => {
 
     it("isolation éteinte : un membre default garde l'accès historique", async () => {
       mocks.membershipFindMany.mockResolvedValue([membership("c-def", "default")]);
-      await getSessionAccessRole("u1", "s1");
+      await expect(getSessionAccessRole("u1", "s1")).resolves.toBe("creator");
       expect(mocks.sessionFindFirst).toHaveBeenCalledWith({
-        where: { id: "s1", ...LEGACY("u1") },
+        where: {
+          id: "s1",
+          AND: [LEGACY("u1"), { OR: [{ communityId: { in: ["c-def"] } }, { communityId: null }] }],
+        },
         select: { createdById: true },
       });
     });

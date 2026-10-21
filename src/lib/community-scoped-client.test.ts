@@ -209,7 +209,7 @@ describe("withCommunity", () => {
   it("isolation éteinte : conserve une communauté explicitement choisie", () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
     expect(withCommunity("c1")).toEqual({ communityId: "c1" });
-    expect(withCommunity(null)).toEqual({});
+    expect(withCommunity(null)).toEqual({ communityId: null });
     vi.unstubAllEnvs();
   });
 

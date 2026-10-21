@@ -4,7 +4,6 @@ import { getDefaultCommunityId } from "@/lib/default-community";
 import {
   communityIdFilter,
   getIsolationScope,
-  isCommunityIsolationEnabled,
   resolveActiveCommunityScope,
   type IsolationScope,
 } from "@/lib/community-isolation";
@@ -193,14 +192,9 @@ export function scopedPrismaForCommunity(communityId: string | null): ScopedPris
   return scopedPrisma({ communityIds: communityId === null ? [] : [communityId], includesDefault: communityId === null });
 }
 
-/**
- * Valeur de `communityId` à écrire. Une communauté explicite reste explicite
- * même si l'isolation est éteinte. `null` reste omis uniquement pour préserver
- * les lignes historiques de `default` dans ce mode.
- */
-export function withCommunity(communityId: string | null): { communityId?: string | null } {
-  if (communityId !== null) return { communityId };
-  return isCommunityIsolationEnabled() ? { communityId } : {};
+/** Valeur de `communityId` à écrire, y compris `null` pour les lignes historiques de `default`. */
+export function withCommunity(communityId: string | null): { communityId: string | null } {
+  return { communityId };
 }
 
 /**

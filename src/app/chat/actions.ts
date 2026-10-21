@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma, getScopedPrisma, withCommunity } from "@/lib/community-scoped-client";
 import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
@@ -62,7 +63,7 @@ export async function sendChatMessageAction(formData: FormData): Promise<SendCha
   // la soirée ; un message du canal global, à la communauté active. Les membres
   // B-only gardent donc un scope B explicite même en mode historique.
   const scopedDb = sessionId ? await getScopedPrisma(user.id) : await getActiveScopedPrisma(user.id);
-  let community: ReturnType<typeof withCommunity> = {};
+  let community: ReturnType<typeof withCommunity>;
   if (sessionId) {
     const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
     if (!session) return { ok: false };
@@ -70,7 +71,9 @@ export async function sendChatMessageAction(formData: FormData): Promise<SendCha
   } else {
     const activeId = await resolveActiveCommunityId(user.id);
     if (activeId === null) return { ok: false };
-    const legacyDefault = !isCommunityIsolationEnabled() && await isMemberOfCommunity(user.id, null);
+    const legacyDefault = !isCommunityIsolationEnabled()
+      && await isMemberOfCommunity(user.id, null)
+      && activeId === await getDefaultCommunityId();
     community = withCommunity(legacyDefault ? null : activeId);
   }
   await scopedDb.chatMessage.create({

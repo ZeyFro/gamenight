@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { userFindMany, preferenceFindMany, sessionInviteFindMany, postToDiscord, createNotifications } = vi.hoisted(
+const { userFindMany, sessionFindUnique, preferenceFindMany, sessionInviteFindMany, postToDiscord, createNotifications } = vi.hoisted(
   () => ({
     userFindMany: vi.fn(),
+    sessionFindUnique: vi.fn(),
     preferenceFindMany: vi.fn(),
     sessionInviteFindMany: vi.fn(),
     postToDiscord: vi.fn(),
@@ -13,6 +14,7 @@ const { userFindMany, preferenceFindMany, sessionInviteFindMany, postToDiscord, 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findMany: userFindMany },
+    session: { findUnique: sessionFindUnique },
     userNotificationPreference: { findMany: preferenceFindMany },
     sessionInvite: { findMany: sessionInviteFindMany },
   },
@@ -37,6 +39,7 @@ import { announceSessionCreated } from "./discord-session-created";
 describe("annonce webhook de création — supprimée par confidentialité, notifications internes filtrées", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionFindUnique.mockResolvedValue({ communityId: "community-1" });
   });
 
   it("ne poste JAMAIS dans Discord (salon public, aucun mécanisme privé pour ce chemin legacy)", async () => {

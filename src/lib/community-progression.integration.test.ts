@@ -239,10 +239,13 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
     const f = new FormData(); f.set("tournamentId", tournaments[0].id); await actions.unregisterFromTournamentAction(f);
     expect((await stats("a"))?.tournamentsParticipatedCount).toBe(0); expect((await stats("b"))?.tournamentsParticipatedCount).toBe(1);
   });
-  it("flags OFF : default concrète, ancien User jamais utilisé comme solde", async () => {
+  it("flags OFF : un membre A+B sans membership default ne reçoit aucun XP default", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    await xp.awardXp(ids.both, null, "VOTE", "legacy", 20, { applyStreak: false });
-    expect((await stats("default"))?.xpTotal).toBe(20); expect((await stats("a"))).toBeNull();
+    expect(await xp.awardXp(ids.both, null, "VOTE", "legacy", 20, { applyStreak: false })).toEqual({ awarded: false, leveledUp: false });
+    expect(await stats("default")).toBeNull();
+    expect(await stats("a")).toBeNull();
+    expect(await stats("b")).toBeNull();
+    expect((await db.user.findUniqueOrThrow({ where: { id: ids.both } })).xpTotal).toBe(777);
   });
   it("flags OFF : un pari B refuse une cible sans membership B", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");

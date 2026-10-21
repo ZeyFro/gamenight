@@ -56,9 +56,11 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     (await import("./default-community")).resetDefaultCommunityIdCache();
   }, 30_000);
 
-  const makeUser = () => {
+  const makeUser = async () => {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: { communityId, userId: user.id, status: "ACTIVE", role: "MEMBER" } });
+    return user;
   };
   const makeGame = (userId: string, minPlayers: number | null, maxPlayers: number | null) =>
     db.game.create({ data: { name: uniq("jeu"), source: "MANUAL", minPlayers, maxPlayers, addedById: userId } });
@@ -185,7 +187,6 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     it.each([false, true])("refuse un invité retiré de la soirée, même encore membre du serveur (isolation %s)", async (isolation) => {
       const s = await drawn();
       const guest = s.users[1];
-      await db.membership.createMany({ data: s.users.map((u) => ({ userId: u.id, communityId, status: "ACTIVE" as const, role: "MEMBER" as const })) });
       await db.roulette.update({ where: { id: s.r.id }, data: { communityId } });
       await db.session.update({ where: { id: s.sessionId }, data: { communityId } });
       await db.sessionInvite.update({ where: { sessionId_userId: { sessionId: s.sessionId, userId: guest.id } }, data: { status: "REVOKED" } });
@@ -272,6 +273,7 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     it("refuse un participant devenu membre d'une autre communauté seulement", async () => {
       const s = await drawn();
       const foreign = await db.community.create({ data: { slug: "foreign", name: "foreign", status: "ACTIVE" } });
+      await db.membership.deleteMany({ where: { userId: s.users[0].id, communityId } });
       await db.membership.create({ data: { userId: s.users[0].id, communityId: foreign.id, status: "ACTIVE", role: "MEMBER" } });
       await db.roulette.update({ where: { id: s.r.id }, data: { communityId } });
       await db.session.update({ where: { id: s.sessionId }, data: { communityId } });
