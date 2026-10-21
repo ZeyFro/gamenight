@@ -24,6 +24,33 @@ const target = (sessionId: string, channelId = "456789012345678901"): VoicePrese
 afterEach(() => vi.restoreAllMocks());
 
 describe("voice presence worker (synthetic dependencies only)", () => {
+  it("waits for every stop, propagates a stop failure, and reports a concurrent fatal failure only after flushing", async () => {
+    let resolveFlush!: () => void;
+    let callbacks!: { onPersistenceError: (error: unknown) => void };
+    const onFatal = vi.fn();
+    const worker = createVoicePresenceWorker({
+      loadTargets: async () => [target("first"), target("second")],
+      createCollector: (session, value) => {
+        callbacks = value;
+        return { start: vi.fn(), stop: session.sessionId === "first"
+          ? () => Promise.reject(new Error("synthetic secret stop detail"))
+          : () => new Promise<void>(resolve => { resolveFlush = resolve; }) };
+      },
+      onFatal,
+    });
+    await worker.start();
+    let settled = false;
+    const stopping = worker.stop().catch(error => { settled = true; return error; });
+    await Promise.resolve();
+    callbacks.onPersistenceError(new Error("synthetic fatal write failure"));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(settled).toBe(false);
+    resolveFlush();
+    expect(await stopping).toEqual(new Error("Voice presence collectors failed to stop"));
+    await vi.waitFor(() => expect(onFatal).toHaveBeenCalledOnce());
+  });
+
   it("stays off without the explicit flag and fails closed when policy decisions are missing", () => {
     expect(voicePresenceWorkerConfig({ ...enabledEnv, VOICE_PRESENCE_WORKER_MODE: "" })).toBeNull();
     expect(voicePresenceWorkerConfig({ ...enabledEnv, VOICE_PRESENCE_ENABLED: "" })).toBeNull();

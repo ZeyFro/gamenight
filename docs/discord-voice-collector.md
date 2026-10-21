@@ -10,7 +10,11 @@ Toutes les 15 secondes par défaut, le worker recherche les sessions `SCHEDULED`
 
 ## Hôte Raspberry Pi
 
-Le paquet fournit `packaging/systemd/gamenight.service`. Cette unité est le processus auto-hébergé dédié qui sélectionne le mode `standalone`; elle lance aussi le serveur Next.js sur `127.0.0.1:3000`. Un reverse proxy local est à configurer séparément si l'application doit être accessible sur le réseau. L'unité ne contient aucun secret; elle lit l'environnement complet de l'application depuis `/etc/gamenight/gamenight.env` et redémarre après un échec, avec une limite de tentatives. `systemctl status gamenight` et `journalctl -u gamenight` permettent de superviser le processus.
+Le paquet fournit `packaging/systemd/gamenight.service`. Cette unité est le processus auto-hébergé dédié qui sélectionne le mode `standalone`; elle lance `scripts/gamenight-server.mjs`, un serveur utilisant l'API publique Next.js sur `127.0.0.1:3000`. À réception de SIGINT ou SIGTERM, ce lanceur ferme les admissions HTTP et attend les requêtes en cours, le flush du worker puis la fermeture de Next avant de terminer. Il conserve un code d'erreur déjà posé et termine en erreur si cet arrêt échoue. L'arrêt reste limité par `TimeoutStopSec=45s` : un flush bloqué au-delà peut être tué par systemd.
+
+Utiliser ce lanceur pour la collecte autonome : `npm start` / `next start` ne coordonnent pas le flush du worker avec leur propre fermeture.
+
+Un reverse proxy local est à configurer séparément si l'application doit être accessible sur le réseau. L'unité ne contient aucun secret; elle lit l'environnement complet de l'application depuis `/etc/gamenight/gamenight.env` et redémarre après un échec, avec au plus cinq démarrages en 300 secondes. Une fois cette limite atteinte, une intervention est nécessaire pour corriger la cause puis relancer le service; aucun watchdog de collecte ni alerte automatique n'est fourni. `systemctl status gamenight` et `journalctl -u gamenight` permettent de superviser le processus.
 
 Prérequis avant une mise en service locale :
 
@@ -20,6 +24,6 @@ Prérequis avant une mise en service locale :
 - un fichier `/etc/gamenight/gamenight.env` lisible seulement par l'utilisateur du service, contenant les variables d'application habituelles et `DISCORD_BOT_TOKEN`;
 - les choix de consentement et de rétention définis et implémentés avant de renseigner leurs références ou d'activer le flag.
 
-Le script `npm run build` du dépôt lance `prisma migrate deploy` avant la compilation hors Preview. Ne pas l'exécuter contre une base de production dans le cadre de la préparation du Pi; appliquer les migrations uniquement par le processus de déploiement approuvé. Le service `next start` ne lance pas de migration.
+Le script `npm run build` du dépôt lance `prisma migrate deploy` avant la compilation hors Preview. Ne pas l'exécuter contre une base de production dans le cadre de la préparation du Pi; appliquer les migrations uniquement par le processus de déploiement approuvé. Le lanceur du service ne lance pas de migration.
 
 La mise en service doit être préparée avec le flag et les deux références de décision laissés vides. Aucun accès Pi, installation, appel Discord réel ou test de collecte n'a été effectué pour ce changement.

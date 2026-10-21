@@ -3,6 +3,7 @@ import { wallClockNow } from "@/lib/wallclock";
 import { createSessionVoiceCollector } from "./session-voice-collector";
 import {
   createVoicePresenceWorker,
+  isVoicePresenceShutdownManaged,
   registerVoicePresenceSessionStopper,
   type VoicePresenceWorkerConfig,
 } from "./voice-presence-worker";
@@ -89,20 +90,22 @@ export async function startVoicePresenceWorkerRuntime(
     pollIntervalMs: config.pollIntervalMs,
   });
 
-  let stopped = false;
-  let unregisterStopper = registerVoicePresenceSessionStopper(sessionId => worker.pauseSession(sessionId));
+  let stopPromise: Promise<void> | null = null;
+  let unregisterStopper = registerVoicePresenceSessionStopper(sessionId => worker.pauseSession(sessionId), stop);
   const shutdown = () => { void stop(); };
-  processLike.once("SIGINT", shutdown);
-  processLike.once("SIGTERM", shutdown);
+  if (!isVoicePresenceShutdownManaged()) {
+    processLike.once("SIGINT", shutdown);
+    processLike.once("SIGTERM", shutdown);
+  }
 
-  async function stop() {
-    if (stopped) return;
-    stopped = true;
-    processLike.removeListener("SIGINT", shutdown);
-    processLike.removeListener("SIGTERM", shutdown);
-    unregisterStopper();
-    unregisterStopper = () => undefined;
-    await worker.stop();
+  function stop(): Promise<void> {
+    return stopPromise ??= (async () => {
+      processLike.removeListener("SIGINT", shutdown);
+      processLike.removeListener("SIGTERM", shutdown);
+      unregisterStopper();
+      unregisterStopper = () => undefined;
+      await worker.stop();
+    })();
   }
 
   try {

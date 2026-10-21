@@ -51,7 +51,7 @@ export function voicePresenceWorkerConfig(
 type ActiveCollector = { key: string; collector: VoicePresenceCollector };
 type PauseSession = (sessionId: string) => Promise<(committed: boolean) => Promise<void>>;
 type SessionStopper = (sessionId: string) => ReturnType<PauseSession>;
-type VoicePresenceGlobalState = { sessionStopper: SessionStopper | null };
+type VoicePresenceGlobalState = { sessionStopper: SessionStopper | null; stop?: (() => Promise<void>) | null; hostOwnsSignals?: boolean };
 const VOICE_PRESENCE_GLOBAL_KEY = "__gamenightVoicePresenceWorkerState" as const;
 const workerGlobal = globalThis as typeof globalThis & { [VOICE_PRESENCE_GLOBAL_KEY]?: VoicePresenceGlobalState };
 const globalState = workerGlobal[VOICE_PRESENCE_GLOBAL_KEY] ??= { sessionStopper: null };
@@ -75,25 +75,34 @@ export function createVoicePresenceWorker(options: {
   let polling = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   let failure: Promise<void> | null = null;
+  let stopping: Promise<void> | null = null;
 
   async function stopCollectors() {
     const active = [...collectors.values()];
     collectors.clear();
-    await Promise.allSettled(active.map(({ collector }) => Promise.resolve(collector.stop())));
+    const results = await Promise.allSettled(active.map(({ collector }) => Promise.resolve().then(() => collector.stop())));
+    if (results.some(result => result.status === "rejected")) throw new Error("Voice presence collectors failed to stop");
   }
 
-  async function stop() {
-    stopped = true;
-    started = false;
-    if (timer) clearInterval(timer);
-    timer = null;
-    await stopCollectors();
+  function stop() {
+    return stopping ??= (async () => {
+      stopped = true;
+      started = false;
+      if (timer) clearInterval(timer);
+      timer = null;
+      await stopCollectors();
+    })();
   }
 
   async function fail(error: unknown) {
     if (!failure) {
       failure = (async () => {
-        await stop();
+        try {
+          await stop();
+        } catch (stopError) {
+          await options.onFatal({ kind: "shutdown", failure: error, error: stopError });
+          return;
+        }
         await options.onFatal(error);
       })();
     }
@@ -197,11 +206,19 @@ export function createVoicePresenceWorker(options: {
   };
 }
 
-export function registerVoicePresenceSessionStopper(stopper: SessionStopper) {
+export function isVoicePresenceShutdownManaged() {
+  return globalState.hostOwnsSignals === true;
+}
+
+export function registerVoicePresenceSessionStopper(stopper: SessionStopper, stop?: () => Promise<void>) {
   if (globalState.sessionStopper) throw new Error("Voice presence worker already registered in this process");
   globalState.sessionStopper = stopper;
+  globalState.stop = stop;
   return () => {
-    if (globalState.sessionStopper === stopper) globalState.sessionStopper = null;
+    if (globalState.sessionStopper === stopper) {
+      globalState.sessionStopper = null;
+      globalState.stop = null;
+    }
   };
 }
 

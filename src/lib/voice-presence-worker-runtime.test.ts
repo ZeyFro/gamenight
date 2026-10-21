@@ -20,6 +20,53 @@ afterEach(() => {
 });
 
 describe("voice presence worker runtime (synthetic Prisma and Gateway only)", () => {
+  it("leaves shutdown signals to the host so in-flight HTTP can finish before the worker stops", async () => {
+    const state = (globalThis as typeof globalThis & {
+      __gamenightVoicePresenceWorkerState: { hostOwnsSignals?: boolean };
+    }).__gamenightVoicePresenceWorkerState;
+    state.hostOwnsSignals = true;
+    mocks.sessionFindMany.mockResolvedValue([]);
+    const processLike = { once: vi.fn(), removeListener: vi.fn() };
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike, onFatal: vi.fn() },
+    );
+    try {
+      expect(processLike.once).not.toHaveBeenCalled();
+    } finally {
+      await runtime.stop();
+      state.hostOwnsSignals = false;
+    }
+  });
+
+  it("waits for the same pending flush when shutdown and the host both stop the runtime", async () => {
+    mocks.sessionFindMany.mockResolvedValue([{
+      id: "session-active",
+      community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
+    }]);
+    let resolveFlush!: () => void;
+    const collector = { start: vi.fn(), stop: vi.fn(() => new Promise<void>(resolve => { resolveFlush = resolve; })) };
+    mocks.createSessionVoiceCollector.mockReturnValue(collector);
+    const processLike = { once: vi.fn(), removeListener: vi.fn() };
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike, onFatal: vi.fn() },
+    );
+    const shutdown = processLike.once.mock.calls.find(([signal]) => signal === "SIGTERM")![1];
+    const hostStop = (globalThis as typeof globalThis & {
+      __gamenightVoicePresenceWorkerState?: { stop?: () => Promise<void> };
+    }).__gamenightVoicePresenceWorkerState?.stop;
+    expect(hostStop).toBe(runtime.stop);
+    shutdown();
+    let stopped = false;
+    const stopping = hostStop!().then(() => { stopped = true; });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    resolveFlush();
+    await stopping;
+    expect(collector.stop).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["2026-07-21T18:00:00Z", "2026-07-21T20:00:00Z"],
     ["2026-12-21T19:00:00Z", "2026-12-21T20:00:00Z"],
