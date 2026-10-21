@@ -48,5 +48,5 @@ export async function createOnce<T>(
     await tx.creationIntent.create({ data: { actorId, kind, key, resourceId: resourceId(result) } });
     return { result, replayed: false };
   };
-  return transaction ? execute(transaction) : prisma.$transaction(execute, { timeout: 15_000 });
+  return transaction ? execute(transaction) : prisma.$transaction(execute, { timeout: 15_000, maxWait: 5_000 });
 }

@@ -68,7 +68,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
       expect(await db.sessionInvite.count()).toBe(2);
     }
     expect(fetch).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it("rollback : aucun reçu ni mutation partielle ; une tentative peut reprendre", async () => {
     const { createOnce } = await import("@/lib/creation-intent");

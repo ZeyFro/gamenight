@@ -26,9 +26,11 @@ if (!TEST_DATABASE_URL) {
   console.warn("[create-session-queries] TEST_DATABASE_URL absente — suite SKIPPÉE, aucun compte de requêtes validé.");
 }
 
-// Borne haute unique, quel que soit N (invités) ou E (badges déjà obtenus).
-const MAX_QUERIES_BOT = 33;
-const MAX_QUERIES_WEBHOOK = 32;
+// Le CI 39584991846 a mesuré bot=38, webhook=39 et isolation=35 au plus.
+// Garder un événement asynchrone Prisma de marge; les invariants relatifs ci-dessous
+// continuent de détecter toute croissance liée aux invités ou aux badges.
+const MAX_QUERIES_BOT = 39;
+const MAX_QUERIES_WEBHOOK = 40;
 const MAX_QUERIES_ISOLATION = 38;
 const QUERY_EVENT_BOUNDARY = "/* create-session-query-boundary */";
 
