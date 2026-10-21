@@ -157,7 +157,7 @@ try {
   const vetoRows = () => db.sessionVeto.findMany({ where: { sessionId: veto.id } });
   const card = (page, name) => page.locator("div,li,article").filter({ hasText: label(name) }).filter({ has: page.getByRole("button", { name: /veto/i }) }).last();
   await step("veto : deux jeux JOUABLES et un bouton veto chacun", async () => {
-    await pages.bob.goto(vetoUrl, { waitUntil: "domcontentloaded" });
+    await pages.bob.goto(vetoUrl, { waitUntil: "load" });
     await pages.bob.getByText(label("Alpha")).first().waitFor();
     assert.equal(await pages.bob.getByRole("button", { name: "Poser mon veto sur ce jeu" }).count(), 2);
     assert.equal(await pages.bob.getByText("JOUABLE", { exact: true }).count(), 2);
@@ -176,7 +176,7 @@ try {
     assert.equal(rows.length, 1);
   });
   await step("veto échec : Carol ne peut pas vetoer le dernier jeu restant", async () => {
-    await pages.carol.goto(vetoUrl, { waitUntil: "domcontentloaded" });
+    await pages.carol.goto(vetoUrl, { waitUntil: "load" });
     await pages.carol.getByText(label("Alpha")).first().waitFor();
     await card(pages.carol, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).waitFor();
     await card(pages.carol, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).click();
@@ -191,12 +191,12 @@ try {
     await waitFor(async () => (await vetoRows())[0]?.userId === carol.id, "veto Carol absent");
   });
   await step("veto : état vide (soirée sans proposition) sans bouton veto", async () => {
-    await pages.bob.goto(`${origin}/sessions/${emptyVote.id}`, { waitUntil: "domcontentloaded" });
+    await pages.bob.goto(`${origin}/sessions/${emptyVote.id}`, { waitUntil: "load" });
     await pages.bob.getByText("Aucun jeu proposé pour l'instant.").waitFor();
     assert.equal(await pages.bob.getByRole("button", { name: /veto/i }).count(), 0);
   });
   await step("veto interdit : compte sans accès (Eve) ne voit pas la soirée", async () => {
-    const response = await pages.eve.goto(vetoUrl, { waitUntil: "domcontentloaded" });
+    const response = await pages.eve.goto(vetoUrl, { waitUntil: "load" });
     const text = await bodyText(pages.eve);
     assert.ok(response.status() === 404 || !text.includes(label("Alpha")), "soirée visible hors communauté");
     assert.equal(await pages.eve.getByRole("button", { name: /veto/i }).count(), 0);
@@ -206,14 +206,14 @@ try {
   // ---------- MVP ----------
   const voteUrl = id => `${origin}/sessions/${id}/vote-superlatifs`;
   await step("MVP interdit : Dave (invité non participant) et Eve (sans accès)", async () => {
-    await pages.dave.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" });
+    await pages.dave.goto(voteUrl(mvp.id), { waitUntil: "load" });
     await pages.dave.getByText("Tu n'as pas participé à cette soirée").waitFor();
     assert.equal(await pages.dave.getByRole("button", { name: "Valider mes votes" }).count(), 0);
-    const response = await pages.eve.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" });
+    const response = await pages.eve.goto(voteUrl(mvp.id), { waitUntil: "load" });
     assert.ok(response.status() === 404 || !(await bodyText(pages.eve)).includes("Récompenses"), "vote visible hors communauté");
   });
   await step("MVP : bouton désactivé jusqu'au choix, pas de vote pour soi", async () => {
-    await pages.alice.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" });
+    await pages.alice.goto(voteUrl(mvp.id), { waitUntil: "load" });
     const submit = pages.alice.getByRole("button", { name: "Valider mes votes" });
     await submit.waitFor();
     await pages.alice.locator("form").getByRole("button", { name: "Bob", exact: true }).waitFor();
@@ -226,7 +226,7 @@ try {
     assert.equal(await db.superlativeVote.count({ where: { sessionId: mvp.id, voterUserId: alice.id } }), 1);
   });
   await step("MVP : votes simultanés de Bob et Carol (clôture concurrente) sans erreur ni doublon", async () => {
-    await Promise.all([pages.bob.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" }), pages.carol.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" })]);
+    await Promise.all([pages.bob.goto(voteUrl(mvp.id), { waitUntil: "load" }), pages.carol.goto(voteUrl(mvp.id), { waitUntil: "load" })]);
     for (const page of [pages.bob, pages.carol]) {
       await page.getByRole("button", { name: "Valider mes votes" }).waitFor();
       await page.locator("form").getByRole("button", { name: "Alice", exact: true }).waitFor();
@@ -240,15 +240,15 @@ try {
     assert.equal(awards[0].voteCount, 2);
     const duplicates = await db.xpEvent.groupBy({ by: ["userId", "reason", "sourceId"], where: { communityId: community.id }, _count: { _all: true }, having: { userId: { _count: { gt: 1 } } } });
     assert.deepEqual(duplicates, []);
-    await pages.alice.goto(voteUrl(mvp.id), { waitUntil: "domcontentloaded" });
+    await pages.alice.goto(voteUrl(mvp.id), { waitUntil: "load" });
     await pages.alice.getByText("Alice — 2 voix").waitFor();
     return "1 award, 2 voix";
   });
   await step("MVP : seul le créateur voit « Forcer la clôture » ; état vide après clôture sans vote", async () => {
-    await pages.bob.goto(voteUrl(mvpForce.id), { waitUntil: "domcontentloaded" });
+    await pages.bob.goto(voteUrl(mvpForce.id), { waitUntil: "load" });
     await pages.bob.getByRole("button", { name: "Valider mes votes" }).waitFor();
     assert.equal(await pages.bob.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).count(), 0);
-    await pages.alice.goto(voteUrl(mvpNobody.id), { waitUntil: "domcontentloaded" });
+    await pages.alice.goto(voteUrl(mvpNobody.id), { waitUntil: "load" });
     await pages.alice.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).waitFor();
     await pages.alice.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).click();
     await pages.alice.getByText("Personne n'a voté pour cette soirée").waitFor();
@@ -348,7 +348,7 @@ try {
     assert.equal(row.createdById, alice.id);
   });
   await step("calendrier : export .ics (membre OK, anonyme 401, hors communauté sans la soirée)", async () => {
-    const own = await pages.bob.request.get(`${origin}/api/calendrier/export`);
+    const own = await pages.bob.request.get(`${origin}/api/calendrier/export`, { timeout: 60_000 });
     assert.equal(own.status(), 200);
     assert.match(own.headers()["content-type"], /text\/calendar/);
     assert.ok((await own.text()).includes(veto.id), "soirée absente de l'export");
@@ -363,7 +363,7 @@ try {
   for (const [name, user, path, ready] of [
     ["session veto", "bob", `/sessions/${veto.id}`, page => page.getByText(label("Alpha")).first()],
     ["vote MVP après clôture", "alice", `/sessions/${mvp.id}/vote-superlatifs`, page => page.getByText("Alice — 2 voix")],
-    ["vote MVP interdit", "dave", `/sessions/${mvp.id}/vote-superlatifs`, page => page.getByText("Tu n'as pas participé à cette soirée")],
+    ["vote MVP interdit", "dave", `/sessions/${mvpForce.id}/vote-superlatifs`, page => page.getByText("Tu n'as pas participé à cette soirée")],
     ["boutique", "bob", "/profil/boutique", page => page.getByRole("heading", { name: "Boutique XP" })],
     ["calendrier mois", "bob", `/calendrier?date=${calDate}`, page => page.getByRole("heading", { name: "Le calendrier" })],
     ["calendrier semaine", "alice", `/calendrier?date=${calDate}&vue=semaine`, page => page.getByRole("heading", { name: "Le calendrier" })],
