@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { assertLocalDockerContext } from "./recette-local-docker.mjs";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -18,8 +19,7 @@ assert.equal(database.port, "55447");
 assert.equal(database.pathname, "/gamenight_fixe2_browser");
 assert.ok(!process.env.DOCKER_HOST, "DOCKER_HOST distant interdit");
 for (const file of [".env", ".env.local", ".env.development", ".env.development.local"]) assert.ok(!existsSync(file), `Environnement interdit : ${file}`);
-const dockerHost = execFileSync("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], { encoding: "utf8" }).trim();
-assert.ok(dockerHost.startsWith("npipe://") || dockerHost.startsWith("unix://"), "Docker local requis");
+assertLocalDockerContext();
 const container = "gamenight-fixe2-browser-pg";
 assert.equal(execFileSync("docker", ["port", container, "5432/tcp"], { encoding: "utf8" }).trim(), "127.0.0.1:55447");
 const addresses = execFileSync("docker", ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", container], { encoding: "utf8" }).trim().split(/\s+/);
