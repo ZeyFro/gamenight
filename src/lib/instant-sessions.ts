@@ -314,13 +314,14 @@ export async function changeInstantSessionGame(
 
   const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
-    select: { createdById: true, status: true },
+    select: { createdById: true, status: true, communityId: true },
   });
   if (!session) return { ok: false, reason: "not_found" };
   if (session.createdById !== requestedById) return { ok: false, reason: "not_creator" };
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
   await prisma.$transaction(async tx => {
+    await lockCreationMembers(tx, session.communityId, [requestedById]);
     const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById, tx));
     await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
     await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
