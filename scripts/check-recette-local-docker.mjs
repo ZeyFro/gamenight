@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertLocalDockerContext } from "./recette-local-docker.mjs";
+import { recetteDatabaseTarget } from "./recette-database-target.mjs";
 import { createRecipeSafeDispatcher } from "./recette-medias-dispatcher.mjs";
 import { disableExistingSuperlativeCategories, restoreRecipeSuperlativeCategories } from "./recette-superlative-category-state.mjs";
 
 const expectedArgs = ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"];
+const mockPort = "61234";
 function fakeDocker(output) {
   return (command, args, options) => {
     assert.equal(command, "docker");
@@ -24,6 +26,20 @@ for (const endpoint of ["npipe:////./pipe/docker_engine", "unix:///var/run/docke
 for (const endpoint of ["ssh://docker.example", "tcp://127.0.0.1:2375", "npipe:////server/pipe/docker_engine", ""]) {
   assert.throws(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`)), /Docker local requis/);
 }
+const explicitTarget = {
+  GAMENIGHT_RECIPE_PG_CONTAINER: "gamenight-recipe-fresh",
+  GAMENIGHT_RECIPE_PG_PORT: mockPort,
+  GAMENIGHT_RECIPE_PG_DATABASE: "gamenight_recipe_fresh",
+};
+assert.deepEqual(recetteDatabaseTarget(explicitTarget), { container: "gamenight-recipe-fresh", port: mockPort, database: "gamenight_recipe_fresh" });
+for (const name of Object.keys(explicitTarget)) {
+  const missingTarget = { ...explicitTarget };
+  delete missingTarget[name];
+  assert.throws(() => recetteDatabaseTarget(missingTarget), new RegExp(`Missing recipe PostgreSQL target variable: ${name}`));
+}
+assert.throws(() => recetteDatabaseTarget({}), /Missing recipe PostgreSQL target variable: GAMENIGHT_RECIPE_PG_CONTAINER/);
+assert.throws(() => recetteDatabaseTarget({ ...explicitTarget, GAMENIGHT_RECIPE_PG_PORT: `${mockPort};drop` }), /Invalid recipe PostgreSQL port/);
+assert.throws(() => recetteDatabaseTarget({ ...explicitTarget, GAMENIGHT_RECIPE_PG_DATABASE: "production;drop" }), /Invalid recipe PostgreSQL database/);
 
 let forwarded = false;
 let externalError;
@@ -99,10 +115,57 @@ if (process.platform === "win32") {
   ].join("\r\n"));
   const env = { ...process.env, PATH: `${temporaryDirectory};${process.env.PATH}`, DOCKER_LOG: dockerLog };
   delete env.DOCKER_HOST;
+  delete env.GAMENIGHT_RECIPE_PG_CONTAINER;
+  delete env.GAMENIGHT_RECIPE_PG_PORT;
+  delete env.GAMENIGHT_RECIPE_PG_DATABASE;
   try {
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1")], { env, encoding: "utf8" });
+    const missingTargetResult = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1")], { env, encoding: "utf8" });
+    assert.notEqual(missingTargetResult.status, 0, "PowerShell wrapper must reject a missing target");
+    assert.equal(existsSync(dockerLog), false, "wrapper must reject a missing target before any Docker command");
+
+    const remoteEnv = {
+      ...env,
+      GAMENIGHT_RECIPE_PG_CONTAINER: "gamenight-recipe-fresh",
+      GAMENIGHT_RECIPE_PG_PORT: mockPort,
+      GAMENIGHT_RECIPE_PG_DATABASE: "gamenight_recipe_fresh",
+    };
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1")], { env: remoteEnv, encoding: "utf8" });
     assert.notEqual(result.status, 0, "PowerShell wrapper must reject a remote Docker context");
     assert.equal(readFileSync(dockerLog, "utf8").trim(), "context inspect --format {{.Endpoints.docker.Host}}", "wrapper must reject before any Docker inspection");
+
+    writeFileSync(dockerLog, "");
+    writeFileSync(join(temporaryDirectory, "docker.cmd"), [
+      "@echo off",
+      'echo %*>>"%DOCKER_LOG%"',
+      'if "%1"=="context" (',
+      "  echo npipe:////./pipe/docker_engine",
+      "  exit /b 0",
+      ")",
+      'if "%1"=="inspect" (',
+      "  echo POSTGRES_PASSWORD=recipe:p@ss",
+      "  exit /b 0",
+      ")",
+      "exit /b 0",
+      "",
+    ].join("\r\n"));
+    const targetResult = join(temporaryDirectory, "target.txt");
+    const probeScript = join(temporaryDirectory, "target.mjs");
+    writeFileSync(probeScript, 'import { writeFileSync } from "node:fs"; writeFileSync(process.env.RECIPE_TARGET_RESULT, process.env.TEST_DATABASE_URL);\n');
+    const targetEnv = {
+      ...env,
+      GAMENIGHT_RECIPE_PG_CONTAINER: "gamenight-recipe-fresh",
+      GAMENIGHT_RECIPE_PG_PORT: mockPort,
+      GAMENIGHT_RECIPE_PG_DATABASE: "gamenight_recipe_fresh",
+      GAMENIGHT_PLAYWRIGHT_MODULE_PATH: temporaryDirectory,
+      RECIPE_TARGET_RESULT: targetResult,
+    };
+    const targetRun = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1"), "-Script", probeScript], { env: targetEnv, encoding: "utf8" });
+    assert.equal(targetRun.status, 0, targetRun.stderr || targetRun.stdout);
+    assert.equal(readFileSync(targetResult, "utf8"), `postgresql://postgres:recipe%3Ap%40ss@127.0.0.1:${mockPort}/gamenight_recipe_fresh`);
+    assert.deepEqual(readFileSync(dockerLog, "utf8").trim().split(/\r?\n/), [
+      "context inspect --format {{.Endpoints.docker.Host}}",
+      'inspect --format "{{range .Config.Env}}{{println .}}{{end}}" gamenight-recipe-fresh',
+    ]);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }

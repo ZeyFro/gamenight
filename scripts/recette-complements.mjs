@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { assertLocalDockerContext } from "./recette-local-docker.mjs";
+import { recetteDatabaseTarget } from "./recette-database-target.mjs";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, openSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -14,16 +15,17 @@ import { PrismaClient } from "@prisma/client";
 import { encode } from "next-auth/jwt";
 
 const database = new URL(process.env.TEST_DATABASE_URL ?? "");
+const recipeTarget = recetteDatabaseTarget();
 assert.notEqual(process.env.NODE_ENV, "production");
 assert.equal(database.protocol, "postgresql:");
 assert.equal(database.hostname, "127.0.0.1");
-assert.equal(database.port, "55447");
-assert.equal(database.pathname, "/gamenight_fixe2_browser");
+assert.equal(database.port || "5432", recipeTarget.port);
+assert.equal(database.pathname, `/${recipeTarget.database}`);
 assert.ok(!process.env.DOCKER_HOST, "DOCKER_HOST distant interdit");
 for (const file of [".env", ".env.local", ".env.development", ".env.development.local"]) assert.ok(!existsSync(file), `Environnement interdit : ${file}`);
 assertLocalDockerContext();
-const container = "gamenight-fixe2-browser-pg";
-assert.equal(execFileSync("docker", ["port", container, "5432/tcp"], { encoding: "utf8" }).trim(), "127.0.0.1:55447");
+const container = recipeTarget.container;
+assert.equal(execFileSync("docker", ["port", container, "5432/tcp"], { encoding: "utf8" }).trim(), `127.0.0.1:${recipeTarget.port}`);
 const addresses = execFileSync("docker", ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", container], { encoding: "utf8" }).trim().split(/\s+/);
 assert.ok(process.env.PLAYWRIGHT_MODULE_PATH, "playwright-core hors dépendances app requis");
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE_PATH);
@@ -90,7 +92,7 @@ async function stopServer() {
 
 try {
   const [target] = await db.$queryRaw`SELECT current_database() AS name, inet_server_addr()::text AS address, inet_server_port() AS port`;
-  assert.equal(target.name, "gamenight_fixe2_browser");
+  assert.equal(target.name, recipeTarget.database);
   assert.equal(target.port, 5432);
   assert.ok(addresses.includes(target.address.split("/")[0]), "Cible différente du conteneur dédié");
   await assert.rejects(fetch(origin), "Port Next déjà occupé");
@@ -198,7 +200,6 @@ try {
   });
   let afterFirst;
   await step("roulette : Carol vetoe G1 -> relance sans G1 (soirée et roulette mises à jour, 1 veto)", async () => {
-    await pages.carol.waitForLoadState("networkidle");
     await vetoButton(pages.carol).click();
     await pages.carol.getByText("Nouveau jeu tiré").first().waitFor();
     const rows = await waitFor(async () => { const r = await vetoes(r1.roulette.id); return r.length === 1 && r; }, "veto absent");
@@ -218,11 +219,11 @@ try {
   });
   await step("roulette : Bob vetoe le nouveau jeu, puis Alice : plus aucun candidat (échec explicite)", async () => {
     await pages.bob.goto(rouletteUrl(r1.roulette.id));
-    await pages.bob.waitForLoadState("networkidle");
+    await vetoButton(pages.bob).waitFor();
     await vetoButton(pages.bob).click();
     await waitFor(async () => (await vetoes(r1.roulette.id)).length === 2, "veto Bob absent");
     await pages.alice.goto(rouletteUrl(r1.roulette.id));
-    await pages.alice.waitForLoadState("networkidle");
+    await vetoButton(pages.alice).waitFor();
     await vetoButton(pages.alice).click();
     await pages.alice.getByText("Impossible : il ne reste aucun autre jeu à tirer.").waitFor();
     assert.equal((await vetoes(r1.roulette.id)).length, 2);
@@ -243,12 +244,14 @@ try {
   await step("abonnement : section visible, création d'un lien privé, flux .ics sans cookie", async () => {
     await pages.bob.goto(`${origin}/calendrier?date=${calDate}`);
     await pages.bob.getByRole("heading", { name: "S’abonner aux soirées" }).waitFor();
-    await pages.bob.waitForLoadState("networkidle");
     await pages.bob.getByRole("button", { name: "Créer / renouveler le lien" }).click();
     const input = pages.bob.locator("#calendar-subscription-url");
     await input.waitFor();
     const url = await input.inputValue();
     assert.match(url, /\/api\/calendrier\/feed\/[A-Za-z0-9_-]{43}$/);
+    activeFeed = url;
+    const warmup = await anonymous.request.get(`${origin}/api/calendrier/feed/warmup`, { timeout: 120_000 });
+    assert.equal(warmup.status(), 404, "préchauffage du handler calendrier");
     const response = await feed(url);
     assert.equal(response.status(), 200);
     assert.match(response.headers()["content-type"], /text\/calendar/);
@@ -257,7 +260,6 @@ try {
     const text = await response.text();
     assert.ok(text.includes(vote.id), "soirée accessible absente du flux");
     assert.ok(!text.includes(foreign.id), "soirée d'une autre communauté dans le flux");
-    activeFeed = url;
   });
   await step("abonnement : renouveler invalide l'ancien lien, révoquer arrête le flux, lien malformé = 404", async () => {
     const previous = activeFeed;
@@ -289,7 +291,7 @@ try {
   let createRequest, deleteRequest;
   await step("ADMIN : Casey voit le formulaire serveur et crée une date importante (créée par Casey)", async () => {
     await pages.casey.goto(calendar);
-    await pages.casey.waitForLoadState("networkidle");
+    await pages.casey.getByLabel("Date importante", { exact: true }).waitFor();
     assert.equal(await pages.casey.getByLabel("Date importante", { exact: true }).count(), 1);
     await pages.casey.getByPlaceholder("Anniversaire du serveur…").fill("Date Casey");
     await pages.casey.getByRole("button", { name: "Ajouter", exact: true }).click();
@@ -299,7 +301,6 @@ try {
   });
   await step("OWNER : Alice crée une date (requête de création capturée pour le rejeu forgé)", async () => {
     await pages.alice.goto(calendar);
-    await pages.alice.waitForLoadState("networkidle");
     await pages.alice.getByPlaceholder("Anniversaire du serveur…").fill("Date Alice");
     const captured = pages.alice.waitForRequest(request => request.method() === "POST" && Boolean(request.headers()["next-action"]));
     await pages.alice.getByRole("button", { name: "Ajouter", exact: true }).click();
@@ -355,7 +356,7 @@ try {
       { communityId: community.id, createdById: carol.id, memberId: carol.id, kind: "BIRTHDAY", date: new Date(Date.UTC(2000, new Date(voteDate).getUTCMonth(), voteDate.getUTCDate())), repeatsAnnually: true },
     ] });
     await pages.bob.goto(calendar);
-    await pages.bob.waitForLoadState("networkidle");
+    await pages.bob.getByRole("button", { name: "Retirer du calendrier" }).waitFor();
     assert.equal(await pages.bob.getByRole("button", { name: "Retirer du calendrier" }).count(), 1);
     const own = pages.bob.locator(".gn-agenda-event").filter({ hasText: "Anniversaire" }).getByRole("button", { name: "Retirer du calendrier" });
     assert.equal(await own.count(), 1);
@@ -374,7 +375,6 @@ try {
   await step("flag OFF veto de soirée : pas de bouton veto, jeux toujours JOUABLES, aucun veto en base", async () => {
     await pages.bob.goto(`${origin}/sessions/${vote.id}`);
     await pages.bob.getByText(games.G1.name).first().waitFor();
-    await pages.bob.waitForLoadState("networkidle");
     assert.ok(await pages.bob.getByText("JOUABLE", { exact: true }).count() >= 1);
     assert.equal(await pages.bob.getByRole("button", { name: /veto/i }).count(), 0);
     assert.equal(await db.sessionVeto.count({ where: { sessionId: vote.id } }), 0);
@@ -382,7 +382,6 @@ try {
   await step("flag OFF veto de roulette : pas de bouton sur une roulette tirée, résultat inchangé", async () => {
     await pages.carol.goto(rouletteUrl(r2.roulette.id));
     await pages.carol.getByText(games.G1.name).first().waitFor();
-    await pages.carol.waitForLoadState("networkidle");
     assert.equal(await vetoButton(pages.carol).count(), 0);
     assert.equal((await db.roulette.findUniqueOrThrow({ where: { id: r2.roulette.id } })).resultGameId, games.G1.id);
     assert.equal((await vetoes(r2.roulette.id)).length, 0);
@@ -426,12 +425,11 @@ try {
           document.addEventListener("animationstart", onAnimationStart, true);
         });
         await page.goto(`${origin}${path}`);
-        await page.waitForLoadState("networkidle");
         await page.waitForFunction(() => Array.isArray(window.__radarScrollMeasurements));
         measurements.push(...await page.evaluate(() => window.__radarScrollMeasurements));
       } else {
         await page.goto(`${origin}${path}`);
-        await page.waitForLoadState("networkidle");
+        await page.getByRole("heading", { name: "Le calendrier" }).waitFor();
       }
       measurements.push(await measure());
       const innerWidth = measurements[0].innerWidth;
