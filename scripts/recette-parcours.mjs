@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { assertLocalDockerContext } from "./recette-local-docker.mjs";
+import { disableExistingSuperlativeCategories, restoreRecipeSuperlativeCategories } from "./recette-superlative-category-state.mjs";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, openSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,6 +34,7 @@ const secret = randomUUID();
 const results = [];
 const errors = [];
 let browser, server;
+const superlativeCategoryState = {};
 
 async function step(name, body) {
   const started = Date.now();
@@ -90,9 +92,11 @@ try {
   const proposals = {};
   for (const [name, proposer] of [["Alpha", alice], ["Beta", bob]]) proposals[name] = await db.proposal.create({ data: { sessionId: veto.id, gameId: games[name].id, proposedById: proposer.id } });
   const emptyVote = await session({ date: day(6), status: "VOTING" });
-  // Les catégories sont globales : une seule active pour que le formulaire reste déterministe.
-  await db.superlativeCategory.updateMany({ data: { active: false } });
-  await db.superlativeCategory.create({ data: { icon: "🏅", name: `MVP de la soirée ${run.slice(-6)}`, modifiedById: alice.id } });
+  // Les catégories sont globales : conserver et restaurer les états présents avant la recette.
+  await disableExistingSuperlativeCategories(db, superlativeCategoryState);
+  const recipeCategory = await db.superlativeCategory.create({ data: { icon: "🏅", name: `MVP de la soirée ${run.slice(-6)}`, modifiedById: alice.id } });
+  superlativeCategoryState.recipeCategoryId = recipeCategory.id;
+  const notificationSourceIds = [veto.id, emptyVote.id];
   async function doneSession(participants) {
     const created = await session({ date: day(-1), status: "DONE", decidedGameId: games.Alpha.id, superlativeVotingClosed: false, superlativeVotingDeadline: new Date(Date.now() + 86_400_000) });
     const proposal = await db.proposal.create({ data: { sessionId: created.id, gameId: games.Alpha.id, proposedById: alice.id } });
@@ -102,6 +106,7 @@ try {
   const mvp = await doneSession([alice, bob, carol]);
   const mvpForce = await doneSession([alice, bob]);
   const mvpNobody = await doneSession([alice, bob]);
+  notificationSourceIds.push(mvp.id, mvpForce.id, mvpNobody.id);
   await db.communityMemberStats.upsert({ where: { communityId_userId: { communityId: community.id, userId: alice.id } }, create: { communityId: community.id, userId: alice.id, xpTotal: 300 }, update: { xpTotal: 300 } });
   await db.communityMemberStats.create({ data: { communityId: community.id, userId: bob.id, xpTotal: 250 } });
 
@@ -370,7 +375,7 @@ try {
     });
   }
   await step("aucun NotificationDelivery ni erreur de page", async () => {
-    assert.equal(await db.notificationDelivery.count(), 0);
+    assert.equal(await db.notificationDelivery.count({ where: { event: { communityId: community.id, sourceId: { in: notificationSourceIds } } } }), 0);
     assert.deepEqual(errors, []);
   });
   const failed = results.filter(result => !result.ok);
@@ -381,10 +386,17 @@ try {
   console.error(error.stack);
   process.exitCode = 1;
 } finally {
-  await browser?.close();
+  try { await browser?.close(); } catch (error) { console.error(`Fermeture navigateur échouée : ${error.message}`); process.exitCode = 1; }
   if (server && server.exitCode === null) {
     if (process.platform === "win32") spawnSync("taskkill.exe", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
     else server.kill();
   }
-  await db.$disconnect();
+  try {
+    await restoreRecipeSuperlativeCategories(db, superlativeCategoryState);
+  } catch (error) {
+    console.error(`Restauration catégories échouée : ${error.message}`);
+    process.exitCode = 1;
+  } finally {
+    await db.$disconnect();
+  }
 }

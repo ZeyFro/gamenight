@@ -139,6 +139,12 @@ try {
   }
   const r1 = await drawnRoulette(3);
   const r2 = await drawnRoulette(4);
+  const notificationScope = {
+    event: {
+      communityId: community.id,
+      sourceId: { in: [vote.id, r1.roulette.id, r1.planned.id, r2.roulette.id, r2.planned.id] },
+    },
+  };
   const calDate = isoDay(voteDate);
 
   await startServer({ VOTE_VETO_ENABLED: "true", CALENDAR_SUBSCRIPTIONS_ENABLED: "true" }, "a");
@@ -225,9 +231,9 @@ try {
     assert.notEqual(roulette.resultGameId, afterFirst);
   });
   await step("roulette : 0 envoi Discord (aucun NotificationDelivery envoyée, exécuteur éteint)", async () => {
-    const sent = await db.notificationDelivery.count({ where: { status: "SENT" } });
+    const sent = await db.notificationDelivery.count({ where: { ...notificationScope, status: "SENT" } });
     assert.equal(sent, 0);
-    return `${await db.notificationDelivery.count()} livraisons en file, 0 envoyée`;
+    return `${await db.notificationDelivery.count({ where: notificationScope })} livraisons en file, 0 envoyée`;
   });
 
   // ---------- ABONNEMENT CALENDRIER ----------
@@ -394,23 +400,53 @@ try {
     await step(`mobile 390x844 sans débordement : ${name}`, async () => {
       const page = pages[user];
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`${origin}${path}`);
-      await page.waitForLoadState("networkidle");
       const measure = () => page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }));
-      const during = await measure();
-      if (path.startsWith("/roulette/")) console.error(`  roulette (roue en rotation, StrictMode dev) : scrollWidth=${during.scrollWidth}, innerWidth=${during.innerWidth}`);
-      const { scrollWidth, innerWidth } = await measure();
+      const isRoulette = path.startsWith("/roulette/");
+      const measurements = [];
+      if (isRoulette) {
+        await page.addInitScript(() => {
+          const target = window;
+          target.__radarScrollMeasurements = null;
+          const onAnimationStart = event => {
+            if (event.animationName !== "radar-ping" || target.__radarScrollSampling) return;
+            target.__radarScrollSampling = true;
+            document.removeEventListener("animationstart", onAnimationStart, true);
+            const startedAt = performance.now();
+            const samples = [];
+            const sample = () => {
+              samples.push({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth });
+              if (performance.now() - startedAt >= 2_200) {
+                target.__radarScrollMeasurements = samples;
+              } else {
+                setTimeout(sample, 100);
+              }
+            };
+            sample();
+          };
+          document.addEventListener("animationstart", onAnimationStart, true);
+        });
+        await page.goto(`${origin}${path}`);
+        await page.waitForLoadState("networkidle");
+        await page.waitForFunction(() => Array.isArray(window.__radarScrollMeasurements));
+        measurements.push(...await page.evaluate(() => window.__radarScrollMeasurements));
+      } else {
+        await page.goto(`${origin}${path}`);
+        await page.waitForLoadState("networkidle");
+      }
+      measurements.push(await measure());
+      const innerWidth = measurements[0].innerWidth;
+      const scrollWidth = Math.max(...measurements.map(value => value.scrollWidth));
       await page.screenshot({ path: resolve(output, `mobile-${name.replace(/[^a-z]/gi, "-")}.png`), fullPage: true });
       if (scrollWidth > innerWidth) {
         const culprits = await page.evaluate(() => [...document.querySelectorAll("body *")].filter(element => !element.closest("svg") && !element.className?.toString().includes("gn-aurora") && element.getBoundingClientRect().right > innerWidth + 1).slice(0, 6).map(element => `${element.tagName.toLowerCase()}.${String(element.className).slice(0, 80)} right=${Math.round(element.getBoundingClientRect().right)}`));
         console.error("  éléments qui débordent :", culprits.join(" | "));
       }
       assert.ok(scrollWidth <= innerWidth, `débordement ${scrollWidth} > ${innerWidth}`);
-      return `${scrollWidth}<=${innerWidth}`;
+      return `${scrollWidth}<=${innerWidth}${isRoulette ? ` (${measurements.length - 1} mesures sur 2,2 s depuis le début de radar-ping)` : ""}`;
     });
   }
   await step("aucune notification Discord envoyée ni erreur de page", async () => {
-    assert.equal(await db.notificationDelivery.count({ where: { status: "SENT" } }), 0);
+    assert.equal(await db.notificationDelivery.count({ where: { ...notificationScope, status: "SENT" } }), 0);
     assert.deepEqual(errors, []);
   });
   const failed = results.filter(result => !result.ok);

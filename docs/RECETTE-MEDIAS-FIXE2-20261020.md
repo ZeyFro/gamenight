@@ -31,9 +31,11 @@ Les scripts publiés existants (`recette-locale`, `recette-contenus`, `recette-b
 | Boutique XP | achat 200 XP (300 -> 100, `XpEvent` -200, objet possédé), solde insuffisant (message, rien débité), équiper puis retirer, double achat concurrent sur 2 onglets (250 XP, objet 250) : 1 achat, solde 0, 1 `XpEvent`, compte sans communauté renvoyé vers `/profil` |
 | Calendrier | jour sélectionné exposé par `aria-label` sans `aria-pressed` (#308), soirée visible, vue semaine = 7 jours, formulaire « date importante » réservé OWNER/ADMIN, anniversaire partagé (année ramenée à 2000, absente de l'URL), date importante créée, export `.ics` : membre 200 `text/calendar`, anonyme 401, hors communauté sans la soirée |
 | Mobile 390x844 | pas de débordement horizontal (scrollWidth 390 <= 390) sur : soirée avec veto, vote MVP, résultats MVP, boutique, calendrier mois et semaine |
-| Transverse | 0 `NotificationDelivery`, 0 `pageerror` |
+| Transverse | 0 `NotificationDelivery` pour les sources de cette communauté, 0 `pageerror` |
 
-Aucun défaut applicatif démontré : aucun correctif de l'application n'a été nécessaire.
+Les autres parcours n'ont pas révélé de défaut applicatif. Le débordement mobile de la roulette, détecté puis corrigé pendant cette recette, est décrit plus bas.
+
+Portée historique du test MVP : les catégories de superlatifs sont globales, pas propres à une communauté. Les versions précédentes du harnais désactivaient les catégories existantes et laissaient active leur catégorie de recette. Le harnais corrigé photographie puis restaure les états `active` initiaux et supprime seulement sa catégorie temporaire ; ce parcours ne teste pas une gestion des catégories par communauté.
 
 ## Tests sautés et limites (à lire)
 
@@ -59,12 +61,13 @@ Deux serveurs Next successifs (jamais en parallèle) : phase A `VOTE_VETO_ENABLE
 | Abonnement calendrier | création d'un lien privé, flux `.ics` sans cookie (`no-store`, `noindex`), soirée d'une autre communauté absente, renouvellement invalide l'ancien lien, révocation, lien malformé 404, jeton stocké haché ; flag OFF : section absente et ancien flux 404 |
 | ADMIN distinct d'OWNER | l'ADMIN voit le formulaire serveur, crée une date, retire la date d'un autre ; le MEMBER ne voit pas « Retirer » sur la date d'un autre mais retire son propre anniversaire |
 | POST forgé | rejeu de la vraie requête `createCommunityDateAction` par un MEMBER : aucune date créée (témoin positif OWNER : créée) ; rejeu de la suppression avec l'identifiant d'une date d'autrui par un MEMBER : date conservée (témoin positif ADMIN : supprimée) |
-| Notifications | 0 livraison envoyée (exécuteur éteint, HTTP externe bloqué) ; des livraisons restent en file (veto de roulette) et n'ont pas été traitées |
+| Notifications | 0 livraison envoyée pour les sources de cette communauté (exécuteur éteint, HTTP externe bloqué) ; des livraisons restent en file (veto de roulette) et n'ont pas été traitées |
 
-Défaut démontré et corrigé (commit séparé) : sur `/roulette/[id]` en mobile 390x844, le halo « radar » de la roue faisait défiler la page horizontalement pendant la rotation (`scrollWidth` 391 à 449 pour 390). Correctif : `overflow-x-clip` sur le conteneur de la page ; la recette passe ensuite à 390 <= 390.
+Défaut démontré et corrigé (commit séparé) : sur `/roulette/[id]` en mobile 390x844, le halo « radar » de la roue faisait défiler la page horizontalement pendant la rotation (`scrollWidth` 391 à 449 pour 390). Correctif : `overflow-x-clip` sur le conteneur de la page ; les mesures ponctuelles après correction donnaient 390 <= 390.
 
 Limites ajoutées :
 - En mode dev, StrictMode double l'effet de `RouletteResultAnimation` (garde `started`) : la roue reste sur « La roue tourne… » et le résultat animé n'apparaît pas. Probablement propre au mode dev (en production l'effet ne s'exécute qu'une fois) mais NON vérifié sur un build de production ; hors périmètre, non corrigé.
 - Le même halo existe dans `RouletteWizard` (roulette instantanée) : non testé en mobile.
+- Pour la roulette asynchrone, le script échantillonne maintenant `scrollWidth` toutes les 100 ms pendant 2,2 s, couvrant le cycle de la pulsation radar. La preuve précédente ne mesurait que deux instants rapprochés ; cette reprise n'a pas rejoué la recette navigateur, donc le nouvel échantillonnage reste à vérifier.
 - Veto de roulette : `ROULETTE_PLAYER_FILTER_ENABLED` non testé ; l'édition d'annonce Discord n'est pas vérifiée au-delà de la mise en file.
 - Rejeu forgé du veto de soirée avec le flag OFF non testé (identifiant d'action non conservé entre deux serveurs) ; seul l'état de l'interface et de la base est vérifié.
