@@ -24,7 +24,7 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     const members = [
-      ["expression-author", "expressions-a", "MEMBER"], ["expression-member", "expressions-a", "MEMBER"],
+      ["expression-author", "expressions-a", "ADMIN"], ["expression-member", "expressions-a", "MEMBER"],
       ["expression-admin", "expressions-a", "ADMIN"], ["expression-owner", "expressions-a", "OWNER"],
       ["expression-outsider", "expressions-b", "OWNER"],
     ] as const;
@@ -59,12 +59,17 @@ describe.skipIf(!TEST_DATABASE_URL)("expressions : droits et isolation Postgres"
     expect(await db.communityExpression.findUnique({ where: { id: row.id } })).toMatchObject(input);
   });
 
-  it("refuse un autre membre mais permet l’auteur et les modérateurs", async () => {
+  it("réserve les mutations aux administrateurs, même pour un ancien auteur", async () => {
     await expressions.saveCommunityExpression("expression-author", null, input.title, input.meaning);
     const row = await db.communityExpression.findFirstOrThrow();
+    expect(await expressions.saveCommunityExpression("expression-member", null, "non", "non")).toBe("unavailable");
     expect(await expressions.saveCommunityExpression("expression-member", row.id, "non", "non")).toBe("unavailable");
     expect(await expressions.deleteCommunityExpression("expression-member", row.id)).toBe("unavailable");
-    for (const userId of ["expression-author", "expression-admin", "expression-owner"]) {
+    await db.membership.update({ where: { communityId_userId: { communityId: "expressions-a", userId: "expression-author" } }, data: { role: "MEMBER" } });
+    expect((await expressions.listCommunityExpressions("expression-author"))?.entries).toHaveLength(1);
+    expect(await expressions.saveCommunityExpression("expression-author", row.id, "non", "non")).toBe("unavailable");
+    expect(await expressions.deleteCommunityExpression("expression-author", row.id)).toBe("unavailable");
+    for (const userId of ["expression-admin", "expression-owner"]) {
       expect(await expressions.saveCommunityExpression(userId, row.id, userId, "sens")).toBe("saved");
     }
     expect(await expressions.deleteCommunityExpression("expression-admin", row.id)).toBe("deleted");

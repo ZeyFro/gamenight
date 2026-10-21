@@ -49,6 +49,7 @@ export async function saveCommunityGameEpitaph(userId: string, id: unknown, game
   const data = parseGameEpitaph(gameId, epitaph);
   if (!data || (id !== null && (typeof id !== "string" || !id || id.length > 100))) return "invalid" as const;
   return await withGraveyard(userId, async (scopedDb, access) => {
+    if (access.role !== "ADMIN" && access.role !== "OWNER") return "unavailable" as const;
     const now = wallClockNow();
     if (id === null) {
       const eligible = await scopedDb.game.findFirst({ where: { id: data.gameId, ...eligibleGameWhere(access.community.id) }, select: { id: true } });
@@ -59,7 +60,7 @@ export async function saveCommunityGameEpitaph(userId: string, id: unknown, game
       return result.count ? "saved" as const : "exists" as const;
     }
     const result = await scopedDb.communityGameEpitaph.updateMany({
-      where: { id, gameId: data.gameId, communityId: access.community.id, ...(access.role === "ADMIN" || access.role === "OWNER" ? {} : { createdById: userId }) },
+      where: { id, gameId: data.gameId, communityId: access.community.id },
       data: { epitaph: data.epitaph, updatedAt: now },
     });
     return result.count ? "saved" as const : "unavailable" as const;
@@ -69,7 +70,8 @@ export async function saveCommunityGameEpitaph(userId: string, id: unknown, game
 export async function deleteCommunityGameEpitaph(userId: string, id: unknown, expectedCommunityId?: string) {
   if (typeof id !== "string" || !id || id.length > 100) return "invalid" as const;
   return await withGraveyard(userId, async (scopedDb, access) => {
-    const result = await scopedDb.communityGameEpitaph.deleteMany({ where: { id, communityId: access.community.id, ...(access.role === "ADMIN" || access.role === "OWNER" ? {} : { createdById: userId }) } });
+    if (access.role !== "ADMIN" && access.role !== "OWNER") return "unavailable" as const;
+    const result = await scopedDb.communityGameEpitaph.deleteMany({ where: { id, communityId: access.community.id } });
     return result.count ? "deleted" as const : "unavailable" as const;
   }, expectedCommunityId) ?? "unavailable";
 }

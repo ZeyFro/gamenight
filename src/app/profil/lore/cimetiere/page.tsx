@@ -26,6 +26,7 @@ export default async function CommunityGameGraveyardPage({ searchParams }: { sea
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q.trim().slice(0, 100) : "";
   const collection = await listCommunityGameGraveyard(user.id, query);
+  const canManage = collection?.role === "ADMIN" || collection?.role === "OWNER";
   const message = MESSAGES[params.result ?? ""];
   return (
     <div className="flex flex-col gap-4">
@@ -40,7 +41,7 @@ export default async function CommunityGameGraveyardPage({ searchParams }: { sea
         <Card><p className="text-sm text-muted">Choisis une communauté dont tu es membre actif.</p><Link href="/serveurs" className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">Choisir un serveur</Link></Card>
       ) : (
         <>
-          <Card className="flex flex-col gap-3">
+          {canManage && <Card className="flex flex-col gap-3">
             <h3 className="font-semibold">Écrire une épitaphe</h3>
             <form method="get" className="flex flex-col gap-2">
               <label htmlFor="graveyard-search" className="text-sm font-medium">Chercher un jeu du serveur</label>
@@ -61,17 +62,16 @@ export default async function CommunityGameGraveyardPage({ searchParams }: { sea
                 <Button type="submit" size="sm" className="self-start">Ajouter au cimetière</Button>
               </form>
             ) : <p className="text-sm text-muted">Aucun jeu sans épitaphe ne correspond à cette recherche dans ce serveur.</p>}
-          </Card>
+          </Card>}
           {collection.entries.length === 0 && <p className="text-sm text-muted">Aucune épitaphe pour ce serveur.</p>}
           <ul className="flex flex-col gap-3">
             {collection.entries.map(entry => {
-              const canEdit = entry.createdById === user.id || collection.role === "ADMIN" || collection.role === "OWNER";
               return (
                 <li key={entry.id}>
                   <Card className="flex flex-col gap-3">
                     <h3 className="font-semibold"><Link href={`/jeux/${entry.game.id}`} className="text-accent hover:underline">{entry.game.name}</Link></h3>
                     <p className="whitespace-pre-wrap break-words text-sm text-muted">{entry.epitaph}</p>
-                    {canEdit && (
+                    {canManage && (
                       <details>
                         <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-accent">Modifier ou retirer l’épitaphe</summary>
                         <form action={saveCommunityGameEpitaphAction} className="flex flex-col gap-2">
