@@ -132,7 +132,7 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     });
     await collector.start();
     sockets[0].close(4014);
-    expect(onFatal).toHaveBeenCalledWith(4014);
+    expect(onFatal).toHaveBeenCalledWith({ kind: "gateway_close", closeCode: 4014 });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(1);
   });
@@ -140,21 +140,38 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
   it("retries Gateway discovery after a temporary HTTP failure", async () => {
     vi.useFakeTimers();
     const sockets: FakeSocket[] = [];
-    const fetchGatewayUrl = vi.fn()
-      .mockRejectedValueOnce(new Error("temporary failure"))
-      .mockResolvedValue("wss://gateway.discord.gg");
+    const fetch = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("{}", { status: 503 }))
+      .mockResolvedValue(new Response(JSON.stringify({ url: "wss://gateway.discord.gg" }), { status: 200 }));
     const collector = createVoiceGatewayCollector(config, {
       createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
-      fetchGatewayUrl,
       onInterval: vi.fn(), onGap: vi.fn(), onFatal: vi.fn(),
     });
     await collector.start();
-    expect(fetchGatewayUrl).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(sockets).toHaveLength(0);
 
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(fetchGatewayUrl).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(sockets).toHaveLength(1);
+    collector.stop();
+  });
+
+  it.each([401, 403])("does not retry Gateway discovery after HTTP %i", async status => {
+    vi.useFakeTimers();
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status }));
+    const onFatal = vi.fn();
+    const createSocket = vi.fn(() => new FakeSocket());
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket,
+      onInterval: vi.fn(), onGap: vi.fn(), onFatal,
+    });
+
+    await collector.start();
+    expect(onFatal).toHaveBeenCalledWith({ kind: "gateway_discovery", status });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(createSocket).not.toHaveBeenCalled();
     collector.stop();
   });
 });

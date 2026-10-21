@@ -7,6 +7,13 @@ type Socket = {
   send(data: string): void;
   close(code?: number): void;
 };
+type FatalFailure = { kind: "gateway_discovery"; status: number } | { kind: "gateway_close"; closeCode: number };
+
+class FatalGatewayDiscoveryError extends Error {
+  constructor(readonly status: number) {
+    super(`Discord Gateway lookup failed (${status})`);
+  }
+}
 
 export type VoiceGatewayConfig = {
   token: string;
@@ -40,7 +47,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   fetchGatewayUrl?: (token: string) => Promise<string>;
   onInterval: (interval: VoiceInterval) => void;
   onGap: (reason: "resume_failed" | "shutdown" | "fatal_close") => void;
-  onFatal: (closeCode: number) => void;
+  onFatal: (failure: FatalFailure) => void;
   now?: () => number;
 }) {
   const channels = new Set(config.channelIds);
@@ -150,7 +157,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
         stopped = true;
         if (active.size) options.onGap("fatal_close");
         active.clear();
-        options.onFatal(event.code ?? 0);
+        options.onFatal({ kind: "gateway_close", closeCode: event.code ?? 0 });
         return;
       }
       if ([4007, 4009].includes(event.code ?? 0)) {
@@ -169,7 +176,14 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       initialUrl = url;
       retryMs = 1_000;
       connect(initialUrl);
-    } catch {
+    } catch (error) {
+      // Invalid credentials cannot recover by retrying the same token.
+      if (error instanceof FatalGatewayDiscoveryError) {
+        if (stopped || generation !== startGeneration) return;
+        stopped = true;
+        options.onFatal({ kind: "gateway_discovery", status: error.status });
+        return;
+      }
       if (stopped || generation !== startGeneration) return;
       reconnect = setTimeout(() => { void discoverGateway(generation, fetchUrl); }, retryMs);
       retryMs = Math.min(retryMs * 2, 30_000);
@@ -184,6 +198,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       try {
         const fetchUrl = options.fetchGatewayUrl ?? (async token => {
           const response = await fetch("https://discord.com/api/v10/gateway/bot", { headers: { Authorization: `Bot ${token}` } });
+          if ([401, 403].includes(response.status)) throw new FatalGatewayDiscoveryError(response.status);
           if (!response.ok) throw new Error(`Discord Gateway lookup failed (${response.status})`);
           return (await response.json() as { url: string }).url;
         });
