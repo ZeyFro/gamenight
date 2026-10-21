@@ -163,7 +163,7 @@ try {
     assert.equal(await pages.bob.getByText("JOUABLE", { exact: true }).count(), 2);
   });
   await step("veto : Bob pose un veto sur Alpha (toast, badge VETOÉ, base)", async () => {
-    await pages.bob.waitForLoadState("networkidle");
+    await card(pages.bob, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).waitFor();
     await card(pages.bob, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).click();
     const rows = await waitFor(async () => { const r = await vetoRows(); return r.length === 1 && r; }, "veto absent");
     assert.equal(rows[0].proposalId, proposals.Alpha.id);
@@ -178,13 +178,13 @@ try {
   await step("veto échec : Carol ne peut pas vetoer le dernier jeu restant", async () => {
     await pages.carol.goto(vetoUrl);
     await pages.carol.getByText(label("Alpha")).first().waitFor();
-    await pages.carol.waitForLoadState("networkidle");
+    await card(pages.carol, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).waitFor();
     await card(pages.carol, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).click();
     await pages.carol.getByText("Impossible : il ne resterait aucun jeu possible.").waitFor();
     assert.equal((await vetoRows()).length, 1);
   });
   await step("veto : Bob retire son veto, puis Carol peut vetoer", async () => {
-    await pages.bob.waitForLoadState("networkidle");
+    await card(pages.bob, "Beta").getByRole("button", { name: "Retirer mon veto" }).waitFor();
     await card(pages.bob, "Beta").getByRole("button", { name: "Retirer mon veto" }).click();
     await waitFor(async () => (await vetoRows()).length === 0, "veto non retiré");
     await card(pages.carol, "Alpha").getByRole("button", { name: "Poser mon veto sur ce jeu" }).click();
@@ -216,7 +216,7 @@ try {
     await pages.alice.goto(voteUrl(mvp.id));
     const submit = pages.alice.getByRole("button", { name: "Valider mes votes" });
     await submit.waitFor();
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.locator("form").getByRole("button", { name: "Bob", exact: true }).waitFor();
     assert.equal(await submit.isDisabled(), true);
     assert.equal(await pages.alice.locator("form").getByRole("button", { name: "Alice", exact: true }).count(), 0);
     await pages.alice.locator("form").getByRole("button", { name: "Bob", exact: true }).click();
@@ -229,7 +229,7 @@ try {
     await Promise.all([pages.bob.goto(voteUrl(mvp.id)), pages.carol.goto(voteUrl(mvp.id))]);
     for (const page of [pages.bob, pages.carol]) {
       await page.getByRole("button", { name: "Valider mes votes" }).waitFor();
-      await page.waitForLoadState("networkidle");
+      await page.locator("form").getByRole("button", { name: "Alice", exact: true }).waitFor();
       await page.locator("form").getByRole("button", { name: "Alice", exact: true }).click();
     }
     await Promise.all([pages.bob, pages.carol].map(page => page.getByRole("button", { name: "Valider mes votes" }).click()));
@@ -249,7 +249,7 @@ try {
     await pages.bob.getByRole("button", { name: "Valider mes votes" }).waitFor();
     assert.equal(await pages.bob.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).count(), 0);
     await pages.alice.goto(voteUrl(mvpNobody.id));
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).waitFor();
     await pages.alice.getByRole("button", { name: "Forcer la clôture des votes maintenant" }).click();
     await pages.alice.getByText("Personne n'a voté pour cette soirée").waitFor();
     assert.equal(await db.superlativeAward.count({ where: { sessionId: mvpNobody.id } }), 0);
@@ -263,7 +263,7 @@ try {
   await step("boutique : achat d'un objet à 200 XP (solde 300 -> 100, ledger, possédé)", async () => {
     await pages.alice.goto(shop);
     await pages.alice.getByText("Solde de cette communauté : 300 XP").waitFor();
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).waitFor();
     await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).click();
     await pages.alice.getByText("Achat effectué.").waitFor();
     await pages.alice.getByText("Solde de cette communauté : 100 XP").waitFor();
@@ -272,27 +272,27 @@ try {
     assert.equal(await db.xpEvent.count({ where: { userId: alice.id, reason: "SHOP_PURCHASE", amount: -200 } }), 1);
   });
   await step("boutique échec : solde insuffisant (300 XP demandés, 100 disponibles)", async () => {
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByRole("button", { name: "Acheter Nébuleuse pour 300 XP" }).waitFor();
     await pages.alice.getByRole("button", { name: "Acheter Nébuleuse pour 300 XP" }).click();
     await pages.alice.getByText("Ton solde XP est insuffisant.").waitFor();
     assert.equal((await stats(alice)).xpTotal, 100);
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: alice.id } }), 1);
   });
   await step("boutique : équiper puis retirer l'objet possédé", async () => {
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByRole("button", { name: "Équiper Menthe" }).waitFor();
     assert.equal(await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).count(), 0);
     await pages.alice.getByRole("button", { name: "Équiper Menthe" }).click();
     await pages.alice.getByText("Équipement mis à jour.").waitFor();
     await pages.alice.getByText("Possédé · Équipé").waitFor();
     assert.equal((await stats(alice)).equippedColorId, "color-mint");
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByRole("button", { name: "Retirer l’équipement" }).waitFor();
     await pages.alice.getByRole("button", { name: "Retirer l’équipement" }).click();
     await waitFor(async () => (await stats(alice)).equippedColorId === null, "équipement non retiré");
   });
   await step("boutique : double achat concurrent (2 onglets, 250 XP, objet à 250) = 1 achat, solde jamais négatif", async () => {
     const second = await pageIn(await contextFor(bob));
     await Promise.all([pages.bob.goto(shop), second.goto(shop)]);
-    for (const page of [pages.bob, second]) { await page.getByRole("button", { name: "Acheter Glace pour 250 XP" }).waitFor(); await page.waitForLoadState("networkidle"); }
+    for (const page of [pages.bob, second]) await page.getByRole("button", { name: "Acheter Glace pour 250 XP" }).waitFor();
     await Promise.all([pages.bob, second].map(page => page.getByRole("button", { name: "Acheter Glace pour 250 XP" }).click()));
     await waitFor(async () => (await db.communityMemberCosmetic.count({ where: { userId: bob.id } })) >= 1, "achat absent");
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -330,7 +330,7 @@ try {
   });
   await step("calendrier : Bob partage son anniversaire (année non conservée, URL sans date)", async () => {
     await pages.bob.goto(`${origin}/calendrier`);
-    await pages.bob.waitForLoadState("networkidle");
+    await pages.bob.getByLabel("Partager ton anniversaire avec ce serveur").waitFor();
     await pages.bob.getByLabel("Partager ton anniversaire avec ce serveur").fill("1990-07-14");
     await pages.bob.getByRole("button", { name: "Enregistrer", exact: true }).click();
     const row = await waitFor(() => db.communityDate.findFirst({ where: { communityId: community.id, memberId: bob.id } }), "anniversaire absent");
@@ -340,7 +340,7 @@ try {
   });
   await step("calendrier : Alice (OWNER) ajoute une date importante", async () => {
     await pages.alice.goto(`${origin}/calendrier?date=${calDate}`);
-    await pages.alice.waitForLoadState("networkidle");
+    await pages.alice.getByPlaceholder("Anniversaire du serveur…").waitFor();
     await pages.alice.getByPlaceholder("Anniversaire du serveur…").fill("Anniversaire recette");
     await pages.alice.getByRole("button", { name: "Ajouter", exact: true }).click();
     const row = await waitFor(() => db.communityDate.findFirst({ where: { communityId: community.id, kind: "IMPORTANT" } }), "date importante absente");
@@ -360,16 +360,19 @@ try {
   });
 
   // ---------- MOBILE 390x844 ----------
-  for (const [name, user, path] of [
-    ["session veto", "bob", `/sessions/${veto.id}`], ["vote MVP", "dave", `/sessions/${mvp.id}/vote-superlatifs`],
-    ["résultats MVP", "alice", `/sessions/${mvp.id}/vote-superlatifs`], ["boutique", "bob", "/profil/boutique"],
-    ["calendrier mois", "bob", `/calendrier?date=${calDate}`], ["calendrier semaine", "alice", `/calendrier?date=${calDate}&vue=semaine`],
+  for (const [name, user, path, ready] of [
+    ["session veto", "bob", `/sessions/${veto.id}`, page => page.getByText(label("Alpha")).first()],
+    ["vote MVP", "dave", `/sessions/${mvp.id}/vote-superlatifs`, page => page.getByText("Tu n'as pas participé à cette soirée")],
+    ["résultats MVP", "alice", `/sessions/${mvp.id}/vote-superlatifs`, page => page.getByText("Alice — 2 voix")],
+    ["boutique", "bob", "/profil/boutique", page => page.getByRole("button", { name: "Acheter Glace pour 250 XP" })],
+    ["calendrier mois", "bob", `/calendrier?date=${calDate}`, page => page.getByRole("heading", { name: "Le calendrier" })],
+    ["calendrier semaine", "alice", `/calendrier?date=${calDate}&vue=semaine`, page => page.getByRole("heading", { name: "Le calendrier" })],
   ]) {
     await step(`mobile 390x844 sans débordement : ${name}`, async () => {
       const page = pages[user];
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(`${origin}${path}`);
-      await page.waitForLoadState("networkidle");
+      await ready(page).waitFor();
       const { scrollWidth, innerWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }));
       await page.screenshot({ path: resolve(output, `mobile-${name.replaceAll(" ", "-")}.png`), fullPage: true });
       assert.ok(scrollWidth <= innerWidth, `débordement ${scrollWidth} > ${innerWidth}`);
