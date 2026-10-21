@@ -14,9 +14,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.DISCORD_BOT_GUILD_ID = "";
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("voice presence worker runtime (synthetic Prisma and Gateway only)", () => {
+  it.each([
+    ["2026-07-21T18:00:00Z", "2026-07-21T20:00:00Z"],
+    ["2026-12-21T19:00:00Z", "2026-12-21T20:00:00Z"],
+  ])("discovers due sessions at Paris wall-clock time for %s", async (instant, dueAt) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(instant));
+    mocks.sessionFindMany.mockResolvedValue([]);
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
+    );
+
+    await runtime.stop();
+    expect(mocks.sessionFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ date: { lte: new Date(dueAt) } }),
+    }));
+  });
+
   it("starts collectors for started scheduled sessions with active configured voice channels", async () => {
     mocks.sessionFindMany.mockResolvedValue([{
       id: "session-active",

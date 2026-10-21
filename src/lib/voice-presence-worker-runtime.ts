@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { wallClockNow } from "@/lib/wallclock";
 import { createSessionVoiceCollector } from "./session-voice-collector";
 import {
   createVoicePresenceWorker,
@@ -28,7 +29,7 @@ export async function startVoicePresenceWorkerRuntime(
       const sessions = await prisma.session.findMany({
         where: {
           status: "SCHEDULED",
-          date: { lte: new Date() },
+          date: { lte: wallClockNow() },
           community: { is: {
             status: "ACTIVE",
             channelConfigs: { some: { category: "VOICE", enabled: true } },
