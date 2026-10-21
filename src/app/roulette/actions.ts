@@ -172,7 +172,7 @@ export async function createRouletteAction(formData: FormData) {
   if (isCommunityIsolationEnabled() && communityId === null) redirect("/roulette?tab=creer&error=donnees_invalides");
   const { result: roulette, replayed } = await createOnce(user.id, "ROULETTE", creationKey(formData.get("creationKey"), true), async (tx) => {
   await lockCreationMembers(tx, communityId, finalParticipantIds);
-  const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id));
+  const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id, tx));
   const created = await scopedDb.roulette.create({
     data: {
       createdById: user.id,
@@ -186,7 +186,7 @@ export async function createRouletteAction(formData: FormData) {
   await enqueueRouletteDirectMessages(created.id, "created", finalParticipantIds, tx);
   return created;
   }, (created) => created.id, async (tx, id) => {
-    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id));
+    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(user.id, tx));
     return scopedDb.roulette.findUniqueOrThrow({ where: { id } });
   });
 

@@ -179,7 +179,7 @@ export async function createInstantSession(input: {
   try {
     const { result: instantSession } = await createOnce(input.creatorId, "INSTANT_SESSION", input.creationKey, async (tx) => {
       await lockCreationMembers(tx, communityId, [input.creatorId, ...notifiedUserIds]);
-      const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(input.creatorId));
+      const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(input.creatorId, tx));
       const created = await scopedDb.instantSession.create({
         data: {
           ...withCommunity(communityId),
@@ -321,7 +321,7 @@ export async function changeInstantSessionGame(
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
   await prisma.$transaction(async tx => {
-    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById));
+    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById, tx));
     await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
     await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
   });

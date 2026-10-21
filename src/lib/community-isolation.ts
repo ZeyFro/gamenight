@@ -31,9 +31,12 @@ export interface IsolationScope {
 }
 
 /** Portée collective d'un utilisateur ; une portée vide donne zéro droit. */
-export async function getIsolationScope(userId: string): Promise<IsolationScope> {
-  return communityRead(`getIsolationScope:${userId}`, async () => {
-    const memberships = await prisma.membership.findMany({
+export async function getIsolationScope(
+  userId: string,
+  reader: Pick<Prisma.TransactionClient, "membership"> = prisma
+): Promise<IsolationScope> {
+  const readScope = async () => {
+    const memberships = await reader.membership.findMany({
       where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
       select: { communityId: true, community: { select: { slug: true } } },
     });
@@ -41,7 +44,10 @@ export async function getIsolationScope(userId: string): Promise<IsolationScope>
       communityIds: memberships.map((m) => m.communityId),
       includesDefault: memberships.some((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG),
     };
-  });
+  };
+  // Une lecture passée par une transaction doit utiliser sa connexion et ne
+  // jamais attendre une seconde connexion alors que la transaction en garde une.
+  return reader === prisma ? communityRead(`getIsolationScope:${userId}`, readScope) : readScope();
 }
 
 /** Filtre des lignes `Session` / `Tournament` (colonne `communityId` nullable). */

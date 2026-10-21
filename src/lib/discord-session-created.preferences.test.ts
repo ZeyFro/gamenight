@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { userFindMany, sessionFindUnique, preferenceFindMany, sessionInviteFindMany, postToDiscord, createNotifications } = vi.hoisted(
+const { userFindMany, sessionFindUnique, preferenceFindMany, postToDiscord, createNotifications } = vi.hoisted(
   () => ({
     userFindMany: vi.fn(),
     sessionFindUnique: vi.fn(),
     preferenceFindMany: vi.fn(),
-    sessionInviteFindMany: vi.fn(),
     postToDiscord: vi.fn(),
     createNotifications: vi.fn(),
   })
@@ -16,7 +15,6 @@ vi.mock("@/lib/prisma", () => ({
     user: { findMany: userFindMany },
     session: { findUnique: sessionFindUnique },
     userNotificationPreference: { findMany: preferenceFindMany },
-    sessionInvite: { findMany: sessionInviteFindMany },
   },
 }));
 vi.mock("@/lib/discord", () => ({
@@ -47,7 +45,6 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
       { id: "u-accepte", discordId: "discord-accepte", silenceReminders: false },
     ]);
     preferenceFindMany.mockResolvedValue([]);
-    sessionInviteFindMany.mockResolvedValue([{ userId: "u-accepte" }]);
 
     const result = await announceSessionCreated(
       {
@@ -70,7 +67,6 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
       { id: "u-refuse", discordId: "discord-refuse", silenceReminders: false },
     ]);
     preferenceFindMany.mockResolvedValue([{ userId: "u-refuse", enabled: false }]);
-    sessionInviteFindMany.mockResolvedValue([{ userId: "u-refuse" }]);
 
     await announceSessionCreated(
       {
@@ -88,13 +84,12 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
   });
 
   it("aucune notification interne pour un invité dont l'invitation n'est plus active (révoquée)", async () => {
-    userFindMany.mockResolvedValue([
+    // Le mock Prisma ne calcule pas les relations `where` : le premier appel
+    // fournit les candidats, le second simule l'exclusion par invitation inactive.
+    userFindMany.mockResolvedValueOnce([
       { id: "u-revoque", discordId: "discord-revoque", silenceReminders: false },
-    ]);
+    ]).mockResolvedValueOnce([]);
     preferenceFindMany.mockResolvedValue([]);
-    // Aucune ligne ACTIVE retournée pour cet utilisateur — `filterByActiveSessionInvite`
-    // (session-access.ts) l'exclut donc, même s'il aurait accepté la préférence SESSION.
-    sessionInviteFindMany.mockResolvedValue([]);
 
     await announceSessionCreated(
       {
@@ -116,7 +111,6 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
       { id: "u-accepte", discordId: "discord-accepte", silenceReminders: false },
     ]);
     preferenceFindMany.mockResolvedValue([]);
-    sessionInviteFindMany.mockResolvedValue([{ userId: "u-accepte" }]);
 
     await announceSessionCreated(
       {

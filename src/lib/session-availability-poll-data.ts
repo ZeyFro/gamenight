@@ -45,7 +45,7 @@ async function lockPollAudience(tx: Prisma.TransactionClient, communityId: strin
 }
 
 async function lockedPoll(tx: Prisma.TransactionClient, userId: string, pollId: string, exclusive: boolean, allParticipants = false) {
-  const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(userId));
+  const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(userId, tx));
   const where = { id: pollId, ...privateAudience(userId) };
   // Vérifier l'accès avant de verrouiller, puis relire après le verrou : un ID
   // connu ne donne ni accès ni possibilité de bloquer un sondage étranger.
@@ -80,7 +80,7 @@ export async function createAvailabilityPoll(userId: string, rawInput: unknown, 
         slots: { create: input.slots },
       }, select: { id: true } });
     }, row => row.id, async (transaction, id) => {
-      const scopedDb = scopedTransactionPrisma(transaction, await getIsolationScope(userId));
+      const scopedDb = scopedTransactionPrisma(transaction, await getIsolationScope(userId, transaction));
       const existing = await scopedDb.sessionAvailabilityPoll.findFirst({
         where: { id, createdById: userId },
         select: { id: true, communityId: true, participants: { select: { userId: true } } },

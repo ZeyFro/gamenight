@@ -104,6 +104,19 @@ describe("community-isolation", () => {
       await expect(getIsolationScope("u1")).resolves.toEqual({ communityIds: ["c-b"], includesDefault: false });
     });
 
+    it("relit le scope avec le client transactionnel fourni", async () => {
+      const transactionFindMany = vi.fn().mockResolvedValue([m("c-b", "serveur-b")]);
+      const tx = { membership: { findMany: transactionFindMany } };
+
+      await expect(getIsolationScope("u1", tx as unknown as NonNullable<Parameters<typeof getIsolationScope>[1]>)).resolves.toEqual({
+        communityIds: ["c-b"],
+        includesDefault: false,
+      });
+
+      expect(transactionFindMany).toHaveBeenCalledOnce();
+      expect(membershipFindMany).not.toHaveBeenCalled();
+    });
+
     it("aucune communauté : portée vide (et non null : l'isolation reste active)", async () => {
       await expect(getIsolationScope("u1")).resolves.toEqual({ communityIds: [], includesDefault: false });
     });
