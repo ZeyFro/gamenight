@@ -99,6 +99,8 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/session-access.ts": ["session", "sessionInvite"],
   "src/lib/session-announce.ts": ["session", "sessionInvite"],
   "src/lib/session-voice-presence.ts": ["session"],
+  // Le daemon balaie les sessions actives multi-communautés pour piloter ses collecteurs; l'upsert revalide l'accès.
+  "src/lib/voice-presence-worker-runtime.ts": ["session"],
   "src/lib/sessions.ts": ["groupActiveWeek", "groupGameStat", "groupSessionStats", "proposal", "session", "vote"],
   "src/lib/superlative-voting.ts": ["proposal", "superlativeCategory", "superlativeVote"],
   "src/lib/tournament-announce.ts": ["tournament", "tournamentParticipant"],
