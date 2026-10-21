@@ -9,8 +9,8 @@ import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
- * Route destinée à être appelée toutes les 15 min par un cron externe
- * (ex. cron-job.org — même mécanisme que `/api/cron/reminders`, F7).
+ * Route appelée par un ordonnanceur externe ; sa cadence est configurée
+ * hors dépôt. Voir docs/CRONS.md pour la liste des routes et méthodes.
  *
  * Corrige le bug remonté en prod : la clôture d'une session (annonce
  * Discord "🎮 Soirée validée") était jusqu'ici entièrement "paresseuse"

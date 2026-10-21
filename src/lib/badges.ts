@@ -261,7 +261,7 @@ export async function checkBetBadges(userId: string, communityId: string | null)
  * Chantier nettoyage réel du stockage (V2, suite) — ni `Tournament` ni
  * `TournamentParticipant` ne survivent à la purge (contrairement à
  * `SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet`, aucune autre
- * lecture durable n'en dépend — voir le README) : ces deux critères ne
+ * lecture durable n'en dépend — voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md) : ces deux critères ne
  * peuvent donc plus compter des lignes live.
  *   - `tournamentsWon` — compte les `XpEvent` `TOURNAMENT_RESULT` dont le
  *     `sourceId` finit par `:1st` (posé UNIQUEMENT pour le champion, voir

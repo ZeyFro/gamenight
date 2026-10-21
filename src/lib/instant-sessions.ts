@@ -28,7 +28,7 @@ export { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-cons
  * cohérence stricte avec le reste de l'app (voir le commentaire de
  * fichier de `src/lib/wallclock.ts`) : une durée calculée en mélangeant
  * les deux sources introduirait un décalage systémique (classe de bug
- * déjà rencontrée et corrigée dans ce dépôt, cf. README "Fix cycle de vie
+ * déjà rencontrée et corrigée dans ce dépôt, cf. docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md "Fix cycle de vie
  * des soirées"). Comme la durée max (3h) est un simple OFFSET (jamais un
  * horaire calendaire affiché), le choix horloge-murale vs UTC réel
  * n'affecte pas la durée elle-même (le décalage s'annule dans

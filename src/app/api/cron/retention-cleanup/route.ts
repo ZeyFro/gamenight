@@ -23,11 +23,11 @@ import { runRetentionCleanup } from "@/lib/retention-runner";
  *      Activer le cron (1) sans jamais positionner ce second verrou sur
  *      `"execute"` permet d'observer indéfiniment le rapport dry-run en
  *      production SANS AUCUN RISQUE — c'est le chemin d'activation
- *      recommandé (voir le README, section "Activation du nettoyage").
+ *      recommandé (voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, section "Activation du nettoyage").
  *
  * Authentification identique aux autres routes cron de ce dépôt
  * (`verifyCronRequest`). Aucun cron externe n'est configuré par cette PR,
- * aucune variable n'est définie sur Vercel — voir le README pour la
+ * aucune variable n'est définie sur Vercel — voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la
  * procédure de configuration (non exécutée par cette PR).
  *
  * Ne promet jamais une baisse immédiate de l'espace disque alloué :

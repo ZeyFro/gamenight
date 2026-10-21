@@ -1040,7 +1040,7 @@ export async function sendDirectMessage(input: SendDirectMessageInput): Promise<
  *   - Limite documentée, honnête, PAS contournable depuis ce client : un
  *     titulaire Discord de `MANAGE_THREADS` (admin/modérateur du serveur)
  *     voit et accède TOUJOURS à un fil privé, quelle que soit la liste de
- *     membres gérée applicativement — voir le README.
+ *     membres gérée applicativement — voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md.
  */
 export interface StartPrivateThreadInput {
   channelId: string;
@@ -1251,7 +1251,7 @@ export async function removeThreadMemberVerified(input: ThreadMemberInput): Prom
  * le créateur du fil sans cette permission. Le bot DOIT donc détenir
  * `MANAGE_THREADS` pour que cette fonctionnalité fonctionne réellement — à
  * accorder explicitement sur les salons #🎮-soirées/#🏆-tournois
- * uniquement (jamais `Administrateur`), voir le README pour la procédure.
+ * uniquement (jamais `Administrateur`), voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la procédure.
  * Un fil déjà absent (`404`) N'EST PAS reclassé en succès ICI — même
  * discipline que `removeThreadMember` : c'est au résolveur appelant de
  * décider que ce cas atteint l'état cible visé (fil absent = objectif de

@@ -11,7 +11,7 @@ import { wallClockNow } from "@/lib/wallclock";
  * integration.test.ts` pour la partie Postgres (garanties de concurrence
  * et de dépendances non mockables).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert).
  */
 

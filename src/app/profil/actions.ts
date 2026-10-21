@@ -120,7 +120,7 @@ export async function toggleSoundEnabled() {
 
 /**
  * Bannière de profil (PR 8/9) — URL uniquement, pas d'upload (décision
- * documentée dans le README). Vide = retour à la bannière par défaut
+ * documentée dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md). Vide = retour à la bannière par défaut
  * (dégradé CSS, `.profile-banner-default`). Validation minimale
  * (http/https) : c'est une simple `background-image` CSS, pas
  * `next/image`, donc pas de contrainte de domaine à vérifier — juste

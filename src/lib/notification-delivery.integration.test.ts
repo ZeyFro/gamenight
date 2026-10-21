@@ -20,7 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
  * régression future.
  *
  * Nécessite `TEST_DATABASE_URL` — une base PostgreSQL dédiée aux tests,
- * JAMAIS la base de production/Neon. Voir le README ("Tests d'intégration
+ * JAMAIS la base de production/Neon. Voir docs/DEVELOPPEMENT_LOCAL.md ("Tests d'intégration
  * notifications") pour la procédure de mise en place locale. Si la
  * variable est absente, toute la suite est SKIPPÉE explicitement (pas de
  * faux vert) avec un avertissement clair.
@@ -44,7 +44,7 @@ if (!TEST_DATABASE_URL) {
     "[notification-delivery.integration.test] TEST_DATABASE_URL absente — " +
       "suite SKIPPÉE. Les garanties de concurrence (réservation atomique, " +
       "exclusivité par cible, ordre des éditions) ne sont PAS validées par " +
-      "cette exécution. Voir le README pour lancer une base PostgreSQL " +
+      "cette exécution. Voir docs/DEVELOPPEMENT_LOCAL.md pour lancer une base PostgreSQL " +
       "isolée localement."
   );
 }

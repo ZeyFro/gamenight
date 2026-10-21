@@ -21,7 +21,7 @@ import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
  * existant : c'est uniquement le socle transactionnel sur lequel les PR
  * suivantes brancheront un vrai client (webhook puis bot), catégorie par
  * catégorie. Voir `prisma/schema.prisma` (modèles `NotificationEvent`/
- * `NotificationDelivery`) pour le détail des colonnes et le README pour la
+ * `NotificationDelivery`) pour le détail des colonnes et docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la
  * procédure de validation.
  *
  * Cycle de vie d'une livraison, dans cet ordre, TOUJOURS porté par
@@ -386,7 +386,7 @@ export interface ClaimedDelivery extends NotificationDelivery {
  * transaction ultérieure pouvait réserver une AUTRE ligne PENDING pour la
  * MÊME cible sans qu'aucune vérification ne l'en empêche — reproduit à la
  * main via `psql` avant ce correctif (deux lignes `RESERVED`
- * simultanément pour le même `targetSlot`, voir le README pour la trace
+ * simultanément pour le même `targetSlot`, voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour la trace
  * complète). Corrigé en ajoutant, SOUS le verrou advisory, une vérification
  * explicite qu'aucune réservation active n'existe déjà pour la cible — le
  * verrou advisory sert maintenant UNIQUEMENT à sérialiser cette

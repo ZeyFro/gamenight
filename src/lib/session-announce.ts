@@ -37,7 +37,7 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
 
 /**
  * Chantier annonces Discord bot — SESSION uniquement dans cette PR
- * (TOURNAMENT explicitement différé, voir README). Relie les fondations
+ * (TOURNAMENT explicitement différé, voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md). Relie les fondations
  * de livraison (#95), le client REST (#96) et l'exécuteur (#97) à un vrai
  * événement métier. `discord-announce.ts`/`discord-session-created.ts`/
  * `discord-session-modified.ts` (webhook legacy) restent inchangés en
@@ -89,7 +89,7 @@ import type { DiscordRestEmbed } from "@/lib/discord-rest";
  * appels réels sont désormais des no-op documentés côté appelants
  * (`sessions.ts`/`session-lifecycle.ts`/`roulette.ts`) plutôt que de
  * publier la moindre donnée de soirée dans un salon public. Voir le
- * README ("Transition et retour arrière") pour le détail de cette
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md ("Transition et retour arrière") pour le détail de cette
  * bascule et ses limites assumées.
  *
  * Organisation : un SEUL fil privé par soirée, sur le salon PARENT
@@ -936,7 +936,7 @@ export async function resyncSessionThreadMembers(sessionId: string): Promise<voi
  * PLUSIEURS FOIS depuis la même fonction : le premier appel vient
  * automatiquement de `deleteSessionAction` (au moment de la suppression),
  * les suivants viennent d'un réessai manuel (nettoyage échoué de façon
- * terminale — permission refusée, etc.) exposé séparément (voir le README
+ * terminale — permission refusée, etc.) exposé séparément (voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md
  * pour la procédure de retry, hors périmètre d'une UI dédiée dans cette
  * PR). Chaque appel crée une NOUVELLE ligne `NotificationDelivery` ; seule
  * la plus récente survit (convergence `[targetSlot, operation]`,
@@ -1035,7 +1035,7 @@ export async function enqueueSessionThreadAutoDelete(sessionId: string, db?: Not
  * État de la dernière tentative de nettoyage Discord connue pour une
  * soirée SUPPRIMÉE (la ligne `Session` n'existe plus — lu par son id brut,
  * jamais via une relation Prisma qui échouerait silencieusement). Réservé
- * à un usage d'audit/retry manuel (voir le README, "Nettoyage échoué —
+ * à un usage d'audit/retry manuel (voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, "Nettoyage échoué —
  * état honnête et réessai") : `"never_enqueued"` distingue une soirée
  * jamais passée par le chemin bot (rien à nettoyer) d'un nettoyage
  * réellement en attente/échoué.

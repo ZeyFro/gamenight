@@ -15,7 +15,7 @@ import { join } from "path";
  * établie pour les autres suites d'intégration de ce dépôt (voir leurs
  * commentaires de fichier).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente.
  */
 

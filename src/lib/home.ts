@@ -45,7 +45,7 @@ export interface ActivityItem {
  * types (badges, superlatifs, niveaux) restent un flux sans filtre de
  * soirée : ce sont des accomplissements personnels affichés partout
  * ailleurs dans l'app (profil, classement), pas le contenu d'une soirée
- * précise — périmètre volontairement limité, documenté comme tel dans le README.
+ * précise — périmètre volontairement limité, documenté comme tel dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md.
  *
  * PR B : communauté active et membres autorisés sont filtrés ensemble.
  * Les badges et niveaux du même membre sur un autre serveur restent invisibles.

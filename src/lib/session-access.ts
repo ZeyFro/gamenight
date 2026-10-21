@@ -25,7 +25,7 @@ import {
  * RENVOYER l'annonce webhook d'une soirée dont il n'est ni créateur ni
  * invité — ce bypass préexistant à ce chantier n'est PAS étendu à la
  * lecture des données de soirée ici, mais reste un besoin d'accès global
- * existant à trancher séparément (documenté dans le README, jamais résolu
+ * existant à trancher séparément (documenté dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, jamais résolu
  * silencieusement par ce module).
  */
 
