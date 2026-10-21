@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * jamais une liste vide transformée en "tout le monde", jamais un invité
  * de plus ou de moins que ce qui a été explicitement coché au formulaire.
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente.
  */
 
@@ -80,7 +80,13 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   function formData(fields: Record<string, string | string[]>): FormData {

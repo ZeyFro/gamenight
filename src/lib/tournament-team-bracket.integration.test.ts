@@ -33,6 +33,8 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois en équipes (Postgres)", () => {
     const users = await Promise.all(
       ["a", "b", "c", "d", "outsider"].map((name) => db.user.create({ data: { discordId: `team-${name}`, discordName: name } }))
     );
+    const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.membership.createMany({ data: users.slice(0, 4).map(user => ({ userId: user.id, communityId, status: "ACTIVE" })) });
     const game = await db.game.create({ data: { name: "g", source: "MANUAL", addedById: users[0].id } });
     const tournament = await db.tournament.create({
       data: { name: "équipes", gameId: game.id, createdById: users[0].id, maxPlayers: 4, format: "TEAMS" },
@@ -67,6 +69,8 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois en équipes (Postgres)", () => {
     const users = await Promise.all(
       ["a", "b", "c", "d", "e", "f"].map((name) => db.user.create({ data: { discordId: `bye-${name}`, discordName: name } }))
     );
+    const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.membership.createMany({ data: users.map(user => ({ userId: user.id, communityId, status: "ACTIVE" })) });
     const game = await db.game.create({ data: { name: "g", source: "MANUAL", addedById: users[0].id } });
     const tournament = await db.tournament.create({
       data: { name: "bye équipes", gameId: game.id, createdById: users[0].id, maxPlayers: 6, format: "TEAMS" },

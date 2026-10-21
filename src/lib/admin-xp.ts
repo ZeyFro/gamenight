@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
@@ -198,7 +197,7 @@ export async function applyXpAdjustment(input: {
     const target = await tx.user.findUnique({ where: { id: userId }, select: { discordName: true } });
     if (!target) return { ok: false, reason: "not_member" };
 
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR UPDATE`;
     const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({

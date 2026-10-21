@@ -11,7 +11,7 @@ import { wallClockNow } from "@/lib/wallclock";
  * integration.test.ts` pour la partie Postgres (garanties de concurrence
  * et de dépendances non mockables).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert).
  */
 
@@ -103,13 +103,21 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
     async function makeUser(overrides: Partial<{ discordName: string; silenceReminders: boolean }> = {}) {
       const id = uniq("user");
-      return db.user.create({
+      const user = await db.user.create({
         data: {
           discordId: id,
           discordName: overrides.discordName ?? id,
           silenceReminders: overrides.silenceReminders ?? false,
         },
       });
+      const community = await db.community.upsert({
+        where: { slug: "default" },
+        create: { slug: "default", name: "Défaut", status: "ACTIVE" },
+        update: { status: "ACTIVE" },
+        select: { id: true },
+      });
+      await db.membership.create({ data: { communityId: community.id, userId: user.id, status: "ACTIVE" } });
+      return user;
     }
 
     async function makeGame(addedById: string) {

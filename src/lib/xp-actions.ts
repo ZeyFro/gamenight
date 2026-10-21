@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getDefaultCommunityId } from "@/lib/default-community";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { getMemberStats, lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
 import {
@@ -43,7 +42,7 @@ export async function awardXp(
       }
       const user = await tx.user.findUnique({ where: { id: userId }, select: { discordId: true } });
       if (!user) return null;
-      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [id], includesDefault: false } : null);
+      const scopedDb = scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
       if (reason === "CREATE_SESSION") {
         // Plafond anti-farm (création puis suppression en boucle). Le verrou de la
@@ -112,7 +111,7 @@ export async function applySessionAbsencePenalty(
   try {
     return await prisma.$transaction(async (tx) => {
       if (!(await lockCommunityProgress(tx, id, userId))) return false;
-      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [id], includesDefault: false } : null);
+      const scopedDb = scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
       await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${id} AND "userId" = ${userId} FOR UPDATE`;
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({
@@ -153,7 +152,7 @@ export async function touchStreak(userId: string, communityId: string): Promise<
   }
   return prisma.$transaction(async (tx) => {
     if (!(await lockCommunityProgress(tx, communityId, userId))) return { ...ZERO_MEMBER_STATS, touched: false };
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR UPDATE`;
     const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId, userId } } });

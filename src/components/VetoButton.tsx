@@ -1,6 +1,7 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { clearVeto, setVeto } from "@/app/sessions/actions/veto";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -12,6 +13,7 @@ const ERRORS: Record<string, string> = {
 };
 
 export function VetoButton({ proposalId, initialVetoed }: { proposalId: string; initialVetoed: boolean }) {
+  const router = useRouter();
   const [vetoed, setVetoed] = useOptimistic(initialVetoed);
   const [isPending, startTransition] = useTransition();
 
@@ -26,6 +28,7 @@ export function VetoButton({ proposalId, initialVetoed }: { proposalId: string; 
         toast.error(ERRORS[result.error ?? ""] ?? "Une erreur est survenue.");
         return;
       }
+      router.refresh();
       toast.success(next ? "Veto posé" : "Veto retiré");
     });
   }

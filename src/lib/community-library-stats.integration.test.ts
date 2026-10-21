@@ -123,7 +123,7 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(0);
       expect((await homeLib.getGroupStats(ids.alice)).mostPlayedGame).toMatchObject({ name: "Mario Kart", count: 2 });
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(3);
+      expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(0);
     });
   });
 
@@ -157,6 +157,36 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect(list).toHaveLength(10);
       expect(new Set(list.map((a) => a.communityId))).toEqual(new Set([ids.c1]));
       expect(await achievements.listGroupAchievements(ids.zed)).toEqual([]);
+    });
+
+    it("isolation OFF : les trophées de l'accueil restent dans la communauté active", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      await achievements.ensureGroupAchievements(ids.c1);
+      const achievement = (communityId: string, key: string) => ({
+        communityId, key, name: key, description: key, icon: "🏆",
+      });
+      await db.groupAchievement.createMany({ data: [
+        achievement(ids.c1, "trophee-a"), achievement(ids.c2, "trophee-b"),
+      ] });
+
+      const list = await achievements.listGroupAchievements(ids.alice);
+
+      expect(list).toHaveLength(11); // 10 définitions seedées + le trophée de test
+      expect(list.map(row => row.key)).toContain("trophee-a");
+      expect(list.map(row => row.key)).not.toContain("trophee-b");
+      expect(list.every(row => row.communityId === ids.c1)).toBe(true);
+    });
+
+    it("isolation OFF : un membre B-only déclenche le seed dans sa communauté active", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      expect(await db.groupAchievement.count()).toBe(0);
+
+      const list = await achievements.listGroupAchievements(ids.bob);
+
+      expect(list).toHaveLength(10);
+      expect(list.every(row => row.communityId === ids.c2)).toBe(true);
+      expect(await db.groupAchievement.count({ where: { communityId: ids.c1 } })).toBe(0);
+      expect(await db.groupAchievement.count({ where: { communityId: ids.c2 } })).toBe(10);
     });
 
     it("seed : la communauté par défaut et chaque communauté ACTIVE, idempotent", async () => {
@@ -231,9 +261,10 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect(await db.gameWishlist.count({ where: { purchasedById: ids.carol } })).toBe(2);
     });
 
-    it("isolation éteinte : rattaché à la communauté par défaut, tout visible", async () => {
+    it("isolation éteinte : un membre default peut proposer, sans fallback implicite pour les autres", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      await propose("zed");
+      await db.membership.create({ data: { userId: ids.alice, communityId: ids.def, status: "ACTIVE" } });
+      await propose("alice");
       expect((await db.gameWishlist.findFirstOrThrow()).communityId).toBe(ids.def);
       expect((await wishlist.getWishlist(ids.alice)).map((e) => e.gameName)).toEqual(["Hades"]);
     });

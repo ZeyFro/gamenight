@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * ciblent directement la référence du message réellement créé) — un seul
  * `POST`/`PATCH` suffit à les simuler, comme avant cette revue.
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente (pas de faux vert).
  */
 
@@ -93,9 +93,15 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
     async function makeUser(overrides: Partial<{ discordName: string }> = {}) {
       const id = uniq("user");
-      return db.user.create({
+      const user = await db.user.create({
         data: { discordId: id, discordName: overrides.discordName ?? id },
       });
+      await db.membership.create({ data: {
+        userId: user.id,
+        communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+        status: "ACTIVE",
+      } });
+      return user;
     }
 
     async function makeGame(addedById: string) {
@@ -1017,6 +1023,11 @@ describe.skipIf(!TEST_DATABASE_URL)(
         const silent = await db.user.create({
           data: { discordId: uniq("silent"), discordName: "silencieux", silenceReminders: true },
         });
+        await db.membership.create({ data: {
+          userId: silent.id,
+          communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+          status: "ACTIVE",
+        } });
         const tournament = await makeTournament(creator.id, game.id, { notifiedUserIds: [silent.id] });
         await announceLib.enqueueTournamentCreationDeliveries(tournament.id);
 

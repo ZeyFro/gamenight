@@ -2,7 +2,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { getScopedPrisma, scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import { canAccessSession } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
 import { awardXp } from "@/lib/xp-actions";
@@ -44,7 +44,7 @@ export async function placeBet(
   targetUserId: string,
   amount: number
 ): Promise<boolean> {
-  if (isCommunityIsolationEnabled() && (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(targetUserId, sessionId)))) return false;
+  if (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(targetUserId, sessionId))) return false;
   const scopedDb = await getScopedPrisma(voterId);
   const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true, decidedGame: { select: { name: true } } } });
   if (!session) return false;
@@ -52,8 +52,8 @@ export async function placeBet(
   try {
     return await prisma.$transaction(async (tx) => {
       if (!(await lockCommunityProgress(tx, communityId, voterId))) return false;
-      if (isCommunityIsolationEnabled() && !(await lockCommunityProgress(tx, communityId, targetUserId))) return false;
-      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+      if (!(await lockCommunityProgress(tx, communityId, targetUserId))) return false;
+      const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId: voterId }], skipDuplicates: true });
       const locked = await tx.$queryRaw<{ xpBalance: number }[]>`
         SELECT "xpBalance" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE

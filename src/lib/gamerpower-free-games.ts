@@ -31,7 +31,13 @@ export type AutomaticFreeGameOffer = {
   source: "gamerpower";
 };
 
-type FeedSnapshot = { observedAt: string; offers: AutomaticFreeGameOffer[] };
+type StorePlatform = "steam" | "epic-games-store";
+type FeedSnapshot = {
+  observedAt: string;
+  offers: AutomaticFreeGameOffer[];
+  activeOfferIds: Record<StorePlatform, string[]>;
+  unavailablePlatforms: StorePlatform[];
+};
 
 function safeStoreUrl(value: string): Pick<AutomaticFreeGameOffer, "store" | "storeUrl"> | null {
   try {
@@ -81,14 +87,14 @@ async function resolveOfficialStoreUrl(openUrl: string) {
   }
 }
 
-async function fetchStoreOffers(platform: "steam" | "epic-games-store"): Promise<AutomaticFreeGameOffer[]> {
+async function fetchStoreOffers(platform: StorePlatform): Promise<{ offers: AutomaticFreeGameOffer[]; activeOfferIds: string[] }> {
   const endpoint = new URL(source);
   endpoint.searchParams.set("platform", platform);
   endpoint.searchParams.set("type", "game");
   const response = await fetch(endpoint, { headers: { Accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(5000) });
   if (response.status === 201) {
     const emptyResult = z.object({ status: z.literal(0), status_message: z.string() }).safeParse(await response.json());
-    if (emptyResult.success) return [];
+    if (emptyResult.success) return { offers: [], activeOfferIds: [] };
     throw new Error("GamerPower empty response shape is invalid");
   }
   if (!response.ok) throw new Error(`GamerPower HTTP ${response.status}`);
@@ -100,8 +106,13 @@ async function fetchStoreOffers(platform: "steam" | "epic-games-store"): Promise
     offer.status.toLowerCase() === "active" &&
     !excludedConditions.test(`${offer.title} ${offer.description ?? ""} ${offer.instructions ?? ""}`))
     .slice(0, MAX_CANDIDATES_PER_STORE);
+  const activeOfferIds = parsed.data.filter((offer) => offer.type.toLowerCase() === "game" &&
+    offer.status.toLowerCase() === "active" &&
+    !excludedConditions.test(`${offer.title} ${offer.description ?? ""} ${offer.instructions ?? ""}`))
+    .map((offer) => String(offer.id));
   const resolved = await Promise.all(candidates.map(async (candidate) => {
     const destination = await resolveOfficialStoreUrl(candidate.open_giveaway_url);
+    if (destination?.store !== (platform === "steam" ? "STEAM" : "EPIC")) return null;
     return destination ? {
       id: `gamerpower-${destination.store.toLowerCase()}-${candidate.id}`,
       store: destination.store,
@@ -111,7 +122,7 @@ async function fetchStoreOffers(platform: "steam" | "epic-games-store"): Promise
       source: "gamerpower",
     } satisfies AutomaticFreeGameOffer : null;
   }));
-  return resolved.filter((offer): offer is AutomaticFreeGameOffer => offer !== null).slice(0, MAX_OFFERS_PER_STORE);
+  return { offers: resolved.filter((offer): offer is AutomaticFreeGameOffer => offer !== null).slice(0, MAX_OFFERS_PER_STORE), activeOfferIds };
 }
 
 const readFeed = unstable_cache(async (): Promise<FeedSnapshot> => {
@@ -120,12 +131,20 @@ const readFeed = unstable_cache(async (): Promise<FeedSnapshot> => {
     fetchStoreOffers("epic-games-store"),
   ]);
   const offers: AutomaticFreeGameOffer[] = [];
+  const activeOfferIds: FeedSnapshot["activeOfferIds"] = { steam: [], "epic-games-store": [] };
+  const unavailablePlatforms: StorePlatform[] = [];
   for (const [index, result] of results.entries()) {
-    if (result.status === "fulfilled") offers.push(...result.value);
-    else logger.warn("free-game-feed", `Source ${index === 0 ? "Steam" : "Epic"} indisponible.`, {});
+    const platform = index === 0 ? "steam" : "epic-games-store";
+    if (result.status === "fulfilled") {
+      offers.push(...result.value.offers);
+      activeOfferIds[platform] = result.value.activeOfferIds;
+    } else {
+      unavailablePlatforms.push(platform);
+      logger.warn("free-game-feed", `Source ${index === 0 ? "Steam" : "Epic"} indisponible.`, {});
+    }
   }
-  return { observedAt: new Date().toISOString(), offers };
-}, ["gamerpower-free-games-v1"], { revalidate: REVALIDATE_SECONDS });
+  return { observedAt: new Date().toISOString(), offers, activeOfferIds, unavailablePlatforms };
+}, ["gamerpower-free-games-v2"], { revalidate: REVALIDATE_SECONDS });
 
 export function isFeedSnapshotFresh(observedAt: string, now: Date): boolean {
   const timestamp = Date.parse(observedAt);
@@ -140,5 +159,20 @@ export async function listAutomaticFreeGameOffers(): Promise<AutomaticFreeGameOf
   } catch {
     logger.warn("free-game-feed", "Flux d'offres indisponible.", {});
     return [];
+  }
+}
+
+export async function getAutomaticFreeGameOfferStatus(offerId: string): Promise<"active" | "expired" | "unavailable"> {
+  const match = /^gamerpower-(steam|epic)-(.+)$/.exec(offerId);
+  if (!match) return "expired";
+  const platform: StorePlatform = match[1] === "steam" ? "steam" : "epic-games-store";
+  if (process.env.FREE_GAME_FEED_ENABLED !== "true") return "unavailable";
+  try {
+    const snapshot = await readFeed();
+    if (!isFeedSnapshotFresh(snapshot.observedAt, new Date()) || snapshot.unavailablePlatforms.includes(platform)) return "unavailable";
+    return snapshot.activeOfferIds[platform].includes(match[2]) ? "active" : "expired";
+  } catch {
+    logger.warn("free-game-feed", "Source indisponible pendant la vérification avant envoi.", {});
+    return "unavailable";
   }
 }

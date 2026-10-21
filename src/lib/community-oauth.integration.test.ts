@@ -1,5 +1,6 @@
 import type { AuthConfig } from "@auth/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "@/lib/logger";
 
 const url = process.env.TEST_DATABASE_URL;
 const captured = vi.hoisted(() => ({ config: null as AuthConfig | null }));
@@ -21,6 +22,7 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
   const ids: Record<string, string> = {};
   const at = new Date("2026-10-07T10:00:00Z");
   const guilds = { a: "111111111111111111", b: "222222222222222222", pending: "333333333333333333", suspended: "444444444444444444" };
+  const defaultGuild = "888888888888888888"; // serveur de la communauté par défaut (fictif)
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as typeof db;
     sync = (await import("./community-oauth")).syncOAuthMemberships;
@@ -31,7 +33,8 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
   beforeEach(async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "false");
+    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "");
+    vi.stubEnv("ADMIN_DISCORD_IDS", "");
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network"); }));
     await db.$executeRawUnsafe('TRUNCATE "User", "Community", "Badge" CASCADE');
@@ -93,8 +96,8 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
     expect((await (await import("./default-community")).ensureDefaultCommunity()).membershipsCreated).toBe(0);
     expect(await db.membership.count({ where: { userId: outsider.id } })).toBe(0);
   });
-  it("admission gate alone prevents seed-reconcile from granting a denied default membership", async () => {
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "true");
+  it.each(["true", "false"])("seed-reconcile never grants a default membership, even with AUTH_REQUIRE_GUILD_MEMBER=%s and every other flag OFF", async (value) => {
+    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", value);
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
     const outsider = await db.user.create({ data: { discordId: "gate-outsider", discordName: "No guild" } });
@@ -127,11 +130,139 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
     expect(await membership("a")).toMatchObject({ status: "ACTIVE", lastVerifiedAt: at });
     expect(await db.membership.count({ where: { userId: ids.user } })).toBe(1);
   });
-  it("new denied account is rolled back, never becomes an exempt existing account", async () => {
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "true");
+  it.each(["true", "false", ""])("new denied account is rolled back, never becomes an exempt existing account (AUTH_REQUIRE_GUILD_MEMBER=%j)", async (value) => {
+    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", value);
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json([])));
-    expect(await signIn("new-account")).toBe(false);
-    expect(await db.user.findUnique({ where: { discordId: "new-account" } })).toBeNull();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const error = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await signIn("new-account")).toBe(false);
+      expect(await db.user.findUnique({ where: { discordId: "new-account" } })).toBeNull();
+      expect(await signIn("new-account")).toBe(false);
+      // Prisma doit renvoyer NotAdmitted intacte : warn neutre, jamais error.
+      expect(warn).toHaveBeenCalledWith("auth", "OAuth login denied: no ACTIVE community.", { discordId: "new-account" });
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+  describe("S0 — connexion fermée par défaut (comptes fictifs, serveurs simulés)", () => {
+    const stubGuilds = (list: string[]) => vi.stubGlobal("fetch", vi.fn(async () => Response.json(list.map((id) => ({ id })))));
+    const setDefaultGuild = (discordGuildId: string | null, status: "ACTIVE" | "PENDING" | "SUSPENDED" = "ACTIVE") =>
+      db.community.update({ where: { id: ids.default }, data: { discordGuildId, status } });
+    // Les autres communautés ne doivent pas admettre à leur place.
+    const suspendOthers = () => db.community.updateMany({ where: { slug: { not: "default" } }, data: { status: "SUSPENDED" } });
+    const defaultMembership = () => db.membership.findUnique({ where: { communityId_userId: { communityId: ids.default, userId: ids.user } } });
+
+    it("(i) pote légitime : ligne User historique sans appartenance + serveur de la communauté par défaut → accepté, appartenance ACTIVE créée", async () => {
+      await setDefaultGuild(defaultGuild);
+      expect(await db.membership.count({ where: { userId: ids.user } })).toBe(0);
+      stubGuilds([defaultGuild, "999999999999999990"]);
+      expect(await signIn("123")).toBe(true);
+      expect(await defaultMembership()).toMatchObject({ status: "ACTIVE", role: "MEMBER" });
+    });
+
+    it("(ii) inconnu : serveur absent de sa liste → refusé, aucune ligne User créée", async () => {
+      await setDefaultGuild(defaultGuild);
+      stubGuilds(["999999999999999990"]);
+      expect(await signIn("stranger")).toBe(false);
+      expect(await db.user.findUnique({ where: { discordId: "stranger" } })).toBeNull();
+      expect(await db.membership.count()).toBe(0);
+    });
+
+    it("(iii) membre ACTIVE ayant quitté le serveur : appartenance passée à LEFT puis refus", async () => {
+      await setDefaultGuild(defaultGuild);
+      await db.membership.create({ data: { communityId: ids.default, userId: ids.user } });
+      stubGuilds(["999999999999999990"]);
+      expect(await signIn("123")).toBe(false);
+      expect(await defaultMembership()).toMatchObject({ status: "LEFT" });
+      expect((await defaultMembership())?.leftAt).not.toBeNull();
+    });
+
+    it("(iv) communauté par défaut sans discordGuildId (DISCORD_BOT_GUILD_ID vide) : tout le monde refusé sauf admin", async () => {
+      await suspendOthers();
+      vi.stubEnv("ADMIN_DISCORD_IDS", "admin-1");
+      stubGuilds([defaultGuild, guilds.a, guilds.b]);
+      expect(await signIn("123")).toBe(false);
+      expect(await signIn("stranger")).toBe(false);
+      expect(await db.user.findUnique({ where: { discordId: "stranger" } })).toBeNull();
+      expect(await signIn("admin-1")).toBe(true);
+      expect(await db.user.findUnique({ where: { discordId: "admin-1" } })).not.toBeNull();
+      expect(await db.membership.count({ where: { status: "ACTIVE" } })).toBe(0);
+    });
+
+    it.each(["PENDING", "SUSPENDED"] as const)("(v) communauté par défaut %s : refus, aucune appartenance", async (status) => {
+      await suspendOthers();
+      await setDefaultGuild(defaultGuild, status);
+      stubGuilds([defaultGuild]);
+      expect(await signIn("123")).toBe(false);
+      expect(await signIn("stranger")).toBe(false);
+      expect(await db.user.findUnique({ where: { discordId: "stranger" } })).toBeNull();
+      expect(await db.membership.count()).toBe(0);
+    });
+
+    it("(vi) admin accepté même sans aucune communauté ACTIVE, et même si Discord échoue (aucune synchronisation)", async () => {
+      await suspendOthers();
+      await setDefaultGuild(null, "SUSPENDED");
+      vi.stubEnv("ADMIN_DISCORD_IDS", "admin-1, admin-2");
+      stubGuilds([defaultGuild]);
+      expect(await signIn("admin-1")).toBe(true);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("error", { status: 500 })));
+      expect(await signIn("admin-2")).toBe(true);
+      expect(await signIn("admin-2")).toBe(true); // reconnexion : upsert idempotent
+      expect(await db.user.count({ where: { discordId: { in: ["admin-1", "admin-2"] } } })).toBe(2);
+      expect(await db.membership.count()).toBe(0);
+      expect(await signIn("stranger")).toBe(false);
+    });
+
+    it("(vii) DISCORD_BOT_GUILD_ID renseigné complète le serveur de la communauté par défaut", async () => {
+      vi.stubEnv("DISCORD_BOT_GUILD_ID", defaultGuild);
+      expect((await db.community.findUniqueOrThrow({ where: { id: ids.default } })).discordGuildId).toBeNull();
+      stubGuilds([defaultGuild]);
+      expect(await signIn("123")).toBe(true);
+      expect((await db.community.findUniqueOrThrow({ where: { id: ids.default } })).discordGuildId).toBe(defaultGuild);
+      expect(await defaultMembership()).toMatchObject({ status: "ACTIVE" });
+    });
+
+    it("(vii bis) communauté par défaut absente : créée depuis DISCORD_BOT_GUILD_ID à la première connexion, qui est acceptée", async () => {
+      await db.community.delete({ where: { id: ids.default } });
+      vi.stubEnv("DISCORD_BOT_GUILD_ID", defaultGuild);
+      stubGuilds([defaultGuild]);
+      expect(await signIn("123")).toBe(true);
+      const created = await db.community.findUniqueOrThrow({ where: { slug: "default" } });
+      expect(created).toMatchObject({ status: "ACTIVE", discordGuildId: defaultGuild });
+      expect(await db.membership.count({ where: { userId: ids.user, communityId: created.id, status: "ACTIVE" } })).toBe(1);
+    });
+
+    it("compte existant avec seulement une appartenance REMOVED et serveur présent : refusé, REMOVED non réactivé", async () => {
+      await setDefaultGuild(defaultGuild);
+      await db.membership.create({ data: { communityId: ids.default, userId: ids.user, status: "REMOVED" } });
+      stubGuilds([defaultGuild]);
+      expect(await signIn("123")).toBe(false);
+      expect(await defaultMembership()).toMatchObject({ status: "REMOVED" });
+    });
+
+    it("compte avec seulement une appartenance LEFT et serveur revenu : accepté, réactivée ACTIVE (isolation et sélecteur à false)", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+      await setDefaultGuild(defaultGuild);
+      await db.membership.create({ data: { communityId: ids.default, userId: ids.user, status: "LEFT", leftAt: at } });
+      stubGuilds([defaultGuild]);
+      expect(await signIn("123")).toBe(true);
+      expect(await defaultMembership()).toMatchObject({ status: "ACTIVE", leftAt: null });
+    });
+
+    it("compte JAMAIS VU dont le serveur correspond : accepté, ligne User et appartenance créées (drapeaux absents)", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      vi.stubEnv("COMMUNITY_PICKER_ENABLED", "");
+      await setDefaultGuild(defaultGuild);
+      stubGuilds([defaultGuild]);
+      expect(await signIn("brand-new")).toBe(true);
+      const created = await db.user.findUniqueOrThrow({ where: { discordId: "brand-new" } });
+      expect(await db.membership.findUnique({ where: { communityId_userId: { communityId: ids.default, userId: created.id } } }))
+        .toMatchObject({ status: "ACTIVE", role: "MEMBER" });
+    });
   });
   it("old account relogin populates memberships without altering forceReloginAt", async () => {
     await db.user.update({ where: { id: ids.user }, data: { forceReloginAt: at } });

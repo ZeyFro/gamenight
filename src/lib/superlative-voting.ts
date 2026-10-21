@@ -170,17 +170,25 @@ async function finalizeSuperlativeVoting(sessionId: string): Promise<void> {
   // purge de la soirée.
   const decidedGameName = session.decidedGame.name;
   const sessionDate = session.date;
-  await scopedDb.superlativeAward.createMany({
-    data: awards.map((a) => ({
-      ...withCommunity(session.communityId),
-      sessionId,
-      categoryId: a.categoryId,
-      winnerUserId: a.winnerUserId,
-      voteCount: a.voteCount,
-      gameName: decidedGameName,
-      sessionDate,
-    })),
-  });
+  try {
+    await scopedDb.superlativeAward.createMany({
+      data: awards.map((a) => ({
+        ...withCommunity(session.communityId),
+        sessionId,
+        categoryId: a.categoryId,
+        winnerUserId: a.winnerUserId,
+        voteCount: a.voteCount,
+        gameName: decidedGameName,
+        sessionDate,
+      })),
+    });
+  } catch (error) {
+    const prismaError = error as { code?: string; meta?: { target?: unknown } };
+    const target = prismaError.meta?.target;
+    if (prismaError.code !== "P2002" || !Array.isArray(target) ||
+      !target.includes("sessionId") || !target.includes("categoryId")) throw error;
+    return;
+  }
 
   for (const award of awards) {
     const category = categories.find((c) => c.id === award.categoryId);

@@ -18,8 +18,7 @@ const ROLE_LABELS: Record<string, string> = {
  * inventaire du stockage, nettoyages Discord en échec, rappel de la
  * configuration du cron. AUCUNE suppression n'est jamais déclenchée depuis
  * cette page elle-même — le cron réel reste désactivé par défaut
- * (`RETENTION_CLEANUP_ENABLED`), voir le README pour la procédure
- * complète.
+ * (`RETENTION_CLEANUP_ENABLED`), configuré hors de cette page.
  */
 export async function NettoyageTab({ userId }: { userId: string }) {
   const [audit, failedCleanups, failedRewards] = await Promise.all([
@@ -46,8 +45,8 @@ export async function NettoyageTab({ userId }: { userId: string }) {
         <p className="text-sm text-muted">
           Désactivé par défaut. Activation en deux temps : <code>RETENTION_CLEANUP_ENABLED=true</code>{" "}
           (le cron répond, mais reste en dry-run tant que le second réglage n&apos;est pas posé), puis{" "}
-          <code>RETENTION_CLEANUP_MODE=execute</code> pour des mutations réelles. Voir le README pour la
-          procédure complète et les commandes de vérification du dry-run.
+          <code>RETENTION_CLEANUP_MODE=execute</code> pour des mutations réelles.
+          Les cadences sont configurées hors dépôt.
         </p>
       </Card>
 

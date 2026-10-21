@@ -1,7 +1,6 @@
 import { getDefaultCommunityId } from "@/lib/default-community";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { isCommunityIsolationEnabled, isMemberOfCommunity } from "@/lib/community-isolation";
+import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 
@@ -49,7 +48,6 @@ export async function lockCommunityProgress(tx: Prisma.TransactionClient, commun
   `;
   if (communities.length === 0) return false;
   if (communities[0].status !== "ACTIVE") return false;
-  if (!isCommunityIsolationEnabled()) return true;
   if (userId === undefined) return true;
   const members = await tx.$queryRaw<{ status: string }[]>`
     SELECT status FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR SHARE
@@ -57,7 +55,6 @@ export async function lockCommunityProgress(tx: Prisma.TransactionClient, commun
   return members[0]?.status === "ACTIVE";
 }
 export async function canProgressInCommunity(userId: string, communityId: string): Promise<boolean> {
-  if (!isCommunityIsolationEnabled()) return (await prisma.user.count({ where: { id: userId } })) > 0;
   return isMemberOfCommunity(userId, communityId);
 }
 

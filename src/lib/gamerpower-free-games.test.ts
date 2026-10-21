@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ unstable_cache: (fn: (...args: never[]) => Promise<unknown>, keys: string[], options: unknown) => { mocks.cache(keys, options); return fn; } }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: mocks.warn } }));
 
-import { isFeedSnapshotFresh, listAutomaticFreeGameOffers } from "./gamerpower-free-games";
+import { getAutomaticFreeGameOfferStatus, isFeedSnapshotFresh, listAutomaticFreeGameOffers } from "./gamerpower-free-games";
 
 function json(body: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) };
@@ -62,7 +62,7 @@ describe("flux automatique GamerPower", () => {
       { id: "gamerpower-epic-8", store: "EPIC", title: "Game 8", storeUrl: "https://store.epicgames.com/fr/p/example-game", endsAt: null, source: "gamerpower" },
     ]);
     expect(mocks.fetch).toHaveBeenCalledTimes(4);
-    expect(mocks.cache).toHaveBeenCalledWith(["gamerpower-free-games-v1"], { revalidate: 900 });
+    expect(mocks.cache).toHaveBeenCalledWith(["gamerpower-free-games-v2"], { revalidate: 900 });
   });
 
   it("garde la source Epic disponible si Steam échoue et rejette les redirects ambigus", async () => {
@@ -81,6 +81,21 @@ describe("flux automatique GamerPower", () => {
       { id: "gamerpower-epic-7", store: "EPIC", storeUrl: "https://store.epicgames.com/fr/p/example-game" },
     ]);
     expect(mocks.warn).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["steam", "https://store.epicgames.com/fr/p/example-game"],
+    ["epic-games-store", "https://store.steampowered.com/app/620/Portal/"],
+  ])("rejette une destination qui ne correspond pas au flux %s", async (platform, destination) => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/giveaways") return json(url.searchParams.get("platform") === platform
+        ? [giveaway(42, "https://www.gamerpower.com/open/mismatched-store")]
+        : []);
+      return redirect(destination);
+    });
+
+    await expect(listAutomaticFreeGameOffers()).resolves.toEqual([]);
   });
 
   it("traite le 201 GamerPower documenté comme une liste vide", async () => {
@@ -117,5 +132,43 @@ describe("flux automatique GamerPower", () => {
     expect(isFeedSnapshotFresh("2026-10-19T09:59:59Z", now)).toBe(false);
     expect(isFeedSnapshotFresh("2026-10-19T10:31:00Z", now)).toBe(false);
     expect(isFeedSnapshotFresh("invalid", now)).toBe(false);
+  });
+
+  it("distingue une offre toujours active d'une offre absente d'une réponse valide", async () => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = String(input);
+      if (url.includes("/api/giveaways?platform=steam")) return json([giveaway(42, "https://www.gamerpower.com/open/steam-42")]);
+      if (url.includes("/api/giveaways")) return json({ status: 0, status_message: "No active giveaways available" }, 201);
+      return redirect("https://store.steampowered.com/app/620/Portal/");
+    });
+
+    await expect(getAutomaticFreeGameOfferStatus("gamerpower-steam-42")).resolves.toBe("active");
+    await expect(getAutomaticFreeGameOfferStatus("gamerpower-steam-99")).resolves.toBe("expired");
+  });
+
+  it("diffère la vérification quand la source de cette boutique échoue", async () => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = String(input);
+      if (url.includes("/api/giveaways?platform=steam")) throw new Error("Steam source failed");
+      return json({ status: 0, status_message: "No active giveaways available" }, 201);
+    });
+
+    await expect(getAutomaticFreeGameOfferStatus("gamerpower-steam-42")).resolves.toBe("unavailable");
+  });
+
+  it("garde active une offre publiée même si elle sort du petit lot de liens résolus", async () => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = String(input);
+      if (url.includes("/api/giveaways?platform=steam")) return json([
+        giveaway(1, "https://www.gamerpower.com/open/steam-1"),
+        giveaway(2, "https://www.gamerpower.com/open/steam-2"),
+        giveaway(3, "https://www.gamerpower.com/open/steam-3"),
+        giveaway(42, "https://www.gamerpower.com/open/steam-42"),
+      ]);
+      if (url.includes("/api/giveaways")) return json({ status: 0, status_message: "No active giveaways available" }, 201);
+      return redirect("https://store.steampowered.com/app/620/Portal/");
+    });
+
+    await expect(getAutomaticFreeGameOfferStatus("gamerpower-steam-42")).resolves.toBe("active");
   });
 });

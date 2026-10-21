@@ -57,7 +57,11 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
 
   const makeUser = () => {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    return (async () => {
+      const user = await db.user.create({ data: { discordId: id, discordName: id } });
+      await db.membership.create({ data: { userId: user.id, communityId, status: "ACTIVE", role: "MEMBER" } });
+      return user;
+    })();
   };
 
   /** Jeu possédé par `ownerId` (dispo tous les jours) : jouable seul (min 1). */
@@ -244,7 +248,6 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
       const other = await db.community.create({ data: { slug: "autre", name: "autre", status: "ACTIVE" } });
       const { creator, games } = await scenario();
-      await db.membership.create({ data: { userId: creator.id, communityId, status: "ACTIVE", role: "MEMBER" } });
       const foreign = await makeSession(creator.id, { community: other.id });
       const [p] = await propose(foreign.id, creator.id, games);
       currentUser.mockResolvedValue(creator);
@@ -255,7 +258,6 @@ describe.skipIf(!TEST_DATABASE_URL)("veto au vote de jeu (intégration Postgres)
     it("isolation allumée, membre : veto créé avec la communauté de la soirée", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
       const { creator, games, session } = await scenario();
-      await db.membership.create({ data: { userId: creator.id, communityId, status: "ACTIVE", role: "MEMBER" } });
       const [a] = await propose(session.id, creator.id, games);
       currentUser.mockResolvedValue(creator);
       expect((await veto.setVeto(fd(a.id))).ok).toBe(true);

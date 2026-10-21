@@ -45,7 +45,7 @@ vi.mock("@/app/tournois/actions", () => ({
  * prouve donc le MÉCANISME CONCRET qui a corrigé le bug (un clic ne
  * peut plus jamais en déclencher un second), pas le rendu final de la
  * page `/tournois` — cette dernière étape reste hors de portée dans cet
- * environnement (pas d'app Next.js réelle authentifiée, voir le README).
+ * environnement (pas d'app Next.js réelle authentifiée, voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md).
  */
 describe("DeleteTournamentDialog — protection contre le double clic (bug remonté en test réel : page bloquée après suppression)", () => {
   beforeEach(() => {

@@ -3,7 +3,7 @@
 
 /*
  * Identité visuelle GameNight — toujours sombre (pas de bascule clair/sombre,
- * c'est le thème de l'app). Palette documentée dans le README / la PR.
+ * c'est le thème de l'app). Palette et thème définis dans les styles de l’application.
  */
 :root {
   color-scheme: dark;

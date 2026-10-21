@@ -26,7 +26,8 @@ if (!TEST_DATABASE_URL) {
   console.warn("[create-session-queries] TEST_DATABASE_URL absente — suite SKIPPÉE, aucun compte de requêtes validé.");
 }
 
-// Borne haute unique, quel que soit N (invités) ou E (badges déjà obtenus).
+// Budgets Neon requis par la revue : bot=33, webhook=32. Les contrôles
+// relatifs ci-dessous détectent aussi une croissance liée aux invités/badges.
 const MAX_QUERIES_BOT = 33;
 const MAX_QUERIES_WEBHOOK = 32;
 const MAX_QUERIES_ISOLATION = 38;
@@ -73,9 +74,11 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
   });
 
   let serial = 0;
-  const makeUser = () => {
+  const makeUser = async () => {
     serial += 1;
-    return db.user.create({ data: { discordId: `q-${serial}`, discordName: `q-${serial}` } });
+    const user = await db.user.create({ data: { discordId: `q-${serial}`, discordName: `q-${serial}` } });
+    await db.membership.create({ data: { communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(), userId: user.id, status: "ACTIVE" } });
+    return user;
   };
 
   async function fixture(guestCount: number, earnedBadges: number) {
@@ -153,8 +156,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — nombre de requêtes (int�
   for (const n of [1, 5]) {
     it(`isolation allumée : N=${n} (+1 retiré) sous la borne, invité retiré écarté`, async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
-      const { community, creator, guests } = await fixture(n + 1, 0);
-      for (const user of [creator, ...guests]) await db.membership.create({ data: { communityId: community.id, userId: user.id } });
+      const { community, guests } = await fixture(n + 1, 0);
       const removed = guests[n];
       await db.membership.update({
         where: { communityId_userId: { communityId: community.id, userId: removed.id } },

@@ -43,7 +43,7 @@ interface HistoryRow {
  * `SessionResult` (résultats jamais saisis, ligne déjà purgée) disparaît
  * de cette liste — limite honnêtement assumée : il n'existe alors plus
  * AUCUNE trace du jeu/de la date, rien de plus à afficher (voir le
- * README, "Ce qui reste hors périmètre").
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, "Ce qui reste hors périmètre").
  */
 export default async function ProfilHistoriquePage() {
   const user = await getCurrentUser();

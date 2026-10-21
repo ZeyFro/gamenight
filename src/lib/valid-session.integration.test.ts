@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
  * dépôt (voir leurs commentaires de fichier, notamment
  * `session-access.integration.test.ts`).
  *
- * Nécessite `TEST_DATABASE_URL` — voir le README. Suite entièrement
+ * Nécessite `TEST_DATABASE_URL` — voir docs/DEVELOPPEMENT_LOCAL.md. Suite entièrement
  * SKIPPÉE si absente. `auth()` (Auth.js/Discord) est mocké : aucun flux
  * OAuth réel n'est testable ici, seule l'interaction avec Prisma et
  * `shouldForceRelogin` l'est.
@@ -54,7 +54,8 @@ describe.skipIf(!TEST_DATABASE_URL)("getValidSession (intégration Postgres isol
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    await db.$executeRawUnsafe(`TRUNCATE "User" CASCADE`);
+    await db.$executeRawUnsafe(`TRUNCATE "Community", "User" CASCADE`);
+    await db.community.create({ data: { slug: "default", name: "Défaut", status: "ACTIVE" } });
   });
 
   let counter = 0;
@@ -65,7 +66,10 @@ describe.skipIf(!TEST_DATABASE_URL)("getValidSession (intégration Postgres isol
 
   async function makeUser(forceReloginAt: Date | null = null) {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id, forceReloginAt } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id, forceReloginAt } });
+    const community = await db.community.findUniqueOrThrow({ where: { slug: "default" }, select: { id: true } });
+    await db.membership.create({ data: { userId: user.id, communityId: community.id, status: "ACTIVE" } });
+    return user;
   }
 
   it("pas de session → null", async () => {
@@ -114,6 +118,15 @@ describe.skipIf(!TEST_DATABASE_URL)("getValidSession (intégration Postgres isol
     authMock.mockResolvedValue({
       user: { discordId: "discord-id-invente-qui-nexiste-pas", sessionCreatedAt: Date.now() },
     });
+    expect(await getValidSession()).toBeNull();
+  });
+
+  it.each(["LEFT", "REMOVED"] as const)("membership %s révoqué : JWT ancien refusé à l'appel suivant", async (status) => {
+    const user = await makeUser(null);
+    const session = { user: { discordId: user.discordId, sessionCreatedAt: Date.now() - 1000 } };
+    authMock.mockResolvedValue(session);
+    expect(await getValidSession()).toBe(session);
+    await db.membership.updateMany({ where: { userId: user.id }, data: { status } });
     expect(await getValidSession()).toBeNull();
   });
 });

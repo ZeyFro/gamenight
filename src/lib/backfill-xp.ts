@@ -3,7 +3,7 @@ import { XP_AMOUNTS } from "@/lib/xp";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import type { XpReason } from "@prisma/client";
@@ -48,7 +48,7 @@ async function awardXpRaw(userId: string, communityId: string | null, reason: Xp
         await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
         if (await tx.user.findFirst({ where: { id: userId, xpEvents: { some: { reason, sourceId } } }, select: { id: true } })) return;
       }
-      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [...new Set([id, defaultId])], includesDefault: false } : null);
+      const scopedDb = scopedTransactionPrisma(tx, { communityIds: [...new Set([id, defaultId])], includesDefault: false });
       // Les événements pré-migration ont été conservés dans default. Ne pas
       // recréer ailleurs le même gain historique lors d'une réconciliation.
       if (id !== defaultId && await scopedDb.xpEvent.findFirst({ where: { communityId: defaultId, userId, reason, sourceId }, select: { id: true } })) return;

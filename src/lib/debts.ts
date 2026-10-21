@@ -41,6 +41,7 @@ export async function detectDebts(
   await createNotifications(
     absentUserIds.map((debtorId) => ({
       userId: debtorId,
+      communityId: sessionCommunityId,
       type: "DEBT" as const,
       title: "💀 Nouveau gage",
       message: `Tu as voté pour ${gameName} mais tu n'es pas venu — un gage t'attend.`,

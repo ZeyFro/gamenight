@@ -62,8 +62,8 @@ const TASKS = [
   ["seedTags", seedTags],
   ["seedGroupAchievements", seedGroupAchievements],
   ["seedInitialSeason", seedInitialSeason],
-  // Multi-communautés (PR A) : communauté par défaut + Memberships des
-  // utilisateurs qui n’en ont pas encore (idempotent, voir default-community.ts).
+  // Multi-communautés (PR A) : communauté par défaut seule, aucun Membership
+  // (S0 : seule une connexion OAuth en crée ; idempotent, voir default-community.ts).
   ["ensureDefaultCommunity", ensureDefaultCommunity],
 ] as const;
 

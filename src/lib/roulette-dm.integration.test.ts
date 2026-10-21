@@ -87,16 +87,25 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    const community = await db.community.upsert({
+      where: { slug: "default" },
+      create: { slug: "default", name: "Défaut", status: "ACTIVE" },
+      update: { status: "ACTIVE" },
+      select: { id: true },
+    });
+    await db.membership.create({ data: { communityId: community.id, userId: user.id, status: "ACTIVE" } });
+    return user;
   }
 
   /** Roulette ouverte (deadline dans 6 h, relative à l'heure réelle : le
    * rappel compare à `wallClockNow`), créateur parmi les participants comme
    * dans `createRouletteAction`. */
-  async function makeRoulette(creatorId: string, participantIds: string[]) {
+  async function makeRoulette(creatorId: string, participantIds: string[], communityId: string | null = null) {
     return db.roulette.create({
       data: {
         createdById: creatorId,
+        communityId,
         scheduledAt: new Date(Date.now() + 24 * 3_600_000),
         deadline: new Date(Date.now() + 6 * 3_600_000),
         notifiedUserIds: [creatorId, ...participantIds],
@@ -152,6 +161,28 @@ describe.skipIf(!TEST_DATABASE_URL)("MP de la roulette (intégration Postgres is
       expect(body.content).toBe("🎰 Roulette du gambling");
       expect(body.embeds[0].description).toContain("Propose tes 2 jeux");
       expect(body.allowed_mentions).toEqual({ parse: [] });
+    });
+
+    it("isolation OFF : une adhésion B révoquée n'obtient plus la notification d'une roulette B", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      const creator = await makeUser();
+      const removedGuest = await makeUser();
+      const activeGuest = await makeUser();
+      const slug = uniq("serveur");
+      const community = await db.community.upsert({
+        where: { slug }, create: { slug, name: "Serveur B", status: "ACTIVE" }, update: { status: "ACTIVE" }, select: { id: true },
+      });
+      await db.membership.createMany({ data: [creator, removedGuest, activeGuest].map((user) => ({
+        communityId: community.id, userId: user.id, status: "ACTIVE",
+      })) });
+      const roulette = await makeRoulette(creator.id, [removedGuest.id, activeGuest.id], community.id);
+      await db.membership.update({ where: { communityId_userId: { communityId: community.id, userId: removedGuest.id } }, data: { status: "REMOVED" } });
+
+      await rouletteLib.announceRouletteCreated(roulette, creator);
+
+      const notifications = await db.notification.findMany({ where: { type: "SESSION_CREATED", communityId: community.id } });
+      expect(notifications.map((notification) => notification.userId)).toEqual([activeGuest.id]);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("interrupteur éteint : aucun MP", async () => {

@@ -22,7 +22,7 @@ describe.skipIf(!TEST_DATABASE_URL)("cimetière : droits et isolation Postgres",
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     const members = [
-      ["grave-author", "grave-a", "MEMBER"], ["grave-member", "grave-a", "MEMBER"],
+      ["grave-author", "grave-a", "ADMIN"], ["grave-member", "grave-a", "MEMBER"],
       ["grave-admin", "grave-a", "ADMIN"], ["grave-owner", "grave-a", "OWNER"],
       ["grave-outsider", "grave-b", "OWNER"],
     ] as const;
@@ -55,7 +55,7 @@ describe.skipIf(!TEST_DATABASE_URL)("cimetière : droits et isolation Postgres",
     const libraryBefore = await db.userGame.findMany({ orderBy: [{ userId: "asc" }, { gameId: "asc" }] });
     const saved = await Promise.all([
       api.saveCommunityGameEpitaph("grave-author", null, "grave-owned", " Ci-gît notre backlog "),
-      api.saveCommunityGameEpitaph("grave-member", null, "grave-owned", "Autre texte"),
+      api.saveCommunityGameEpitaph("grave-owner", null, "grave-owned", "Autre texte"),
     ]);
     expect(saved.sort()).toEqual(["exists", "saved"]);
     const row = await db.communityGameEpitaph.findFirstOrThrow();
@@ -75,14 +75,19 @@ describe.skipIf(!TEST_DATABASE_URL)("cimetière : droits et isolation Postgres",
     expect(await api.deleteCommunityGameEpitaph("grave-outsider", row.id)).toBe("unavailable");
   });
 
-  it("limite les mutations à l’auteur et aux modérateurs ; le jeu reste immuable", async () => {
+  it("réserve les mutations aux administrateurs, même pour un ancien auteur ; le jeu reste immuable", async () => {
     await api.saveCommunityGameEpitaph("grave-author", null, "grave-owned", "Au revoir");
     const row = await db.communityGameEpitaph.findFirstOrThrow();
+    expect(await api.saveCommunityGameEpitaph("grave-member", null, "grave-played", "Non")).toBe("unavailable");
     expect(await api.saveCommunityGameEpitaph("grave-member", row.id, "grave-owned", "Non")).toBe("unavailable");
     expect(await api.deleteCommunityGameEpitaph("grave-member", row.id)).toBe("unavailable");
     expect(await api.saveCommunityGameEpitaph("grave-author", row.id, "grave-played", "Autre jeu")).toBe("unavailable");
-    for (const user of ["grave-author", "grave-admin", "grave-owner"]) expect(await api.saveCommunityGameEpitaph(user, row.id, "grave-owned", user)).toBe("saved");
-    expect(await api.deleteCommunityGameEpitaph("grave-author", row.id)).toBe("deleted");
+    await db.membership.update({ where: { communityId_userId: { communityId: "grave-a", userId: "grave-author" } }, data: { role: "MEMBER" } });
+    expect((await api.listCommunityGameGraveyard("grave-author"))?.entries).toHaveLength(1);
+    expect(await api.saveCommunityGameEpitaph("grave-author", row.id, "grave-owned", "Non")).toBe("unavailable");
+    expect(await api.deleteCommunityGameEpitaph("grave-author", row.id)).toBe("unavailable");
+    for (const user of ["grave-admin", "grave-owner"]) expect(await api.saveCommunityGameEpitaph(user, row.id, "grave-owned", user)).toBe("saved");
+    expect(await api.deleteCommunityGameEpitaph("grave-admin", row.id)).toBe("deleted");
   });
 
   it("refuse un ancien onglet après changement de serveur", async () => {

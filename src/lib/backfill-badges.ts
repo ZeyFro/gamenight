@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { getMemberStats, lockCommunityProgress, durableProgressWhere } from "@/lib/member-stats";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { STAT_KEY_FOR_CRITERIA_TYPE, type BadgeCriteria, type BadgeStats } from "@/lib/badges";
@@ -44,7 +43,7 @@ async function unlockBadgeRaw(userId: string, communityId: string, badge: Badge)
   try {
     await prisma.$transaction(async (tx) => {
       if (!(await lockCommunityProgress(tx, communityId, userId))) return;
-      const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+      const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
       await scopedDb.userBadge.createMany({ data: [{ communityId, userId, badgeId: badge.id }], skipDuplicates: true });
       if (!badge.xpReward) return;
       // La récompense peut être manquante après un ancien crash, même si le badge existe.

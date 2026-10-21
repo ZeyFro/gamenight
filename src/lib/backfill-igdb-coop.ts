@@ -5,7 +5,7 @@
  * était déjà là mais posait la même question de principe — un backfill
  * réseau ne devrait jamais bloquer un déploiement). Déclenché à la place
  * par `POST /api/backfill/igdb-coop`, protégé par `CRON_SECRET`, appelé
- * par un cron externe (voir README).
+ * par un cron externe (voir docs/CRONS.md).
  *
  * Contrairement à `prisma/backfill-coop.mjs` (script Node/ESM autonome,
  * conservé pour un lancement local via `npm run backfill-coop`, pas

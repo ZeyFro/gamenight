@@ -44,11 +44,26 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     expect(link.getAttribute("target")).toBe("_blank");
   });
 
+  it("présente les soldes Steam comme repères toute la journée, sans suppression ni réduction garantie", () => {
+    const data = days.map((day) => day.date.toISOString() === selectedDate.toISOString()
+      ? { ...day, communityDates: [{ id: "steam-sale:winter-2026:start", title: "Début · Soldes Steam d’hiver 2026", kind: "STEAM_SALE" as const, date: selectedDate, createdById: "system", href: "https://partner.steamgames.com/doc/marketing/discounts/seasonalsales" }] }
+      : day);
+    render(<EventCalendar days={data} selectedDate={selectedDate} today={selectedDate} mode="collectif" view="mois" totalUsers={2} viewerId="admin" canManageCommunityDates />);
+    const agenda = within(screen.getByRole("complementary", { name: "Programme du jour" }));
+    expect(agenda.getByText("Repère Steam · Toute la journée")).toBeTruthy();
+    expect(agenda.getByText("Réductions selon les jeux.")).toBeTruthy();
+    const link = agenda.getByRole("link", { name: /Début · Soldes Steam d’hiver 2026/ });
+    expect(link.getAttribute("href")).toBe("https://partner.steamgames.com/doc/marketing/discounts/seasonalsales");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.queryByRole("button", { name: "Retirer du calendrier" })).toBeNull();
+  });
+
   it("conserve les filtres et la date quand on change de vue ou de mois", () => {
     render(<EventCalendar days={days} selectedDate={selectedDate} today={selectedDate} mode="individuel" pote="ami" view="mois" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
     expect(screen.getByRole("link", { name: "Semaine" }).getAttribute("href")).toBe("/calendrier?date=2026-10-08&mode=individuel&pote=ami&vue=semaine");
     expect(screen.getByRole("link", { name: "Mois suivant" }).getAttribute("href")).toContain("date=2026-11-01&mode=individuel&pote=ami");
-    expect(screen.getByRole("link", { name: /Afficher jeudi 8 octobre/ }).getAttribute("aria-pressed")).toBe("true");
+    const selectedDateLink = screen.getByRole("link", { name: "Afficher jeudi 8 octobre, date sélectionnée" });
+    expect(selectedDateLink.hasAttribute("aria-pressed")).toBe(false);
   });
   it("affiche sept jours lundi-dimanche et les flèches de semaine", () => {
     render(<EventCalendar days={days} selectedDate={selectedDate} today={selectedDate} mode="collectif" potes="a,b" view="semaine" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);

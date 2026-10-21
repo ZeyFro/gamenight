@@ -24,7 +24,7 @@ const PLATFORM_VARS = new Set([
  * qu'une entrée n'est pas périmée). Ne PAS en ajouter de nouvelles : documenter
  * la variable dans `.env.example`.
  */
-const KNOWN_UNDOCUMENTED = new Set(["AUTH_REQUIRE_GUILD_MEMBER"]);
+const KNOWN_UNDOCUMENTED = new Set<string>();
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

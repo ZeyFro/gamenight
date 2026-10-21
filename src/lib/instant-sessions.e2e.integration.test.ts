@@ -33,6 +33,7 @@ describe.skipIf(!TEST_DATABASE_URL)("jouer maintenant — bout en bout (Postgres
   let announceLib: typeof import("./instant-session-announce");
   let executorLib: typeof import("./notification-executor");
   let fetchMock: ReturnType<typeof vi.fn>;
+  let defaultCommunityId: string;
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as import("@prisma/client").PrismaClient;
@@ -50,7 +51,9 @@ describe.skipIf(!TEST_DATABASE_URL)("jouer maintenant — bout en bout (Postgres
       `TRUNCATE "Community", "NotificationDelivery", "NotificationEvent", "Notification", "InstantSessionPresenceInterval", "InstantSession", "Game", "User", "GroupSessionStats", "GroupGameStat", "GroupAchievement", "GroupActiveWeek" CASCADE`
     );
     // Le statut default d'une suite précédente ne fait pas partie du scénario.
-    (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
+    const defaults = await import("@/lib/default-community");
+    defaults.resetDefaultCommunityIdCache();
+    defaultCommunityId = await defaults.getDefaultCommunityId();
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
@@ -65,9 +68,11 @@ describe.skipIf(!TEST_DATABASE_URL)("jouer maintenant — bout en bout (Postgres
 
   let counter = 0;
   const uniq = (label: string) => `${label}-${++counter}`;
-  const makeUser = () => {
+  const makeUser = async () => {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: { communityId: defaultCommunityId, userId: user.id, status: "ACTIVE" } });
+    return user;
   };
   const makeGame = (addedById: string) =>
     db.game.create({ data: { name: uniq("game"), source: "MANUAL", addedById } });

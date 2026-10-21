@@ -85,7 +85,13 @@ describe.skipIf(!TEST_DATABASE_URL)("archivage immédiat des fils à la fin (Pos
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   async function makeSession(

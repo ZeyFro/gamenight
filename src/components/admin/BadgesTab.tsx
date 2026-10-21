@@ -19,9 +19,8 @@ export async function BadgesTab() {
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted">
-        Achievements automatiques, débloqués sans action volontaire (voir
-        le README). Pas de rôle admin dédié : tout le monde peut gérer
-        cette liste.
+        Achievements automatiques, débloqués sans action volontaire. Pas de
+        rôle admin dédié : tout le monde peut gérer cette liste.
       </p>
 
       <Card>
