@@ -10,7 +10,7 @@ Le champ `xpTotal` garde le rôle de progression. Gains : même crédit des deux
 
 Migration additive requise, sans restitution inventée des pertes historiques : le solde initial reprend la valeur actuelle. Une reconstruction depuis les seuls événements n'est pas fiable après les resets de saison et les débits de paris hors ledger.
 
-**Blocage Production :** `scripts/build.mjs` lance `prisma migrate deploy` au build de Production. Ne pas fusionner cette branche tant que cette migration Production n'est pas explicitement autorisée. Aucun flag Production ni message Discord réel pour la recette. Brouillon seulement, publication coordonnée avec root.
+**Blocage Production :** Sur `main`, `scripts/build.mjs` lance `prisma migrate deploy` hors Preview. Cette PR modifie ce script pour exécuter uniquement `prisma generate` puis le build Next : ni la fusion ni un build de ce SHA n'appliqueraient la migration. Le runtime de cette PR lit `xpBalance` dès la boutique; le déployer avant la création de la colonne est donc incompatible avec le schéma antérieur. Aucun mécanisme de suspension du déploiement Production à la fusion n'a été démontré. Garder cette PR en brouillon et ne pas fusionner ni déployer tant que la fenêtre, la barrière des écrivains et l'application séparée de la migration n'ont pas reçu d'autorisation. Aucun flag Production ni message Discord réel pour la recette.
 
 Avant une éventuelle publication ultérieure, prévoir une bascule contrôlée des writers : l'ancien code ne met pas à jour `xpBalance`. Une migration pendant que l'ancienne version reçoit des gains peut désynchroniser le solde avant la mise en ligne du nouveau code. Cette procédure de Production reste à faire examiner ; aucun déploiement de cette branche n'est autorisé actuellement.
 
