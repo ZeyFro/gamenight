@@ -2,6 +2,7 @@ import type { VoiceInterval } from "./discord-voice-presence";
 import { prisma } from "@/lib/prisma";
 import { getSessionAccessRole } from "@/lib/session-access";
 import { communityMemberUserWhere } from "@/lib/community-isolation";
+import { toWallClock } from "@/lib/wallclock";
 
 export type SessionVoiceConfig = { guildId: string; channelIds: readonly string[]; sessionId: string };
 
@@ -31,7 +32,7 @@ export async function storeSessionVoiceInterval(
     where: {
       id: config.sessionId,
       status: "SCHEDULED",
-      date: { lte: new Date(interval.startedAt) },
+      date: { lte: toWallClock(new Date(interval.startedAt)) },
       community: { is: {
         discordGuildId: config.guildId,
         status: "ACTIVE",
