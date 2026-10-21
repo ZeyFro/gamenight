@@ -1,20 +1,29 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { findExistingDefaultCommunityId } from "@/lib/default-community";
 
 export async function lockCreationMembers(tx: Prisma.TransactionClient, communityId: string | null, userIds: string[]): Promise<void> {
-  if (!isCommunityIsolationEnabled()) return;
   // Un parent historique null reste historique : seul son accès hérité au
   // serveur default est contrôlé, sans réaffecter la provenance du parent.
-  communityId ??= (await tx.community.findUnique({ where: { slug: "default" }, select: { id: true } }))?.id ?? null;
+  communityId ??= await findExistingDefaultCommunityId(tx);
   if (!communityId) throw new Error("Choisis un serveur accessible avant de créer.");
-  const [community] = await tx.$queryRaw<Array<{ status: string }>>`SELECT status FROM "Community" WHERE id = ${communityId} FOR SHARE`;
-  const members = await tx.$queryRaw<Array<{ userId: string; status: string }>>`
-    SELECT "userId", status FROM "Membership"
-    WHERE "communityId" = ${communityId} AND "userId" = ANY(${[...new Set(userIds)]}::text[])
-    ORDER BY "userId" FOR SHARE
+  // Le CTE membres dépend du CTE materialisé de communauté : verrou Community avant Membership.
+  const rows = await tx.$queryRaw<Array<{ communityStatus: string; userId: string | null; membershipStatus: string | null }>>`
+    WITH locked_community AS MATERIALIZED (
+      SELECT id, status FROM "Community" WHERE id = ${communityId} FOR SHARE
+    ), locked_members AS MATERIALIZED (
+      SELECT m."userId", m.status
+      FROM "Membership" m
+      JOIN locked_community c ON c.id = m."communityId"
+      WHERE m."userId" = ANY(${[...new Set(userIds)]}::text[])
+      ORDER BY m."userId"
+      FOR SHARE OF m
+    )
+    SELECT c.status AS "communityStatus", m."userId", m.status AS "membershipStatus"
+    FROM locked_community c
+    LEFT JOIN locked_members m ON TRUE
   `;
-  if (community?.status !== "ACTIVE" || userIds.some((id) => !members.some((m) => m.userId === id && m.status === "ACTIVE"))) {
+  if (rows[0]?.communityStatus !== "ACTIVE" || userIds.some((id) => !rows.some((row) => row.userId === id && row.membershipStatus === "ACTIVE"))) {
     throw new Error("Le serveur ou un invité n’est plus accessible. Actualise la sélection et réessaie.");
   }
 }
@@ -50,5 +59,5 @@ export async function createOnce<T>(
     await tx.creationIntent.create({ data: { actorId, kind, key, resourceId: resourceId(result) } });
     return { result, replayed: false };
   };
-  return transaction ? execute(transaction) : prisma.$transaction(execute, { timeout: 15_000 });
+  return transaction ? execute(transaction) : prisma.$transaction(execute, { timeout: 15_000, maxWait: 10_000 });
 }

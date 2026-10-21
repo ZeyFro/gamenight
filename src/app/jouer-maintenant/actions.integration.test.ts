@@ -82,7 +82,15 @@ describe.skipIf(!TEST_DATABASE_URL)("createInstantSessionAction (vraie server ac
   const uniq = (label: string) => `${label}-${++counter}`;
   const makeUser = () => {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    return (async () => {
+      const user = await db.user.create({ data: { discordId: id, discordName: id } });
+      await db.membership.create({ data: {
+        userId: user.id,
+        communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+        status: "ACTIVE",
+      } });
+      return user;
+    })();
   };
 
   /** Forme exacte du `<form>` : `gameId` caché + une entrée `notifyUserId` par case cochée. */

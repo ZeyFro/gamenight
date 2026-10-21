@@ -3,7 +3,6 @@ import { canAccessTournament } from "@/lib/community-access";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { buildBracketInTransaction } from "@/lib/tournaments";
 import { enqueueTournamentThreadMember } from "@/lib/tournament-announce";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
@@ -17,7 +16,7 @@ export async function registerTournamentParticipant(userId: string, tournamentId
     if (!tournament || tournament.status !== "REGISTRATION") return "unavailable";
     const communityId = await statsCommunityIdForSession(tournament.communityId);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable";
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const participants = await scopedDb.tournamentParticipant.findMany({ where: { tournamentId }, select: { userId: true } });
     if (participants.some(participant => participant.userId === userId)) return "already";
     if (participants.length >= tournament.maxPlayers) return "unavailable";

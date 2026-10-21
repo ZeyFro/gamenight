@@ -1,5 +1,5 @@
 import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { cronCommunityScope, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { cronCommunityScope } from "@/lib/community-isolation";
 import { canAccessSession } from "@/lib/session-access";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
@@ -34,7 +34,7 @@ export async function submitPronostic(
   voterId: string,
   predictedUserId: string
 ): Promise<boolean> {
-  if (isCommunityIsolationEnabled() && (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(predictedUserId, sessionId)))) return false;
+  if (!(await canAccessSession(voterId, sessionId)) || !(await canAccessSession(predictedUserId, sessionId))) return false;
   const scopedDb = await getScopedPrisma(voterId);
   const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
   if (!session) return false;

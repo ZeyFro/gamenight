@@ -81,9 +81,11 @@ describe.skipIf(!TEST_DATABASE_URL)("préférences et suggestions en Postgres is
     await db.community.update({ where: { id: "a" }, data: { status: "SUSPENDED" } });
     expect((await data.loadGameSuggestions("host", ["both", "friend"])).suggestions).toEqual([]);
   });
-  it("OFF garde la sélection explicite et les refus dans le périmètre global", async () => {
+  it("OFF garde les suggestions dans la communauté active sélectionnée", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     await db.userGame.create({ data: { gameId: "shared", userId: "foreign", owned: true } });
+    expect((await data.loadGameSuggestions("host", ["host", "foreign"])).error).toBe("participants_changed");
+    await db.user.update({ where: { id: "host" }, data: { activeCommunityId: "b" } });
     expect((await data.loadGameSuggestions("host", ["host", "foreign"])).suggestions.map(g => g.id)).toEqual(["shared"]);
     await db.userGameRefusal.create({ data: { userId: "foreign", gameId: "shared" } });
     expect((await data.loadGameSuggestions("host", ["host", "foreign"])).suggestions).toEqual([]);

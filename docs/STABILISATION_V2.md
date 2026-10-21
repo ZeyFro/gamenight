@@ -183,7 +183,7 @@ La mise en veille par défaut demande cinq minutes sans activité. Voir
 un ordre de grandeur, pas une attribution causale de la capture.
 
 Inventaire à comparer dans les journaux autorisés : executor chaque minute,
-rappels toutes les 15 minutes selon le README, synchronisation des guilds
+cadence des rappels selon la configuration externe (voir [CRONS.md](CRONS.md)), synchronisation des guilds
 quotidienne, profils/Steam/retention selon leurs cadences déjà configurées,
 polling des navigateurs, doubles jobs externes et previews actives. Les crons
 externes ne sont pas entièrement décrits par le dépôt. Le présent chantier

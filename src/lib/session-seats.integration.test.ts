@@ -191,10 +191,12 @@ describe.skipIf(!TEST_DATABASE_URL)("places : transactions, FIFO et isolation Po
     expect(await db.sessionSeat.findFirst({ where: { userId: "alice" } })).toMatchObject({ status: "WAITLIST" });
     expect(await db.notification.count()).toBe(0);
   });
-  it("flags OFF conserve les invitations privées ; supprimer le parent supprime ses sièges", async () => {
+  it("flags OFF garde une invitation privée dans son serveur et refuse B-only ; supprimer le parent supprime ses sièges", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    expect((await join("foreign")).ok).toBe(true);
+    expect(await join("alice")).toMatchObject({ ok: true, status: "WAITLIST" });
+    expect(await join("foreign")).toEqual({ ok: false, error: "access" });
     expect(await join("outsider")).toEqual({ ok: false, error: "access" });
+    expect(await db.sessionSeat.findFirst({ where: { sessionId: "s", userId: "foreign" } })).toBeNull();
     await db.session.delete({ where: { id: "s" } }); expect(await db.sessionSeat.count()).toBe(0);
   });
   it("migration à blanc avec lignes historiques : capacité NULL et votes conservés", async () => {

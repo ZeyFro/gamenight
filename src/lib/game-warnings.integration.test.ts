@@ -10,6 +10,7 @@ if (!TEST_DATABASE_URL) console.warn("[game-warnings] Postgres local absent : pe
 describe.skipIf(!TEST_DATABASE_URL)("avertissements, persistance et lecture des parties", () => {
   let db: import("@prisma/client").PrismaClient;
   let update: typeof import("@/app/jeux/warning-actions").updateGameWarnings;
+  let defaultCommunityId: string;
   beforeAll(async () => { db = (await import("@/lib/prisma")).prisma as typeof db; update = (await import("@/app/jeux/warning-actions")).updateGameWarnings; });
   afterAll(async () => { await db?.$disconnect(); });
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -17,7 +18,12 @@ describe.skipIf(!TEST_DATABASE_URL)("avertissements, persistance et lecture des 
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false"); vi.stubEnv("DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED", "false");
     vi.stubGlobal("fetch", vi.fn(() => { throw Error("Réseau réel interdit"); }));
     await db.$executeRawUnsafe('TRUNCATE "User", "Game" CASCADE');
+    const defaults = await import("@/lib/default-community");
+    defaults.resetDefaultCommunityIdCache();
+    defaultCommunityId = await defaults.getDefaultCommunityId();
+    await db.community.update({ where: { id: defaultCommunityId }, data: { status: "ACTIVE" } });
     await db.user.createMany({ data: [{ id: "owner", discordId: "owner", discordName: "Owner" }, { id: "other", discordId: "other", discordName: "Other" }] });
+    await db.membership.createMany({ data: ["owner", "other"].map(userId => ({ communityId: defaultCommunityId, userId, status: "ACTIVE" as const })) });
     await db.game.createMany({ data: [{ id: "g", name: "g", source: "MANUAL", addedById: "owner", isCoop: true, minPlayers: 2, maxPlayers: 4, igdbDetails: { genres: ["Puzzle"] } }, { id: "other-game", name: "Other", source: "MANUAL", addedById: "other" }] });
     await db.userGame.create({ data: { userId: "owner", gameId: "g", owned: true } });
     mocks.current.mockResolvedValue({ id: "owner" });

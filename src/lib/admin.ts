@@ -22,7 +22,7 @@ export { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
  *   redéploiement pour ajouter/retirer des admins.
  */
 export async function requireAdmin(): Promise<User | null> {
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) return null;
   const adminIds = parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS);
   return isAdminUser(user, adminIds) ? user : null;

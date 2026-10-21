@@ -19,7 +19,7 @@ import type { IgdbGameDetails } from "@/lib/igdb";
  *   à la demande au premier clic sur la fiche jeu — jamais en masse, cf.
  *   PR "fiche jeu"). Un jeu sans cache ne matche jamais ces deux
  *   filtres tant qu'il n'a pas été enrichi (stratégie "Option B",
- *   documentée dans le README) — c'est un choix assumé, pas un bug.
+ *   documentée dans docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md) — c'est un choix assumé, pas un bug.
  */
 
 export const GAME_MODES = ["solo", "multi", "coop", "local"] as const;

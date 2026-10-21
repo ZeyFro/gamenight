@@ -54,6 +54,7 @@ export async function sendSessionReminder(
   await createNotifications(
     players.map((u) => ({
       userId: u.id,
+      communityId: session.communityId,
       type: "REMINDER" as const,
       title: `⏰ Rappel — dans ${formatReminderTimingShort(actualMinutesRemaining)} !`,
       message: session.decidedGame!.name,

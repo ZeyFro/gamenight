@@ -1,7 +1,6 @@
 import type { Prisma, Session } from "@prisma/client";
 import { lockCreationMembers } from "@/lib/creation-intent";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { createInitialSessionInvites } from "@/lib/session-access";
 import { enqueueSessionCreationDeliveries, enqueueSessionInviteSyncForNewInvites } from "@/lib/session-announce";
 
@@ -21,9 +20,8 @@ export async function createVotingSessionInTransaction(
   await lockCreationMembers(tx, input.communityId, [input.createdById, ...input.notifiedUserIds]);
   // La portée fournie ici vient des appartenances verrouillées ci-dessus,
   // jamais d'une simple préférence de serveur reçue du navigateur.
-  const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled()
-    ? { communityIds: input.communityId ? [input.communityId] : [], includesDefault: input.communityId === null }
-    : null);
+  const scopedDb = scopedTransactionPrisma(tx,
+    { communityIds: input.communityId ? [input.communityId] : [], includesDefault: input.communityId === null });
   const created = await scopedDb.session.create({ data: input });
   const invites = await createInitialSessionInvites(created, input.createdById, input.notifiedUserIds, tx);
   if (input.announceViaBot) {

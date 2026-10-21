@@ -64,7 +64,7 @@ async function lockedRetentionScope(tx: Prisma.TransactionClient, scope: Isolati
  *     la fenêtre de 7 jours dépassée — voir `purgeEligibleSessionsBatch`/
  *     `purgeEligibleTournamentsBatch`. Rendu possible SANS perte de
  *     résultats/récompenses/statistiques grâce à un RÉSUMÉ DURABLE
- *     minimal (voir le README, "Résumé durable" — analyse complète des
+ *     minimal (voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, "Résumé durable" — analyse complète des
  *     dépendances, coûts, et ce qui reste volontairement hors périmètre) :
  *       - `SessionResult`/`SuperlativeAward`/`Pronostic`/`XpBet` — DÉCOUPLÉS
  *         de `Session` (`onDelete: SetNull`, jamais Cascade), avec 5
@@ -101,14 +101,14 @@ async function lockedRetentionScope(tx: Prisma.TransactionClient, scope: Isolati
  *     est un simple texte) — Vercel Blob n'est utilisé QUE pour la bannière
  *     de profil (`src/lib/banner-blob.ts`), scope utilisateur, hors de
  *     cette politique.
- *   - Hors périmètre, documenté explicitement (voir le README) : les
+ *   - Hors périmètre, documenté explicitement (voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md) : les
  *     statistiques GROUPE (pas par utilisateur) de `src/lib/home.ts`
  *     (`getGroupStats` — total de soirées jouées et jeu le plus joué DU
  *     GROUPE) continuent de compter des lignes `Session` live et perdront
  *     en exactitude au fil des purges — aucun résumé durable groupe n'est
  *     introduit par ce chantier (coût estimé : un compteur global +
  *     compteur par jeu, complexité jugée disproportionnée face à
- *     l'exigence "résumé minimal", voir le README pour le détail).
+ *     l'exigence "résumé minimal", voir docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md pour le détail).
  */
 
 export const RETENTION_CHAT_PURGE_DELAY_DAYS = HISTORY_VISIBILITY_WINDOW_DAYS;

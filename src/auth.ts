@@ -5,8 +5,15 @@ import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
 import { parseAdminDiscordIds } from "@/lib/admin-rules";
 import { listOAuthUserGuildIds } from "@/lib/discord-user-guilds";
-import { shouldSyncOAuthMemberships, syncOAuthMemberships } from "@/lib/community-oauth";
+import { syncOAuthMemberships } from "@/lib/community-oauth";
 import { ensureDefaultCommunityRecord } from "@/lib/default-community";
+/** Refus normal (compte sans communauté ACTIVE) : annule la transaction sans pile ni erreur applicative. */
+class NotAdmitted extends Error {
+  constructor() {
+    super("No authorized community");
+  }
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Discord({
@@ -25,22 +32,38 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!profile?.id) return false;
 
       const verifiedAt = new Date();
-      const sync = shouldSyncOAuthMemberships();
-      let guildIds: string[] = [];
-      let known = false;
-      if (sync) {
-        try {
-          if (!account?.access_token || !account.scope?.split(/\s+/).includes("guilds")) {
-            throw new Error("OAuth guilds scope missing");
-          }
-          guildIds = await listOAuthUserGuildIds(account.access_token);
-          await ensureDefaultCommunityRecord();
-          known = parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS).has(profile.id as string) ||
-            (await prisma.user.findUnique({ where: { discordId: profile.id as string }, select: { id: true } })) !== null;
-        } catch {
-          // Never log API bodies, OAuth tokens or network error messages.
+      const isAdmin = parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS).has(profile.id as string);
+
+      // Connexion fermée par défaut : un instantané Discord complet est TOUJOURS
+      // demandé. Un compte sans communauté ACTIVE est refusé, quelle que soit la
+      // valeur de AUTH_REQUIRE_GUILD_MEMBER (sans effet). Seuls les admins de
+      // ADMIN_DISCORD_IDS passent si l'instantané est indisponible (filet
+      // anti-verrouillage) : ils sont alors connectés sans synchronisation.
+      let guildIds: string[] | null = null;
+      try {
+        if (!account?.access_token || !account.scope?.split(/\s+/).includes("guilds")) {
+          throw new Error("OAuth guilds scope missing");
+        }
+        guildIds = await listOAuthUserGuildIds(account.access_token);
+      } catch {
+        // Never log API bodies, OAuth tokens or network error messages.
+        if (!isAdmin) {
           appLogger.warn("auth", "OAuth guild snapshot unavailable; login denied, memberships unchanged.");
           return false;
+        }
+        appLogger.warn("auth", "OAuth guild snapshot unavailable; admin login allowed, memberships unchanged.");
+      }
+      if (guildIds !== null) {
+        try {
+          await ensureDefaultCommunityRecord();
+        } catch {
+          // Base indisponible : pas un problème d'API Discord, message distinct.
+          if (!isAdmin) {
+            appLogger.warn("auth", "Default community unavailable; login denied, memberships unchanged.");
+            return false;
+          }
+          appLogger.warn("auth", "Default community unavailable; admin login allowed, memberships unchanged.");
+          guildIds = null;
         }
       }
 
@@ -57,18 +80,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             select: { id: true },
           });
 
-        if (!sync) {
+        if (guildIds === null) {
           await upsertUser(prisma);
         } else {
-          await prisma.$transaction(async (tx) => {
+          const snapshot = guildIds;
+          const admitted = await prisma.$transaction(async (tx) => {
+            // Compte déjà en base : l'instantané (départs → LEFT) est conservé même
+            // si la connexion est refusée. Compte jamais vu : retour arrière complet.
+            const existed = !isAdmin &&
+              (await tx.user.findUnique({ where: { discordId: profile.id as string }, select: { id: true } })) !== null;
             const { id: userId } = await upsertUser(tx);
-            const activeIds = await syncOAuthMemberships(tx, userId, guildIds, verifiedAt);
-            if (process.env.AUTH_REQUIRE_GUILD_MEMBER === "true" && !known && activeIds.length === 0) {
-              throw new Error("No authorized community");
-            }
+            const activeIds = await syncOAuthMemberships(tx, userId, snapshot, verifiedAt);
+            if (isAdmin || activeIds.length > 0) return true;
+            if (!existed) throw new NotAdmitted();
+            return false;
           });
+          if (!admitted) {
+            appLogger.warn("auth", "OAuth login denied: no ACTIVE community.", { discordId: profile.id });
+            return false;
+          }
         }
       } catch (error) {
+        if (error instanceof NotAdmitted) {
+          appLogger.warn("auth", "OAuth login denied: no ACTIVE community.", { discordId: profile.id });
+          return false;
+        }
         // Sans ce catch, une erreur Prisma ici remonte comme une
         // `CallbackRouteError` non "client-safe" pour Auth.js, qui
         // l'affiche comme une page générique "Server error / problem with

@@ -95,7 +95,7 @@ describe.skipIf(!TEST_DATABASE_URL)("En jeu maintenant (Postgres isolée + Steam
   let counter = 0;
   async function makeUser(overrides: Partial<{ steamId64: string | null; discordName: string; steamNowPlaying: string; steamNowPlayingSeenAt: Date; lastPlayedGame: string }> = {}) {
     counter += 1;
-    return db.user.create({
+    const user = await db.user.create({
       data: {
         discordId: `now-${counter}`,
         discordName: overrides.discordName ?? `Pote ${counter}`,
@@ -105,6 +105,12 @@ describe.skipIf(!TEST_DATABASE_URL)("En jeu maintenant (Postgres isolée + Steam
         lastPlayedGame: overrides.lastPlayedGame ?? null,
       },
     });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   const row = (id: string) => db.user.findUniqueOrThrow({ where: { id } });

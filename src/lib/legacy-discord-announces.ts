@@ -10,7 +10,7 @@ import { communityIdFilter, resolveActiveCommunityScope, isCommunityIsolationEna
  * ni ne supprime JAMAIS rien côté Discord — sert uniquement à préparer
  * une décision humaine ultérieure sur le traitement de ces messages
  * (aucune opération de nettoyage n'est exécutée par ce chantier, voir le
- * README, section "Anciennes annonces Discord publiques").
+ * docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md, section "Anciennes annonces Discord publiques").
  *
  * Limite assumée et documentée : ce module ne peut inventorier QUE ce que
  * la base sait (`NotificationDelivery`, chemin bot). Les annonces émises

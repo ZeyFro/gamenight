@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Isolation (PR4) — accès à un tournoi et communauté du classement. Éteint
- * (`COMMUNITY_ISOLATION_ENABLED` ≠ `true`) : aucun filtre, aucune lecture.
+ * (`COMMUNITY_ISOLATION_ENABLED` ≠ `true`) : seules les adhésions ACTIVES à
+ * `default` gardent le périmètre historique.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -38,10 +39,32 @@ describe("community-access — isolation (tournois, classement)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   describe("canAccessTournament", () => {
-    it("isolation éteinte : toujours vrai, aucune lecture (comportement historique)", async () => {
-      await expect(canAccessTournament("u1", "t1")).resolves.toBe(true);
-      expect(mocks.tournamentFindFirst).not.toHaveBeenCalled();
-      expect(mocks.membershipFindMany).not.toHaveBeenCalled();
+    it("isolation éteinte : membre B seulement, tournoi default refusé", async () => {
+      mocks.tournamentFindFirst.mockResolvedValue(null);
+      await expect(canAccessTournament("u1", "t1")).resolves.toBe(false);
+      expect(mocks.membershipFindMany).toHaveBeenCalledOnce();
+      expect(mocks.tournamentFindFirst).toHaveBeenCalledWith({
+        where: { id: "t1", OR: [{ communityId: { in: ["c-b"] } }] },
+        select: { id: true },
+      });
+    });
+
+    it("isolation éteinte : le membre B conserve ses accès explicites à B", async () => {
+      await expect(canAccessTournament("u1", "t-b")).resolves.toBe(true);
+      expect(mocks.tournamentFindFirst).toHaveBeenCalledWith({
+        where: { id: "t-b", OR: [{ communityId: { in: ["c-b"] } }] },
+        select: { id: true },
+      });
+    });
+
+    it("isolation éteinte : membre default, conserve null mais reste limité à ses communautés", async () => {
+      mocks.membershipFindMany.mockResolvedValue([m("c-def", "default")]);
+      mocks.tournamentFindFirst.mockResolvedValue(null);
+      await expect(canAccessTournament("u1", "t1")).resolves.toBe(false);
+      expect(mocks.tournamentFindFirst).toHaveBeenCalledWith({
+        where: { id: "t1", OR: [{ communityId: { in: ["c-def"] } }, { communityId: null }] },
+        select: { id: true },
+      });
     });
 
     it("allumée : le tournoi doit appartenir à une communauté de l'utilisateur", async () => {
@@ -71,10 +94,16 @@ describe("community-access — isolation (tournois, classement)", () => {
   });
 
   describe("getScoreboardCommunityId", () => {
-    it("isolation éteinte : undefined (= tous les utilisateurs, comme avant), aucune lecture", async () => {
-      await expect(getScoreboardCommunityId("u1", "c-b")).resolves.toBeUndefined();
-      expect(mocks.membershipFindMany).not.toHaveBeenCalled();
-      expect(mocks.membershipFindUnique).not.toHaveBeenCalled();
+    it("isolation éteinte : membre B seulement, aucun classement par repli default", async () => {
+      await expect(getScoreboardCommunityId("u1", "c-b")).resolves.toBe("c-b");
+      expect(mocks.membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: "u1", status: "ACTIVE", community: { status: "ACTIVE" } },
+      }));
+    });
+
+    it("isolation éteinte : le membre default voit le classement historique", async () => {
+      mocks.membershipFindMany.mockResolvedValue([m("c-def", "default")]);
+      await expect(getScoreboardCommunityId("u1", "c-b")).resolves.toBe("c-def");
     });
 
     it("allumée sans communauté demandée : la communauté active de l'utilisateur", async () => {

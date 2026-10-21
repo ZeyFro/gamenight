@@ -1,8 +1,9 @@
 import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
 import type { InstantSession, Prisma } from "@prisma/client";
 import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { wallClockNow } from "@/lib/wallclock";
 import { gameWarningsSelect, type GameWarningsData } from "@/lib/game-warnings";
 import { awardXp, isUniqueConstraintViolation } from "@/lib/xp-actions";
@@ -27,7 +28,7 @@ export { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-cons
  * cohérence stricte avec le reste de l'app (voir le commentaire de
  * fichier de `src/lib/wallclock.ts`) : une durée calculée en mélangeant
  * les deux sources introduirait un décalage systémique (classe de bug
- * déjà rencontrée et corrigée dans ce dépôt, cf. README "Fix cycle de vie
+ * déjà rencontrée et corrigée dans ce dépôt, cf. docs/archive/README_IMPLEMENTATION_HISTORY_2026-10.md "Fix cycle de vie
  * des soirées"). Comme la durée max (3h) est un simple OFFSET (jamais un
  * horaire calendaire affiché), le choix horloge-murale vs UTC réel
  * n'affecte pas la durée elle-même (le décalage s'annule dans
@@ -147,8 +148,12 @@ export async function createInstantSession(input: {
   gameId: string;
   notifiedUserIds: string[];
 }): Promise<CreateInstantSessionResult> {
-  const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(input.creatorId) : null;
-  if (isCommunityIsolationEnabled() && communityId === null) return { ok: false, reason: "not_found" };
+  const activeCommunityId = await resolveActiveCommunityId(input.creatorId);
+  if (activeCommunityId === null) return { ok: false, reason: "not_found" };
+  const legacyDefault = !isCommunityIsolationEnabled()
+    && await isMemberOfCommunity(input.creatorId, null)
+    && activeCommunityId === await getDefaultCommunityId();
+  const communityId = legacyDefault ? null : activeCommunityId;
   // Expiration paresseuse d'abord : une session échue mais pas encore
   // réglée par le cron garde l'intervalle de présence du créateur ouvert, ce
   // qui bloquerait la création (index unique partiel) jusqu'au prochain
@@ -174,7 +179,7 @@ export async function createInstantSession(input: {
   try {
     const { result: instantSession } = await createOnce(input.creatorId, "INSTANT_SESSION", input.creationKey, async (tx) => {
       await lockCreationMembers(tx, communityId, [input.creatorId, ...notifiedUserIds]);
-      const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(input.creatorId));
+      const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(input.creatorId, tx));
       const created = await scopedDb.instantSession.create({
         data: {
           ...withCommunity(communityId),
@@ -309,18 +314,24 @@ export async function changeInstantSessionGame(
 
   const session = await scopedDb.instantSession.findUnique({
     where: { id: instantSessionId },
-    select: { createdById: true, status: true },
+    select: { createdById: true, status: true, communityId: true },
   });
   if (!session) return { ok: false, reason: "not_found" };
   if (session.createdById !== requestedById) return { ok: false, reason: "not_creator" };
   if (session.status !== "ACTIVE") return { ok: false, reason: "ended" };
 
-  await prisma.$transaction(async tx => {
-    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById));
-    await scopedDb.instantSession.update({ where: { id: instantSessionId }, data: { gameId } });
+  const changed = await prisma.$transaction(async tx => {
+    await lockCreationMembers(tx, session.communityId, [requestedById]);
+    const scopedDb = scopedTransactionPrisma(tx, await getIsolationScope(requestedById, tx));
+    const updated = await scopedDb.instantSession.updateMany({
+      where: { id: instantSessionId, createdById: requestedById, status: "ACTIVE" },
+      data: { gameId },
+    });
+    if (updated.count === 0) return false;
     await enqueueInstantSessionInviteUpdate(instantSessionId, tx);
+    return true;
   });
-  return { ok: true };
+  return changed ? { ok: true } : { ok: false, reason: "ended" };
 }
 
 /**

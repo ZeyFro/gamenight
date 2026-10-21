@@ -1,5 +1,7 @@
 # Bascule multi-serveurs et ouverture à The Tower
 
+> **Contexte historique à revalider avant toute opération.** Ce runbook décrit le plan de rollout initial et les constats rapportés les 7–8 octobre ; il ne prouve pas les réglages distants actuels. Les nombres de migrations, états de The Tower et cadences cités plus loin sont des instantanés de cette période. #309 a corrigé depuis le défaut P1 d’accès collectif décrit dans la section de sécurité ci-dessous. Les flags, migrations et destinations restent à vérifier dans un environnement de recette avant toute bascule.
+
 Complément du 8 octobre : [stabilisation V2, mesures et diagnostics opérateur](STABILISATION_V2.md).
 Les builds Preview ne lancent plus de migration ; la procédure de production
 est conservée. Aucun flag ni réglage distant n’a été changé par ce chantier.
@@ -20,7 +22,7 @@ déclaré prêt sur la seule base des tests simulés ci-dessous.
 l’appelant, acquitte immédiatement la commande avec une réponse différée
 éphémère, puis travaille dans `after()` (route 120 s, budget 90 s). Il lit le
 vrai nom et l’icône du guild, y compris sur une communauté déjà ACTIVE et sur
-default ; la synchronisation quotidienne existante actualise ensuite ces
+default ; le cron community-guild-sync actualise ensuite ces
 métadonnées sans changer les slugs, appartenances ou XP.
 
 Avant toute création, le bot doit avoir Gérer les salons, Voir les salons,
@@ -86,13 +88,22 @@ une dernière page vide. Budget total 8 s, plafond 25 pages, absence de progress
 doublons, corps invalide, timeout et HTTP non-200 : snapshot rejeté intégralement.
 Une réponse HTTP 200 vide valide est distinguée d'une erreur remplacée par `[]`.
 
-La synchronisation est active si **l'un** de `AUTH_REQUIRE_GUILD_MEMBER`,
-`COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED` vaut exactement `true`.
-Tous trois OFF : profil upserté comme auparavant, aucun appel guilds et aucune
-écriture Membership ; le scope supplémentaire sera demandé à la prochaine vraie
-connexion. Les cookies OAuth anciens ne sont pas enrichis lors d'un rendu.
+La connexion est **fermée par défaut** (S0) : la synchronisation est toujours
+exécutée, quelle que soit la valeur de `AUTH_REQUIRE_GUILD_MEMBER`,
+`COMMUNITY_ISOLATION_ENABLED` ou `COMMUNITY_PICKER_ENABLED`. Un compte sans
+Membership dans une communauté ACTIVE (existant ou nouveau) est refusé ; un
+nouveau compte refusé n'est pas créé. `AUTH_REQUIRE_GUILD_MEMBER` est sans
+effet (laissée en place, ignorée). Les `discordId` de `ADMIN_DISCORD_IDS`
+passent toujours, même si l'API Discord échoue (simple upsert, sans
+synchronisation). Une session déjà ouverte reste valable jusqu'à son
+expiration : la reconnexion forcée admin (`forceReloginAt`) est une opération
+distincte. Les cookies OAuth anciens ne sont pas enrichis lors d'un rendu.
 `jwt`, `session` et les pages ne consultent pas Discord pour l'appartenance.
 Le cron des profils garde son rôle distinct de rafraîchissement des avatars.
+
+**État après #309** : le défaut P1 où un membre B-only ou un administrateur sans Membership pouvait lire ou écrire les données collectives de default même avec l’isolation éteinte a été corrigé dans [la PR #309](https://github.com/ZeyFro/gamenight/pull/309). Les contrôles d’accès consultent les Membership ; les scénarios B-only et admin sans Membership sont couverts dans [s0-access-controls.integration.test.ts](../src/lib/s0-access-controls.integration.test.ts). Voir aussi [la réconciliation sécurité](SECURITE_CLAUDE.md).
+
+Un ancien JWT n’est pas invalidé au seul déploiement : l’accès dépend de la Membership vérifiée en base, et un membre dont elle reste ACTIVE peut continuer jusqu’à l’expiration du JWT. La reconnexion forcée globale existe mais n’a pas été déclenchée. La course entre deux premières connexions reste une hypothèse non vérifiée, sans sévérité attribuée.
 
 | Situation à la connexion fraîche | Traitement |
 | --- | --- |
@@ -102,9 +113,9 @@ Le cron des profils garde son rôle distinct de rafraîchissement des avatars.
 | Guild inconnu | Ignoré ; aucune création/activation par OAuth. Installation/provisionnement puis setup sont requis. |
 | Départ confirmé par un snapshot complet | Membership ACTIVE de communauté ACTIVE devient LEFT avec date ; préférence invalide supprimée. Retour confirmé : LEFT redevient ACTIVE. |
 | Liste complète valide vide | Même règle de départ ; aucun repli vers default. Les communautés suspendues et REMOVED restent intacts. |
-| Erreur, scope absent ou page partielle | Nouvelle connexion refusée ; aucune mutation Membership ou révocation depuis la liste partielle. Une ancienne session n'est pas révoquée par cette erreur seule. |
-| Communauté ACTIVE sans association à un guild | Non autorisable par OAuth ; son ancienne appartenance devient LEFT. Vérifier l'association de default avant la bascule. |
-| Aucun serveur autorisé | Avec la porte AUTH : nouveaux comptes refusés atomiquement, sans compte résiduel ; existants/admins peuvent se connecter mais ne reçoivent aucun accès collectif. Sans la porte : compte accepté, sélecteur « aucun serveur ». |
+| Erreur, scope absent ou page partielle | Nouvelle connexion refusée (admins `ADMIN_DISCORD_IDS` acceptés sans synchronisation) ; aucune mutation Membership ou révocation depuis la liste partielle. Une ancienne session n'est pas révoquée par cette erreur seule. |
+| Communauté ACTIVE sans association à un guild | Non autorisable par OAuth ; son ancienne appartenance devient LEFT. Vérifier l'association de default avant le déploiement S0. |
+| Aucun serveur autorisé | Tout compte sans serveur autorisé est refusé : jamais vu, retour arrière complet (aucune ligne User) ; existant, les départs validés par l'instantané sont conservés avant le refus. Un admin de `ADMIN_DISCORD_IDS` est accepté sans accès collectif. |
 | Plusieurs serveurs, choix absent/invalide | Choix explicite requis ; résolution active vide, aucun repli silencieux vers un autre serveur. Sélecteur OFF conserve la règle historique default/premier Membership valide. |
 
 Profil et Membership sont écrits dans une transaction ; verrou User pour les
@@ -124,29 +135,30 @@ En cas de retrait urgent, utiliser le retrait administratif, sans attendre OAuth
 Les permissions `owner`/`permissions` des guilds OAuth ne deviennent jamais un
 rôle admin dans l'application et ne remplacent pas les contrôles de setup.
 
-Dès que la porte AUTH, isolation ou picker est ON, `seed-reconcile` conserve/crée
-la ligne default mais ne rattache plus automatiquement les comptes sans
-Membership : OAuth est la source d'admission. Faire le rattachement **historique**
-avant cette étape.
+`seed-reconcile` conserve/crée la ligne default mais ne rattache plus
+automatiquement les comptes sans Membership (S0, quels que soient les drapeaux) :
+OAuth est la source d'admission, chaque pote est rattaché à sa prochaine connexion.
+Les rôles OWNER/ADMIN de communauté ne sont plus attribués automatiquement (le rattachement supprimé était le seul code qui le faisait) : sur une base neuve ou un nouveau serveur, promotion manuelle ; la production garde ses rôles existants.
 
 ## Préconditions et sauvegarde — à effectuer réellement par l'opérateur
 
-1. Valider/revoir puis déployer cette PR dans une étape autorisée séparée.
-   Les checks GitHub/Vercel seuls ne valident pas les chemins Discord réels.
+1. Revoir le commit exact et autoriser séparément tout déploiement du lot de rollout ; les contrôles GitHub/Vercel seuls ne valident pas les parcours Discord réels.
 2. Prendre une sauvegarde restaurable de la base, vérifier son intégrité et
    noter le commit, les migrations appliquées, les flags et la configuration
    des crons. Conserver la procédure de restauration ; aucun rollback SQL de
    migration A/B n'est prévu. Ne jamais redéployer le code antérieur aux clés A/B.
-3. Vérifier `_prisma_migrations` (72 migrations acquises), les clés communautaires,
-   les statistiques historiques de default, la provenance nullable historique,
-   les rôles admin/OWNER et les intentions REWARD existantes. Cette PR n'ajoute
-   ni ne modifie de migration et ne demande aucun backfill de progression neuf.
+3. Comparer les migrations appliquées à la base avec celles suivies dans
+   `prisma/migrations`, puis contrôler les clés communautaires, les statistiques
+   historiques de `default`, la provenance nullable, les rôles admin/OWNER et les
+   intentions REWARD. Cette réconciliation n'ajoute ni ne modifie de migration
+   et ne demande aucun backfill de progression neuf.
 4. Tant que isolation/picker sont OFF et qu'aucun second serveur n'est ACTIVE,
    lancer l'existant `/api/backfill/seed-reconcile`, authentifié Bearer
    `CRON_SECRET`, et attendre son log final (202 lance le travail après réponse).
    Vérifier `Community.slug=default`, status ACTIVE, `discordGuildId` du serveur
-   historique correct, Membership historiques et `CommunityMemberStats` acquis.
-   Un LEFT/REMOVED déjà présent ne doit pas être écrasé.
+   historique correct et `CommunityMemberStats` acquis. Le seed ne crée aucun
+   Membership (S0) : vérifier seulement que ceux déjà en base sont intacts. Un
+   LEFT/REMOVED déjà présent ne doit pas être écrasé.
 5. Préparer un environnement d'essai avec application/bot Discord et base
    **séparés** ; ne pas brancher un bot de production sur des tests. Ne jamais
    considérer un benchmark local ou un build Preview comme un test de production.
@@ -157,7 +169,7 @@ avant cette étape.
 
 ## Portail Discord, commandes, installation et salons
 
-Ces opérations sont **à vérifier réellement**, aucune exécutée dans cette PR.
+Ces opérations sont **à vérifier réellement**, aucune exécutée lors de cette réconciliation documentaire.
 
 1. Dans le Developer Portal, activer l'installation **serveur** (Guild Install),
    avec scopes d'installation `bot` et `applications.commands`. La connexion
@@ -210,12 +222,12 @@ que la frontière d'accès soit opérationnelle.
 
 | Ordre | Action opérateur | Contrôle avant de continuer |
 | --- | --- | --- |
-| 1 | Déployer le login guilds, encore flags OFF ; sauvegarde et seed ci-dessus. | Login default/OAuth issuers et comptes historiques fonctionnent. |
+| 1 | Déployer le login avec une cohorte de recette limitée. | Vérifier l’association Discord de default et une Membership ACTIVE ; un compte admin sans Membership ne reçoit pas d’accès collectif. |
 | 2 | `COMMUNITY_ADMIN_ENABLED=true` ; configurer et vérifier les salons default et ceux du guild d'essai encore PENDING. | L'admin plateforme n'accorde pas un accès collectif à un non-membre ; salons étrangers refusés. |
 | 3 | `COMMUNITY_CHANNELS_ENABLED=true`, flags globaux bot SESSION/TOURNAMENT appropriés, `NOTIFICATION_EXECUTOR_ENABLED=true`. | Annonces default dans son guild ; crons authentifiés installés, aucune destination empruntée par un autre guild. |
-| 4 | Dans la fenêtre contrôlée, activer `COMMUNITY_ISOLATION_ENABLED=true` et `COMMUNITY_PICKER_ENABLED=true` ensemble. | Membres default seedés ; zéro serveur ferme les parcours ; plusieurs serveurs sans choix ne donnent rien. |
-| 5 | Utiliser **une seule fois**, après validation des étapes précédentes, le mécanisme existant `forceReloginAt` via Réglages admin/route admin autorisée. | Un ancien JWT est refusé ; nouvelle connexion autorise `guilds`, peuple/revalide les Membership et évite une boucle. Cette action globale peut annoncer la reconnexion sur Discord : opération réelle distincte, non exécutée ici. |
-| 6 | `AUTH_REQUIRE_GUILD_MEMBER=true` si la porte des nouveaux comptes doit être fermée. | Nouveau sans guild autorisé refusé ; ancien/admin sans guild ne reçoit aucun accès collectif. |
+| 4 | Dans la fenêtre contrôlée, activer `COMMUNITY_ISOLATION_ENABLED=true` et `COMMUNITY_PICKER_ENABLED=true` ensemble. | Membres default rattachés par leur dernière connexion OAuth ; zéro serveur ferme les parcours ; plusieurs serveurs sans choix ne donnent rien. |
+| 5 | Décider séparément si une reconnexion forcée est nécessaire. | Les accès consultent déjà les Membership en base après #309 ; l’action globale peut notifier sur Discord et n’a pas été lancée ici. |
+| 6 | Aucune action de migration ou d’activation n’est implicite. | Sans Membership autorisée, l’accès est refusé ; ADMIN_DISCORD_IDS donne les droits d’administration mais pas les données collectives sans Membership. |
 | 7 | `COMMUNITY_AUTO_CREATE_ENABLED=true`, webhook et cron `community-guild-sync`, puis `COMMUNITY_SETUP_COMMAND_ENABLED=true`. | Guilds nouveaux seulement PENDING tant qu'aucun setup/admin autorisé n'a activé ; setup OFF n'agit pas. |
 | 8 | Installer ou relancer setup sur The Tower, puis connexions fraîches de la cohorte limitée. | Setup complète ACTIVE sans doublons ; deux serveurs en parallèle satisfont la matrice réelle suivante. |
 
@@ -229,12 +241,7 @@ Ne pas retirer la configuration du transport WEBHOOK tant que des intentions
 WEBHOOK restent en attente, même après activation du bot. Vérifier les reprises
 admin REWARD et la purge sans renotification selon le document PR B.
 
-Crons requis : notification-executor chaque minute via cron externe (Vercel
-Hobby ne fournit pas cette cadence), community-guild-sync quotidien pour les
-installations/départs du bot, refresh-discord-profiles selon la cadence existante.
-Conserver les autres crons métier/retention existants et leurs flags ; les
-cleanups commencent en dry-run. `CRON_SECRET` absent → 503, non une réussite.
-Ne pas ajouter de job cron ni de secret par serveur.
+Configurer hors dépôt les tâches externes nécessaires aux fonctionnalités choisies. Les routes et méthodes sont dans [CRONS.md](CRONS.md) ; le dépôt ne fixe ni fréquence ni état de configuration. CRON_SECRET absent : les routes protégées répondent 503. Aucun job ni secret par serveur n’est ajouté par ce document.
 
 ## Essai limité et critère d'ouverture — encore non effectués réellement
 
@@ -285,18 +292,22 @@ appartenance ; ne déclencher aucune reconnexion globale par ajout de serveur.
    bouton. Identifier la ligne par son guild configuré, vérifier la cible et
    sauvegarder son statut, puis modifier cette seule ligne dans une transaction.
    Ne pas changer son guild, reparent les données ou supprimer les Membership.
-   Setup/OAuth ne doivent pas contourner cette suspension. Les résolveurs
+   Setup/OAuth ne doivent pas contourner cette suspension. S0 : suspendre une
+   communauté empêche la reconnexion de ses membres sans autre communauté ACTIVE
+   (admins exceptés) ; ne jamais suspendre `default`. Les résolveurs
    revalident le statut et les destinataires avant les prochains envois.
 3. Corriger la configuration et reprendre sur une cohorte, puis restaurer les
    flags/crons nécessaires et le statut après vérification autorisée. Les flags
    bot OFF/config absente gardent les intentions REWARD en attente ; certains
    autres résolveurs ont des échecs terminaux nécessitant un réessai admin.
-4. **Ne jamais éteindre l'isolation pour “revenir au mono-serveur” une fois que
-   des données nondefault existent** : le client flags OFF est transparent,
-   même si ces communautés sont suspendues. Suspendre seul n'efface pas cette
-   fuite potentielle lorsque l'isolation est OFF. Un retour complet aux flags
-   OFF exigerait une restauration/quarantaine contrôlée, pas une simple bascule.
-5. Aucun DROP, down-migration ni modification des 72 migrations. Un rollback
+4. Ne pas traiter le retour de `COMMUNITY_ISOLATION_ENABLED` à OFF comme un
+   rollback complet lorsque des données nondefault existent : les jobs système
+   repassent alors au seul périmètre `default` (`listCronCommunityIds`). Après
+   #309, les accès collectifs des utilisateurs restent vérifiés par Membership
+   même avec ce flag OFF. Avant un retour arrière, vérifier séparément le
+   périmètre des jobs et la visibilité des données ; suspendre une communauté
+   ne supprime ni ne migre ses données.
+5. Aucun DROP, down-migration ni modification des migrations existantes. Un retour arrière applicatif conserve les migrations acquises.
    de code doit rester compatible A/B et conserver le correctif issuer OAuth ;
    privilégier suspension et correction ciblée. Un restore de sauvegarde est
    une décision DBA séparée, avec perte des données postérieures à traiter.
@@ -380,7 +391,8 @@ indexé. L'admin et les crons système ont encore des inventaires globaux,
 notamment un appel salons par guild pour l'écran admin : ce n'est pas un
 travail exécuté à chaque connexion/page/session utilisateur.
 
-Validation ciblée avant le dernier ajustement du guard seed : 196 tests
+Historique antérieur à S0 (mécanisme « guard seed » / porte AUTH seule supprimé,
+chiffres non rejoués pour S0). Validation ciblée avant le dernier ajustement du guard seed : 196 tests
 auth/isolation/intégration dans 12 fichiers, puis 94 tests de chemins finaux
 dans sept fichiers. Après le test isolant spécifiquement la porte AUTH seule,
 les suites OAuth et seed/default ont encore passé 26 tests sur deux fichiers.

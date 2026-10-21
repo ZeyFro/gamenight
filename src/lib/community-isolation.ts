@@ -1,21 +1,17 @@
 import { communityRead } from "@/lib/community-read-context";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { DEFAULT_COMMUNITY_SLUG, findExistingDefaultCommunityId } from "@/lib/default-community";
 import { getActiveCommunityState, isCommunityPickerEnabled } from "@/lib/community-picker";
 
 /**
- * Multi-communautés, PR4 — isolation des données par communauté, derrière
- * `COMMUNITY_ISOLATION_ENABLED` (exactement `true`, éteint par défaut).
- *
- * Éteint : AUCUN filtre (chaque fonction renvoie `null` / `{}`), aucune
- * lecture en base — comportement strictement identique à avant.
- *
- * Allumé : un utilisateur ne voit que les données des communautés ACTIVE où
- * il a un Membership ACTIVE (relu en base à chaque appel, jamais dans le JWT).
+ * Multi-communautés, PR4 — les données collectives sont toujours limitées aux
+ * communautés ACTIVE où l'utilisateur a un Membership ACTIVE (relu en base à
+ * chaque appel, jamais dans le JWT). L'interrupteur n'accorde aucun droit.
  * `communityId = null` désigne la communauté `default` (lignes historiques) :
  * elles ne sont visibles qu'à ses membres. Fail-closed : sans aucune
- * communauté, rien n'est visible.
+ * communauté, rien n'est visible. Seuls les appels système explicites peuvent
+ * demander un scope global (`null`).
  *
  * Attention aux opérateurs Prisma : un `OR` vide ne renvoie RIEN mais un `AND`
  * vide renvoie TOUT. Ici le filtre est toujours un `OR` non vide.
@@ -34,11 +30,13 @@ export interface IsolationScope {
   includesDefault: boolean;
 }
 
-/** `null` si l'isolation est éteinte (aucun filtre à appliquer). */
-export async function getIsolationScope(userId: string): Promise<IsolationScope | null> {
-  return communityRead(`getIsolationScope:${userId}`, async () => {
-    if (!isCommunityIsolationEnabled()) return null;
-    const memberships = await prisma.membership.findMany({
+/** Portée collective d'un utilisateur ; une portée vide donne zéro droit. */
+export async function getIsolationScope(
+  userId: string,
+  reader: Pick<Prisma.TransactionClient, "membership"> = prisma
+): Promise<IsolationScope> {
+  const readScope = async () => {
+    const memberships = await reader.membership.findMany({
       where: { userId, status: "ACTIVE", community: { status: "ACTIVE" } },
       select: { communityId: true, community: { select: { slug: true } } },
     });
@@ -46,7 +44,10 @@ export async function getIsolationScope(userId: string): Promise<IsolationScope 
       communityIds: memberships.map((m) => m.communityId),
       includesDefault: memberships.some((m) => m.community.slug === DEFAULT_COMMUNITY_SLUG),
     };
-  });
+  };
+  // Une lecture passée par une transaction doit utiliser sa connexion et ne
+  // jamais attendre une seconde connexion alors que la transaction en garde une.
+  return reader === prisma ? communityRead(`getIsolationScope:${userId}`, readScope) : readScope();
 }
 
 /** Filtre des lignes `Session` / `Tournament` (colonne `communityId` nullable). */
@@ -78,15 +79,10 @@ export async function memberUserWhereFor(userId: string): Promise<Prisma.UserWhe
  * du tournoi, quelles que soient les autres communautés de l'invitant.
  */
 export async function communityMemberUserWhere(communityId: string | null): Promise<Prisma.UserWhereInput> {
-  if (!isCommunityIsolationEnabled()) return {};
   let id = communityId;
   if (id === null) {
-    const fallback = await prisma.community.findUnique({
-      where: { slug: DEFAULT_COMMUNITY_SLUG },
-      select: { id: true },
-    });
-    if (!fallback) return { id: { in: [] } };
-    id = fallback.id;
+    id = await findExistingDefaultCommunityId();
+    if (!id) return { id: { in: [] } };
   }
   return { memberships: { some: { communityId: id, status: "ACTIVE", community: { status: "ACTIVE" } } } };
 }
@@ -97,8 +93,9 @@ export async function communityMemberUserWhere(communityId: string | null): Prom
  * pages enfants (navigation côté client), il ne suffit donc pas seul.
  */
 export async function canViewPote(viewerId: string, poteId: string): Promise<boolean> {
-  if (!isCommunityIsolationEnabled() || viewerId === poteId) return true;
-  const where = memberUserWhere(await getIsolationScope(viewerId));
+  if (viewerId === poteId) return true;
+  const scope = await getIsolationScope(viewerId);
+  const where = memberUserWhere(scope);
   return (await prisma.user.findFirst({ where: { id: poteId, ...where }, select: { id: true } })) !== null;
 }
 
@@ -108,7 +105,8 @@ export async function canViewPote(viewerId: string, poteId: string): Promise<boo
  * aucune (jamais le roster de la communauté par défaut par défaut).
  */
 export async function creationMemberUserWhere(userId: string): Promise<Prisma.UserWhereInput> {
-  if (!isCommunityIsolationEnabled()) return {};
+  const scope = await getIsolationScope(userId);
+  if (scope.communityIds.length === 0 && !scope.includesDefault) return { id: { in: [] } };
   const communityId = await resolveActiveCommunityId(userId);
   if (communityId === null) return { id: { in: [] } };
   return { memberships: { some: { communityId, status: "ACTIVE" } } };
@@ -142,14 +140,13 @@ export async function resolveActiveCommunityId(userId: string): Promise<string |
 /**
  * Périmètre de la SEULE communauté « active » de l'utilisateur (voir
  * `resolveActiveCommunityId`), pour les surfaces qui ne montrent qu'un serveur à
- * la fois (chat global, dettes de l'accueil). `null` si l'isolation est éteinte ;
- * périmètre vide (rien de visible) si l'utilisateur n'a aucune communauté. Les
+ * la fois (chat global, dettes de l'accueil). Le scope vide refuse tout sans
+ * adhésion. Les
  * lignes historiques `communityId = null` ne sont visibles que si la communauté
  * active est `default`.
  */
-export async function resolveActiveCommunityScope(userId: string): Promise<IsolationScope | null> {
+export async function resolveActiveCommunityScope(userId: string): Promise<IsolationScope> {
   return communityRead(`resolveActiveCommunityScope:${userId}`, async () => {
-    if (!isCommunityIsolationEnabled()) return null;
     const communityId = await resolveActiveCommunityId(userId);
     if (communityId === null) return { communityIds: [], includesDefault: false };
     const community = await prisma.community.findUnique({ where: { id: communityId }, select: { slug: true } });
@@ -181,7 +178,13 @@ export async function listCronCommunityIds(): Promise<string[]> {
 
 /** Relu à la livraison : un départ/suspension coupe aussi les MP déjà en attente. */
 export async function isMemberOfCommunity(userId: string, communityId: string | null): Promise<boolean> {
-  const scope = await getIsolationScope(userId);
-  if (!scope) return true;
-  return communityId === null ? scope.includesDefault : scope.communityIds.includes(communityId);
+  let id = communityId;
+  if (id === null) {
+    id = await findExistingDefaultCommunityId();
+    if (!id) return false;
+  }
+  return (await prisma.membership.findFirst({
+    where: { userId, communityId: id, status: "ACTIVE", community: { status: "ACTIVE" } },
+    select: { id: true },
+  })) !== null;
 }

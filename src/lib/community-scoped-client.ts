@@ -4,7 +4,6 @@ import { getDefaultCommunityId } from "@/lib/default-community";
 import {
   communityIdFilter,
   getIsolationScope,
-  isCommunityIsolationEnabled,
   resolveActiveCommunityScope,
   type IsolationScope,
 } from "@/lib/community-isolation";
@@ -20,7 +19,7 @@ import {
  * via ce nom, et exige alors `getScopedPrisma` / `scopedPrisma` dans le fichier).
  *
  * Comportement :
- * - Isolation éteinte (`scope === null`) : transparent, AUCUN changement.
+ * - `scope === null` : accès global explicite, réservé aux appels système.
  * - Lectures, `update*`, `delete*`, `upsert`, `count`, `aggregate`, `groupBy` :
  *   le `where` reçoit le filtre `communityIdFilter` (un `OR` jamais vide :
  *   sans communauté, rien n'est visible). Sur les opérations « unique »
@@ -169,7 +168,7 @@ export function scopedTransactionPrisma(tx: Prisma.TransactionClient, scope: Iso
   });
 }
 
-/** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT) ; aucune lecture isolation éteinte. */
+/** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT), quel que soit le flag. */
 export async function getScopedPrisma(userId: string): Promise<ScopedPrisma> {
   return scopedPrisma(await getIsolationScope(userId));
 }
@@ -186,20 +185,16 @@ export async function getActiveScopedPrisma(userId: string): Promise<ScopedPrism
  * Client scopé sur UNE communauté connue (`null` = communauté par défaut, lignes
  * historiques) : pour les écritures DÉRIVÉES d'une ligne existante (ex. dettes
  * d'une soirée), qui héritent de la communauté de leur parent quel que soit
- * l'état d'appartenance de l'acteur. Transparent si l'isolation est éteinte.
+ * l'état d'appartenance de l'acteur. Le scope parent reste appliqué dans tous
+ * les modes.
  */
 export function scopedPrismaForCommunity(communityId: string | null): ScopedPrisma {
-  if (!isCommunityIsolationEnabled()) return scopedPrisma(null);
   return scopedPrisma({ communityIds: communityId === null ? [] : [communityId], includesDefault: communityId === null });
 }
 
-/**
- * Valeur de `communityId` à écrire. Isolation éteinte : vide (colonne laissée à
- * `null`, comme avant — même règle que la PR3 pour Session et Tournament) ;
- * allumée : la communauté, que le client scopé exige à la création.
- */
-export function withCommunity(communityId: string | null): { communityId?: string | null } {
-  return isCommunityIsolationEnabled() ? { communityId } : {};
+/** Valeur de `communityId` à écrire, y compris `null` pour les lignes historiques de `default`. */
+export function withCommunity(communityId: string | null): { communityId: string | null } {
+  return { communityId };
 }
 
 /**
@@ -208,7 +203,6 @@ export function withCommunity(communityId: string | null): { communityId?: strin
  * Pour les calculs qui portent sur une communauté entière (trophées de groupe).
  */
 export async function scopedPrismaForCommunityId(communityId: string): Promise<ScopedPrisma> {
-  if (!isCommunityIsolationEnabled()) return scopedPrisma(null);
   const defaultId = await getDefaultCommunityId();
   return scopedPrisma({ communityIds: [communityId], includesDefault: communityId === defaultId });
 }

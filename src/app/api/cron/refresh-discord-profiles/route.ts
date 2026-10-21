@@ -18,7 +18,7 @@ import { verifyCronRequest } from "@/lib/cron-auth";
  * (`src/lib/discord-profile.ts`) privilégie désormais les VRAIS jetons
  * OAuth de chaque user (persistés en base à chaque vraie reconnexion,
  * voir `auth.ts`), avec le bot en repli uniquement pour les users pas
- * encore reconnectés depuis ce déploiement. Voir le README pour le détail
+ * encore reconnectés depuis ce déploiement. Voir docs/COMMUNITY_ROLLOUT.md pour le détail
  * du diagnostic et le rollout progressif (les jetons OAuth ne se peuplent
  * qu'à la prochaine vraie reconnexion de chaque utilisateur).
  */

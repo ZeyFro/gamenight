@@ -28,9 +28,8 @@ export function ForceReloginCard({ lastTriggeredLabel }: { lastTriggeredLabel: s
         </h2>
         <p className="mt-1 text-sm text-muted">
           Déconnecte tout le monde et poste un message Discord invitant à se
-          reconnecter. Nécessaire pour que le cron des avatars Discord (voir
-          README) puisse enregistrer le jeton de chaque personne — à
-          utiliser une seule fois après ce déploiement.
+          reconnecter. La reconnexion renouvelle aussi les jetons Discord
+          utilisés par le cron de profils.
         </p>
         {lastTriggeredLabel && (
           <p className="mt-2 text-xs text-muted">

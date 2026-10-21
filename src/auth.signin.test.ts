@@ -27,7 +27,7 @@ describe("fresh OAuth signIn guild snapshot", () => {
     mocks.findUnique.mockResolvedValue(null);
     mocks.sync.mockResolvedValue(["a", "b"]);
     mocks.ensureDefault.mockResolvedValue({});
-    mocks.transaction.mockImplementation(async (fn) => fn({ user: { upsert: mocks.upsert } }));
+    mocks.transaction.mockImplementation(async (fn) => fn({ user: { upsert: mocks.upsert, findUnique: mocks.findUnique } }));
     mocks.http.mockResolvedValue(Response.json([{ id: "111" }, { id: "333" }]));
     vi.stubGlobal("fetch", mocks.http);
     for (const flag of ["AUTH_REQUIRE_GUILD_MEMBER", "COMMUNITY_PICKER_ENABLED", "COMMUNITY_ISOLATION_ENABLED"]) vi.stubEnv(flag, "false");
@@ -38,60 +38,64 @@ describe("fresh OAuth signIn guild snapshot", () => {
     user: { id, name: "Test" }, profile: { id, username: "Test" },
     account: { provider: "discord", providerAccountId: id, type: "oauth", access_token: token, scope },
   });
-  it("flags OFF: historical upsert, no guild API or membership writes", async () => {
-    expect(await call()).toBe(true);
-    expect(mocks.upsert).toHaveBeenCalledOnce();
-    expect(mocks.http).not.toHaveBeenCalled();
-    expect(mocks.transaction).not.toHaveBeenCalled();
-  });
-  it.each(["", "TRUE", "1", "false"])("non exact flag %j remains OFF", async (flag) => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", flag);
-    expect(await call()).toBe(true);
-    expect(mocks.http).not.toHaveBeenCalled();
-  });
-  it.each(["AUTH_REQUIRE_GUILD_MEMBER", "COMMUNITY_ISOLATION_ENABLED", "COMMUNITY_PICKER_ENABLED"])("%s: one guild request, transactional sync", async (flag) => {
-    vi.stubEnv(flag, "true");
+  it("no flag at all: one guild request, transactional sync, login accepted", async () => {
     expect(await call()).toBe(true);
     expect(mocks.http).toHaveBeenCalledOnce();
     expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.sync).toHaveBeenCalledWith(expect.anything(), "user", ["111", "333"], expect.any(Date));
   });
+  it.each(["AUTH_REQUIRE_GUILD_MEMBER", "COMMUNITY_ISOLATION_ENABLED", "COMMUNITY_PICKER_ENABLED"])(
+    "%s has no effect: same guild request and transactional sync whatever its value",
+    async (flag) => {
+      for (const value of ["", "false", "TRUE", "1", "true"]) {
+        vi.clearAllMocks();
+        mocks.upsert.mockResolvedValue({ id: "user" });
+        mocks.sync.mockResolvedValue(["a", "b"]);
+        mocks.transaction.mockImplementation(async (fn) => fn({ user: { upsert: mocks.upsert, findUnique: mocks.findUnique } }));
+        mocks.http.mockResolvedValue(Response.json([{ id: "111" }, { id: "333" }]));
+        vi.stubEnv(flag, value);
+        expect(await call()).toBe(true);
+        expect(mocks.http).toHaveBeenCalledOnce();
+        expect(mocks.transaction).toHaveBeenCalledOnce();
+      }
+    },
+  );
   it("existing account is synchronized too", async () => {
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "true");
     mocks.findUnique.mockResolvedValue({ id: "user" });
     expect(await call()).toBe(true);
     expect(mocks.sync).toHaveBeenCalledOnce();
   });
   it("new account with no authorized guild is denied in the transaction", async () => {
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "true");
     mocks.sync.mockResolvedValue([]);
     expect(await call()).toBe(false);
   });
-  it.each(["existing", "platform-admin"])("%s with no guild may log in but receives no membership", async (kind) => {
-    vi.stubEnv("AUTH_REQUIRE_GUILD_MEMBER", "true");
-    if (kind === "existing") mocks.findUnique.mockResolvedValue({ id: "user" });
+  it.each(["AUTH_REQUIRE_GUILD_MEMBER", "COMMUNITY_PICKER_ENABLED"])("existing account with no guild is denied even with %s=false", async (flag) => {
+    vi.stubEnv(flag, "false");
+    mocks.findUnique.mockResolvedValue({ id: "user" });
     mocks.sync.mockResolvedValue([]);
-    expect(await call(kind === "platform-admin" ? "999" : "222")).toBe(true);
+    expect(await call()).toBe(false);
     expect(mocks.sync).toHaveBeenCalledOnce();
   });
-  it("no admission gate: zero guilds leads to selector, not login denial", async () => {
+  it("platform admin with no guild may log in but receives no membership", async () => {
+    mocks.sync.mockResolvedValue([]);
+    expect(await call("999")).toBe(true);
+    expect(mocks.sync).toHaveBeenCalledOnce();
+  });
+  it("zero guilds leads to denial, not to a selector", async () => {
     vi.stubEnv("COMMUNITY_PICKER_ENABLED", "true");
     mocks.sync.mockResolvedValue([]);
-    expect(await call()).toBe(true);
+    expect(await call()).toBe(false);
   });
   it.each(["identify email", ""])("missing scope %j denied without API or writes", async (scope) => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     expect(await call("222", scope)).toBe(false);
     expect(mocks.http).not.toHaveBeenCalled();
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
   it("missing token denied", async () => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     expect(await call("222", "guilds", "")).toBe(false);
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
   it("API failure: memberships untouched, no secret logged", async () => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     mocks.http.mockRejectedValue(new Error("OAuth code=secret-code token=test-secret-token"));
     expect(await call()).toBe(false);
     expect(mocks.sync).not.toHaveBeenCalled();
@@ -99,7 +103,6 @@ describe("fresh OAuth signIn guild snapshot", () => {
     expect(JSON.stringify([...mocks.warn.mock.calls, ...mocks.error.mock.calls])).not.toMatch(/secret-code|test-secret-token/);
   });
   it("membership persistence failure denies login", async () => {
-    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     mocks.sync.mockRejectedValueOnce(new Error("DB down"));
     expect(await call()).toBe(false);
   });
