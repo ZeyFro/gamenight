@@ -2,6 +2,9 @@ param([string]$Script = 'scripts/recette-medias.mjs')
 $ErrorActionPreference = 'Stop'
 # Exiger un créneau PostgreSQL/Next exclusif avant ce lanceur; aucune migration ici.
 if ($env:DOCKER_HOST) { throw 'DOCKER_HOST distant interdit.' }
+$recipeDockerHost = docker context inspect --format '{{.Endpoints.docker.Host}}'
+if ($LASTEXITCODE -ne 0) { throw 'Impossible de vérifier le contexte Docker.' }
+if (-not ($recipeDockerHost.StartsWith('npipe:////./pipe/', [StringComparison]::Ordinal) -or $recipeDockerHost.StartsWith('unix://', [StringComparison]::Ordinal))) { throw 'Docker local requis.' }
 $recipeContainerEnv = docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' gamenight-fixe2-browser-pg
 if ($LASTEXITCODE -ne 0) { throw 'Conteneur local dédié absent.' }
 $recipePasswordRow = $recipeContainerEnv | Where-Object { $_ -like 'POSTGRES_PASSWORD=*' } | Select-Object -First 1
