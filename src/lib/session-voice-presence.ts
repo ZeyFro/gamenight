@@ -1,7 +1,7 @@
 import type { VoiceInterval } from "./discord-voice-presence";
 import { prisma } from "@/lib/prisma";
 import { getSessionAccessRole } from "@/lib/session-access";
-import { communityMemberUserWhere } from "@/lib/community-isolation";
+import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { toWallClock } from "@/lib/wallclock";
 
 export type SessionVoiceConfig = { guildId: string; channelIds: readonly string[]; sessionId: string };
@@ -46,14 +46,9 @@ export async function storeSessionVoiceInterval(
     select: { id: true, communityId: true },
   });
   if (!session) return false;
-  const member = await prisma.user.findFirst({
-    where: { id: user.id, ...await communityMemberUserWhere(session.communityId) },
-    select: { id: true },
-  });
-  if (!member) return false;
 
   const startedAt = new Date(interval.startedAt);
-  await prisma.sessionVoicePresenceInterval.upsert({
+  const upsert = {
     where: { sessionId_userId_channelId_startedAt: { sessionId: session.id, userId: user.id, channelId: interval.channelId, startedAt } },
     create: {
       sessionId: session.id,
@@ -67,8 +62,77 @@ export async function storeSessionVoiceInterval(
       durationSeconds,
       partial: interval.partial === true,
     },
+  };
+  const isolationEnabled = isCommunityIsolationEnabled();
+  return prisma.$transaction(async tx => {
+    // Keep the lock order aligned with OAuth (User before Membership) and
+    // serialize every acceptance predicate until the interval is committed.
+    const users = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "User"
+      WHERE id = ${user.id} AND "discordId" = ${interval.memberKey}
+      FOR SHARE
+    `;
+    if (!users.length) return false;
+
+    const sessions = await tx.$queryRaw<{
+      id: string;
+      createdById: string;
+      communityId: string | null;
+    }[]>`
+      SELECT id, "createdById", "communityId"
+      FROM "Session"
+      WHERE id = ${config.sessionId}
+        AND status = 'SCHEDULED'
+        AND date <= ${toWallClock(new Date(interval.startedAt))}
+      FOR SHARE
+    `;
+    const currentSession = sessions[0];
+    if (!currentSession?.communityId) return false;
+
+    const communities = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Community"
+      WHERE id = ${currentSession.communityId}
+        AND status = 'ACTIVE'
+        AND "discordGuildId" = ${config.guildId}
+      FOR SHARE
+    `;
+    if (!communities.length) return false;
+
+    const voiceConfigs = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "CommunityChannelConfig"
+      WHERE "communityId" = ${currentSession.communityId}
+        AND category = 'VOICE'
+        AND "discordChannelId" = ${interval.channelId}
+        AND enabled = true
+      FOR SHARE
+    `;
+    if (!voiceConfigs.length) return false;
+
+    if (currentSession.createdById !== user.id) {
+      const invites = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "SessionInvite"
+        WHERE "sessionId" = ${currentSession.id}
+          AND "userId" = ${user.id}
+          AND status = 'ACTIVE'
+        FOR SHARE
+      `;
+      if (!invites.length) return false;
+    }
+
+    if (isolationEnabled) {
+      const memberships = await tx.$queryRaw<{ userId: string }[]>`
+        SELECT "userId" FROM "Membership"
+        WHERE "communityId" = ${currentSession.communityId}
+          AND "userId" = ${user.id}
+          AND status = 'ACTIVE'
+        FOR SHARE
+      `;
+      if (!memberships.length) return false;
+    }
+
+    await tx.sessionVoicePresenceInterval.upsert(upsert);
+    return true;
   });
-  return true;
 }
 
 export async function readSessionVoicePresence(sessionId: string, viewerId: string) {

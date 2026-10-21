@@ -5,18 +5,24 @@ const mocks = vi.hoisted(() => ({
   userFindFirst: vi.fn(),
   userFindMany: vi.fn(),
   sessionFindFirst: vi.fn(),
+  transaction: vi.fn(),
+  membershipQueryRaw: vi.fn(),
   intervalUpsert: vi.fn(),
   intervalGroupBy: vi.fn(),
   accessRole: vi.fn(),
+  isolationEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: {
+  $transaction: mocks.transaction,
   user: { findUnique: mocks.userFindUnique, findFirst: mocks.userFindFirst, findMany: mocks.userFindMany },
   session: { findFirst: mocks.sessionFindFirst },
   sessionVoicePresenceInterval: { upsert: mocks.intervalUpsert, groupBy: mocks.intervalGroupBy },
 } }));
 vi.mock("@/lib/session-access", () => ({ getSessionAccessRole: mocks.accessRole }));
-vi.mock("@/lib/community-isolation", () => ({ communityMemberUserWhere: vi.fn(async () => ({ memberships: { some: { status: "ACTIVE" } } })) }));
+vi.mock("@/lib/community-isolation", () => ({
+  isCommunityIsolationEnabled: mocks.isolationEnabled,
+}));
 
 import { readSessionVoicePresence, sessionVoiceConfig, storeSessionVoiceInterval } from "./session-voice-presence";
 
@@ -30,6 +36,24 @@ const interval = { memberKey: "789012345678901234", channelId: "4567890123456789
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.isolationEnabled.mockReturnValue(true);
+  mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+    const query = strings.join("");
+    if (query.includes('FROM "User"')) return [{ id: "user-1" }];
+    if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1" }];
+    if (query.includes('FROM "Community"')) return [{ id: "community-1" }];
+    if (query.includes('FROM "CommunityChannelConfig"')) return [{ id: "voice-config" }];
+    if (query.includes('FROM "SessionInvite"')) return [{ id: "invite-1" }];
+    if (query.includes('FROM "Membership"')) return [{ userId: "user-1" }];
+    return [];
+  });
+  mocks.transaction.mockImplementation(async (work: (tx: {
+    $queryRaw: typeof mocks.membershipQueryRaw;
+    sessionVoicePresenceInterval: { upsert: typeof mocks.intervalUpsert };
+  }) => Promise<unknown>) => work({
+    $queryRaw: mocks.membershipQueryRaw,
+    sessionVoicePresenceInterval: { upsert: mocks.intervalUpsert },
+  }));
   process.env.VOICE_PRESENCE_ENABLED = "true";
 });
 
@@ -44,7 +68,6 @@ describe("voice presence session link (synthetic DB doubles)", () => {
   it("requires a configured session, community guild and enabled voice channel", async () => {
     const config = sessionVoiceConfig(env)!;
     mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
-    mocks.userFindFirst.mockResolvedValue({ id: "user-1" });
     mocks.sessionFindFirst.mockResolvedValue(null);
     expect(await storeSessionVoiceInterval(config, { ...interval, channelId: "000000000000000000" })).toBe(false);
     expect(mocks.sessionFindFirst).not.toHaveBeenCalled();
@@ -66,13 +89,20 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     }));
   });
 
-  it("stores a deduplicated interval only for an invited member of the configured session", async () => {
+  it("stores a deduplicated interval after revalidating each predicate under ordered row locks", async () => {
     const config = sessionVoiceConfig(env)!;
     mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
-    mocks.userFindFirst.mockResolvedValue({ id: "user-1" });
-    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
     mocks.intervalUpsert.mockResolvedValue({});
     expect(await storeSessionVoiceInterval(config, { ...interval, partial: true })).toBe(true);
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    const queries = mocks.membershipQueryRaw.mock.calls.map(([strings]) => strings.join(""));
+    expect(queries.map(query => query.match(/FROM "([^"]+)"/)?.[1])).toEqual([
+      "User", "Session", "Community", "CommunityChannelConfig", "SessionInvite", "Membership",
+    ]);
+    expect(queries.every(query => query.includes("FOR SHARE"))).toBe(true);
+    expect(mocks.membershipQueryRaw.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.transaction.mock.invocationCallOrder[0]);
+    expect(mocks.membershipQueryRaw.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.intervalUpsert.mock.invocationCallOrder[0]);
     expect(mocks.intervalUpsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { sessionId_userId_channelId_startedAt: { sessionId: "session-test", userId: "user-1", channelId: interval.channelId, startedAt: new Date(interval.startedAt) } },
       create: expect.objectContaining({ durationSeconds: 60, partial: true }),
@@ -83,10 +113,33 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     const config = sessionVoiceConfig(env)!;
     mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
     mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
-    mocks.userFindFirst.mockResolvedValue(null);
+    mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+      const query = strings.join("");
+      if (query.includes('FROM "Membership"')) return [];
+      if (query.includes('FROM "User"')) return [{ id: "user-1" }];
+      if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1" }];
+      if (query.includes('FROM "Community"')) return [{ id: "community-1" }];
+      if (query.includes('FROM "CommunityChannelConfig"')) return [{ id: "voice-config" }];
+      if (query.includes('FROM "SessionInvite"')) return [{ id: "invite-1" }];
+      return [];
+    });
     expect(await storeSessionVoiceInterval(config, interval)).toBe(false);
     expect(mocks.intervalUpsert).not.toHaveBeenCalled();
-    expect(mocks.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ memberships: { some: { status: "ACTIVE" } } }) }));
+    expect(mocks.membershipQueryRaw).toHaveBeenCalledTimes(6);
+  });
+
+  it("keeps membership checks disabled with community isolation off", async () => {
+    const config = sessionVoiceConfig(env)!;
+    mocks.isolationEnabled.mockReturnValue(false);
+    mocks.userFindUnique.mockResolvedValue({ id: "user-1" });
+    mocks.sessionFindFirst.mockResolvedValue({ id: "session-test", communityId: "community-1" });
+    mocks.intervalUpsert.mockResolvedValue({});
+    expect(await storeSessionVoiceInterval(config, interval)).toBe(true);
+    expect(mocks.userFindFirst).not.toHaveBeenCalled();
+    expect(mocks.membershipQueryRaw).toHaveBeenCalledTimes(5);
+    expect(mocks.membershipQueryRaw.mock.calls.map(([strings]) => strings.join("")).join(" ")).not.toContain('FROM "Membership"');
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.intervalUpsert).toHaveBeenCalledOnce();
   });
 
   it("shows session totals to the creator only, and keeps the flag gate", async () => {
