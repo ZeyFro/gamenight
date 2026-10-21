@@ -4,19 +4,19 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { assertLocalDockerContext } from "./recette-local-docker.mjs";
+import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docker.mjs";
 
 const baseline = resolve(process.argv[2] ?? "");
 assert.ok(baseline.endsWith("schema.prisma"), "Donner le schéma du checkout main sans migration XP");
 assert.ok(!readFileSync(baseline, "utf8").includes("xpBalance"), "Le baseline doit précéder #291");
+const dockerHost = assertLocalDockerContext();
 const container = "gamenight-test-pg";
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, ...options });
+  const result = spawnSync(command, command === "docker" ? localDockerArgs(dockerHost, args) : args, { encoding: "utf8", windowsHide: true, ...options });
   if (result.error) throw result.error;
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout.trim();
 }
-assertLocalDockerContext();
 assert.equal(run("docker", ["port", container, "5432/tcp"]), "127.0.0.1:55439");
 const stamp = Date.now();
 const database = `gamenight_xp_rehearsal_${stamp}`;
@@ -64,7 +64,7 @@ assert.equal(sql(database, 'SELECT count(*) FROM "CommunityMemberStats" WHERE "x
 const runtimeRole = `gamenight_xp_readonly_${stamp}`;
 sql(database, `CREATE ROLE ${runtimeRole} NOLOGIN; GRANT USAGE ON SCHEMA public TO ${runtimeRole}; GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${runtimeRole};`);
 assert.equal(sql(database, `SET ROLE ${runtimeRole}; SELECT count(*) FROM "CommunityMemberStats";`).split("\n").at(-1), String(values.length + 1));
-const denied = spawnSync("docker", ["exec", "-i", container, "psql", "-X", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1", "-At"], {
+const denied = spawnSync("docker", localDockerArgs(dockerHost, ["exec", "-i", container, "psql", "-X", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1", "-At"]), {
   encoding: "utf8", windowsHide: true,
   input: `SET ROLE ${runtimeRole}; UPDATE "CommunityMemberStats" SET "xpTotal" = "xpTotal" + 1;`,
 });

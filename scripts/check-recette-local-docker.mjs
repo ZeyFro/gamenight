@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertLocalDockerContext } from "./recette-local-docker.mjs";
+import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docker.mjs";
 import { recetteDatabaseTarget } from "./recette-database-target.mjs";
 import { createRecipeSafeDispatcher } from "./recette-medias-dispatcher.mjs";
 import { disableExistingSuperlativeCategories, restoreRecipeSuperlativeCategories } from "./recette-superlative-category-state.mjs";
@@ -21,14 +21,17 @@ function fakeDocker(output) {
 }
 
 for (const endpoint of ["npipe:////./pipe/docker_engine", "unix:///var/run/docker.sock"]) {
-  assert.doesNotThrow(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`), {}));
+  assert.equal(assertLocalDockerContext(fakeDocker(`${endpoint}\n`), {}), endpoint);
+  assert.deepEqual(localDockerArgs(endpoint, ["port", "gamenight-test-pg", "5432/tcp"]), ["--host", endpoint, "port", "gamenight-test-pg", "5432/tcp"]);
 }
+assert.throws(() => localDockerArgs("tcp://docker.example:2376", ["port"]), /Docker local requis/);
 for (const endpoint of ["ssh://docker.example", "tcp://127.0.0.1:2375", "npipe:////server/pipe/docker_engine", ""]) {
   assert.throws(() => assertLocalDockerContext(fakeDocker(`${endpoint}\n`), {}), /Docker local requis/);
 }
 let dockerCalled = false;
-assert.throws(() => assertLocalDockerContext(() => { dockerCalled = true; return "npipe:////./pipe/docker_engine"; }, { DOCKER_HOST: "tcp://docker.example:2376" }), /DOCKER_HOST défini interdit/);
+assert.throws(() => assertLocalDockerContext(() => { dockerCalled = true; return "npipe:////./pipe/docker_engine"; }, { DOCKER_HOST: "tcp://docker.example:2376" }), /DOCKER_HOST non vide interdit/);
 assert.equal(dockerCalled, false, "DOCKER_HOST doit être refusé avant toute commande Docker");
+assert.equal(assertLocalDockerContext(fakeDocker("npipe:////./pipe/docker_engine\n"), { DOCKER_HOST: "" }), "npipe:////./pipe/docker_engine");
 const explicitTarget = {
   GAMENIGHT_RECIPE_PG_CONTAINER: "gamenight-recipe-fresh",
   GAMENIGHT_RECIPE_PG_PORT: mockPort,
@@ -55,7 +58,7 @@ try {
     encoding: "utf8",
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr + result.stdout, /DOCKER_HOST défini interdit/);
+  assert.match(result.stderr + result.stdout, /DOCKER_HOST non vide interdit/);
 } finally {
   rmSync(xpTemporaryDirectory, { recursive: true, force: true });
 }
