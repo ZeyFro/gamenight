@@ -126,7 +126,9 @@ export function createVoicePresenceWorker(options: {
     if (!started || stopped || polling || failure) return;
     polling = true;
     try {
-      const targets = normalizedTargets(await options.loadTargets());
+      const loadedTargets = await options.loadTargets();
+      if (!started || stopped || failure) return;
+      const targets = normalizedTargets(loadedTargets);
 
       for (const sessionId of pausedSessions) {
         if (!targets.has(sessionId)) pausedSessions.delete(sessionId);
@@ -141,6 +143,7 @@ export function createVoicePresenceWorker(options: {
       }
 
       for (const [sessionId, current] of targets) {
+        if (!started || stopped || failure) break;
         if (pausedSessions.has(sessionId) || collectors.has(sessionId)) continue;
         const callbacks: VoicePresenceCollectorCallbacks = {
           onFatal: failure => { void fail({ kind: "gateway", failure }); },

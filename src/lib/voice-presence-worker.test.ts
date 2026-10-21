@@ -84,6 +84,21 @@ describe("voice presence worker (synthetic dependencies only)", () => {
     expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({ kind: "discovery" }));
   });
 
+  it("does not create collectors when stopped during target discovery", async () => {
+    let resolveTargets!: (targets: readonly VoicePresenceTarget[]) => void;
+    const loadTargets = vi.fn(() => new Promise<readonly VoicePresenceTarget[]>(resolve => { resolveTargets = resolve; }));
+    const createCollector = vi.fn(() => ({ start: vi.fn(), stop: vi.fn() }));
+    const worker = createVoicePresenceWorker({ loadTargets, createCollector, onFatal: vi.fn() });
+
+    const starting = worker.start();
+    await vi.waitFor(() => expect(loadTargets).toHaveBeenCalledOnce());
+    await worker.stop();
+    resolveTargets([target("session-active")]);
+    await starting;
+
+    expect(createCollector).not.toHaveBeenCalled();
+  });
+
   it("keeps a committed session stopped until it disappears from discovery", async () => {
     let targets = [target("session-active")];
     const collector = { start: vi.fn(), stop: vi.fn() };
