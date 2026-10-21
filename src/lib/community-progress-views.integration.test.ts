@@ -119,13 +119,13 @@ describe.skipIf(!TEST_DATABASE_URL)("progression : vues et système de deux serv
     expect(badges.find((b) => b.id === ids["badge-b"])?.unlockedAt).not.toBeNull();
     expect(badges.find((b) => b.id === ids["badge-a"])?.unlockedAt).toBeNull();
   });
-  it("badges flags OFF : default seulement, sans exigence d'appartenance", async () => {
+  it("badges flags OFF : un membre révoqué ne reçoit pas les badges de default par repli", async () => {
     await db.userBadge.create({ data: { communityId: ids.default, userId: ids.shared, badgeId: ids["badge-a"] } });
     await db.membership.updateMany({ where: { userId: ids.shared }, data: { status: "REMOVED" } });
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     const tree = await (await import("@/app/potes/[id]/badges/page")).default({ params: Promise.resolve({ id: ids.shared }) });
     const badges = elements(tree).find((e) => Array.isArray(e.props.badges))!.props.badges as Array<{ id: string; unlockedAt: Date | null }>;
-    expect(badges.find((b) => b.id === ids["badge-a"])?.unlockedAt).not.toBeNull();
+    expect(badges.find((b) => b.id === ids["badge-a"])?.unlockedAt).toBeNull();
     expect(badges.find((b) => b.id === ids["badge-b"])?.unlockedAt).toBeNull();
   });
   it("accueil : feed et streak ne mélangent pas le membre commun A+B", async () => {
@@ -136,6 +136,7 @@ describe.skipIf(!TEST_DATABASE_URL)("progression : vues et système de deux serv
     await choose("b"); expect((await home.getGroupStats(ids.shared)).bestActiveStreak?.streakCount).toBe(20);
   });
   it("XP : retour flags OFF choisit default et ne mélange pas les événements B", async () => {
+    await db.membership.create({ data: { communityId: ids.default, userId: ids.shared, status: "ACTIVE" } });
     await db.communityMemberStats.create({ data: { communityId: ids.default, userId: ids.shared, xpTotal: 7 } });
     await db.xpEvent.create({ data: { communityId: ids.default, userId: ids.shared, sourceId: "default", reason: "PARTICIPATE", amount: 7 } });
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");

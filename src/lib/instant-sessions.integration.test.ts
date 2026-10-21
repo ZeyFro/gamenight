@@ -30,6 +30,7 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
   let announceLib: typeof import("./instant-session-announce");
   let executorLib: typeof import("./notification-executor");
   let fetchMock: ReturnType<typeof vi.fn>;
+  let defaultCommunityId: string;
 
   beforeAll(async () => {
     const prismaModule = await import("@/lib/prisma");
@@ -55,6 +56,10 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
     await db.$executeRawUnsafe(
       `TRUNCATE "NotificationDelivery", "NotificationEvent", "Notification", "InstantSessionPresenceInterval", "InstantSession", "Game", "User", "GroupSessionStats", "GroupGameStat", "GroupAchievement", "GroupActiveWeek" CASCADE`
     );
+    const defaults = await import("./default-community");
+    defaults.resetDefaultCommunityIdCache();
+    defaultCommunityId = await defaults.getDefaultCommunityId();
+    await db.community.update({ where: { id: defaultCommunityId }, data: { status: "ACTIVE" } });
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-bot-token");
@@ -75,7 +80,9 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
 
   async function makeUser(silenceReminders = false) {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id, silenceReminders } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id, silenceReminders } });
+    await db.membership.create({ data: { communityId: defaultCommunityId, userId: user.id, status: "ACTIVE" } });
+    return user;
   }
   async function makeGame(addedById: string) {
     return db.game.create({ data: { name: uniq("game"), source: "MANUAL", addedById } });

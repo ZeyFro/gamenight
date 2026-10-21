@@ -88,6 +88,13 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       data: { name: "Tournoi A", createdById: ids.memberA, gameId: game.id, maxPlayers: 4 },
     })).id;
     await db.chatMessage.create({ data: { userId: ids.memberA, content: "message de A" } });
+    ids.sessionB = (await db.session.create({
+      data: { date: new Date(Date.now() + 86_400_000), createdById: ids.memberB, communityId: ids.B },
+    })).id;
+    ids.tournamentB = (await db.tournament.create({
+      data: { name: "Tournoi B", createdById: ids.memberB, gameId: game.id, maxPlayers: 4, communityId: ids.B },
+    })).id;
+    await db.chatMessage.create({ data: { userId: ids.memberB, content: "message de B", communityId: ids.B } });
     await db.communityMemberStats.create({ data: { communityId: ids.A, userId: ids.memberA, xpTotal: 500 } });
   });
 
@@ -118,31 +125,33 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       await expect(requireMembership(ids.A)).rejects.toThrow(NOT_FOUND);
     });
 
-    // ÉCARTS CONNUS : isolation éteinte = « aucun filtre » (CLAUDE.md, COMMUNITY_ISOLATION_ENABLED).
-    // Ces assertions DÉCRIVENT le comportement actuel pour qu'un correctif les fasse changer
-    // volontairement ; elles ne cautionnent pas l'écart. Corriger = refuser à la connexion tout
-    // compte hors communauté par défaut tant que l'isolation est éteinte (décision produit).
-    it("ÉCART CONNU : lit le tournoi de A et le canal global de A", async () => {
+    it("isolation éteinte : un membre B lit B mais jamais le tournoi ni le canal global de default/A", async () => {
       asUser("member-b");
       const { canAccessTournament } = await import("@/lib/community-access");
+      const { canAccessSession } = await import("@/lib/session-access");
       const { getChatMessagesAction } = await import("@/app/chat/actions");
-      expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(true);
-      expect(((await getChatMessagesAction(null)) ?? []).map((m) => m.content)).toContain("message de A");
+      expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
+      expect(await canAccessTournament(ids.memberB, ids.tournamentB)).toBe(true);
+      expect(await canAccessSession(ids.memberB, ids.sessionB)).toBe(true);
+      const messages = await getChatMessagesAction(null);
+      expect(messages?.map((m) => m.content)).toContain("message de B");
+      expect(messages?.map((m) => m.content)).not.toContain("message de A");
     });
 
-    it("ÉCART CONNU : écrit dans le canal global de A (communityId nul = par défaut)", async () => {
+    it("isolation éteinte : le chat global conserve un rattachement explicite B", async () => {
       asUser("member-b");
       const { sendChatMessageAction } = await import("@/app/chat/actions");
       expect(await sendChatMessageAction(chatForm("bonjour depuis B"))).toMatchObject({ ok: true });
-      const row = await db.chatMessage.findFirstOrThrow({ where: { userId: ids.memberB } });
-      expect(row.communityId).toBeNull();
+      expect((await db.chatMessage.findFirstOrThrow({ where: { userId: ids.memberB, content: "bonjour depuis B" } })).communityId).toBe(ids.B);
+      expect(await db.chatMessage.count({ where: { userId: ids.memberB, communityId: null } })).toBe(0);
     });
 
-    it("ÉCART CONNU : la simple visite (getCurrentUser) crée sa ligne de statistiques dans A", async () => {
+    it("isolation éteinte : la visite d'un membre B crée/lit uniquement ses statistiques B", async () => {
       asUser("member-b");
       const { getCurrentUser } = await import("@/lib/current-user");
       expect(await getCurrentUser()).not.toBeNull();
-      expect(await statsOf(ids.A, ids.memberB)).not.toBeNull();
+      expect(await statsOf(ids.A, ids.memberB)).toBeNull();
+      expect(await statsOf(ids.B, ids.memberB)).not.toBeNull();
     });
   });
 
@@ -156,12 +165,14 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       const { getChatMessagesAction, sendChatMessageAction } = await import("@/app/chat/actions");
       const { getCurrentUser } = await import("@/lib/current-user");
       expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
+      expect(await canAccessTournament(ids.memberB, ids.tournamentB)).toBe(true);
       expect(await canAccessSession(ids.memberB, ids.sessionA)).toBe(false);
+      expect(await canAccessSession(ids.memberB, ids.sessionB)).toBe(true);
       await expect(requireMembership(ids.A)).rejects.toThrow(NOT_FOUND);
       expect(((await getChatMessagesAction(null)) ?? []).map((m) => m.content)).not.toContain("message de A");
 
       expect(await sendChatMessageAction(chatForm("bonjour depuis B"))).toMatchObject({ ok: true });
-      expect((await db.chatMessage.findFirstOrThrow({ where: { userId: ids.memberB } })).communityId).toBe(ids.B);
+      expect((await db.chatMessage.findFirstOrThrow({ where: { userId: ids.memberB, content: "bonjour depuis B" } })).communityId).toBe(ids.B);
 
       expect(await getCurrentUser()).not.toBeNull();
       expect(await statsOf(ids.A, ids.memberB)).toBeNull();
@@ -187,6 +198,22 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await requireAdmin()).toBeNull();
     });
 
+    it("User.role=ADMIN sans Membership garde uniquement requireAdmin, pas de communauté par défaut", async () => {
+      await db.user.update({ where: { id: ids.admin }, data: { role: "ADMIN" } });
+      vi.stubEnv("ADMIN_DISCORD_IDS", "quelquun-d-autre");
+      asUser("secours-admin");
+      const { requireAdmin } = await import("@/lib/admin");
+      const { getIsolationScope } = await import("@/lib/community-isolation");
+      const { canAccessTournament } = await import("@/lib/community-access");
+      const { getCurrentUser } = await import("@/lib/current-user");
+      expect((await requireAdmin())?.id).toBe(ids.admin);
+      expect(await getIsolationScope(ids.admin)).toEqual({ communityIds: [], includesDefault: false });
+      expect(await canAccessTournament(ids.admin, ids.tournamentA)).toBe(false);
+      expect(await getCurrentUser()).toBeNull();
+      expect(await db.communityMemberStats.count({ where: { userId: ids.admin } })).toBe(0);
+      expect(await db.membership.count({ where: { userId: ids.admin } })).toBe(0);
+    });
+
     it("isolation ALLUMÉE : aucun accès collectif implicite (A comme B), aucune écriture", async () => {
       isolation(true);
       asUser("secours-admin");
@@ -202,24 +229,26 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await canAccessSession(ids.admin, ids.sessionA)).toBe(false);
       await expect(requireMembership(ids.A)).rejects.toThrow(NOT_FOUND);
       await expect(requireMembership(ids.B)).rejects.toThrow(NOT_FOUND);
-      expect(await getChatMessagesAction(null)).toEqual([]);
+      expect(await getChatMessagesAction(null)).toBeNull();
       expect(await sendChatMessageAction(chatForm("depuis le compte de secours"))).toMatchObject({ ok: false });
       expect(await db.chatMessage.count({ where: { userId: ids.admin } })).toBe(0);
-      expect(await getCurrentUser()).not.toBeNull();
+      expect(await getCurrentUser()).toBeNull();
       expect(await db.communityMemberStats.count({ where: { userId: ids.admin } })).toBe(0);
       expect(await db.membership.count({ where: { userId: ids.admin } })).toBe(0);
     });
 
-    it("isolation ÉTEINTE : ÉCART CONNU — pas de filtre collectif, la visite crée sa ligne de statistiques dans A", async () => {
+    it("isolation ÉTEINTE : droits plateforme conservés sans lecture ni création de statistiques communautaires", async () => {
       asUser("secours-admin");
       const { canAccessTournament, requireMembership } = await import("@/lib/community-access");
       const { canAccessSession } = await import("@/lib/session-access");
       const { getCurrentUser } = await import("@/lib/current-user");
+      const { requireAdmin } = await import("@/lib/admin");
       expect(await canAccessSession(ids.admin, ids.sessionA)).toBe(false); // soirée privée : jamais d'accès admin
       await expect(requireMembership(ids.A)).rejects.toThrow(NOT_FOUND); // explicite : toujours 404
-      expect(await canAccessTournament(ids.admin, ids.tournamentA)).toBe(true);
-      expect(await getCurrentUser()).not.toBeNull();
-      expect(await statsOf(ids.A, ids.admin)).not.toBeNull();
+      expect(await canAccessTournament(ids.admin, ids.tournamentA)).toBe(false);
+      expect(await getCurrentUser()).toBeNull();
+      expect((await requireAdmin())?.id).toBe(ids.admin);
+      expect(await statsOf(ids.A, ids.admin)).toBeNull();
     });
   });
 
@@ -231,7 +260,7 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       await db.membership.updateMany({ where: { userId: ids.memberB }, data: { status: "LEFT", leftAt: new Date() } });
     });
 
-    it("AVANT forceReloginAt : session valide ; isolation allumée = plus aucun accès collectif", async () => {
+    it("AVANT forceReloginAt : l'ancien JWT reste authentifié mais l'isolation allumée refuse les accès collectifs", async () => {
       isolation(true);
       asUser("member-b");
       const { getCurrentUser } = await import("@/lib/current-user");
@@ -240,18 +269,30 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       const { canAccessTournament } = await import("@/lib/community-access");
       const { getChatMessagesAction, sendChatMessageAction } = await import("@/app/chat/actions");
       expect(await getValidSession()).not.toBeNull(); // le JWT reste accepté
-      expect(await getCurrentUser()).not.toBeNull();
+      expect(await getCurrentUser()).toBeNull();
       expect(await requireAdmin()).toBeNull();
       expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
-      expect(await getChatMessagesAction(null)).toEqual([]);
+      expect(await getChatMessagesAction(null)).toBeNull();
       expect(await sendChatMessageAction(chatForm("fantôme"))).toMatchObject({ ok: false });
       expect(await db.communityMemberStats.count({ where: { userId: ids.memberB } })).toBe(0);
     });
 
-    it("AVANT forceReloginAt, isolation éteinte : ÉCART CONNU — l'ancien JWT garde l'accès au canal global", async () => {
+    it.each(["LEFT", "REMOVED"] as const)("AVANT forceReloginAt, isolation éteinte : un JWT ancien après %s ne lit ni n'écrit de données collectives", async (status) => {
+      if (status !== "LEFT") {
+        await db.membership.updateMany({ where: { userId: ids.memberB }, data: { status } });
+      }
       asUser("member-b");
-      const { getChatMessagesAction } = await import("@/app/chat/actions");
-      expect(((await getChatMessagesAction(null)) ?? []).map((m) => m.content)).toContain("message de A");
+      const { getCurrentUser } = await import("@/lib/current-user");
+      const { getValidSession } = await import("@/lib/valid-session");
+      const { canAccessTournament } = await import("@/lib/community-access");
+      const { getChatMessagesAction, sendChatMessageAction } = await import("@/app/chat/actions");
+      expect(await getValidSession()).not.toBeNull();
+      expect(await getCurrentUser()).toBeNull();
+      expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
+      expect(await getChatMessagesAction(null)).toBeNull();
+      expect(await sendChatMessageAction(chatForm("fantôme"))).toMatchObject({ ok: false });
+      expect(await db.chatMessage.count({ where: { userId: ids.memberB, content: "fantôme" } })).toBe(0);
+      expect(await db.communityMemberStats.count({ where: { userId: ids.memberB } })).toBe(0);
     });
 
     it.each([true, false])("APRÈS forceReloginAt (triggerGlobalRelogin), isolation=%s : l'ancien JWT est refusé partout", async (on) => {
@@ -272,7 +313,7 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await requireAdmin()).toBeNull();
       expect(await getChatMessagesAction(null)).toBeNull();
       expect(await sendChatMessageAction(chatForm("fantôme"))).toMatchObject({ ok: false });
-      expect(await db.chatMessage.count({ where: { userId: ids.memberB } })).toBe(0);
+      expect(await db.chatMessage.count({ where: { userId: ids.memberB, content: "fantôme" } })).toBe(0);
       expect(await db.communityMemberStats.count({ where: { userId: ids.memberB } })).toBe(0);
     });
 
@@ -292,7 +333,7 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       await triggerGlobalRelogin();
       expect(await getCurrentUser()).toBeNull();
       asUser("member-b", Date.now() + 1_000); // simule un JWT neuf (impossible à obtenir : signIn refuse)
-      expect(await getCurrentUser()).not.toBeNull();
+      expect(await getCurrentUser()).toBeNull();
     });
   });
 });

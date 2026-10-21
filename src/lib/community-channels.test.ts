@@ -9,14 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * partir dans le salon d'une autre communauté).
  */
 
-const { communityFindUnique, membershipFindMany } = vi.hoisted(() => ({
+const { communityFindUnique, membershipFindMany, membershipFindFirst } = vi.hoisted(() => ({
   communityFindUnique: vi.fn(),
   membershipFindMany: vi.fn(),
+  membershipFindFirst: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     community: { findUnique: communityFindUnique },
-    membership: { findMany: membershipFindMany },
+    membership: { findMany: membershipFindMany, findFirst: membershipFindFirst },
   },
 }));
 
@@ -48,6 +49,7 @@ describe("community-channels", () => {
   beforeEach(() => {
     communityFindUnique.mockReset().mockResolvedValue(null);
     membershipFindMany.mockReset().mockResolvedValue([]);
+    membershipFindFirst.mockReset().mockResolvedValue(null);
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "111");
     vi.stubEnv("DISCORD_BOT_SESSION_CHANNEL_ID", "900");
     vi.stubEnv("DISCORD_BOT_TOURNAMENT_CHANNEL_ID", "901");
@@ -236,10 +238,27 @@ describe("community-channels", () => {
   describe("pickCreationCommunityId", () => {
     const membership = (communityId: string, slug: string) => ({ communityId, community: { slug } });
 
-    it("éteint : null, aucune lecture", async () => {
+    it("éteint : aucun membre, pas de communauté implicite", async () => {
       vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
       await expect(pickCreationCommunityId("u1")).resolves.toBeNull();
-      expect(membershipFindMany).not.toHaveBeenCalled();
+      expect(communityFindUnique).toHaveBeenCalledOnce();
+      expect(membershipFindFirst).not.toHaveBeenCalled();
+      expect(membershipFindMany).toHaveBeenCalledOnce();
+    });
+
+    it("éteint : un membre B-only garde explicitement la communauté B", async () => {
+      vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
+      membershipFindMany.mockResolvedValue([membership("c-b", "serveur-b")]);
+      await expect(pickCreationCommunityId("u1")).resolves.toBe("c-b");
+      expect(communityFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: "default" } }));
+    });
+
+    it("éteint : un membre default conserve le rattachement historique null", async () => {
+      vi.stubEnv("COMMUNITY_CHANNELS_ENABLED", "");
+      membershipFindMany.mockResolvedValue([membership("c-def", "default")]);
+      communityFindUnique.mockResolvedValue({ id: "c-def" });
+      membershipFindFirst.mockResolvedValue({ id: "m1" });
+      await expect(pickCreationCommunityId("u1")).resolves.toBeNull();
     });
 
     it("salons éteints mais isolation allumée : résout aussi la communauté (le créateur doit voir sa propre soirée)", async () => {

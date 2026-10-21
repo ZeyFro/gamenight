@@ -100,7 +100,7 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     await db.user.update({ where: { id: userId }, data: { activeCommunityId: communities.b } });
     expect(await getCurrentUser()).toMatchObject({ xpTotal: 800 });
     await db.membership.update({ where: { communityId_userId: { communityId: communities.b, userId } }, data: { status: "REMOVED" } });
-    expect(await getCurrentUser()).toMatchObject({ xpTotal: 0, streakCount: 0 });
+    expect(await getCurrentUser()).toBeNull();
   });
 
   it("chaque polling prend le nouveau choix A/B sans prolonger le streak", async () => {
@@ -118,8 +118,8 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
     expect((await poll(null))?.map((m) => m.content)).toEqual(["chat-b"]);
     await db.community.update({ where: { id: communities.b }, data: { status: "SUSPENDED" } });
     await resetQueryEvents();
-    expect(await poll(null)).toEqual([]);
-    expect(await getCurrentUser({ recordActivity: false })).toMatchObject({ xpTotal: 0, streakCount: 0 });
+    expect(await poll(null)).toBeNull();
+    expect(await getCurrentUser({ recordActivity: false })).toBeNull();
     expectReadOnly();
   });
 

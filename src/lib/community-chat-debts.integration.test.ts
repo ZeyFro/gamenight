@@ -148,8 +148,9 @@ describe.skipIf(!TEST_DATABASE_URL)("chat et dettes par communauté (Postgres is
       expect(await db.chatReaction.count()).toBe(1);
     });
 
-    it("isolation éteinte : comportement historique (tout visible, communityId laissé à null)", async () => {
+    it("isolation éteinte : les membres default gardent le canal historique (communityId laissé à null)", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      await db.membership.createMany({ data: ["zed", "alice"].map(name => ({ userId: ids[name], communityId: ids.def, status: "ACTIVE" as const })) });
       asUser("zed");
       expect(await send("libre")).toEqual({ ok: true });
       expect((await db.chatMessage.findFirstOrThrow()).communityId).toBeNull();

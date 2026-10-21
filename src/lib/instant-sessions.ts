@@ -1,7 +1,7 @@
 import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
 import type { InstantSession, Prisma } from "@prisma/client";
 import { getScopedPrisma, getActiveScopedPrisma, scopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { communityIdFilter, communityMemberUserWhere, cronCommunityScope, getIsolationScope, isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { gameWarningsSelect, type GameWarningsData } from "@/lib/game-warnings";
@@ -147,8 +147,10 @@ export async function createInstantSession(input: {
   gameId: string;
   notifiedUserIds: string[];
 }): Promise<CreateInstantSessionResult> {
-  const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(input.creatorId) : null;
-  if (isCommunityIsolationEnabled() && communityId === null) return { ok: false, reason: "not_found" };
+  const activeCommunityId = await resolveActiveCommunityId(input.creatorId);
+  if (activeCommunityId === null) return { ok: false, reason: "not_found" };
+  const legacyDefault = !isCommunityIsolationEnabled() && await isMemberOfCommunity(input.creatorId, null);
+  const communityId = legacyDefault ? null : activeCommunityId;
   // Expiration paresseuse d'abord : une session échue mais pas encore
   // réglée par le cron garde l'intervalle de présence du créateur ouvert, ce
   // qui bloquerait la création (index unique partiel) jusqu'au prochain

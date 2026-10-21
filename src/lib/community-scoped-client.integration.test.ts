@@ -69,12 +69,26 @@ describe.skipIf(!TEST_DATABASE_URL)("client Prisma scopé (Postgres isolée)", (
 
   const contentIds = async (rows: Promise<Array<{ id: string }>>) => (await rows).map((r) => r.id).sort();
 
-  it("isolation éteinte : aucun filtre, aucune lecture d'appartenance", async () => {
+  it("isolation éteinte : aucun membre default ne reçoit le périmètre historique", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
     const client = await scoped.getScopedPrisma(ids.dave);
-    expect(await client.chatMessage.count()).toBe(3);
-    // Aucune contrainte de création non plus : comportement strictement historique.
-    await expect(client.chatMessage.create({ data: { userId: ids.dave, content: "libre" } })).resolves.toBeTruthy();
+    expect(await client.chatMessage.count()).toBe(0);
+    expect(await client.chatMessage.findMany()).toEqual([]);
+    await expect(client.chatMessage.create({ data: { userId: ids.dave, content: "libre" } }))
+      .rejects.toBeInstanceOf(scoped.CommunityScopeError);
+  });
+
+  it("isolation éteinte : un membre B-only lit et écrit B, jamais c1 ni les lignes default/null", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+    const bob = await scoped.getScopedPrisma(ids.bob);
+    expect(await contentIds(bob.chatMessage.findMany())).toEqual([ids.m2]);
+    const created = await bob.chatMessage.create({ data: { userId: ids.bob, content: "b-new", communityId: ids.c2 } });
+    await expect(bob.chatMessage.create({ data: { userId: ids.bob, content: "default-forbidden", communityId: null } }))
+      .rejects.toBeInstanceOf(scoped.CommunityScopeError);
+    await expect(bob.chatMessage.create({ data: { userId: ids.bob, content: "c1-forbidden", communityId: ids.c1 } }))
+      .rejects.toBeInstanceOf(scoped.CommunityScopeError);
+    expect(await contentIds(bob.chatMessage.findMany())).toEqual([ids.m2, created.id].sort());
+    expect(await db.chatMessage.count({ where: { content: { in: ["default-forbidden", "c1-forbidden"] } } })).toBe(0);
   });
 
   it("lectures : seule la communauté de l'utilisateur est visible (`null` = default seulement pour ses membres)", async () => {

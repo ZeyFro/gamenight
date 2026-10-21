@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Isolation des soirées (PR4) : `accessibleSessionWhere` / `getSessionAccessRole`
- * ajoutent le filtre de communauté quand `COMMUNITY_ISOLATION_ENABLED=true`, et
+ * ajoutent le filtre de communauté quand `COMMUNITY_ISOLATION_ENABLED=true` ;
+ * flags éteints, seuls les membres ACTIVE de `default` gardent le périmètre historique, et
  * `inviteToSession` refuse un invité qui n'est pas membre de la communauté de
- * la soirée. Éteint : formes de requête strictement inchangées.
+ * la soirée.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -74,13 +75,31 @@ describe("session-access — isolation par communauté", () => {
   });
 
   describe("getSessionAccessRole", () => {
-    it("isolation éteinte : même requête qu'avant, aucune lecture de Membership", async () => {
+    it("isolation éteinte : un membre B seulement ne peut pas lire les soirées default", async () => {
+      mocks.sessionFindFirst.mockResolvedValue(null);
+      await getSessionAccessRole("u1", "s1");
+      expect(mocks.sessionFindFirst).toHaveBeenCalledWith({
+        where: { id: "s1", AND: [LEGACY("u1"), { OR: [{ communityId: { in: ["c-b"] } }] }] },
+        select: { createdById: true },
+      });
+      expect(mocks.membershipFindMany).toHaveBeenCalledOnce();
+    });
+
+    it("isolation éteinte : un membre B-only conserve l'accès explicite aux soirées B", async () => {
+      await expect(getSessionAccessRole("u1", "s-b")).resolves.toBe("creator");
+      expect(mocks.sessionFindFirst).toHaveBeenCalledWith({
+        where: { id: "s-b", AND: [LEGACY("u1"), { OR: [{ communityId: { in: ["c-b"] } }] }] },
+        select: { createdById: true },
+      });
+    });
+
+    it("isolation éteinte : un membre default garde l'accès historique", async () => {
+      mocks.membershipFindMany.mockResolvedValue([membership("c-def", "default")]);
       await getSessionAccessRole("u1", "s1");
       expect(mocks.sessionFindFirst).toHaveBeenCalledWith({
         where: { id: "s1", ...LEGACY("u1") },
         select: { createdById: true },
       });
-      expect(mocks.membershipFindMany).not.toHaveBeenCalled();
     });
 
     it("isolation allumée : la requête porte le filtre de communauté de l'utilisateur", async () => {
@@ -108,10 +127,19 @@ describe("session-access — isolation par communauté", () => {
   });
 
   describe("inviteToSession", () => {
-    it("isolation éteinte : comportement historique, aucune vérification de communauté", async () => {
+    it("isolation éteinte : un invité doit toujours appartenir à la communauté de la soirée", async () => {
       await inviteToSession("s1", "owner", "guest");
-      expect(mocks.userFindFirst).not.toHaveBeenCalled();
+      expect(mocks.userFindFirst).toHaveBeenCalledWith({
+        where: { id: "guest", memberships: { some: { communityId: "c-b", status: "ACTIVE", community: { status: "ACTIVE" } } } },
+        select: { id: true },
+      });
       expect(mocks.inviteUpsert).toHaveBeenCalledOnce();
+    });
+
+    it("isolation éteinte : un invité sans adhésion ACTIVE n'obtient aucune invitation", async () => {
+      mocks.userFindFirst.mockResolvedValue(null);
+      await expect(inviteToSession("s1", "owner", "outsider")).resolves.toBeNull();
+      expect(mocks.inviteUpsert).not.toHaveBeenCalled();
     });
 
     it("isolation allumée : l'invité doit être membre ACTIVE de la communauté de la SOIRÉE", async () => {

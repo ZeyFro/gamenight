@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma, getScopedPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { sendChatMessageSchema, toggleReactionSchema } from "@/lib/validations";
@@ -59,20 +59,19 @@ export async function sendChatMessageAction(formData: FormData): Promise<SendCha
   if (sessionId && !(await canAccessSession(user.id, sessionId))) return { ok: false };
 
   // Multi-communautés (PR8) : un message de soirée appartient à la communauté de
-  // la soirée ; un message du canal global, à la communauté active. Isolation
-  // éteinte : `withCommunity` est vide et aucune lecture n'a lieu (historique).
+  // la soirée ; un message du canal global, à la communauté active. Les membres
+  // B-only gardent donc un scope B explicite même en mode historique.
   const scopedDb = sessionId ? await getScopedPrisma(user.id) : await getActiveScopedPrisma(user.id);
   let community: ReturnType<typeof withCommunity> = {};
-  if (isCommunityIsolationEnabled()) {
-    if (sessionId) {
-      const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
-      if (!session) return { ok: false };
-      community = withCommunity(session.communityId);
-    } else {
-      const activeId = await resolveActiveCommunityId(user.id);
-      if (activeId === null) return { ok: false };
-      community = withCommunity(activeId);
-    }
+  if (sessionId) {
+    const session = await scopedDb.session.findUnique({ where: { id: sessionId }, select: { communityId: true } });
+    if (!session) return { ok: false };
+    community = withCommunity(session.communityId);
+  } else {
+    const activeId = await resolveActiveCommunityId(user.id);
+    if (activeId === null) return { ok: false };
+    const legacyDefault = !isCommunityIsolationEnabled() && await isMemberOfCommunity(user.id, null);
+    community = withCommunity(legacyDefault ? null : activeId);
   }
   await scopedDb.chatMessage.create({
     data: { userId: user.id, sessionId, content: input.data.content, ...community },

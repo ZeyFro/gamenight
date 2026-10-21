@@ -4,7 +4,6 @@ import {
   communityIdFilter,
   communityMemberUserWhere,
   getIsolationScope,
-  isCommunityIsolationEnabled,
   type IsolationScope,
 } from "@/lib/community-isolation";
 
@@ -137,13 +136,11 @@ export async function inviteToSession(
   // Multi-communautés (PR4) : un invité doit être membre ACTIVE de la
   // communauté de la soirée (`null` = communauté par défaut), jamais d'une
   // autre communauté de l'invitant.
-  if (isCommunityIsolationEnabled()) {
-    const member = await db.user.findFirst({
-      where: { id: guestUserId, ...(await communityMemberUserWhere(session.communityId)) },
-      select: { id: true },
-    });
-    if (!member) return null;
-  }
+  const member = await db.user.findFirst({
+    where: { id: guestUserId, ...(await communityMemberUserWhere(session.communityId)) },
+    select: { id: true },
+  });
+  if (!member) return null;
 
   return db.sessionInvite.upsert({
     where: { sessionId_userId: { sessionId, userId: guestUserId } },

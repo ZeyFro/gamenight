@@ -311,11 +311,26 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("flags OFF : comportement historique global et création sans membership", async () => {
+  it("flags OFF : seuls les membres ACTIVE de default gardent l'ancien périmètre collectif", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    const a = await makeInstant(ids.a), b = await makeInstant(ids.b);
-    expect((await instant.listActiveInstantSessions(ids.none)).map((s) => s.id).sort()).toEqual([a.id, b.id].sort());
-    expect((await instant.createInstantSession({ creatorId: ids.none, gameId: ids.game, notifiedUserIds: [ids.bob] })).ok).toBe(true);
-    expect(await isolation.isMemberOfCommunity(ids.none, ids.a)).toBe(true);
+    await makeInstant(ids.a);
+    await makeInstant(ids.b);
+    expect(await instant.listActiveInstantSessions(ids.none)).toEqual([]);
+    expect(await instant.createInstantSession({ creatorId: ids.none, gameId: ids.game, notifiedUserIds: [ids.bob] })).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await isolation.isMemberOfCommunity(ids.none, ids.a)).toBe(false);
+  });
+
+  it("flags OFF : un créateur B-only rattache la session instantanée et ses invités à B", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    vi.stubEnv("COMMUNITY_PICKER_ENABLED", "false");
+    const result = await instant.createInstantSession({
+      creatorId: ids.bob,
+      gameId: ids.game,
+      notifiedUserIds: [ids.alice, ids.carol],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.instantSession.communityId).toBe(ids.b);
+    expect(result.instantSession.notifiedUserIds).toEqual([ids.carol]);
   });
 });

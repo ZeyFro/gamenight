@@ -2,20 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Multi-communautés, PR4 — isolation des données par communauté, derrière
- * `COMMUNITY_ISOLATION_ENABLED` (éteint par défaut : AUCUN filtre, comportement
- * actuel). Allumé : un utilisateur ne voit que les données des communautés
+ * `COMMUNITY_ISOLATION_ENABLED` (éteint par défaut : les membres actifs de
+ * `default` gardent le mode historique). Allumé : un utilisateur ne voit que les données des communautés
  * ACTIVE où il a un Membership ACTIVE ; `communityId = null` désigne la
  * communauté `default`. Fail-closed : sans aucune communauté, rien n'est visible.
  */
 
-const { membershipFindMany, communityFindUnique, userFindFirst } = vi.hoisted(() => ({
+const { membershipFindMany, membershipFindFirst, communityFindUnique, userFindFirst } = vi.hoisted(() => ({
   membershipFindMany: vi.fn(),
+  membershipFindFirst: vi.fn(),
   communityFindUnique: vi.fn(),
   userFindFirst: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    membership: { findMany: membershipFindMany },
+    membership: { findMany: membershipFindMany, findFirst: membershipFindFirst },
     community: { findUnique: communityFindUnique },
     user: { findFirst: userFindFirst },
   },
@@ -28,6 +29,7 @@ import {
   creationMemberUserWhere,
   getIsolationScope,
   isCommunityIsolationEnabled,
+  isMemberOfCommunity,
   memberUserWhere,
   resolveActiveCommunityId,
 } from "./community-isolation";
@@ -37,6 +39,7 @@ const m = (communityId: string, slug: string) => ({ communityId, community: { sl
 describe("community-isolation", () => {
   beforeEach(() => {
     membershipFindMany.mockReset().mockResolvedValue([]);
+    membershipFindFirst.mockReset().mockResolvedValue(null);
     communityFindUnique.mockReset().mockResolvedValue({ id: "c-def" });
     userFindFirst.mockReset().mockResolvedValue({ id: "p1" });
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
@@ -56,10 +59,25 @@ describe("community-isolation", () => {
   });
 
   describe("getIsolationScope", () => {
-    it("éteint : null, aucune lecture en base", async () => {
+    it("éteint : un membre de default garde le mode historique", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-def", "default")]);
       await expect(getIsolationScope("u1")).resolves.toBeNull();
-      expect(membershipFindMany).not.toHaveBeenCalled();
+      expect(membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: "u1", status: "ACTIVE", community: { status: "ACTIVE" } },
+      }));
+    });
+
+    it("éteint : un membre de B seulement reçoit le scope B, jamais default", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-b", "serveur-b")]);
+      await expect(getIsolationScope("u1")).resolves.toEqual({ communityIds: ["c-b"], includesDefault: false });
+      expect(membershipFindMany).toHaveBeenCalledOnce();
+    });
+
+    it("éteint : sans membership, portée vide", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      await expect(getIsolationScope("u1")).resolves.toEqual({ communityIds: [], includesDefault: false });
     });
 
     it("n'utilise que les Memberships ACTIVE de communautés ACTIVE de CET utilisateur", async () => {
@@ -131,9 +149,11 @@ describe("community-isolation", () => {
   });
 
   describe("communityMemberUserWhere (membres d'UNE communauté, pour les invités)", () => {
-    it("éteint : aucun filtre, aucune lecture", async () => {
+    it("éteint : vérifie toujours les membres ACTIVE de la communauté cible", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      await expect(communityMemberUserWhere("c-b")).resolves.toEqual({});
+      await expect(communityMemberUserWhere("c-b")).resolves.toEqual({
+        memberships: { some: { communityId: "c-b", status: "ACTIVE", community: { status: "ACTIVE" } } },
+      });
       expect(communityFindUnique).not.toHaveBeenCalled();
     });
 
@@ -157,8 +177,30 @@ describe("community-isolation", () => {
   });
 
   describe("canViewPote (fiche d'un pote, à vérifier dans CHAQUE page /potes/[id]/*)", () => {
-    it("éteint : toujours visible, aucune lecture", async () => {
+    it("éteint sans aucune adhésion : invisible", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      userFindFirst.mockResolvedValue(null);
+      await expect(canViewPote("u1", "p1")).resolves.toBe(false);
+      expect(userFindFirst).toHaveBeenCalledWith({
+        where: { id: "p1", memberships: { some: { communityId: { in: [] }, status: "ACTIVE" } } },
+        select: { id: true },
+      });
+    });
+
+    it("éteint : un membre B voit seulement les potes de B", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-b", "serveur-b")]);
+      await expect(canViewPote("u1", "p1")).resolves.toBe(true);
+      expect(userFindFirst).toHaveBeenCalledWith({
+        where: { id: "p1", memberships: { some: { communityId: { in: ["c-b"] }, status: "ACTIVE" } } },
+        select: { id: true },
+      });
+    });
+
+    it("éteint avec adhésion default : comportement historique visible", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-def", "default")]);
+      membershipFindFirst.mockResolvedValue({ communityId: "c-def" });
       await expect(canViewPote("u1", "p1")).resolves.toBe(true);
       expect(userFindFirst).not.toHaveBeenCalled();
     });
@@ -194,9 +236,26 @@ describe("community-isolation", () => {
   });
 
   describe("creationMemberUserWhere (potes proposables à la création)", () => {
-    it("éteint : aucun filtre", async () => {
+    it("éteint : membre default, filtre sur les membres de default", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      await expect(creationMemberUserWhere("u1")).resolves.toEqual({});
+      membershipFindMany.mockResolvedValue([m("c-def", "default")]);
+      membershipFindFirst.mockResolvedValue({ communityId: "c-def" });
+      await expect(creationMemberUserWhere("u1")).resolves.toEqual({
+        memberships: { some: { communityId: "c-def", status: "ACTIVE" } },
+      });
+    });
+
+    it("éteint : membre B seulement, les propositions restent dans le roster B", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-b", "serveur-b")]);
+      await expect(creationMemberUserWhere("u1")).resolves.toEqual({
+        memberships: { some: { communityId: "c-b", status: "ACTIVE" } },
+      });
+    });
+
+    it("éteint : aucun membre ne reçoit le roster default", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      await expect(creationMemberUserWhere("u1")).resolves.toEqual({ id: { in: [] } });
     });
 
     it("les membres de la communauté active du créateur", async () => {
@@ -223,9 +282,26 @@ describe("community-isolation", () => {
       await expect(resolveActiveCommunityId("u1")).resolves.toBe("c-b");
     });
 
+    it("isolation éteinte : un membre B-only reste sur B", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindMany.mockResolvedValue([m("c-b", "serveur-b")]);
+      await expect(resolveActiveCommunityId("u1")).resolves.toBe("c-b");
+    });
+
     it("trie du plus ancien au plus récent", async () => {
       await resolveActiveCommunityId("u1");
       expect(membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { joinedAt: "asc" } }));
+    });
+  });
+
+  describe("isMemberOfCommunity", () => {
+    it("éteint : vérifie encore l'appartenance ACTIVE à la communauté demandée", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      membershipFindFirst.mockResolvedValue(null);
+      await expect(isMemberOfCommunity("u1", "c-def")).resolves.toBe(false);
+      expect(membershipFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: "u1", communityId: "c-def", status: "ACTIVE", community: { status: "ACTIVE" } },
+      }));
     });
   });
 });

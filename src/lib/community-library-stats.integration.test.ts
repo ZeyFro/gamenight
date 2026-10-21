@@ -123,7 +123,7 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(0);
       expect((await homeLib.getGroupStats(ids.alice)).mostPlayedGame).toMatchObject({ name: "Mario Kart", count: 2 });
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(3);
+      expect((await homeLib.getGroupStats(ids.zed)).totalSessionsPlayed).toBe(0);
     });
   });
 
@@ -231,9 +231,10 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect(await db.gameWishlist.count({ where: { purchasedById: ids.carol } })).toBe(2);
     });
 
-    it("isolation éteinte : rattaché à la communauté par défaut, tout visible", async () => {
+    it("isolation éteinte : un membre default peut proposer, sans fallback implicite pour les autres", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-      await propose("zed");
+      await db.membership.create({ data: { userId: ids.alice, communityId: ids.def, status: "ACTIVE" } });
+      await propose("alice");
       expect((await db.gameWishlist.findFirstOrThrow()).communityId).toBe(ids.def);
       expect((await wishlist.getWishlist(ids.alice)).map((e) => e.gameName)).toEqual(["Hades"]);
     });

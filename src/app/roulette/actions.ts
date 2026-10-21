@@ -7,7 +7,8 @@ import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-int
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getScopedPrisma, scopedTransactionPrisma, withCommunity } from "@/lib/community-scoped-client";
-import { getIsolationScope, creationMemberUserWhere, isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { getIsolationScope, creationMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
+import { pickCreationCommunityId } from "@/lib/community-channels";
 import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
@@ -167,7 +168,7 @@ export async function createRouletteAction(formData: FormData) {
   });
   const finalParticipantIds = [...new Set([user.id, ...validUsers.map((u) => u.id)])];
 
-  const communityId = isCommunityIsolationEnabled() ? await resolveActiveCommunityId(user.id) : null;
+  const communityId = await pickCreationCommunityId(user.id);
   if (isCommunityIsolationEnabled() && communityId === null) redirect("/roulette?tab=creer&error=donnees_invalides");
   const { result: roulette, replayed } = await createOnce(user.id, "ROULETTE", creationKey(formData.get("creationKey"), true), async (tx) => {
   await lockCreationMembers(tx, communityId, finalParticipantIds);

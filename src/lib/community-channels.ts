@@ -1,7 +1,7 @@
 import type { CommunityChannelCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
-import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { isCommunityIsolationEnabled, isMemberOfCommunity, resolveActiveCommunityId } from "@/lib/community-isolation";
 import {
   getSessionAnnounceConfig,
   getTournamentAnnounceConfig,
@@ -124,15 +124,16 @@ export async function isTournamentAnnounceViaBotEnabledFor(communityId: string |
 
 /**
  * Communauté d'une NOUVELLE soirée/tournoi. Salons par communauté ET
- * isolation éteints : `null` (aucun changement). Sinon (l'un des deux
- * allumé) : la seule communauté ACTIVE du créateur ; s'il en a plusieurs, la
- * communauté par défaut si elle en fait partie, sinon sa plus ancienne.
- * Aucune : `null` — sous isolation l'appelant DOIT alors refuser la création
- * (une soirée sans communauté serait rattachée à `default` sans que le
- * créateur en soit membre). Provisoire : l'écran de choix explicite du
+ * isolation éteints : les membres de `default` gardent le rattachement
+ * historique `null`; les autres doivent avoir une communauté ACTIVE, qui est
+ * persistée explicitement. Sinon : la seule communauté ACTIVE du créateur ;
+ * s'il en a plusieurs, la communauté choisie, puis `default` ou la plus ancienne.
+ * Aucune : `null` — l'appelant doit refuser la création. Provisoire : l'écran de choix explicite du
  * serveur (PR5) remplacera cette heuristique.
  */
 export async function pickCreationCommunityId(userId: string): Promise<string | null> {
-  if (!isCommunityChannelsEnabled() && !isCommunityIsolationEnabled()) return null;
+  if (!isCommunityChannelsEnabled() && !isCommunityIsolationEnabled() && await isMemberOfCommunity(userId, null)) {
+    return null;
+  }
   return resolveActiveCommunityId(userId);
 }

@@ -206,9 +206,10 @@ describe("scopeQueryArgs — une ligne ne change pas de communauté", () => {
 });
 
 describe("withCommunity", () => {
-  it("isolation éteinte : vide (colonne laissée à null, comme avant)", () => {
+  it("isolation éteinte : conserve une communauté explicitement choisie", () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
-    expect(withCommunity("c1")).toEqual({});
+    expect(withCommunity("c1")).toEqual({ communityId: "c1" });
+    expect(withCommunity(null)).toEqual({});
     vi.unstubAllEnvs();
   });
 

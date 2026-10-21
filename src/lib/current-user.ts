@@ -6,9 +6,10 @@ import { checkTemporalBadges } from "@/lib/badges";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getMemberStats, projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
 import { shouldForceRelogin } from "@/lib/force-relogin";
+import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 
 export async function getCurrentUser(
-  options: { recordActivity?: boolean } = {}
+  options: { recordActivity?: boolean; allowPlatformAdminWithoutMembership?: boolean } = {}
 ): Promise<User | null> {
   const session = await auth();
   if (!session?.user?.discordId) return null;
@@ -31,7 +32,14 @@ export async function getCurrentUser(
   }
 
   const communityId = await writeCommunityIdForUser(user.id);
-  if (communityId === null) return projectUserProgress(user, ZERO_MEMBER_STATS);
+  if (communityId === null) {
+    // Platform administration has its own explicit gate. Do not let its
+    // bootstrap identity inherit default-community data or create stats.
+    if (!options.allowPlatformAdminWithoutMembership || !isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS))) {
+      return null;
+    }
+    return projectUserProgress(user, ZERO_MEMBER_STATS);
+  }
   // Les lectures de fond (chat, header) ne sont pas une nouvelle visite :
   // aucun verrou, INSERT de stats ou attribution de badge à chaque polling.
   // Le gate JWT/reconnexion et l'appartenance restent relus à chaque appel.
