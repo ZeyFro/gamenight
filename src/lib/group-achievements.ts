@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { isCommunityIsolationEnabled, resolveActiveCommunityId } from "@/lib/community-isolation";
+import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { announceGroupAchievementUnlocked } from "@/lib/discord-group-achievement";
 import { logger } from "@/lib/logger";
@@ -259,7 +259,7 @@ export async function listGroupAchievements(viewerId: string) {
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const orderBy = [{ unlockedAt: "desc" as const }, { createdAt: "asc" as const }];
   const rows = await scopedDb.groupAchievement.findMany({ orderBy });
-  if (rows.length >= GROUP_ACHIEVEMENT_DEFS.length || !isCommunityIsolationEnabled()) return rows;
+  if (rows.length >= GROUP_ACHIEVEMENT_DEFS.length) return rows;
   const activeId = await resolveActiveCommunityId(viewerId);
   if (activeId === null) return rows;
   await ensureGroupAchievements(activeId);

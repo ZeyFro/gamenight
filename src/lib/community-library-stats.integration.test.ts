@@ -174,6 +174,18 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
       expect(list.every(row => row.communityId === ids.c1)).toBe(true);
     });
 
+    it("isolation OFF : un membre B-only déclenche le seed dans sa communauté active", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      expect(await db.groupAchievement.count()).toBe(0);
+
+      const list = await achievements.listGroupAchievements(ids.bob);
+
+      expect(list).toHaveLength(10);
+      expect(list.every(row => row.communityId === ids.c2)).toBe(true);
+      expect(await db.groupAchievement.count({ where: { communityId: ids.c1 } })).toBe(0);
+      expect(await db.groupAchievement.count({ where: { communityId: ids.c2 } })).toBe(10);
+    });
+
     it("seed : la communauté par défaut et chaque communauté ACTIVE, idempotent", async () => {
       await seed.seedGroupAchievements();
       await seed.seedGroupAchievements();
