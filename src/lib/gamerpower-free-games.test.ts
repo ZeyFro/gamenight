@@ -83,6 +83,21 @@ describe("flux automatique GamerPower", () => {
     expect(mocks.warn).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ["steam", "https://store.epicgames.com/fr/p/example-game"],
+    ["epic-games-store", "https://store.steampowered.com/app/620/Portal/"],
+  ])("rejette une destination qui ne correspond pas au flux %s", async (platform, destination) => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/giveaways") return json(url.searchParams.get("platform") === platform
+        ? [giveaway(42, "https://www.gamerpower.com/open/mismatched-store")]
+        : []);
+      return redirect(destination);
+    });
+
+    await expect(listAutomaticFreeGameOffers()).resolves.toEqual([]);
+  });
+
   it("traite le 201 GamerPower documenté comme une liste vide", async () => {
     mocks.fetch.mockImplementation(async (input: URL | string) => {
       const url = String(input);
