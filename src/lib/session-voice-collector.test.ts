@@ -38,9 +38,10 @@ describe("session voice collector bridge (fake Gateway only)", () => {
     await collector!.start();
     sockets[0].emit(10, { heartbeat_interval: 45_000 }, 0, "");
     sockets[0].emit(0, { session_id: "gateway-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
-    sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: "456789012345678901" }, 2, "VOICE_STATE_UPDATE");
+    sockets[0].emit(0, { id: "123456789012345678", voice_states: [] }, 2, "GUILD_CREATE");
+    sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: "456789012345678901" }, 3, "VOICE_STATE_UPDATE");
     now = 61_000;
-    sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 3, "VOICE_STATE_UPDATE");
+    sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 4, "VOICE_STATE_UPDATE");
     expect(persist).toHaveBeenCalledWith(
       { guildId: "123456789012345678", defaultGuildId: "", channelIds: ["456789012345678901"], sessionId: "session-test" },
       { memberKey: "789012345678901234", channelId: "456789012345678901", startedAt: 1_000, endedAt: 61_000 },
@@ -74,8 +75,9 @@ describe("session voice collector bridge (fake Gateway only)", () => {
     await collector.start();
     socket.emit(10, { heartbeat_interval: 45_000 }, 0, "");
     socket.emit(0, { session_id: "gateway-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
-    socket.emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: "456789012345678901" }, 2, "VOICE_STATE_UPDATE");
-    socket.emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 3, "VOICE_STATE_UPDATE");
+    socket.emit(0, { id: "123456789012345678", voice_states: [] }, 2, "GUILD_CREATE");
+    socket.emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: "456789012345678901" }, 3, "VOICE_STATE_UPDATE");
+    socket.emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 4, "VOICE_STATE_UPDATE");
     let stopped = false;
     const stopping = collector.stop().then(() => { stopped = true; });
     await Promise.resolve();
