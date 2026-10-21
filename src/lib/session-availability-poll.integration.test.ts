@@ -127,7 +127,7 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
 
   it("refuse un participant révoqué même OFF, ainsi qu'une conversion qui l'inclurait", async () => {
     const poll = await create();
-    await db.membership.create({ data: { communityId: community.id, userId: guest.id, status: "REMOVED" } });
+    await db.membership.update({ where: { communityId_userId: { communityId: community.id, userId: guest.id } }, data: { status: "REMOVED" } });
     await expect(polls.loadAvailabilityPoll(guest.id, poll.id)).rejects.toThrow();
     expect(await polls.listAvailabilityPolls(guest.id)).toEqual([]);
     await expect(polls.chooseAvailabilityPollSlot(creator.id, poll.id, poll.slots[0].id)).rejects.toThrow();
@@ -161,7 +161,7 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
     expect(results[0].session.votingDeadline).not.toBeNull();
     expect(results[0].session.votingDeadline!.getTime()).toBeLessThan(results[0].session.date.getTime());
     await expect(polls.answerAvailabilityPoll(guest.id, poll.id, poll.slots[0].id, "AVAILABLE")).rejects.toThrow();
-    await db.membership.create({ data: { communityId: community.id, userId: guest.id, status: "REMOVED" } });
+    await db.membership.update({ where: { communityId_userId: { communityId: community.id, userId: guest.id } }, data: { status: "REMOVED" } });
     const replay = await polls.chooseAvailabilityPollSlot(creator.id, poll.id, poll.slots[0].id);
     expect(replay).toMatchObject({ replayed: true, session: { id: results[0].session.id } });
   });

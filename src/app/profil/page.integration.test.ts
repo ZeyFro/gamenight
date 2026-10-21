@@ -51,7 +51,13 @@ describe.skipIf(!TEST_DATABASE_URL)("/profil — prochaine soirée (Postgres iso
   });
 
   async function makeUser(discordId: string) {
-    return db.user.create({ data: { discordId, discordName: discordId } });
+    const user = await db.user.create({ data: { discordId, discordName: discordId } });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   async function makeSession(creatorId: string) {

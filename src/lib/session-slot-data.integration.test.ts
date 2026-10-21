@@ -45,8 +45,10 @@ describe.skipIf(!TEST_DATABASE_URL)("suggestions : roster revalidé en Postgres 
     const result = JSON.stringify(await load("host", ["friend-a"], 120, now));
     expect(result).not.toContain("weekly"); expect(result).not.toContain("overrides"); expect(result).not.toContain("friend-a");
   });
-  it("flags OFF : conserve le roster historique et déduplique l'organisateur", async () => {
+  it("flags OFF : roster d'invités dans la communauté active, avec déduplication", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    expect(await load("host", ["host", "friend-b", "friend-b"], 120, now)).toEqual({ ok: false, error: "participants_changed" });
+    await db.user.update({ where: { id: "host" }, data: { activeCommunityId: "b" } });
     const result = await load("host", ["host", "friend-b", "friend-b"], 120, now);
     expect(result.ok && result.suggestions[0]).toMatchObject({ availableCount: 2, totalParticipants: 2 });
   });

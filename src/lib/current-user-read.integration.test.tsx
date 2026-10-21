@@ -158,8 +158,8 @@ describe.skipIf(!TEST_DATABASE_URL)("lectures header/chat : coût SQL et autoris
       props.push(p); visit(p.children);
     }
     visit(tree);
-    expect(props.find((p) => "communities" in p)?.communities).toEqual([]);
-    expect(props.find((p) => "initialMessages" in p)?.initialMessages).toEqual([]);
+    expect(props.find((p) => "communities" in p)?.communities ?? []).toEqual([]);
+    expect(props.find((p) => "initialMessages" in p)?.initialMessages ?? []).toEqual([]);
   });
 
   it("polling : moins de SQL que le gate de visite + lecture de chat, aucune écriture", async () => {

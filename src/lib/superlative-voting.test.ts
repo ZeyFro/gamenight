@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { prisma } = vi.hoisted(() => ({
   prisma: {
     session: { findUnique: vi.fn(), findMany: vi.fn() },
+    membership: { findMany: vi.fn() },
     superlativeVote: { findMany: vi.fn() },
     proposal: { findFirst: vi.fn() },
   },
@@ -27,6 +28,9 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.membership.findMany.mockResolvedValue([
+    { communityId: "default", community: { slug: "default" } },
+  ]);
 });
 
 describe("isCarryOrMvpCategory", () => {

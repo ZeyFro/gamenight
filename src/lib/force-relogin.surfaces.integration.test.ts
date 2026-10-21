@@ -86,6 +86,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
       const user = await db.user.create({
         data: { discordId: id, discordName: id, role: "ADMIN" },
       });
+      const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+      await db.membership.create({ data: { userId: user.id, communityId, status: "ACTIVE" } });
       const oldSession = { user: { discordId: id, sessionCreatedAt } };
       // L'admin clique « forcer la reconnexion » APRÈS l'émission du JWT.
       await db.user.update({ where: { id: user.id }, data: { forceReloginAt: new Date() } });
@@ -99,7 +101,9 @@ describe.skipIf(!TEST_DATABASE_URL)(
     it("sanity : la même session, sans reconnexion forcée, est acceptée", async () => {
       counter += 1;
       const id = `sane-${counter}`;
-      await db.user.create({ data: { discordId: id, discordName: id } });
+      const user = await db.user.create({ data: { discordId: id, discordName: id } });
+      const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+      await db.membership.create({ data: { userId: user.id, communityId, status: "ACTIVE" } });
       authMock.mockResolvedValue({ user: { discordId: id, sessionCreatedAt: Date.now() - 1000 } });
       igdbMock.mockResolvedValue([]);
 

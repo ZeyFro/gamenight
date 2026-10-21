@@ -37,6 +37,8 @@ describe.skipIf(!TEST_DATABASE_URL)("declareWinner : scores (Postgres)", () => {
     const users = await Promise.all(
       ["a", "b", "c", "d"].map((n) => db.user.create({ data: { discordId: `s-${n}`, discordName: n } }))
     );
+    const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.membership.createMany({ data: users.map(user => ({ userId: user.id, communityId, status: "ACTIVE" })) });
     const game = await db.game.create({ data: { name: "g", source: "MANUAL", addedById: users[0].id } });
     const t = await db.tournament.create({
       data: { name: "t", gameId: game.id, createdById: users[0].id, status: "REGISTRATION", maxPlayers: 4, announceViaBot: false },

@@ -39,6 +39,7 @@ describe.skipIf(!TEST_DATABASE_URL)("annulation groupée des occurrences futures
       { id: "owner", discordId: "1", discordName: "Créateur" },
       { id: "other-owner", discordId: "2", discordName: "Autre créateur" },
     ] });
+    await db.membership.createMany({ data: ["owner", "other-owner"].map(userId => ({ userId, communityId: "community-a", status: "ACTIVE" })) });
     await db.session.createMany({ data: [
       { id: "source-past", communityId: "community-a", createdById: "owner", recurrenceGroupId: "series", date: past, status: "DONE" },
       { id: "future-voting", communityId: "community-a", createdById: "owner", recurrenceGroupId: "series", date: future, status: "VOTING" },
@@ -95,7 +96,6 @@ describe.skipIf(!TEST_DATABASE_URL)("annulation groupée des occurrences futures
 
   it("respecte les appartenances lorsque l’isolation est simulée ON", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
-    await db.membership.create({ data: { communityId: "community-a", userId: "owner", status: "ACTIVE" } });
     expect(await sessions.cancelRecurringSessions("other-community", "owner")).toBeNull();
     await db.membership.updateMany({ where: { userId: "owner" }, data: { status: "REMOVED" } });
     expect(await sessions.cancelRecurringSessions("source-past", "owner")).toBeNull();

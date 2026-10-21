@@ -80,7 +80,13 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession â€” invitations exactes (intÃ
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   function formData(fields: Record<string, string | string[]>): FormData {

@@ -105,7 +105,13 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
 
   async function makeUser() {
     const id = uniq("user");
-    return db.user.create({ data: { discordId: id, discordName: id } });
+    const user = await db.user.create({ data: { discordId: id, discordName: id } });
+    await db.membership.create({ data: {
+      userId: user.id,
+      communityId: await (await import("@/lib/default-community")).getDefaultCommunityId(),
+      status: "ACTIVE",
+    } });
+    return user;
   }
 
   /** Soirée VOTING dans 3 h (relatif à l'heure réelle : les rappels

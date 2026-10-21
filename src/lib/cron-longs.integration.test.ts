@@ -32,6 +32,7 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
     await db.$executeRawUnsafe(
       `TRUNCATE "User", "Game", "Badge", "Tag", "MessageTemplate", "GroupAchievement", "Season", "SuperlativeCategory", "XpEvent", "Community" CASCADE`
     );
+    (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -63,6 +64,8 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
       const alice = await db.user.create({
         data: { discordId: "alice", discordName: "alice", steamId64: "76561198000000001" },
       });
+      const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+      await db.membership.create({ data: { userId: alice.id, communityId, status: "ACTIVE" } });
       await db.user.create({ data: { discordId: "bob", discordName: "bob", steamId64: "76561198000000002" } });
       const game = await db.game.create({ data: { name: "Jeu A", source: "MANUAL", addedById: alice.id } });
       await db.userGame.create({ data: { userId: alice.id, gameId: game.id, owned: true, source: "PERSONAL" } });
@@ -81,11 +84,11 @@ describe.skipIf(!TEST_DATABASE_URL)("crons longs (Postgres isolé)", () => {
       expect(afterOne.badges).toBeGreaterThan(0);
       expect(afterOne.tags).toBeGreaterThan(0);
       expect(afterOne.seasons).toBe(1);
-      // Multi-communautés : communauté par défaut créée, mais AUCUN Membership
-      // automatique (connexion fermée par défaut, S0) : seule une connexion avec
-      // instantané Discord complet crée une appartenance.
+      // La fixture crée explicitement une Membership ACTIVE afin de tester la
+      // réconciliation des données collectives de cette communauté. Le cron
+      // ne crée pas lui-même d'autres appartenances.
       expect(afterOne.communities).toBe(1);
-      expect(afterOne.memberships).toBe(0);
+      expect(afterOne.memberships).toBe(1);
 
       const second = await runSeedReconciliation();
       expect(second.stopReason).toBe("completed");

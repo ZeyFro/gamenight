@@ -24,6 +24,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
     state.user = await db.user.create({ data: { id: "creator", discordId: "111111111111111111", discordName: "Créateur" } });
     await db.user.create({ data: { id: "guest", discordId: "222222222222222222", discordName: "Invité" } });
+    const defaultCommunityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.membership.createMany({ data: ["creator", "guest"].map(userId => ({ userId, communityId: defaultCommunityId, status: "ACTIVE" })) });
     await db.game.create({ data: { id: "game", name: "Jeu", source: "MANUAL", addedById: "creator" } });
     for (const flag of ["COMMUNITY_ISOLATION_ENABLED", "COMMUNITY_PICKER_ENABLED", "COMMUNITY_CHANNELS_ENABLED", "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED", "DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "DISCORD_DM_SESSION_ENABLED", "DISCORD_DM_TOURNAMENT_ENABLED", "DISCORD_DM_ROULETTE_ENABLED", "DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED"]) vi.stubEnv(flag, "false");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Aucun HTTP réel autorisé"); }));

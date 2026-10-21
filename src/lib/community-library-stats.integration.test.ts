@@ -161,6 +161,7 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
 
     it("isolation OFF : les trophées de l'accueil restent dans la communauté active", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+      await achievements.ensureGroupAchievements(ids.c1);
       const achievement = (communityId: string, key: string) => ({
         communityId, key, name: key, description: key, icon: "🏆",
       });
@@ -170,7 +171,9 @@ describe.skipIf(!TEST_DATABASE_URL)("wishlist, trophées et compteurs par commun
 
       const list = await achievements.listGroupAchievements(ids.alice);
 
-      expect(list.map(row => row.key)).toEqual(["trophee-a"]);
+      expect(list).toHaveLength(11); // 10 définitions seedées + le trophée de test
+      expect(list.map(row => row.key)).toContain("trophee-a");
+      expect(list.map(row => row.key)).not.toContain("trophee-b");
       expect(list.every(row => row.communityId === ids.c1)).toBe(true);
     });
 

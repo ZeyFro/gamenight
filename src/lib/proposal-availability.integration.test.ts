@@ -23,7 +23,7 @@ describe.skipIf(!TEST_DATABASE_URL)("disponibilité des possesseurs limitée à 
   beforeEach(async () => {
     await db.$executeRawUnsafe('TRUNCATE "Membership", "Community", "WeeklyAvailability", "UserGame", "Game", "User" CASCADE');
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
-    communityA = await db.community.create({ data: { slug: "availability-a", name: "A", status: "ACTIVE" } });
+    communityA = await db.community.create({ data: { slug: "default", name: "A", status: "ACTIVE" } });
     const communityB = await db.community.create({ data: { slug: "availability-b", name: "B", status: "ACTIVE" } });
     const suspended = await db.community.create({ data: { slug: "availability-suspended", name: "Suspended", status: "SUSPENDED" } });
     const makeUser = (name: string) => db.user.create({ data: { discordId: `availability-${++serial}`, discordName: name } });
@@ -52,11 +52,11 @@ describe.skipIf(!TEST_DATABASE_URL)("disponibilité des possesseurs limitée à 
     expect(availability.get(game.id)?.jouable).toBe(false);
   });
 
-  it("conserve le comportement historique sans isolation et pour une soirée sans communauté", async () => {
+  it("OFF : une soirée sans communauté reste limitée aux membres ACTIVE de default", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     const game = await db.game.findFirstOrThrow({ where: { name: "Coop" }, select: { id: true, minPlayers: true, maxPlayers: true } });
     const availability = await getProposalAvailability(new Date("2026-10-25T20:00:00.000Z"), [game], null);
-    expect(availability.get(game.id)?.owners).toHaveLength(4);
-    expect(availability.get(game.id)?.jouable).toBe(true);
+    expect(availability.get(game.id)?.owners.map(user => user.id)).toEqual([ownerA.id]);
+    expect(availability.get(game.id)?.jouable).toBe(false);
   });
 });
