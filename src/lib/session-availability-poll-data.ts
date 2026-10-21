@@ -25,9 +25,8 @@ const pollInclude = {
   slots: { orderBy: { start: "asc" as const }, include: { responses: { select: { userId: true, answer: true } } } },
 };
 
-/** Verrouille aussi les révocations concurrentes. Le défaut historique OFF
- * accepte un compte sans Membership, mais jamais une appartenance révoquée.
- * Un serveur nondefault exige toujours un membre ACTIVE. */
+/** Verrouille aussi les révocations concurrentes : chaque participant doit
+ * appartenir activement à la communauté du sondage, quel que soit le flag. */
 async function lockPollAudience(tx: Prisma.TransactionClient, communityId: string, userIds: string[]) {
   const [community] = await tx.$queryRaw<Array<{ status: string; slug: string }>>`
     SELECT status, slug FROM "Community" WHERE id = ${communityId} FOR SHARE
@@ -39,10 +38,9 @@ async function lockPollAudience(tx: Prisma.TransactionClient, communityId: strin
     SELECT "userId", status FROM "Membership" WHERE "communityId" = ${communityId}
     AND "userId" = ANY(${userIds}::text[]) ORDER BY "userId" FOR SHARE
   `;
-  const membershipRequired = isCommunityIsolationEnabled() || community?.slug !== "default";
   if (community?.status !== "ACTIVE" || users.length !== userIds.length || userIds.some(userId => {
     const member = members.find(row => row.userId === userId);
-    return member ? member.status !== "ACTIVE" : membershipRequired;
+    return !member || member.status !== "ACTIVE";
   })) throw new AvailabilityPollError("Le serveur ou un participant n'est plus accessible. Actualise la sélection.");
 }
 

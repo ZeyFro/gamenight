@@ -91,6 +91,17 @@ describe.skipIf(!TEST_DATABASE_URL)("client Prisma scopé (Postgres isolée)", (
     expect(await db.chatMessage.count({ where: { content: { in: ["default-forbidden", "c1-forbidden"] } } })).toBe(0);
   });
 
+  it("isolation éteinte : un membre default/A garde null mais ne lit ni n'écrit B", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+    const carol = await scoped.getScopedPrisma(ids.carol);
+    expect(await contentIds(carol.chatMessage.findMany())).toEqual([ids.m0, ids.m1].sort());
+    await expect(carol.chatMessage.create({ data: { userId: ids.carol, content: "b-forbidden", communityId: ids.c2 } }))
+      .rejects.toBeInstanceOf(scoped.CommunityScopeError);
+    const legacy = await carol.chatMessage.create({ data: { userId: ids.carol, content: "default-legacy", communityId: null } });
+    expect(legacy.communityId).toBeNull();
+    expect(await db.chatMessage.count({ where: { content: "b-forbidden" } })).toBe(0);
+  });
+
   it("lectures : seule la communauté de l'utilisateur est visible (`null` = default seulement pour ses membres)", async () => {
     const alice = await scoped.getScopedPrisma(ids.alice);
     expect(await contentIds(alice.chatMessage.findMany())).toEqual([ids.m1]);

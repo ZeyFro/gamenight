@@ -59,10 +59,10 @@ describe("community-isolation", () => {
   });
 
   describe("getIsolationScope", () => {
-    it("éteint : un membre de default garde le mode historique", async () => {
+    it("éteint : un membre de default reçoit son scope et les lignes historiques null", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
       membershipFindMany.mockResolvedValue([m("c-def", "default")]);
-      await expect(getIsolationScope("u1")).resolves.toBeNull();
+      await expect(getIsolationScope("u1")).resolves.toEqual({ communityIds: ["c-def"], includesDefault: true });
       expect(membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({
         where: { userId: "u1", status: "ACTIVE", community: { status: "ACTIVE" } },
       }));
@@ -200,9 +200,11 @@ describe("community-isolation", () => {
     it("éteint avec adhésion default : comportement historique visible", async () => {
       vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
       membershipFindMany.mockResolvedValue([m("c-def", "default")]);
-      membershipFindFirst.mockResolvedValue({ communityId: "c-def" });
       await expect(canViewPote("u1", "p1")).resolves.toBe(true);
-      expect(userFindFirst).not.toHaveBeenCalled();
+      expect(userFindFirst).toHaveBeenCalledWith({
+        where: { id: "p1", memberships: { some: { communityId: { in: ["c-def"] }, status: "ACTIVE" } } },
+        select: { id: true },
+      });
     });
 
     it("soi-même : toujours visible", async () => {

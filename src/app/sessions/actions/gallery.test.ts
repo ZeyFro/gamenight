@@ -224,6 +224,22 @@ describe("session gallery video uploads", () => {
     expect(mocks.del).toHaveBeenCalledWith("sessions/session-1/clip", { token: "private-test-token" });
   });
 
+  it("refuses a creator whose community membership is revoked during upload, even with isolation off", async () => {
+    vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+    mocks.put.mockImplementationOnce(async () => {
+      mocks.memberStatus = "REMOVED";
+      return { pathname: "sessions/session-1/clip" };
+    });
+    const form = new FormData();
+    form.set("sessionId", "session-1");
+    form.set("media", mp4);
+    form.set("consent", "on");
+
+    await expect(uploadSessionGalleryImageAction(form)).rejects.toThrow("REDIRECT:/sessions/session-1?gallery=echec");
+    expect(mocks.galleryCreate).not.toHaveBeenCalled();
+    expect(mocks.del).toHaveBeenCalledWith("sessions/session-1/clip", { token: "private-test-token" });
+  });
+
   it("rechecks the eight-media limit after upload before storing a ninth item", async () => {
     vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
     mocks.galleryCount.mockResolvedValueOnce(7).mockResolvedValueOnce(8);

@@ -7,6 +7,7 @@ import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
 import type { Roulette, User } from "@prisma/client";
 import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { communityMemberUserWhere } from "@/lib/community-isolation";
 import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 
 /**
@@ -41,18 +42,19 @@ function skippedByPrivacy(context: string): PostToDiscordResult {
 }
 
 export async function announceRouletteCreated(
-  roulette: Pick<Roulette, "id" | "scheduledAt" | "deadline" | "notifiedUserIds">,
+  roulette: Pick<Roulette, "id" | "scheduledAt" | "deadline" | "notifiedUserIds" | "communityId">,
   creator: Pick<User, "id" | "discordId">
 ): Promise<PostToDiscordResult> {
   const notifiedUserIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
   const candidates = await prisma.user.findMany({
-    where: { id: { in: notifiedUserIds, not: creator.id } },
+    where: { id: { in: notifiedUserIds, not: creator.id }, ...(await communityMemberUserWhere(roulette.communityId)) },
   });
   const others = await filterUsersByNotificationPreference(candidates, "ROULETTE");
 
   await createNotifications(
     others.map((u) => ({
       userId: u.id,
+      communityId: roulette.communityId,
       type: "SESSION_CREATED" as const,
       title: "🎰 Roulette du gambling",
       message: `Propose tes 2 jeux avant ${formatDateTimeFr(roulette.deadline)}`,
@@ -85,19 +87,19 @@ export async function announceRouletteResult(
   sessionId: string
 ): Promise<PostToDiscordResult> {
   void gameCoverUrl;
-  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { createdById: true } });
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { createdById: true, communityId: true } });
+  if (!session) return skippedByPrivacy("de résultat de roulette");
 
   const candidates = await prisma.user.findMany({
     where: { id: { in: winnerUserIds } },
   });
   const eligibleByPreference = await filterUsersByNotificationPreference(candidates, "ROULETTE");
-  const winners = session
-    ? await filterByActiveSessionInvite(sessionId, session.createdById, eligibleByPreference)
-    : eligibleByPreference;
+  const winners = await filterByActiveSessionInvite(sessionId, session.createdById, eligibleByPreference);
 
   await createNotifications(
     winners.map((u) => ({
       userId: u.id,
+      communityId: session.communityId,
       type: "SESSION_RESULT" as const,
       title: `🎰 La roue a choisi : ${gameName}`,
       message: formatDateTimeFr(roulette.scheduledAt),

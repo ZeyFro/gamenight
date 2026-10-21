@@ -282,7 +282,7 @@ export async function unregisterFromTournamentAction(formData: FormData) {
     if (!tournament || tournament.status !== "REGISTRATION") return false;
     const communityId = await statsCommunityIdForSession(tournament.communityId);
     if (!(await lockCommunityProgress(tx, communityId, user.id))) return false;
-    const scopedDb = scopedTransactionPrisma(tx, isCommunityIsolationEnabled() ? { communityIds: [communityId], includesDefault: false } : null);
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
 
     const deleted = await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
     // Décrémente le compteur durable SEULEMENT si une inscription a

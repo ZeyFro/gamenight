@@ -52,15 +52,13 @@ export async function findActiveMembership(
 }
 
 /**
- * Isolation (PR4) — `userId` peut-il voir/agir sur ce tournoi ? Un membre
- * ACTIVE de `default` garde le mode historique si l'isolation est éteinte ;
- * tous les autres ne voient que leurs communautés ACTIVE. `communityId = null`
- * désigne la communauté par défaut ; une autre communauté est indistinguable
- * d'un tournoi inexistant.
+ * `userId` peut-il voir/agir sur ce tournoi ? Toujours limité aux Memberships
+ * ACTIVE de communautés ACTIVE. `communityId = null` désigne les lignes
+ * historiques de `default` ; une autre communauté est indistinguable d'un
+ * tournoi inexistant.
  */
 export async function canAccessTournament(userId: string, tournamentId: string): Promise<boolean> {
   const scope = await getIsolationScope(userId);
-  if (!scope) return true;
   const row = await prisma.tournament.findFirst({
     where: { id: tournamentId, ...communityIdFilter(scope) },
     select: { id: true },

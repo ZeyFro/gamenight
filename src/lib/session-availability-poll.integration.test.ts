@@ -11,8 +11,8 @@ if (!TEST_DATABASE_URL) console.warn("[availability-polls] Postgres local absent
 describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgres local)", () => {
   let db: import("@prisma/client").PrismaClient;
   let polls: typeof import("./session-availability-poll-data");
-  let creator: { id: string }, guest: { id: string }, outsider: { id: string };
-  let community: { id: string };
+  let creator: { id: string }, guest: { id: string }, outsider: { id: string }, bOnly: { id: string };
+  let community: { id: string }, otherCommunity: { id: string };
   let serial = 0;
 
   beforeAll(async () => {
@@ -31,8 +31,12 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
     vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Tout accès réseau est interdit dans cette intégration."); }));
     community = await db.community.create({ data: { slug: "default", name: "Défaut", status: "ACTIVE" } });
+    otherCommunity = await db.community.create({ data: { slug: "serveur-b", name: "Serveur B", status: "ACTIVE" } });
     const makeUser = () => db.user.create({ data: { discordId: `poll-user-${++serial}`, discordName: `Joueur ${serial}` } });
     creator = await makeUser(); guest = await makeUser(); outsider = await makeUser();
+    bOnly = await makeUser();
+    await db.membership.createMany({ data: [creator, guest, outsider].map(user => ({ communityId: community.id, userId: user.id, status: "ACTIVE" })) });
+    await db.membership.create({ data: { communityId: otherCommunity.id, userId: bOnly.id, status: "ACTIVE" } });
   }, 30_000);
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
@@ -75,6 +79,25 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("isolation OFF : refuse un participant B-only dans un sondage A, sans écrire", async () => {
+    const payload = await input();
+    payload.participantIds.push(bOnly.id);
+
+    await expect(polls.createAvailabilityPoll(creator.id, payload)).rejects.toThrow(polls.AvailabilityPollError);
+    expect(await db.sessionAvailabilityPoll.count()).toBe(0);
+    expect(await db.sessionAvailabilityPollParticipant.count({ where: { userId: bOnly.id } })).toBe(0);
+  });
+
+  it("isolation OFF : bloque la conversion si un participant A est devenu B-only", async () => {
+    const poll = await create();
+    await db.sessionAvailabilityPollParticipant.deleteMany({ where: { pollId: poll.id } });
+    await db.sessionAvailabilityPollParticipant.create({ data: { pollId: poll.id, userId: bOnly.id } });
+
+    await expect(polls.chooseAvailabilityPollSlot(creator.id, poll.id, poll.slots[0].id)).rejects.toThrow(polls.AvailabilityPollError);
+    expect(await db.session.count()).toBe(0);
+    expect((await polls.loadAvailabilityPoll(creator.id, poll.id)).status).toBe("OPEN");
+  });
+
   it("refuse un ID connu à un non-participant, y compris isolation OFF", async () => {
     const poll = await create();
     expect((await polls.loadAvailabilityPoll(guest.id, poll.id)).id).toBe(poll.id);
@@ -113,10 +136,6 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
   });
 
   it("garde le sondage et les invitations dans la communauté active sous isolation ON", async () => {
-    await db.membership.createMany({ data: [
-      { communityId: community.id, userId: creator.id, status: "ACTIVE" },
-      { communityId: community.id, userId: guest.id, status: "ACTIVE" },
-    ] });
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "true");
     const poll = await create();
     expect(poll.communityId).toBe(community.id);

@@ -267,6 +267,16 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     expect((await db.user.findUniqueOrThrow({ where: { id: ids.bob } })).xpTotal).toBe(100);
   });
 
+  it("flags OFF : un membre B ne peut pas pronostiquer une cible A-only", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    const session = await db.session.create({
+      data: { createdById: ids.bob, communityId: ids.b, date: new Date(), status: "SCHEDULED" },
+    });
+
+    expect(await (await import("./pronostics")).submitPronostic(session.id, ids.bob, ids.alice)).toBe(false);
+    expect(await db.pronostic.count()).toBe(0);
+  });
+
   it("tournoi : un créateur retiré ne peut annuler ni supprimer", async () => {
     const t = await db.tournament.create({ data: { name: "T", createdById: ids.alice, communityId: ids.a, gameId: ids.game, maxPlayers: 4, status: "IN_PROGRESS" } });
     await removeAlice();

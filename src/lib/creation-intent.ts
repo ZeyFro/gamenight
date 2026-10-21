@@ -1,9 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 
 export async function lockCreationMembers(tx: Prisma.TransactionClient, communityId: string | null, userIds: string[]): Promise<void> {
-  if (!isCommunityIsolationEnabled()) return;
   // Un parent historique null reste historique : seul son accès hérité au
   // serveur default est contrôlé, sans réaffecter la provenance du parent.
   communityId ??= (await tx.community.findUnique({ where: { slug: "default" }, select: { id: true } }))?.id ?? null;

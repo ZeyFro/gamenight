@@ -244,6 +244,15 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
     await xp.awardXp(ids.both, null, "VOTE", "legacy", 20, { applyStreak: false });
     expect((await stats("default"))?.xpTotal).toBe(20); expect((await stats("a"))).toBeNull();
   });
+  it("flags OFF : un pari B refuse une cible sans membership B", async () => {
+    vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    await db.communityMemberStats.create({ data: { communityId: ids.b, userId: ids.bob, xpTotal: 100 } });
+    const sessionB = await session("b");
+
+    expect(await bets.placeBet(sessionB.id, ids.bob, ids.alice, 10)).toBe(false);
+    expect(await db.xpBet.count()).toBe(0);
+    expect((await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.b, userId: ids.bob } } })).xpTotal).toBe(100);
+  });
   it("badge concurrent : une attribution, un crédit et aucune récompense sur B", async () => {
     const badge = await db.badge.create({ data: { category: "ENGAGEMENT", rarity: "COMMON", modifiedById: ids.both, name: "Concurrent", icon: "B", description: "Premier jour", criteria: { type: "STREAK_DAYS", count: 1 }, xpReward: 10 } });
     await Promise.all(Array.from({ length: 6 }, () => badges.checkTemporalBadges({ id: ids.both, streakCount: 1, createdAt: new Date() }, ids.a)));

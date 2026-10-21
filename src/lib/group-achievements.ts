@@ -252,7 +252,7 @@ export async function checkGroupAchievements(communityId: string): Promise<Group
 /**
  * Trophées du groupe affichés sur l'accueil (carte « Trophées du groupe » et
  * accueil v2), débloqués d'abord : ceux de la communauté ACTIVE de `viewerId`
- * (isolation allumée ; éteinte, tous, comme avant). Une communauté sans trophées
+ * dans tous les modes. Une communauté sans trophées
  * (nouvelle) reçoit les siens à la première lecture.
  */
 export async function listGroupAchievements(viewerId: string) {

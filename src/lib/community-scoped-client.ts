@@ -20,8 +20,7 @@ import {
  * via ce nom, et exige alors `getScopedPrisma` / `scopedPrisma` dans le fichier).
  *
  * Comportement :
- * - `scope === null` : accès historique transparent, réservé en isolation OFF
- *   aux membres ACTIVE de `default`.
+ * - `scope === null` : accès global explicite, réservé aux appels système.
  * - Lectures, `update*`, `delete*`, `upsert`, `count`, `aggregate`, `groupBy` :
  *   le `where` reçoit le filtre `communityIdFilter` (un `OR` jamais vide :
  *   sans communauté, rien n'est visible). Sur les opérations « unique »
@@ -170,7 +169,7 @@ export function scopedTransactionPrisma(tx: Prisma.TransactionClient, scope: Iso
   });
 }
 
-/** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT). Isolation éteinte, seuls les membres ACTIVE de `default` gardent le mode transparent historique. */
+/** Client scopé pour `userId` : périmètre relu en base à chaque appel (jamais dans le JWT), quel que soit le flag. */
 export async function getScopedPrisma(userId: string): Promise<ScopedPrisma> {
   return scopedPrisma(await getIsolationScope(userId));
 }

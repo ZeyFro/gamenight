@@ -57,10 +57,14 @@ describe("community-access — isolation (tournois, classement)", () => {
       });
     });
 
-    it("isolation éteinte : membre default, conserve l'accès historique", async () => {
+    it("isolation éteinte : membre default, conserve null mais reste limité à ses communautés", async () => {
       mocks.membershipFindMany.mockResolvedValue([m("c-def", "default")]);
-      await expect(canAccessTournament("u1", "t1")).resolves.toBe(true);
-      expect(mocks.tournamentFindFirst).not.toHaveBeenCalled();
+      mocks.tournamentFindFirst.mockResolvedValue(null);
+      await expect(canAccessTournament("u1", "t1")).resolves.toBe(false);
+      expect(mocks.tournamentFindFirst).toHaveBeenCalledWith({
+        where: { id: "t1", OR: [{ communityId: { in: ["c-def"] } }, { communityId: null }] },
+        select: { id: true },
+      });
     });
 
     it("allumée : le tournoi doit appartenir à une communauté de l'utilisateur", async () => {

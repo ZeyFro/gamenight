@@ -23,7 +23,10 @@ const { authMock, discordMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/auth", () => ({ auth: authMock }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/cache")>()),
+  revalidatePath: vi.fn(),
+}));
 // Aucune vraie notification Discord, même pour la reconnexion forcée.
 vi.mock("@/lib/discord", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/discord")>()),
@@ -80,23 +83,23 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
     await db.membership.create({ data: { communityId: ids.B, userId: ids.memberB } });
 
     // Données de A (`communityId` nul = communauté par défaut, comme en production).
-    const game = await db.game.create({ data: { name: "Jeu A", source: "MANUAL", addedById: ids.memberA } });
+    ids.game = (await db.game.create({ data: { name: "Jeu A", source: "MANUAL", addedById: ids.memberA } })).id;
     ids.sessionA = (await db.session.create({
       data: { date: new Date(Date.now() + 86_400_000), createdById: ids.memberA },
     })).id;
     ids.tournamentA = (await db.tournament.create({
-      data: { name: "Tournoi A", createdById: ids.memberA, gameId: game.id, maxPlayers: 4 },
+      data: { name: "Tournoi A", createdById: ids.memberA, gameId: ids.game, maxPlayers: 4 },
     })).id;
     await db.chatMessage.create({ data: { userId: ids.memberA, content: "message de A" } });
     ids.sessionB = (await db.session.create({
       data: { date: new Date(Date.now() + 86_400_000), createdById: ids.memberB, communityId: ids.B },
     })).id;
     ids.tournamentB = (await db.tournament.create({
-      data: { name: "Tournoi B", createdById: ids.memberB, gameId: game.id, maxPlayers: 4, communityId: ids.B },
+      data: { name: "Tournoi B", createdById: ids.memberB, gameId: ids.game, maxPlayers: 4, communityId: ids.B },
     })).id;
     await db.chatMessage.create({ data: { userId: ids.memberB, content: "message de B", communityId: ids.B } });
     await db.communityMemberStats.create({ data: { communityId: ids.A, userId: ids.memberA, xpTotal: 500 } });
-  });
+  }, 30_000);
 
   const asUser = (discordId: string, sessionCreatedAt = Date.now() - 60_000) =>
     authMock.mockResolvedValue({ user: { discordId, sessionCreatedAt } });
@@ -152,6 +155,41 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await getCurrentUser()).not.toBeNull();
       expect(await statsOf(ids.A, ids.memberB)).toBeNull();
       expect(await statsOf(ids.B, ids.memberB)).not.toBeNull();
+    });
+  });
+
+  describe("1 ter — membre de default/A seulement, isolation éteinte", () => {
+    it("garde default, refuse B, et ne charge ni le profil ni ses disponibilités", async () => {
+      asUser("member-a");
+      const { canAccessTournament } = await import("@/lib/community-access");
+      const { canViewPote } = await import("@/lib/community-isolation");
+      const { listGroupAchievements } = await import("@/lib/group-achievements");
+      expect(await canAccessTournament(ids.memberA, ids.tournamentA)).toBe(true);
+      expect(await canAccessTournament(ids.memberA, ids.tournamentB)).toBe(false);
+      expect(await canViewPote(ids.memberA, ids.memberB)).toBe(false);
+
+      await db.groupAchievement.createMany({ data: [
+        { communityId: ids.A, key: "trophee-a", name: "A", description: "A", icon: "🏆" },
+        { communityId: ids.B, key: "trophee-b", name: "B", description: "B", icon: "🏆" },
+      ] });
+      expect((await listGroupAchievements(ids.memberA)).map(row => row.key)).toContain("trophee-a");
+      expect((await listGroupAchievements(ids.memberA)).map(row => row.key)).not.toContain("trophee-b");
+
+      await db.weeklyAvailability.create({ data: { userId: ids.memberB, dayOfWeek: 5, startTime: "20:00", endTime: "22:00" } });
+      const { default: PoteDisposPage } = await import("@/app/potes/[id]/page");
+      await expect(PoteDisposPage({ params: Promise.resolve({ id: ids.memberB }) })).rejects.toThrow(NOT_FOUND);
+    });
+
+    it("refuse l'inscription web à un tournoi B connu, sans participant ni stats", async () => {
+      asUser("member-a");
+      const { registerForTournamentAction } = await import("@/app/tournois/actions");
+      const form = new FormData();
+      form.set("tournamentId", ids.tournamentB);
+
+      await registerForTournamentAction(form);
+
+      expect(await db.tournamentParticipant.count({ where: { tournamentId: ids.tournamentB, userId: ids.memberA } })).toBe(0);
+      expect(await statsOf(ids.B, ids.memberA)).toBeNull();
     });
   });
 
@@ -249,6 +287,13 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await getCurrentUser()).toBeNull();
       expect((await requireAdmin())?.id).toBe(ids.admin);
       expect(await statsOf(ids.A, ids.admin)).toBeNull();
+      const { getValidSession } = await import("@/lib/valid-session");
+      expect(await getValidSession()).toBeNull();
+
+      const { awardXp } = await import("@/lib/xp-actions");
+      expect(await awardXp(ids.admin, ids.A, "CREATE_SESSION", "admin-without-membership", 10)).toEqual({ leveledUp: false, awarded: false });
+      expect(await statsOf(ids.A, ids.admin)).toBeNull();
+      expect(await db.xpEvent.count({ where: { userId: ids.admin } })).toBe(0);
     });
   });
 
@@ -260,7 +305,33 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       await db.membership.updateMany({ where: { userId: ids.memberB }, data: { status: "LEFT", leftAt: new Date() } });
     });
 
-    it("AVANT forceReloginAt : l'ancien JWT reste authentifié mais l'isolation allumée refuse les accès collectifs", async () => {
+    it.each(["LEFT", "REMOVED"] as const)("%s coupe les accès à session légère, sans forceRelogin", async (status) => {
+      await db.membership.updateMany({ where: { userId: ids.memberB }, data: { status, leftAt: new Date() } });
+      asUser("member-b");
+      const { getValidSession } = await import("@/lib/valid-session");
+      expect(await getValidSession()).toBeNull();
+
+      const { POST: savePushSubscription } = await import("@/app/api/push/subscription/route");
+      const pushResponse = await savePushSubscription(new Request("https://app.test/api/push/subscription", {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+      }));
+      expect(pushResponse.status).toBe(401);
+
+      const { NextRequest } = await import("next/server");
+      const { GET: steamLink } = await import("@/app/api/steam/link/route");
+      const { GET: steamCallback } = await import("@/app/api/steam/callback/route");
+      for (const response of [
+        await steamLink(new NextRequest("https://app.test/api/steam/link")),
+        await steamCallback(new NextRequest("https://app.test/api/steam/callback")),
+      ]) expect(new URL(response.headers.get("location")!).pathname).toBe("/");
+
+      vi.stubEnv("PAGE_TITLES_ENABLED", "true");
+      vi.stubEnv("PAGE_TITLES_DYNAMIC_ENABLED", "true");
+      const { generateMetadata } = await import("@/app/jeux/[id]/page");
+      expect(await generateMetadata({ params: Promise.resolve({ id: ids.game }) })).toMatchObject({ title: "Fiche du jeu" });
+    });
+
+    it("AVANT forceReloginAt : l'ancien JWT sans Membership active est refusé", async () => {
       isolation(true);
       asUser("member-b");
       const { getCurrentUser } = await import("@/lib/current-user");
@@ -268,7 +339,7 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       const { requireAdmin } = await import("@/lib/admin");
       const { canAccessTournament } = await import("@/lib/community-access");
       const { getChatMessagesAction, sendChatMessageAction } = await import("@/app/chat/actions");
-      expect(await getValidSession()).not.toBeNull(); // le JWT reste accepté
+      expect(await getValidSession()).toBeNull();
       expect(await getCurrentUser()).toBeNull();
       expect(await requireAdmin()).toBeNull();
       expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
@@ -277,7 +348,7 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       expect(await db.communityMemberStats.count({ where: { userId: ids.memberB } })).toBe(0);
     });
 
-    it.each(["LEFT", "REMOVED"] as const)("AVANT forceReloginAt, isolation éteinte : un JWT ancien après %s ne lit ni n'écrit de données collectives", async (status) => {
+    it.each(["LEFT", "REMOVED"] as const)("AVANT forceReloginAt, isolation éteinte : JWT ancien après %s refuse les accès collectifs", async (status) => {
       if (status !== "LEFT") {
         await db.membership.updateMany({ where: { userId: ids.memberB }, data: { status } });
       }
@@ -286,13 +357,27 @@ describe.skipIf(!TEST_DATABASE_URL)("S0 — contrôles applicatifs (Postgres iso
       const { getValidSession } = await import("@/lib/valid-session");
       const { canAccessTournament } = await import("@/lib/community-access");
       const { getChatMessagesAction, sendChatMessageAction } = await import("@/app/chat/actions");
-      expect(await getValidSession()).not.toBeNull();
+      expect(await getValidSession()).toBeNull();
       expect(await getCurrentUser()).toBeNull();
       expect(await canAccessTournament(ids.memberB, ids.tournamentA)).toBe(false);
       expect(await getChatMessagesAction(null)).toBeNull();
       expect(await sendChatMessageAction(chatForm("fantôme"))).toMatchObject({ ok: false });
       expect(await db.chatMessage.count({ where: { userId: ids.memberB, content: "fantôme" } })).toBe(0);
       expect(await db.communityMemberStats.count({ where: { userId: ids.memberB } })).toBe(0);
+    });
+
+    it("perdre B en gardant A : la session reste valide, mais profil et données de B restent fermés", async () => {
+      await db.membership.create({ data: { communityId: ids.B, userId: ids.memberA } });
+      await db.membership.update({ where: { communityId_userId: { communityId: ids.B, userId: ids.memberA } }, data: { status: "REMOVED" } });
+      asUser("member-a");
+      const { getValidSession } = await import("@/lib/valid-session");
+      const { canViewPote } = await import("@/lib/community-isolation");
+      const { canAccessTournament } = await import("@/lib/community-access");
+      expect(await getValidSession()).not.toBeNull(); // l'adhésion A active maintient la session
+      expect(await canViewPote(ids.memberA, ids.memberB)).toBe(false);
+      expect(await canAccessTournament(ids.memberA, ids.tournamentB)).toBe(false);
+      const { default: PoteDisposPage } = await import("@/app/potes/[id]/page");
+      await expect(PoteDisposPage({ params: Promise.resolve({ id: ids.memberB }) })).rejects.toThrow(NOT_FOUND);
     });
 
     it.each([true, false])("APRÈS forceReloginAt (triggerGlobalRelogin), isolation=%s : l'ancien JWT est refusé partout", async (on) => {
