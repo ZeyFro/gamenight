@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 
 import { resumeCreation } from "@/lib/creation-resume";
+import { MAX_MESSAGE_TEXT_LENGTH } from "@/lib/message-templates";
 
 import { createOnce, creationKey } from "@/lib/creation-intent";
 import { createVotingSessionInTransaction } from "@/lib/session-creation";
@@ -101,6 +102,7 @@ export async function createSession(formData: FormData) {
 
   const customReminderMessage =
     String(formData.get("customReminderMessage") ?? "").trim() || null;
+  if (customReminderMessage && customReminderMessage.length > MAX_MESSAGE_TEXT_LENGTH) redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
   const reminderTimings = parseReminderTimingsFromFormData(formData);
   // Ne garde que des ids qui correspondent réellement à un user existant —
   // la liste vient de checkboxes générées depuis une vraie liste de potes,

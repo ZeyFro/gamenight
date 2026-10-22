@@ -4,6 +4,9 @@ import type { MessageCategory } from "@prisma/client";
 
 export type MessageVariables = Record<string, string>;
 
+/** Un message Discord est limité à 2000 caractères : marge pour les variables substituées (pseudos, jeux). */
+export const MAX_MESSAGE_TEXT_LENGTH = 1500;
+
 export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
   "SESSION_CREATED",
   "SESSION_MODIFIED",
