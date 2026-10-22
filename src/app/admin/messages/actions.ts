@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import {
   ALL_MESSAGE_CATEGORIES,
+  MAX_MESSAGE_TEXT_LENGTH,
+  normalizeMessageText,
   findInvalidCategoryVariables,
   variablesForCategories,
 } from "@/lib/message-templates";
@@ -21,8 +23,8 @@ export async function addMessageTemplate(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
 
-  const text = String(formData.get("text") ?? "").trim();
-  if (!text) return;
+  const text = normalizeMessageText(String(formData.get("text") ?? ""));
+  if (!text || text.length > MAX_MESSAGE_TEXT_LENGTH) return;
 
   const categories = parseCategories(formData);
   // Filet de sécurité serveur (Fix 4C) : le formulaire bloque déjà
@@ -50,8 +52,8 @@ export async function updateMessageTemplate(formData: FormData) {
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
-  const text = String(formData.get("text") ?? "").trim();
-  if (!id || !text) return;
+  const text = normalizeMessageText(String(formData.get("text") ?? ""));
+  if (!id || !text || text.length > MAX_MESSAGE_TEXT_LENGTH) return;
 
   const categories = parseCategories(formData);
   if (findInvalidCategoryVariables(text, categories).length > 0) return;

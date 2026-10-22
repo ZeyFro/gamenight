@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ALL_MESSAGE_CATEGORIES,
+  MAX_MESSAGE_TEXT_LENGTH,
   CATEGORY_LABELS,
   CATEGORY_VARIABLES,
   findInvalidCategoryVariables,
@@ -65,6 +66,11 @@ export function MessageTemplateForm({
     [text, categories]
   );
 
+  // Limite appliquée à l'écriture seulement : un ancien modèle plus long
+  // s'ouvre tel quel (jamais tronqué) mais ne peut pas être réenregistré.
+  const tooLong = text.length > MAX_MESSAGE_TEXT_LENGTH;
+  const legacyTooLong = initialText.length > MAX_MESSAGE_TEXT_LENGTH;
+
   const suggestions = useMemo(() => {
     if (!suggestion) return [];
     const q = suggestion.query.toLowerCase();
@@ -112,7 +118,7 @@ export function MessageTemplateForm({
         // bouton était quand même cliqué (ex. `invalidPairs` vient de
         // repasser à 0 entre deux rendus), on bloque explicitement l'envoi
         // de l'action serveur plutôt que de compter uniquement sur le CSS.
-        if (invalidPairs.length > 0) e.preventDefault();
+        if (invalidPairs.length > 0 || tooLong) e.preventDefault();
       }}
       className="flex flex-col gap-3"
     >
@@ -127,6 +133,8 @@ export function MessageTemplateForm({
           onBlur={() => setTimeout(() => setSuggestion(null), 150)}
           rows={2}
           required
+          aria-invalid={tooLong || undefined}
+          aria-describedby={tooLong ? `${idPrefix}-too-long` : undefined}
           placeholder="Ex. : Yo {pote}, dans 30 min c'est {jeu}."
           className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
@@ -149,6 +157,26 @@ export function MessageTemplateForm({
           </ul>
         )}
       </div>
+
+      {tooLong && (
+        <div
+          id={`${idPrefix}-too-long`}
+          className="flex flex-col gap-1 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive"
+        >
+          {/* Le compteur reste hors de l'alerte : sinon chaque frappe la ré-annoncerait. */}
+          <p role="alert">
+            Ce message dépasse la limite de {MAX_MESSAGE_TEXT_LENGTH}{" "}
+            caractères (Discord coupe à 2000 et les variables allongent le
+            texte).{" "}
+            {legacyTooLong
+              ? "Il date d'avant cette limite : il reste utilisé tel quel, mais il doit être raccourci avant d'être réenregistré."
+              : "Raccourcis-le pour pouvoir enregistrer."}
+          </p>
+          <p data-testid="message-length">
+            {text.length} / {MAX_MESSAGE_TEXT_LENGTH} caractères
+          </p>
+        </div>
+      )}
 
       {invalidPairs.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
@@ -198,7 +226,7 @@ export function MessageTemplateForm({
         })}
       </fieldset>
 
-      <fieldset disabled={invalidPairs.length > 0} className="contents">
+      <fieldset disabled={invalidPairs.length > 0 || tooLong} className="contents">
         {footer}
       </fieldset>
     </form>

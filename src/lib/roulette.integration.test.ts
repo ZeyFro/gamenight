@@ -139,6 +139,45 @@ describe.skipIf(!TEST_DATABASE_URL)("roulette async (intégration Postgres)", { 
     });
   });
 
+  // Participants = invités SÉLECTIONNÉS à la création qui ont proposé des jeux, et encore membres ACTIFS.
+  // Aucune présence Discord (vocal / statut) n'est lue : audit objectif C, lot 1.
+  describe("participants du tirage (sélection, pas présence Discord)", () => {
+    it("un seul participant ayant proposé : annulation silencieuse, aucune soirée créée", async () => {
+      const [u1, u2] = [await makeUser(), await makeUser()];
+      const game = await makeGame(u1.id, null, null);
+      const r = await makeRoulette([{ userId: u1.id, gameIds: [game.id] }, { userId: u2.id, gameIds: [] }]);
+      await expect(roulette.spinRoulette(r.id)).resolves.toEqual({ playerFilterFallback: false });
+      const after = await db.roulette.findUniqueOrThrow({ where: { id: r.id } });
+      expect(after).toMatchObject({ status: "DONE", resultGameId: null, resultSessionId: null });
+      expect(await db.session.count()).toBe(0);
+    });
+
+    it("un invité qui a proposé mais n'est plus membre ACTIVE n'est ni compté ni tirable", async () => {
+      const [u1, u2, gone] = [await makeUser(), await makeUser(), await makeUser()];
+      const kept = await makeGame(u1.id, null, null);
+      const goneOnly = await makeGame(gone.id, null, null);
+      await db.membership.update({ where: { communityId_userId: { communityId, userId: gone.id } }, data: { status: "REMOVED" } });
+      for (const rng of [0, 0.5, 0.999]) {
+        const r = await makeRoulette([
+          { userId: u1.id, gameIds: [kept.id] },
+          { userId: u2.id, gameIds: [kept.id] },
+          { userId: gone.id, gameIds: [goneOnly.id] },
+        ]);
+        await roulette.spinRoulette(r.id, () => rng);
+        expect(await resultGameOf(r.id)).toBe(kept.id);
+      }
+    });
+
+    it("l'un des deux seuls participants retiré : moins de 2 participants, annulation", async () => {
+      const [u1, gone] = [await makeUser(), await makeUser()];
+      const game = await makeGame(u1.id, null, null);
+      await db.membership.update({ where: { communityId_userId: { communityId, userId: gone.id } }, data: { status: "REMOVED" } });
+      const r = await makeRoulette([{ userId: u1.id, gameIds: [game.id] }, { userId: gone.id, gameIds: [game.id] }]);
+      await roulette.spinRoulette(r.id);
+      expect(await db.roulette.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "DONE", resultGameId: null });
+    });
+  });
+
   it("favorise les tierlists tout en écartant les jeux terminés dans les 7 derniers jours", async () => {
     const [u1, u2] = [await makeUser(), await makeUser()];
     const recent = await makeGame(u1.id, null, null);
