@@ -160,6 +160,9 @@ sudo sh -eu -c '
   unit_count=$(grep -Ec "^Environment=VOICE_PRESENCE_ENABLED=" "$unit" || true)
   test "$unit_count" -eq 1
   grep -qx "Environment=VOICE_PRESENCE_ENABLED=false" "$unit"
+  environment_file_count=$(grep -Ec "^EnvironmentFile=" "$unit" || true)
+  test "$environment_file_count" -eq 1
+  grep -qx "EnvironmentFile=/etc/gamenight/gamenight.env" "$unit"
   test "$(systemctl show gamenight.service -p FragmentPath --value)" = "$unit"
   test -z "$(systemctl show gamenight.service -p DropInPaths --value)"
 '
