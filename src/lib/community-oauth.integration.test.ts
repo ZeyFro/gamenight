@@ -163,6 +163,24 @@ describe.skipIf(!url)("OAuth memberships, local PostgreSQL", () => {
       expect(await defaultMembership()).toMatchObject({ status: "ACTIVE", role: "MEMBER" });
     });
 
+    it("première connexion concurrente : 8 signIn simultanés du même nouveau compte → tous acceptés, un seul User, une seule appartenance", async () => {
+      await setDefaultGuild(defaultGuild);
+      stubGuilds([defaultGuild]);
+      const results = await Promise.all(Array.from({ length: 8 }, () => signIn("fresh-concurrent")));
+      expect(results).toEqual(Array(8).fill(true));
+      const users = await db.user.findMany({ where: { discordId: "fresh-concurrent" } });
+      expect(users).toHaveLength(1);
+      expect(await db.membership.count({ where: { userId: users[0].id, status: "ACTIVE" } })).toBe(1);
+    });
+
+    it("première connexion concurrente d'un inconnu : tous refusés sans erreur, aucun User créé", async () => {
+      await setDefaultGuild(defaultGuild);
+      stubGuilds(["999999999999999990"]);
+      const results = await Promise.all(Array.from({ length: 8 }, () => signIn("stranger-concurrent")));
+      expect(results).toEqual(Array(8).fill(false));
+      expect(await db.user.count({ where: { discordId: "stranger-concurrent" } })).toBe(0);
+    });
+
     it("(ii) inconnu : serveur absent de sa liste → refusé, aucune ligne User créée", async () => {
       await setDefaultGuild(defaultGuild);
       stubGuilds(["999999999999999990"]);
