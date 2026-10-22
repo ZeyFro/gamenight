@@ -50,7 +50,7 @@ async function unlockBadgeRaw(userId: string, communityId: string, badge: Badge)
       const event = await scopedDb.xpEvent.createMany({ data: [{ communityId, userId, reason: "BADGE_UNLOCKED", sourceId: badge.id, amount: badge.xpReward }], skipDuplicates: true });
       if (event.count === 0) return;
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
-      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpTotal: { increment: badge.xpReward } } });
+      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpTotal: { increment: badge.xpReward }, xpBalance: { increment: badge.xpReward } } });
     });
   } catch (error) {
     if (!isUniqueConstraintViolation(error)) throw error;

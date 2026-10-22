@@ -461,7 +461,7 @@ export default async function SessionDetailPage({
             <XpBetForm
               sessionId={session.id}
               voterId={user.id}
-              xpTotal={sessionProgress.xpTotal}
+              xpBalance={sessionProgress.xpBalance}
               targets={pronosticData.participants}
             />
           </div>

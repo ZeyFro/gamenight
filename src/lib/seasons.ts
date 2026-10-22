@@ -149,7 +149,7 @@ async function finalizeCommunitySeasonIfDue(communityId: string): Promise<void> 
       seasonId: season.id, userId: u.id, xp: u.xpTotal,
       level: levelForXp(u.xpTotal), rank: rankForLevel(levelForXp(u.xpTotal)).name, position: u.position,
     })) });
-    await scopedDb.communityMemberStats.updateMany({ where: { communityId }, data: { xpTotal: 0 } });
+    await scopedDb.communityMemberStats.updateMany({ where: { communityId }, data: { xpTotal: 0, xpBalance: 0 } });
     await scopedDb.season.create({ data: {
       communityId, number: season.number + 1, name: `Saison ${season.number + 1}`,
       startDate: now, endDate: endOfMonthUTC(now), isActive: true,

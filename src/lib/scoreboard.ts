@@ -39,7 +39,7 @@ export interface ScoreboardEntry {
 
 /**
  * Début de la période pour "Ce mois"/"Cette semaine" — `null` pour
- * "Global" (solde `CommunityMemberStats.xpTotal` du serveur). Semaine
+ * "Global" (progression `CommunityMemberStats.xpTotal` du serveur). Semaine
  * calée sur lundi (même convention que `DAY_LABELS_MON_FIRST` dans
  * wallclock.ts, cohérent avec le planning de dispos).
  */
@@ -62,7 +62,7 @@ function periodStart(period: ScoreboardPeriod): Date | null {
  * Classement du groupe (`/classement`, PR 9/9 — dernière étape du
  * chantier XP). Toujours **tous** les users (même à 0 XP sur la période
  * choisie), triés par XP décroissant. Niveau/rang/titre restent calculés
- * sur `xpTotal` à vie (`levelForXp`) **quelle que soit la période
+ * sur `xpTotal` courant de la saison (`levelForXp`) **quelle que soit la période
  * affichée** : un "niveau" hebdomadaire n'a pas de sens (le niveau est un
  * jalon cumulatif), seul le classement (position + XP affiché) change
  * selon le filtre — décision assumée, pas explicitement demandée mais
@@ -102,7 +102,7 @@ export async function getScoreboard(
   const createdAtFilter = start ? { createdAt: { gte: start } } : {};
   const memberFilter = { communityId, userId: { in: usersRaw.map((u) => u.id) } };
 
-  // Soldes et agrégats d'XP ne dépendent que de la liste des utilisateurs :
+  // Progressions et agrégats d'XP ne dépendent que de la liste des utilisateurs :
   // lus ensemble (avant, les soldes puis les agrégats, l'un après l'autre).
   const [stats, xpByUser, sessionsByUser, xpLast7Days] = await Promise.all([
     scopedDb.communityMemberStats.findMany({ where: memberFilter, select: { userId: true, xpTotal: true } }),
@@ -110,7 +110,7 @@ export async function getScoreboard(
       ? null
       : scopedDb.xpEvent.groupBy({
           by: ["userId"],
-          where: { ...createdAtFilter, ...memberFilter },
+          where: { ...createdAtFilter, ...memberFilter, reason: { not: "SHOP_BALANCE_PURCHASE" } },
           _sum: { amount: true },
         }),
     scopedDb.xpEvent.groupBy({
@@ -128,7 +128,7 @@ export async function getScoreboard(
     period === "global"
       ? scopedDb.xpEvent.groupBy({
           by: ["userId"],
-          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter },
+          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter, reason: { not: "SHOP_BALANCE_PURCHASE" } },
           _sum: { amount: true },
         })
       : null,
