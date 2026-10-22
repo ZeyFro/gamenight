@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   controlFindMany: vi.fn(),
   createSessionVoiceCollector: vi.fn(),
   claimLease: vi.fn(),
+  validateLease: vi.fn(),
   finalizeCommand: vi.fn(),
   markGap: vi.fn(),
   markGapRecovered: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
 vi.mock("./session-voice-collector", () => ({ createSessionVoiceCollector: mocks.createSessionVoiceCollector }));
 vi.mock("./voice-presence-coordination", () => ({
   claimSessionVoicePresenceLease: mocks.claimLease,
+  validateSessionVoicePresenceLease: mocks.validateLease,
   finalizeSessionVoicePresenceCommand: mocks.finalizeCommand,
   markSessionVoicePresenceGap: mocks.markGap,
   markSessionVoicePresenceGapRecovered: mocks.markGapRecovered,
@@ -31,6 +33,7 @@ beforeEach(() => {
   process.env.DISCORD_BOT_GUILD_ID = "";
   mocks.controlFindMany.mockResolvedValue([]);
   mocks.claimLease.mockResolvedValue({ claimed: true, generation: 1, gapDetected: false });
+  mocks.validateLease.mockResolvedValue(true);
   mocks.finalizeCommand.mockResolvedValue(true);
   mocks.releaseLease.mockResolvedValue([]);
 });
@@ -209,6 +212,30 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
     await runtime.stop();
     expect(mocks.claimLease).not.toHaveBeenCalled();
     expect(mocks.createSessionVoiceCollector).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a claimed target after discovery and before constructing its Gateway collector", async () => {
+    mocks.sessionFindMany.mockResolvedValue([{
+      id: "session-revoked-before-start",
+      voicePresenceConsents: [{ id: "consent-1" }],
+      community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
+    }]);
+    // Simulates withdrawal committing after loadTargets/claim and before the
+    // runtime's final authorization check.
+    mocks.validateLease.mockResolvedValue(false);
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
+    );
+
+    try {
+      expect(mocks.claimLease).toHaveBeenCalledOnce();
+      expect(mocks.validateLease).toHaveBeenCalledWith("session-revoked-before-start", expect.any(String), 1, expect.any(Date));
+      expect(mocks.claimLease.mock.invocationCallOrder[0]).toBeLessThan(mocks.validateLease.mock.invocationCallOrder[0]);
+      expect(mocks.createSessionVoiceCollector).not.toHaveBeenCalled();
+    } finally {
+      await runtime.stop();
+    }
   });
 
   it("surfaces startup failure without forwarding database error details to Next logs", async () => {

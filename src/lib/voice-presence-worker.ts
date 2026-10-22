@@ -66,6 +66,7 @@ const globalState = workerGlobal[VOICE_PRESENCE_GLOBAL_KEY] ??= {};
 
 export function createVoicePresenceWorker(options: {
   loadTargets: () => Promise<readonly VoicePresenceTarget[]>;
+  validateTarget?: (target: VoicePresenceTarget) => Promise<boolean>;
   loadStopTargets?: () => Promise<readonly VoicePresenceStopTarget[]>;
   finalizeStopTarget?: (target: VoicePresenceStopTarget) => Promise<void>;
   createCollector: (target: VoicePresenceTarget, callbacks: VoicePresenceCollectorCallbacks) => VoicePresenceCollector;
@@ -170,6 +171,7 @@ export function createVoicePresenceWorker(options: {
       for (const [sessionId, current] of targets) {
         if (!started || stopped || failure) break;
         if (collectors.has(sessionId) || current.target.enabled === false || stopBySession.has(sessionId)) continue;
+        if (options.validateTarget && !await options.validateTarget(current.target)) continue;
         const callbacks: VoicePresenceCollectorCallbacks = {
           onFatal: failure => { void fail({ kind: "gateway", failure }); },
           onPersistenceError: error => { void fail({ kind: "persistence", error }); },

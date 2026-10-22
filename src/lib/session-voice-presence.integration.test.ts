@@ -242,6 +242,21 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
       .toMatchObject({ claimed: true, generation: 1 });
   }, 15_000);
 
+  it("rejects a claimed target when consent is withdrawn before Gateway startup", async () => {
+    const now = new Date();
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "synthetic-worker", now))
+      .toMatchObject({ claimed: true, generation: 1 });
+    expect(await voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID)).toBe(true);
+
+    expect(await coordination.validateSessionVoicePresenceLease(SESSION_ID, "synthetic-worker", 1, new Date()))
+      .toBe(false);
+    expect(await voicePresence.storeSessionVoiceInterval(
+      { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 },
+      { memberKey: DISCORD_ID, channelId: CHANNEL_ID, startedAt: now.getTime(), endedAt: now.getTime() + 60_000 },
+    )).toBe(false);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  }, 15_000);
+
   it("serializes a concurrent interval write and withdrawal so no contribution survives", async () => {
     const config = { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 };
     const startedAt = Date.now() - 10 * 60 * 1000;

@@ -25,6 +25,22 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     take: limit,
     select: { id: true },
   });
+  const gaps = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT gap."id"
+    FROM "SessionVoicePresenceGap" AS gap
+    LEFT JOIN "SessionVoicePresenceControl" AS control ON control."sessionId" = gap."sessionId"
+    LEFT JOIN "Session" AS session ON session."id" = gap."sessionId"
+    WHERE gap."expiresAt" <= ${now}
+       OR (
+         gap."expiresAt" IS NULL
+         AND session.status = 'DONE'
+         AND control.status IN ('STOP_REQUESTED', 'FINALIZED')
+         AND control."stopAt" IS NOT NULL
+         AND control."stopAt" <= ${new Date(now.getTime() - VOICE_PRESENCE_RETENTION_MS)}
+       )
+    ORDER BY COALESCE(gap."expiresAt", control."stopAt" + INTERVAL '30 days') ASC
+    LIMIT ${limit}
+  `;
   const controls = await prisma.sessionVoicePresenceControl.findMany({
     where: {
       OR: [
@@ -50,9 +66,11 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     return {
       expiredIntervals: intervals.length,
       expiredConsents: consents.length,
+      expiredGaps: gaps.length,
       expiredControls: controls.length,
       intervalsDeleted: 0,
       consentsDeleted: 0,
+      gapsDeleted: 0,
       controlsDeleted: 0,
     };
   }
@@ -63,6 +81,9 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
   const consentDelete = consents.length
     ? await prisma.sessionVoicePresenceConsent.deleteMany({ where: { id: { in: consents.map(row => row.id) } } })
     : { count: 0 };
+  const gapDelete = gaps.length
+    ? await prisma.sessionVoicePresenceGap.deleteMany({ where: { id: { in: gaps.map(row => row.id) } } })
+    : { count: 0 };
   const controlDelete = controls.length
     ? await prisma.sessionVoicePresenceControl.deleteMany({
       where: { sessionId: { in: controls.map(row => row.sessionId) }, status: { in: ["PURGED", "FINALIZED", "PURGE_REQUESTED"] } },
@@ -72,9 +93,11 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
   return {
     expiredIntervals: intervals.length,
     expiredConsents: consents.length,
+    expiredGaps: gaps.length,
     expiredControls: controls.length,
     intervalsDeleted: intervalDelete.count,
     consentsDeleted: consentDelete.count,
+    gapsDeleted: gapDelete.count,
     controlsDeleted: controlDelete.count,
   };
 }

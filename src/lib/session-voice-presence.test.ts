@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   intervalGroupBy: vi.fn(),
   consentFindUnique: vi.fn(),
   controlFindUnique: vi.fn(),
+  gapFindMany: vi.fn(),
   membershipFind: vi.fn(),
   accessRole: vi.fn(),
   isolationEnabled: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
   sessionVoicePresenceInterval: { upsert: mocks.intervalUpsert, groupBy: mocks.intervalGroupBy },
   sessionVoicePresenceConsent: { findUnique: mocks.consentFindUnique },
   sessionVoicePresenceControl: { findUnique: mocks.controlFindUnique },
+  sessionVoicePresenceGap: { findMany: mocks.gapFindMany },
   membership: { findUnique: mocks.membershipFind },
 } }));
 vi.mock("@/lib/session-access", () => ({ getSessionAccessRole: mocks.accessRole }));
@@ -79,6 +81,7 @@ beforeEach(() => {
   mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
   mocks.consentFindUnique.mockResolvedValue({ id: "consent-1", expiresAt: null });
   mocks.controlFindUnique.mockResolvedValue({ gapDetected: false, gapStartedAt: null, lastGapAt: null });
+  mocks.gapFindMany.mockResolvedValue([]);
   mocks.intervalGroupBy.mockResolvedValue([]);
   mocks.userFindMany.mockResolvedValue([]);
   process.env.VOICE_PRESENCE_ENABLED = "true";
@@ -249,10 +252,10 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
     mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
     const gapStartedAt = new Date("2026-10-22T10:00:00.000Z");
-    mocks.controlFindUnique.mockResolvedValue({ gapDetected: true, gapStartedAt, lastGapAt: null });
+    mocks.gapFindMany.mockResolvedValue([{ startedAt: gapStartedAt, resumedAt: null }]);
     expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({
       canReadAll: true,
-      latestGap: { startedAt: gapStartedAt, resumedAt: null },
+      gapPeriods: [{ startedAt: gapStartedAt, resumedAt: null }],
     });
 
     mocks.accessRole.mockClear();
@@ -284,5 +287,41 @@ describe("voice presence session link (synthetic DB doubles)", () => {
       canWithdraw: true,
       canConsent: false,
     });
+  });
+
+  it("returns every retained gap period in chronological order for authorized readers", async () => {
+    mocks.accessRole.mockResolvedValue("creator");
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
+    const firstStart = new Date("2026-10-22T10:00:00.000Z");
+    const firstResume = new Date("2026-10-22T10:05:00.000Z");
+    const secondStart = new Date("2026-10-22T11:00:00.000Z");
+    mocks.gapFindMany.mockResolvedValue([
+      { startedAt: firstStart, resumedAt: firstResume },
+      { startedAt: secondStart, resumedAt: null },
+    ]);
+
+    expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({
+      hasGaps: true,
+      gapPeriods: [
+        { startedAt: firstStart, resumedAt: firstResume },
+        { startedAt: secondStart, resumedAt: null },
+      ],
+    });
+    expect(mocks.gapFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sessionId: "session-test" }),
+      orderBy: { startedAt: "asc" },
+    }));
+  });
+
+  it("masks gap history after the cutoff retention window even before cleanup runs", async () => {
+    mocks.accessRole.mockResolvedValue("creator");
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
+    mocks.controlFindUnique.mockResolvedValue({ stopAt: new Date(Date.now() - 31 * 24 * 60 * 60_000) });
+    mocks.gapFindMany.mockResolvedValue([{ startedAt: new Date(0), resumedAt: new Date(60_000) }]);
+
+    expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({ hasGaps: false, gapPeriods: [] });
+    expect(mocks.gapFindMany).not.toHaveBeenCalled();
   });
 });

@@ -68,9 +68,11 @@ export interface RetentionRunReport {
   voicePresence: {
     expiredIntervals: number;
     expiredConsents: number;
+    expiredGaps: number;
     expiredControls: number;
     intervalsDeleted: number;
     consentsDeleted: number;
+    gapsDeleted: number;
     controlsDeleted: number;
   } | null;
   errors: string[];

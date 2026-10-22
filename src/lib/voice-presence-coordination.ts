@@ -7,6 +7,29 @@ export type VoicePresenceEndMode = "FINALIZE" | "PURGE";
 export const VOICE_PRESENCE_LEASE_MS = 45_000;
 const VOICE_PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
+async function findOpenVoicePresenceGap(tx: Prisma.TransactionClient, sessionId: string) {
+  return tx.sessionVoicePresenceGap.findFirst({
+    where: { sessionId, resumedAt: null },
+    orderBy: { startedAt: "asc" },
+  });
+}
+
+async function ensureOpenVoicePresenceGap(
+  tx: Prisma.TransactionClient,
+  input: { sessionId: string; generation: number; startedAt: Date; expiresAt?: Date | null },
+) {
+  const existing = await findOpenVoicePresenceGap(tx, input.sessionId);
+  if (existing) return existing;
+  return tx.sessionVoicePresenceGap.create({
+    data: {
+      sessionId: input.sessionId,
+      generation: input.generation,
+      startedAt: input.startedAt,
+      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+    },
+  });
+}
+
 export async function requestSessionVoicePresenceStop(
   tx: Prisma.TransactionClient,
   sessionId: string,
@@ -22,6 +45,7 @@ export async function requestSessionVoicePresenceStop(
   if (mode === "PURGE") {
     await tx.sessionVoicePresenceInterval.deleteMany({ where: { sessionId } });
     await tx.sessionVoicePresenceConsent.deleteMany({ where: { sessionId } });
+    await tx.sessionVoicePresenceGap.deleteMany({ where: { sessionId } });
 
     if (existing) {
       const leaseIsLive = existing.leaseOwner !== null
@@ -91,8 +115,10 @@ export async function claimSessionVoicePresenceLease(
       leaseExpiresAt: Date | null;
       heartbeatAt: Date | null;
       gapDetected: boolean;
+      gapStartedAt: Date | null;
+      lastGapAt: Date | null;
     }[]>`
-      SELECT "generation", status, "leaseOwner", "leaseExpiresAt", "heartbeatAt", "gapDetected"
+      SELECT "generation", status, "leaseOwner", "leaseExpiresAt", "heartbeatAt", "gapDetected", "gapStartedAt", "lastGapAt"
       FROM "SessionVoicePresenceControl"
       WHERE "sessionId" = ${sessionId}
       FOR UPDATE
@@ -107,6 +133,16 @@ export async function claimSessionVoicePresenceLease(
     const takeover = control.leaseOwner !== null && !renewedSameLease;
     const generation = control.generation + (renewedSameLease ? 0 : 1);
     const gapDetected = control.gapDetected || takeover;
+    const takeoverGapStartedAt = control.gapDetected && control.lastGapAt === null
+      ? control.gapStartedAt ?? control.heartbeatAt ?? control.leaseExpiresAt ?? now
+      : control.heartbeatAt ?? control.leaseExpiresAt ?? now;
+    if (takeover) {
+      await ensureOpenVoicePresenceGap(tx, {
+        sessionId,
+        generation,
+        startedAt: takeoverGapStartedAt,
+      });
+    }
     await tx.sessionVoicePresenceControl.update({
       where: { sessionId },
       data: {
@@ -116,12 +152,76 @@ export async function claimSessionVoicePresenceLease(
         generation,
         gapDetected,
         ...(takeover ? {
-          gapStartedAt: control.heartbeatAt ?? control.leaseExpiresAt ?? now,
+          gapStartedAt: takeoverGapStartedAt,
           lastGapAt: null,
         } : {}),
       },
     });
     return { claimed: true as const, generation, gapDetected };
+  });
+}
+
+/** Final authorization immediately before the runtime constructs a Gateway collector. */
+export async function validateSessionVoicePresenceLease(
+  sessionId: string,
+  workerId: string,
+  generation: number,
+  now: Date,
+  db: typeof prisma = prisma,
+) {
+  return db.$transaction(async tx => {
+    const sessions = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Session"
+      WHERE id = ${sessionId} AND status = 'SCHEDULED' AND date <= ${now}
+      FOR UPDATE
+    `;
+    if (!sessions.length) return false;
+
+    const consents = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "SessionVoicePresenceConsent"
+      WHERE "sessionId" = ${sessionId}
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+      LIMIT 1
+      FOR SHARE
+    `;
+    const controls = await tx.$queryRaw<{
+      status: string;
+      generation: number;
+      leaseOwner: string | null;
+      leaseExpiresAt: Date | null;
+    }[]>`
+      SELECT status::text AS status, "generation", "leaseOwner", "leaseExpiresAt"
+      FROM "SessionVoicePresenceControl"
+      WHERE "sessionId" = ${sessionId}
+      FOR UPDATE
+    `;
+    const control = controls[0];
+    if (!control) return false;
+
+    const matchesLease = control.status === "ACTIVE"
+      && control.leaseOwner === workerId
+      && control.generation === generation
+      && control.leaseExpiresAt !== null
+      && control.leaseExpiresAt > now;
+    if (consents.length && matchesLease) return true;
+
+    if (!consents.length && matchesLease) {
+      // Consent can expire between target discovery and collector creation.
+      // Fence that claimed target just like an explicit last-consent withdrawal.
+      await tx.sessionVoicePresenceControl.update({
+        where: { sessionId },
+        data: {
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          generation: { increment: 1 },
+          heartbeatAt: now,
+          gapDetected: false,
+          gapStartedAt: null,
+          lastGapAt: null,
+        },
+      });
+    }
+    return false;
   });
 }
 
@@ -132,20 +232,36 @@ export async function releaseSessionVoicePresenceLease(
   now: Date,
   db: typeof prisma = prisma,
 ) {
-  return db.$queryRaw<{ sessionId: string }[]>`
-    UPDATE "SessionVoicePresenceControl"
-    SET "leaseOwner" = NULL,
-        "leaseExpiresAt" = NULL,
-        "heartbeatAt" = ${now},
-        "gapDetected" = CASE WHEN status = 'ACTIVE' THEN true ELSE "gapDetected" END,
-        "gapStartedAt" = CASE WHEN status = 'ACTIVE' THEN COALESCE("heartbeatAt", "leaseExpiresAt", ${now}) ELSE "gapStartedAt" END,
-        "lastGapAt" = CASE WHEN status = 'ACTIVE' THEN NULL ELSE "lastGapAt" END
-    WHERE "sessionId" = ${sessionId}
-      AND status IN ('ACTIVE', 'STOP_REQUESTED', 'PURGE_REQUESTED')
-      AND "leaseOwner" = ${workerId}
-      AND generation = ${generation}
-    RETURNING "sessionId"
-  `;
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
+    const control = await tx.sessionVoicePresenceControl.findUnique({ where: { sessionId } });
+    if (!control || !["ACTIVE", "STOP_REQUESTED", "PURGE_REQUESTED"].includes(control.status)
+      || control.leaseOwner !== workerId || control.generation !== generation) return [];
+
+    if (control.status === "ACTIVE") {
+      const gapStartedAt = control.gapDetected && control.lastGapAt === null
+        ? control.gapStartedAt ?? control.heartbeatAt ?? control.leaseExpiresAt ?? now
+        : control.heartbeatAt ?? control.leaseExpiresAt ?? now;
+      await ensureOpenVoicePresenceGap(tx, { sessionId, generation, startedAt: gapStartedAt });
+      await tx.sessionVoicePresenceControl.update({
+        where: { sessionId },
+        data: {
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          heartbeatAt: now,
+          gapDetected: true,
+          gapStartedAt,
+          lastGapAt: null,
+        },
+      });
+    } else {
+      await tx.sessionVoicePresenceControl.update({
+        where: { sessionId },
+        data: { leaseOwner: null, leaseExpiresAt: null, heartbeatAt: now },
+      });
+    }
+    return [{ sessionId }];
+  });
 }
 
 export async function markSessionVoicePresenceGap(
@@ -155,21 +271,24 @@ export async function markSessionVoicePresenceGap(
   at: Date,
   db: typeof prisma = prisma,
 ) {
-  return db.$queryRaw<{ sessionId: string }[]>`
-    UPDATE "SessionVoicePresenceControl"
-    SET "gapDetected" = true,
-        "gapStartedAt" = CASE
-          WHEN "gapDetected" AND "lastGapAt" IS NULL THEN COALESCE("gapStartedAt", "heartbeatAt", "leaseExpiresAt", ${at})
-          ELSE COALESCE("heartbeatAt", "leaseExpiresAt", ${at})
-        END,
-        "lastGapAt" = NULL,
-        "heartbeatAt" = ${at}
-    WHERE "sessionId" = ${sessionId}
-      AND "leaseOwner" = ${workerId}
-      AND generation = ${generation}
-      AND status IN ('ACTIVE', 'STOP_REQUESTED')
-    RETURNING "sessionId"
-  `;
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
+    const control = await tx.sessionVoicePresenceControl.findUnique({ where: { sessionId } });
+    if (!control || !["ACTIVE", "STOP_REQUESTED"].includes(control.status)
+      || control.leaseOwner !== workerId || control.generation !== generation) return [];
+
+    const openGap = await findOpenVoicePresenceGap(tx, sessionId);
+    const gapStartedAt = control.gapDetected && control.lastGapAt === null
+      ? openGap?.startedAt ?? control.gapStartedAt ?? control.heartbeatAt ?? control.leaseExpiresAt ?? at
+      : control.heartbeatAt ?? control.leaseExpiresAt ?? at;
+    const expiresAt = control.stopAt ? new Date(control.stopAt.getTime() + VOICE_PRESENCE_RETENTION_MS) : null;
+    await ensureOpenVoicePresenceGap(tx, { sessionId, generation, startedAt: gapStartedAt, expiresAt });
+    await tx.sessionVoicePresenceControl.update({
+      where: { sessionId },
+      data: { gapDetected: true, gapStartedAt, lastGapAt: null, heartbeatAt: at },
+    });
+    return [{ sessionId }];
+  });
 }
 
 /** Record the first fresh Gateway state after a gap; it never creates duration. */
@@ -180,17 +299,34 @@ export async function markSessionVoicePresenceGapRecovered(
   at: Date,
   db: typeof prisma = prisma,
 ) {
-  return db.$queryRaw<{ sessionId: string }[]>`
-    UPDATE "SessionVoicePresenceControl"
-    SET "lastGapAt" = ${at}, "heartbeatAt" = ${at}
-    WHERE "sessionId" = ${sessionId}
-      AND "leaseOwner" = ${workerId}
-      AND generation = ${generation}
-      AND status IN ('ACTIVE', 'STOP_REQUESTED')
-      AND "gapDetected" = true
-      AND "lastGapAt" IS NULL
-    RETURNING "sessionId"
-  `;
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
+    const control = await tx.sessionVoicePresenceControl.findUnique({ where: { sessionId } });
+    if (!control || !["ACTIVE", "STOP_REQUESTED"].includes(control.status)
+      || control.leaseOwner !== workerId || control.generation !== generation
+      || !control.leaseExpiresAt || control.leaseExpiresAt <= at
+      || !control.gapDetected || control.lastGapAt !== null) return [];
+
+    const openGap = await findOpenVoicePresenceGap(tx, sessionId);
+    if (openGap) {
+      await tx.sessionVoicePresenceGap.update({ where: { id: openGap.id }, data: { resumedAt: at } });
+    } else if (control.gapStartedAt) {
+      await tx.sessionVoicePresenceGap.create({
+        data: {
+          sessionId,
+          generation,
+          startedAt: control.gapStartedAt,
+          resumedAt: at,
+          ...(control.stopAt ? { expiresAt: new Date(control.stopAt.getTime() + VOICE_PRESENCE_RETENTION_MS) } : {}),
+        },
+      });
+    }
+    await tx.sessionVoicePresenceControl.update({
+      where: { sessionId },
+      data: { lastGapAt: at, heartbeatAt: at },
+    });
+    return [{ sessionId }];
+  });
 }
 
 export async function finalizeSessionVoicePresenceCommand(sessionId: string, db: typeof prisma = prisma) {
@@ -202,6 +338,7 @@ export async function finalizeSessionVoicePresenceCommand(sessionId: string, db:
     if (control.status === "PURGE_REQUESTED") {
       await tx.sessionVoicePresenceInterval.deleteMany({ where: { sessionId } });
       await tx.sessionVoicePresenceConsent.deleteMany({ where: { sessionId } });
+      await tx.sessionVoicePresenceGap.deleteMany({ where: { sessionId } });
       await tx.sessionVoicePresenceControl.update({
         where: { sessionId },
         data: {
@@ -222,6 +359,10 @@ export async function finalizeSessionVoicePresenceCommand(sessionId: string, db:
       data: { expiresAt },
     });
     await tx.sessionVoicePresenceInterval.updateMany({
+      where: { sessionId },
+      data: { expiresAt },
+    });
+    await tx.sessionVoicePresenceGap.updateMany({
       where: { sessionId },
       data: { expiresAt },
     });

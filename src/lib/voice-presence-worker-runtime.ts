@@ -8,6 +8,7 @@ import {
   markSessionVoicePresenceGap,
   markSessionVoicePresenceGapRecovered,
   releaseSessionVoicePresenceLease,
+  validateSessionVoicePresenceLease,
 } from "./voice-presence-coordination";
 import {
   createVoicePresenceWorker,
@@ -101,6 +102,9 @@ export async function startVoicePresenceWorkerRuntime(
       }
       return targets;
     },
+    validateTarget: target => target.leaseOwner !== undefined && target.generation !== undefined
+      ? validateSessionVoicePresenceLease(target.sessionId, target.leaseOwner, target.generation, wallClockNow())
+      : Promise.resolve(false),
     loadStopTargets: async () => {
       const now = wallClockNow();
       const controls = await prisma.sessionVoicePresenceControl.findMany({

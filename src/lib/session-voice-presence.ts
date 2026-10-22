@@ -300,18 +300,24 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   const names = new Map(users.map(user => [user.id, user.discordName]));
   const control = await prisma.sessionVoicePresenceControl.findUnique({
     where: { sessionId },
-    select: { gapDetected: true, gapStartedAt: true, lastGapAt: true },
+    select: { stopAt: true },
   });
+  const retentionExpired = control?.stopAt !== null && control?.stopAt !== undefined
+    && control.stopAt.getTime() + 30 * 24 * 60 * 60_000 <= now.getTime();
+  const gapRows = retentionExpired ? [] : await prisma.sessionVoicePresenceGap.findMany({
+    where: { sessionId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    orderBy: { startedAt: "asc" },
+    select: { startedAt: true, resumedAt: true },
+  });
+  const gapPeriods = gapRows.map(gap => ({ startedAt: gap.startedAt, resumedAt: gap.resumedAt }));
   return {
     enabled: process.env.VOICE_PRESENCE_ENABLED === "true",
     consented,
     canWithdraw: !!ownConsent,
     canConsent: session.status === "SCHEDULED" && (accessRole === "guest" || isCreator),
     canReadAll,
-    hasGaps: control?.gapDetected ?? false,
-    latestGap: control?.gapDetected && control.gapStartedAt
-      ? { startedAt: control.gapStartedAt, resumedAt: control.lastGapAt }
-      : null,
+    hasGaps: gapPeriods.length > 0,
+    gapPeriods,
     entries: totals
       .map(row => ({
         userId: row.userId,

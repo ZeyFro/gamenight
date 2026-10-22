@@ -61,14 +61,20 @@ export function SessionVoicePresencePanel({
         </form>
       )}
 
-      {presence.latestGap && (
-        <p className="mt-3 rounded-lg bg-warning/10 p-3 text-sm text-warning">
-          Une lacune de mesure est signalée depuis la dernière observation du {formatDateTimeFr(presence.latestGap.startedAt)}
-          {presence.latestGap.resumedAt
-            ? `, avec reprise confirmée le ${formatDateTimeFr(presence.latestGap.resumedAt)}.`
-            : "; aucune reprise n’a encore été confirmée."}
-          {" "}Aucune durée n&apos;est estimée pendant cette période.
-        </p>
+      {presence.gapPeriods.length > 0 && (
+        <div className="mt-3 rounded-lg bg-warning/10 p-3 text-sm text-warning">
+          <p>Les lacunes de mesure connues (aucune durée n&apos;est estimée) :</p>
+          <ul className="mt-2 space-y-1">
+            {presence.gapPeriods.map((gap, index) => (
+              <li key={`${gap.startedAt.toISOString()}-${index}`}>
+                Du {formatDateTimeFr(gap.startedAt)}
+                {gap.resumedAt
+                  ? ` à ${formatDateTimeFr(gap.resumedAt)} (reprise confirmée).`
+                  : "; aucune reprise n’a encore été confirmée."}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {presence.entries.length ? (

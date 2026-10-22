@@ -683,6 +683,7 @@ model Session {
   voicePresence     SessionVoicePresenceInterval[]
   voicePresenceConsents SessionVoicePresenceConsent[]
   voicePresenceControl SessionVoicePresenceControl?
+  voicePresenceGaps SessionVoicePresenceGap[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -1158,6 +1159,21 @@ model SessionVoicePresenceControl {
   session       Session                             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([status, leaseExpiresAt])
+}
+
+model SessionVoicePresenceGap {
+  id         String   @id @default(cuid())
+  sessionId  String
+  generation Int
+  startedAt  DateTime
+  resumedAt  DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, generation, startedAt])
+  @@index([sessionId, startedAt])
+  @@index([expiresAt])
 }
 
 model SessionRating {
