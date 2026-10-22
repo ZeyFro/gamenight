@@ -110,7 +110,7 @@ export async function getScoreboard(
       ? null
       : scopedDb.xpEvent.groupBy({
           by: ["userId"],
-          where: { ...createdAtFilter, ...memberFilter, reason: { not: "SHOP_PURCHASE" } },
+          where: { ...createdAtFilter, ...memberFilter, reason: { not: "SHOP_BALANCE_PURCHASE" } },
           _sum: { amount: true },
         }),
     scopedDb.xpEvent.groupBy({
@@ -128,7 +128,7 @@ export async function getScoreboard(
     period === "global"
       ? scopedDb.xpEvent.groupBy({
           by: ["userId"],
-          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter, reason: { not: "SHOP_PURCHASE" } },
+          where: { createdAt: { gte: new Date(Date.now() - WEEK_DELTA_WINDOW_MS) }, ...memberFilter, reason: { not: "SHOP_BALANCE_PURCHASE" } },
           _sum: { amount: true },
         })
       : null,

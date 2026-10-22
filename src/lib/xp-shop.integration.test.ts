@@ -46,7 +46,7 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : PostgreSQL", () => {
     expect(await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId, userId } } })).toMatchObject({ xpTotal: 2_000, xpBalance: 1_750 });
     await shop.buyShopItem(userId, communityId, "frame-nebula");
     await shop.buyShopItem(userId, communityId, "color-mint");
-    expect(await db.xpEvent.aggregate({ where: { userId, reason: "SHOP_PURCHASE" }, _sum: { amount: true } })).toMatchObject({ _sum: { amount: -750 } });
+    expect(await db.xpEvent.aggregate({ where: { userId, reason: "SHOP_BALANCE_PURCHASE" }, _sum: { amount: true } })).toMatchObject({ _sum: { amount: -750 } });
     expect(await shop.equipShopItem(userId, communityId, "TITLE", "title-strategist")).toBe("equipped");
     expect(await shop.equipShopItem(userId, communityId, "FRAME", "frame-nebula")).toBe("equipped");
     expect(await shop.equipShopItem(userId, communityId, "COLOR", "color-mint")).toBe("equipped");
@@ -65,7 +65,7 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : PostgreSQL", () => {
     expect(await shop.buyShopItem(userId, communityId, "title-strategist")).toBe("insufficient");
     expect(await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId, userId } } })).toMatchObject({ xpTotal: 2_000, xpBalance: 100 });
     expect(await db.communityMemberCosmetic.count({ where: { communityId, userId } })).toBe(0);
-    expect(await db.xpEvent.count({ where: { communityId, userId, reason: "SHOP_PURCHASE" } })).toBe(0);
+    expect(await db.xpEvent.count({ where: { communityId, userId, reason: "SHOP_BALANCE_PURCHASE" } })).toBe(0);
   });
 
   it("refuse de dépenser le solde d'une autre communauté", async () => {

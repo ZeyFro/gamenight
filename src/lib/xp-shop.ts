@@ -81,7 +81,7 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
       data: { xpBalance: { decrement: item.price } },
     });
     await tx.xpEvent.create({
-      data: { communityId, userId, reason: "SHOP_PURCHASE", sourceId: itemId, amount: -item.price },
+      data: { communityId, userId, reason: "SHOP_BALANCE_PURCHASE", sourceId: itemId, amount: -item.price },
     });
     await tx.communityMemberCosmetic.create({ data: { communityId, userId, itemId } });
     return "purchased" as const;

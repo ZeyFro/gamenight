@@ -39,6 +39,9 @@ describe("boutique : solde distinct de la progression", () => {
     const level = levelForXp(stats.xpTotal);
     expect(await buyShopItem("user", "community", "title-strategist")).toBe("purchased");
     expect(stats).toEqual({ xpTotal: 2_000, xpBalance: 750 });
+    expect(db.xpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ reason: "SHOP_BALANCE_PURCHASE" }),
+    }));
     expect(levelForXp(stats.xpTotal)).toBe(level);
   });
 
