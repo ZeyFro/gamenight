@@ -2,7 +2,7 @@
 
 Seul point de reprise à jour. Il remplace les reprises datées et les bilans antérieurs, qui sont historiques. Continuer dans un worktree dédié : le checkout racine est ancien et contient des modifications locales.
 
-État vérifié contre `origin/main` = `26440e10cee20f7f2b35ad8752fa4c8aa59ac22b` (merge de #316).
+État vérifié contre `origin/main` = `86826b3` (après #317, #320, #321 et #322). Le déploiement Production vérifié plus bas porte sur `26440e1`.
 
 ## Production
 
@@ -25,7 +25,9 @@ Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou 
 | PR | Tête | Contrôles | Condition restante |
 |---|---|---|---|
 | [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `d45ea94` | `verify` et Vercel verts, mergeable | Draft. Ajoute la migration `20261022142500_shop_balance_purchase_reason`, non appliquée en Production. Aucune autorisation de migration. |
-| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `bee52c3` | `verify` et Vercel verts, mergeable | Draft. Attend les décisions de consentement, rétention et hôte du worker (propositions P1–P6, non approuvées). |
+| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `1ac6e8c` | à revérifier sur ce SHA | Draft. Contient une migration vocale : la fusionner l'appliquerait au build de production, donc pas de fusion sans autorisation. Les décisions de consentement sont arrêtées et implémentées (commentaire #303 du 22 octobre à 11:01) : opt-in individuel, durées visibles par la personne, le créateur et les admins autorisés, rétention de 30 jours, suppression au retrait et à l'annulation. |
+| [#318 Audit lot 1](https://github.com/ZeyFro/gamenight/pull/318) | `bab3733` | à vérifier | Draft. Limite de 1500 caractères des modèles de messages Discord, avec message explicite. |
+| [#319 XP, bascule](https://github.com/ZeyFro/gamenight/pull/319) | `dd5f2f0` | pas de `verify` (base = branche de #291) | Draft, rattachée à #291. |
 
 #315 et #316 sont fusionnées. Les décisions déjà acquises restent valables : aucune migration, interruption de writers, restauration Neon, activation de drapeau ou cron, collecte vocale réelle ni notification Discord réelle sans accord écrit pour l’action précise.
 
@@ -39,5 +41,5 @@ Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou 
 ## Reprise
 
 1. XP : demander l’autorisation de la fenêtre (sauvegarde fraîche restaurée sur cible isolée, application de la migration `20261022142500`, plan de repli). Le script de bascule, le plan de maintenance et la vérification de restauration Docker sont en préparation, sans exécution en Production ; leur état sera porté par la PR correspondante.
-2. Vocal : faire approuver séparément consentement, périmètre, visibilité, rétention, retrait et hôte du worker avant toute mise en service.
+2. Vocal : les décisions produit sont arrêtées (voir #303). Restent trois opérations distinctes à autoriser : la migration vocale en Production, l'installation du worker et l'activation de la collecte.
 3. Hors périmètre, à faire approuver avant construction : paiement intégré, catégories MVP personnalisables par communauté, hors-ligne complet.
