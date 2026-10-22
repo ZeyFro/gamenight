@@ -42,6 +42,8 @@ for name in gamenight gamenight-build; do
 done
 printf '%s\n' '--- Node utilisé par l’unité ---'
 if test -x /usr/bin/node; then /usr/bin/node --version; else echo '/usr/bin/node absent'; fi
+printf '%s\n' '--- npm requis pour préparer le build ---'
+if command -v npm >/dev/null 2>&1; then npm --version; else echo 'npm absent'; fi
 printf '%s\n' '--- chemins cibles (métadonnées seulement) ---'
 for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /run/systemd/system/gamenight.service /run/systemd/system/gamenight.service.d /usr/local/lib/systemd/system/gamenight.service /usr/local/lib/systemd/system/gamenight.service.d /lib/systemd/system/gamenight.service /lib/systemd/system/gamenight.service.d /usr/lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service.d /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
   if test -e "$path" || test -L "$path"; then stat -c '%n %F %U:%G %a' "$path"; else printf 'ABSENT %s\n' "$path"; fi
@@ -75,7 +77,7 @@ ss -ltn | grep -E '(^State|:3000([[:space:]]|$))' || true
 $RemoteInspection | ssh $Pi 'bash -s'
 ```
 
-Si l'architecture n'est pas `aarch64`, `/usr/bin/node` est absent ou plus ancien que `v22.15.0`, si un chemin/compte/groupe cible existe déjà, si `DropInPaths` n'est pas vide, si `FragmentPath` ne correspond à aucun emplacement vérifié ci-dessus ou si le port `3000` est déjà écouté, arrêter ici et faire inspecter l'hôte. Ne pas remplacer, supprimer, re-propriétariser ni changer les modes d'éléments préexistants. Le prérequis PostgreSQL et la migration additive approuvée sont traités séparément; cette procédure ne se connecte pas à la base et n'exécute aucune migration.
+Si l'architecture n'est pas `aarch64`, `/usr/bin/node` est absent ou plus ancien que `v22.15.0`, `npm` est absent, si un chemin/compte/groupe cible existe déjà, si `DropInPaths` n'est pas vide, si `FragmentPath` ne correspond à aucun emplacement vérifié ci-dessus ou si le port `3000` est déjà écouté, arrêter ici et faire inspecter l'hôte. Ne pas remplacer, supprimer, re-propriétariser ni changer les modes d'éléments préexistants. Le prérequis PostgreSQL et la migration additive approuvée sont traités séparément; cette procédure ne se connecte pas à la base et n'exécute aucune migration.
 
 ### Préparation et installation, sans démarrage
 
@@ -94,6 +96,7 @@ sudo sh -eu -c '
 '
 test "$(uname -m)" = aarch64
 /usr/bin/node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && (b > 15 || (b === 15 && c >= 0))) ? 0 : 1)'
+command -v npm >/dev/null 2>&1
 
 sudo groupadd --system gamenight
 sudo useradd --system --gid gamenight --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin gamenight
@@ -121,8 +124,19 @@ sudo chmod -R u+rwX /opt/gamenight/current/.next/cache
 sudo install -d -o root -g root -m 0750 /etc/gamenight
 sudo install -o root -g root -m 0600 /dev/null /etc/gamenight/gamenight.env
 sudoedit /etc/gamenight/gamenight.env
-sudo sh -eu -c 'test "$(grep -cx "VOICE_PRESENCE_ENABLED=false" /etc/gamenight/gamenight.env)" -eq 1 && test "$(stat -c "%U:%G %a" /etc/gamenight/gamenight.env)" = "root:root 600"'
-sudo sh -eu -c 'test "$(grep -cx "Environment=VOICE_PRESENCE_ENABLED=false" /opt/gamenight/current/packaging/systemd/gamenight.service)" -eq 1'
+sudo sh -eu -c '
+  file=/etc/gamenight/gamenight.env
+  count=$(grep -Ec "^[[:space:]]*VOICE_PRESENCE_ENABLED=" "$file" || true)
+  test "$count" -eq 1
+  grep -qx "VOICE_PRESENCE_ENABLED=false" "$file"
+  test "$(stat -c "%U:%G %a" "$file")" = "root:root 600"
+'
+sudo sh -eu -c '
+  file=/opt/gamenight/current/packaging/systemd/gamenight.service
+  count=$(grep -Ec "^Environment=VOICE_PRESENCE_ENABLED=" "$file" || true)
+  test "$count" -eq 1
+  grep -qx "Environment=VOICE_PRESENCE_ENABLED=false" "$file"
+'
 sudo install -o root -g root -m 0644 /opt/gamenight/current/packaging/systemd/gamenight.service /etc/systemd/system/gamenight.service
 sudo systemd-analyze verify /etc/systemd/system/gamenight.service
 sudo systemctl daemon-reload
@@ -136,7 +150,19 @@ Le checkout et le build appartiennent au compte non privilégié `gamenight-buil
 
 ```sh
 set -eu
-sudo sh -eu -c 'test "$(grep -cx "VOICE_PRESENCE_ENABLED=false" /etc/gamenight/gamenight.env)" -eq 1 && test "$(stat -c "%U:%G %a" /etc/gamenight/gamenight.env)" = "root:root 600"'
+sudo sh -eu -c '
+  file=/etc/gamenight/gamenight.env
+  count=$(grep -Ec "^[[:space:]]*VOICE_PRESENCE_ENABLED=" "$file" || true)
+  test "$count" -eq 1
+  grep -qx "VOICE_PRESENCE_ENABLED=false" "$file"
+  test "$(stat -c "%U:%G %a" "$file")" = "root:root 600"
+  unit=/etc/systemd/system/gamenight.service
+  unit_count=$(grep -Ec "^Environment=VOICE_PRESENCE_ENABLED=" "$unit" || true)
+  test "$unit_count" -eq 1
+  grep -qx "Environment=VOICE_PRESENCE_ENABLED=false" "$unit"
+  test "$(systemctl show gamenight.service -p FragmentPath --value)" = "$unit"
+  test -z "$(systemctl show gamenight.service -p DropInPaths --value)"
+'
 sudo systemctl enable gamenight.service
 sudo systemctl start gamenight.service
 sudo systemctl is-active --quiet gamenight.service
