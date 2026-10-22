@@ -5,8 +5,8 @@ const COMMUNITY_ID = "voice-race-community";
 const USER_ID = "voice-race-user";
 const GUEST_USER_ID = "voice-race-guest";
 const SESSION_ID = "voice-race-session";
-const DISCORD_ID = "789012345678901234";
-const GUEST_DISCORD_ID = "789012345678901235";
+const DISCORD_ID = "998877665544332211";
+const GUEST_DISCORD_ID = "998877665544332212";
 const GUILD_ID = "123456789012345678";
 const CHANNEL_ID = "456789012345678901";
 
@@ -16,18 +16,19 @@ vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   return { prisma: TEST_DATABASE_URL ? new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) : {} };
 });
+vi.mock("@/lib/current-user", () => ({ getCurrentUser: vi.fn() }));
 
 if (!TEST_DATABASE_URL) console.warn("[session-voice-presence] Postgres absent : test de course ignoré.");
 
 describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocation Postgres", () => {
   let db: import("@prisma/client").PrismaClient;
   let revocationDb: import("@prisma/client").PrismaClient;
-  let storeSessionVoiceInterval: typeof import("./session-voice-presence")["storeSessionVoiceInterval"];
+  let voicePresence: typeof import("./session-voice-presence");
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     revocationDb = new (await import("@prisma/client")).PrismaClient({ datasourceUrl: TEST_DATABASE_URL! });
-    ({ storeSessionVoiceInterval } = await import("./session-voice-presence"));
+    voicePresence = await import("./session-voice-presence");
   });
 
   afterAll(async () => {
@@ -69,6 +70,15 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
       date: new Date(priorStart.getTime() - 24 * 60 * 60 * 1000),
       status: "SCHEDULED",
     } });
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      leaseOwner: "synthetic-worker",
+      generation: 1,
+      leaseExpiresAt: new Date(Date.now() + 6 * 60 * 60_000),
+    } });
+    await db.sessionVoicePresenceConsent.create({
+      data: { sessionId: SESSION_ID, userId: USER_ID, consentedAt: new Date(priorStart.getTime() - 60_000) },
+    });
   });
 
   async function assertWriterWinsRace(
@@ -91,8 +101,8 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
     await writerReady;
 
     const startedAt = Date.now() - 10 * 60 * 1000;
-    const store = storeSessionVoiceInterval(
-      { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID },
+    const store = voicePresence.storeSessionVoiceInterval(
+      { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 },
       { memberKey, channelId: CHANNEL_ID, startedAt, endedAt: startedAt + 60_000 },
     );
     let waitError: unknown;
@@ -181,11 +191,34 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
     await db.user.create({ data: { id: GUEST_USER_ID, discordId: GUEST_DISCORD_ID, discordName: "Voice race guest" } });
     await db.sessionInvite.create({ data: { sessionId: SESSION_ID, userId: GUEST_USER_ID, invitedById: USER_ID, status: "ACTIVE" } });
     const startedAt = Date.now() - 10 * 60 * 1000;
-    expect(await storeSessionVoiceInterval(
-      { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID },
+    await db.sessionVoicePresenceConsent.create({
+      data: { sessionId: SESSION_ID, userId: GUEST_USER_ID, consentedAt: new Date(startedAt - 1_000) },
+    });
+    expect(await voicePresence.storeSessionVoiceInterval(
+      { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 },
       { memberKey: GUEST_DISCORD_ID, channelId: CHANNEL_ID, startedAt, endedAt: startedAt + 60_000 },
     )).toBe(true);
     expect(await db.membership.count({ where: { communityId: COMMUNITY_ID, userId: GUEST_USER_ID } })).toBe(0);
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: GUEST_USER_ID } })).toBe(1);
+  }, 15_000);
+
+  it("deletes the participant's rows on withdrawal and rejects delayed old-consent events after re-consent", async () => {
+    const config = { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 };
+    const startedAt = Date.now() - 10 * 60 * 1000;
+    expect(await voicePresence.storeSessionVoiceInterval(config, {
+      memberKey: DISCORD_ID, channelId: CHANNEL_ID, startedAt, endedAt: startedAt + 60_000,
+    })).toBe(true);
+    expect(await voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID)).toBe(true);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+
+    const reconsentedAt = new Date();
+    expect(await voicePresence.grantSessionVoiceConsent(SESSION_ID, USER_ID, reconsentedAt)).toBe(true);
+    expect(await voicePresence.storeSessionVoiceInterval(config, {
+      memberKey: DISCORD_ID,
+      channelId: CHANNEL_ID,
+      startedAt: reconsentedAt.getTime() - 1_000,
+      endedAt: reconsentedAt.getTime() + 60_000,
+    })).toBe(false);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
   }, 15_000);
 });

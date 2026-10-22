@@ -1,11 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { createSessionVoiceCollector } from "./session-voice-collector";
 import {
+  claimSessionVoicePresenceLease,
+  finalizeSessionVoicePresenceCommand,
+  markSessionVoicePresenceGap,
+  markSessionVoicePresenceGapRecovered,
+  releaseSessionVoicePresenceLease,
+} from "./voice-presence-coordination";
+import {
   createVoicePresenceWorker,
   isVoicePresenceShutdownManaged,
-  registerVoicePresenceSessionStopper,
+  registerVoicePresenceWorkerStop,
   type VoicePresenceWorkerConfig,
+  type VoicePresenceStopTarget,
 } from "./voice-presence-worker";
 
 type RuntimeProcess = Pick<NodeJS.Process, "once" | "removeListener">;
@@ -25,6 +34,27 @@ export async function startVoicePresenceWorkerRuntime(
   } = {},
 ) {
   const processLike = options.processLike ?? process;
+  const workerId = randomUUID();
+  const pendingGapWrites = new Map<string, Promise<void>>();
+  const enqueueGapWrite = (target: { sessionId: string; leaseOwner?: string; generation?: number }, write: (at: Date) => Promise<unknown>, at: Date) => {
+    if (!target.leaseOwner || target.generation === undefined) return;
+    const previous = pendingGapWrites.get(target.sessionId) ?? Promise.resolve();
+    const current = previous.then(() => write(at).then(() => undefined));
+    pendingGapWrites.set(target.sessionId, current);
+    void current.then(
+      () => { if (pendingGapWrites.get(target.sessionId) === current) pendingGapWrites.delete(target.sessionId); },
+      () => {
+        if (pendingGapWrites.get(target.sessionId) === current) pendingGapWrites.delete(target.sessionId);
+        if (options.onFatal) {
+          void Promise.resolve(options.onFatal({ kind: "gap_persistence" })).catch(() => undefined);
+          return;
+        }
+        console.error("[voice-presence] gap state persistence failed; service will restart");
+        process.exitCode = 1;
+        setImmediate(() => process.exit(1));
+      },
+    );
+  };
   const worker = createVoicePresenceWorker({
     loadTargets: async () => {
       const sessions = await prisma.session.findMany({
@@ -38,6 +68,7 @@ export async function startVoicePresenceWorkerRuntime(
         },
         select: {
           id: true,
+          voicePresenceConsents: { select: { id: true }, take: 1 },
           community: {
             select: {
               slug: true,
@@ -51,13 +82,48 @@ export async function startVoicePresenceWorkerRuntime(
         },
       });
 
-      return sessions.flatMap(session => {
+      const targets = [];
+      for (const session of sessions) {
         const community = session.community;
         const guildId = community?.discordGuildId ?? (community?.slug === "default" ? process.env.DISCORD_BOT_GUILD_ID?.trim() : null);
         const channelIds = community?.channelConfigs.map(channel => channel.discordChannelId) ?? [];
-        if (!community || !guildId || !channelIds.length) return [];
-        return [{ sessionId: session.id, guildId, channelIds }];
+        if (!community || !guildId || !channelIds.length || !session.voicePresenceConsents.length) continue;
+        const lease = await claimSessionVoicePresenceLease(session.id, workerId, wallClockNow());
+        if (!lease.claimed) continue;
+        targets.push({
+          sessionId: session.id,
+          guildId,
+          channelIds,
+          enabled: true,
+          leaseOwner: workerId,
+          generation: lease.generation,
+        });
+      }
+      return targets;
+    },
+    loadStopTargets: async () => {
+      const now = wallClockNow();
+      const controls = await prisma.sessionVoicePresenceControl.findMany({
+        where: { status: { in: ["STOP_REQUESTED", "PURGE_REQUESTED"] } },
+        select: { sessionId: true, status: true, stopAt: true, leaseOwner: true, leaseExpiresAt: true, generation: true },
       });
+      const pending: VoicePresenceStopTarget[] = [];
+      for (const control of controls) {
+        const ownerIsLive = control.leaseOwner !== null && control.leaseExpiresAt !== null && control.leaseExpiresAt > now;
+        if (ownerIsLive && control.leaseOwner !== workerId) continue;
+        if (
+          control.status === "STOP_REQUESTED" && control.leaseOwner !== null &&
+          control.leaseExpiresAt !== null && control.leaseExpiresAt <= now
+        ) {
+          await markSessionVoicePresenceGap(control.sessionId, control.leaseOwner, control.generation, now);
+        }
+        pending.push({
+          sessionId: control.sessionId,
+          mode: control.status === "PURGE_REQUESTED" ? "PURGE" : "FINALIZE",
+          stopAt: control.stopAt,
+        });
+      }
+      return pending;
     },
     createCollector: (target, callbacks) => {
       const collector = createSessionVoiceCollector({
@@ -67,17 +133,33 @@ export async function startVoicePresenceWorkerRuntime(
         VOICE_PRESENCE_GUILD_ID: target.guildId,
         VOICE_PRESENCE_CHANNEL_IDS: target.channelIds.join(","),
         VOICE_PRESENCE_SESSION_ID: target.sessionId,
+        VOICE_PRESENCE_WORKER_ID: target.leaseOwner,
+        VOICE_PRESENCE_WORKER_GENERATION: String(target.generation),
       }, {
         onFatal: callbacks.onFatal,
         onGap: callbacks.onGap,
+        onGapRecovered: callbacks.onGapRecovered,
         onPersistenceError: callbacks.onPersistenceError,
       });
       if (!collector) throw new Error("Voice presence collector could not be configured");
       return collector;
     },
-    onGap: (_target, reason) => {
+    onGap: (target, reason) => {
       console.warn(`[voice-presence] Gateway gap (${reason})`);
+      const at = wallClockNow();
+      enqueueGapWrite(target, value => markSessionVoicePresenceGap(target.sessionId, target.leaseOwner!, target.generation!, value), at);
     },
+    onGapRecovered: (target, at) => {
+      enqueueGapWrite(
+        target,
+        value => markSessionVoicePresenceGapRecovered(target.sessionId, target.leaseOwner!, target.generation!, value),
+        new Date(at),
+      );
+    },
+    releaseLease: target => target.leaseOwner && target.generation !== undefined
+      ? releaseSessionVoicePresenceLease(target.sessionId, target.leaseOwner, target.generation, wallClockNow()).then(() => undefined)
+      : undefined,
+    finalizeStopTarget: target => finalizeSessionVoicePresenceCommand(target.sessionId).then(() => undefined),
     onFatal: async failure => {
       if (options.onFatal) {
         await options.onFatal(failure);
@@ -91,7 +173,7 @@ export async function startVoicePresenceWorkerRuntime(
   });
 
   let stopPromise: Promise<void> | null = null;
-  let unregisterStopper = registerVoicePresenceSessionStopper(sessionId => worker.pauseSession(sessionId), stop);
+  const unregisterStopper = registerVoicePresenceWorkerStop(stop);
   const shutdown = () => { void stop(); };
   if (!isVoicePresenceShutdownManaged()) {
     processLike.once("SIGINT", shutdown);
@@ -103,7 +185,6 @@ export async function startVoicePresenceWorkerRuntime(
       processLike.removeListener("SIGINT", shutdown);
       processLike.removeListener("SIGTERM", shutdown);
       unregisterStopper();
-      unregisterStopper = () => undefined;
       await worker.stop();
     })();
   }

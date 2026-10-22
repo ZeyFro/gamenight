@@ -14,6 +14,8 @@ Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
 # This unit is the single self-hosted worker instance; web replicas omit this mode.
 Environment=VOICE_PRESENCE_WORKER_MODE=standalone
+# Explicit operator opt-in in the EnvironmentFile can override this default.
+Environment=VOICE_PRESENCE_ENABLED=false
 EnvironmentFile=/etc/gamenight/gamenight.env
 ExecStart=/usr/bin/node /opt/gamenight/current/scripts/gamenight-server.mjs
 Restart=on-failure

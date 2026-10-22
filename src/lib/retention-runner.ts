@@ -2,6 +2,7 @@ import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { cronCommunityScope } from "@/lib/community-isolation";
+import { purgeExpiredVoicePresenceBatch } from "@/lib/voice-presence-retention";
 import {
   RETENTION_BATCH_SIZE,
   RETENTION_CRON_LOCK_LEASE_MS,
@@ -18,11 +19,11 @@ import {
 } from "@/lib/retention";
 
 /**
- * Chantier nettoyage réel du stockage (V2, suite) — orchestre les SEPT
+ * Chantier nettoyage réel du stockage (V2, suite) — orchestre les HUIT
  * volets de `retention.ts` (chat, nettoyage Discord programmé, purge
  * réelle des lignes Session, purge réelle des lignes Tournament, purge
  * réelle des lignes InstantSession ["Jouer maintenant"],
- * notifications de saison close, données techniques), DANS CET ORDRE
+ * notifications de saison close, données techniques et durées vocales expirées), DANS CET ORDRE
  * (le nettoyage Discord est toujours au moins enqueue-é avant que la
  * ligne Session/Tournament correspondante ne disparaisse — voir le
  * commentaire de fichier de `retention.ts`), en un seul passage BORNÉ :
@@ -64,6 +65,7 @@ export interface RetentionRunReport {
   instantSessionRowPurge: { candidateInstantSessionIds: string[]; purgedInstantSessionIds: string[] } | null;
   notifications: { notificationsAffected: number; seasonCycleAvailable: boolean } | null;
   technicalData: { deliveriesAffected: number } | null;
+  voicePresence: { expiredIntervals: number; expiredConsents: number; intervalsDeleted: number; consentsDeleted: number } | null;
   errors: string[];
 }
 
@@ -92,6 +94,7 @@ export async function runRetentionCleanup(opts: {
     instantSessionRowPurge: null,
     notifications: null,
     technicalData: null,
+    voicePresence: null,
     errors,
   };
 
@@ -118,6 +121,13 @@ export async function runRetentionCleanup(opts: {
     } catch (error) {
       errors.push(`chat: ${String(error)}`);
       logger.error("retention-runner", error, { step: "chat" });
+    }
+
+    try {
+      report.voicePresence = await purgeExpiredVoicePresenceBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+    } catch (error) {
+      errors.push(`voicePresence: ${String(error)}`);
+      logger.error("retention-runner", error, { step: "voicePresence" });
     }
 
     if (Date.now() >= deadlineMs) {

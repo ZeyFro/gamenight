@@ -7,12 +7,22 @@ export type VoicePresenceTarget = {
   sessionId: string;
   guildId: string;
   channelIds: readonly string[];
+  enabled?: boolean;
+  leaseOwner?: string;
+  generation?: number;
+};
+
+export type VoicePresenceStopTarget = {
+  sessionId: string;
+  mode: "FINALIZE" | "PURGE";
+  stopAt: Date | null;
 };
 
 export type VoicePresenceCollectorCallbacks = {
   onFatal: (failure: unknown) => void;
   onPersistenceError: (error: unknown) => void;
   onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close") => void;
+  onGapRecovered: (at: number) => void;
 };
 
 export type VoicePresenceCollector = {
@@ -48,19 +58,21 @@ export function voicePresenceWorkerConfig(
   return { token, pollIntervalMs };
 }
 
-type ActiveCollector = { key: string; collector: VoicePresenceCollector };
-type PauseSession = (sessionId: string) => Promise<(committed: boolean) => Promise<void>>;
-type SessionStopper = (sessionId: string) => ReturnType<PauseSession>;
-type VoicePresenceGlobalState = { sessionStopper: SessionStopper | null; stop?: (() => Promise<void>) | null; hostOwnsSignals?: boolean };
+type ActiveCollector = { key: string; target: VoicePresenceTarget; collector: VoicePresenceCollector };
+type VoicePresenceGlobalState = { stop?: (() => Promise<void>) | null; hostOwnsSignals?: boolean };
 const VOICE_PRESENCE_GLOBAL_KEY = "__gamenightVoicePresenceWorkerState" as const;
 const workerGlobal = globalThis as typeof globalThis & { [VOICE_PRESENCE_GLOBAL_KEY]?: VoicePresenceGlobalState };
-const globalState = workerGlobal[VOICE_PRESENCE_GLOBAL_KEY] ??= { sessionStopper: null };
+const globalState = workerGlobal[VOICE_PRESENCE_GLOBAL_KEY] ??= {};
 
 export function createVoicePresenceWorker(options: {
   loadTargets: () => Promise<readonly VoicePresenceTarget[]>;
+  loadStopTargets?: () => Promise<readonly VoicePresenceStopTarget[]>;
+  finalizeStopTarget?: (target: VoicePresenceStopTarget) => Promise<void>;
   createCollector: (target: VoicePresenceTarget, callbacks: VoicePresenceCollectorCallbacks) => VoicePresenceCollector;
   onFatal: (failure: unknown) => void | Promise<void>;
   onGap?: (target: VoicePresenceTarget, reason: VoicePresenceCollectorCallbacks["onGap"] extends (reason: infer T) => void ? T : never) => void;
+  onGapRecovered?: (target: VoicePresenceTarget, at: number) => void;
+  releaseLease?: (target: VoicePresenceTarget) => void | Promise<void>;
   pollIntervalMs?: number;
 }) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -69,7 +81,6 @@ export function createVoicePresenceWorker(options: {
   }
 
   const collectors = new Map<string, ActiveCollector>();
-  const pausedSessions = new Set<string>();
   let started = false;
   let stopped = false;
   let polling = false;
@@ -81,6 +92,7 @@ export function createVoicePresenceWorker(options: {
     const active = [...collectors.values()];
     collectors.clear();
     const results = await Promise.allSettled(active.map(({ collector }) => Promise.resolve().then(() => collector.stop())));
+    await Promise.allSettled(active.map(({ target }) => Promise.resolve().then(() => options.releaseLease?.(target))));
     if (results.some(result => result.status === "rejected")) throw new Error("Voice presence collectors failed to stop");
   }
 
@@ -125,7 +137,7 @@ export function createVoicePresenceWorker(options: {
       const target = { ...candidate, channelIds };
       result.set(candidate.sessionId, {
         target,
-        key: JSON.stringify([target.guildId, channelIds]),
+        key: JSON.stringify([target.guildId, channelIds, target.enabled !== false, target.leaseOwner ?? null, target.generation ?? null]),
       });
     }
     return result;
@@ -138,29 +150,34 @@ export function createVoicePresenceWorker(options: {
       const loadedTargets = await options.loadTargets();
       if (!started || stopped || failure) return;
       const targets = normalizedTargets(loadedTargets);
-
-      for (const sessionId of pausedSessions) {
-        if (!targets.has(sessionId)) pausedSessions.delete(sessionId);
-      }
+      const stopTargets = await options.loadStopTargets?.() ?? [];
+      const stopBySession = new Map(stopTargets.map(target => [target.sessionId, target]));
 
       for (const [sessionId, active] of collectors) {
         const current = targets.get(sessionId);
-        if (!current || current.key !== active.key || pausedSessions.has(sessionId)) {
+        if (!current || stopBySession.has(sessionId) || current.key !== active.key || current.target.enabled === false) {
           collectors.delete(sessionId);
           await active.collector.stop();
+          await options.releaseLease?.(active.target);
         }
+      }
+
+      for (const target of stopTargets) {
+        if (!started || stopped || failure) break;
+        await options.finalizeStopTarget?.(target);
       }
 
       for (const [sessionId, current] of targets) {
         if (!started || stopped || failure) break;
-        if (pausedSessions.has(sessionId) || collectors.has(sessionId)) continue;
+        if (collectors.has(sessionId) || current.target.enabled === false || stopBySession.has(sessionId)) continue;
         const callbacks: VoicePresenceCollectorCallbacks = {
           onFatal: failure => { void fail({ kind: "gateway", failure }); },
           onPersistenceError: error => { void fail({ kind: "persistence", error }); },
           onGap: reason => options.onGap?.(current.target, reason),
+          onGapRecovered: at => options.onGapRecovered?.(current.target, at),
         };
         const collector = options.createCollector(current.target, callbacks);
-        collectors.set(sessionId, { key: current.key, collector });
+        collectors.set(sessionId, { key: current.key, target: current.target, collector });
         await collector.start();
       }
     } catch (error) {
@@ -169,26 +186,6 @@ export function createVoicePresenceWorker(options: {
     } finally {
       polling = false;
     }
-  }
-
-  async function pauseSession(sessionId: string) {
-    pausedSessions.add(sessionId);
-    const active = collectors.get(sessionId);
-    if (active) {
-      collectors.delete(sessionId);
-      try {
-        await active.collector.stop();
-      } catch (error) {
-        pausedSessions.delete(sessionId);
-        throw error;
-      }
-    }
-    let released = false;
-    return async (committed: boolean) => {
-      if (released) return;
-      released = true;
-      if (!committed) pausedSessions.delete(sessionId);
-    };
   }
 
   return {
@@ -202,7 +199,6 @@ export function createVoicePresenceWorker(options: {
     },
     refresh,
     stop,
-    pauseSession: pauseSession as PauseSession,
   };
 }
 
@@ -210,31 +206,12 @@ export function isVoicePresenceShutdownManaged() {
   return globalState.hostOwnsSignals === true;
 }
 
-export function registerVoicePresenceSessionStopper(stopper: SessionStopper, stop?: () => Promise<void>) {
-  if (globalState.sessionStopper) throw new Error("Voice presence worker already registered in this process");
-  globalState.sessionStopper = stopper;
+export function registerVoicePresenceWorkerStop(stop: () => Promise<void>) {
+  if (globalState.stop) throw new Error("Voice presence worker already registered in this process");
   globalState.stop = stop;
   return () => {
-    if (globalState.sessionStopper === stopper) {
-      globalState.sessionStopper = null;
+    if (globalState.stop === stop) {
       globalState.stop = null;
     }
   };
-}
-
-export async function withVoicePresenceSessionEnd<T>(
-  sessionId: string,
-  operation: () => Promise<T>,
-  keepCollectorStopped: (result: T) => boolean = () => true,
-): Promise<T> {
-  const release = await globalState.sessionStopper?.(sessionId);
-  let result: T;
-  try {
-    result = await operation();
-  } catch (error) {
-    await release?.(false);
-    throw error;
-  }
-  await release?.(keepCollectorStopped(result));
-  return result;
 }

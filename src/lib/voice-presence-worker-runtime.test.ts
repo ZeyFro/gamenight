@@ -2,17 +2,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   sessionFindMany: vi.fn(),
+  controlFindMany: vi.fn(),
   createSessionVoiceCollector: vi.fn(),
+  claimLease: vi.fn(),
+  finalizeCommand: vi.fn(),
+  markGap: vi.fn(),
+  markGapRecovered: vi.fn(),
+  releaseLease: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({ prisma: { session: { findMany: mocks.sessionFindMany } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: {
+  session: { findMany: mocks.sessionFindMany },
+  sessionVoicePresenceControl: { findMany: mocks.controlFindMany, updateMany: vi.fn() },
+} }));
 vi.mock("./session-voice-collector", () => ({ createSessionVoiceCollector: mocks.createSessionVoiceCollector }));
+vi.mock("./voice-presence-coordination", () => ({
+  claimSessionVoicePresenceLease: mocks.claimLease,
+  finalizeSessionVoicePresenceCommand: mocks.finalizeCommand,
+  markSessionVoicePresenceGap: mocks.markGap,
+  markSessionVoicePresenceGapRecovered: mocks.markGapRecovered,
+  releaseSessionVoicePresenceLease: mocks.releaseLease,
+}));
 
 import { startVoicePresenceWorkerRuntime } from "./voice-presence-worker-runtime";
 
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.DISCORD_BOT_GUILD_ID = "";
+  mocks.controlFindMany.mockResolvedValue([]);
+  mocks.claimLease.mockResolvedValue({ claimed: true, generation: 1, gapDetected: false });
+  mocks.finalizeCommand.mockResolvedValue(true);
+  mocks.releaseLease.mockResolvedValue([]);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -42,6 +62,7 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
   it("waits for the same pending flush when shutdown and the host both stop the runtime", async () => {
     mocks.sessionFindMany.mockResolvedValue([{
       id: "session-active",
+      voicePresenceConsents: [{ id: "consent-1" }],
       community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
     }]);
     let resolveFlush!: () => void;
@@ -88,6 +109,7 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
   it("starts collectors for started scheduled sessions with active configured voice channels", async () => {
     mocks.sessionFindMany.mockResolvedValue([{
       id: "session-active",
+      voicePresenceConsents: [{ id: "consent-1" }],
       community: {
         slug: "community-a",
         discordGuildId: "123456789012345678",
@@ -122,8 +144,25 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
       VOICE_PRESENCE_CHANNEL_IDS: "456789012345678901,567890123456789012",
     }), expect.objectContaining({
       onFatal: expect.any(Function),
+      onGapRecovered: expect.any(Function),
       onPersistenceError: expect.any(Function),
     }));
+    const collectorCallbacks = mocks.createSessionVoiceCollector.mock.calls[0][1];
+    let resolveGapWrite!: () => void;
+    mocks.markGap.mockImplementation(() => new Promise<void>(resolve => { resolveGapWrite = resolve; }));
+    collectorCallbacks.onGap("transport_closed");
+    collectorCallbacks.onGapRecovered(1_800_000_000_000);
+    await vi.waitFor(() => expect(mocks.markGap).toHaveBeenCalledOnce());
+    expect(mocks.markGapRecovered).not.toHaveBeenCalled();
+    resolveGapWrite();
+    await vi.waitFor(() => expect(mocks.markGapRecovered).toHaveBeenCalledOnce());
+    expect(mocks.markGap).toHaveBeenCalledWith("session-active", expect.any(String), 1, expect.any(Date));
+    expect(mocks.markGapRecovered).toHaveBeenCalledWith(
+      "session-active",
+      expect.any(String),
+      1,
+      new Date(1_800_000_000_000),
+    );
     expect(collector.start).toHaveBeenCalledOnce();
 
     await runtime.stop();
@@ -135,6 +174,7 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
     process.env.DISCORD_BOT_GUILD_ID = "123456789012345678";
     mocks.sessionFindMany.mockResolvedValue([{
       id: "default-session",
+      voicePresenceConsents: [{ id: "consent-1" }],
       community: {
         slug: "default",
         discordGuildId: null,
@@ -153,6 +193,22 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
       VOICE_PRESENCE_GUILD_ID: "123456789012345678",
       DISCORD_BOT_GUILD_ID: "123456789012345678",
     }), expect.any(Object));
+  });
+
+  it("does not claim a lease or create a collector before individual opt-in", async () => {
+    mocks.sessionFindMany.mockResolvedValue([{
+      id: "session-no-consent",
+      voicePresenceConsents: [],
+      community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
+    }]);
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
+    );
+
+    await runtime.stop();
+    expect(mocks.claimLease).not.toHaveBeenCalled();
+    expect(mocks.createSessionVoiceCollector).not.toHaveBeenCalled();
   });
 
   it("surfaces startup failure without forwarding database error details to Next logs", async () => {

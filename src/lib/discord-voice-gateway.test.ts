@@ -29,10 +29,11 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     const sockets: FakeSocket[] = [];
     const onInterval = vi.fn();
     const onGap = vi.fn();
+    const onGapRecovered = vi.fn();
     const collector = createVoiceGatewayCollector(config, {
       createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
       fetchGatewayUrl: async () => "wss://gateway.discord.gg",
-      onInterval, onGap, onFatal: vi.fn(),
+      onInterval, onGap, onGapRecovered, onFatal: vi.fn(),
     });
     await collector.start();
     const socket = sockets[0];
@@ -57,10 +58,11 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     const sockets: FakeSocket[] = [];
     const onInterval = vi.fn();
     const onGap = vi.fn();
+    const onGapRecovered = vi.fn();
     const collector = createVoiceGatewayCollector(config, {
       createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
       fetchGatewayUrl: async () => "wss://gateway.discord.gg",
-      onInterval, onGap, onFatal: vi.fn(),
+      onInterval, onGap, onGapRecovered, onFatal: vi.fn(),
     });
     await collector.start();
     sockets[0].emit(10, { heartbeat_interval: 45_000 });
@@ -74,6 +76,7 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     sockets[1].emit(10, { heartbeat_interval: 45_000 });
     expect(sockets[1].sent[0]).toEqual({ op: 6, d: { token: "synthetic-token", session_id: "test-session", seq: 3 } });
     sockets[1].emit(0, {}, 4, "RESUMED");
+    expect(onGapRecovered).toHaveBeenCalledWith(2_000);
     vi.setSystemTime(4_000);
     sockets[1].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: null }, 5, "VOICE_STATE_UPDATE");
     expect(onInterval).toHaveBeenCalledWith({ memberKey: "synthetic-member", channelId: "456", startedAt: 2_000, endedAt: 4_000, partial: true });
@@ -82,6 +85,9 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     vi.advanceTimersByTime(1_000);
     sockets[2].emit(10, { heartbeat_interval: 45_000 });
     expect(sockets[2].sent[0].op).toBe(2);
+    sockets[2].emit(0, { session_id: "test-session-2", resume_gateway_url: "wss://resume.discord.gg" }, 8, "READY");
+    sockets[2].emit(0, { id: "123", voice_states: [] }, 9, "GUILD_CREATE");
+    expect(onGapRecovered).toHaveBeenCalledWith(5_000);
     collector.stop();
   });
 

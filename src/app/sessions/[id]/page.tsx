@@ -66,6 +66,7 @@ import { SessionGallery } from "@/components/sessions/SessionGallery";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
+import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -94,13 +95,13 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; chronicle?: string; gallery?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; chronicle?: string; gallery?: string; voice?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord, deadline, error, chronicle, gallery } = await searchParams;
+  const { discord, deadline, error, chronicle, gallery, voice } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
   const deadlineAdjusted = deadline === "ajustee";
   const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
@@ -383,21 +384,7 @@ export default async function SessionDetailPage({
         </section>
       )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
-      {voicePresence && (
-        <section aria-label="Présence vocale" className="rounded-xl border border-border bg-card p-4">
-          <h2 className="font-semibold">Présence vocale Discord</h2>
-          {voicePresence.length ? (
-            <ul className="mt-2 space-y-1 text-sm">
-              {voicePresence.map(member => (
-                <li key={member.userId}>
-                  {member.name} — {member.durationSeconds < 60 ? "moins d’une minute" : `${Math.floor(member.durationSeconds / 60)} min`}
-                  {member.partial && <span className="text-muted"> (mesure partielle)</span>}
-                </li>
-              ))}
-            </ul>
-          ) : <p className="mt-2 text-sm text-muted">Aucune durée enregistrée.</p>}
-        </section>
-      )}
+      {voicePresence && <SessionVoicePresencePanel sessionId={session.id} presence={voicePresence} result={voice} />}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">

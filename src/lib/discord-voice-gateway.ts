@@ -47,6 +47,8 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   fetchGatewayUrl?: (token: string) => Promise<string>;
   onInterval: (interval: VoiceInterval) => void;
   onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close") => void;
+  /** First authoritative Gateway snapshot after reconnect, including a fresh process Identify. */
+  onGapRecovered?: (at: number) => void;
   onFatal: (failure: FatalFailure) => void;
   now?: () => number;
 }) {
@@ -144,6 +146,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
         retryMs = 1_000;
       } else if (packet.t === "RESUMED") {
         const resumedAt = now();
+        options.onGapRecovered?.(resumedAt);
         for (const [memberKey, visit] of active) {
           active.set(memberKey, { channelId: visit.channelId, startedAt: resumedAt, partial: true });
         }
@@ -168,6 +171,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
           }
         }
         guildState = "available";
+        options.onGapRecovered?.(snapshotAt);
       } else if (packet.t === "VOICE_STATE_UPDATE" && guildState === "available" && data.guild_id === config.guildId && typeof data.user_id === "string") {
         if (data.channel_id !== null && typeof data.channel_id !== "string") return;
         const result = applyVoiceState(active, {

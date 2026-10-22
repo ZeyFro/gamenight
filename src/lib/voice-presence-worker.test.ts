@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createVoicePresenceWorker,
-  registerVoicePresenceSessionStopper,
   voicePresenceWorkerConfig,
-  withVoicePresenceSessionEnd,
   type VoicePresenceTarget,
 } from "./voice-presence-worker";
 
@@ -126,53 +124,55 @@ describe("voice presence worker (synthetic dependencies only)", () => {
     expect(createCollector).not.toHaveBeenCalled();
   });
 
-  it("keeps a committed session stopped until it disappears from discovery", async () => {
+  it("stops and releases a lease when a session disappears from discovery", async () => {
     let targets = [target("session-active")];
     const collector = { start: vi.fn(), stop: vi.fn() };
     const createCollector = vi.fn(() => collector);
+    const releaseLease = vi.fn();
     const worker = createVoicePresenceWorker({
       loadTargets: async () => targets,
       createCollector,
       onFatal: vi.fn(),
+      releaseLease,
     });
 
     await worker.start();
-    const release = await worker.pauseSession("session-active");
-    await release(true);
-    await worker.refresh();
-    expect(collector.stop).toHaveBeenCalledOnce();
-    expect(createCollector).toHaveBeenCalledOnce();
-
     targets = [];
     await worker.refresh();
+    expect(collector.stop).toHaveBeenCalledOnce();
+    expect(releaseLease).toHaveBeenCalledOnce();
+    expect(createCollector).toHaveBeenCalledOnce();
+
     targets = [target("session-active")];
     await worker.refresh();
     expect(createCollector).toHaveBeenCalledTimes(2);
     await worker.stop();
   });
 
-  it("stops a session collector before the terminal session write and resumes it if that write fails", async () => {
-    const stopSession = vi.fn<() => Promise<(committed: boolean) => Promise<void>>>(async () => async () => undefined);
-    const unregister = registerVoicePresenceSessionStopper(stopSession);
-    const events: string[] = [];
-    stopSession.mockImplementation(async () => {
-      events.push("stop");
-      return async (committed: boolean) => { events.push(committed ? "keep-stopped" : "resume"); };
+  it("releases the current lease before finalizing a durable stop command", async () => {
+    const collector = { start: vi.fn(), stop: vi.fn() };
+    const releaseLease = vi.fn();
+    const finalizeStopTarget = vi.fn();
+    let stopTargets: readonly { sessionId: string; mode: "FINALIZE" | "PURGE"; stopAt: Date | null }[] = [];
+    const worker = createVoicePresenceWorker({
+      loadTargets: async () => [{ ...target("session-active"), leaseOwner: "worker-a", generation: 4 }],
+      loadStopTargets: async () => stopTargets,
+      createCollector: () => collector,
+      onFatal: vi.fn(),
+      releaseLease,
+      finalizeStopTarget,
     });
+    await worker.start();
+    finalizeStopTarget.mockClear();
+    releaseLease.mockClear();
 
-    await expect(withVoicePresenceSessionEnd("session-active", async () => {
-      events.push("write");
-      throw new Error("synthetic transaction failure");
-    })).rejects.toThrow("synthetic transaction failure");
-
-    expect(events).toEqual(["stop", "write", "resume"]);
-    unregister();
-  });
-
-  it("allows only one session transition coordinator per Node process", () => {
-    const unregister = registerVoicePresenceSessionStopper(async () => async () => undefined);
-    expect(() => registerVoicePresenceSessionStopper(async () => async () => undefined))
-      .toThrow("Voice presence worker already registered in this process");
-    unregister();
+    // The durable stop is visible to the owner in the same poll that removes
+    // the target. The worker must flush, release its fence, then finalize.
+    stopTargets = [{ sessionId: "session-active", mode: "FINALIZE", stopAt: new Date() }];
+    await worker.refresh();
+    expect(collector.stop).toHaveBeenCalledOnce();
+    expect(releaseLease).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-active", generation: 4 }));
+    expect(finalizeStopTarget).toHaveBeenCalledWith(stopTargets[0]);
+    await worker.stop();
   });
 });

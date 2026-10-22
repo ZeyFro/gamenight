@@ -33,7 +33,7 @@ import { excludeVetoed, isVoteVetoEnabled } from "@/lib/session-veto";
 import { loadVetoedProposalIds } from "@/lib/session-veto-db";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
-import { withVoicePresenceSessionEnd } from "@/lib/voice-presence-worker";
+import { requestSessionVoicePresenceStop } from "@/lib/voice-presence-coordination";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Prisma, Session, SessionStatus, User } from "@prisma/client";
@@ -563,16 +563,17 @@ export async function cancelSession(sessionId: string): Promise<void> {
   // de #99) : un crash entre les deux laisserait la session annulée en
   // base sans jamais éditer l'annonce Discord, qui resterait affichée
   // "en cours de vote" indéfiniment, en silence.
-  await withVoicePresenceSessionEnd(sessionId, () => prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const updated = await tx.session.update({
       where: { id: sessionId },
       data: { status: "CANCELLED" },
       select: { announceViaBot: true },
     });
+    await requestSessionVoicePresenceStop(tx, sessionId, "PURGE", wallClockNow());
     if (updated.announceViaBot) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
     }
-  }));
+  });
   await closeThreadOnEndSafely("session", sessionId);
 }
 
@@ -619,6 +620,7 @@ export async function cancelRecurringSessions(sessionId: string, userId: string)
       select: { id: true, announceViaBot: true },
     });
     for (const session of canceled) {
+      await requestSessionVoicePresenceStop(tx, session.id, "PURGE", wallClockNow());
       if (session.announceViaBot) await enqueueSessionAnnounceUpdate(session.id, tx);
     }
     return canceled.map((session) => session.id);
@@ -652,12 +654,13 @@ export async function markSessionDone(
   // (`null` = communauté par défaut). Écritures dérivées d'une ligne existante :
   // elles héritent de la soirée, jamais de l'acteur (accès direct assumé, `tx`).
   const defaultCommunityId = await getDefaultCommunityId();
-  const decided = await withVoicePresenceSessionEnd(sessionId, () => prisma.$transaction(async (tx) => {
+  const decided = await prisma.$transaction(async (tx) => {
     const result = await tx.session.updateMany({
       where: { id: sessionId, status: "SCHEDULED" },
       data: { status: "DONE" },
     });
     if (result.count === 0) return null;
+    await requestSessionVoicePresenceStop(tx, sessionId, "FINALIZE", wallClockNow());
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
@@ -696,7 +699,7 @@ export async function markSessionDone(
     }
 
     return updated;
-  }), result => result !== null);
+  });
   if (!decided) return { unlockedAchievements: [] };
 
   // Les nouveaux inscrits n'ont pas forcément voté. Le ledger PARTICIPATE

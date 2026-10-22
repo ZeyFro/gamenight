@@ -1,30 +1,91 @@
 import type { VoiceInterval } from "./discord-voice-presence";
 import { prisma } from "@/lib/prisma";
 import { getSessionAccessRole } from "@/lib/session-access";
+import { findActiveMembership, hasCommunityRole } from "@/lib/community-access";
+import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
-import { toWallClock } from "@/lib/wallclock";
+import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { toWallClock, wallClockNow } from "@/lib/wallclock";
+import { finalizeVoiceIntervalAtCutoff } from "./voice-presence-policy";
 
-export type SessionVoiceConfig = { guildId: string; defaultGuildId?: string; channelIds: readonly string[]; sessionId: string };
+export type SessionVoiceConfig = {
+  guildId: string;
+  defaultGuildId?: string;
+  channelIds: readonly string[];
+  sessionId: string;
+  workerId: string;
+  generation: number;
+};
 
 export function sessionVoiceConfig(env: Record<string, string | undefined>): SessionVoiceConfig | null {
   if (env.VOICE_PRESENCE_ENABLED !== "true") return null;
   const guildId = env.VOICE_PRESENCE_GUILD_ID?.trim() ?? "";
   const sessionId = env.VOICE_PRESENCE_SESSION_ID?.trim() ?? "";
+  const workerId = env.VOICE_PRESENCE_WORKER_ID?.trim() ?? "";
+  const generation = Number(env.VOICE_PRESENCE_WORKER_GENERATION);
   const channelIds = env.VOICE_PRESENCE_CHANNEL_IDS?.split(",").map(id => id.trim()).filter(Boolean) ?? [];
-  if (!/^\d{17,20}$/.test(guildId) || !sessionId || !channelIds.length || channelIds.some(id => !/^\d{17,20}$/.test(id))) {
+  if (
+    !/^\d{17,20}$/.test(guildId) || !sessionId || !workerId || !Number.isSafeInteger(generation) || generation < 1 ||
+    !channelIds.length || channelIds.some(id => !/^\d{17,20}$/.test(id))
+  ) {
     throw new Error("Voice presence session configuration incomplete");
   }
-  return { guildId, defaultGuildId: env.DISCORD_BOT_GUILD_ID?.trim() ?? "", channelIds, sessionId };
+  return { guildId, defaultGuildId: env.DISCORD_BOT_GUILD_ID?.trim() ?? "", channelIds, sessionId, workerId, generation };
 }
 
-export async function storeSessionVoiceInterval(
-  config: SessionVoiceConfig | null,
-  interval: VoiceInterval,
-) {
+export async function grantSessionVoiceConsent(sessionId: string, userId: string, now = wallClockNow()) {
+  return prisma.$transaction(async tx => {
+    const users = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${userId} FOR SHARE`;
+    if (!users.length) return false;
+    const sessions = await tx.$queryRaw<{ id: string; createdById: string; communityId: string | null }[]>`
+      SELECT id, "createdById", "communityId" FROM "Session"
+      WHERE id = ${sessionId} AND status = 'SCHEDULED' FOR UPDATE
+    `;
+    const session = sessions[0];
+    if (!session?.communityId) return false;
+
+    if (session.createdById !== userId) {
+      const invites = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "SessionInvite" WHERE "sessionId" = ${sessionId} AND "userId" = ${userId} AND status = 'ACTIVE' FOR SHARE
+      `;
+      if (!invites.length) return false;
+    }
+
+    if (isCommunityIsolationEnabled()) {
+      const memberships = await tx.$queryRaw<{ userId: string }[]>`
+        SELECT "userId" FROM "Membership" WHERE "communityId" = ${session.communityId} AND "userId" = ${userId} AND status = 'ACTIVE' FOR SHARE
+      `;
+      if (!memberships.length) return false;
+    }
+
+    await tx.sessionVoicePresenceConsent.upsert({
+      where: { sessionId_userId: { sessionId, userId } },
+      create: { sessionId, userId, consentedAt: now },
+      update: {},
+    });
+    return true;
+  });
+}
+
+export async function withdrawSessionVoiceConsent(sessionId: string, userId: string) {
+  return prisma.$transaction(async tx => {
+    const users = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    if (!users.length) return false;
+    const consents = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "SessionVoicePresenceConsent" WHERE "sessionId" = ${sessionId} AND "userId" = ${userId} FOR UPDATE
+    `;
+    const consent = consents[0];
+    if (!consent) return false;
+    await tx.sessionVoicePresenceInterval.deleteMany({ where: { sessionId, userId } });
+    await tx.sessionVoicePresenceConsent.delete({ where: { id: consent.id } });
+    return true;
+  });
+}
+
+export async function storeSessionVoiceInterval(config: SessionVoiceConfig | null, interval: VoiceInterval) {
   if (!config || !config.channelIds.includes(interval.channelId)) return false;
   if (!/^\d{17,20}$/.test(interval.memberKey) || !Number.isFinite(interval.startedAt) || !Number.isFinite(interval.endedAt) || interval.endedAt <= interval.startedAt) return false;
-  const durationSeconds = Math.floor((interval.endedAt - interval.startedAt) / 1_000);
-  if (durationSeconds < 1) return false;
+  if (Math.floor((interval.endedAt - interval.startedAt) / 1_000) < 1) return false;
   const usesDefaultGuildFallback = config.defaultGuildId === config.guildId;
   const communityGuildFilter = usesDefaultGuildFallback
     ? { OR: [{ discordGuildId: config.guildId }, { slug: "default", discordGuildId: null }] }
@@ -35,7 +96,7 @@ export async function storeSessionVoiceInterval(
   const session = await prisma.session.findFirst({
     where: {
       id: config.sessionId,
-      status: "SCHEDULED",
+      status: { in: ["SCHEDULED", "DONE"] },
       date: { lte: toWallClock(new Date(interval.startedAt)) },
       community: { is: {
         ...communityGuildFilter,
@@ -52,42 +113,18 @@ export async function storeSessionVoiceInterval(
   if (!session) return false;
 
   const startedAt = new Date(interval.startedAt);
-  const upsert = {
-    where: { sessionId_userId_channelId_startedAt: { sessionId: session.id, userId: user.id, channelId: interval.channelId, startedAt } },
-    create: {
-      sessionId: session.id,
-      userId: user.id,
-      channelId: interval.channelId,
-      startedAt,
-      durationSeconds,
-      partial: interval.partial === true,
-    },
-    update: {
-      durationSeconds,
-      partial: interval.partial === true,
-    },
-  };
   const isolationEnabled = isCommunityIsolationEnabled();
   return prisma.$transaction(async tx => {
-    // Keep the lock order aligned with OAuth (User before Membership) and
-    // serialize every acceptance predicate until the interval is committed.
+    // Lock order: User → Session → Community/config/invite/membership → lease → consent.
+    // Session end/cancel also locks Session before changing the durable control row.
     const users = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "User"
-      WHERE id = ${user.id} AND "discordId" = ${interval.memberKey}
-      FOR SHARE
+      SELECT id FROM "User" WHERE id = ${user.id} AND "discordId" = ${interval.memberKey} FOR SHARE
     `;
     if (!users.length) return false;
 
-    const sessions = await tx.$queryRaw<{
-      id: string;
-      createdById: string;
-      communityId: string | null;
-    }[]>`
-      SELECT id, "createdById", "communityId"
-      FROM "Session"
-      WHERE id = ${config.sessionId}
-        AND status = 'SCHEDULED'
-        AND date <= ${toWallClock(new Date(interval.startedAt))}
+    const sessions = await tx.$queryRaw<{ id: string; createdById: string; communityId: string | null; status: string }[]>`
+      SELECT id, "createdById", "communityId", status FROM "Session"
+      WHERE id = ${config.sessionId} AND status IN ('SCHEDULED', 'DONE') AND date <= ${toWallClock(startedAt)}
       FOR SHARE
     `;
     const currentSession = sessions[0];
@@ -108,9 +145,7 @@ export async function storeSessionVoiceInterval(
     const voiceConfigs = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "CommunityChannelConfig"
       WHERE "communityId" = ${currentSession.communityId}
-        AND category = 'VOICE'
-        AND "discordChannelId" = ${interval.channelId}
-        AND enabled = true
+        AND category = 'VOICE' AND "discordChannelId" = ${interval.channelId} AND enabled = true
       FOR SHARE
     `;
     if (!voiceConfigs.length) return false;
@@ -118,9 +153,7 @@ export async function storeSessionVoiceInterval(
     if (currentSession.createdById !== user.id) {
       const invites = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "SessionInvite"
-        WHERE "sessionId" = ${currentSession.id}
-          AND "userId" = ${user.id}
-          AND status = 'ACTIVE'
+        WHERE "sessionId" = ${currentSession.id} AND "userId" = ${user.id} AND status = 'ACTIVE'
         FOR SHARE
       `;
       if (!invites.length) return false;
@@ -129,34 +162,126 @@ export async function storeSessionVoiceInterval(
     if (isolationEnabled) {
       const memberships = await tx.$queryRaw<{ userId: string }[]>`
         SELECT "userId" FROM "Membership"
-        WHERE "communityId" = ${currentSession.communityId}
-          AND "userId" = ${user.id}
-          AND status = 'ACTIVE'
+        WHERE "communityId" = ${currentSession.communityId} AND "userId" = ${user.id} AND status = 'ACTIVE'
         FOR SHARE
       `;
       if (!memberships.length) return false;
     }
 
-    await tx.sessionVoicePresenceInterval.upsert(upsert);
+    const controls = await tx.$queryRaw<{
+      status: string; generation: number; leaseOwner: string | null; leaseExpiresAt: Date | null; stopAt: Date | null;
+    }[]>`
+      SELECT status::text AS status, "generation", "leaseOwner", "leaseExpiresAt", "stopAt"
+      FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${config.sessionId} FOR SHARE
+    `;
+    const control = controls[0];
+    const now = wallClockNow();
+    if (
+      !control || control.leaseOwner !== config.workerId || control.generation !== config.generation ||
+      !control.leaseExpiresAt || control.leaseExpiresAt <= now
+    ) return false;
+    const stopping = control.status === "STOP_REQUESTED" && control.stopAt !== null;
+    if (control.status !== "ACTIVE" && !stopping) return false;
+    if (currentSession.status !== "SCHEDULED" && !stopping) return false;
+    if (stopping && startedAt >= control.stopAt!) return false;
+
+    const consents = await tx.$queryRaw<{ id: string; consentedAt: Date }[]>`
+      SELECT id, "consentedAt" FROM "SessionVoicePresenceConsent"
+      WHERE "sessionId" = ${config.sessionId} AND "userId" = ${user.id}
+      FOR SHARE
+    `;
+    const consent = consents[0];
+    if (!consent || startedAt < consent.consentedAt) return false;
+
+    const effective = finalizeVoiceIntervalAtCutoff({
+      startedAt: interval.startedAt,
+      endedAt: interval.endedAt,
+      cutoffAt: stopping ? control.stopAt : null,
+      partial: interval.partial === true,
+    });
+    if (!effective) return false;
+
+    await tx.sessionVoicePresenceInterval.upsert({
+      where: { sessionId_userId_channelId_startedAt: {
+        sessionId: config.sessionId, userId: user.id, channelId: interval.channelId, startedAt: effective.startedAt,
+      } },
+      create: {
+        sessionId: config.sessionId,
+        userId: user.id,
+        consentId: consent.id,
+        channelId: interval.channelId,
+        ...effective,
+      },
+      update: {
+        consentId: consent.id,
+        endedAt: effective.endedAt,
+        durationSeconds: effective.durationSeconds,
+        expiresAt: effective.expiresAt,
+        partial: effective.partial,
+      },
+    });
     return true;
   });
 }
 
 export async function readSessionVoicePresence(sessionId: string, viewerId: string) {
-  if (process.env.VOICE_PRESENCE_ENABLED !== "true" || await getSessionAccessRole(viewerId, sessionId) !== "creator") return null;
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { createdById: true, communityId: true, status: true },
+  });
+  if (!session) return null;
+
+  const viewer = await prisma.user.findUnique({ where: { id: viewerId }, select: { discordId: true, role: true } });
+  const isSiteAdmin = !!viewer && isAdminUser(viewer, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
+  const isCreator = session.createdById === viewerId;
+  const membership = await findActiveMembership(viewerId, await statsCommunityIdForSession(session.communityId));
+  const isCommunityAdmin = !!membership && hasCommunityRole(membership.role, "ADMIN");
+  const isAdmin = isSiteAdmin || isCommunityAdmin;
+  const accessRole = isCreator || isAdmin ? null : await getSessionAccessRole(viewerId, sessionId);
+  const canReadAll = isCreator || isAdmin;
+  if (!canReadAll && accessRole !== "guest") return null;
+
+  const ownConsent = await prisma.sessionVoicePresenceConsent.findUnique({
+    where: { sessionId_userId: { sessionId, userId: viewerId } },
+    select: { id: true },
+  });
+  const now = wallClockNow();
   const totals = await prisma.sessionVoicePresenceInterval.groupBy({
     by: ["userId"],
-    where: { sessionId },
+    where: {
+      sessionId,
+      consentId: { not: null },
+      expiresAt: { gt: now },
+      ...(!canReadAll ? { userId: viewerId } : {}),
+    },
     _sum: { durationSeconds: true },
     _max: { partial: true },
   });
-  if (!totals.length) return [];
-  const users = await prisma.user.findMany({
+  const users = totals.length ? await prisma.user.findMany({
     where: { id: { in: totals.map(row => row.userId) } },
     select: { id: true, discordName: true },
-  });
+  }) : [];
   const names = new Map(users.map(user => [user.id, user.discordName]));
-  return totals
-    .map(row => ({ userId: row.userId, name: names.get(row.userId) ?? "Membre", durationSeconds: row._sum.durationSeconds ?? 0, partial: row._max.partial ?? false }))
-    .sort((a, b) => b.durationSeconds - a.durationSeconds);
+  const control = await prisma.sessionVoicePresenceControl.findUnique({
+    where: { sessionId },
+    select: { gapDetected: true, gapStartedAt: true, lastGapAt: true },
+  });
+  return {
+    enabled: process.env.VOICE_PRESENCE_ENABLED === "true",
+    consented: !!ownConsent,
+    canConsent: session.status === "SCHEDULED" && (accessRole === "guest" || isCreator),
+    canReadAll,
+    hasGaps: control?.gapDetected ?? false,
+    latestGap: control?.gapDetected && control.gapStartedAt
+      ? { startedAt: control.gapStartedAt, resumedAt: control.lastGapAt }
+      : null,
+    entries: totals
+      .map(row => ({
+        userId: row.userId,
+        name: names.get(row.userId) ?? "Membre",
+        durationSeconds: row._sum.durationSeconds ?? 0,
+        partial: row._max.partial ?? false,
+      }))
+      .sort((a, b) => b.durationSeconds - a.durationSeconds),
+  };
 }

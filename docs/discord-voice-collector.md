@@ -1,29 +1,34 @@
 # Collecteur vocal Discord
 
-Le worker de présence est lancé par `src/instrumentation.ts` dans le serveur Next.js auto-hébergé en runtime Node, seulement lorsque `VOICE_PRESENCE_WORKER_MODE=standalone` est explicitement défini. Les instances web ordinaires laissent ce paramètre absent; Vercel et le runtime Edge sont toujours exclus. L'import du runtime et de Prisma reste différé jusqu'au passage des contrôles d'environnement.
+La collecte reste désactivée tant que `VOICE_PRESENCE_ENABLED` n'est pas explicitement défini à `true`. Le worker ne démarre que dans un serveur Node auto-hébergé avec `VOICE_PRESENCE_WORKER_MODE=standalone`, un jeton Discord et les références de décision de consentement et de rétention. `.env.example` laisse ces valeurs vides; l'unité systemd ne définit que le mode `standalone` et n'active donc pas la collecte par défaut. Vercel, le runtime Edge et les instances web ordinaires ne lancent pas le worker.
 
-Le démarrage exige `DISCORD_BOT_TOKEN` et des références non vides dans `VOICE_PRESENCE_CONSENT_DECISION` et `VOICE_PRESENCE_RETENTION_DECISION`. Elles restent vides dans `.env.example`. Ces variables sont seulement un verrou de prérequis : le code ne choisit ni n'implémente une politique de consentement ou de rétention. Ne les renseigner qu'après que ces décisions et leur application dans le produit ont été définies. Aucune activation ou collecte réelle n'a été faite.
+## Consentement, lecture et conservation
 
-Toutes les 15 secondes par défaut, le worker recherche les sessions `SCHEDULED` dont la date est atteinte, rattachées à une communauté `ACTIVE` qui a un salon `VOICE` actif. Il ouvre un collecteur par session. Il s'arrête lorsqu'une session sort de cet ensemble. `markSessionDone` et `cancelSession` ferment aussi le collecteur avant leur transaction terminale; les écritures déjà lancées sont attendues. Une erreur de la requête de découverte, de persistance ou une erreur Gateway fatale arrête le worker et termine le processus avec un code d'erreur; systemd le redémarre et conserve les messages dans le journal du service.
+Chaque créateur ou invité actif donne son accord individuellement depuis le panneau de la soirée. Tant qu'il n'a pas consenti, le worker ne lance aucun collecteur pour cette soirée. Le participant ne voit que ses propres durées; le créateur de la soirée et les admins du site ou de sa communauté voient celles des personnes consentantes. Le panneau admin vocal ne donne accès qu'à ces données vocales et ne contourne pas la confidentialité de la page de soirée.
 
-À la première synchronisation Gateway, les membres déjà présents sont enregistrés à l'heure observée avec `partial=true`. Lors d'une reprise réussie, les événements rejoués reconstruisent l'état mais ne produisent pas de durée : ils n'ont pas d'heure de transition exploitable. À `RESUMED`, les membres encore présents repartent à l'heure observée, en partiel. La visite ouverte avant la coupure, y compris sa portion antérieure à la coupure, n'est pas reprise. Si la reprise échoue ou que le processus s'arrête avant `RESUMED`, les visites ouvertes sont abandonnées plutôt que prolongées à travers une période sans connexion. Un arrêt ordonné hors reprise ferme les visites ouvertes en intervalles partiels et attend les écritures. Après un crash, l'intervalle antérieur ne peut pas être reconstruit; au redémarrage, les membres encore présents recommencent à l'heure de la nouvelle synchronisation, en partiel.
+Retirer son consentement supprime immédiatement l'accord et les intervalles de cette personne. Annuler une soirée supprime ses accords et intervalles dans la transaction qui marque l'annulation. À la clôture normale, la date de cutoff est écrite avec l'état de la soirée, sans attendre le worker; les intervalles persistés sont bornés à cette date. La finalisation asynchrone applique une conservation de 30 jours après le cutoff. Le nettoyage utilise le runner et le cron de rétention déjà présents, par lots bornés; cette PR n'ajoute ni n'active de cron.
 
-## Hôte Raspberry Pi
+## Coordination durable et reprise après crash
 
-Le paquet fournit `packaging/systemd/gamenight.service`. Cette unité est le processus auto-hébergé dédié qui sélectionne le mode `standalone`; elle lance `scripts/gamenight-server.mjs`, un serveur utilisant l'API publique Next.js sur `127.0.0.1:3000`. À réception de SIGINT ou SIGTERM, ce lanceur ferme les admissions HTTP et attend les requêtes en cours, le flush du worker puis la fermeture de Next avant de terminer. Il conserve un code d'erreur déjà posé et termine en erreur si cet arrêt échoue. L'arrêt reste limité par `TimeoutStopSec=45s` : un flush bloqué au-delà peut être tué par systemd.
+Vercel ne contacte pas le worker pendant une action de clôture. Dans la même transaction que le statut terminal, l'application écrit une commande `STOP_REQUESTED` avec le cutoff, ou `PURGE_REQUESTED` pour une annulation. Le worker unique revendique un bail SQL muni d'une génération; chaque intervalle vérifie le propriétaire, la génération, le consentement et le cutoff dans sa transaction. Un worker concurrent ou périmé ne peut donc pas continuer à écrire après la prise de bail.
 
-Utiliser ce lanceur pour la collecte autonome : `npm start` / `next start` ne coordonnent pas le flush du worker avec leur propre fermeture.
+Le worker vide ses écritures avant de finaliser la commande. Si le worker est arrêté ou perd son bail, la prochaine instance reprend la commande; la clôture du site est déjà effective. Un crash ne prolonge jamais un intervalle ouvert. Seuls les intervalles fermés et enregistrés sont conservés. Le processus ne persiste pas le tuple Gateway de reprise; au redémarrage il refait `Identify`. La lacune est signalée entre la dernière observation durable (heartbeat ou expiration du bail) et le premier état Gateway confirmé après reconnexion (`RESUMED` ou snapshot `GUILD_CREATE`). Aucune durée n'est estimée dans cette plage. Les observations issues d'un snapshot, qui n'a pas d'heure d'entrée, sont enregistrées comme partielles à partir de l'heure du snapshot.
 
-Un reverse proxy local est à configurer séparément si l'application doit être accessible sur le réseau. L'unité ne contient aucun secret; elle lit l'environnement complet de l'application depuis `/etc/gamenight/gamenight.env` et redémarre après un échec, avec au plus cinq démarrages en 300 secondes. Une fois cette limite atteinte, une intervention est nécessaire pour corriger la cause puis relancer le service; aucun watchdog de collecte ni alerte automatique n'est fourni. `systemctl status gamenight` et `journalctl -u gamenight` permettent de superviser le processus.
+Les lignes d'intervalle restent la seule source des durées affichées. Le panneau expose aussi la dernière plage de lacune connue et indique si une reprise a été confirmée; il ne transforme jamais cette plage en temps vocal.
 
-Prérequis avant une mise en service locale :
+## Préparation de l'hôte Raspberry Pi
 
-- un Raspberry Pi Linux ARM64 avec Node.js 22.15 ou plus récent pour la parité avec le dépôt et sa CI;
-- les dépendances de production et le build Next.js préparés pour cette architecture;
-- une base PostgreSQL accessible via `DATABASE_URL`, avec les migrations requises appliquées par la procédure de déploiement déjà approuvée;
-- un fichier `/etc/gamenight/gamenight.env` lisible seulement par l'utilisateur du service, contenant les variables d'application habituelles et `DISCORD_BOT_TOKEN`;
-- les choix de consentement et de rétention définis et implémentés avant de renseigner leurs références ou d'activer le flag.
+Le paquet local comprend `packaging/systemd/gamenight.service` et `scripts/gamenight-server.mjs`. L'unité lance le serveur GameNight sur `127.0.0.1:3000` et utilise le mode worker autonome si les contrôles d'environnement autorisent le démarrage. Le lanceur traite SIGINT/SIGTERM, ferme l'admission HTTP, attend les requêtes actives, vide le worker puis ferme Next.js. L'arrêt systemd est limité à 45 secondes. Les erreurs fatales font échouer le processus pour permettre son redémarrage par systemd; aucun watchdog ou avis automatique n'est fourni.
 
-Le script `npm run build` du dépôt lance `prisma migrate deploy` avant la compilation hors Preview. Ne pas l'exécuter contre une base de production dans le cadre de la préparation du Pi; appliquer les migrations uniquement par le processus de déploiement approuvé. Le lanceur du service ne lance pas de migration.
+Le lanceur fourni doit être utilisé pour l'hôte worker : `npm start` / `next start` ne coordonnent pas son flush à l'arrêt. Un reverse proxy local est à configurer séparément si l'application doit être joignable depuis le réseau. L'unité ne contient aucun secret; elle lit les variables de l'application dans `/etc/gamenight/gamenight.env`, lisible seulement par l'utilisateur du service. Garder `VOICE_PRESENCE_ENABLED` et les références de décision vides jusqu'à leur mise en service autorisée.
 
-La mise en service doit être préparée avec le flag et les deux références de décision laissés vides. Aucun accès Pi, installation, appel Discord réel ou test de collecte n'a été effectué pour ce changement.
+Prérequis techniques avant toute installation locale :
+
+- Raspberry Pi Linux ARM64 avec Node.js 22.15 ou plus récent, pour correspondre au dépôt et à la CI;
+- dépendances de production et build Next.js préparés pour cette architecture;
+- PostgreSQL accessible par `DATABASE_URL`, et migrations appliquées par le processus de déploiement approuvé;
+- environnement applicatif complet dans `/etc/gamenight/gamenight.env`, avec droits limités et jeton Discord ajouté par l'opérateur hors du dépôt.
+
+`npm run build` lance `prisma migrate deploy` avant la compilation hors Preview. Ne pas lancer le build contre une base de production pour préparer le Pi; appliquer les migrations uniquement par la procédure de déploiement approuvée. Le service ne lance pas lui-même les migrations.
+
+Aucune migration ni connexion Production, installation Raspberry, activation de flag/cron, connexion au Gateway réel ou notification Discord n'a été effectuée pour ce lot.
