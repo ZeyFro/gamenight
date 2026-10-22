@@ -54,7 +54,7 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
         include: { user: true },
       }),
       scopedDb.xpEvent.aggregate({
-        where: { communityId, createdAt: { gte: start, lte: end } },
+        where: { communityId, createdAt: { gte: start, lte: end }, reason: { not: "SHOP_BALANCE_PURCHASE" } },
         _sum: { amount: true },
       }),
       scopedDb.pronostic.findMany({

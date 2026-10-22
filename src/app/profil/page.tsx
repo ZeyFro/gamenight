@@ -89,7 +89,7 @@ export default async function ProfilApercuPage() {
       _sum: { amount: true },
     }),
     scopedDb.xpEvent.findMany({
-      where: { userId: user.id, ...progressCommunity, createdAt: { gte: xpChartSince } },
+      where: { userId: user.id, ...progressCommunity, createdAt: { gte: xpChartSince }, reason: { not: "SHOP_BALANCE_PURCHASE" } },
       select: { amount: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
