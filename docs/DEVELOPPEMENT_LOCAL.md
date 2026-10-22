@@ -60,4 +60,4 @@ Ne configure pas ces URLs vers Neon, Preview ou Production. Après les tests, re
 
 ## Compilation
 
-npm run build exécute prisma migrate deploy sur DATABASE_URL avant la compilation, sauf dans l’environnement Vercel Preview. Pour compiler localement, garde donc DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
+npm run build ne migre plus (prisma generate puis next build); les migrations s'appliquent avec `node scripts/db-migrate.mjs` ou `npx prisma migrate deploy` en local. Pour compiler localement, garde donc DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
