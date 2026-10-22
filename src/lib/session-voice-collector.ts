@@ -1,5 +1,6 @@
 import { createVoiceGatewayCollector, voiceGatewayConfig } from "./discord-voice-gateway";
-import { sessionVoiceConfig, storeSessionVoiceInterval } from "./session-voice-presence";
+import { sessionVoiceConfig } from "./session-voice-config";
+import { storeSessionVoiceInterval } from "./session-voice-presence";
 
 type CollectorOptions = Parameters<typeof createVoiceGatewayCollector>[1];
 

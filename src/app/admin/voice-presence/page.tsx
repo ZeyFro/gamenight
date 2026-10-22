@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { prisma } from "@/lib/prisma";
-import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -13,37 +13,39 @@ export default async function VoicePresenceAdminPage() {
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) redirect("/");
   const isSiteAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
-  const memberships = isSiteAdmin ? [] : await prisma.membership.findMany({
-    where: {
-      userId: user.id,
-      status: "ACTIVE",
-      role: { in: ["ADMIN", "OWNER"] },
-      community: { status: "ACTIVE" },
-    },
-    select: { communityId: true },
-  });
-  const communityIds = memberships.map(membership => membership.communityId);
+  const communityIds = isSiteAdmin
+    ? (await prisma.community.findMany({ select: { id: true } })).map(community => community.id)
+    : (await prisma.membership.findMany({
+      where: {
+        userId: user.id,
+        status: "ACTIVE",
+        role: { in: ["ADMIN", "OWNER"] },
+        community: { status: "ACTIVE" },
+      },
+      select: { communityId: true },
+    })).map(membership => membership.communityId);
   if (!isSiteAdmin && !communityIds.length) notFound();
-  const includesDefaultCommunity = !isSiteAdmin && communityIds.includes(await statsCommunityIdForSession(null));
 
   const now = wallClockNow();
-  const sessions = await prisma.session.findMany({
-    where: {
-      ...(!isSiteAdmin ? { OR: [
-        { communityId: { in: communityIds } },
-        ...(includesDefaultCommunity ? [{ communityId: null }] : []),
-      ] } : {}),
-      voicePresenceConsents: {
-        some: {
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          intervals: { some: { expiresAt: { gt: now } } },
+  const sessionGroups = await Promise.all(communityIds.map(async communityId => {
+    const scopedDb = await scopedPrismaForCommunityId(communityId);
+    return scopedDb.session.findMany({
+      where: {
+        voicePresenceConsents: {
+          some: {
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            intervals: { some: { expiresAt: { gt: now } } },
+          },
         },
       },
-    },
-    select: { id: true, date: true },
-    orderBy: { date: "desc" },
-    take: 100,
-  });
+      select: { id: true, date: true },
+      orderBy: { date: "desc" },
+      take: 100,
+    });
+  }));
+  const sessions = sessionGroups.flat()
+    .sort((left, right) => right.date.getTime() - left.date.getTime())
+    .slice(0, 100);
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">

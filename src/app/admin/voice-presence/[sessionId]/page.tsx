@@ -2,9 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
-import { findActiveMembership, hasCommunityRole } from "@/lib/community-access";
 import { prisma } from "@/lib/prisma";
-import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
 import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
@@ -20,18 +19,30 @@ export default async function VoicePresenceAdminSessionPage({
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) redirect("/");
   const { sessionId } = await params;
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { id: true, date: true, communityId: true },
-  });
-  if (!session) notFound();
-
   const isSiteAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
-  if (!isSiteAdmin) {
-    const communityId = await statsCommunityIdForSession(session.communityId);
-    const membership = await findActiveMembership(user.id, communityId);
-    if (!membership || !hasCommunityRole(membership.role, "ADMIN")) notFound();
+  const communityIds = isSiteAdmin
+    ? (await prisma.community.findMany({ select: { id: true } })).map(community => community.id)
+    : (await prisma.membership.findMany({
+      where: {
+        userId: user.id,
+        status: "ACTIVE",
+        role: { in: ["ADMIN", "OWNER"] },
+        community: { status: "ACTIVE" },
+      },
+      select: { communityId: true },
+    })).map(membership => membership.communityId);
+  if (!isSiteAdmin && !communityIds.length) notFound();
+
+  let session: { id: string; date: Date } | null = null;
+  for (const communityId of communityIds) {
+    const scopedDb = await scopedPrismaForCommunityId(communityId);
+    session = await scopedDb.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, date: true },
+    });
+    if (session) break;
   }
+  if (!session) notFound();
 
   const presence = await readSessionVoicePresence(session.id, user.id);
   if (!presence?.canReadAll) notFound();

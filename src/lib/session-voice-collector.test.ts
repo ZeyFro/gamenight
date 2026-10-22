@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const persist = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 vi.mock("./session-voice-presence", async () => {
-  const actual = await vi.importActual<typeof import("./session-voice-presence")>("./session-voice-presence");
-  return { ...actual, storeSessionVoiceInterval: persist };
+  return { storeSessionVoiceInterval: persist };
 });
 
 import { createSessionVoiceCollector } from "./session-voice-collector";
@@ -26,6 +25,8 @@ describe("session voice collector bridge (fake Gateway only)", () => {
       VOICE_PRESENCE_GUILD_ID: "123456789012345678",
       VOICE_PRESENCE_CHANNEL_IDS: "456789012345678901",
       VOICE_PRESENCE_SESSION_ID: "session-test",
+      VOICE_PRESENCE_WORKER_ID: "synthetic-worker",
+      VOICE_PRESENCE_WORKER_GENERATION: "1",
     };
     const sockets: FakeSocket[] = [];
     let now = 1_000;
@@ -43,7 +44,14 @@ describe("session voice collector bridge (fake Gateway only)", () => {
     now = 61_000;
     sockets[0].emit(0, { guild_id: "123456789012345678", user_id: "789012345678901234", channel_id: null }, 4, "VOICE_STATE_UPDATE");
     expect(persist).toHaveBeenCalledWith(
-      { guildId: "123456789012345678", defaultGuildId: "", channelIds: ["456789012345678901"], sessionId: "session-test" },
+      {
+        guildId: "123456789012345678",
+        defaultGuildId: "",
+        channelIds: ["456789012345678901"],
+        sessionId: "session-test",
+        workerId: "synthetic-worker",
+        generation: 1,
+      },
       { memberKey: "789012345678901234", channelId: "456789012345678901", startedAt: 1_000, endedAt: 61_000 },
     );
     await collector!.stop();
@@ -66,6 +74,7 @@ describe("session voice collector bridge (fake Gateway only)", () => {
       VOICE_PRESENCE_ENABLED: "true", DISCORD_BOT_TOKEN: "synthetic-token",
       VOICE_PRESENCE_GUILD_ID: "123456789012345678", VOICE_PRESENCE_CHANNEL_IDS: "456789012345678901",
       VOICE_PRESENCE_SESSION_ID: "session-test",
+      VOICE_PRESENCE_WORKER_ID: "synthetic-worker", VOICE_PRESENCE_WORKER_GENERATION: "1",
     };
     const socket = new FakeSocket();
     const collector = createSessionVoiceCollector(env, {
