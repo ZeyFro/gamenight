@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ALL_MESSAGE_CATEGORIES,
+  MAX_MESSAGE_TEXT_LENGTH,
   CATEGORY_LABELS,
   CATEGORY_VARIABLES,
   findInvalidCategoryVariables,
@@ -65,6 +66,11 @@ export function MessageTemplateForm({
     [text, categories]
   );
 
+  // Limite appliquée à l'écriture seulement : un ancien modèle plus long
+  // s'ouvre tel quel (jamais tronqué) mais ne peut pas être réenregistré.
+  const tooLong = text.length > MAX_MESSAGE_TEXT_LENGTH;
+  const legacyTooLong = initialText.length > MAX_MESSAGE_TEXT_LENGTH;
+
   const suggestions = useMemo(() => {
     if (!suggestion) return [];
     const q = suggestion.query.toLowerCase();
@@ -112,7 +118,7 @@ export function MessageTemplateForm({
         // bouton était quand même cliqué (ex. `invalidPairs` vient de
         // repasser à 0 entre deux rendus), on bloque explicitement l'envoi
         // de l'action serveur plutôt que de compter uniquement sur le CSS.
-        if (invalidPairs.length > 0) e.preventDefault();
+        if (invalidPairs.length > 0 || tooLong) e.preventDefault();
       }}
       className="flex flex-col gap-3"
     >
@@ -149,6 +155,17 @@ export function MessageTemplateForm({
           </ul>
         )}
       </div>
+
+      {tooLong && (
+        <p role="alert" className="rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+          Ce message fait {text.length} caractères, la limite est de{" "}
+          {MAX_MESSAGE_TEXT_LENGTH} (Discord coupe à 2000 et les variables
+          allongent le texte).{" "}
+          {legacyTooLong
+            ? "Il date d'avant cette limite : il reste utilisé tel quel, mais il doit être raccourci avant d'être réenregistré."
+            : "Raccourcis-le pour pouvoir enregistrer."}
+        </p>
+      )}
 
       {invalidPairs.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
@@ -198,7 +215,7 @@ export function MessageTemplateForm({
         })}
       </fieldset>
 
-      <fieldset disabled={invalidPairs.length > 0} className="contents">
+      <fieldset disabled={invalidPairs.length > 0 || tooLong} className="contents">
         {footer}
       </fieldset>
     </form>
