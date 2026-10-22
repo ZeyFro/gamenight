@@ -24,7 +24,7 @@ Le lanceur fourni doit être utilisé pour l'hôte worker : `npm start` / `next 
 
 ### Préinspection SSH en lecture seule
 
-Remplacer uniquement `<SSH_USER>` et `<RASPBERRY_HOST_OR_IP>` par les valeurs fournies par l'opérateur. Cette préinspection n'affiche jamais le contenu complet de l'EnvironmentFile ni les propriétés `Environment` de systemd. La seule valeur d'environnement examinée est `VOICE_PRESENCE_ENABLED`.
+Remplacer uniquement `<SSH_USER>` et `<RASPBERRY_HOST_OR_IP>` par les valeurs fournies par l'opérateur. Cette préinspection n'affiche jamais le contenu complet de l'EnvironmentFile, une valeur brute de flag, les propriétés `Environment` ou `ExecStart` de systemd. Pour `VOICE_PRESENCE_ENABLED`, elle ne renvoie que `conforme (false)`, `absent` ou `non conforme`.
 
 ```powershell
 $Pi = '<SSH_USER>@<RASPBERRY_HOST_OR_IP>'
@@ -43,35 +43,49 @@ done
 printf '%s\n' '--- Node utilisé par l’unité ---'
 if test -x /usr/bin/node; then /usr/bin/node --version; else echo '/usr/bin/node absent'; fi
 printf '%s\n' '--- chemins cibles (métadonnées seulement) ---'
-for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
+for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /run/systemd/system/gamenight.service /run/systemd/system/gamenight.service.d /usr/local/lib/systemd/system/gamenight.service /usr/local/lib/systemd/system/gamenight.service.d /lib/systemd/system/gamenight.service /lib/systemd/system/gamenight.service.d /usr/lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service.d /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
   if test -e "$path" || test -L "$path"; then stat -c '%n %F %U:%G %a' "$path"; else printf 'ABSENT %s\n' "$path"; fi
 done
-printf '%s\n' '--- état systemd sans variables d’environnement ---'
-systemctl show gamenight.service --no-pager -p LoadState -p ActiveState -p UnitFileState -p User -p Group -p WorkingDirectory -p ExecStart -p FragmentPath || true
-printf '%s\n' '--- flag uniquement ---'
-for unit in /etc/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service; do
-  if test -r "$unit"; then grep -E '^Environment=VOICE_PRESENCE_ENABLED=' "$unit" || true; fi
+printf '%s\n' '--- permissions des parents ---'
+for path in /opt/gamenight/current /etc/gamenight/gamenight.env /var/lib/gamenight-build/gamenight; do namei -l "$path" || true; done
+printf '%s\n' '--- état systemd (champs non sensibles seulement) ---'
+systemctl show gamenight.service --no-pager -p LoadState -p ActiveState -p UnitFileState -p User -p Group -p WorkingDirectory -p FragmentPath -p DropInPaths || true
+printf '%s\n' '--- conformité du flag, sans révéler sa valeur ---'
+report_flag() {
+  label=$1
+  file=$2
+  key_pattern=$3
+  expected_line=$4
+  if ! sudo -n true; then printf '%s: non conforme (lecture sudo indisponible)\n' "$label"; return; fi
+  if ! sudo -n test -e "$file"; then printf '%s: absent\n' "$label"; return; fi
+  if ! sudo -n test -r "$file"; then printf '%s: non conforme (lecture indisponible)\n' "$label"; return; fi
+  count=$(sudo -n grep -Ec "$key_pattern" "$file" || true)
+  if test "$count" -eq 0; then printf '%s: absent\n' "$label"
+  elif test "$count" -eq 1 && sudo -n grep -qxF "$expected_line" "$file"; then printf '%s: conforme (false)\n' "$label"
+  else printf '%s: non conforme\n' "$label"
+  fi
+}
+for unit in /etc/systemd/system/gamenight.service /run/systemd/system/gamenight.service /usr/local/lib/systemd/system/gamenight.service /lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service; do
+  report_flag "unité $unit" "$unit" '^Environment=VOICE_PRESENCE_ENABLED=' 'Environment=VOICE_PRESENCE_ENABLED=false'
 done
-if sudo -n test -r /etc/gamenight/gamenight.env; then
-  sudo -n grep -E '^[[:space:]]*VOICE_PRESENCE_ENABLED=' /etc/gamenight/gamenight.env || true
-else
-  echo 'EnvironmentFile absent ou lecture sudo non disponible'
-fi
+report_flag 'EnvironmentFile' /etc/gamenight/gamenight.env '^[[:space:]]*VOICE_PRESENCE_ENABLED=' 'VOICE_PRESENCE_ENABLED=false'
+printf '%s\n' '--- écoute TCP 3000 (sans identifiants de processus) ---'
+ss -ltn | grep -E '(^State|:3000([[:space:]]|$))' || true
 '@
 $RemoteInspection | ssh $Pi 'bash -s'
 ```
 
-Si l'architecture n'est pas `aarch64`, `/usr/bin/node` est absent ou plus ancien que `v22.15.0`, ou si un chemin/compte/groupe cible existe déjà, arrêter ici et faire inspecter l'hôte. Ne pas remplacer, supprimer, re-propriétariser ni changer les modes d'éléments préexistants. Le prérequis PostgreSQL et la migration additive approuvée sont traités séparément; cette procédure ne se connecte pas à la base et n'exécute aucune migration.
+Si l'architecture n'est pas `aarch64`, `/usr/bin/node` est absent ou plus ancien que `v22.15.0`, si un chemin/compte/groupe cible existe déjà, si `DropInPaths` n'est pas vide, si `FragmentPath` ne correspond à aucun emplacement vérifié ci-dessus ou si le port `3000` est déjà écouté, arrêter ici et faire inspecter l'hôte. Ne pas remplacer, supprimer, re-propriétariser ni changer les modes d'éléments préexistants. Le prérequis PostgreSQL et la migration additive approuvée sont traités séparément; cette procédure ne se connecte pas à la base et n'exécute aucune migration.
 
 ### Préparation et installation, sans démarrage
 
-Cette séquence ne convient qu'à un hôte neuf dont la préinspection a confirmé l'absence de tous les comptes, groupes et chemins listés. Toute présence impose l'arrêt sans modification de propriétaire ou de mode. Remplacer `<APPROVED_MAIN_SHA>` par un commit déjà intégré à `origin/main` et approuvé pour cet hôte.
+Cette séquence ne convient qu'à un hôte neuf dont la préinspection a confirmé l'absence de tous les comptes, groupes et chemins listés. Toute présence impose l'arrêt sans modification de propriétaire ou de mode. L'opérateur doit avoir fourni au préalable au compte de build un accès GitHub en lecture seule et une clé d'hôte vérifiée, hors de cette séquence; ne jamais inclure de credential dans une commande. Si cet accès n'est pas déjà configuré, arrêter avant toute installation. Remplacer `<APPROVED_MAIN_SHA>` par un commit déjà intégré à `origin/main` et approuvé pour cet hôte.
 
-```sh
-set -eu
+```bash
+set -euo pipefail
 APPROVED_MAIN_SHA='<APPROVED_MAIN_SHA>'
 sudo sh -eu -c '
-  for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
+  for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /run/systemd/system/gamenight.service /run/systemd/system/gamenight.service.d /usr/local/lib/systemd/system/gamenight.service /usr/local/lib/systemd/system/gamenight.service.d /lib/systemd/system/gamenight.service /lib/systemd/system/gamenight.service.d /usr/lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service.d /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
     if test -e "$path" || test -L "$path"; then echo "STOP: chemin déjà présent: $path" >&2; exit 1; fi
   done
   for name in gamenight gamenight-build; do
@@ -86,14 +100,14 @@ sudo useradd --system --gid gamenight --no-create-home --home-dir /nonexistent -
 sudo groupadd --system gamenight-build
 sudo useradd --system --gid gamenight-build --create-home --home-dir /var/lib/gamenight-build --shell /bin/bash gamenight-build
 sudo install -d -o root -g gamenight -m 0750 /opt/gamenight
-sudo -u gamenight-build -- git clone --no-checkout https://github.com/ZeyFro/gamenight.git /var/lib/gamenight-build/gamenight
+sudo -u gamenight-build -- git ls-remote git@github.com:ZeyFro/gamenight.git refs/heads/main >/dev/null
+sudo -u gamenight-build -- git clone --no-checkout git@github.com:ZeyFro/gamenight.git /var/lib/gamenight-build/gamenight
 sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight fetch origin main
 sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight merge-base --is-ancestor "$APPROVED_MAIN_SHA" FETCH_HEAD
 sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight checkout --detach "$APPROVED_MAIN_SHA"
 sudo -u gamenight-build -- sh -eu -c '
   cd /var/lib/gamenight-build/gamenight
   npm ci
-  npx prisma generate
   env -u DATABASE_URL -u TEST_DATABASE_URL NEXT_TELEMETRY_DISABLED=1 npx next build
 '
 sudo install -d -o root -g gamenight -m 0750 /opt/gamenight/current
@@ -102,6 +116,8 @@ sudo chown -R root:gamenight /opt/gamenight/current
 sudo find /opt/gamenight/current -type d -exec chmod 0750 {} +
 sudo find /opt/gamenight/current -type f -exec chmod 0640 {} +
 sudo install -d -o gamenight -g gamenight -m 0750 /opt/gamenight/current/.next/cache
+sudo chown -R gamenight:gamenight /opt/gamenight/current/.next/cache
+sudo chmod -R u+rwX /opt/gamenight/current/.next/cache
 sudo install -d -o root -g root -m 0750 /etc/gamenight
 sudo install -o root -g root -m 0600 /dev/null /etc/gamenight/gamenight.env
 sudoedit /etc/gamenight/gamenight.env
@@ -124,8 +140,8 @@ sudo sh -eu -c 'test "$(grep -cx "VOICE_PRESENCE_ENABLED=false" /etc/gamenight/g
 sudo systemctl enable gamenight.service
 sudo systemctl start gamenight.service
 sudo systemctl is-active --quiet gamenight.service
-systemctl show gamenight.service --no-pager -p ActiveState -p SubState -p MainPID -p ExecStart
-ss -ltnp | grep '127.0.0.1:3000'
+systemctl show gamenight.service --no-pager -p ActiveState -p SubState -p MainPID
+ss -ltn | grep '127.0.0.1:3000'
 ```
 
 Ne pas utiliser `systemctl show -p Environment`, `systemctl cat` ou une commande qui imprime l'EnvironmentFile. `enable` et `start` restent des commandes séparées et ne doivent jamais être combinées avec `--now`.
