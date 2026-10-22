@@ -33,7 +33,7 @@ Démarrage rapide après configuration :
     npx prisma migrate deploy
     npm run dev
 
-npm run build applique aussi les migrations à DATABASE_URL hors Preview. En local, vérifie que cette URL vise bien ta base locale avant de l’utiliser.
+npm run build ne migre pas : les migrations s'appliquent avec `npx prisma migrate deploy` en local et avec `node scripts/db-migrate.mjs` en production (voir CLAUDE.md).
 
 ## Intégrations et activation
 

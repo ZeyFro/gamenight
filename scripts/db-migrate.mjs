@@ -4,26 +4,19 @@
 //   node scripts/db-migrate.mjs --expect=<…> --execute --confirm-database=<base> [--allow-local]
 //
 // Variables : MIGRATION_DATABASE_URL (rôle de migration, connexion directe; jamais DATABASE_URL),
-// GAMENIGHT_EXPECTED_TARGET="<hôte>/<base>" hors machine locale. Dry-run par défaut.
-// Aucune URL ni mot de passe n'est affiché. Codes de sortie : voir db-migrate-lib.mjs.
+// GAMENIGHT_EXPECTED_TARGET="<hôte>[:port]/<base>" hors machine locale, DATABASE_URL ou
+// GAMENIGHT_RUNTIME_ROLE pour vérifier que le rôle de migration n'est pas le rôle runtime.
+// Dry-run par défaut. Aucune URL ni mot de passe n'est affiché. Codes de sortie : db-migrate-lib.mjs.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
-import { EXIT, RefusalError, assertExpectedPending, assertTarget, diffMigrations, redact } from "./db-migrate-lib.mjs";
+import { EXIT, RefusalError, assertExpectedPending, assertTarget, diffMigrations, readArgs, redact } from "./db-migrate-lib.mjs";
 
 const MIGRATIONS_DIR = "prisma/migrations";
-
-function readArgs(argv) {
-  const value = (name) => argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
-  return {
-    expect: (value("expect") ?? "").split(",").map((name) => name.trim()).filter(Boolean),
-    execute: argv.includes("--execute"),
-    confirm: value("confirm-database"),
-    allowLocal: argv.includes("--allow-local"),
-  };
-}
+const secrets = [process.env.MIGRATION_DATABASE_URL];
+const say = (message) => console.log(redact(message, secrets));
 
 function availableMigrations() {
   return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
@@ -48,14 +41,15 @@ async function appliedRows(url) {
 async function main() {
   const args = readArgs(process.argv.slice(2));
   const migrationUrl = process.env.MIGRATION_DATABASE_URL;
-  const target = assertTarget({
+  const { target, warnings } = assertTarget({
     migrationUrl,
     runtimeUrl: process.env.DATABASE_URL,
+    runtimeRole: process.env.GAMENIGHT_RUNTIME_ROLE,
     expectedTarget: process.env.GAMENIGHT_EXPECTED_TARGET,
     allowLocal: args.allowLocal,
   });
-  const secrets = [migrationUrl, target.password];
-  const say = (message) => console.log(redact(message, secrets));
+  secrets.push(target.password);
+  for (const warning of warnings) say(`AVERTISSEMENT : ${warning}`);
   say(`Cible : ${target.host}:${target.port}/${target.database} (rôle ${target.username})`);
 
   const diff = diffMigrations(availableMigrations(), await appliedRows(migrationUrl));
@@ -76,11 +70,17 @@ async function main() {
   const run = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env, encoding: "utf8" });
   say(`${run.stdout ?? ""}${run.stderr ?? ""}`.trim());
   if (run.error || run.status !== 0) {
-    say("ÉCHEC de prisma migrate deploy : ne pas relancer ni utiliser `migrate resolve` sans revue de l'état exact.");
+    say(`ÉCHEC de prisma migrate deploy (statut ${run.status}, signal ${run.signal ?? "aucun"}) : ne pas relancer ni utiliser \`migrate resolve\` sans revue de l'état exact.`);
     return EXIT.MIGRATION_FAILED;
   }
 
-  const after = diffMigrations(availableMigrations(), await appliedRows(migrationUrl));
+  let after;
+  try {
+    after = diffMigrations(availableMigrations(), await appliedRows(migrationUrl));
+  } catch (error) {
+    say(`CONTRÔLE APRÈS MIGRATION IMPOSSIBLE (${error?.message ?? error}) : la migration est probablement appliquée; vérifier l'état avant toute reprise.`);
+    return EXIT.POSTCHECK_FAILED;
+  }
   if (after.pending.length || after.inProgress.length || after.absentFromCheckout.length) {
     say(`CONTRÔLE APRÈS MIGRATION EN ÉCHEC : en attente [${after.pending}] inachevées [${after.inProgress}]`);
     return EXIT.POSTCHECK_FAILED;
@@ -93,10 +93,10 @@ main().then(
   (code) => process.exit(code),
   (error) => {
     if (error instanceof RefusalError) {
-      console.error(`REFUSÉ : ${error.message}`);
+      console.error(redact(`REFUSÉ : ${error.message}`, secrets));
       process.exit(error.exitCode);
     }
-    console.error(`ERREUR INATTENDUE : ${redact(error?.message ?? error, [process.env.MIGRATION_DATABASE_URL])}`);
+    console.error(redact(`ERREUR INATTENDUE : ${error?.message ?? error}`, secrets));
     process.exit(EXIT.UNEXPECTED);
   },
 );
