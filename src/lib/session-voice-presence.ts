@@ -7,6 +7,7 @@ import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { toWallClock, wallClockNow } from "@/lib/wallclock";
 import { finalizeVoiceIntervalAtCutoff } from "./voice-presence-policy";
+import { fenceSessionVoicePresenceLeasePreservingGap } from "./voice-presence-coordination";
 
 export type SessionVoiceConfig = {
   guildId: string;
@@ -97,19 +98,9 @@ export async function withdrawSessionVoiceConsent(sessionId: string, userId: str
     if (!activeConsents.length) {
       // Fence a collector which was loaded before the last opt-in was removed.
       // Its in-memory Gateway events can no longer persist; normal polling
-      // closes the socket after this durable state is observed.
-      await tx.sessionVoicePresenceControl.updateMany({
-        where: { sessionId, status: "ACTIVE" },
-        data: {
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          generation: { increment: 1 },
-          heartbeatAt: now,
-          gapDetected: false,
-          gapStartedAt: null,
-          lastGapAt: null,
-        },
-      });
+      // closes the socket after this durable state is observed. Preserve an
+      // already open gap so a later consent + fresh snapshot can resolve it.
+      await fenceSessionVoicePresenceLeasePreservingGap(tx, sessionId, now);
     }
     return true;
   });

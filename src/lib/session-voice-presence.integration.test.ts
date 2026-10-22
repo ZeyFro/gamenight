@@ -229,6 +229,42 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
       endedAt: reconsentedAt.getTime() + 60_000,
     })).toBe(false);
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  }, 15_000);
+
+  it("keeps an open gap across last-consent withdrawal and closes it on the first fresh state after re-consent", async () => {
+    const now = new Date();
+    const gapStartedAt = new Date(now.getTime() - 20_000);
+    await db.sessionVoicePresenceGap.create({ data: {
+      sessionId: SESSION_ID,
+      generation: 1,
+      startedAt: gapStartedAt,
+    } });
+    await db.sessionVoicePresenceControl.update({
+      where: { sessionId: SESSION_ID },
+      data: { gapDetected: true, gapStartedAt, lastGapAt: null, heartbeatAt: new Date(now.getTime() - 10_000) },
+    });
+
+    expect(await voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID)).toBe(true);
+    const withdrawn = await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } });
+    expect(withdrawn).toMatchObject({ leaseOwner: null, gapDetected: true, gapStartedAt, lastGapAt: null });
+    expect(await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject([{ startedAt: gapStartedAt, resumedAt: null }]);
+
+    const reconsentedAt = new Date(now.getTime() + 1_000);
+    expect(await voicePresence.grantSessionVoiceConsent(SESSION_ID, USER_ID, reconsentedAt)).toBe(true);
+    const claimAt = new Date(now.getTime() + 2_000);
+    const claim = await coordination.claimSessionVoicePresenceLease(SESSION_ID, "synthetic-worker", claimAt);
+    expect(claim).toMatchObject({ claimed: true, gapDetected: true });
+    if (!claim.claimed) throw new Error("Expected re-consented worker lease");
+
+    const resumedAt = new Date(now.getTime() + 3_000);
+    expect(await coordination.markSessionVoicePresenceGapRecovered(
+      SESSION_ID, "synthetic-worker", claim.generation, resumedAt,
+    )).toHaveLength(1);
+    expect(await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject([{ startedAt: gapStartedAt, resumedAt }]);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
   }, 15_000);
 
   it("keeps the lease when another participant still consents", async () => {

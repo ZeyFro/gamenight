@@ -30,6 +30,43 @@ async function ensureOpenVoicePresenceGap(
   });
 }
 
+/** Fence a collector when consent is gone while retaining any unresolved gap. */
+export async function fenceSessionVoicePresenceLeasePreservingGap(
+  tx: Prisma.TransactionClient,
+  sessionId: string,
+  now: Date,
+) {
+  await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
+  const control = await tx.sessionVoicePresenceControl.findUnique({ where: { sessionId } });
+  if (!control || control.status !== "ACTIVE") return false;
+
+  const openGap = await findOpenVoicePresenceGap(tx, sessionId);
+  const gapStartedAt = openGap?.startedAt
+    ?? (control.gapDetected && control.lastGapAt === null ? control.gapStartedAt : null);
+  if (gapStartedAt) {
+    await ensureOpenVoicePresenceGap(tx, {
+      sessionId,
+      generation: control.generation,
+      startedAt: gapStartedAt,
+      expiresAt: control.stopAt ? new Date(control.stopAt.getTime() + VOICE_PRESENCE_RETENTION_MS) : null,
+    });
+  }
+
+  await tx.sessionVoicePresenceControl.update({
+    where: { sessionId },
+    data: {
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      generation: { increment: 1 },
+      heartbeatAt: now,
+      gapDetected: gapStartedAt !== null,
+      gapStartedAt,
+      lastGapAt: null,
+    },
+  });
+  return true;
+}
+
 export async function requestSessionVoicePresenceStop(
   tx: Prisma.TransactionClient,
   sessionId: string,
@@ -207,19 +244,7 @@ export async function validateSessionVoicePresenceLease(
 
     if (!consents.length && matchesLease) {
       // Consent can expire between target discovery and collector creation.
-      // Fence that claimed target just like an explicit last-consent withdrawal.
-      await tx.sessionVoicePresenceControl.update({
-        where: { sessionId },
-        data: {
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          generation: { increment: 1 },
-          heartbeatAt: now,
-          gapDetected: false,
-          gapStartedAt: null,
-          lastGapAt: null,
-        },
-      });
+      await fenceSessionVoicePresenceLeasePreservingGap(tx, sessionId, now);
     }
     return false;
   });
