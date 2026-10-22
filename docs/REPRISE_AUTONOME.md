@@ -1,43 +1,43 @@
 # Point de reprise unique — GameNight — 22 octobre 2026
 
-Cette note décrit l’état du portable 1, vérifié contre `origin/main` (`244eee33509355b258b72ecb3d3e1d3e6730ac26`). Les reprises datées et les bilans des autres machines sont historiques. Le checkout racine est ancien et contient des modifications locales préexistantes : continuer dans un worktree dédié.
+Seul point de reprise à jour. Il remplace les reprises datées et les bilans antérieurs, qui sont historiques. Continuer dans un worktree dédié : le checkout racine est ancien et contient des modifications locales.
+
+État vérifié contre `origin/main` = `26440e10cee20f7f2b35ad8752fa4c8aa59ac22b` (merge de #316).
 
 ## Production
 
-- Le deployment GitHub `7232777326` de `244eee3` est en échec (`Production`, créé par `vercel[bot]`). Son statut `20198731385` demande `npx vercel inspect dpl_Cc5GLnEYNHoWhzCnhB3nEsdSrCL9 --logs`, sans donner la cause. Ce n’est pas un run GitHub Actions; l’API Actions ne fournit pas de jobs pour cet ID.
-- Le dernier deployment marqué réussi par GitHub est `7227987255`, SHA `4a7151673da437a2e0f4616ac7b36c7d301229d3`, à 13:57 UTC le 21 octobre. L’alias public `https://gamenight.vercel.app/` répond HTTP 200 avec des marqueurs Next.js. Cela confirme que le domaine est joignable, pas quel SHA l’alias sert.
-- Les URLs des deux deployments redirigent vers le SSO Vercel et l’API Vercel répond 403. Le SHA actuellement servi et les journaux détaillés restent invérifiables. Aucun redeploy, rollback, changement de configuration ou accès à la base n’a été effectué.
+- Déploiement Vercel `dpl_EiRGtcdKENELiYuGvV261NPs4GHa` : `READY`, cible `production`, SHA `26440e1`, alias GameNight associés, `aliasError=null` (connecteur Vercel, 22 octobre). Il remplace l’échec du déploiement automatique de `244eee3` (deployment GitHub `7232777326`), dont la cause n’a jamais été établie.
+- Ce que cela prouve : l’association domaine ↔ déploiement à cet instant. Cela ne prouve ni le binding `DATABASE_URL` → Neon ni les configurations runtime.
+- `DATABASE_URL` : variable `sensitive`, cible `production` seule, valeur illisible, modifiée avant le build de ce déploiement, absente de Preview. Binding non prouvé formellement.
+- Neon (lecture seule, `SELECT` sur `_prisma_migrations`, branche `production`) : dernière migration appliquée `20261020110000_tournament_team_bracket`, aucune annulée parmi les 15 plus récentes. C’est la dernière migration de `main` : Production est alignée sur `main`.
+- Les journaux runtime Vercel restent en 403.
+
+## Drapeaux Production (noms seulement)
+
+Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou OFF. Seule la présence est établie.
+
+- Présents : `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_SESSION_ENABLED`, `DISCORD_DM_TOURNAMENT_ENABLED`, `DISCORD_DM_ROULETTE_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED`, `DISCORD_THREAD_CLEANUP_MODE`, `DISCORD_THREAD_CLOSE_ON_END_ENABLED`, `STEAM_NOW_PLAYING_ENABLED`, `COMMUNITY_AUTO_CREATE_ENABLED`, `COMMUNITY_SETUP_COMMAND_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED`, `AUTH_REQUIRE_GUILD_MEMBER`.
+- Absents, donc éteints (défaut OFF) : `COMMUNITY_ADMIN_ENABLED`, `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`, `RETENTION_CLEANUP_ENABLED`/`_MODE`, `PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`, `TOURNAMENT_SCORES_ENABLED`, `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`.
+- Les identifiants de salons et de serveur du bot sont des variables `config` chiffrées. Aucune clé VAPID n’est déclarée.
 
 ## PR ouvertes
 
-| PR | SHA actuel | Contrôles | État / condition restante |
+| PR | Tête | Contrôles | Condition restante |
 |---|---|---|---|
-| [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `529aa26e2ca4fe5e2f73397bb86613f261035b3a` | CI `verify` et Preview verts sur ce SHA | Draft. Le merge-base avec `main` est `4a715167`; la branche est 18 commits devant et 1 derrière `main` actuel (`244eee3`). GitHub indique aucun conflit, mais il faut synchroniser puis revalider les contrôles sur le nouveau SHA. Le runtime lit `xpBalance`; sa migration n’est pas appliquée ni autorisée en Production. Voir les prérequis ci-dessous. |
-| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `24548393c0f83e908cb8df2045e7574f852f004f` | [CI `verify` verte](https://github.com/ZeyFro/gamenight/actions/runs/39743648553) et Preview verte sur ce SHA | Draft. Le correctif Gateway publié exclut les événements rejoués et le trou de reconnexion; il n’ajoute pas de coordination durable. La PR inclut une migration vocale et attend les décisions de consentement/rétention. |
-| [#316 Recette](https://github.com/ZeyFro/gamenight/pull/316) | `1dce0774c12486c2a8330bea1d2670e0cae6c6ec` | CI `verify` et Vercel verts sur ce SHA | Draft. La revue ne trouve pas de défaut du script. Une recette locale sur `e27741a` a passé six étapes puis Playwright a fermé la page à l’étape 7; 21 échecs en cascade. Aucune trace Edge/Playwright n’a été conservée, donc cause et recette complète restent inconnues. Si #291 passe avant #316, mettre `xpBalance` dans le fixture boutique. |
+| [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `d45ea94` | `verify` et Vercel verts, mergeable | Draft. Ajoute la migration `20261022142500_shop_balance_purchase_reason`, non appliquée en Production. Aucune autorisation de migration. |
+| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `bee52c3` | `verify` et Vercel verts, mergeable | Draft. Attend les décisions de consentement, rétention et hôte du worker (propositions P1–P6, non approuvées). |
 
-Les merge-bases de #303 et #316 sont le `main` actuel `244eee3`; ces branches ne sont pas en retard et GitHub ne signale pas de conflit. Sur l’ancien commit vocal `722b053`, avant publication du SHA #303 actuel, les tests locaux ciblés (3 fichiers, 28 tests), ESLint et TypeScript passaient. La preuve actuelle exacte est le CI `39743648553`, terminé avec succès à 08:06 UTC : migrations de base de service, tests PostgreSQL et unitaires, typegen, TypeScript, lint et build.
+#315 et #316 sont fusionnées. Les décisions déjà acquises restent valables : aucune migration, interruption de writers, restauration Neon, activation de drapeau ou cron, collecte vocale réelle ni notification Discord réelle sans accord écrit pour l’action précise.
 
-Les revues indépendantes sont enregistrées sur les SHA actuels de #303 et #316. #291 n’a pas reçu de changement pendant cette reprise. Aucun lot n’a été fusionné ici.
+## Recette navigateur : exécutions distinctes
 
-## Éléments locaux et limites de récupération
-
-- La coordination Vercel↔worker avec checkpoints annoncée comme locale hier est absente de #303, de la branche publiée `codex/fixe2-voice-20261020` et des worktrees vocaux accessibles sur le portable. Ne pas la décrire comme récupérée du PC éteint.
-- Le dump de répétition XP `gamenight_xp_rehearsal_1792441725052.dump` et son JSON sont absents du portable et de GitHub. Leur hash ne les remplace pas; ils ne sont pas une sauvegarde Production.
-- Les preuves de compatibilité XP restent celles déjà acquises : déterminer la destination et les rôles réels, inventorier et drainer tous les writers, restaurer une sauvegarde Production fraîche sur une cible isolée, vérifier le checksum et l’unique migration `20261019190000_separate_xp_balance`, puis disposer d’un plan de repli. Rien de cela n’autorise une bascule dans cette reprise.
-
-## Proposition technique vocale à arbitrer
-
-Le stopper actuel est en mémoire de processus. Proposition pour une coordination future, sans changement d’endpoint : registre durable par session (`desired_state`, revision, `stop_at`, raison, lease, propriétaire et epoch de fencing), contrôle du lease avant toute écriture, curseur Gateway et état des présences commis atomiquement, et clés d’idempotence pour transitions et finalisation.
-
-`markSessionDone` et `cancelSession` inscriraient une commande `STOP` avec cutoff dans leur transaction. Le worker cesserait reconnexions et collecte, finaliserait uniquement les intervalles déjà observés jusqu’à ce cutoff, puis acquitterait la revision. Après crash, un worker reprenant le lease traiterait d’abord le `STOP`; l’ancien worker ne pourrait plus écrire grâce à l’epoch. `RESUMED` reconstruirait l’état sans durée dans le trou. Le stockage des checkpoints personnels et la migration correspondante attendent les choix de consentement, visibilité et rétention. Aucun endpoint, host, flag, cron, migration Production ou collecte réelle n’a été modifié/activé.
+- 29/29 : dernier run complet rapporté, sur `1dce077`.
+- 20/22 plus reprises ciblées : exécution distincte, sur un autre SHA. Ne pas additionner ni confondre les deux.
+- Un run local plus ancien (`e27741a`) a été interrompu à l’étape 7 : ce n’est pas un succès.
+- « Code présent » n’est jamais « validé en service » : une recette locale ou sur mock ne valide pas la Production.
 
 ## Reprise
 
-1. Pour #316, ne relancer le navigateur que si une trace ou un diagnostic d’environnement permet un scénario isolé précis; le run incomplet n’est pas un succès.
-2. Pour identifier le SHA servi en Production et le motif détaillé de l’échec, il faut des métadonnées/logs Vercel accessibles en lecture seule. Ne pas répéter l’appel Vercel refusé; aucune action de déploiement ou de base n’est autorisée.
-3. Avant une mise en service vocale, faire approuver séparément le consentement individuel, le périmètre, la visibilité, la rétention, le retrait/suppression, l’hôte du worker et le comportement si celui-ci est indisponible.
-
-## Restrictions actives
-
-Aucune migration Production, interruption de writers, restauration Neon, modification d’endpoint, installation Raspberry, activation de flag/cron, collecte vocale réelle ou notification Discord réelle.
+1. XP : demander l’autorisation de la fenêtre (sauvegarde fraîche restaurée sur cible isolée, application de la migration `20261022142500`, plan de repli). Le script de bascule, le plan de maintenance et la vérification de restauration Docker sont en préparation, sans exécution en Production ; leur état sera porté par la PR correspondante.
+2. Vocal : faire approuver séparément consentement, périmètre, visibilité, rétention, retrait et hôte du worker avant toute mise en service.
+3. Hors périmètre, à faire approuver avant construction : paiement intégré, catégories MVP personnalisables par communauté, hors-ligne complet.
