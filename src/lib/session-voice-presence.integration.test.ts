@@ -24,11 +24,13 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
   let db: import("@prisma/client").PrismaClient;
   let revocationDb: import("@prisma/client").PrismaClient;
   let voicePresence: typeof import("./session-voice-presence");
+  let coordination: typeof import("./voice-presence-coordination");
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     revocationDb = new (await import("@prisma/client")).PrismaClient({ datasourceUrl: TEST_DATABASE_URL! });
     voicePresence = await import("./session-voice-presence");
+    coordination = await import("./voice-presence-coordination");
   });
 
   afterAll(async () => {
@@ -210,6 +212,13 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
     })).toBe(true);
     expect(await voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID)).toBe(true);
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ leaseOwner: null, leaseExpiresAt: null, generation: 2 });
+    expect(await voicePresence.storeSessionVoiceInterval(config, {
+      memberKey: DISCORD_ID, channelId: CHANNEL_ID, startedAt: startedAt + 60_000, endedAt: startedAt + 120_000,
+    })).toBe(false);
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "synthetic-worker", new Date()))
+      .toEqual({ claimed: false });
 
     const reconsentedAt = new Date();
     expect(await voicePresence.grantSessionVoiceConsent(SESSION_ID, USER_ID, reconsentedAt)).toBe(true);
@@ -220,6 +229,17 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
       endedAt: reconsentedAt.getTime() + 60_000,
     })).toBe(false);
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+  }, 15_000);
+
+  it("keeps the lease when another participant still consents", async () => {
+    await db.user.create({ data: { id: GUEST_USER_ID, discordId: GUEST_DISCORD_ID, discordName: "Voice race guest" } });
+    await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: GUEST_USER_ID } });
+
+    expect(await voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID)).toBe(true);
+    expect(await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ leaseOwner: "synthetic-worker", generation: 1 });
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "synthetic-worker", new Date()))
+      .toMatchObject({ claimed: true, generation: 1 });
   }, 15_000);
 
   it("serializes a concurrent interval write and withdrawal so no contribution survives", async () => {

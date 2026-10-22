@@ -21,7 +21,7 @@ export type VoicePresenceStopTarget = {
 export type VoicePresenceCollectorCallbacks = {
   onFatal: (failure: unknown) => void;
   onPersistenceError: (error: unknown) => void;
-  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close" | "guild_unavailable") => void;
+  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close" | "guild_unavailable" | "guild_removed") => void;
   onGapRecovered: (at: number) => void;
 };
 

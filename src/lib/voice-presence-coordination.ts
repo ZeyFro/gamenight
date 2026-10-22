@@ -14,20 +14,40 @@ export async function requestSessionVoicePresenceStop(
   stopAt: Date,
 ) {
   await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
-  const existing = await tx.sessionVoicePresenceControl.findUnique({ where: { sessionId }, select: { sessionId: true } });
-  const status = mode === "PURGE" ? "PURGE_REQUESTED" : "STOP_REQUESTED";
-  if (existing) {
-    await tx.sessionVoicePresenceControl.update({
-      where: { sessionId },
-      data: { status, stopAt, ...(mode === "PURGE" ? { gapDetected: false, gapStartedAt: null, lastGapAt: null } : {}) },
-    });
-  } else {
-    await tx.sessionVoicePresenceControl.create({ data: { sessionId, status, stopAt } });
-  }
+  const existing = await tx.sessionVoicePresenceControl.findUnique({
+    where: { sessionId },
+    select: { sessionId: true, leaseOwner: true, leaseExpiresAt: true },
+  });
 
   if (mode === "PURGE") {
     await tx.sessionVoicePresenceInterval.deleteMany({ where: { sessionId } });
     await tx.sessionVoicePresenceConsent.deleteMany({ where: { sessionId } });
+
+    if (existing) {
+      const leaseIsLive = existing.leaseOwner !== null
+        && existing.leaseExpiresAt !== null
+        && existing.leaseExpiresAt > stopAt;
+      if (leaseIsLive) {
+        await tx.sessionVoicePresenceControl.update({
+          where: { sessionId },
+          data: { status: "PURGE_REQUESTED", stopAt, gapDetected: false, gapStartedAt: null, lastGapAt: null },
+        });
+      } else {
+        // No worker needs to acknowledge this command; removing the control
+        // row avoids an uncollectable cancellation tombstone.
+        await tx.sessionVoicePresenceControl.delete({ where: { sessionId } });
+      }
+    }
+    return;
+  }
+
+  if (existing) {
+    await tx.sessionVoicePresenceControl.update({
+      where: { sessionId },
+      data: { status: "STOP_REQUESTED", stopAt },
+    });
+  } else {
+    await tx.sessionVoicePresenceControl.create({ data: { sessionId, status: "STOP_REQUESTED", stopAt } });
   }
 }
 
@@ -47,6 +67,18 @@ export async function claimSessionVoicePresenceLease(
       FOR UPDATE
     `;
     if (!sessions.length) return { claimed: false as const };
+
+    // Consent can change after the worker loaded its target list. Withdrawal
+    // locks this same Session row before deleting consent, so this check and
+    // the lease claim are ordered against revocation.
+    const consents = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "SessionVoicePresenceConsent"
+      WHERE "sessionId" = ${sessionId}
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+      LIMIT 1
+      FOR UPDATE
+    `;
+    if (!consents.length) return { claimed: false as const };
 
     await tx.sessionVoicePresenceControl.createMany({
       data: [{ sessionId, status: "ACTIVE" }],

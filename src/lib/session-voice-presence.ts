@@ -71,6 +71,13 @@ export async function withdrawSessionVoiceConsent(sessionId: string, userId: str
   return prisma.$transaction(async tx => {
     const users = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
     if (!users.length) return false;
+    // Keep the lock order User → Session → Consent, matching grant/store and
+    // the lease claim's Session lock, so a stale loaded target cannot win a
+    // claim after this withdrawal commits.
+    const sessions = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE
+    `;
+    if (!sessions.length) return false;
     const consents = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "SessionVoicePresenceConsent" WHERE "sessionId" = ${sessionId} AND "userId" = ${userId} FOR UPDATE
     `;
@@ -78,6 +85,32 @@ export async function withdrawSessionVoiceConsent(sessionId: string, userId: str
     if (!consent) return false;
     await tx.sessionVoicePresenceInterval.deleteMany({ where: { sessionId, userId } });
     await tx.sessionVoicePresenceConsent.delete({ where: { id: consent.id } });
+
+    const now = wallClockNow();
+    const activeConsents = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "SessionVoicePresenceConsent"
+      WHERE "sessionId" = ${sessionId}
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+      LIMIT 1
+      FOR SHARE
+    `;
+    if (!activeConsents.length) {
+      // Fence a collector which was loaded before the last opt-in was removed.
+      // Its in-memory Gateway events can no longer persist; normal polling
+      // closes the socket after this durable state is observed.
+      await tx.sessionVoicePresenceControl.updateMany({
+        where: { sessionId, status: "ACTIVE" },
+        data: {
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          generation: { increment: 1 },
+          heartbeatAt: now,
+          gapDetected: false,
+          gapStartedAt: null,
+          lastGapAt: null,
+        },
+      });
+    }
     return true;
   });
 }

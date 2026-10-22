@@ -30,6 +30,15 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
       OR: [
         { status: "PURGED" },
         { status: "FINALIZED", stopAt: { lte: new Date(now.getTime() - VOICE_PRESENCE_RETENTION_MS) } },
+        {
+          status: "PURGE_REQUESTED",
+          session: { is: { status: "CANCELLED" } },
+          OR: [
+            { leaseOwner: null },
+            { leaseExpiresAt: null },
+            { leaseExpiresAt: { lte: now } },
+          ],
+        },
       ],
     },
     orderBy: { updatedAt: "asc" },
@@ -55,7 +64,9 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     ? await prisma.sessionVoicePresenceConsent.deleteMany({ where: { id: { in: consents.map(row => row.id) } } })
     : { count: 0 };
   const controlDelete = controls.length
-    ? await prisma.sessionVoicePresenceControl.deleteMany({ where: { sessionId: { in: controls.map(row => row.sessionId) } } })
+    ? await prisma.sessionVoicePresenceControl.deleteMany({
+      where: { sessionId: { in: controls.map(row => row.sessionId) }, status: { in: ["PURGED", "FINALIZED", "PURGE_REQUESTED"] } },
+    })
     : { count: 0 };
 
   return {

@@ -262,6 +262,39 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     collector.stop();
   });
 
+  it("marks permanent guild removal as a gap without inventing recovery or duration", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const sockets: FakeSocket[] = [];
+    const onInterval = vi.fn();
+    const onGap = vi.fn();
+    const onGapRecovered = vi.fn();
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl: async () => "wss://gateway.discord.gg",
+      onInterval, onGap, onGapRecovered, onFatal: vi.fn(),
+    });
+    await collector.start();
+    sockets[0].emit(10, { heartbeat_interval: 45_000 });
+    sockets[0].emit(0, { session_id: "test-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
+    sockets[0].emit(0, { id: "123", voice_states: [{ user_id: "departed-guild-member", channel_id: "456" }] }, 2, "GUILD_CREATE");
+    onGapRecovered.mockClear();
+
+    vi.setSystemTime(3_000);
+    sockets[0].emit(0, { id: "123", unavailable: false }, 3, "GUILD_DELETE");
+    expect(onGap).toHaveBeenCalledWith("guild_removed");
+    expect(onGapRecovered).not.toHaveBeenCalled();
+    expect(onInterval).toHaveBeenCalledExactlyOnceWith({
+      memberKey: "departed-guild-member", channelId: "456", startedAt: 1_000, endedAt: 3_000, partial: true,
+    });
+
+    vi.setSystemTime(5_000);
+    sockets[0].emit(0, { guild_id: "123", user_id: "departed-guild-member", channel_id: null }, 4, "VOICE_STATE_UPDATE");
+    expect(onInterval).toHaveBeenCalledTimes(1);
+    expect(onGapRecovered).not.toHaveBeenCalled();
+    collector.stop();
+  });
+
   it("flushes open visits as partial intervals on an orderly stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
