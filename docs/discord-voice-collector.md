@@ -1,6 +1,6 @@
 # Collecteur vocal Discord
 
-La collecte reste désactivée tant que `VOICE_PRESENCE_ENABLED` n'est pas explicitement défini à `true`. Le worker ne démarre que dans un serveur Node auto-hébergé avec `VOICE_PRESENCE_WORKER_MODE=standalone`, un jeton Discord et les références de décision de consentement et de rétention. `.env.example` et l'unité systemd fixent le flag à `false` par défaut; un opérateur autorisé peut le remplacer dans l'EnvironmentFile. Vercel, le runtime Edge et les instances web ordinaires ne lancent pas le worker.
+La collecte reste désactivée tant que `VOICE_PRESENCE_ENABLED` n'est pas explicitement défini à `true`. Le worker ne démarre que dans un serveur Node auto-hébergé avec `VOICE_PRESENCE_WORKER_MODE=standalone`, un jeton Discord et les références de décision de consentement et de rétention. L'unité systemd fixe le flag à `false`; `.env.example` le laisse vide. Comme l'EnvironmentFile peut remplacer la valeur de l'unité, il doit lui aussi contenir explicitement `VOICE_PRESENCE_ENABLED=false` tant que la collecte n'est pas autorisée. Vercel, le runtime Edge et les instances web ordinaires ne lancent pas le worker.
 
 ## Consentement, lecture et conservation
 
@@ -20,15 +20,114 @@ Les lignes d'intervalle restent la seule source des durées affichées. Le panne
 
 Le paquet local comprend `packaging/systemd/gamenight.service` et `scripts/gamenight-server.mjs`. L'unité lance le serveur GameNight sur `127.0.0.1:3000` et utilise le mode worker autonome si les contrôles d'environnement autorisent le démarrage. Le lanceur traite SIGINT/SIGTERM, ferme l'admission HTTP, attend les requêtes actives, vide le worker puis ferme Next.js. L'arrêt systemd est limité à 45 secondes. Les erreurs fatales font échouer le processus pour permettre son redémarrage par systemd; aucun watchdog ou avis automatique n'est fourni.
 
-Le lanceur fourni doit être utilisé pour l'hôte worker : `npm start` / `next start` ne coordonnent pas son flush à l'arrêt. Un reverse proxy local est à configurer séparément si l'application doit être joignable depuis le réseau. L'unité ne contient aucun secret; elle lit les variables de l'application dans `/etc/gamenight/gamenight.env`, lisible seulement par l'utilisateur du service. Garder `VOICE_PRESENCE_ENABLED` et les références de décision vides jusqu'à leur mise en service autorisée.
+Le lanceur fourni doit être utilisé pour l'hôte worker : `npm start` / `next start` ne coordonnent pas son flush à l'arrêt. Un reverse proxy local est à configurer séparément si l'application doit être joignable depuis le réseau. L'unité ne contient aucun secret; le gestionnaire systemd lit les variables de l'application dans `/etc/gamenight/gamenight.env`. Ce fichier doit appartenir à `root:root`, être en mode `0600` et contenir explicitement `VOICE_PRESENCE_ENABLED=false`; ne jamais afficher son contenu pendant une inspection. Garder le flag et les références de décision désactivés/non configurés jusqu'à leur mise en service autorisée.
 
-Prérequis techniques avant toute installation locale :
+### Préinspection SSH en lecture seule
 
-- Raspberry Pi Linux ARM64 avec Node.js 22.15 ou plus récent, pour correspondre au dépôt et à la CI;
-- dépendances de production et build Next.js préparés pour cette architecture;
-- PostgreSQL accessible par `DATABASE_URL`, et migrations appliquées par le processus de déploiement approuvé;
-- environnement applicatif complet dans `/etc/gamenight/gamenight.env`, avec droits limités et jeton Discord ajouté par l'opérateur hors du dépôt.
+Remplacer uniquement `<SSH_USER>` et `<RASPBERRY_HOST_OR_IP>` par les valeurs fournies par l'opérateur. Cette préinspection n'affiche jamais le contenu complet de l'EnvironmentFile ni les propriétés `Environment` de systemd. La seule valeur d'environnement examinée est `VOICE_PRESENCE_ENABLED`.
 
-`npm run build` lance `prisma migrate deploy` avant la compilation hors Preview. Ne pas lancer le build contre une base de production pour préparer le Pi; appliquer les migrations uniquement par la procédure de déploiement approuvée. Le service ne lance pas lui-même les migrations.
+```powershell
+$Pi = '<SSH_USER>@<RASPBERRY_HOST_OR_IP>'
+$RemoteInspection = @'
+set -eu
+printf '%s\n' '--- OS/architecture ---'
+uname -a
+uname -m
+getconf LONG_BIT
+printf '%s\n' '--- comptes/groupes ---'
+id
+for name in gamenight gamenight-build; do
+  getent passwd "$name" || true
+  getent group "$name" || true
+done
+printf '%s\n' '--- Node utilisé par l’unité ---'
+if test -x /usr/bin/node; then /usr/bin/node --version; else echo '/usr/bin/node absent'; fi
+printf '%s\n' '--- chemins cibles (métadonnées seulement) ---'
+for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
+  if test -e "$path" || test -L "$path"; then stat -c '%n %F %U:%G %a' "$path"; else printf 'ABSENT %s\n' "$path"; fi
+done
+printf '%s\n' '--- état systemd sans variables d’environnement ---'
+systemctl show gamenight.service --no-pager -p LoadState -p ActiveState -p UnitFileState -p User -p Group -p WorkingDirectory -p ExecStart -p FragmentPath || true
+printf '%s\n' '--- flag uniquement ---'
+for unit in /etc/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service; do
+  if test -r "$unit"; then grep -E '^Environment=VOICE_PRESENCE_ENABLED=' "$unit" || true; fi
+done
+if sudo -n test -r /etc/gamenight/gamenight.env; then
+  sudo -n grep -E '^[[:space:]]*VOICE_PRESENCE_ENABLED=' /etc/gamenight/gamenight.env || true
+else
+  echo 'EnvironmentFile absent ou lecture sudo non disponible'
+fi
+'@
+$RemoteInspection | ssh $Pi 'bash -s'
+```
+
+Si l'architecture n'est pas `aarch64`, `/usr/bin/node` est absent ou plus ancien que `v22.15.0`, ou si un chemin/compte/groupe cible existe déjà, arrêter ici et faire inspecter l'hôte. Ne pas remplacer, supprimer, re-propriétariser ni changer les modes d'éléments préexistants. Le prérequis PostgreSQL et la migration additive approuvée sont traités séparément; cette procédure ne se connecte pas à la base et n'exécute aucune migration.
+
+### Préparation et installation, sans démarrage
+
+Cette séquence ne convient qu'à un hôte neuf dont la préinspection a confirmé l'absence de tous les comptes, groupes et chemins listés. Toute présence impose l'arrêt sans modification de propriétaire ou de mode. Remplacer `<APPROVED_MAIN_SHA>` par un commit déjà intégré à `origin/main` et approuvé pour cet hôte.
+
+```sh
+set -eu
+APPROVED_MAIN_SHA='<APPROVED_MAIN_SHA>'
+sudo sh -eu -c '
+  for path in /opt/gamenight /opt/gamenight/current /etc/gamenight /etc/gamenight/gamenight.env /etc/systemd/system/gamenight.service /etc/systemd/system/gamenight.service.d /etc/systemd/system/multi-user.target.wants/gamenight.service /lib/systemd/system/gamenight.service /usr/lib/systemd/system/gamenight.service /var/lib/gamenight-build /var/lib/gamenight-build/gamenight; do
+    if test -e "$path" || test -L "$path"; then echo "STOP: chemin déjà présent: $path" >&2; exit 1; fi
+  done
+  for name in gamenight gamenight-build; do
+    if getent passwd "$name" >/dev/null || getent group "$name" >/dev/null; then echo "STOP: compte ou groupe déjà présent: $name" >&2; exit 1; fi
+  done
+'
+test "$(uname -m)" = aarch64
+/usr/bin/node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && (b > 15 || (b === 15 && c >= 0))) ? 0 : 1)'
+
+sudo groupadd --system gamenight
+sudo useradd --system --gid gamenight --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin gamenight
+sudo groupadd --system gamenight-build
+sudo useradd --system --gid gamenight-build --create-home --home-dir /var/lib/gamenight-build --shell /bin/bash gamenight-build
+sudo install -d -o root -g gamenight -m 0750 /opt/gamenight
+sudo -u gamenight-build -- git clone --no-checkout https://github.com/ZeyFro/gamenight.git /var/lib/gamenight-build/gamenight
+sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight fetch origin main
+sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight merge-base --is-ancestor "$APPROVED_MAIN_SHA" FETCH_HEAD
+sudo -u gamenight-build -- git -C /var/lib/gamenight-build/gamenight checkout --detach "$APPROVED_MAIN_SHA"
+sudo -u gamenight-build -- sh -eu -c '
+  cd /var/lib/gamenight-build/gamenight
+  npm ci
+  npx prisma generate
+  env -u DATABASE_URL -u TEST_DATABASE_URL NEXT_TELEMETRY_DISABLED=1 npx next build
+'
+sudo install -d -o root -g gamenight -m 0750 /opt/gamenight/current
+tar --exclude=.git -C /var/lib/gamenight-build/gamenight -cf - . | sudo tar --no-same-owner -C /opt/gamenight/current -xf -
+sudo chown -R root:gamenight /opt/gamenight/current
+sudo find /opt/gamenight/current -type d -exec chmod 0750 {} +
+sudo find /opt/gamenight/current -type f -exec chmod 0640 {} +
+sudo install -d -o gamenight -g gamenight -m 0750 /opt/gamenight/current/.next/cache
+sudo install -d -o root -g root -m 0750 /etc/gamenight
+sudo install -o root -g root -m 0600 /dev/null /etc/gamenight/gamenight.env
+sudoedit /etc/gamenight/gamenight.env
+sudo sh -eu -c 'test "$(grep -cx "VOICE_PRESENCE_ENABLED=false" /etc/gamenight/gamenight.env)" -eq 1 && test "$(stat -c "%U:%G %a" /etc/gamenight/gamenight.env)" = "root:root 600"'
+sudo sh -eu -c 'test "$(grep -cx "Environment=VOICE_PRESENCE_ENABLED=false" /opt/gamenight/current/packaging/systemd/gamenight.service)" -eq 1'
+sudo install -o root -g root -m 0644 /opt/gamenight/current/packaging/systemd/gamenight.service /etc/systemd/system/gamenight.service
+sudo systemd-analyze verify /etc/systemd/system/gamenight.service
+sudo systemctl daemon-reload
+```
+
+Le checkout et le build appartiennent au compte non privilégié `gamenight-build`. Le service tourne sous le compte distinct `gamenight`; le code installé est ensuite en lecture seule pour lui, à l'exception de `.next/cache`. `npm run build` est interdit ici : le script du dépôt peut lancer `prisma migrate deploy`. N'installez aucune dépendance en root et ne fournissez pas de `DATABASE_URL` ou `TEST_DATABASE_URL` au build. Remplir l'EnvironmentFile via le canal secret approuvé, sans copier ou afficher de secret; la vérification n'imprime que le flag et les métadonnées de permissions. L'installation de l'unité et `daemon-reload` ne l'activent ni ne la démarrent.
+
+### Démarrage ultérieur, étape séparée
+
+À exécuter seulement après la migration approuvée traitée séparément et une autorisation explicite de démarrage. La collecte reste désactivée; ces commandes ne changent pas son flag.
+
+```sh
+set -eu
+sudo sh -eu -c 'test "$(grep -cx "VOICE_PRESENCE_ENABLED=false" /etc/gamenight/gamenight.env)" -eq 1 && test "$(stat -c "%U:%G %a" /etc/gamenight/gamenight.env)" = "root:root 600"'
+sudo systemctl enable gamenight.service
+sudo systemctl start gamenight.service
+sudo systemctl is-active --quiet gamenight.service
+systemctl show gamenight.service --no-pager -p ActiveState -p SubState -p MainPID -p ExecStart
+ss -ltnp | grep '127.0.0.1:3000'
+```
+
+Ne pas utiliser `systemctl show -p Environment`, `systemctl cat` ou une commande qui imprime l'EnvironmentFile. `enable` et `start` restent des commandes séparées et ne doivent jamais être combinées avec `--now`.
 
 La migration d'historique vocal est additive et doit être appliquée uniquement par la procédure de migration approuvée avant le démarrage d'un worker utilisant ce code. Aucune migration ni connexion Production, installation Raspberry, activation de flag/cron, connexion au Gateway réel ou notification Discord n'a été effectuée pour ce lot. Le contrôle final juste avant construction du collecteur réduit la course avec un retrait; un retrait commité après ce contrôle mais avant l'ouverture effective du socket peut laisser une brève connexion Gateway en transit. Un événement Gateway déjà reçu en mémoire peut aussi être en transit, mais le propriétaire/génération/consentement sont revérifiés sous verrou avant chaque écriture : après le commit du retrait, aucune nouvelle contribution ne peut être persistée. Le poll suivant ferme le collecteur.
