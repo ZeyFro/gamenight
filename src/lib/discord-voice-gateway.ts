@@ -46,7 +46,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   createSocket?: (url: string) => Socket;
   fetchGatewayUrl?: (token: string) => Promise<string>;
   onInterval: (interval: VoiceInterval) => void;
-  onGap: (reason: "resume_failed" | "shutdown" | "fatal_close") => void;
+  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close") => void;
   onFatal: (failure: FatalFailure) => void;
   now?: () => number;
 }) {
@@ -62,6 +62,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   let initialUrl = "";
   let active = new Map<string, VoiceVisit>();
   let guildState: "snapshot_pending" | "available" | "unavailable" | "removed" = "snapshot_pending";
+  let replaying = false;
   let stopped = true;
   let retryMs = 1_000;
   let startGeneration = 0;
@@ -78,6 +79,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   function closeActiveVisits(endedAt = now()) {
     const visits = [...active.entries()];
     active.clear();
+    if (replaying) return;
     for (const [memberKey, visit] of visits) {
       if (endedAt > visit.startedAt) {
         options.onInterval({ memberKey, channelId: visit.channelId, startedAt: visit.startedAt, endedAt, partial: true });
@@ -124,6 +126,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
         if (packet.op === 9 && packet.d !== true) {
           options.onGap("resume_failed");
           closeActiveVisits();
+          replaying = false;
           guildState = "snapshot_pending";
           session = null; sequence = null;
         }
@@ -136,9 +139,15 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if (!data) return;
       if (packet.t === "READY" && typeof data.session_id === "string" && typeof data.resume_gateway_url === "string") {
         session = { id: data.session_id, url: gatewayUrl(data.resume_gateway_url) };
+        replaying = false;
         guildState = "snapshot_pending";
         retryMs = 1_000;
       } else if (packet.t === "RESUMED") {
+        const resumedAt = now();
+        for (const [memberKey, visit] of active) {
+          active.set(memberKey, { channelId: visit.channelId, startedAt: resumedAt, partial: true });
+        }
+        replaying = false;
         retryMs = 1_000;
       } else if (packet.t === "GUILD_DELETE" && data.id === config.guildId) {
         closeActiveVisits();
@@ -167,7 +176,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
           at: now(),
         });
         active = result.active;
-        if (result.closed) options.onInterval(result.closed);
+        if (result.closed && !replaying) options.onInterval(result.closed);
       }
     });
     next.addEventListener("error", () => { if (!stopped && socket === next) next.close(4000); });
@@ -186,8 +195,13 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       if ([4007, 4009].includes(event.code ?? 0)) {
         options.onGap("resume_failed");
         closeActiveVisits();
+        replaying = false;
         guildState = "snapshot_pending";
         session = null; sequence = null;
+      }
+      if (session && !replaying) {
+        replaying = true;
+        options.onGap("transport_closed");
       }
       reconnect = setTimeout(() => connect(session?.url ?? initialUrl), retryMs);
       retryMs = Math.min(retryMs * 2, 30_000);
@@ -247,6 +261,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
       session = null;
       sequence = null;
       guildState = "snapshot_pending";
+      replaying = false;
     },
   };
 }

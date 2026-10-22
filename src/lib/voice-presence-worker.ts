@@ -12,7 +12,7 @@ export type VoicePresenceTarget = {
 export type VoicePresenceCollectorCallbacks = {
   onFatal: (failure: unknown) => void;
   onPersistenceError: (error: unknown) => void;
-  onGap: (reason: "resume_failed" | "shutdown" | "fatal_close") => void;
+  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close") => void;
 };
 
 export type VoicePresenceCollector = {

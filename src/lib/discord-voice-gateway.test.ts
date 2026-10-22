@@ -70,12 +70,13 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     sockets[0].close(1006);
     vi.advanceTimersByTime(1_000);
     expect(sockets).toHaveLength(2);
+    expect(onGap).toHaveBeenCalledWith("transport_closed");
     sockets[1].emit(10, { heartbeat_interval: 45_000 });
     expect(sockets[1].sent[0]).toEqual({ op: 6, d: { token: "synthetic-token", session_id: "test-session", seq: 3 } });
     sockets[1].emit(0, {}, 4, "RESUMED");
     vi.setSystemTime(4_000);
     sockets[1].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: null }, 5, "VOICE_STATE_UPDATE");
-    expect(onInterval).toHaveBeenCalledWith({ memberKey: "synthetic-member", channelId: "456", startedAt: 1_000, endedAt: 4_000 });
+    expect(onInterval).toHaveBeenCalledWith({ memberKey: "synthetic-member", channelId: "456", startedAt: 2_000, endedAt: 4_000, partial: true });
     sockets[1].emit(9, false);
     expect(onGap).toHaveBeenCalledWith("resume_failed");
     vi.advanceTimersByTime(1_000);
@@ -84,7 +85,70 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     collector.stop();
   });
 
-  it("flushes visits as partial on an invalid session and starts a fresh snapshot", async () => {
+  it("does not count replay events or the Gateway disconnect gap", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const sockets: FakeSocket[] = [];
+    const onInterval = vi.fn();
+    const onGap = vi.fn();
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl: async () => "wss://gateway.discord.gg",
+      onInterval, onGap, onFatal: vi.fn(),
+    });
+    await collector.start();
+    sockets[0].emit(0, { session_id: "test-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
+    sockets[0].emit(0, { id: "123", voice_states: [] }, 2, "GUILD_CREATE");
+    sockets[0].emit(0, { guild_id: "123", user_id: "stayed", channel_id: "456" }, 3, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(1_500);
+    sockets[0].emit(0, { guild_id: "123", user_id: "left", channel_id: "456" }, 4, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(2_000);
+    sockets[0].close(1006);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    sockets[1].emit(10, { heartbeat_interval: 45_000 });
+    sockets[1].emit(0, { guild_id: "123", user_id: "stayed", channel_id: "456" }, 5, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(5_000);
+    sockets[1].emit(0, { guild_id: "123", user_id: "left", channel_id: null }, 6, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(20_000);
+    sockets[1].emit(0, {}, 7, "RESUMED");
+    vi.setSystemTime(25_000);
+    sockets[1].emit(0, { guild_id: "123", user_id: "stayed", channel_id: null }, 8, "VOICE_STATE_UPDATE");
+
+    expect(onInterval).toHaveBeenCalledExactlyOnceWith({
+      memberKey: "stayed", channelId: "456", startedAt: 20_000, endedAt: 25_000, partial: true,
+    });
+    expect(onGap).toHaveBeenCalledWith("transport_closed");
+    collector.stop();
+  });
+
+  it("does not flush open visits through the disconnect gap on shutdown", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const sockets: FakeSocket[] = [];
+    const onInterval = vi.fn();
+    const onGap = vi.fn();
+    const collector = createVoiceGatewayCollector(config, {
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
+      fetchGatewayUrl: async () => "wss://gateway.discord.gg",
+      onInterval, onGap, onFatal: vi.fn(),
+    });
+    await collector.start();
+    sockets[0].emit(0, { session_id: "test-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
+    sockets[0].emit(0, { id: "123", voice_states: [] }, 2, "GUILD_CREATE");
+    sockets[0].emit(0, { guild_id: "123", user_id: "member", channel_id: "456" }, 3, "VOICE_STATE_UPDATE");
+    vi.setSystemTime(2_000);
+    sockets[0].close(1006);
+    vi.setSystemTime(5_000);
+
+    collector.stop();
+
+    expect(onInterval).not.toHaveBeenCalled();
+    expect(onGap).toHaveBeenCalledWith("transport_closed");
+    expect(onGap).toHaveBeenCalledWith("shutdown");
+  });
+
+  it("discards an invalid resumed session and starts a fresh snapshot", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const sockets: FakeSocket[] = [];
@@ -100,22 +164,23 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     sockets[0].emit(0, { id: "123", voice_states: [] }, 2, "GUILD_CREATE");
     sockets[0].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: "456" }, 3, "VOICE_STATE_UPDATE");
 
-    vi.setSystemTime(3_000);
-    sockets[0].emit(9, false);
-    expect(onInterval).toHaveBeenNthCalledWith(1, {
-      memberKey: "synthetic-member", channelId: "456", startedAt: 1_000, endedAt: 3_000, partial: true,
-    });
-
+    vi.setSystemTime(2_000);
+    sockets[0].close(1006);
     await vi.advanceTimersByTimeAsync(1_000);
     sockets[1].emit(10, { heartbeat_interval: 45_000 });
-    expect(sockets[1].sent[0].op).toBe(2);
-    sockets[1].emit(0, { session_id: "fresh-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
-    sockets[1].emit(0, { id: "123", voice_states: [{ user_id: "synthetic-member", channel_id: "456" }] }, 2, "GUILD_CREATE");
-    vi.setSystemTime(6_000);
-    sockets[1].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: null }, 3, "VOICE_STATE_UPDATE");
+    sockets[1].emit(9, false);
+    expect(onInterval).not.toHaveBeenCalled();
 
-    expect(onInterval).toHaveBeenNthCalledWith(2, {
-      memberKey: "synthetic-member", channelId: "456", startedAt: 4_000, endedAt: 6_000, partial: true,
+    await vi.advanceTimersByTimeAsync(2_000);
+    sockets[2].emit(10, { heartbeat_interval: 45_000 });
+    expect(sockets[2].sent[0].op).toBe(2);
+    sockets[2].emit(0, { session_id: "fresh-session", resume_gateway_url: "wss://resume.discord.gg" }, 1, "READY");
+    sockets[2].emit(0, { id: "123", voice_states: [{ user_id: "synthetic-member", channel_id: "456" }] }, 2, "GUILD_CREATE");
+    vi.setSystemTime(6_000);
+    sockets[2].emit(0, { guild_id: "123", user_id: "synthetic-member", channel_id: null }, 3, "VOICE_STATE_UPDATE");
+
+    expect(onInterval).toHaveBeenCalledExactlyOnceWith({
+      memberKey: "synthetic-member", channelId: "456", startedAt: 5_000, endedAt: 6_000, partial: true,
     });
     collector.stop();
   });
