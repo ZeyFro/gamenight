@@ -109,8 +109,26 @@ try {
   const mvpForce = await doneSession([alice, bob]);
   const mvpNobody = await doneSession([alice, bob]);
   notificationSourceIds.push(mvp.id, mvpForce.id, mvpNobody.id);
-  await db.communityMemberStats.upsert({ where: { communityId_userId: { communityId: community.id, userId: alice.id } }, create: { communityId: community.id, userId: alice.id, xpTotal: 300 }, update: { xpTotal: 300 } });
-  await db.communityMemberStats.create({ data: { communityId: community.id, userId: bob.id, xpTotal: 250 } });
+  const [{ hasXpBalance }] = await db.$queryRawUnsafe(
+    "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'CommunityMemberStats' AND column_name = 'xpBalance') AS \"hasXpBalance\""
+  );
+  async function setRecipeXp(userId, xpTotal) {
+    await db.communityMemberStats.upsert({
+      where: { communityId_userId: { communityId: community.id, userId } },
+      create: { communityId: community.id, userId, xpTotal },
+      update: { xpTotal },
+    });
+    if (hasXpBalance) {
+      await db.$executeRawUnsafe(
+        'UPDATE "CommunityMemberStats" SET "xpBalance" = $1 WHERE "communityId" = $2 AND "userId" = $3',
+        xpTotal,
+        community.id,
+        userId,
+      );
+    }
+  }
+  await setRecipeXp(alice.id, 300);
+  await setRecipeXp(bob.id, 250);
 
   const childEnv = { ...process.env };
   for (const key of Object.keys(childEnv)) if (/ENABLED|TOKEN|SECRET|KEY|DATABASE_URL|DISCORD|VERCEL|NODE_OPTIONS/.test(key)) delete childEnv[key];
@@ -258,8 +276,9 @@ try {
   // ---------- BOUTIQUE ----------
   const shop = `${origin}/profil/boutique`;
   // Le MVP a pu créditer de l'XP à Alice : le solde de départ de la boutique est refixé.
-  await db.communityMemberStats.update({ where: { communityId_userId: { communityId: community.id, userId: alice.id } }, data: { xpTotal: 300 } });
+  await setRecipeXp(alice.id, 300);
   const stats = user => db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: community.id, userId: user.id } } });
+  const shopBalance = async user => { const row = await stats(user); return hasXpBalance ? row.xpBalance : row.xpTotal; };
   await step("boutique : achat d'un objet à 200 XP (solde 300 -> 100, ledger, possédé)", async () => {
     await pages.alice.goto(shop, { waitUntil: "domcontentloaded" });
     await pages.alice.getByText("Solde de cette communauté : 300 XP").waitFor();
@@ -267,7 +286,7 @@ try {
     await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).click();
     await pages.alice.getByText("Achat effectué.").waitFor();
     await pages.alice.getByText("Solde de cette communauté : 100 XP").waitFor();
-    assert.equal((await stats(alice)).xpTotal, 100);
+    assert.equal(await shopBalance(alice), 100);
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: alice.id, itemId: "color-mint" } }), 1);
     assert.equal(await db.xpEvent.count({ where: { userId: alice.id, reason: "SHOP_PURCHASE", amount: -200 } }), 1);
   });
@@ -275,7 +294,7 @@ try {
     await pages.alice.getByRole("button", { name: "Acheter Nébuleuse pour 300 XP" }).waitFor();
     await pages.alice.getByRole("button", { name: "Acheter Nébuleuse pour 300 XP" }).click();
     await pages.alice.getByText("Ton solde XP est insuffisant.").waitFor();
-    assert.equal((await stats(alice)).xpTotal, 100);
+    assert.equal(await shopBalance(alice), 100);
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: alice.id } }), 1);
   });
   await step("boutique : équiper puis retirer l'objet possédé", async () => {
@@ -297,7 +316,7 @@ try {
     await waitFor(async () => (await db.communityMemberCosmetic.count({ where: { userId: bob.id } })) >= 1, "achat absent");
     await new Promise(resolve => setTimeout(resolve, 1500));
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: bob.id } }), 1);
-    assert.equal((await stats(bob)).xpTotal, 0);
+    assert.equal(await shopBalance(bob), 0);
     assert.equal(await db.xpEvent.count({ where: { userId: bob.id, reason: "SHOP_PURCHASE" } }), 1);
   });
   await step("boutique interdite : compte sans communauté redirigé hors de la boutique", async () => {
