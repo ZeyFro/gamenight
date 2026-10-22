@@ -91,6 +91,107 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
     expect(collector.stop).toHaveBeenCalledOnce();
   });
 
+  it("drains queued gap and recovery writes before releasing the lease on orderly shutdown", async () => {
+    mocks.sessionFindMany.mockResolvedValue([{
+      id: "session-gap-shutdown",
+      voicePresenceConsents: [{ id: "consent-1" }],
+      community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
+    }]);
+    let callbacks!: { onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close" | "guild_unavailable" | "guild_removed") => void; onGapRecovered: (at: number) => void };
+    const order: string[] = [];
+    let resolveFirstGap!: () => void;
+    let resolveRecovery!: () => void;
+    let resolveShutdownGap!: () => void;
+    const firstGap = new Promise<void>(resolve => { resolveFirstGap = resolve; });
+    const recovery = new Promise<void>(resolve => { resolveRecovery = resolve; });
+    const shutdownGap = new Promise<void>(resolve => { resolveShutdownGap = resolve; });
+    let gapWrites = 0;
+    mocks.markGap.mockReset().mockImplementation(() => {
+      gapWrites += 1;
+      return gapWrites === 1 ? firstGap : shutdownGap.then(() => { order.push("shutdown-gap-done"); });
+    });
+    mocks.markGapRecovered.mockReset().mockImplementation(() => recovery.then(() => { order.push("recovery-done"); }));
+    mocks.releaseLease.mockImplementation(async () => { order.push("release"); return []; });
+    const collector = {
+      start: vi.fn(),
+      stop: vi.fn(() => { callbacks.onGap("shutdown"); }),
+    };
+    mocks.createSessionVoiceCollector.mockImplementation((_env, options) => {
+      callbacks = options;
+      return collector;
+    });
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
+    );
+
+    callbacks.onGap("transport_closed");
+    callbacks.onGapRecovered(1_800_000_000_000);
+    const stopping = runtime.stop();
+    await vi.waitFor(() => expect(mocks.markGap).toHaveBeenCalledOnce());
+    expect(mocks.markGapRecovered).not.toHaveBeenCalled();
+    expect(mocks.releaseLease).not.toHaveBeenCalled();
+
+    resolveFirstGap();
+    await vi.waitFor(() => expect(mocks.markGapRecovered).toHaveBeenCalledOnce());
+    expect(mocks.releaseLease).not.toHaveBeenCalled();
+
+    resolveRecovery();
+    await vi.waitFor(() => expect(mocks.markGap).toHaveBeenCalledTimes(2));
+    expect(mocks.releaseLease).not.toHaveBeenCalled();
+
+    resolveShutdownGap();
+    await stopping;
+    expect(order).toEqual(["recovery-done", "shutdown-gap-done", "release"]);
+    expect(collector.stop).toHaveBeenCalledOnce();
+  });
+
+  it("drains queued gap writes before releasing and purging a cancelled session", async () => {
+    mocks.sessionFindMany
+      .mockResolvedValueOnce([{
+        id: "session-gap-purge",
+        voicePresenceConsents: [{ id: "consent-1" }],
+        community: { slug: "community-a", discordGuildId: "123456789012345678", channelConfigs: [{ discordChannelId: "456789012345678901" }] },
+      }])
+      .mockResolvedValueOnce([]);
+    let callbacks!: { onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close" | "guild_unavailable" | "guild_removed") => void };
+    let resolveGap!: () => void;
+    const gapWrite = new Promise<void>(resolve => { resolveGap = resolve; });
+    const order: string[] = [];
+    mocks.markGap.mockReset().mockReturnValue(gapWrite.then(() => { order.push("gap-done"); }));
+    mocks.releaseLease.mockImplementation(async () => { order.push("release"); return []; });
+    mocks.finalizeCommand.mockImplementation(async () => { order.push("purge"); return true; });
+    mocks.createSessionVoiceCollector.mockImplementation((_env, options) => {
+      callbacks = options;
+      return { start: vi.fn(), stop: vi.fn() };
+    });
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token", pollIntervalMs: 15_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal: vi.fn() },
+    );
+    callbacks.onGap("guild_removed");
+    await vi.waitFor(() => expect(mocks.markGap).toHaveBeenCalledOnce());
+    mocks.controlFindMany.mockResolvedValue([{
+      sessionId: "session-gap-purge",
+      status: "PURGE_REQUESTED",
+      stopAt: new Date(),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      generation: 2,
+    }]);
+
+    const refreshing = runtime.refresh();
+    await vi.waitFor(() => expect(mocks.sessionFindMany).toHaveBeenCalledTimes(2));
+    expect(mocks.releaseLease).not.toHaveBeenCalled();
+    expect(mocks.finalizeCommand).not.toHaveBeenCalled();
+
+    resolveGap();
+    await refreshing;
+    expect(order).toEqual(["gap-done", "release", "purge"]);
+    expect(mocks.finalizeCommand).toHaveBeenCalledWith("session-gap-purge");
+    await runtime.stop();
+  });
+
   it.each([
     ["2026-07-21T18:00:00Z", "2026-07-21T20:00:00Z"],
     ["2026-12-21T19:00:00Z", "2026-12-21T20:00:00Z"],

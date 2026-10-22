@@ -56,6 +56,25 @@ export async function startVoicePresenceWorkerRuntime(
       },
     );
   };
+  const flushGapWrites = async (sessionId?: string) => {
+    while (true) {
+      const sessions = sessionId
+        ? pendingGapWrites.has(sessionId) ? [sessionId] : []
+        : [...pendingGapWrites.keys()];
+      if (!sessions.length) return;
+      const results = await Promise.allSettled(sessions.map(async id => {
+        while (true) {
+          const pending = pendingGapWrites.get(id);
+          if (!pending) return;
+          await pending;
+          if (pendingGapWrites.get(id) === pending) pendingGapWrites.delete(id);
+        }
+      }));
+      if (results.some(result => result.status === "rejected")) {
+        throw new Error("Voice presence gap state writes failed");
+      }
+    }
+  };
   const worker = createVoicePresenceWorker({
     loadTargets: async () => {
       const sessions = await prisma.session.findMany({
@@ -160,10 +179,15 @@ export async function startVoicePresenceWorkerRuntime(
         new Date(at),
       );
     },
-    releaseLease: target => target.leaseOwner && target.generation !== undefined
-      ? releaseSessionVoicePresenceLease(target.sessionId, target.leaseOwner, target.generation, wallClockNow()).then(() => undefined)
-      : undefined,
-    finalizeStopTarget: target => finalizeSessionVoicePresenceCommand(target.sessionId).then(() => undefined),
+    releaseLease: async target => {
+      if (!target.leaseOwner || target.generation === undefined) return;
+      await flushGapWrites(target.sessionId);
+      await releaseSessionVoicePresenceLease(target.sessionId, target.leaseOwner, target.generation, wallClockNow());
+    },
+    finalizeStopTarget: async target => {
+      await flushGapWrites(target.sessionId);
+      await finalizeSessionVoicePresenceCommand(target.sessionId);
+    },
     onFatal: async failure => {
       if (options.onFatal) {
         await options.onFatal(failure);
@@ -190,6 +214,7 @@ export async function startVoicePresenceWorkerRuntime(
       processLike.removeListener("SIGTERM", shutdown);
       unregisterStopper();
       await worker.stop();
+      await flushGapWrites();
     })();
   }
 
