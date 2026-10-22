@@ -48,6 +48,8 @@ describe.skipIf(!TEST_DATABASE_URL)("/profil — prochaine soirée (Postgres iso
     await db.$executeRawUnsafe(
       `TRUNCATE "SessionInvite", "Vote", "Proposal", "Session", "Game", "User" CASCADE`
     );
+    const defaultCommunityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+    await db.community.update({ where: { id: defaultCommunityId }, data: { status: "ACTIVE" } });
   });
 
   async function makeUser(discordId: string) {
