@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/admin";
 import {
   ALL_MESSAGE_CATEGORIES,
   MAX_MESSAGE_TEXT_LENGTH,
+  normalizeMessageText,
   findInvalidCategoryVariables,
   variablesForCategories,
 } from "@/lib/message-templates";
@@ -22,7 +23,7 @@ export async function addMessageTemplate(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
 
-  const text = String(formData.get("text") ?? "").trim();
+  const text = normalizeMessageText(String(formData.get("text") ?? ""));
   if (!text || text.length > MAX_MESSAGE_TEXT_LENGTH) return;
 
   const categories = parseCategories(formData);
@@ -51,7 +52,7 @@ export async function updateMessageTemplate(formData: FormData) {
   if (!user) redirect("/");
 
   const id = String(formData.get("id") ?? "");
-  const text = String(formData.get("text") ?? "").trim();
+  const text = normalizeMessageText(String(formData.get("text") ?? ""));
   if (!id || !text || text.length > MAX_MESSAGE_TEXT_LENGTH) return;
 
   const categories = parseCategories(formData);

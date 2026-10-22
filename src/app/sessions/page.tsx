@@ -37,6 +37,7 @@ import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { pageMetadata } from "@/lib/page-title";
+import { MAX_MESSAGE_TEXT_LENGTH } from "@/lib/message-templates";
 
 export const metadata = pageMetadata("Soirées");
 
@@ -365,6 +366,7 @@ export default async function SessionsPage({
                 id="custom-reminder"
                 name="customReminderMessage"
                 rows={2}
+                maxLength={MAX_MESSAGE_TEXT_LENGTH}
                 placeholder="Remplace le tirage aléatoire — variables : {pote} {jeu} {heure}"
                 className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />

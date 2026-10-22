@@ -133,6 +133,8 @@ export function MessageTemplateForm({
           onBlur={() => setTimeout(() => setSuggestion(null), 150)}
           rows={2}
           required
+          aria-invalid={tooLong || undefined}
+          aria-describedby={tooLong ? `${idPrefix}-too-long` : undefined}
           placeholder="Ex. : Yo {pote}, dans 30 min c'est {jeu}."
           className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
@@ -157,14 +159,23 @@ export function MessageTemplateForm({
       </div>
 
       {tooLong && (
-        <p role="alert" className="rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-          Ce message fait {text.length} caractères, la limite est de{" "}
-          {MAX_MESSAGE_TEXT_LENGTH} (Discord coupe à 2000 et les variables
-          allongent le texte).{" "}
-          {legacyTooLong
-            ? "Il date d'avant cette limite : il reste utilisé tel quel, mais il doit être raccourci avant d'être réenregistré."
-            : "Raccourcis-le pour pouvoir enregistrer."}
-        </p>
+        <div
+          id={`${idPrefix}-too-long`}
+          className="flex flex-col gap-1 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive"
+        >
+          {/* Le compteur reste hors de l'alerte : sinon chaque frappe la ré-annoncerait. */}
+          <p role="alert">
+            Ce message dépasse la limite de {MAX_MESSAGE_TEXT_LENGTH}{" "}
+            caractères (Discord coupe à 2000 et les variables allongent le
+            texte).{" "}
+            {legacyTooLong
+              ? "Il date d'avant cette limite : il reste utilisé tel quel, mais il doit être raccourci avant d'être réenregistré."
+              : "Raccourcis-le pour pouvoir enregistrer."}
+          </p>
+          <p data-testid="message-length">
+            {text.length} / {MAX_MESSAGE_TEXT_LENGTH} caractères
+          </p>
+        </div>
       )}
 
       {invalidPairs.length > 0 && (

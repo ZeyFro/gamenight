@@ -7,6 +7,15 @@ export type MessageVariables = Record<string, string>;
 /** Un message Discord est limité à 2000 caractères : marge pour les variables substituées (pseudos, jeux). */
 export const MAX_MESSAGE_TEXT_LENGTH = 1500;
 
+/**
+ * Fins de ligne en LF puis trim : le navigateur peut envoyer CRLF alors que le
+ * formulaire compte chaque saut de ligne pour 1 caractère. Sans cette
+ * normalisation, un texte accepté côté client serait refusé par le serveur.
+ */
+export function normalizeMessageText(raw: string): string {
+  return raw.replace(/\r\n?/g, "\n").trim();
+}
+
 export const ALL_MESSAGE_CATEGORIES: MessageCategory[] = [
   "SESSION_CREATED",
   "SESSION_MODIFIED",
