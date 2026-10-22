@@ -65,7 +65,14 @@ export interface RetentionRunReport {
   instantSessionRowPurge: { candidateInstantSessionIds: string[]; purgedInstantSessionIds: string[] } | null;
   notifications: { notificationsAffected: number; seasonCycleAvailable: boolean } | null;
   technicalData: { deliveriesAffected: number } | null;
-  voicePresence: { expiredIntervals: number; expiredConsents: number; intervalsDeleted: number; consentsDeleted: number } | null;
+  voicePresence: {
+    expiredIntervals: number;
+    expiredConsents: number;
+    expiredControls: number;
+    intervalsDeleted: number;
+    consentsDeleted: number;
+    controlsDeleted: number;
+  } | null;
   errors: string[];
 }
 

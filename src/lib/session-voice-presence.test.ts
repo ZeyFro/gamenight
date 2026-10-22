@@ -77,7 +77,7 @@ beforeEach(() => {
   mocks.membershipFind.mockResolvedValue({ role: "MEMBER" });
   mocks.userFindUnique.mockResolvedValue({ id: "user-1", discordId: "789012345678901234", role: "USER" });
   mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
-  mocks.consentFindUnique.mockResolvedValue({ id: "consent-1" });
+  mocks.consentFindUnique.mockResolvedValue({ id: "consent-1", expiresAt: null });
   mocks.controlFindUnique.mockResolvedValue({ gapDetected: false, gapStartedAt: null, lastGapAt: null });
   mocks.intervalGroupBy.mockResolvedValue([]);
   mocks.userFindMany.mockResolvedValue([]);
@@ -233,11 +233,12 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.accessRole.mockResolvedValue("guest");
     mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
     mocks.userFindUnique.mockResolvedValue({ id: "guest-id", discordId: "guest", role: "USER" });
-    mocks.consentFindUnique.mockResolvedValue({ id: "guest-consent" });
+    mocks.consentFindUnique.mockResolvedValue({ id: "guest-consent", expiresAt: null });
     mocks.intervalGroupBy.mockResolvedValue([{ userId: "user-1", _sum: { durationSeconds: 65 }, _max: { partial: false } }]);
     mocks.userFindMany.mockResolvedValue([{ id: "user-1", discordName: "Member" }]);
     expect(await readSessionVoicePresence("session-test", "guest-id")).toMatchObject({
       consented: true,
+      canWithdraw: true,
       canConsent: true,
       canReadAll: false,
       entries: [{ userId: "user-1", name: "Member", durationSeconds: 65, partial: false }],
@@ -257,15 +258,31 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.accessRole.mockClear();
     mocks.userFindUnique.mockResolvedValue({ id: "community-admin", discordId: "admin", role: "USER" });
     mocks.membershipFind.mockResolvedValue({ role: "ADMIN" });
+    mocks.accessRole.mockResolvedValue("guest");
     const adminPresence = await readSessionVoicePresence("session-test", "community-admin");
-    expect(adminPresence).toMatchObject({ canReadAll: true, canConsent: false });
-    expect(mocks.accessRole).not.toHaveBeenCalled();
+    expect(adminPresence).toMatchObject({ canReadAll: true, canConsent: true });
+    expect(mocks.accessRole).toHaveBeenCalledWith("community-admin", "session-test");
+    mocks.accessRole.mockResolvedValue(null);
+    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canReadAll: true, canConsent: false });
     expect(mocks.intervalGroupBy).toHaveBeenLastCalledWith(expect.objectContaining({
       where: expect.not.objectContaining({ userId: expect.any(String) }),
     }));
     mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
-    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canConsent: false });
+    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canConsent: false, canWithdraw: true });
     process.env.VOICE_PRESENCE_ENABLED = "false";
-    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ enabled: false });
+    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ enabled: false, canWithdraw: true });
+  });
+
+  it("does not treat expired consent as active but leaves withdrawal available during retention", async () => {
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
+    mocks.accessRole.mockResolvedValue("creator");
+    mocks.consentFindUnique.mockResolvedValue({ id: "expired-consent", expiresAt: new Date(Date.now() - 1) });
+
+    expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({
+      consented: false,
+      canWithdraw: true,
+      canConsent: false,
+    });
   });
 });

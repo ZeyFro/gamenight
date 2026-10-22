@@ -237,15 +237,18 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   const membership = await findActiveMembership(viewerId, await statsCommunityIdForSession(session.communityId));
   const isCommunityAdmin = !!membership && hasCommunityRole(membership.role, "ADMIN");
   const isAdmin = isSiteAdmin || isCommunityAdmin;
-  const accessRole = isCreator || isAdmin ? null : await getSessionAccessRole(viewerId, sessionId);
+  // Keep the underlying invite role even for an admin so an invited admin can
+  // grant personal consent without making unrelated sessions consentable.
+  const accessRole = await getSessionAccessRole(viewerId, sessionId);
   const canReadAll = isCreator || isAdmin;
   if (!canReadAll && accessRole !== "guest") return null;
 
   const ownConsent = await prisma.sessionVoicePresenceConsent.findUnique({
     where: { sessionId_userId: { sessionId, userId: viewerId } },
-    select: { id: true },
+    select: { id: true, expiresAt: true },
   });
   const now = wallClockNow();
+  const consented = !!ownConsent && (ownConsent.expiresAt === null || ownConsent.expiresAt > now);
   const totals = await prisma.sessionVoicePresenceInterval.groupBy({
     by: ["userId"],
     where: {
@@ -268,7 +271,8 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   });
   return {
     enabled: process.env.VOICE_PRESENCE_ENABLED === "true",
-    consented: !!ownConsent,
+    consented,
+    canWithdraw: !!ownConsent,
     canConsent: session.status === "SCHEDULED" && (accessRole === "guest" || isCreator),
     canReadAll,
     hasGaps: control?.gapDetected ?? false,

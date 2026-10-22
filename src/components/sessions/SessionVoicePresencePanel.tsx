@@ -54,7 +54,7 @@ export function SessionVoicePresencePanel({
       {presence.canConsent && !presence.consented && !presence.enabled && (
         <p className="mt-2 text-sm text-muted">Tu pourras donner ton accord quand la collecte sera activée.</p>
       )}
-      {presence.canConsent && presence.consented && (
+      {presence.canWithdraw && (
         <form action={withdrawVoicePresenceConsentAction} className="mt-3">
           <input type="hidden" name="sessionId" value={sessionId} />
           <Button type="submit" variant="secondary" size="sm">Retirer mon consentement et supprimer mes durées</Button>

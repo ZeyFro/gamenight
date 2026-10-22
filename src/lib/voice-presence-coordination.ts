@@ -19,7 +19,7 @@ export async function requestSessionVoicePresenceStop(
   if (existing) {
     await tx.sessionVoicePresenceControl.update({
       where: { sessionId },
-      data: { status, stopAt, ...(mode === "PURGE" ? { gapDetected: false, lastGapAt: null } : {}) },
+      data: { status, stopAt, ...(mode === "PURGE" ? { gapDetected: false, gapStartedAt: null, lastGapAt: null } : {}) },
     });
   } else {
     await tx.sessionVoicePresenceControl.create({ data: { sessionId, status, stopAt } });
@@ -172,7 +172,14 @@ export async function finalizeSessionVoicePresenceCommand(sessionId: string, db:
       await tx.sessionVoicePresenceConsent.deleteMany({ where: { sessionId } });
       await tx.sessionVoicePresenceControl.update({
         where: { sessionId },
-        data: { status: "PURGED", leaseOwner: null, leaseExpiresAt: null },
+        data: {
+          status: "PURGED",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          gapDetected: false,
+          gapStartedAt: null,
+          lastGapAt: null,
+        },
       });
       return true;
     }

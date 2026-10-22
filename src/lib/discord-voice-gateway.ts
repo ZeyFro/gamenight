@@ -46,7 +46,7 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
   createSocket?: (url: string) => Socket;
   fetchGatewayUrl?: (token: string) => Promise<string>;
   onInterval: (interval: VoiceInterval) => void;
-  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close") => void;
+  onGap: (reason: "resume_failed" | "transport_closed" | "shutdown" | "fatal_close" | "guild_unavailable") => void;
   /** First authoritative Gateway snapshot after reconnect, including a fresh process Identify. */
   onGapRecovered?: (at: number) => void;
   onFatal: (failure: FatalFailure) => void;
@@ -153,10 +153,12 @@ export function createVoiceGatewayCollector(config: VoiceGatewayConfig, options:
         replaying = false;
         retryMs = 1_000;
       } else if (packet.t === "GUILD_DELETE" && data.id === config.guildId) {
+        if (data.unavailable === true && guildState !== "unavailable") options.onGap("guild_unavailable");
         closeActiveVisits();
         guildState = data.unavailable === true ? "unavailable" : "removed";
       } else if (packet.t === "GUILD_CREATE" && data.id === config.guildId) {
         if (data.unavailable === true) {
+          if (guildState !== "unavailable") options.onGap("guild_unavailable");
           closeActiveVisits();
           guildState = "unavailable";
           return;

@@ -1,12 +1,12 @@
 # Collecteur vocal Discord
 
-La collecte reste désactivée tant que `VOICE_PRESENCE_ENABLED` n'est pas explicitement défini à `true`. Le worker ne démarre que dans un serveur Node auto-hébergé avec `VOICE_PRESENCE_WORKER_MODE=standalone`, un jeton Discord et les références de décision de consentement et de rétention. `.env.example` laisse ces valeurs vides; l'unité systemd ne définit que le mode `standalone` et n'active donc pas la collecte par défaut. Vercel, le runtime Edge et les instances web ordinaires ne lancent pas le worker.
+La collecte reste désactivée tant que `VOICE_PRESENCE_ENABLED` n'est pas explicitement défini à `true`. Le worker ne démarre que dans un serveur Node auto-hébergé avec `VOICE_PRESENCE_WORKER_MODE=standalone`, un jeton Discord et les références de décision de consentement et de rétention. `.env.example` et l'unité systemd fixent le flag à `false` par défaut; un opérateur autorisé peut le remplacer dans l'EnvironmentFile. Vercel, le runtime Edge et les instances web ordinaires ne lancent pas le worker.
 
 ## Consentement, lecture et conservation
 
 Chaque créateur ou invité actif donne son accord individuellement depuis le panneau de la soirée. Tant qu'il n'a pas consenti, le worker ne lance aucun collecteur pour cette soirée. Le participant ne voit que ses propres durées; le créateur de la soirée et les admins du site ou de sa communauté voient celles des personnes consentantes. Le panneau admin vocal ne donne accès qu'à ces données vocales et ne contourne pas la confidentialité de la page de soirée.
 
-Retirer son consentement supprime immédiatement l'accord et les intervalles de cette personne. Annuler une soirée supprime ses accords et intervalles dans la transaction qui marque l'annulation. À la clôture normale, la date de cutoff est écrite avec l'état de la soirée, sans attendre le worker; les intervalles persistés sont bornés à cette date. La finalisation asynchrone applique une conservation de 30 jours après le cutoff. Le nettoyage utilise le runner et le cron de rétention déjà présents, par lots bornés; cette PR n'ajoute ni n'active de cron.
+Retirer son consentement supprime immédiatement l'accord et les intervalles de cette personne, y compris après clôture pendant la rétention. Annuler une soirée supprime ses accords et intervalles dans la transaction qui marque l'annulation et efface immédiatement les bornes de lacune. À la clôture normale, la date de cutoff est écrite avec l'état de la soirée, sans attendre le worker; les intervalles persistés sont bornés à cette date. La finalisation asynchrone applique une conservation de 30 jours après le cutoff; les métadonnées de contrôle finalisées et purgées sont ensuite supprimées. Le nettoyage utilise le runner et le cron de rétention déjà présents, par lots bornés; cette PR n'ajoute ni n'active de cron.
 
 ## Coordination durable et reprise après crash
 

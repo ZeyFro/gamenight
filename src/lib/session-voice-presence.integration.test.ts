@@ -221,4 +221,19 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
     })).toBe(false);
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
   }, 15_000);
+
+  it("serializes a concurrent interval write and withdrawal so no contribution survives", async () => {
+    const config = { guildId: GUILD_ID, channelIds: [CHANNEL_ID], sessionId: SESSION_ID, workerId: "synthetic-worker", generation: 1 };
+    const startedAt = Date.now() - 10 * 60 * 1000;
+    const [, withdrawn] = await Promise.all([
+      voicePresence.storeSessionVoiceInterval(config, {
+        memberKey: DISCORD_ID, channelId: CHANNEL_ID, startedAt, endedAt: startedAt + 60_000,
+      }),
+      voicePresence.withdrawSessionVoiceConsent(SESSION_ID, USER_ID),
+    ]);
+
+    expect(withdrawn).toBe(true);
+    expect(await db.sessionVoicePresenceConsent.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID, userId: USER_ID } })).toBe(0);
+  }, 15_000);
 });

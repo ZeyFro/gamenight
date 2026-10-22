@@ -221,11 +221,13 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
     vi.setSystemTime(1_000);
     const sockets: FakeSocket[] = [];
     const onInterval = vi.fn();
+    const onGap = vi.fn();
+    const onGapRecovered = vi.fn();
     const onFatal = vi.fn();
     const collector = createVoiceGatewayCollector(config, {
       createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
       fetchGatewayUrl: async () => "wss://gateway.discord.gg",
-      onInterval, onGap: vi.fn(), onFatal,
+      onInterval, onGap, onGapRecovered, onFatal,
     });
     await collector.start();
     sockets[0].emit(10, { heartbeat_interval: 45_000 });
@@ -237,6 +239,7 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
 
     vi.setSystemTime(3_000);
     sockets[0].emit(0, { id: "123", unavailable: true }, 3, "GUILD_DELETE");
+    expect(onGap).toHaveBeenCalledWith("guild_unavailable");
     expect(onInterval).toHaveBeenCalledWith({
       memberKey: "left-during-outage", channelId: "456", startedAt: 1_000, endedAt: 3_000, partial: true,
     });
@@ -245,11 +248,13 @@ describe("Discord voice Gateway collector (fake transport only)", () => {
 
     vi.setSystemTime(5_000);
     sockets[0].emit(0, { id: "123", voice_states: [{ user_id: "stayed-in-voice", channel_id: "456" }] }, 6, "GUILD_CREATE");
+    expect(onGapRecovered).toHaveBeenCalledWith(5_000);
     vi.setSystemTime(7_000);
     sockets[0].emit(0, { guild_id: "123", user_id: "left-during-outage", channel_id: null }, 7, "VOICE_STATE_UPDATE");
     sockets[0].emit(0, { guild_id: "123", user_id: "stayed-in-voice", channel_id: null }, 8, "VOICE_STATE_UPDATE");
 
     expect(onInterval).toHaveBeenCalledTimes(3);
+    expect(onInterval.mock.calls.some(([visit]) => visit.startedAt < 5_000 && visit.endedAt > 3_000)).toBe(false);
     expect(onInterval).toHaveBeenNthCalledWith(3, {
       memberKey: "stayed-in-voice", channelId: "456", startedAt: 5_000, endedAt: 7_000, partial: true,
     });
