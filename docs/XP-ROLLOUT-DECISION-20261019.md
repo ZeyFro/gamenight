@@ -1,10 +1,10 @@
 # Décision de publication de #291 — aucune opération Production exécutée
 
-PR : https://github.com/ZeyFro/gamenight/pull/291. Elle reste en brouillon. Le 2026-10-20, la branche a intégré `origin/main` `7a06131` par merge; les contrôles de cette nouvelle tête sont à refaire par CI. Cette note prépare une autorisation ; elle ne l'accorde pas.
+PR : https://github.com/ZeyFro/gamenight/pull/291. Cette note est un protocole, pas une autorisation ni un statut de tête. Avant toute opération, vérifier le SHA courant, son intégration au `origin/main` courant, et les contrôles `verify` et Preview sur ce même SHA. Elle ne demande ni n'autorise une exécution maintenant.
 
 ## Opération soumise à autorisation
 
-Autoriser une fenêtre de maintenance avec arrêt vérifié de **tous** les writers, une sauvegarde Production effectivement restaurable, l'application séparée de **l'unique migration XP attendue `20261019190000_separate_xp_balance`**, puis le déploiement du code #291 basé sur `main` `7a06131`. Le build de main exécute `prisma migrate deploy` avant Next. Dans cette PR, `scripts/build.mjs` exécute uniquement `prisma generate` puis Next; la migration se fait séparément avec un rôle distinct. La fusion reste interdite avant la barrière, la sauvegarde restaurée et une autorisation spécifique. Reconfirmer la migration en attente depuis le nouveau checkout juste avant d'autoriser l'opération.
+Autoriser une fenêtre de maintenance avec arrêt vérifié de **tous** les writers, une sauvegarde Production effectivement restaurable, l'application séparée de **l'unique migration XP attendue `20261019190000_separate_xp_balance`**, puis le déploiement du SHA #291 approuvé, qui doit intégrer le `origin/main` courant et avoir ses contrôles `verify` et Preview verts sur cette tête. Avant cette PR, le build de main exécutait `prisma migrate deploy` avant Next; `scripts/build.mjs` de cette PR exécute seulement `prisma generate` puis Next, donc la migration doit se faire séparément avec un rôle distinct. La fusion reste interdite avant la barrière, la sauvegarde restaurée et l'autorisation spécifique. Reconfirmer la migration en attente depuis le checkout approuvé juste avant l'opération.
 
 Le SQL exact, inchangé, est dans `prisma/migrations/20261019190000_separate_xp_balance/migration.sql` (SHA-256 `c5767cde21cb3b03bf89ff110c2d87f528a9483a010c4b5782e67cf2fd86d754`) : ajout de `CommunityMemberStats.xpBalance INTEGER NOT NULL DEFAULT 0`, copie de `xpTotal` dans chaque solde, puis contrainte `xpBalance >= 0`. Il n'y a ni DROP, ni suppression d'objet, ni recalcul de grade, ni écriture Discord.
 
@@ -44,6 +44,12 @@ Conditions : aucune progression négative, aucune migration en échec, seule la 
 - Aucun dump Production n'a été créé et aucune restauration isolée de données Production n'a été tentée.
 
 Ces résultats satisfont seulement les précontrôles de données et de schéma à cet instant. Ils ne remplacent pas la vérification juste avant la fenêtre et ne prouvent pas le verrouillage, les rôles, la sauvegarde ou la durée.
+
+## Compatibilité de l'ancien runtime et migration progressive — 2026-10-22
+
+L'ancien runtime de `origin/main` lit et écrit uniquement `xpTotal` pour les gains, pénalités, achats, paris, corrections admin et réinitialisation de saison. Le runtime #291 lit `xpBalance` pour la boutique et ne met à jour les deux champs que lorsque la règle le demande. Ajouter `xpBalance` seul est toléré par l'ancien schéma Prisma, mais après le backfill un writer ancien peut désynchroniser les champs. Un trigger ne peut pas corriger cela fidèlement : un ancien achat baisse `xpTotal` (progression), tandis qu'un nouvel achat ne baisse que le solde.
+
+Découper ajout, backfill et contrainte permettrait de préparer le schéma avant la bascule, mais il faudrait encore arrêter/drainer les anciens writers et synchroniser à nouveau avant d'exposer #291. La seule mesure de table disponible est historique (12 lignes, 96 kB, lecture du 2026-10-20); ni la taille actuelle, ni le verrouillage ou la durée de l'opération ne sont vérifiés. Aucun gain d'interruption n'est donc démontré. Garder la migration publiée telle quelle et la barrière complète des writers; ne pas ajouter de trigger ni de phases SQL sur cette base.
 
 ## Séquence de bascule à faire autoriser
 
