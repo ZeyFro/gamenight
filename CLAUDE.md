@@ -11,7 +11,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (ada
 - `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` hors `VERCEL_ENV=preview` : jamais sans `DATABASE_URL` locale pour la validation)
 - `npx vitest run <fichier>` : tests unitaires ciblés
 - Tests d'intégration : Postgres Docker local, jamais Neon. En session cloud, le hook SessionStart (`.claude/hooks/session-start.mjs`) fait les étapes 1-2 sans Docker (Postgres 16, 127.0.0.1:55439) et exporte `TEST_DATABASE_URL` : lancer directement l'étape 3.
-  1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine`
+  1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c checkpoint_timeout=1h -c max_wal_size=8GB`
   2. `DATABASE_URL=<url ci-dessous> npx prisma migrate deploy`
   3. `TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_test npm run test:postgres`
 - Vérifier le port libre (`netstat -ano | grep :55439`) et utiliser `127.0.0.1`, pas `localhost`.
@@ -30,6 +30,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (ada
 
 ## Pièges appris
 - Un fichier `"use server"` ne peut exporter que des fonctions async (sinon 500 sur toutes ses actions, invisible de tsc/lint/build) : gardé par `src/lib/use-server-exports.test.ts`.
+- Base de test Docker (jetable, `127.0.0.1` uniquement) : démarrée avec `fsync=off` (voir la commande ci-dessus). Ces réglages suppriment la durabilité : un arrêt brutal du conteneur peut corrompre ou perdre la base, ce qui est acceptable car elle se recrée par `prisma migrate deploy`. Jamais sur Neon, Production ni une base à conserver; aucun réglage de Production n'est concerné. Sans cela, chaque `TRUNCATE … CASCADE` recrée les fichiers de ~100 tables et les checkpoints synchronisent 70 000 à 190 000 fichiers : des `TRUNCATE` de 7 à 23 s font expirer les hooks à 10 s, de façon intermittente et sur des fichiers différents (3 suites complètes aux délais d'origine : 16, 29 puis 38 tests en échec). Avec `fsync=off` : 347/347 fichiers, 3261/3261 tests, 283 s au lieu de 930–1222 s, mêmes délais.
 - Les tests d'intégration partagent une base (TRUNCATE) : `npm run test:postgres` (un fichier à la fois), jamais deux runs en parallèle.
 - Modèles collectifs : accès via le client scopé `scopedDb` (`getScopedPrisma(userId)`, `src/lib/community-scoped-client.ts`), jamais `prisma.<modèle>` directement dans le nouveau code (garde `src/lib/community-scope.test.ts`). Création = `communityId` scalaire obligatoire.
 - `GameWishlist`, `GroupAchievement`, `GroupSessionStats`, `GroupGameStat`, `GroupActiveWeek` : `communityId` OBLIGATOIRE et dans la clé (PR9), jamais `null` : communauté par défaut = `getDefaultCommunityId()`, aussi isolation éteinte. Trophées annoncés sur Discord pour `default` seulement.
