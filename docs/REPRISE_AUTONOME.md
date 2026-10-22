@@ -1,20 +1,43 @@
-# Point de reprise unique — GameNight
+# Point de reprise unique — GameNight — 22 octobre 2026
 
-Cette note est l’unique point de reprise courant. Les journaux et reprises datés sous `docs/archive/` sont historiques. Ce lot est publié dans [la PR #314](https://github.com/ZeyFro/gamenight/pull/314) ; son SHA et ses contrôles GitHub font foi pour l’état de publication et de fusion.
+Seul point de reprise à jour. Il remplace les reprises datées et les bilans antérieurs, qui sont historiques. Continuer dans un worktree dédié : le checkout racine est ancien et contient des modifications locales.
 
-## Lot documentation et sécurité
+État vérifié contre `origin/main` = `26440e10cee20f7f2b35ad8752fa4c8aa59ac22b` (merge de #316).
 
-Worktree isolé : `C:/Users/mparisot/AppData/Local/GameNight-Autopilot/.codex-worktrees/docs-security-reconciliation`, branche `codex/docs-security-reconciliation-20261021`. Base de départ : `origin/main` au SHA `15a9fcbafed5ab7b943b324ab99cdf0e5eed1d46` (#309).
+## Production
 
-Le lot met à jour le README, rassemble les guides sous `docs/INDEX.md`, documente le développement local et les routes sans supposer leur cadence, archive les journaux racine sans perdre leur contenu et réconcilie les constats de sécurité Claude dans `docs/SECURITE_CLAUDE.md`. Il ne change pas le comportement applicatif.
+- Déploiement Vercel `dpl_EiRGtcdKENELiYuGvV261NPs4GHa` : `READY`, cible `production`, SHA `26440e1`, alias GameNight associés, `aliasError=null` (connecteur Vercel, 22 octobre). Il remplace l’échec du déploiement automatique de `244eee3` (deployment GitHub `7232777326`), dont la cause n’a jamais été établie.
+- Ce que cela prouve : l’association domaine ↔ déploiement à cet instant. Cela ne prouve ni le binding `DATABASE_URL` → Neon ni les configurations runtime.
+- `DATABASE_URL` : variable `sensitive`, cible `production` seule, valeur illisible, modifiée avant le build de ce déploiement, absente de Preview. Binding non prouvé formellement.
+- Neon (lecture seule, `SELECT` sur `_prisma_migrations`, branche `production`) : dernière migration appliquée `20261020110000_tournament_team_bracket`, aucune annulée parmi les 15 plus récentes. C’est la dernière migration de `main` : Production est alignée sur `main`.
+- Les journaux runtime Vercel restent en 403.
 
-## Reprendre le travail
+## Drapeaux Production (noms seulement)
 
-1. Vérifier `git status --short` dans ce worktree ; ne pas réutiliser le checkout principal ou `runtime/sondages`.
-2. `git fetch origin main`, puis vérifier que la branche contient le `origin/main` courant avant toute publication ou intégration.
-3. Relire le diff et contrôler les liens, références déplacées, commandes documentées, exemples sans secrets et `git diff --check`.
-4. Demander une revue indépendante ; ne fusionner qu’après succès des contrôles requis sur le SHA exact de la PR.
+Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou OFF. Seule la présence est établie.
 
-## Limites
+- Présents : `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_SESSION_ENABLED`, `DISCORD_DM_TOURNAMENT_ENABLED`, `DISCORD_DM_ROULETTE_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED`, `DISCORD_THREAD_CLEANUP_MODE`, `DISCORD_THREAD_CLOSE_ON_END_ENABLED`, `STEAM_NOW_PLAYING_ENABLED`, `COMMUNITY_AUTO_CREATE_ENABLED`, `COMMUNITY_SETUP_COMMAND_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED`, `AUTH_REQUIRE_GUILD_MEMBER`.
+- Absents, donc éteints (défaut OFF) : `COMMUNITY_ADMIN_ENABLED`, `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`, `RETENTION_CLEANUP_ENABLED`/`_MODE`, `PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`, `TOURNAMENT_SCORES_ENABLED`, `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`.
+- Les identifiants de salons et de serveur du bot sont des variables `config` chiffrées. Aucune clé VAPID n’est déclarée.
 
-Aucune migration, restauration Neon, activation distante, configuration de Production, suppression de branche ou notification Discord. Ne pas relancer la suite PostgreSQL pour un déplacement documentaire. Toute vulnérabilité applicative confirmée se traite dans un lot séparé.
+## PR ouvertes
+
+| PR | Tête | Contrôles | Condition restante |
+|---|---|---|---|
+| [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `d45ea94` | `verify` et Vercel verts, mergeable | Draft. Ajoute la migration `20261022142500_shop_balance_purchase_reason`, non appliquée en Production. Aucune autorisation de migration. |
+| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `bee52c3` | `verify` et Vercel verts, mergeable | Draft. Attend les décisions de consentement, rétention et hôte du worker (propositions P1–P6, non approuvées). |
+
+#315 et #316 sont fusionnées. Les décisions déjà acquises restent valables : aucune migration, interruption de writers, restauration Neon, activation de drapeau ou cron, collecte vocale réelle ni notification Discord réelle sans accord écrit pour l’action précise.
+
+## Recette navigateur : exécutions distinctes
+
+- 29/29 : dernier run complet rapporté, sur `1dce077`.
+- 20/22 plus reprises ciblées : exécution distincte, sur un autre SHA. Ne pas additionner ni confondre les deux.
+- Un run local plus ancien (`e27741a`) a été interrompu à l’étape 7 : ce n’est pas un succès.
+- « Code présent » n’est jamais « validé en service » : une recette locale ou sur mock ne valide pas la Production.
+
+## Reprise
+
+1. XP : demander l’autorisation de la fenêtre (sauvegarde fraîche restaurée sur cible isolée, application de la migration `20261022142500`, plan de repli). Le script de bascule, le plan de maintenance et la vérification de restauration Docker sont en préparation, sans exécution en Production ; leur état sera porté par la PR correspondante.
+2. Vocal : faire approuver séparément consentement, périmètre, visibilité, rétention, retrait et hôte du worker avant toute mise en service.
+3. Hors périmètre, à faire approuver avant construction : paiement intégré, catégories MVP personnalisables par communauté, hors-ligne complet.
