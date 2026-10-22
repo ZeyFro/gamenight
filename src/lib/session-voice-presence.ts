@@ -13,7 +13,8 @@ import type { SessionVoiceConfig } from "./session-voice-config";
 export { sessionVoiceConfig } from "./session-voice-config";
 export type { SessionVoiceConfig } from "./session-voice-config";
 
-export async function grantSessionVoiceConsent(sessionId: string, userId: string, now = wallClockNow()) {
+// `consentedAt` est un instant réel (comme `startedAt` des intervalles et le défaut `now()` du schéma), jamais une heure murale.
+export async function grantSessionVoiceConsent(sessionId: string, userId: string, now = new Date()) {
   return prisma.$transaction(async tx => {
     const users = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${userId} FOR SHARE`;
     if (!users.length) return false;

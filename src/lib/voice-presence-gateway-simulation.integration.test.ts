@@ -110,17 +110,9 @@ describe.skipIf(!TEST_DATABASE_URL)("simulation du Gateway vocal (faux serveur W
     );
     return runtime;
   }
-  /**
-   * Accord via le chemin applicatif réel, puis `consentedAt` ramené à un instant réel
-   * passé (voir le test `it.fails` plus bas : `grantSessionVoiceConsent` écrit
-   * `wallClockNow()` alors que la comparaison se fait à un instant réel).
-   */
+  /** Accord via le chemin applicatif réel (aucun antidatage de consentedAt). */
   async function grant(userId: string) {
     expect(await presence.grantSessionVoiceConsent(SESSION_ID, userId)).toBe(true);
-    await db.sessionVoicePresenceConsent.update({
-      where: { sessionId_userId: { sessionId: SESSION_ID, userId } },
-      data: { consentedAt: new Date(Date.now() - 60_000) },
-    });
   }
   const intervalsFor =(userId: string) => db.sessionVoicePresenceInterval.findMany({ where: { sessionId: SESSION_ID, userId } });
 
@@ -155,20 +147,36 @@ describe.skipIf(!TEST_DATABASE_URL)("simulation du Gateway vocal (faux serveur W
     expect(onFatal).not.toHaveBeenCalled();
   }, 40_000);
 
-  // BUG CONNU, NON CORRIGE (hors périmètre de ce lot) : `grantSessionVoiceConsent` enregistre
-  // `consentedAt = wallClockNow()` (Europe/Paris lu comme UTC, soit +1 h/+2 h) tandis que
-  // `storeSessionVoiceInterval` le compare à `new Date(interval.startedAt)` (instant réel) :
-  // une présence dans les 1-2 h suivant l'accord est écartée. `it.fails` passe tant que le bug
-  // existe ; il échouera (et devra devenir `it`) une fois le bug corrigé.
-  it.fails("accorde l'accord sans décaler consentedAt dans le futur (bug horloge murale connu)", async () => {
-    await presence.grantSessionVoiceConsent(SESSION_ID, ALICE_ID);
-    await startWorker();
-    await vi.waitFor(() => expect(fake.received.some(p => p.op === 2)).toBe(true), { timeout: 10_000 });
-    fake.voiceState(ALICE_DISCORD, CHANNEL_ID);
-    await sleep(1_300);
-    fake.voiceState(ALICE_DISCORD, null);
-    await vi.waitFor(async () => expect((await intervalsFor(ALICE_ID)).length).toBe(1), { timeout: 3_000 });
-  }, 20_000);
+  // Régression : consentedAt est un instant réel, pas une heure murale décalée de 1-2 h
+  // (sinon toute présence dans les 1-2 h suivant l'accord était écartée).
+  it.each([[1_000, "1 s"], [60 * 60_000, "1 h"], [2 * 60 * 60_000, "2 h"]])(
+    "compte une présence arrivant %d ms (%s) après l'accord réel",
+    async offset => {
+      const consentAt = Date.now();
+      await grant(ALICE_ID);
+      const consent = await db.sessionVoicePresenceConsent.findFirstOrThrow({ where: { sessionId: SESSION_ID, userId: ALICE_ID } });
+      expect(Math.abs(consent.consentedAt.getTime() - consentAt)).toBeLessThan(5_000);
+      // Seul Date est simulé (minuteries réelles conservées) : la présence a lieu `offset` ms après l'accord.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(consentAt + offset);
+        await startWorker();
+        await vi.waitFor(() => expect(fake.received.some(p => p.op === 2)).toBe(true), { timeout: 10_000 });
+        fake.voiceState(ALICE_DISCORD, CHANNEL_ID);
+        await sleep(100);
+        vi.setSystemTime(consentAt + offset + 2_000);
+        fake.voiceState(ALICE_DISCORD, null);
+        await vi.waitFor(async () => expect((await intervalsFor(ALICE_ID)).length).toBe(1), { timeout: 10_000 });
+        const [stored] = await intervalsFor(ALICE_ID);
+        expect(stored.durationSeconds).toBeGreaterThanOrEqual(1);
+        expect(stored.durationSeconds).toBeLessThanOrEqual(2);
+        expect(stored.startedAt.getTime()).toBeGreaterThanOrEqual(consentAt + offset);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+    40_000,
+  );
 
   it("une coupure réseau est reprise par RESUME et la lacune est refermée sans créer de durée", async () => {
     await grant(ALICE_ID);
