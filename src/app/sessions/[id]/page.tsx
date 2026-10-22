@@ -65,6 +65,8 @@ import { SessionPreparationPanel } from "@/components/sessions/SessionPreparatio
 import { SessionGallery } from "@/components/sessions/SessionGallery";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
+import { readSessionVoicePresence } from "@/lib/session-voice-presence";
+import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -93,13 +95,13 @@ export default async function SessionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; chronicle?: string; gallery?: string }>;
+  searchParams: Promise<{ discord?: string; deadline?: string; error?: string; chronicle?: string; gallery?: string; voice?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   const { id } = await params;
-  const { discord, deadline, error, chronicle, gallery } = await searchParams;
+  const { discord, deadline, error, chronicle, gallery, voice } = await searchParams;
   const discordMessage = discord ? DISCORD_MESSAGES[discord] : null;
   const deadlineAdjusted = deadline === "ajustee";
   const errorMessage = error ? SESSION_SCHEDULE_ERROR_MESSAGES[error] : null;
@@ -126,6 +128,7 @@ export default async function SessionDetailPage({
   // src/lib/session-access.ts, source de vérité unique.
   const accessRole = await getSessionAccessRole(user.id, session.id);
   if (!accessRole) notFound();
+  const voicePresence = await readSessionVoicePresence(session.id, user.id);
   const galleryCommunityId = await statsCommunityIdForSession(session.communityId);
   const galleryCommunity = await prisma.community.findUnique({ where: { id: galleryCommunityId }, select: { sessionGalleryEnabled: true } });
   const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
@@ -381,6 +384,7 @@ export default async function SessionDetailPage({
         </section>
       )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
+      {voicePresence && <SessionVoicePresencePanel sessionId={session.id} presence={voicePresence} result={voice} />}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
