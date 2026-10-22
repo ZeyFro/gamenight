@@ -37,6 +37,7 @@ import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { pageMetadata } from "@/lib/page-title";
+import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 
 export const metadata = pageMetadata("Soirées");
 
@@ -155,6 +156,10 @@ export default async function SessionsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   await requireCommunityChosen(user.id, "/sessions");
+  const isVoicePresenceAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
+    where: { userId: user.id, status: "ACTIVE", role: { in: ["ADMIN", "OWNER"] }, community: { status: "ACTIVE" } },
+    select: { communityId: true },
+  });
 
   const {
     error,
@@ -265,6 +270,11 @@ export default async function SessionsPage({
           <ButtonLink href="/sessions/sondages" variant="secondary" size="sm">
             Préparer une soirée
           </ButtonLink>
+          {isVoicePresenceAdmin && (
+            <ButtonLink href="/admin/voice-presence" variant="secondary" size="sm">
+              Durées vocales
+            </ButtonLink>
+          )}
           {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
           <ButtonLink href="/roulette" variant="secondary" size="sm">
             🎰 Roulette

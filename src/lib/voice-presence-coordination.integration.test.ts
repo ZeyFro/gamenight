@@ -1,0 +1,363 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+const COMMUNITY_ID = "voice-control-community";
+const USER_ID = "voice-control-user";
+const SESSION_ID = "voice-control-session";
+
+vi.mock("@/lib/prisma", async () => {
+  const { PrismaClient } = await import("@prisma/client");
+  return { prisma: TEST_DATABASE_URL ? new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) : {} };
+});
+
+describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence vocale", () => {
+  let db: import("@prisma/client").PrismaClient;
+  let otherDb: import("@prisma/client").PrismaClient;
+  let coordination: typeof import("./voice-presence-coordination");
+  let retention: typeof import("./voice-presence-retention");
+
+  beforeAll(async () => {
+    db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
+    otherDb = new (await import("@prisma/client")).PrismaClient({ datasourceUrl: TEST_DATABASE_URL! });
+    coordination = await import("./voice-presence-coordination");
+    retention = await import("./voice-presence-retention");
+  });
+
+  afterAll(async () => { await Promise.all([db.$disconnect(), otherDb.$disconnect()]); });
+
+  beforeEach(async () => {
+    await db.sessionVoicePresenceGap.deleteMany({ where: { sessionId: SESSION_ID } });
+    await db.sessionVoicePresenceControl.deleteMany({ where: { sessionId: SESSION_ID } });
+    await db.sessionVoicePresenceInterval.deleteMany({ where: { sessionId: SESSION_ID } });
+    await db.sessionVoicePresenceConsent.deleteMany({ where: { sessionId: SESSION_ID } });
+    await db.session.deleteMany({ where: { id: SESSION_ID } });
+    await db.communityChannelConfig.deleteMany({ where: { communityId: COMMUNITY_ID } });
+    await db.community.deleteMany({ where: { id: COMMUNITY_ID } });
+    await db.user.deleteMany({ where: { id: { in: [USER_ID, `${USER_ID}-active`] } } });
+    await db.community.create({ data: { id: COMMUNITY_ID, slug: COMMUNITY_ID, name: "Voice control", status: "ACTIVE" } });
+    await db.user.create({ data: { id: USER_ID, discordId: "891234567890123456", discordName: "Voice member" } });
+    await db.session.create({ data: {
+      id: SESSION_ID,
+      communityId: COMMUNITY_ID,
+      createdById: USER_ID,
+      date: new Date("2026-10-22T10:00:00.000Z"),
+      status: "SCHEDULED",
+    } });
+  });
+
+  it("fences a second worker and records a gap when an expired lease is taken over", async () => {
+    const now = new Date("2026-10-22T20:00:00.000Z");
+    await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: USER_ID } });
+    const [first, concurrent] = await Promise.all([
+      coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-a", now, 30_000),
+      coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-b", now, 30_000),
+    ]);
+    expect([first.claimed, concurrent.claimed].filter(Boolean)).toHaveLength(1);
+    const initialGeneration = first.claimed ? first.generation : concurrent.generation;
+
+    const takeover = await coordination.claimSessionVoicePresenceLease(
+      SESSION_ID,
+      first.claimed ? "worker-b" : "worker-a",
+      new Date(now.getTime() + 31_000),
+      30_000,
+    );
+
+    expect(takeover).toMatchObject({ claimed: true, generation: initialGeneration! + 1, gapDetected: true });
+    const state = await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } });
+    expect(state.gapDetected).toBe(true);
+    expect(state.gapStartedAt).toEqual(now);
+    expect(state.lastGapAt).toBeNull();
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject([{ startedAt: now, resumedAt: null }]);
+
+    await coordination.markSessionVoicePresenceGap(
+      SESSION_ID,
+      first.claimed ? "worker-b" : "worker-a",
+      initialGeneration! + 1,
+      new Date(now.getTime() + 33_000),
+    );
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID, resumedAt: null } })).toBe(1);
+
+    const recoveredAt = new Date(now.getTime() + 36_000);
+    await coordination.markSessionVoicePresenceGapRecovered(
+      SESSION_ID,
+      first.claimed ? "worker-b" : "worker-a",
+      initialGeneration! + 1,
+      recoveredAt,
+    );
+    const recovered = await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } });
+    expect(recovered.gapStartedAt).toEqual(now);
+    expect(recovered.lastGapAt).toEqual(recoveredAt);
+    expect(await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID } })).toMatchObject([
+      { startedAt: now, resumedAt: recoveredAt, generation: initialGeneration! + 1 },
+    ]);
+    await coordination.markSessionVoicePresenceGapRecovered(
+      SESSION_ID,
+      first.claimed ? "worker-b" : "worker-a",
+      initialGeneration! + 1,
+      new Date(recoveredAt.getTime() + 1_000),
+    );
+    expect(await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject([{ startedAt: now, resumedAt: recoveredAt }]);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  });
+
+  it("retains each consecutive crash gap and closes only on a confirmed recovery", async () => {
+    const t0 = new Date("2026-10-22T20:00:00.000Z");
+    await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: USER_ID } });
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-a", t0, 10_000))
+      .toMatchObject({ claimed: true, generation: 1 });
+
+    const firstRestart = await coordination.claimSessionVoicePresenceLease(
+      SESSION_ID, "worker-b", new Date(t0.getTime() + 11_000), 10_000,
+    );
+    expect(firstRestart).toMatchObject({ claimed: true, generation: 2, gapDetected: true });
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(1);
+    await coordination.markSessionVoicePresenceGapRecovered(
+      SESSION_ID, "worker-b", 2, new Date(t0.getTime() + 15_000),
+    );
+
+    await coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-b", new Date(t0.getTime() + 20_000), 10_000);
+    const secondRestart = await coordination.claimSessionVoicePresenceLease(
+      SESSION_ID, "worker-c", new Date(t0.getTime() + 31_000), 10_000,
+    );
+    expect(secondRestart).toMatchObject({ claimed: true, generation: 3, gapDetected: true });
+    await coordination.markSessionVoicePresenceGapRecovered(
+      SESSION_ID, "worker-c", 3, new Date(t0.getTime() + 35_000),
+    );
+
+    const gaps = await db.sessionVoicePresenceGap.findMany({ where: { sessionId: SESSION_ID }, orderBy: { startedAt: "asc" } });
+    expect(gaps).toMatchObject([
+      { generation: 2, startedAt: t0, resumedAt: new Date(t0.getTime() + 15_000) },
+      { generation: 3, startedAt: new Date(t0.getTime() + 20_000), resumedAt: new Date(t0.getTime() + 35_000) },
+    ]);
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  });
+
+  it("does not claim a lease without non-expired consent", async () => {
+    const now = new Date("2026-10-22T20:00:00.000Z");
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-a", now))
+      .toEqual({ claimed: false });
+    expect(await db.sessionVoicePresenceControl.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+
+    await db.sessionVoicePresenceConsent.create({ data: {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      expiresAt: new Date(now.getTime() - 1),
+    } });
+    expect(await coordination.claimSessionVoicePresenceLease(SESSION_ID, "worker-a", now))
+      .toEqual({ claimed: false });
+    expect(await db.sessionVoicePresenceControl.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+
+  });
+
+  it("commits a session cutoff without waiting for the worker", async () => {
+    const at = new Date("2026-10-22T20:15:00.000Z");
+    const consent = await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: USER_ID } });
+    await db.sessionVoicePresenceInterval.create({ data: {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      consentId: consent.id,
+      channelId: "456789012345678901",
+      startedAt: new Date(at.getTime() - 60_000),
+      endedAt: new Date(at.getTime() - 30_000),
+      durationSeconds: 30,
+      expiresAt: new Date(at.getTime() + 29 * 24 * 60 * 60_000),
+    } });
+    await db.sessionVoicePresenceGap.create({ data: {
+      sessionId: SESSION_ID,
+      generation: 1,
+      startedAt: new Date(at.getTime() - 120_000),
+    } });
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      leaseOwner: "worker-a",
+      leaseExpiresAt: new Date(at.getTime() + 30_000),
+      heartbeatAt: at,
+    } });
+
+    await db.$transaction(async tx => {
+      await tx.session.update({ where: { id: SESSION_ID }, data: { status: "DONE" } });
+      await coordination.requestSessionVoicePresenceStop(tx, SESSION_ID, "FINALIZE", at);
+    });
+
+    expect(await db.session.findUniqueOrThrow({ where: { id: SESSION_ID } })).toMatchObject({ status: "DONE" });
+    expect(await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ status: "STOP_REQUESTED", stopAt: at, leaseOwner: "worker-a" });
+
+    expect(await coordination.finalizeSessionVoicePresenceCommand(SESSION_ID)).toBe(true);
+    expect(await db.sessionVoicePresenceConsent.findUniqueOrThrow({ where: { sessionId_userId: { sessionId: SESSION_ID, userId: USER_ID } } }))
+      .toMatchObject({ expiresAt: new Date(at.getTime() + 30 * 24 * 60 * 60_000) });
+    expect(await db.sessionVoicePresenceInterval.findFirstOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ expiresAt: new Date(at.getTime() + 30 * 24 * 60 * 60_000) });
+    expect(await db.sessionVoicePresenceGap.findFirstOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ expiresAt: new Date(at.getTime() + 30 * 24 * 60 * 60_000) });
+  });
+
+  it("purges existing consent and intervals in the cancellation transaction", async () => {
+    const at = new Date();
+    const consent = await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: USER_ID } });
+    const start = new Date("2026-10-22T20:00:00.000Z");
+    await db.sessionVoicePresenceInterval.create({ data: {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      consentId: consent.id,
+      channelId: "456789012345678901",
+      startedAt: start,
+      endedAt: new Date(start.getTime() + 60_000),
+      durationSeconds: 60,
+      expiresAt: new Date(start.getTime() + 30 * 24 * 60 * 60_000),
+    } });
+    await db.sessionVoicePresenceGap.create({ data: {
+      sessionId: SESSION_ID,
+      generation: 1,
+      startedAt: new Date(start.getTime() - 60_000),
+    } });
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      leaseOwner: "worker-a",
+      leaseExpiresAt: new Date(at.getTime() + 30_000),
+      gapDetected: true,
+      gapStartedAt: new Date(start.getTime() - 60_000),
+      lastGapAt: new Date(start.getTime() - 30_000),
+    } });
+
+    await db.$transaction(async tx => {
+      await tx.session.update({ where: { id: SESSION_ID }, data: { status: "CANCELLED" } });
+      await coordination.requestSessionVoicePresenceStop(tx, SESSION_ID, "PURGE", at);
+    });
+
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceConsent.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ status: "PURGE_REQUESTED", gapDetected: false, gapStartedAt: null, lastGapAt: null });
+    expect(await coordination.finalizeSessionVoicePresenceCommand(SESSION_ID)).toBe(true);
+    expect(await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } }))
+      .toMatchObject({ status: "PURGED", gapDetected: false, gapStartedAt: null, lastGapAt: null });
+  });
+
+  it("does not create a purge command when cancellation has no worker control to stop", async () => {
+    await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: USER_ID } });
+    await db.$transaction(async tx => {
+      await tx.session.update({ where: { id: SESSION_ID }, data: { status: "CANCELLED" } });
+      await coordination.requestSessionVoicePresenceStop(tx, SESSION_ID, "PURGE", new Date());
+    });
+
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
+    expect(await db.sessionVoicePresenceConsent.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  });
+
+  it("purges only expired voice intervals and consent rows in bounded batches", async () => {
+    const now = new Date("2026-10-22T20:00:00.000Z");
+    await db.user.create({ data: { id: `${USER_ID}-active`, discordId: "789012345678901235", discordName: "Active member" } });
+    const expiredConsent = await db.sessionVoicePresenceConsent.create({ data: {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      expiresAt: new Date(now.getTime() - 1),
+    } });
+    const activeConsent = await db.sessionVoicePresenceConsent.create({ data: {
+      sessionId: SESSION_ID,
+      userId: `${USER_ID}-active`,
+      expiresAt: new Date(now.getTime() + 1),
+    } });
+    await db.sessionVoicePresenceInterval.create({ data: {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      consentId: expiredConsent.id,
+      channelId: "456789012345678901",
+      startedAt: new Date(now.getTime() - 31 * 24 * 60 * 60_000),
+      endedAt: new Date(now.getTime() - 30 * 24 * 60 * 60_000 - 1),
+      durationSeconds: 60,
+      expiresAt: new Date(now.getTime() - 1),
+    } });
+
+    const preview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 1, dryRun: true });
+    expect(preview).toMatchObject({ expiredIntervals: 1, expiredConsents: 1, intervalsDeleted: 0, consentsDeleted: 0 });
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(1);
+
+    const purged = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 1, dryRun: false });
+    expect(purged).toMatchObject({ expiredIntervals: 1, expiredConsents: 1, intervalsDeleted: 1, consentsDeleted: 1 });
+    expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+    expect(await db.sessionVoicePresenceConsent.findUnique({ where: { id: activeConsent.id } })).not.toBeNull();
+  });
+
+  it("purges canceled control tombstones and finalized gap metadata after 30 days", async () => {
+    const now = new Date("2026-10-22T20:00:00.000Z");
+    const oldStart = new Date(now.getTime() - 31 * 24 * 60 * 60_000);
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      status: "PURGED",
+      gapDetected: false,
+      gapStartedAt: oldStart,
+      lastGapAt: new Date(oldStart.getTime() + 60_000),
+    } });
+    await db.sessionVoicePresenceGap.create({ data: {
+      sessionId: SESSION_ID,
+      generation: 1,
+      startedAt: oldStart,
+      resumedAt: new Date(oldStart.getTime() + 60_000),
+      expiresAt: new Date(now.getTime() - 1),
+    } });
+
+    const canceledPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    expect(canceledPreview).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 0, gapsDeleted: 0 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).not.toBeNull();
+    const canceledPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    expect(canceledPurge).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 1, gapsDeleted: 1 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      status: "FINALIZED",
+      stopAt: new Date(now.getTime() - 30 * 24 * 60 * 60_000 - 1),
+      gapDetected: true,
+      gapStartedAt: oldStart,
+      lastGapAt: new Date(oldStart.getTime() + 60_000),
+    } });
+    await db.session.update({ where: { id: SESSION_ID }, data: { status: "DONE" } });
+    await db.sessionVoicePresenceGap.create({ data: {
+      sessionId: SESSION_ID,
+      generation: 2,
+      startedAt: oldStart,
+    } });
+    const finalizedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    expect(finalizedPurge).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 1, gapsDeleted: 1 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
+  });
+
+  it("cleans an orphaned cancellation command only after its lease is absent or expired", async () => {
+    const now = new Date("2026-10-22T20:00:00.000Z");
+    await db.session.update({ where: { id: SESSION_ID }, data: { status: "CANCELLED" } });
+    await db.sessionVoicePresenceControl.create({ data: {
+      sessionId: SESSION_ID,
+      status: "PURGE_REQUESTED",
+      leaseOwner: "worker-a",
+      leaseExpiresAt: new Date(now.getTime() + 1),
+    } });
+
+    const livePreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    expect(livePreview).toMatchObject({ expiredControls: 0, controlsDeleted: 0 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).not.toBeNull();
+
+    await db.sessionVoicePresenceControl.update({
+      where: { sessionId: SESSION_ID },
+      data: { leaseExpiresAt: new Date(now.getTime() - 1) },
+    });
+    const expiredPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    expect(expiredPreview).toMatchObject({ expiredControls: 1, controlsDeleted: 0 });
+    const expiredPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    expect(expiredPurge).toMatchObject({ expiredControls: 1, controlsDeleted: 1 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
+
+    await db.sessionVoicePresenceControl.create({ data: { sessionId: SESSION_ID, status: "PURGE_REQUESTED" } });
+    const unleasedPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    expect(unleasedPreview).toMatchObject({ expiredControls: 1, controlsDeleted: 0 });
+    const unleasedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    expect(unleasedPurge).toMatchObject({ expiredControls: 1, controlsDeleted: 1 });
+    expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
+  });
+});

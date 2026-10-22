@@ -10,9 +10,11 @@ import { describe, expect, it } from "vitest";
  * `process.env["NOM"]`) et ne lit que `src`, pas les scripts.
  */
 
-/** Fournies par Node / Vercel, jamais à saisir dans `.env`. */
+/** Fournies par Next.js / Vercel, jamais à saisir dans `.env`. */
 const PLATFORM_VARS = new Set([
   "NODE_ENV",
+  "NEXT_RUNTIME",
+  "VERCEL",
   "VERCEL_ENV",
   "VERCEL_URL",
   "VERCEL_PROJECT_PRODUCTION_URL",

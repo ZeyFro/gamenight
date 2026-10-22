@@ -1,0 +1,50 @@
+# Worker de présence vocale + Postgres jetable de test.
+# Les valeurs sont lues dans l'environnement du shell ou d'un --env-file hors dépôt :
+# ce fichier ne contient que des NOMS de variables, jamais de secret.
+#   docker compose -f docker/voice-worker/compose.yaml build
+#   docker compose -f docker/voice-worker/compose.yaml up -d voice-worker
+# Collecte éteinte par défaut : VOICE_PRESENCE_ENABLED vaut false tant qu'il n'est pas défini.
+name: gamenight-voice
+
+services:
+  voice-worker:
+    build:
+      context: ../..
+      dockerfile: docker/voice-worker/Dockerfile
+    image: gamenight-voice-worker:local
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000,mode=0750
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      NODE_ENV: production
+      VOICE_PRESENCE_WORKER_MODE: standalone
+      VOICE_PRESENCE_ENABLED: ${VOICE_PRESENCE_ENABLED:-false}
+      # Obligatoires seulement si VOICE_PRESENCE_ENABLED=true ; valeurs jamais versionnées.
+      DATABASE_URL: ${DATABASE_URL:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_BOT_GUILD_ID: ${DISCORD_BOT_GUILD_ID:-}
+      VOICE_PRESENCE_CONSENT_DECISION: ${VOICE_PRESENCE_CONSENT_DECISION:-}
+      VOICE_PRESENCE_RETENTION_DECISION: ${VOICE_PRESENCE_RETENTION_DECISION:-}
+      VOICE_PRESENCE_POLL_INTERVAL_MS: ${VOICE_PRESENCE_POLL_INTERVAL_MS:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+
+  # Postgres jetable de test (jamais Neon). Profil désactivé par défaut :
+  #   docker compose -f docker/voice-worker/compose.yaml --profile pg-test up -d voice-pg
+  voice-pg:
+    profiles: [pg-test]
+    image: postgres:16-alpine
+    container_name: gamenight-fixe3-voice-pg
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: gamenight_fixe3_voice
+    ports:
+      - "127.0.0.1:55461:5432"

@@ -33,6 +33,7 @@ import { excludeVetoed, isVoteVetoEnabled } from "@/lib/session-veto";
 import { loadVetoedProposalIds } from "@/lib/session-veto-db";
 import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
+import { requestSessionVoicePresenceStop } from "@/lib/voice-presence-coordination";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Prisma, Session, SessionStatus, User } from "@prisma/client";
@@ -568,6 +569,7 @@ export async function cancelSession(sessionId: string): Promise<void> {
       data: { status: "CANCELLED" },
       select: { announceViaBot: true },
     });
+    await requestSessionVoicePresenceStop(tx, sessionId, "PURGE", wallClockNow());
     if (updated.announceViaBot) {
       await enqueueSessionAnnounceUpdate(sessionId, tx);
     }
@@ -618,6 +620,7 @@ export async function cancelRecurringSessions(sessionId: string, userId: string)
       select: { id: true, announceViaBot: true },
     });
     for (const session of canceled) {
+      await requestSessionVoicePresenceStop(tx, session.id, "PURGE", wallClockNow());
       if (session.announceViaBot) await enqueueSessionAnnounceUpdate(session.id, tx);
     }
     return canceled.map((session) => session.id);
@@ -657,6 +660,7 @@ export async function markSessionDone(
       data: { status: "DONE" },
     });
     if (result.count === 0) return null;
+    await requestSessionVoicePresenceStop(tx, sessionId, "FINALIZE", wallClockNow());
 
     const updated = await tx.session.findUnique({
       where: { id: sessionId },
