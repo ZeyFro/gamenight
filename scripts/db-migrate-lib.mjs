@@ -25,6 +25,9 @@ export function readArgs(argv) {
     const match = /^--([a-z-]+)(?:=(.*))?$/.exec(arg);
     if (!match || !known.has(match[1])) throw new RefusalError(`Argument inconnu : ${arg.split("=")[0]}`);
     const [, name, value] = match;
+    if (["execute", "allow-local"].includes(name) && value !== undefined) {
+      throw new RefusalError(`--${name} est un drapeau sans valeur (reçu : ${arg}) : écrire ${"--" + name} seul, ou l'omettre`);
+    }
     if (name === "execute") args.execute = true;
     else if (name === "allow-local") args.allowLocal = true;
     else if (name === "confirm-database") args.confirm = value;
@@ -72,10 +75,12 @@ export function parseTarget(connectionString) {
  *   `runtimeUrl` ou à `runtimeRole`; si aucun des deux n'est fourni, un avertissement le dit;
  * - hors machine locale : `<hôte>[:port]/<base>` exact attendu et hôte non poolé
  *   (pgbouncer en mode transaction casse les verrous consultatifs de Prisma);
+ * - hors machine locale avec `execute` : le contrôle « rôle de migration ≠ rôle runtime » est obligatoire
+ *   (refus s'il n'a pas pu être fait);
  * - en local : `--allow-local` et base `gamenight_*` uniquement.
- * @param {{ migrationUrl?: string, runtimeUrl?: string, runtimeRole?: string, expectedTarget?: string, allowLocal?: boolean }} options
+ * @param {{ migrationUrl?: string, runtimeUrl?: string, runtimeRole?: string, expectedTarget?: string, allowLocal?: boolean, execute?: boolean }} options
  */
-export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTarget, allowLocal }) {
+export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTarget, allowLocal, execute }) {
   if (!migrationUrl) throw new RefusalError("MIGRATION_DATABASE_URL est obligatoire (jamais DATABASE_URL)");
   const target = parseTarget(migrationUrl);
   const warnings = [];
@@ -93,6 +98,9 @@ export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTa
       throw new RefusalError("Base locale refusée : le nom doit correspondre à ^gamenight_[a-z0-9_]+$");
     }
     return { target, warnings };
+  }
+  if (execute && !runtimeName) {
+    throw new RefusalError("--execute hors machine locale exige DATABASE_URL ou GAMENIGHT_RUNTIME_ROLE (contrôle « rôle de migration ≠ rôle runtime » impossible)");
   }
   if (!expectedTarget) throw new RefusalError("GAMENIGHT_EXPECTED_TARGET (<hôte>[:port]/<base>) est obligatoire hors machine locale");
   if (target.pooled) throw new RefusalError("Hôte poolé refusé : utiliser la connexion directe pour migrer");

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,6 +38,9 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
 
   beforeAll(async () => {
     admin = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
+    // Reliquats d'un run interrompu (le rôle ne peut être supprimé tant qu'une base lui accorde des droits).
+    const old = await admin.$queryRawUnsafe<{ datname: string }[]>(`SELECT datname FROM pg_database WHERE datname LIKE 'gamenight\_dbmigrate\_%'`);
+    for (const { datname } of old) await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
     await admin.$executeRawUnsafe(`CREATE DATABASE "${NEW_DB}"`);
   }, 60_000);
   afterAll(async () => {
@@ -71,6 +74,21 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     const noFlag = run([expectAll], { MIGRATION_DATABASE_URL: withDatabase(NEW_DB) }, { flags: [] });
     expect(noFlag.status).toBe(2);
     expect(noFlag.stderr).toContain("--allow-local");
+  });
+
+  it("refuse (2) un drapeau booléen avec valeur, et --execute hors local sans contrôle du rôle runtime", () => {
+    const expectAll = `--expect=${ALL.join(",")}`;
+    const url = withDatabase(NEW_DB);
+    for (const flag of ["--execute=false", "--allow-local=non"]) {
+      const out = run([expectAll, flag], { MIGRATION_DATABASE_URL: url });
+      expect(out.status, flag).toBe(2);
+      expect(out.stderr).toContain("drapeau sans valeur");
+    }
+    const remote = `${"postgresql:"}//gn_migrator:pw-remote@db-direct.example.invalid:5432/appdb`;
+    const exec = run([expectAll, "--execute", "--confirm-database=appdb"], { MIGRATION_DATABASE_URL: remote, GAMENIGHT_EXPECTED_TARGET: "db-direct.example.invalid:5432/appdb" });
+    expect(exec.status).toBe(2);
+    expect(exec.stderr).toContain("GAMENIGHT_RUNTIME_ROLE");
+    expect(exec.stdout + exec.stderr).not.toContain("pw-remote");
   });
 
   it("refuse (2) un rôle de migration identique au rôle runtime (URL ou nom) sans toucher la base", async () => {
@@ -145,6 +163,8 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
       expect(retry.status).toBe(2);
       expect(retry.stderr).toContain("inachevée");
     } finally {
+      // Le lien d'abord (jamais suivi par un rmSync récursif), puis le dossier.
+      try { unlinkSync(join(work, "node_modules")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       rmSync(work, { recursive: true, force: true });
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`);
     }

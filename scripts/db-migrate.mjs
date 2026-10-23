@@ -47,6 +47,7 @@ async function main() {
     runtimeRole: process.env.GAMENIGHT_RUNTIME_ROLE,
     expectedTarget: process.env.GAMENIGHT_EXPECTED_TARGET,
     allowLocal: args.allowLocal,
+    execute: args.execute,
   });
   secrets.push(target.password);
   for (const warning of warnings) say(`AVERTISSEMENT : ${warning}`);

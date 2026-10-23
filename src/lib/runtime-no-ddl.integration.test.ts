@@ -31,6 +31,9 @@ describe.skipIf(!TEST_DATABASE_URL)("rôle runtime sans DDL", () => {
 
   beforeAll(async () => {
     admin = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
+    // Reliquats d'un run interrompu : bases d'abord (elles portent les droits du rôle global), puis le rôle.
+    const old = await admin.$queryRawUnsafe<{ datname: string }[]>(`SELECT datname FROM pg_database WHERE datname LIKE 'gamenight\_noddl\_%'`);
+    for (const { datname } of old) await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
     await admin.$executeRawUnsafe(`DROP ROLE IF EXISTS ${ROLE}`);
     await admin.$executeRawUnsafe(`CREATE DATABASE "${DB}"`);
     const deploy = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], {

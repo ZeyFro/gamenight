@@ -16,6 +16,11 @@ describe("db-migrate : arguments", () => {
       .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true });
   });
 
+  it("refuse une valeur sur les drapeaux booléens", () => {
+    for (const arg of ["--execute=false", "--execute=", "--allow-local=non"]) expect(() => readArgs([arg])).toThrow(/drapeau sans valeur/);
+    expect(readArgs(["--execute"]).execute).toBe(true);
+  });
+
   it("refuse tout argument inconnu ou de forme `--nom valeur`", () => {
     expect(() => readArgs(["--exécute"])).toThrow(RefusalError);
     expect(() => readArgs(["--confirm-database", "appdb"])).toThrow(/inconnu/);
@@ -59,6 +64,14 @@ describe("db-migrate : cible", () => {
     expect(() => assertTarget({ migrationUrl: url("gn_migrator", "x", pooled, "appdb"), expectedTarget: `${pooled}/appdb` })).toThrow(/poolé/);
     const { target } = assertTarget({ migrationUrl: URL_MIGRATOR, runtimeUrl: URL_RUNTIME, expectedTarget: `${HOST.toUpperCase()}:5432/appdb` });
     expect(target.database).toBe("appdb");
+  });
+
+  it("hors local, --execute exige le contrôle du rôle runtime (URL ou nom)", () => {
+    const base = { migrationUrl: URL_MIGRATOR, expectedTarget: `${HOST}/appdb` };
+    expect(() => assertTarget({ ...base, execute: true })).toThrow(/GAMENIGHT_RUNTIME_ROLE/);
+    expect(assertTarget({ ...base, execute: false }).warnings[0]).toMatch(/NON effectué/);
+    expect(assertTarget({ ...base, execute: true, runtimeRole: "gn_runtime" }).warnings).toEqual([]);
+    expect(assertTarget({ ...base, execute: true, runtimeUrl: URL_RUNTIME }).warnings).toEqual([]);
   });
 
   it("local : --allow-local et base gamenight_* seulement", () => {
