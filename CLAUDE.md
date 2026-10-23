@@ -8,7 +8,7 @@ Les états de lots, rapports et CODEX-PROGRESS datés sont historiques : ils son
 Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (adaptateur Neon sur le chemin de déploiement) · Auth.js v5 (Discord OAuth) · Vercel · Vitest.
 
 ## Commandes
-- `npm run lint` · `npx tsc --noEmit` · `npx next build` (⚠ `npm run build` lance `prisma migrate deploy` hors `VERCEL_ENV=preview` : jamais sans `DATABASE_URL` locale pour la validation)
+- `npm run lint` · `npx tsc --noEmit` · `npx next build` (`npm run build` = `prisma generate` + `next build` : il ne migre jamais, ni en Production ni en Preview)
 - `npx vitest run <fichier>` : tests unitaires ciblés
 - Tests d'intégration : Postgres Docker local, jamais Neon. En session cloud, le hook SessionStart (`.claude/hooks/session-start.mjs`) fait les étapes 1-2 sans Docker (Postgres 16, 127.0.0.1:55439) et exporte `TEST_DATABASE_URL` : lancer directement l'étape 3.
   1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c checkpoint_timeout=1h -c max_wal_size=8GB`
@@ -24,7 +24,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (ada
 - Exception décidée par le propriétaire (2026-10-15) : la boucle roadmap (`scripts/work-roadmap.ps1`, suivi `docs/ROADMAP.md`) fusionne elle-même les PR `claude/lot[1-7]-*` qu'elle a construites, après la porte `scripts/roadmap-gate.mjs` et les contrôles `verify` et `Vercel` verts, puis attend le déploiement de production. Toute nouvelle migration est exclue de cette auto-fusion et exige une revue explicite. Claude ne fusionne jamais dans cette boucle : `gh pr merge` / `gh pr ready` lui restent interdits. Arrêt propre : fichier `logs/STOP`.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
-- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée par `prisma migrate deploy` au build de production ; jamais au build Preview). Changement Prisma seulement si justifié.
+- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée à la main avec `node scripts/db-migrate.mjs`, jamais par le build : un merge sur `main` ne migre plus la Production, l'opérateur applique les migrations avant de fusionner le code qui en dépend). Changement Prisma seulement si justifié.
 - Pas de refactor large, pas de try/catch silencieux.
 - Commits/PR en français, style `type(scope): …`.
 
@@ -59,6 +59,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - `WEB_PUSH_ENABLED` + `WEB_PUSH_VAPID_SUBJECT` / `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_PRIVATE_KEY` : Web Push uniquement après opt-in par appareil ; toutes les valeurs sont requises et le drapeau doit valoir `true`. Garder la clé privée dans l'environnement serveur, jamais dans le dépôt; migration `web_push_subscriptions`.
 - `SESSION_PREPARATION_ENABLED` : checklist de préparation individuelle sur les soirées planifiées (installation, mise à jour, micro et lobby) ; désactivée par défaut
 - `SESSION_VIDEO_ENABLED` : clips MP4 privés dans la galerie des soirées ; OFF par défaut, limite commune de 4 Mo et 8 médias, exige aussi `SESSION_MEDIA_BLOB_TOKEN` et l’activation de la galerie par communauté ; durée et codecs non garantis
+- `VOICE_PRESENCE_ENABLED` : intervalles vocaux associés à une soirée configurée ; OFF par défaut, exige guild/salons/session explicites et décision de consentement/rétention avant toute collecte ; 4 migrations vocales (`20261020150000`, `20261022120000`, `20261022130000`, `20261022140000`) non appliquées en Production : elles s'appliquent avec les 2 migrations XP (`20261019190000`, `20261022142500`) par une même exécution explicite de `scripts/db-migrate.mjs`, et AVANT le déploiement du code (la page détail d'une soirée et l'annulation/clôture interrogent les tables vocales) ; base indisponible : 7 échecs de découverte tolérés (le 8e est fatal) avec backoff plafonné à 300 s, puis sortie 1 (procédure : `docs/LIVRAISON-VOCAL.md`)
 Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`MODE=execute` pour les cleanups ; sinon dry-run). Routes `/api/cron/*` fail-closed : 503 sans `CRON_SECRET`.
 - `NOTIFICATION_EXECUTOR_ENABLED` : sans lui l'executor ne réclame ni n'envoie rien (`{enabled:false}`)
 - `GAME_PREPARATION_TIME_ENABLED` : affiche et autorise la saisie d'une durée estimée (1–10 080 minutes) sourcée sur la fiche jeu ; OFF par défaut
@@ -84,6 +85,9 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `TOURNAMENT_SCORES_ENABLED` : saisie facultative des scores de match (bracket seulement, ni annonces ni MP) ; exige la migration `tournament_match_scores`
 - `VOTE_VETO_ENABLED` : veto au vote de jeu (1 par personne et par soirée, remplaçable ; un jeu vetoé n'est ni retenu ni tiré ; veto refusé s'il ne reste aucun jeu candidat ; roulette asynchrone : 1 veto par participant tant que la soirée est à venir, relance sans les jeux vetoés, annonce éditée) ; exige les migrations `add_session_veto` et `add_roulette_veto`
 - `ROULETTE_PLAYER_FILTER_ENABLED` : roulette (asynchrone et instantanée) : ne tire que les jeux qui acceptent le nombre de joueurs inscrits, repli sur toutes les entrées si aucune ne convient ; allume aussi « Relancer » sans doublon et « Recommencer » de la roulette instantanée ; sans migration
+
+## Livraison (mise en service, rien n’est activé ni appliqué en Production)
+Procédures et preuves, une par domaine : `docs/LIVRAISON-XP.md` (migrations XP, invariants `scripts/xp-lot-invariants.mjs`), `docs/LIVRAISON-BARRIERE.md` (précontrôle `scripts/prod-precheck.mjs`, rôles, barrière d’écriture, sauvegarde, repli par stade, inventaire des writers), `docs/LIVRAISON-VOCAL.md` (worker, diagnostic d’hôte `scripts/voice-host-diagnostic.mjs`), `docs/LIVRAISON-DISCORD.md` (variables, permissions, crons externes, recette opérateur), `docs/LIVRAISON-PUSH-CALENDRIER.md`, `docs/LIVRAISON-TABLEAU.md` (code livré / activé / vérifié / reste exact). Les 6 migrations du lot XP + vocal s’appliquent en UNE exécution explicite de `scripts/db-migrate.mjs` AVANT le déploiement du code ; le build ne migre plus.
 
 ## Outils
 - Superpowers : planifier une grosse fonctionnalité.

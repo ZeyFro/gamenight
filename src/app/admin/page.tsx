@@ -12,6 +12,7 @@ import { NettoyageTab } from "@/components/admin/NettoyageTab";
 import { CommunitiesTab } from "@/components/admin/CommunitiesTab";
 import { isCommunityAdminEnabled } from "@/lib/community-admin";
 import { pageMetadata } from "@/lib/page-title";
+import Link from "next/link";
 
 export const metadata = pageMetadata("Admin");
 
@@ -50,6 +51,11 @@ export default async function AdminPage({
         <p className="mt-1 text-sm text-muted">
           Réservé aux admins du groupe.
         </p>
+        {process.env.VOICE_PRESENCE_ENABLED === "true" && (
+          <Link href="/admin/voice-presence" className="mt-2 inline-block text-sm font-medium text-accent hover:underline">
+            Consulter les durées vocales →
+          </Link>
+        )}
       </div>
 
       <AdminTabs active={tab} showCommunities={communitiesEnabled} />

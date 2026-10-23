@@ -195,6 +195,8 @@ model User {
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
   sessionAttendances    SessionAttendance[]
+  sessionVoicePresence  SessionVoicePresenceInterval[]
+  sessionVoicePresenceConsents SessionVoicePresenceConsent[]
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
@@ -537,6 +539,14 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum SessionVoicePresenceControlStatus {
+  ACTIVE
+  STOP_REQUESTED
+  PURGE_REQUESTED
+  FINALIZED
+  PURGED
+}
+
 // Une soirée. `date` porte la date ET l'heure visée (choisies à la
 // création) ; `decidedTime` est renseigné à la clôture (copie de `date`
 // pour l'instant — champ distinct pour une éventuelle renégociation future
@@ -670,6 +680,10 @@ model Session {
   proposals         Proposal[]
   results           SessionResult[]
   attendance        SessionAttendance[]
+  voicePresence     SessionVoicePresenceInterval[]
+  voicePresenceConsents SessionVoicePresenceConsent[]
+  voicePresenceControl SessionVoicePresenceControl?
+  voicePresenceGaps SessionVoicePresenceGap[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -1012,7 +1026,10 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  // Anciens achats : ils réduisaient la progression avant la séparation des soldes.
   SHOP_PURCHASE
+  // Débit du solde dépensable seulement ; exclu des agrégats de progression.
+  SHOP_BALANCE_PURCHASE
   // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
   // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
   // Garde les classements par période cohérents avec le solde corrigé.
@@ -1088,6 +1105,78 @@ model SessionAttendance {
 
   @@unique([sessionId, userId])
   @@index([communityId, userId, present])
+}
+
+// Intervalles vocaux d'une soirée. La collecte reste derrière
+// VOICE_PRESENCE_ENABLED et ne doit pas être activée avant décision de
+// consentement et de rétention.
+model SessionVoicePresenceInterval {
+  id              String   @id @default(cuid())
+  sessionId       String
+  userId          String
+  consentId       String?
+  channelId       String   @db.VarChar(20)
+  startedAt       DateTime
+  endedAt         DateTime
+  durationSeconds Int
+  expiresAt       DateTime
+  partial         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  session Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consent SessionVoicePresenceConsent? @relation(fields: [consentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId, channelId, startedAt], map: "SessionVoicePresenceInterval_sessionId_userId_channelId_started")
+  @@index([sessionId, userId])
+  @@index([expiresAt])
+}
+
+model SessionVoicePresenceConsent {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  consentedAt DateTime @default(now())
+  expiresAt   DateTime?
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intervals   SessionVoicePresenceInterval[]
+
+  @@unique([sessionId, userId])
+  @@index([userId, consentedAt])
+  @@index([expiresAt])
+}
+
+model SessionVoicePresenceControl {
+  sessionId     String                              @id
+  status        SessionVoicePresenceControlStatus   @default(ACTIVE)
+  generation    Int                                 @default(0)
+  leaseOwner    String?
+  leaseExpiresAt DateTime?
+  heartbeatAt   DateTime?
+  stopAt        DateTime?
+  gapDetected   Boolean                             @default(false)
+  gapStartedAt  DateTime?
+  lastGapAt     DateTime?
+  updatedAt     DateTime                            @default(now()) @updatedAt
+  session       Session                             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, leaseExpiresAt])
+}
+
+model SessionVoicePresenceGap {
+  id         String   @id @default(cuid())
+  sessionId  String
+  generation Int
+  startedAt  DateTime
+  resumedAt  DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, generation, startedAt])
+  @@index([sessionId, startedAt])
+  @@index([expiresAt])
 }
 
 model SessionRating {
@@ -1910,7 +1999,10 @@ model UserLifetimeStats {
 model CommunityMemberStats {
   communityId String
   userId String
+  // Progression de la saison, indépendante des dépenses de boutique.
   xpTotal Int @default(0)
+  // Réserve dépensable, remise à zéro avec la saison.
+  xpBalance Int @default(0)
   streakCount Int @default(0)
   streakLastActiveAt DateTime?
   bestStreakCount Int @default(0)
@@ -2904,6 +2996,7 @@ model CommunityGameEpitaph {
   updatedAt DateTime @updatedAt
 
   @@unique([communityId, gameId])
+  @@index([communityId, createdAt])
 }
 
 model CommunityExpression {

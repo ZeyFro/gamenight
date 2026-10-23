@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getValidSession } from "@/lib/valid-session";
 import { prisma } from "@/lib/prisma";
-import { webPushConfig } from "@/lib/web-push-config";
+import { logger } from "@/lib/logger";
+import { webPushConfigIssue, webPushIssueMessage } from "@/lib/web-push-config";
 import { isAllowedPushEndpoint, parseWebPushSubscription } from "@/lib/web-push-subscription";
 
 async function requestBody(request: Request): Promise<unknown | null> {
@@ -25,7 +26,11 @@ async function userIdFromRequest() {
 export async function POST(request: Request) {
   const userId = await userIdFromRequest();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!webPushConfig(process.env)) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+  const issue = webPushConfigIssue(process.env);
+  if (issue) {
+    if (issue.code !== "disabled") logger.warn("web-push", webPushIssueMessage(issue), { variables: issue.variables });
+    return NextResponse.json({ error: "not_configured", reason: issue.code }, { status: 503 });
+  }
   const subscription = parseWebPushSubscription(await requestBody(request));
   if (!subscription) return NextResponse.json({ error: "invalid_subscription" }, { status: 400 });
 

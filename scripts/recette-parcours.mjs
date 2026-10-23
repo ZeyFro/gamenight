@@ -147,7 +147,7 @@ try {
     assert.ok(Date.now() < deadline && server.exitCode === null, `Next indisponible : ${output}/next.log`);
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  browser = await chromium.launch({ channel: "msedge", headless: true });
+  browser = await chromium.launch({ channel: "chrome", headless: true });
   async function contextFor(user) {
     const context = await browser.newContext();
     await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
@@ -281,14 +281,14 @@ try {
   const shopBalance = async user => { const row = await stats(user); return hasXpBalance ? row.xpBalance : row.xpTotal; };
   await step("boutique : achat d'un objet à 200 XP (solde 300 -> 100, ledger, possédé)", async () => {
     await pages.alice.goto(shop, { waitUntil: "domcontentloaded" });
-    await pages.alice.getByText("Solde de cette communauté : 300 XP").waitFor();
+    await pages.alice.getByText("Solde dépensable de cette communauté : 300 XP").waitFor();
     await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).waitFor();
     await pages.alice.getByRole("button", { name: "Acheter Menthe pour 200 XP" }).click();
     await pages.alice.getByText("Achat effectué.").waitFor();
-    await pages.alice.getByText("Solde de cette communauté : 100 XP").waitFor();
+    await pages.alice.getByText("Solde dépensable de cette communauté : 100 XP").waitFor();
     assert.equal(await shopBalance(alice), 100);
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: alice.id, itemId: "color-mint" } }), 1);
-    assert.equal(await db.xpEvent.count({ where: { userId: alice.id, reason: "SHOP_PURCHASE", amount: -200 } }), 1);
+    assert.equal(await db.xpEvent.count({ where: { userId: alice.id, reason: "SHOP_BALANCE_PURCHASE", amount: -200 } }), 1);
   });
   await step("boutique échec : solde insuffisant (300 XP demandés, 100 disponibles)", async () => {
     await pages.alice.getByRole("button", { name: "Acheter Nébuleuse pour 300 XP" }).waitFor();
@@ -317,7 +317,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 1500));
     assert.equal(await db.communityMemberCosmetic.count({ where: { userId: bob.id } }), 1);
     assert.equal(await shopBalance(bob), 0);
-    assert.equal(await db.xpEvent.count({ where: { userId: bob.id, reason: "SHOP_PURCHASE" } }), 1);
+    assert.equal(await db.xpEvent.count({ where: { userId: bob.id, reason: "SHOP_BALANCE_PURCHASE" } }), 1);
   });
   await step("boutique interdite : compte sans communauté redirigé hors de la boutique", async () => {
     await pages.eve.goto(shop, { waitUntil: "domcontentloaded" });

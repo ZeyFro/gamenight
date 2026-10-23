@@ -1,0 +1,35 @@
+[Unit]
+Description=GameNight web app and voice presence worker
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=gamenight
+Group=gamenight
+WorkingDirectory=/opt/gamenight/current
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+# This unit is the single self-hosted worker instance; web replicas omit this mode.
+Environment=VOICE_PRESENCE_WORKER_MODE=standalone
+# Explicit operator opt-in in the EnvironmentFile can override this default.
+Environment=VOICE_PRESENCE_ENABLED=false
+EnvironmentFile=/etc/gamenight/gamenight.env
+ExecStart=/usr/bin/node /opt/gamenight/current/scripts/gamenight-server.mjs
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gamenight/current/.next/cache
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

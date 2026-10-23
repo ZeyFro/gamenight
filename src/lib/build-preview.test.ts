@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
-describe("build : migrations protégées en Preview", () => {
+describe("build : migrations séparées du déploiement", () => {
   it.each(["preview", "production", "development", ""])("exécute le script réel, environnement %s, processus enfants simulés", (environment) => {
     const folder = mkdtempSync(join(tmpdir(), "gamenight-preview-build-"));
     const shim = join(folder, "shim.mjs"), trace = join(folder, "trace.json");
@@ -20,10 +20,21 @@ syncBuiltinESMExports();`);
       expect(run.status, run.stderr).toBe(0);
       const calls = JSON.parse(readFileSync(trace, "utf8")) as string[][];
       expect(calls).toEqual([
-        environment === "preview" ? ["node_modules/prisma/build/index.js", "generate"] : ["node_modules/prisma/build/index.js", "migrate", "deploy"],
+        ["node_modules/prisma/build/index.js", "generate"],
         ["node_modules/next/dist/bin/next", "build"],
       ]);
-      if (environment === "preview") expect(calls.flat()).not.toContain("migrate");
+      expect(calls.flat()).not.toContain("migrate");
     } finally { rmSync(folder, { recursive: true }); }
+  });
+});
+
+describe("build : aucune migration implicite", () => {
+  it("package.json et vercel.json ne migrent pas; seul db:migrate (explicite) appelle db-migrate", () => {
+    const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts as Record<string, string>;
+    expect(scripts.build).toBe("node scripts/build.mjs");
+    expect(readFileSync("scripts/build.mjs", "utf8")).not.toMatch(/migrate/i);
+    const implicit = Object.entries(scripts).filter(([name, cmd]) => /migrate/i.test(cmd) && name !== "db:migrate");
+    expect(implicit).toEqual([]);
+    expect(readFileSync("vercel.json", "utf8")).not.toMatch(/migrate|buildCommand/i);
   });
 });
