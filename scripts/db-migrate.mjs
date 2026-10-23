@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
-import { EXIT, RefusalError, assertExpectedPending, assertTarget, diffMigrations, readArgs, redact } from "./db-migrate-lib.mjs";
+import { EXIT, RefusalError, assertExpectedPending, assertSingleUrlSource, assertTarget, diffMigrations, readArgs, redact } from "./db-migrate-lib.mjs";
 
 const MIGRATIONS_DIR = "prisma/migrations";
 const secrets = [process.env.MIGRATION_DATABASE_URL];
@@ -40,6 +40,7 @@ async function appliedRows(url) {
 
 async function main() {
   const args = readArgs(process.argv.slice(2));
+  assertSingleUrlSource(process.env);
   const migrationUrl = process.env.MIGRATION_DATABASE_URL;
   const { target, warnings } = assertTarget({
     migrationUrl,

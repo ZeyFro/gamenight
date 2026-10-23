@@ -299,7 +299,7 @@ async function main() {
     await step("idempotence", () => {
       const again = dbMigrate(REPO, { port: cfg.portA, database: NAMES.main, expect: pending, execute: true, confirm: NAMES.main });
       say(again.out.split("\n").map((l) => `  | ${l}`).join("\n"));
-      check("relance db-migrate : refus propre (code 2, rien en attente)", again.status === 2 && /Manquantes/.test(again.out), again.out);
+      check("relance db-migrate : refus propre (code 2, rien en attente)", again.status === 2 && /Rien à faire : aucune migration en attente/.test(again.out), again.out);
       const prismaAgain = run(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env: { DATABASE_URL: url("gn_migrator", PW.migrator, cfg.portA, NAMES.main) } });
       check("prisma migrate deploy relancé : « No pending migrations »", prismaAgain.status === 0 && /No pending migrations/.test(prismaAgain.out), prismaAgain.out.slice(-200));
       check("état identique (empreinte, soldes, historique)", takeSnapshot() === snapshot);
