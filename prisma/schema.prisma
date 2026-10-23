@@ -1127,7 +1127,7 @@ model SessionVoicePresenceInterval {
   user    User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   consent SessionVoicePresenceConsent? @relation(fields: [consentId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionId, userId, channelId, startedAt])
+  @@unique([sessionId, userId, channelId, startedAt], map: "SessionVoicePresenceInterval_sessionId_userId_channelId_started")
   @@index([sessionId, userId])
   @@index([expiresAt])
 }
@@ -1158,7 +1158,7 @@ model SessionVoicePresenceControl {
   gapDetected   Boolean                             @default(false)
   gapStartedAt  DateTime?
   lastGapAt     DateTime?
-  updatedAt     DateTime                            @updatedAt
+  updatedAt     DateTime                            @default(now()) @updatedAt
   session       Session                             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([status, leaseExpiresAt])
