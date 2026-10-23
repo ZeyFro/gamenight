@@ -88,7 +88,12 @@ describe.skipIf(!TEST_DATABASE_URL)("drapeau vocal éteint sur un schéma sans t
     await db?.$disconnect().catch(() => undefined);
     if (admin && legacyName) await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${legacyName}" WITH (FORCE)`);
     await admin?.$disconnect();
-    if (workDir) rmSync(workDir, { recursive: true, force: true }); // dossier créé par ce test : copies simples, aucun lien
+    // Dossier créé par ce test : copies simples, aucun lien. Windows peut le retenir un instant (EPERM) : réessais, et un
+    // échec est signalé sans masquer le résultat des tests.
+    if (workDir) {
+      try { rmSync(workDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); }
+      catch (error) { console.warn(`[flag-off] nettoyage de ${workDir} impossible : ${(error as NodeJS.ErrnoException).code}`); }
+    }
   }, 60_000);
 
   beforeEach(async () => {

@@ -41,6 +41,11 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     // Reliquats d'un run interrompu (le rôle ne peut être supprimé tant qu'une base lui accorde des droits).
     const old = await admin.$queryRawUnsafe<{ datname: string }[]>(`SELECT datname FROM pg_database WHERE datname LIKE 'gamenight\_dbmigrate\_%'`);
     for (const { datname } of old) await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
+    // Dossiers temporaires laissés par un run précédent (Windows peut retenir un dossier au-delà des réessais du test).
+    for (const name of readdirSync(tmpdir()).filter(n => n.startsWith("gn-dbmigrate-mid-"))) {
+      try { rmSync(join(tmpdir(), name), { recursive: true, force: true }); }
+      catch (error) { console.warn(`[db-migrate-cli] reliquat ${name} non supprimé : ${(error as NodeJS.ErrnoException).code}`); }
+    }
     await admin.$executeRawUnsafe(`CREATE DATABASE "${NEW_DB}"`);
   }, 60_000);
   afterAll(async () => {
@@ -163,13 +168,13 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
       expect(retry.status).toBe(2);
       expect(retry.stderr).toContain("inachevée");
     } finally {
-      // Le lien d'abord (jamais suivi par un rmSync récursif), puis le dossier.
-      try { unlinkSync(join(work, "node_modules")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      // Windows : un antivirus ou un sous-processus Prisma peut retenir un fichier un instant (EPERM) : on réessaie, et un
-      // échec de nettoyage de dossier temporaire est signalé sans faire échouer les assertions du test.
-      try { rmSync(work, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); }
-      catch (error) { console.warn(`[db-migrate-cli] nettoyage de ${work} impossible : ${(error as NodeJS.ErrnoException).code}`); }
-      await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`);
+      // Nettoyage qui ne LÈVE JAMAIS : une exception dans `finally` remplacerait l'assertion qui a échoué. Chaque échec
+      // est signalé séparément (console.warn) ; le lien d'abord (jamais suivi par un rmSync récursif), puis le dossier
+      // (Windows : un antivirus ou un sous-processus Prisma peut retenir un fichier un instant, EPERM : réessais).
+      const warn = (what: string, error: unknown) => console.warn(`[db-migrate-cli] nettoyage « ${what} » impossible : ${(error as NodeJS.ErrnoException)?.code ?? error}`);
+      try { unlinkSync(join(work, "node_modules")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") warn("lien node_modules", error); }
+      try { rmSync(work, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); } catch (error) { warn(work, error); }
+      try { await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`); } catch (error) { warn(`base ${midDb}`, error); }
     }
   }, 240_000);
 });
