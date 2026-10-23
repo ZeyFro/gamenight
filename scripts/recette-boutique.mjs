@@ -45,7 +45,7 @@ async function actor(label, { xpTotal = 2_000, xpBalance = 1_000 } = {}) {
   await context.addInitScript(id => sessionStorage.setItem(`gn:onboarding-prompt:${id}`, "later"), user.id);
   const open = async () => {
     const page = await context.newPage();
-    page.setDefaultTimeout(30_000); page.setDefaultNavigationTimeout(120_000);
+    page.setDefaultTimeout(90_000); page.setDefaultNavigationTimeout(120_000);
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(`${origin}/profil/boutique`);
     return page;
@@ -78,6 +78,18 @@ try {
     assert.ok(Date.now() < readyUntil && server.exitCode === null, "Next local indisponible; voir logs/recette-boutique-next.log");
     await new Promise(resolve => setTimeout(resolve, 500));
   }
+
+  // Échauffement : compile les routes avant les scénarios (en dev, une compilation bloque la boucle d'événements et peut expirer une transaction de 5 s).
+  const warm = await actor("echauffement");
+  const warmPage = await warm.open();
+  await warmPage.getByText(balanceText(1_000), { exact: true }).waitFor();
+  await buy(warmPage, "Menthe", 200).click();
+  await warmPage.getByText(balanceText(800), { exact: true }).waitFor();
+  await warmPage.getByRole("button", { name: "Équiper Menthe", exact: true }).click();
+  await warmPage.getByRole("button", { name: "Équiper Menthe", exact: true, disabled: true }).waitFor();
+  await warmPage.goto(`${origin}/classement?periode=week`);
+  await warmPage.getByText(/^\d+ XP$/).first().waitFor();
+  for (const context of contexts.splice(0)) await context.close();
 
   await scenario("achat, équipement, retrait, insuffisance, objet possédé, mobile", async () => {
     const a = await actor("achat");
@@ -151,6 +163,7 @@ try {
     ] });
     const weekXp = async () => {
       const page = await a.context.newPage();
+      page.setDefaultTimeout(90_000); page.setDefaultNavigationTimeout(120_000);
       await page.goto(`${origin}/classement?periode=week`);
       await page.getByText(/^\d+ XP$/).first().waitFor();
       const text = await page.getByText(/^\d+ XP$/).first().innerText();
@@ -168,11 +181,23 @@ try {
   });
 
   assert.deepEqual(errors, []);
-  console.log(`Fin : ${results.filter(r => r.ok).length}/${results.length} scénarios OK. Fixtures conservées : ${run}`);
+  assert.ok(results.length > 0, `RECETTE_ONLY="${process.env.RECETTE_ONLY}" ne correspond à aucun scénario`);
+  console.log(`Fin : ${results.filter(r => r.ok).length}/${results.length} scénarios OK.`);
 } catch (error) {
   console.error(error.message); process.exitCode = 1;
 } finally {
   for (const context of contexts) await context.close();
-  server?.kill(); await db.$disconnect();
+  server?.kill();
+  // Suppression ciblée des fixtures de ce run (préfixe `run`) pour ne pas gêner les TRUNCATE d'autres tests.
+  const users = await db.user.findMany({ where: { discordId: { startsWith: run } }, select: { id: true } }), userIds = users.map(u => u.id);
+  const communities = await db.community.findMany({ where: { slug: { startsWith: run } }, select: { id: true } }), communityIds = communities.map(c => c.id);
+  await db.xpEvent.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { communityId: { in: communityIds } }] } });
+  await db.communityMemberCosmetic.deleteMany({ where: { communityId: { in: communityIds } } });
+  await db.communityMemberStats.deleteMany({ where: { communityId: { in: communityIds } } });
+  await db.membership.deleteMany({ where: { communityId: { in: communityIds } } });
+  await db.user.deleteMany({ where: { id: { in: userIds } } });
+  await db.community.deleteMany({ where: { id: { in: communityIds } } });
+  console.log(`Fixtures supprimées : ${userIds.length} utilisateurs, ${communityIds.length} communautés (préfixe ${run})`);
+  await db.$disconnect();
   for (const profile of profiles) rmSync(profile, { recursive: true, force: true });
 }
