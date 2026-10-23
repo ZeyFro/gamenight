@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assertLocalTestDatabase } from "./test-local-database";
 import { PrismaClient } from "@prisma/client";
 import { LOT_MIGRATIONS, assertReadTarget, evaluate } from "../../scripts/xp-lot-invariants.mjs";
 
@@ -53,6 +54,7 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
   const fingerprint = (out: string) => /EMPREINTE (\w{32})/.exec(out)![1];
 
   beforeAll(async () => {
+    assertLocalTestDatabase(TEST_DATABASE_URL); // avant tout client et toute requête
     admin = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
     for (const { datname } of await admin.$queryRawUnsafe<{ datname: string }[]>(`SELECT datname FROM pg_database WHERE datname LIKE 'gamenight\\_xpinv\\_%'`)) {
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);

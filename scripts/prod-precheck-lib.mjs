@@ -26,6 +26,8 @@ export const SQL = {
   roles: "SELECT rolname::text, rolsuper, rolcanlogin, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname",
   members: "SELECT pg_get_userbyid(roleid)::text AS role, pg_get_userbyid(member)::text AS member, admin_option AS admin FROM pg_auth_members WHERE pg_get_userbyid(roleid) !~ '^pg_' ORDER BY 1, 2",
   tableOwners: "SELECT pg_get_userbyid(relowner)::text AS owner, count(*) AS n FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'r' GROUP BY 1 ORDER BY 1",
+  // Sans pg_read_all_stats ni superuser, pg_stat_activity masque les sessions des autres rôles : le relevé de sessions est alors incomplet.
+  seesAllSessions: "SELECT (pg_has_role(current_user, 'pg_read_all_stats', 'member') OR current_setting('is_superuser') = 'on') AS sees_all",
   sessions: "SELECT coalesce(usename, '?')::text AS usename, coalesce(application_name, '')::text AS app, coalesce(state, '?')::text AS state, count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
   statsTable: "SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'CommunityMemberStats'",
   balanceColumn: "SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'CommunityMemberStats' AND column_name = 'xpBalance'",
@@ -77,10 +79,10 @@ const num = (value) => Number(value);
  *   roles: {rolname:string, rolsuper:boolean, rolcanlogin:boolean, rolcreatedb:boolean, rolcreaterole:boolean, rolreplication:boolean, rolbypassrls:boolean}[],
  *   members: [string, string, boolean][], tableOwners: [string, number][], sessions: [string, string, string, number][],
  *   stats: null | { rows:number, negativeTotals:number, sumTotal:string, relationBytes:number, databaseBytes:number, balance: null | { negatives:number, divergent:number, sum:string } },
- *   runtimeRole: string, migrationRole: string }} snapshot
+ *   seesAllSessions: boolean, runtimeRole: string, migrationRole: string }} snapshot
  */
 export function evaluate(snapshot) {
-  const { args, checkout, migrations, roles, members, tableOwners, sessions, stats, runtimeRole, migrationRole } = snapshot;
+  const { args, checkout, migrations, roles, members, tableOwners, sessions, stats, runtimeRole, migrationRole, seesAllSessions } = snapshot;
   const lines = [];
   const add = (level, text) => lines.push({ level, text });
   const check = (ok, text, detail = "") => add(ok ? "OK" : "ÉCART", `${text}${ok || !detail ? "" : ` : ${detail}`}`);
@@ -138,9 +140,11 @@ export function evaluate(snapshot) {
   const total = sessions.reduce((sum, row) => sum + num(row[3]), 0);
   add("INFO", `sessions clientes de la base (hors celle du précontrôle) : ${total}`);
   for (const [user, app, state, count] of sessions) add("INFO", `session : rôle ${user}, application « ${app || "(vide)"} », état ${state} : ${num(count)}`);
+  if (seesAllSessions !== true) add("INFO", "ATTENTION : le rôle de contrôle n'a ni pg_read_all_stats ni SUPERUSER : les sessions des autres rôles sont masquées, le relevé ci-dessus est INCOMPLET");
   if (args.noSessionsOf) {
+    check(seesAllSessions === true, "visibilité de toutes les sessions (pg_read_all_stats ou SUPERUSER) : sans elle, « aucune session » ne prouve rien", "le rôle de contrôle ne voit pas les sessions des autres rôles ; se connecter avec un rôle membre de pg_read_all_stats");
     const n = sessions.filter((row) => row[0] === args.noSessionsOf).reduce((sum, row) => sum + num(row[3]), 0);
-    check(n === 0, `aucune session ouverte du rôle ${args.noSessionsOf}`, `${n} session(s)`);
+    if (seesAllSessions === true) check(n === 0, `aucune session ouverte du rôle ${args.noSessionsOf}`, `${n} session(s)`);
   }
 
   // ---- CommunityMemberStats (agrégats seulement)

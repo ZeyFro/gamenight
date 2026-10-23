@@ -130,10 +130,18 @@ async function main() {
   }
 }
 
+// Secrets connus hors de main() : l'URL de la variable et son mot de passe (même masquage que prod-precheck).
+function topSecrets() {
+  const url = process.env.XP_INVARIANTS_DATABASE_URL;
+  let password;
+  try { password = parseTarget(url).password; } catch { /* URL illisible : seule l'URL brute est masquée */ }
+  return [url, password];
+}
+
 if (process.argv[1]?.endsWith("xp-lot-invariants.mjs")) {
   main().then((code) => process.exit(code), (error) => {
-    if (error instanceof RefusalError) { console.error(`REFUSÉ : ${error.message}`); process.exit(error.exitCode); }
-    console.error(`ERREUR INATTENDUE : ${error?.message ?? error}`.slice(0, 600));
+    if (error instanceof RefusalError) { console.error(redact(`REFUSÉ : ${error.message}`, topSecrets())); process.exit(error.exitCode); }
+    console.error(redact(`ERREUR INATTENDUE : ${error?.message ?? error}`, topSecrets()).slice(0, 600));
     process.exit(1);
   });
 }
