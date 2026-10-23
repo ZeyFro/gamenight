@@ -60,7 +60,7 @@ const buy = (page, item, cost) => page.getByRole("button", { name: `Acheter ${it
 async function scenario(name, body) {
   if (process.env.RECETTE_ONLY && !name.includes(process.env.RECETTE_ONLY)) return;
   try { const detail = await body(); results.push({ name, ok: true }); console.log(`OK    ${name} : ${detail}`); }
-  catch (error) { results.push({ name, ok: false }); process.exitCode = 1; console.error(`ECHEC ${name} : ${error.message.split("\n").slice(0, 3).join(" | ")}`); }
+  catch (error) { results.push({ name, ok: false }); process.exitCode = 1; console.error(`ECHEC ${name} : ${error.message.split("\n").filter(Boolean).slice(0, 12).join(" | ")}`); }
 }
 
 try {
