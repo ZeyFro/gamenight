@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docker.mjs";
-import { assertOnlyExpectedXpMigrationPending, EXPECTED_XP_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
+import { assertRolloutMigrationsPending, EXPECTED_ROLLOUT_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
 
 export const DATABASE_PATTERN = /^gamenight_xp_[a-z0-9_]+$/;
 
@@ -22,11 +22,11 @@ export function assertLocalTarget({ container, port, database }) {
   return { container, port, database };
 }
 
-/** PRE = rien d'appliqué ; MIGRATED = colonne + contrainte + valeur d'enum + 2 migrations terminées ; sinon PARTIAL (arrêt). */
+/** PRE = rien du lot appliqué ; MIGRATED = colonne + contrainte + valeur d'enum + les 6 migrations du lot (XP + vocal) terminées ; sinon PARTIAL (arrêt). */
 export function classifyState({ hasColumn, hasConstraint, hasEnumValue, applied }) {
-  const done = EXPECTED_XP_MIGRATIONS.filter((name) => applied.includes(name));
+  const done = EXPECTED_ROLLOUT_MIGRATIONS.filter((name) => applied.includes(name));
   if (!hasColumn && !hasConstraint && !hasEnumValue && done.length === 0) return "PRE";
-  if (hasColumn && hasConstraint && hasEnumValue && done.length === EXPECTED_XP_MIGRATIONS.length) return "MIGRATED";
+  if (hasColumn && hasConstraint && hasEnumValue && done.length === EXPECTED_ROLLOUT_MIGRATIONS.length) return "MIGRATED";
   return "PARTIAL";
 }
 
@@ -107,7 +107,7 @@ export function run(argv, env = process.env) {
   // PRE
   if (info.negatives > 0) return fail("xpTotal négatif : la migration échouerait (contrainte) ; ne rien corriger automatiquement");
   const available = readdirSync(resolve("prisma/migrations"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  try { report.pending = assertOnlyExpectedXpMigrationPending(available, info.applied); } catch (error) { return fail(String(error.message)); }
+  try { report.pending = assertRolloutMigrationsPending(available, info.applied, { unfinished: info.unfinished }); } catch (error) { return fail(String(error.message)); }
   if (!execute) { report.result = "DRY-RUN OK : aucune écriture, bascule possible avec --execute --confirm-database=<base>"; return report; }
   if (confirm !== target.database) return fail("--confirm-database=<base> absent ou différent");
 

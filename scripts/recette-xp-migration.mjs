@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docker.mjs";
-import { assertOnlyExpectedXpMigrationPending, EXPECTED_XP_MIGRATION } from "./xp-rollout-migration-gate.mjs";
+import { assertRolloutMigrationsPending, EXPECTED_XP_MIGRATION } from "./xp-rollout-migration-gate.mjs";
 
 const baseline = resolve(process.argv[2] ?? "");
 assert.ok(baseline.endsWith("schema.prisma"), "Donner le schéma du checkout main sans migration XP");
@@ -43,7 +43,7 @@ const availableMigrations = readdirSync(resolve("prisma/migrations"), { withFile
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
 const appliedMigrations = sql(database, "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name;").split("\n").filter(Boolean);
-const pendingMigrations = assertOnlyExpectedXpMigrationPending(availableMigrations, appliedMigrations);
+const pendingMigrations = assertRolloutMigrationsPending(availableMigrations, appliedMigrations);
 const values = [0, 49, 50, 799, 800, 4049, 4050, 10_000_000, 2_147_483_647];
 for (const [index, xp] of values.entries()) {
   sql(database, `BEGIN;
