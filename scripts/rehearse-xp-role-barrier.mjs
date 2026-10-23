@@ -9,14 +9,26 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docker.mjs";
 import { DATABASE_PATTERN } from "./xp-balance-bascule.mjs";
-import { assertOnlyExpectedXpMigrationPending, EXPECTED_XP_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
+import { EXPECTED_XP_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
+
+// Écart réel entre origin/main et ce checkout (2 migrations XP + 4 vocales/boutique), dans l'ordre d'application.
+const PENDING_MIGRATIONS = [
+  "20261019190000_separate_xp_balance",
+  "20261020150000_session_voice_presence",
+  "20261022120000_voice_presence_consent_coordination",
+  "20261022130000_voice_presence_retention_gap_bounds",
+  "20261022140000_voice_presence_gap_history",
+  "20261022142500_shop_balance_purchase_reason",
+];
+const LABEL = "gamenight.rehearsal=xp-role-barrier";
+const FORBIDDEN_PORTS = [55439]; // Postgres des tests d'intégration (CLAUDE.md)
 
 // ------------------------------------------------------------------ constantes et garde-fous
 const HOST = "127.0.0.1";
@@ -37,6 +49,7 @@ export function assertSafeConfig(env = process.env) {
   assert.match(PG_CONTAINER, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Conteneur invalide");
   assert.ok(Number.isInteger(PG_PORT) && PG_PORT >= 1024 && PG_PORT < 65000, "Port invalide");
   assert.equal(HOST, "127.0.0.1");
+  for (const port of [PG_PORT, BOUNCER_PORT]) assert.ok(!FORBIDDEN_PORTS.includes(port), `Port ${port} interdit (réservé aux tests d'intégration)`);
   for (const name of [PG_CONTAINER, BOUNCER_CONTAINER, NETWORK, HOST]) assert.ok(!/neon/i.test(name), "Cible Neon interdite (hôte/conteneur)");
   for (const [key, value] of Object.entries(env)) {
     if (/DATABASE|POSTGRES|PG|DIRECT|URL/i.test(key) && /neon/i.test(String(value))) throw new Error(`Variable ${key} pointe vers Neon : refus`);
@@ -250,6 +263,31 @@ function docker(args, options = {}) {
   assert.equal(r.status, 0, redact(r.stderr || r.stdout));
   return r.stdout.trim();
 }
+const labelOf = (kind, name) => {
+  const r = docker([kind, "inspect", "--format", '{{ index .Config.Labels "gamenight.rehearsal" }}'.replace(".Config.Labels", kind === "network" ? ".Labels" : ".Config.Labels"), name], { allowFail: true });
+  return r.status === 0 ? r.stdout.trim() : null; // null : n'existe pas
+};
+/** Supprime conteneurs et réseau de la répétition, uniquement s'ils portent notre label; refuse tout homonyme sans label. */
+function removeOwned() {
+  for (const name of [PG_CONTAINER, BOUNCER_CONTAINER]) {
+    const label = labelOf("container", name);
+    if (label === null) continue;
+    assert.equal(label, "xp-role-barrier", `Le conteneur ${name} existe sans le label ${LABEL} : refus de le supprimer`);
+    docker(["rm", "-f", name]);
+  }
+  const net = labelOf("network", NETWORK);
+  if (net === null) return;
+  assert.equal(net, "xp-role-barrier", `Le réseau ${NETWORK} existe sans le label ${LABEL} : refus de le supprimer`);
+  docker(["network", "rm", NETWORK]);
+}
+/** Refuse un port déjà publié par un autre conteneur (en cours d'exécution). */
+function assertPortsFree() {
+  const published = docker(["ps", "--format", "{{.Names}}\t{{.Ports}}"]).split("\n").filter(Boolean);
+  for (const port of [PG_PORT, BOUNCER_PORT]) {
+    const other = published.find((line) => new RegExp(`:${port}->`).test(line));
+    assert.ok(!other, `Port ${port} déjà publié par un autre conteneur : ${other?.split("\t")[0]}`);
+  }
+}
 const dexec = (...cmd) => docker(["exec", PG_CONTAINER, ...cmd]);
 
 const creds = () => ({
@@ -380,27 +418,43 @@ async function main() {
   const mk = (label) => assertDb(`gamenight_xp_roles_${label}_${stamp}`);
   const work = mkdtempSync(join(tmpdir(), "xp-roles-"));
   const baseline = join(work, "baseline");
-  cpSync(resolve("prisma"), join(baseline, "prisma"), { recursive: true });
-  for (const name of EXPECTED_XP_MIGRATIONS) rmSync(join(baseline, "prisma", "migrations", name), { recursive: true });
+  // Départ réel : schéma et migrations de origin/main seuls (comme scripts/rehearse-xp-full.mjs).
+  mkdirSync(baseline, { recursive: true });
+  const tarFile = join(work, "main.tar");
+  const archive = spawnSync("git", ["archive", "--format=tar", "-o", tarFile, "origin/main", "prisma/schema.prisma", "prisma/migrations"], { encoding: "utf8" });
+  assert.equal(archive.status, 0, `git archive origin/main a échoué (git fetch origin main ?) : ${archive.stderr}`);
+  const untar = spawnSync("tar", ["-xf", "../main.tar"], { cwd: baseline, encoding: "utf8" });
+  assert.equal(untar.status, 0, untar.stderr);
+  const listMigrations = (dir) => readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const mainMigrations = listMigrations(join(baseline, "prisma", "migrations"));
+  const allMigrations = listMigrations(resolve("prisma/migrations"));
+  assert.deepEqual(allMigrations.filter((n) => !mainMigrations.includes(n)), PENDING_MIGRATIONS, "Les migrations en attente par rapport à origin/main ne sont pas les 6 attendues");
+  assert.deepEqual(mainMigrations.filter((n) => !allMigrations.includes(n)), [], "origin/main a des migrations absentes du checkout");
   const baselineSchema = join(baseline, "prisma", "schema.prisma");
   const fullSchema = resolve("prisma/schema.prisma");
   const writers = [];
   const created = [];
   const cleanup = async () => {
     for (const w of writers) await w.stop();
-    for (const name of [PG_CONTAINER, BOUNCER_CONTAINER]) docker(["rm", "-f", name], { allowFail: true });
-    docker(["network", "rm", NETWORK], { allowFail: true });
+    removeOwned();
     rmSync(work, { recursive: true, force: true });
   };
 
   try {
     // ---- infrastructure jetable (hors mesures)
-    for (const name of [PG_CONTAINER, BOUNCER_CONTAINER]) docker(["rm", "-f", name], { allowFail: true });
-    docker(["network", "rm", NETWORK], { allowFail: true });
-    docker(["network", "create", NETWORK]);
-    docker(["run", "-d", "--name", PG_CONTAINER, "--network", NETWORK, "-p", `127.0.0.1:${PG_PORT}:5432`, "-e", `POSTGRES_PASSWORD=${PW.admin}`, "postgres:16-alpine",
+    removeOwned();
+    assertPortsFree();
+    docker(["network", "create", "--label", LABEL, NETWORK]);
+    docker(["run", "-d", "--label", LABEL, "--name", PG_CONTAINER, "--network", NETWORK, "-p", `127.0.0.1:${PG_PORT}:5432`, "-e", `POSTGRES_PASSWORD=${PW.admin}`, "postgres:16-alpine",
       "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off", "-c", "checkpoint_timeout=1h", "-c", "max_wal_size=8GB"]);
     assert.equal(docker(["port", PG_CONTAINER, "5432/tcp"]), `127.0.0.1:${PG_PORT}`, "Le conteneur doit être lié à 127.0.0.1 uniquement");
+    // L'entrypoint démarre un serveur temporaire puis le relance : attendre le second « ready to accept connections ».
+    for (let i = 0; ; i++) {
+      const logs = docker(["logs", PG_CONTAINER], { allowFail: true });
+      if (((logs.stdout ?? "") + (logs.stderr ?? "")).split("ready to accept connections").length - 1 >= 2) break;
+      assert.ok(i < 240, "PostgreSQL de répétition non prêt");
+      await sleep(500);
+    }
     for (let i = 0; ; i++) {
       try { await admin("postgres", "SELECT 1"); break; } catch (e) { if (i > 60) throw e; await sleep(500); }
     }
@@ -430,7 +484,7 @@ query_wait_timeout = 8
 ignore_startup_parameters = extra_float_digits
 admin_users = gn_bouncer_auth
 `;
-    docker(["run", "-d", "--name", BOUNCER_CONTAINER, "--network", NETWORK, "-p", `127.0.0.1:${BOUNCER_PORT}:6432`, "--entrypoint", "sh", "edoburu/pgbouncer", "-c",
+    docker(["run", "-d", "--label", LABEL, "--name", BOUNCER_CONTAINER, "--network", NETWORK, "-p", `127.0.0.1:${BOUNCER_PORT}:6432`, "--entrypoint", "sh", "edoburu/pgbouncer", "-c",
       `printf '%s' '${ini.replace(/'/g, "'\\''")}' > /tmp/pgb.ini; printf '"gn_bouncer_auth" "${PW.bouncer}"\\n' > /tmp/userlist.txt; exec pgbouncer /tmp/pgb.ini`]);
     assert.equal(docker(["port", BOUNCER_CONTAINER, "6432/tcp"]), `127.0.0.1:${BOUNCER_PORT}`);
     fact("pooler", "pgbouncer 1.26 (edoburu/pgbouncer), pool_mode=transaction, auth_query, default_pool_size=5, réseau Docker dédié");
@@ -439,7 +493,7 @@ admin_users = gn_bouncer_auth
     const tpl = mk("tpl");
     created.push(tpl);
     await admin("postgres", `CREATE DATABASE "${tpl}" OWNER ${OWNER}`);
-    const base = prisma(["migrate", "deploy"], urlFor("owner", tpl), baselineSchema);
+    const base = prisma(["migrate", "deploy"], urlFor("owner", tpl), baselineSchema, 540000);
     assert.equal(base.status, 0, base.output);
     fact("migrations_de_départ", { dossier: readdirSync(join(baseline, "prisma", "migrations")).length - 1, duréeMs: base.ms });
     await admin(tpl, seedSql(USERS));
@@ -701,10 +755,11 @@ admin_users = gn_bouncer_auth
     // =============================================================== Phase 5 : migrations XP par gn_migrator
     console.log("\n== Phase 5 : migrations XP appliquées par gn_migrator (prisma migrate deploy)");
     const appliedNames = (await admin(main, `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`)).rows.map((r) => r[0]);
-    const pending = assertOnlyExpectedXpMigrationPending(readdirSync(resolve("prisma/migrations"), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name), appliedNames);
-    assert.deepEqual(pending, EXPECTED_XP_MIGRATIONS);
-    const mig = await timed("5", "prisma migrate deploy (DATABASE_URL = gn_migrator, 2 migrations XP)", async () => prisma(["migrate", "deploy"], urlFor("migrator", main), fullSchema));
+    const pending = allMigrations.filter((n) => !appliedNames.includes(n));
+    assert.deepEqual(pending, PENDING_MIGRATIONS, "Avant la migration, exactement les 6 migrations doivent être en attente");
+    const mig = await timed("5", "prisma migrate deploy (DATABASE_URL = gn_migrator, 6 migrations en attente)", async () => prisma(["migrate", "deploy"], urlFor("migrator", main), fullSchema));
     assert.equal(mig.status, 0, mig.output);
+    assert.equal(Number(await scalar(main, `SELECT count(*) FROM _prisma_migrations WHERE migration_name = ANY(ARRAY['${PENDING_MIGRATIONS.join("','")}']) AND finished_at IS NOT NULL`)), PENDING_MIGRATIONS.length, "Les 6 migrations doivent être appliquées");
     const inv = async (db) => ({
       migrationsXp: (await admin(db, `SELECT migration_name || ':' || count(*) || ':' || bool_and(finished_at IS NOT NULL AND rolled_back_at IS NULL) FROM _prisma_migrations WHERE migration_name = ANY(ARRAY['${EXPECTED_XP_MIGRATIONS.join("','")}']) GROUP BY migration_name ORDER BY 1`)).rows.map((r) => r[0]),
       inachevées: Number(await scalar(db, `SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL`)),
@@ -821,7 +876,7 @@ async function comparisonB({ mk, created, baselineSchema, timings: tm }) {
   await admin("postgres", `CREATE ROLE gn_test_owner LOGIN NOSUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS PASSWORD '${PW.ownerOld}'`);
   await admin("postgres", `CREATE DATABASE "${name}" OWNER gn_test_owner`);
   const url = `postgresql://gn_test_owner:${PW.ownerOld}@${HOST}:${PG_PORT}/${name}`;
-  const base = prisma(["migrate", "deploy"], url, baselineSchema);
+  const base = prisma(["migrate", "deploy"], url, baselineSchema, 540000);
   assert.equal(base.status, 0, base.output);
   await admin(name, seedSql(300));
   const w = startWriter({ label: "direct", path: "direct", database: name, user: "gn_test_owner" });
