@@ -165,7 +165,10 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     } finally {
       // Le lien d'abord (jamais suivi par un rmSync récursif), puis le dossier.
       try { unlinkSync(join(work, "node_modules")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      rmSync(work, { recursive: true, force: true });
+      // Windows : un antivirus ou un sous-processus Prisma peut retenir un fichier un instant (EPERM) : on réessaie, et un
+      // échec de nettoyage de dossier temporaire est signalé sans faire échouer les assertions du test.
+      try { rmSync(work, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); }
+      catch (error) { console.warn(`[db-migrate-cli] nettoyage de ${work} impossible : ${(error as NodeJS.ErrnoException).code}`); }
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`);
     }
   }, 240_000);
