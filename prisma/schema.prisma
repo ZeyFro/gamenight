@@ -2996,6 +2996,7 @@ model CommunityGameEpitaph {
   updatedAt DateTime @updatedAt
 
   @@unique([communityId, gameId])
+  @@index([communityId, createdAt])
 }
 
 model CommunityExpression {
