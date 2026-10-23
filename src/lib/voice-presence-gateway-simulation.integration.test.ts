@@ -248,6 +248,25 @@ describe.skipIf(!TEST_DATABASE_URL)("simulation du Gateway vocal (faux serveur W
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
   }, 40_000);
 
+  it("un arrêt propre avec une personne encore en vocal enregistre l'intervalle ouvert, une lacune « shutdown » et libère le bail", async () => {
+    await grant(ALICE_ID);
+    await startWorker();
+    await vi.waitFor(() => expect(fake.received.some(p => p.op === 2)).toBe(true), { timeout: 10_000 });
+    fake.voiceState(ALICE_DISCORD, CHANNEL_ID);
+    await sleep(1_300);
+
+    await runtime!.stop();
+    runtime = null;
+
+    const intervals = await intervalsFor(ALICE_ID);
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0].endedAt.getTime()).toBeGreaterThan(intervals[0].startedAt.getTime());
+    const control = await db.sessionVoicePresenceControl.findUniqueOrThrow({ where: { sessionId: SESSION_ID } });
+    expect(control.leaseOwner).toBeNull();
+    expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(1);
+    await vi.waitFor(() => expect(fake.open).toBe(0));
+  }, 40_000);
+
   it("un code de fermeture fatal (4004) arrête le worker sans boucle de reconnexion", async () => {
     await grant(ALICE_ID);
     await startWorker();

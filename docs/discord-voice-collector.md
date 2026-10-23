@@ -176,3 +176,45 @@ ss -ltn | grep '127.0.0.1:3000'
 Ne pas utiliser `systemctl show -p Environment`, `systemctl cat` ou une commande qui imprime l'EnvironmentFile. `enable` et `start` restent des commandes séparées et ne doivent jamais être combinées avec `--now`.
 
 La migration d'historique vocal est additive et doit être appliquée uniquement par la procédure de migration approuvée avant le démarrage d'un worker utilisant ce code. Aucune migration ni connexion Production, installation Raspberry, activation de flag/cron, connexion au Gateway réel ou notification Discord n'a été effectuée pour ce lot. Le contrôle final juste avant construction du collecteur réduit la course avec un retrait; un retrait commité après ce contrôle mais avant l'ouverture effective du socket peut laisser une brève connexion Gateway en transit. Un événement Gateway déjà reçu en mémoire peut aussi être en transit, mais le propriétaire/génération/consentement sont revérifiés sous verrou avant chaque écriture : après le commit du retrait, aucune nouvelle contribution ne peut être persistée. Le poll suivant ferme le collecteur.
+
+## Runbook d'exploitation du worker
+
+Valable pour l'unité systemd (`gamenight.service`) et pour le conteneur (`docker/voice-worker/compose.yaml`). Rien de ce qui suit n'est exécuté automatiquement : chaque étape marquée « à autoriser » exige une décision explicite.
+
+### Arrêt propre et délais
+
+- Signaux traités par le lanceur `scripts/gamenight-server.mjs` : `SIGTERM` (systemd, `docker stop`), `SIGINT` (Ctrl+C), `SIGBREAK` (Ctrl+Break Windows) et `SIGHUP` (fermeture de la console ou du terminal, y compris Windows).
+- Séquence : fermeture de l'admission HTTP, attente des requêtes en cours, arrêt des collecteurs (les intervalles encore ouverts sont fermés et enregistrés, une lacune `shutdown` est notée), vidage des écritures de lacune, libération du bail SQL, fermeture de Next.js, code de sortie 0.
+- Un **second signal** pendant l'arrêt force une sortie immédiate (code 1) : les écritures non vidées sont perdues, le bail expire tout seul et la prochaine instance reprend.
+- Délai maximal : `VOICE_WORKER_SHUTDOWN_TIMEOUT_MS` (1000 à 600000 ms, défaut 40000; valeur invalide = défaut). Passé ce délai, sortie forcée avec le code 1. Si vous l'augmentez, augmentez aussi `TimeoutStopSec` (systemd, 45 s) et `stop_grace_period` (compose, 45 s), sinon l'orchestrateur tue le processus avant.
+
+### Supervision
+
+- systemd : `Restart=on-failure`, `RestartSec=5s`, plafond `StartLimitBurst=5` en 300 s. Au-delà, l'unité passe en `failed` (« start request repeated too quickly ») et ne redémarre plus : c'est le signal d'alerte. Diagnostic : `systemctl is-failed gamenight.service`, `journalctl -u gamenight.service -n 100 --no-pager`. Relance après correction : `sudo systemctl reset-failed gamenight.service` puis `sudo systemctl start gamenight.service`. Les directives de backoff croissant (`RestartSteps`) ne sont pas utilisées : absentes de systemd 252 (Raspberry Pi OS Bookworm).
+- Docker : `restart: unless-stopped` (le démon applique un délai croissant entre redémarrages, plafonné à 1 minute, mais pas de plafond de tentatives). Pour un plafond signalé, remplacer par `restart: on-failure:5` (le conteneur reste alors arrêté, visible avec `docker ps -a`). `HEALTHCHECK` : connexion TCP locale sur `127.0.0.1:3000` toutes les 30 s (`docker inspect --format '{{.State.Health.Status}}' <conteneur>`). Ce contrôle prouve que le serveur répond, pas que la Gateway Discord est connectée; il n'y a pas de heartbeat applicatif.
+- Journalisation : sortie standard vers le journal systemd ou `docker logs`. Les messages du worker ne contiennent ni jeton, ni URL de base, ni détail d'erreur de base de données : seulement une catégorie (`discovery`, `gateway`, `persistence`, `gap_persistence`, `shutdown`) et la raison d'une lacune. Ne jamais copier un `EnvironmentFile` ou `docker inspect` (qui affiche l'environnement) dans un ticket.
+- Exemple compose validé syntaxiquement : `docker compose -f docker/voice-worker/compose.yaml config -q`. Exemple systemd : `systemd-analyze verify /etc/systemd/system/gamenight.service` sur l'hôte (non exécutable sous Windows).
+
+### Démarrer, arrêter, mettre à jour
+
+- Démarrer (à autoriser) : voir « Démarrage ultérieur ». Compose : `docker compose -f docker/voice-worker/compose.yaml up -d voice-worker`, collecte éteinte tant que `VOICE_PRESENCE_ENABLED` n'est pas `true`.
+- Arrêter : `sudo systemctl stop gamenight.service` ou `docker compose -f docker/voice-worker/compose.yaml stop voice-worker`. Vérifier la sortie propre : `systemctl show gamenight.service -p Result -p ExecMainStatus` (attendu `success` et `0`) ou `docker inspect --format '{{.State.ExitCode}}' <conteneur>` (attendu `0`).
+- Mettre à jour (à autoriser) : appliquer d'abord les migrations additives par la procédure approuvée, arrêter le worker (attendre la sortie propre), déployer le nouveau commit approuvé, redémarrer. Ne jamais lancer deux workers sur la même base : le bail SQL ne tolère qu'un propriétaire, mais le second reprendrait les séances au premier.
+- Reprise après arrêt brutal (kill -9, coupure électrique) : les intervalles ouverts sont perdus par conception, le bail expire, la prochaine instance reprend et la plage de lacune est conservée.
+
+### Retrait du consentement
+
+C'est un geste de la personne depuis le panneau de la soirée; il supprime immédiatement son accord et ses intervalles. Au prochain poll (`VOICE_PRESENCE_POLL_INTERVAL_MS`, 15 s par défaut), le worker ferme le collecteur s'il ne reste aucun accord. Rien à faire côté hôte; ne pas arrêter le worker pour cela. Vérification côté base par l'opérateur autorisé : plus de ligne d'accord ni d'intervalle pour cette personne et cette séance.
+
+### Désactivation d'urgence
+
+1. Mettre `VOICE_PRESENCE_ENABLED=false` dans `/etc/gamenight/gamenight.env` (ou la variable du compose), sans afficher le fichier.
+2. Redémarrer : `sudo systemctl restart gamenight.service` (le redémarrage vide les écritures et libère le bail). Sans redémarrage le worker continue : le drapeau est lu au démarrage.
+3. Plus rapide si l'hôte est injoignable ou le drapeau ignoré : retirer le salon vocal de la communauté (`CommunityChannelConfig` catégorie VOICE désactivée) coupe la découverte au poll suivant.
+4. Les données déjà collectées expirent 30 jours après la clôture; la suppression anticipée passe par l'annulation de la soirée ou le retrait de consentement.
+
+### Ce qui est vérifié localement et ce qui ne l'est pas
+
+Vérifié sans Discord réel : arrêt (signaux, second signal, délai maximal, flush avant fermeture de Next) par `src/lib/gamenight-server.test.ts` et `src/lib/gamenight-server-shutdown.test.ts`; arrêt du worker et vidage des lacunes par `voice-presence-worker*.test.ts`; collecteur contre un faux Gateway WebSocket local et Postgres jetable par `voice-presence-gateway-simulation.integration.test.ts` (dont l'arrêt avec un intervalle ouvert); artefacts Docker/systemd par `voice-worker-docker.test.ts`; `docker compose config`; construction locale de l'image (non publiée), démarrage du conteneur sans réseau avec collecte éteinte (`healthy`) puis `docker stop` : SIGTERM réel, sortie 0 en moins d'une seconde.
+
+**Non vérifié et à autoriser séparément** : installation sur le Raspberry Pi (y compris `systemd-analyze verify` sur l'hôte et le comportement réel de `StartLimitBurst`), connexion au vrai Gateway Discord avec un vrai jeton, migration de l'historique vocal en Production, activation de la collecte (`VOICE_PRESENCE_ENABLED=true`, références de décision de consentement et de rétention), notifications Discord.
