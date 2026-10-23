@@ -6,6 +6,7 @@ Document de préparation. Il n'autorise aucune opération Production ; le protoc
 
 - `node scripts/xp-balance-bascule.mjs` : dry-run par défaut ; `--execute --confirm-database=<base>` pour appliquer. Refuse toute base hors `gamenight_xp_*` et tout conteneur non lié à `127.0.0.1`. Idempotent : base déjà basculée = aucune écriture (jamais de recopie `xpBalance = xpTotal`). Refus sans écriture si `xpTotal < 0`, migration en échec ou état partiel.
 - `node scripts/rehearse-xp-balance-bascule.mjs` : répétition complète sur copies jetables (données synthétiques, dump, restauration, bascule, relance, cas négatif et partiel).
+- `node scripts/rehearse-xp-full.mjs` : répétition de bout en bout (schéma `origin/main`, sauvegarde, barrière, `db-migrate`, bascule, échecs injectés, restauration sur un 2e conteneur) ; détail et limites dans [XP-REPETITION-COMPLETE.md](XP-REPETITION-COMPLETE.md).
 - Pour Production, ces scripts ne servent pas de lanceur : l'opérateur exécute les étapes 4 à 7 avec le rôle de migration (`npx prisma migrate deploy`) et reprend les mêmes contrôles en SQL lecture seule.
 
 ## Étapes et durée estimée
