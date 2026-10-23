@@ -83,7 +83,7 @@ const base = {
   roles: [{ rolname: "neondb_owner", rolsuper: false, rolcanlogin: true, rolcreatedb: true, rolcreaterole: true, rolreplication: false, rolbypassrls: true }],
   members: [] as [string, string, boolean][], tableOwners: [["neondb_owner", 86]] as [string, number][], sessions: [] as [string, string, string, number][],
   stats: { rows: 5, negativeTotals: 0, sumTotal: "10", relationBytes: 8192, databaseBytes: 1, balance: null as null | { negatives: number; divergent: number; sum: string } },
-  runtimeRole: "gn_runtime", migrationRole: "gn_migrator",
+  runtimeRole: "gn_runtime", migrationRole: "gn_migrator", seesAllSessions: true,
 };
 const done = DEFAULT_LOT.map((migration_name) => ({ migration_name, finished: true, rolled_back: false }));
 
@@ -121,5 +121,10 @@ describe("prod-precheck : évaluation", () => {
     const barrier = { ...base, args: readPrecheckArgs(["--state=pre", "--require-no-sessions-of=neondb_owner"]) };
     expect(evaluate({ ...barrier, sessions: [["neondb_owner", "app", "idle", 2]] }).gaps).toBe(1);
     expect(evaluate({ ...barrier, sessions: [["gn_migrator", "x", "idle", 1]] }).gaps).toBe(0);
+    // sans visibilité sur toutes les sessions, « aucune session » ne prouve rien : écart, même avec 0 session relevée
+    const blind = evaluate({ ...barrier, seesAllSessions: false, sessions: [] });
+    expect(blind.gaps).toBe(1);
+    expect(blind.lines.find((l) => l.level === "ÉCART")?.text).toMatch(/pg_read_all_stats ou SUPERUSER/);
+    expect(evaluate({ ...base, seesAllSessions: false }).gaps).toBe(0);
   });
 });

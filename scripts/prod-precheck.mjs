@@ -34,6 +34,7 @@ async function snapshot(url, args, target) {
       const roles = await rows(SQL.roles);
       const members = (await rows(SQL.members)).map((row) => Object.values(row));
       const tableOwners = (await rows(SQL.tableOwners)).map((row) => Object.values(row));
+      const seesAllSessions = Object.values((await rows(SQL.seesAllSessions))[0])[0] === true;
       const sessions = (await rows(SQL.sessions)).map((row) => Object.values(row));
       let stats = null;
       if (Number(Object.values((await rows(SQL.statsTable))[0])[0]) > 0) {
@@ -44,7 +45,7 @@ async function snapshot(url, args, target) {
           stats.balance = { negatives, divergent, sum: String(sum) };
         }
       }
-      return { identity: { who, database, version, isSuper }, migrations, roles, members, tableOwners, sessions, stats };
+      return { identity: { who, database, version, isSuper }, migrations, roles, members, tableOwners, sessions, seesAllSessions, stats };
     }, { maxWait: 30_000, timeout: 60_000 });
   } finally {
     await client.$disconnect();

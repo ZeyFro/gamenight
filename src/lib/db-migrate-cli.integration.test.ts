@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { assertLocalTestDatabase } from "./test-local-database";
 
 // Le CLI scripts/db-migrate.mjs de bout en bout sur une base neuve `gamenight_dbmigrate_*` créée dans le
 // PostgreSQL de test (127.0.0.1 uniquement). Une seule suite par base : lancé par `npm run test:postgres`.
@@ -52,6 +53,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
   };
 
   beforeAll(async () => {
+    assertLocalTestDatabase(TEST_DATABASE_URL); // avant tout client et toute requête (DROP/CREATE DATABASE)
     admin = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
     // Reliquats d'un run interrompu (le rôle ne peut être supprimé tant qu'une base lui accorde des droits).
     const old = await admin.$queryRawUnsafe<{ datname: string }[]>(`SELECT datname FROM pg_database WHERE datname LIKE 'gamenight\_dbmigrate\_%'`);

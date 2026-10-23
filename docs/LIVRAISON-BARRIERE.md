@@ -1,8 +1,8 @@
 # Livraison de la barrière d'écriture : rôles, précontrôle, inventaire, repli
 
-Complète [XP-ROLE-BARRIER-REHEARSAL.md](XP-ROLE-BARRIER-REHEARSAL.md), [XP-REPETITION-COMPLETE.md](XP-REPETITION-COMPLETE.md) et [XP-MAINTENANCE-PLAN.md](XP-MAINTENANCE-PLAN.md). Tout ce qui est dit « exécuté » l'a été en local (Docker 127.0.0.1, données synthétiques). **Rien n'a été exécuté contre Production ni Neon.**
+Complète [XP-ROLE-BARRIER-REHEARSAL.md](XP-ROLE-BARRIER-REHEARSAL.md), [XP-REPETITION-COMPLETE.md](XP-REPETITION-COMPLETE.md) et [XP-MAINTENANCE-PLAN.md](XP-MAINTENANCE-PLAN.md). Tout ce qui est dit « exécuté » l'a été en local (Docker 127.0.0.1, données synthétiques). **Les scripts de cette PR n'ont rien exécuté contre Production ni Neon.**
 
-Constat Production (lecture seule du 23/10) : un seul rôle de connexion applicatif `neondb_owner` (propriétaire, CREATEROLE, BYPASSRLS) ; ni rôle runtime ni rôle de migration distincts ; 111 migrations terminées, aucune du lot de 6 ; binding Vercel vers Neon non prouvé.
+Constat Production : il provient de lectures SEULES faites par le coordinateur le 2026-10-23 via le connecteur Neon (SELECT sur `_prisma_migrations`, `pg_roles`, `pg_stat_activity`), **non reproductibles depuis le dépôt** : ce n'est pas une preuve que le lecteur peut vérifier ici ; `scripts/prod-precheck.mjs` (section 1) sert justement à le revérifier avant la fenêtre. Relevé : un seul rôle de connexion applicatif `neondb_owner` (propriétaire, CREATEROLE, BYPASSRLS) ; ni rôle runtime ni rôle de migration distincts ; 111 migrations terminées, aucune du lot de 6 ; binding Vercel vers Neon non prouvé.
 
 ## 1. Précontrôle en lecture seule : `scripts/prod-precheck.mjs`
 
@@ -19,6 +19,7 @@ GAMENIGHT_PRECHECK_DATABASE_URL=<url privée> GAMENIGHT_EXPECTED_TARGET="<hôte>
 - Refuse : URL en argument, variable absente, URL concurrente (`DIRECT_URL`, `POSTGRES_URL`…), cible différente de `GAMENIGHT_EXPECTED_TARGET`, hôte poolé, local sans `--allow-local` ou base hors `gamenight_*`, base réellement jointe différente de celle de l'URL. L'URL et le mot de passe ne sont jamais affichés (masqués).
 - Affiche : migrations terminées / inachevées / annulées sans reprise, écart avec le checkout, présence des 6 du lot, rôles et attributs, appartenances, propriétaires des tables, sessions par rôle / application / état, taille et comptes de `CommunityMemberStats`, négatifs.
 - `--require-no-sessions-of=neondb_owner` sert **après** la barrière : écart si une session de ce rôle subsiste (la session du précontrôle est exclue).
+- **Limite de visibilité des sessions** : sans `pg_read_all_stats` ni `SUPERUSER`, `pg_stat_activity` masque les sessions des autres rôles et « 0 session » ne prouve rien. Le précontrôle lit ce privilège (`SELECT pg_has_role(current_user, 'pg_read_all_stats', 'member') OR is_superuser`), avertit si le relevé est incomplet et, avec `--require-no-sessions-of`, marque un ÉCART (code 3) si le privilège manque. Se connecter avec un rôle qui l'a. Prouvé en local : rôle sans privilège = écart code 3 alors qu'une session `victim` était ouverte et invisible ; rôle membre de `pg_read_all_stats` = session vue, puis conforme une fois fermée.
 
 | Code | Sens |
 |---|---|

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { assertLocalTestDatabase } from "./test-local-database";
 
 /**
  * Offres gratuites : producteur → NotificationEvent/Delivery réels (Postgres
@@ -36,8 +37,8 @@ describe.skipIf(!TEST_DATABASE_URL)("jeux gratuits : producteur → executor →
   const produce = async () => (await import("./free-game-discord")).enqueueFreeGameAnnouncements();
   const makeDue = () => db.notificationDelivery.updateMany({ where: { status: "PENDING" }, data: { nextAttemptAt: new Date(Date.now() - 1000) } });
 
-  beforeAll(async () => { db = (await import("@/lib/prisma")).prisma as typeof db; });
-  afterAll(async () => { await db.$disconnect(); });
+  beforeAll(async () => { assertLocalTestDatabase(TEST_DATABASE_URL); db = (await import("@/lib/prisma")).prisma as typeof db; });
+  afterAll(async () => { await db?.$disconnect(); });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
     await db.$executeRawUnsafe('TRUNCATE "NotificationEvent", "Community", "User" CASCADE');
