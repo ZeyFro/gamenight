@@ -73,6 +73,7 @@ export function parseTarget(connectionString) {
  * - hors machine locale : `<hôte>[:port]/<base>` exact attendu et hôte non poolé
  *   (pgbouncer en mode transaction casse les verrous consultatifs de Prisma);
  * - en local : `--allow-local` et base `gamenight_*` uniquement.
+ * @param {{ migrationUrl?: string, runtimeUrl?: string, runtimeRole?: string, expectedTarget?: string, allowLocal?: boolean }} options
  */
 export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTarget, allowLocal }) {
   if (!migrationUrl) throw new RefusalError("MIGRATION_DATABASE_URL est obligatoire (jamais DATABASE_URL)");
