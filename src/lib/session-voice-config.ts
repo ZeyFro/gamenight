@@ -7,6 +7,11 @@ export type SessionVoiceConfig = {
   generation: number;
 };
 
+/** Drapeau maître : éteint, aucune requête ne doit toucher les tables vocales (migrations pas forcément appliquées). */
+export function isVoicePresenceEnabled(env: Record<string, string | undefined> = process.env) {
+  return env.VOICE_PRESENCE_ENABLED === "true";
+}
+
 export function sessionVoiceConfig(env: Record<string, string | undefined>): SessionVoiceConfig | null {
   if (env.VOICE_PRESENCE_ENABLED !== "true") return null;
   const guildId = env.VOICE_PRESENCE_GUILD_ID?.trim() ?? "";

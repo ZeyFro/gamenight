@@ -273,7 +273,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
     expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canConsent: false, canWithdraw: true });
     process.env.VOICE_PRESENCE_ENABLED = "false";
-    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ enabled: false, canWithdraw: true });
+    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ enabled: false, canWithdraw: false });
   });
 
   it("does not treat expired consent as active but leaves withdrawal available during retention", async () => {
