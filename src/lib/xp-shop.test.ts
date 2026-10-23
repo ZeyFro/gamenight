@@ -21,7 +21,7 @@ vi.mock("@/lib/member-stats", () => ({ lockCommunityProgress: vi.fn(async () => 
 vi.mock("@/lib/community-scoped-client", () => ({ scopedPrismaForCommunityId: vi.fn(async () => db) }));
 vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: vi.fn(async () => "community") }));
 
-import { buyShopItem, getShopState } from "./xp-shop";
+import { buyShopItem, equipShopItem, getShopState } from "./xp-shop";
 import { levelForXp } from "./xp";
 
 describe("boutique : solde distinct de la progression", () => {
@@ -50,5 +50,11 @@ describe("boutique : solde distinct de la progression", () => {
     expect(await buyShopItem("user", "community", "title-strategist")).toBe("insufficient");
     expect(stats).toEqual({ xpTotal: 2_000, xpBalance: 100 });
     expect(db.xpEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("laisse une marge de 15 s aux transactions sous charge (défaut Prisma : 5 s, 500 à l'expiration)", async () => {
+    await buyShopItem("user", "community", "title-strategist");
+    await equipShopItem("user", "community", "TITLE", null);
+    expect(db.$transaction.mock.calls.map((call) => call[1])).toEqual([{ timeout: 15_000, maxWait: 10_000 }, { timeout: 15_000, maxWait: 10_000 }]);
   });
 });

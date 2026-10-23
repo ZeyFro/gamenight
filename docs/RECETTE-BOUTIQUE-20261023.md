@@ -43,3 +43,21 @@ Tests ciblés (tous passés, 0 ignoré) : `src/lib/xp-shop.test.ts` 3 ; `src/lib
 - Build de production (`next build` + `gamenight-server.mjs`) non testé : bloqué par le point tsc ci-dessus ; la recette tourne en mode dev Turbopack.
 - Concurrence testée via le navigateur (onglets) seulement ; la limite de débit (10 achats/minute/utilisateur) est en mémoire par instance. Un seul processus serveur testé.
 - Aucune migration Production ni bascule des writers vérifiée ici.
+
+## Seconde vague (après fusion de `integ/xp-vocal-20261023` @ c9b9ecf)
+
+Changements du script : `RECETTE_ONLY` sans correspondance -> message et code 1 (vérifié : `RECETTE_ONLY=zzz` -> exit 1) ; fixtures du run supprimées en fin de run par préfixe (vérifié : base à 0 utilisateur / 0 xpEvent après un run) ; navigateurs fermés après chaque scénario ; échauffement des routes avant les scénarios.
+
+Après la fusion : schéma migré à neuf, `migrate deploy` OK, `tsc --noEmit` : 0 erreur (les 14 erreurs de `db-migrate-lib.test.ts` ont disparu). `next dev --webpack` non retesté ; recette toujours en Turbopack.
+
+### Défaut observé : expiration des transactions boutique sous charge
+
+Les runs complets répétés ont échoué de façon intermittente, sur un scénario différent à chaque fois (scénarios concurrents ou historique). Le journal du serveur montre `P2028 Transaction already closed ... timeout 5000 ms` dans `buyShopItem` (HTTP 500 à l'utilisateur, aucun débit : la transaction est annulée), avec des server actions de 10 à 70 s en dev sous charge de la machine. Cause probable : transaction interactive Prisma au délai par défaut de 5 s, qui expire quand le serveur de dev est saturé. Correction minimale dans `src/lib/xp-shop.ts` : `{ timeout: 15_000, maxWait: 10_000 }` sur `buyShopItem` et `equipShopItem` (mêmes valeurs que `creation-intent.ts`), test rouge puis vert dans `src/lib/xp-shop.test.ts`. Tests ciblés après correction : `xp-shop.test.ts` 4/4, `xp-shop.integration.test.ts` 11/11.
+
+### Rejeu complet : NON obtenu à l'état final
+
+Après la correction, un run complet a donné 3 scénarios sur 4 OK (achat/équipement/mobile, double clic + 3 onglets, articles différents concurrents) ; le scénario « historique » a échoué, puis le PostgreSQL de recette est devenu injoignable (moteur Docker Desktop arrêté pendant le run : `open //./pipe/dockerDesktopLinuxEngine`). Ce scénario passe seul (`RECETTE_ONLY=historiques` : OK, exit 0, avant la correction). Aucun run complet 4/4 d'un seul passage n'a donc été obtenu ; ne pas le considérer comme prouvé.
+
+### Non exécutés
+
+- `scripts/recette-parcours.mjs` et `scripts/check-recette-local-docker.mjs` : non exécutés, le moteur Docker local est indisponible (le parcours exige un conteneur nommé via `GAMENIGHT_RECIPE_PG_*` et `docker port`).

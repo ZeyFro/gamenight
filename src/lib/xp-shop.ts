@@ -3,6 +3,9 @@ import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 
+// Défaut Prisma : 5 s, puis erreur 500 à l'expiration ; même marge que les autres transactions interactives.
+const SHOP_TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
+
 export const XP_SHOP_ITEMS = [
   { id: "title-strategist", kind: "TITLE", name: "Stratège", value: "Stratège", price: 250 },
   { id: "title-night-owl", kind: "TITLE", name: "Noctambule", value: "Noctambule", price: 350 },
@@ -85,7 +88,7 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
     });
     await tx.communityMemberCosmetic.create({ data: { communityId, userId, itemId } });
     return "purchased" as const;
-  });
+  }, SHOP_TX_OPTIONS);
 }
 
 export async function equipShopItem(
@@ -112,7 +115,7 @@ export async function equipShopItem(
       data: { [field]: item?.id ?? null },
     });
     return "equipped" as const;
-  });
+  }, SHOP_TX_OPTIONS);
 }
 
 export function cosmeticById(itemId: string | null | undefined) {
