@@ -9,3 +9,6 @@ docs
 graphify-out
 **/*.test.ts
 **/*.test.tsx
+.codex-worktrees
+.claude/worktrees
+logs
