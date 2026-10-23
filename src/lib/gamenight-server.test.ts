@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 const runnerUrl = pathToFileURL(resolve("scripts/gamenight-server.mjs")).href;
 
 describe("self-hosted server shutdown (synthetic Next and worker, real local HTTP)", () => {
-  it.each(["prepare", "request"])("waits for in-flight %s before flushing and closing", phase => {
+  it.each(["prepare", "request"])("flushes in parallel with in-flight %s and closes Next only after both", phase => {
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { startGameNightServer } from ${JSON.stringify(runnerUrl)};
@@ -23,7 +23,6 @@ describe("self-hosted server shutdown (synthetic Next and worker, real local HTT
         prepare: async () => {
           assert.equal(globalThis.__gamenightVoicePresenceWorkerState.hostOwnsSignals, true);
           globalThis.__gamenightVoicePresenceWorkerState.stop = async () => {
-            assert.ok(workComplete);
             console.log('flush-started');
             await new Promise(resolve => setTimeout(resolve, 40));
             flushed = true;
@@ -42,7 +41,8 @@ describe("self-hosted server shutdown (synthetic Next and worker, real local HTT
     expect(result.error).toBeUndefined();
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/work-complete[\s\S]*flush-started[\s\S]*flush-complete[\s\S]*next-closed/);
+    expect(result.stdout).toMatch(/work-complete[^]*next-closed/);
+    expect(result.stdout).toMatch(/flush-started[^]*flush-complete[^]*next-closed/);
   });
 
   it.each([0, 7])("serves HTTP and waits for persistence before closing Next with exit code %i", exitCode => {
