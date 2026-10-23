@@ -111,6 +111,28 @@ describe.skipIf(!TEST_DATABASE_URL)("jeux gratuits : producteur → executor →
     expect(await db.notificationDelivery.count({ where: { status: "SENT" } })).toBe(1);
   });
 
+  it("permission refusée (403) : FAILED terminal observable, jamais réessayé ni republié", async () => {
+    await produce();
+    postStatus = [403];
+    await expect(run()).resolves.toMatchObject({ sent: 0, failed: 1 });
+    await makeDue();
+    await run();
+    expect(posts).toHaveLength(1);
+    expect(await db.notificationDelivery.count({ where: { status: "FAILED" } })).toBe(1);
+  });
+
+  it("rate limit (429) : reprise différée selon Retry-After, un seul message au final", async () => {
+    await produce();
+    postStatus = [429];
+    await expect(run()).resolves.toMatchObject({ sent: 0, retrying: 1 });
+    const row = await db.notificationDelivery.findFirstOrThrow();
+    expect(row.status).toBe("PENDING");
+    expect(row.nextAttemptAt).not.toBeNull();
+    await makeDue();
+    await expect(run()).resolves.toMatchObject({ sent: 1 });
+    expect(await db.notificationDelivery.count({ where: { status: "SENT" } })).toBe(1);
+  });
+
   it("n'envoie rien si la communauté désactive les offres après la mise en file", async () => {
     await produce();
     await db.community.update({ where: { id: "c1" }, data: { freeGamesEnabled: false } });
