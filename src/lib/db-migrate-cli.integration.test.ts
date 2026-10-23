@@ -13,6 +13,21 @@ const NEW_DB = `gamenight_dbmigrate_${Date.now()}`;
 
 if (!TEST_DATABASE_URL) console.warn("[db-migrate-cli] TEST_DATABASE_URL absente : tests du CLI SKIPPÉS.");
 
+/**
+ * Supprime un dossier temporaire de ce test SANS lever. Le lien `node_modules` (jonction vers le dépôt) est retiré d'abord ;
+ * s'il survit, aucun `rmSync` récursif n'est lancé (il pourrait parcourir le vrai `node_modules`). Windows peut retenir un
+ * dossier un instant (EPERM) : réessais. Retourne une description de l'échec, ou null.
+ */
+function removeTempDir(dir: string): string | null {
+  try { unlinkSync(join(dir, "node_modules")); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") return `lien node_modules non retiré (${code}) : dossier conservé`;
+  }
+  try { rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); return null; }
+  catch (error) { return `suppression impossible (${(error as NodeJS.ErrnoException).code})`; }
+}
+
 describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base neuve", () => {
   let admin: PrismaClient;
   const withDatabase = (database: string, user?: string, password?: string) => {
@@ -43,8 +58,8 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     for (const { datname } of old) await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
     // Dossiers temporaires laissés par un run précédent (Windows peut retenir un dossier au-delà des réessais du test).
     for (const name of readdirSync(tmpdir()).filter(n => n.startsWith("gn-dbmigrate-mid-"))) {
-      try { rmSync(join(tmpdir(), name), { recursive: true, force: true }); }
-      catch (error) { console.warn(`[db-migrate-cli] reliquat ${name} non supprimé : ${(error as NodeJS.ErrnoException).code}`); }
+      const problem = removeTempDir(join(tmpdir(), name));
+      if (problem) console.warn(`[db-migrate-cli] reliquat ${name} : ${problem}`);
     }
     await admin.$executeRawUnsafe(`CREATE DATABASE "${NEW_DB}"`);
   }, 60_000);
@@ -169,12 +184,11 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
       expect(retry.stderr).toContain("inachevée");
     } finally {
       // Nettoyage qui ne LÈVE JAMAIS : une exception dans `finally` remplacerait l'assertion qui a échoué. Chaque échec
-      // est signalé séparément (console.warn) ; le lien d'abord (jamais suivi par un rmSync récursif), puis le dossier
-      // (Windows : un antivirus ou un sous-processus Prisma peut retenir un fichier un instant, EPERM : réessais).
-      const warn = (what: string, error: unknown) => console.warn(`[db-migrate-cli] nettoyage « ${what} » impossible : ${(error as NodeJS.ErrnoException)?.code ?? error}`);
-      try { unlinkSync(join(work, "node_modules")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") warn("lien node_modules", error); }
-      try { rmSync(work, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 }); } catch (error) { warn(work, error); }
-      try { await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`); } catch (error) { warn(`base ${midDb}`, error); }
+      // est signalé séparément (console.warn).
+      const problem = removeTempDir(work);
+      if (problem) console.warn(`[db-migrate-cli] nettoyage de ${work} : ${problem}`);
+      try { await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${midDb}" WITH (FORCE)`); }
+      catch (error) { console.warn(`[db-migrate-cli] suppression de la base ${midDb} impossible : ${(error as NodeJS.ErrnoException)?.code ?? error}`); }
     }
   }, 240_000);
 });
