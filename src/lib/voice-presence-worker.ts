@@ -75,12 +75,23 @@ export function createVoicePresenceWorker(options: {
   onGapRecovered?: (target: VoicePresenceTarget, at: number) => void;
   releaseLease?: (target: VoicePresenceTarget) => void | Promise<void>;
   pollIntervalMs?: number;
+  // Base indisponible : après un premier poll réussi, tolère jusqu'à N échecs de découverte consécutifs
+  // (défaut 1 = fatal au premier), avec un délai doublé à chaque échec et plafonné (défaut 300 s).
+  maxConsecutiveFailures?: number;
+  maxBackoffMs?: number;
+  onDegraded?: (attempt: number, delayMs: number) => void;
+  onRecovered?: (failedAttempts: number) => void;
 }) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < MIN_POLL_INTERVAL_MS) {
     throw new Error("Invalid voice presence poll interval");
   }
 
+  const maxFailures = Math.max(1, options.maxConsecutiveFailures ?? 1);
+  const maxBackoffMs = options.maxBackoffMs ?? 300_000;
+  let consecutiveFailures = 0;
+  let hadDiscovery = false;
+  let nextAttemptAt = 0;
   const collectors = new Map<string, ActiveCollector>();
   let started = false;
   let stopped = false;
@@ -145,13 +156,19 @@ export function createVoicePresenceWorker(options: {
   }
 
   async function refresh() {
-    if (!started || stopped || polling || failure) return;
+    if (!started || stopped || polling || failure || Date.now() < nextAttemptAt) return;
     polling = true;
+    let discovering = true;
     try {
       const loadedTargets = await options.loadTargets();
       if (!started || stopped || failure) return;
       const targets = normalizedTargets(loadedTargets);
       const stopTargets = await options.loadStopTargets?.() ?? [];
+      discovering = false;
+      if (consecutiveFailures) options.onRecovered?.(consecutiveFailures);
+      consecutiveFailures = 0;
+      nextAttemptAt = 0;
+      hadDiscovery = true;
       const stopBySession = new Map(stopTargets.map(target => [target.sessionId, target]));
 
       for (const [sessionId, active] of collectors) {
@@ -183,6 +200,13 @@ export function createVoicePresenceWorker(options: {
         await collector.start();
       }
     } catch (error) {
+      if (discovering && hadDiscovery && !stopped && !failure && consecutiveFailures + 1 < maxFailures) {
+        consecutiveFailures += 1;
+        const delayMs = Math.min(maxBackoffMs, pollIntervalMs * 2 ** (consecutiveFailures - 1));
+        nextAttemptAt = Date.now() + delayMs;
+        options.onDegraded?.(consecutiveFailures, delayMs);
+        return;
+      }
       await fail({ kind: "discovery", error });
       throw error;
     } finally {

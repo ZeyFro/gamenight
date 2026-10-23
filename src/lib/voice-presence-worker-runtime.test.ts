@@ -350,4 +350,44 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
 
     expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({ kind: "discovery" }));
   });
+
+  it("refuse un second runtime dans le même processus (un seul worker par processus, un seul bail par séance)", async () => {
+    mocks.sessionFindMany.mockResolvedValue([]);
+    const processLike = { once: vi.fn(), removeListener: vi.fn() };
+    const first = await startVoicePresenceWorkerRuntime({ token: "synthetic-token", pollIntervalMs: 15_000 }, { processLike, onFatal: vi.fn() });
+    try {
+      await expect(startVoicePresenceWorkerRuntime({ token: "synthetic-token", pollIntervalMs: 15_000 }, { processLike, onFatal: vi.fn() }))
+        .rejects.toThrow("already registered");
+    } finally {
+      await first.stop();
+    }
+  });
+
+  it("base coupée après le démarrage : backoff, journal sans secret ni URL, reprise, puis abandon fatal au plafond", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const secret = "postgresql://gn:hunter2@127.0.0.1:1/gamenight";
+    mocks.sessionFindMany.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error(secret)).mockResolvedValue([]);
+    const onFatal = vi.fn();
+    const runtime = await startVoicePresenceWorkerRuntime(
+      { token: "synthetic-token-xyz", pollIntervalMs: 5_000 },
+      { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal },
+    );
+    await vi.advanceTimersByTimeAsync(5_000 * 4);
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("[voice-presence] database unavailable (attempt 1/8); next attempt in 5s");
+    expect(info).toHaveBeenCalledWith("[voice-presence] database available again after 1 failed attempt(s)");
+
+    mocks.sessionFindMany.mockRejectedValue(new Error(secret));
+    await vi.advanceTimersByTimeAsync(5_000 * 400);
+    expect(onFatal).toHaveBeenCalledOnce();
+    expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({ kind: "discovery" }));
+    expect(warn).toHaveBeenCalledTimes(1 + 7);
+    const logged = JSON.stringify([...warn.mock.calls, ...info.mock.calls]);
+    expect(logged).not.toContain("hunter2");
+    expect(logged).not.toContain("postgresql://");
+    expect(logged).not.toContain("synthetic-token-xyz");
+    await runtime.stop();
+  });
 });
