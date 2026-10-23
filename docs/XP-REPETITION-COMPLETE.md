@@ -74,4 +74,4 @@ Aucune URL ni mot de passe n'est imprimé (mots de passe jetables de répétitio
 ## Constats
 
 - Garde corrigé : `xp-balance-bascule.mjs` raisonne sur le lot complet de 6 migrations (XP + vocal) ; `PRE` = rien du lot, `MIGRATED` = les 6 terminées plus colonne, contrainte et enum. Un état « XP seul appliqué » est `PARTIAL` (refusé) : migrer seulement le XP puis déployer un code qui lit les tables vocales casserait ces pages. L'ancien garde à 2 migrations (`assertOnlyExpectedXpMigrationPending`, `EXPECTED_XP_MIGRATIONS`) est conservé tel quel car `scripts/rehearse-xp-role-barrier.mjs` (A1) l'importe ; à retirer quand ce script sera migré.
-- `db-migrate.mjs`, relancé sans rien en attente : code 2 avec « Manquantes : […] » ; cohérent mais peu lisible comme « rien à faire » (non modifié).
+- `db-migrate.mjs`, relancé sans rien en attente : code 2 conservé, message désormais « Rien à faire : aucune migration en attente… » (voir [LIVRAISON-BARRIERE.md](LIVRAISON-BARRIERE.md)).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXIT, RefusalError, assertExpectedPending, assertTarget, diffMigrations, parseTarget, readArgs, redact } from "../../scripts/db-migrate-lib.mjs";
+import { COMPETING_URL_VARIABLES, EXIT, RefusalError, assertExpectedPending, assertSingleUrlSource, assertTarget, diffMigrations, parseTarget, readArgs, redact } from "../../scripts/db-migrate-lib.mjs";
 
 // Les URL sont assemblées pour ne pas déclencher src/lib/no-hosted-db-url.test.ts (aucune chaîne de connexion
 // hébergée en dur dans src) : hôtes fictifs, jamais de domaine Neon.
@@ -85,20 +85,49 @@ describe("db-migrate : cible", () => {
 describe("db-migrate : migrations en attente", () => {
   it("calcule en attente, inachevées et absentes du checkout", () => {
     const diff = diffMigrations(["a", "b", "c"], [ok("a"), { migration_name: "b", finished_at: null, rolled_back_at: null }, ok("z")]);
-    expect(diff).toEqual({ absentFromCheckout: ["z"], inProgress: ["b"], pending: ["b", "c"] });
+    expect(diff).toEqual({ finished: ["a", "z"], absentFromCheckout: ["z"], inProgress: ["b"], pending: ["b", "c"] });
   });
 
   it("n'accepte que la liste exacte attendue", () => {
     const base = { absentFromCheckout: [], inProgress: [] };
-    expect(assertExpectedPending({ ...base, pending: ["x", "y"] }, ["y", "x"])).toEqual(["x", "y"]);
+    expect(assertExpectedPending({ ...base, pending: ["x", "y"] }, ["x", "y"])).toEqual(["x", "y"]);
     expect(() => assertExpectedPending({ ...base, pending: ["x", "y"] }, ["x"])).toThrow(/Inattendues : \[y\]/);
     expect(() => assertExpectedPending({ ...base, pending: ["x"] }, ["x", "y"])).toThrow(/Manquantes : \[y\]/);
     expect(() => assertExpectedPending({ ...base, pending: [] }, [])).toThrow(/--expect/);
   });
 
+  it("refuse une liste dans l'ordre inversé ou avec un doublon (même ensemble)", () => {
+    const base = { absentFromCheckout: [], inProgress: [], pending: ["x", "y", "z"] };
+    expect(() => assertExpectedPending(base, ["y", "x", "z"])).toThrow(/Ordre de --expect.*Attendu : \[x, y, z\].*Reçu : \[y, x, z\]/);
+    expect(() => assertExpectedPending(base, ["z", "y", "x"])).toThrow(/Ordre/);
+    expect(() => assertExpectedPending(base, ["x", "x", "y", "z"])).toThrow(/doublon : x/);
+  });
+
+  it("« rien à faire » reste un refus (code 2) mais le dit clairement ; manquante = appliquée ou absente du dossier", () => {
+    const done = { absentFromCheckout: [], inProgress: [], pending: [], finished: ["x", "y"] };
+    expect(() => assertExpectedPending(done, ["x", "y"])).toThrow(/^Rien à faire : aucune migration en attente.*déjà appliquées et terminées\. Aucune écriture/);
+    try { assertExpectedPending(done, ["x", "y"]); } catch (error) { expect((error as RefusalError).exitCode).toBe(EXIT.REFUSED); }
+    expect(() => assertExpectedPending(done, ["x", "inconnue"])).toThrow(/inconnue \(absente du dossier prisma\/migrations\)/);
+    expect(() => assertExpectedPending({ ...done, pending: ["z"] }, ["x"])).toThrow(/Manquantes : \[x\].*x \(déjà appliquée\)/);
+  });
+
   it("refuse une migration inachevée ou un historique plus récent que le checkout", () => {
     expect(() => assertExpectedPending({ absentFromCheckout: [], inProgress: ["b"], pending: ["b"] }, ["b"])).toThrow(/inachevée/);
     expect(() => assertExpectedPending({ absentFromCheckout: ["z"], inProgress: [], pending: ["c"] }, ["c"])).toThrow(/absentes du checkout/);
+  });
+});
+
+describe("db-migrate : une seule source d'URL", () => {
+  it("refuse toute variable d'URL concurrente (intégration Vercel/Neon, DIRECT_URL…)", () => {
+    for (const name of COMPETING_URL_VARIABLES) expect(() => assertSingleUrlSource({ [name]: URL_RUNTIME }), name).toThrow(/cible ambiguë/);
+    expect(() => assertSingleUrlSource({ DIRECT_URL: "" })).not.toThrow();
+  });
+
+  it("admet DATABASE_URL seule ou accordée à GAMENIGHT_RUNTIME_ROLE, refuse leur désaccord", () => {
+    expect(() => assertSingleUrlSource({})).not.toThrow();
+    expect(() => assertSingleUrlSource({ DATABASE_URL: URL_RUNTIME })).not.toThrow();
+    expect(() => assertSingleUrlSource({ DATABASE_URL: URL_RUNTIME, GAMENIGHT_RUNTIME_ROLE: "gn_runtime" })).not.toThrow();
+    expect(() => assertSingleUrlSource({ DATABASE_URL: URL_RUNTIME, GAMENIGHT_RUNTIME_ROLE: "autre" })).toThrow(/deux rôles runtime différents/);
   });
 });
 
