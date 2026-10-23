@@ -1,7 +1,10 @@
 // Répétition LOCALE (Docker uniquement) de la bascule XP avec rôles distincts et barrière d'écriture.
 // Jamais Neon, jamais Production : cluster postgres:16-alpine jetable lié à 127.0.0.1, données synthétiques.
 // Usage : node scripts/rehearse-xp-role-barrier.mjs   (crée puis détruit ses conteneurs gamenight-xp-roles-*)
-//   env : XP_ROLES_PORT (déf. 55471 ; le pooler utilise PORT+1), XP_ROLES_CONTAINER (déf. gamenight-xp-roles-pg)
+//   env : XP_ROLES_PORT (déf. 55471 ; le pooler utilise PORT+1), XP_ROLES_CONTAINER (déf. gamenight-xp-roles-pg),
+//         XP_ROLES_LABEL (déf. xp-role-barrier : valeur du label gamenight.rehearsal, p. ex. mission-B).
+//   Le pooler et le réseau dérivent du nom du conteneur (<conteneur>-bouncer, <conteneur>-net) : deux répétitions
+//   avec des conteneurs différents ne se touchent pas (les noms fixes d'avant permettaient de supprimer ceux d'un autre run).
 // Prérequis : docker local, image postgres:16-alpine et edoburu/pgbouncer, node_modules/prisma (npx prisma migrate deploy).
 // Aucune dépendance npm nouvelle : client PostgreSQL minimal (protocole simple + SCRAM-SHA-256) écrit ici.
 // Le même fichier sert de « mode écrivain » (--writer) : le processus de l'ancien runtime, séparé de l'orchestrateur.
@@ -27,7 +30,8 @@ const PENDING_MIGRATIONS = [
   "20261022140000_voice_presence_gap_history",
   "20261022142500_shop_balance_purchase_reason",
 ];
-const LABEL = "gamenight.rehearsal=xp-role-barrier";
+const LABEL_VALUE = process.env.XP_ROLES_LABEL ?? "xp-role-barrier";
+const LABEL = `gamenight.rehearsal=${LABEL_VALUE}`;
 const FORBIDDEN_PORTS = [55439]; // Postgres des tests d'intégration (CLAUDE.md)
 
 // ------------------------------------------------------------------ constantes et garde-fous
@@ -35,8 +39,8 @@ const HOST = "127.0.0.1";
 const PG_PORT = Number(process.env.XP_ROLES_PORT ?? 55471);
 const BOUNCER_PORT = PG_PORT + 1;
 const PG_CONTAINER = process.env.XP_ROLES_CONTAINER ?? "gamenight-xp-roles-pg";
-const BOUNCER_CONTAINER = "gamenight-xp-roles-bouncer";
-const NETWORK = "gamenight-xp-roles-net";
+const BOUNCER_CONTAINER = `${PG_CONTAINER}-bouncer`;
+const NETWORK = `${PG_CONTAINER}-net`;
 const PRISMA_BIN = "node_modules/prisma/build/index.js";
 const PW = {
   admin: "test", ownerOld: "owner-old-pw-rehearsal", ownerNew: "owner-new-pw-rehearsal",
@@ -47,6 +51,7 @@ const USERS = 2000;
 
 export function assertSafeConfig(env = process.env) {
   assert.match(PG_CONTAINER, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Conteneur invalide");
+  assert.match(LABEL_VALUE, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Label invalide");
   assert.ok(Number.isInteger(PG_PORT) && PG_PORT >= 1024 && PG_PORT < 65000, "Port invalide");
   assert.equal(HOST, "127.0.0.1");
   for (const port of [PG_PORT, BOUNCER_PORT]) assert.ok(!FORBIDDEN_PORTS.includes(port), `Port ${port} interdit (réservé aux tests d'intégration)`);
@@ -272,12 +277,12 @@ function removeOwned() {
   for (const name of [PG_CONTAINER, BOUNCER_CONTAINER]) {
     const label = labelOf("container", name);
     if (label === null) continue;
-    assert.equal(label, "xp-role-barrier", `Le conteneur ${name} existe sans le label ${LABEL} : refus de le supprimer`);
+    assert.equal(label, LABEL_VALUE, `Le conteneur ${name} existe sans le label ${LABEL} : refus de le supprimer`);
     docker(["rm", "-f", name]);
   }
   const net = labelOf("network", NETWORK);
   if (net === null) return;
-  assert.equal(net, "xp-role-barrier", `Le réseau ${NETWORK} existe sans le label ${LABEL} : refus de le supprimer`);
+  assert.equal(net, LABEL_VALUE, `Le réseau ${NETWORK} existe sans le label ${LABEL} : refus de le supprimer`);
   docker(["network", "rm", NETWORK]);
 }
 /** Refuse un port déjà publié par un autre conteneur (en cours d'exécution). */
@@ -716,6 +721,9 @@ admin_users = gn_bouncer_auth
     const tBarrier = Date.now();
     fact("phase3_barrière", { méthode: retained.id, application: applied, terminate: term, duréeTotaleMs: tBarrier - tMaint });
     await sleep(1800); // purge des statistiques (flush ~1 s) avant la ligne de base
+    // Second balayage : une session qui terminait son authentification pendant le premier terminate n'y figurait pas encore.
+    const term2 = await timed("3", "second terminate (filet contre une session en cours de démarrage)", () => terminateOthers(main, operator, adminPg));
+    fact("phase3_second_balayage", term2);
     const bFrom = Date.now(); const b0 = await statsOf();
     const rel = [];
     for (let i = 0; i < 10; i++) {
@@ -734,6 +742,18 @@ admin_users = gn_bouncer_auth
       écrituresDeL_ancienRuntime_aprèsBarrière: after, canari_directe: canaryDirect, canari_pooler: canaryPooler, lignesCanariPostBarrièreEnBase: Number(writeCanaryDuringWindow),
     });
     assert.ok(rel.every((r) => r.sessions === 0) && b1.every((v, i) => v === b0[i]) && after.every((a) => a.ok === 0) && !canaryDirect.ok && !canaryPooler.ok && Number(writeCanaryDuringWindow) === 0, "Preuve de drainage non satisfaite");
+
+    // 3c. Trou documenté : la barrière vise les sessions de neondb_owner. gn_migrator, membre de neondb_owner (héritage), écrit encore :
+    // c'est la voie légitime de la migration, pas une voie de l'ancien runtime. Prouvé sans effet (transaction annulée).
+    const viaMigrator = await open("migrator", main).then(async (c) => {
+      const direct = await attempt(c, `BEGIN; ${canarySql("migrateur-direct")}; ROLLBACK`);
+      const setRole = await attempt(c, `BEGIN; SET LOCAL ROLE ${OWNER}; ${canarySql("migrateur-set-role")}; ROLLBACK`);
+      c.close(); return { écritureDirecte: direct.ok, écritureViaSetRole: setRole.ok };
+    }, (e) => ({ connexion: `refusée (${e.code})` }));
+    const migratorSessionsDuring = Number(await scalar(main, `SELECT count(*) FROM pg_stat_activity WHERE usename = 'gn_migrator' AND datname = '${main}'`));
+    fact("phase3c_voie_du_migrateur", { ...viaMigrator, sessionsGnMigratorOuvertesAprèsFermeture: migratorSessionsDuring, lignesCanariMigrateurEnBase: Number(await scalar(main, `SELECT count(*) FROM "XpEvent" WHERE "id" LIKE 'canary-migrateur%'`)) });
+    assert.equal(viaMigrator.écritureDirecte, true, "gn_migrator (membre du propriétaire) devrait pouvoir écrire : le trou documenté n'existe plus, mettre la doc à jour");
+    assert.equal(Number(await scalar(main, `SELECT count(*) FROM "XpEvent" WHERE "id" LIKE 'canary-migrateur%'`)), 0, "Les écritures de sonde du migrateur doivent être annulées");
 
     // =============================================================== Phase 4 : sauvegarde et restauration isolée
     console.log("\n== Phase 4 : sauvegarde et restauration isolée");
