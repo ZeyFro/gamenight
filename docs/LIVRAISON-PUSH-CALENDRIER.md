@@ -16,11 +16,13 @@ Sujet VAPID : `mailto:adresse@domaine` ou une URL `https://`.
 
 ## Générer et installer les clés VAPID sans les exposer
 
-À lancer en local. La commande écrit la paire dans un fichier privé hors dépôt et n'affiche que son chemin :
+À lancer en local. La commande régénère la paire jusqu'à obtenir une clé privée de 32 octets, une publique de 65 et un couple cohérent, puis l'écrit en mode 0600 dans un fichier privé hors dépôt. L'écriture est exclusive : si le fichier existe déjà, elle est refusée et rien n'est écrasé (une paire déjà installée resterait valable). Elle n'affiche jamais les clés, seulement le chemin :
 
 ```
-node -e "const c=require('crypto'),e=c.createECDH('prime256v1');e.generateKeys();require('fs').writeFileSync(process.argv[1],'WEB_PUSH_VAPID_PUBLIC_KEY='+e.getPublicKey().toString('base64url')+'\nWEB_PUSH_VAPID_PRIVATE_KEY='+e.getPrivateKey().toString('base64url')+'\n',{mode:0o600});console.log('ecrit :',process.argv[1])" "$HOME/.gamenight-vapid.env"
+node -e 'const c=require("crypto"),f=require("fs"),p=process.argv[1];let e,ok=false;while(!ok){e=c.createECDH("prime256v1");e.generateKeys();const v=c.createECDH("prime256v1");v.setPrivateKey(e.getPrivateKey());ok=e.getPrivateKey().length===32&&e.getPublicKey().length===65&&v.getPublicKey().equals(e.getPublicKey())}try{f.writeFileSync(p,"WEB_PUSH_VAPID_PUBLIC_KEY="+e.getPublicKey().toString("base64url")+"\nWEB_PUSH_VAPID_PRIVATE_KEY="+e.getPrivateKey().toString("base64url")+"\n",{mode:0o600,flag:"wx"});console.log("ecrit :",p)}catch(x){console.error(x.code==="EEXIST"?"Refus : "+p+" existe deja (une paire est peut-etre deja installee), rien n a ete ecrit.":"Echec ecriture : "+x.code);process.exit(1)}' "$HOME/.gamenight-vapid.env"
 ```
+
+Le mode 0600 n'est appliqué que sous Linux/macOS (shell POSIX). Sous Windows, les bits POSIX sont ignorés (constaté : 644) : garder le fichier dans le profil utilisateur et ne pas le partager, puis le supprimer une fois les valeurs saisies chez l'hébergeur.
 
 Saisir ensuite les deux valeurs dans le champ de variable d'environnement (type secret) du tableau de bord de l'hébergeur, en les copiant depuis ce fichier, sans les coller dans une conversation, un ticket ou un commit. Ne jamais les mettre dans `.env.example`. Conserver la paire : la remplacer invalide tous les abonnements existants (les appareils doivent se réabonner).
 
