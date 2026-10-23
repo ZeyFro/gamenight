@@ -8,7 +8,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { toWallClock, wallClockNow } from "@/lib/wallclock";
 import { finalizeVoiceIntervalAtCutoff } from "./voice-presence-policy";
 import { fenceSessionVoicePresenceLeasePreservingGap } from "./voice-presence-coordination";
-import type { SessionVoiceConfig } from "./session-voice-config";
+import { isVoicePresenceEnabled, type SessionVoiceConfig } from "./session-voice-config";
 
 export { sessionVoiceConfig } from "./session-voice-config";
 export type { SessionVoiceConfig } from "./session-voice-config";
@@ -68,10 +68,11 @@ export async function withdrawSessionVoiceConsent(sessionId: string, userId: str
     await tx.sessionVoicePresenceConsent.delete({ where: { id: consent.id } });
 
     const now = wallClockNow();
+    const realNow = new Date();
     const activeConsents = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "SessionVoicePresenceConsent"
       WHERE "sessionId" = ${sessionId}
-        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${realNow})
       LIMIT 1
       FOR SHARE
     `;
@@ -247,11 +248,16 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   const canReadAll = isCreator || isAdmin;
   if (!canReadAll && accessRole !== "guest") return null;
 
+  // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas encore appliquées).
+  if (!isVoicePresenceEnabled()) {
+    return { enabled: false, consented: false, canWithdraw: false, canConsent: false, canReadAll, hasGaps: false, gapPeriods: [], entries: [] };
+  }
   const ownConsent = await prisma.sessionVoicePresenceConsent.findUnique({
     where: { sessionId_userId: { sessionId, userId: viewerId } },
     select: { id: true, expiresAt: true },
   });
-  const now = wallClockNow();
+  // expiresAt = stopAt (instant réel) + 30 j : comparer à un instant réel, pas à l'heure murale.
+  const now = new Date();
   const consented = !!ownConsent && (ownConsent.expiresAt === null || ownConsent.expiresAt > now);
   const totals = await prisma.sessionVoicePresenceInterval.groupBy({
     by: ["userId"],

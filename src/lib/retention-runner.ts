@@ -132,8 +132,11 @@ export async function runRetentionCleanup(opts: {
       logger.error("retention-runner", error, { step: "chat" });
     }
 
+    // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas appliquées).
     try {
-      report.voicePresence = await purgeExpiredVoicePresenceBatch({ limit, dryRun: opts.dryRun, now: startedAt });
+      if (process.env.VOICE_PRESENCE_ENABLED === "true") {
+        report.voicePresence = await purgeExpiredVoicePresenceBatch({ limit, dryRun: opts.dryRun, now: new Date() });
+      }
     } catch (error) {
       errors.push(`voicePresence: ${String(error)}`);
       logger.error("retention-runner", error, { step: "voicePresence" });

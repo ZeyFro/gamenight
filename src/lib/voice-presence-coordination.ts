@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { wallClockNow } from "@/lib/wallclock";
 
 export type VoicePresenceEndMode = "FINALIZE" | "PURGE";
 
@@ -72,6 +71,8 @@ export async function requestSessionVoicePresenceStop(
   sessionId: string,
   mode: VoicePresenceEndMode,
   stopAt: Date,
+  // Horloge des baux (heure murale, comme claimSessionVoicePresenceLease) ; par défaut stopAt (tests, domaine unique).
+  leaseNow: Date = stopAt,
 ) {
   await tx.$queryRaw`SELECT "sessionId" FROM "SessionVoicePresenceControl" WHERE "sessionId" = ${sessionId} FOR UPDATE`;
   const existing = await tx.sessionVoicePresenceControl.findUnique({
@@ -85,9 +86,9 @@ export async function requestSessionVoicePresenceStop(
     await tx.sessionVoicePresenceGap.deleteMany({ where: { sessionId } });
 
     if (existing) {
-      const leaseIsLive = existing.leaseOwner !== null
+            const leaseIsLive = existing.leaseOwner !== null
         && existing.leaseExpiresAt !== null
-        && existing.leaseExpiresAt > stopAt;
+        && existing.leaseExpiresAt > leaseNow;
       if (leaseIsLive) {
         await tx.sessionVoicePresenceControl.update({
           where: { sessionId },
@@ -108,6 +109,9 @@ export async function requestSessionVoicePresenceStop(
       data: { status: "STOP_REQUESTED", stopAt },
     });
   } else {
+    // Sans contrôle ni accord, aucun worker n'a rien à finaliser : ne pas accumuler une ligne par soirée terminée.
+    const consents = await tx.sessionVoicePresenceConsent.count({ where: { sessionId } });
+    if (consents === 0) return;
     await tx.sessionVoicePresenceControl.create({ data: { sessionId, status: "STOP_REQUESTED", stopAt } });
   }
 }
@@ -378,7 +382,7 @@ export async function finalizeSessionVoicePresenceCommand(sessionId: string, db:
       return true;
     }
     if (control.status !== "STOP_REQUESTED") return false;
-    const expiresAt = new Date((control.stopAt ?? wallClockNow()).getTime() + VOICE_PRESENCE_RETENTION_MS);
+    const expiresAt = new Date((control.stopAt ?? new Date()).getTime() + VOICE_PRESENCE_RETENTION_MS);
     await tx.sessionVoicePresenceConsent.updateMany({
       where: { sessionId },
       data: { expiresAt },

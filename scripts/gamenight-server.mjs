@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 40_000;
+const HTTP_DRAIN_GRACE_MS = 3_000;
 
 // Délai maximal d'arrêt propre (VOICE_WORKER_SHUTDOWN_TIMEOUT_MS), borné à 1 s - 10 min ; valeur invalide = défaut.
 // Le défaut reste sous TimeoutStopSec=45s (systemd) et stop_grace_period 45s (compose).
@@ -35,8 +36,17 @@ export async function startGameNightServer(app, port = 3000) {
     stopping = (async () => {
       try {
         await preparing;
-        if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-        await stopWorker?.();
+        // Serveur et worker en parallèle : une connexion HTTP maintenue ouverte ne doit jamais retarder le flush ni la libération du bail.
+        const serverClosed = server.listening
+          ? new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+          : Promise.resolve();
+        server.closeIdleConnections();
+        const [workerResult] = await Promise.allSettled([stopWorker?.()]);
+        serverClosed.catch(() => undefined);
+        // Le worker est vidé : laisser un court délai aux requêtes actives, puis couper ce qui reste.
+        await Promise.race([serverClosed, new Promise(resolve => setTimeout(resolve, HTTP_DRAIN_GRACE_MS).unref())]);
+        server.closeAllConnections();
+        if (workerResult.status === "rejected") throw workerResult.reason;
         await app.close();
         process.exit(process.exitCode || 0);
       } catch {

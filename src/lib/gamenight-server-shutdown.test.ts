@@ -59,3 +59,33 @@ describe("arrêt du lanceur auto-hébergé : signaux, second signal, délai maxi
     for (const bad of ["abc", "0", "999", "600001", "1.5", "-1"]) expect(shutdownTimeoutMs({ VOICE_WORKER_SHUTDOWN_TIMEOUT_MS: bad })).toBe(40_000);
   });
 });
+
+describe("connexion HTTP maintenue ouverte pendant l'arrêt", () => {
+  it("n'empêche ni le flush du worker ni la libération du bail (puis coupe la connexion)", () => {
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+      import net from 'node:net';
+      import { startGameNightServer } from ${JSON.stringify(runnerUrl)};
+      let socketClosed = false;
+      const server = await startGameNightServer({
+        prepare: async () => {
+          globalThis.__gamenightVoicePresenceWorkerState = { stop: async () => {
+            console.log('flush-done');
+            console.log('lease-released');
+            console.log(socketClosed ? 'flush-after-socket-closed' : 'flush-while-socket-open');
+          } };
+        },
+        getRequestHandler: () => () => { /* ne répond jamais : requête active maintenue ouverte */ },
+        close: async () => { console.log('next-closed'); },
+      }, 0);
+      const socket = net.connect(server.address().port, '127.0.0.1');
+      socket.on('close', () => { socketClosed = true; });
+      await new Promise(resolve => socket.once('connect', resolve));
+      socket.write(['GET / HTTP/1.1', 'Host: x', '', ''].join(String.fromCharCode(13, 10)));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      process.emit('SIGTERM', 'SIGTERM');
+    `], { encoding: "utf8", timeout: 15_000, env: baseEnv });
+    expect(result.stdout).toContain("flush-while-socket-open");
+    expect(result.stdout).toMatch(/lease-released[\s\S]*next-closed/);
+    expect(result.status).toBe(0);
+  });
+});
