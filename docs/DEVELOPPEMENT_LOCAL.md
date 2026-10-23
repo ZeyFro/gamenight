@@ -61,3 +61,12 @@ Ne configure pas ces URLs vers Neon, Preview ou Production. Après les tests, re
 ## Compilation
 
 npm run build ne migre plus (prisma generate puis next build); les migrations s'appliquent avec `node scripts/db-migrate.mjs` ou `npx prisma migrate deploy` en local. Pour compiler localement, garde donc DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
+
+## Migration explicite d'une base locale (rôles distincts)
+
+`scripts/db-migrate.mjs` est en dry-run par défaut et refuse toute cible non contrôlée. En local : `--allow-local`, base `gamenight_*`, `MIGRATION_DATABASE_URL` (rôle de migration) différent du rôle runtime (`DATABASE_URL` ou `GAMENIGHT_RUNTIME_ROLE`).
+
+    node scripts/db-migrate.mjs --allow-local --expect=<migration1,migration2>                                   # dry-run
+    node scripts/db-migrate.mjs --allow-local --expect=<…> --execute --confirm-database=<base>                  # applique
+
+Tests : `src/lib/db-migrate-cli.integration.test.ts` (refus, dry-run sans écriture, échec en cours de route, rôle sans droit) et `src/lib/runtime-no-ddl.integration.test.ts` (rôle runtime sans DDL), chacun avec `TEST_DATABASE_URL` sur un PostgreSQL local jetable, un fichier à la fois : `npx vitest run <fichier>`.

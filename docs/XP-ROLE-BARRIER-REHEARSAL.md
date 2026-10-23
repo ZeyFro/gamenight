@@ -79,3 +79,13 @@ Invariants vérifiés (assertions du script) : `xpBalance = xpTotal` sur toutes 
 - Volume : 2 200 lignes de stats et ~6 000 événements, très en dessous d'une charge réelle ; le dump et les verrous ne sont pas représentatifs.
 - L'écrivain principal est suspendu pendant la matrice de l'étape 2 (les attributs de rôle sont globaux au cluster), puis relancé sur la même base.
 - PostgreSQL 16.15 local ; la version Neon est à confirmer (les règles `CREATEROLE` / appartenance changent selon la version).
+
+## Revérification de la barrière (A1, 2026-10-23)
+
+Relecture du script : les trois points demandés sont couverts par des **assertions** (le script sort en erreur sinon), pas seulement par des mesures.
+
+- (a) Nouvelle connexion de l'ancien writer bloquée : la connexion « qui revient » (worker 4, ouvre/écrit/ferme toutes les 1,2 s) et le canari avec les anciens identifiants (direct et pooler) sont refusés après la barrière (`28P01` direct, `08P01` pooler) ; 0 ligne canari en base (phase 3b).
+- (b) Connexion **déjà ouverte** avant la barrière : les connexions occupées, la connexion idle réutilisée (0,7 s et 2 s) et la transaction longue sont ouvertes avant l'application ; après `pg_terminate_backend`, 0 session (10 relevés sur 4,6 s), delta `pg_stat_database` nul et 0 écriture réussie de l'ancien runtime (`ok: 0`). Témoin positif : sans le terminate (méthode `d0`/`a`), 123 écritures réussies sur ces mêmes connexions.
+- (c) Levée de barrière : phase 7 (i), barrière puis terminate (0 écriture réussie, 34 refus `28P01`), retrait par le propriétaire en une instruction, l'ancien writer reprend 55 ms plus tard, état PRE intact (0 colonne `xpBalance`, 0 migration XP). Phase 7 (ii) : repli par restauration du dump, empreinte identique.
+
+Exécution du 2026-10-23 (`XP_ROLES_PORT=55481 XP_ROLES_CONTAINER=gn-a1-roles-pg node scripts/rehearse-xp-role-barrier.mjs`, Docker 29.8.2, `edoburu/pgbouncer:latest` tiré pour l'occasion) : **code de sortie 0** au second essai. Le premier essai a échoué en phase 2 (`délai de connexion` à 4 s sur le pooler, machine chargée par un `next build` concurrent) : non reproduit, à relancer sur une machine au repos si cela arrive. Écritures de l'ancien runtime après barrière : direct 0 OK / 109 refus, pooler 0 OK / 108 refus.
