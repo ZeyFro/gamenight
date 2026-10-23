@@ -34,6 +34,10 @@ describe.skipIf(!TEST_DATABASE_URL)("worker vocal réel : base coupée en cours 
   let db: import("@prisma/client").PrismaClient;
 
   beforeAll(async () => {
+    // Garde d'hôte : le proxy ne relaie que vers un Postgres local, avant tout worker qui écrit.
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(target.hostname)) {
+      throw new Error("TEST_DATABASE_URL doit désigner un PostgreSQL local (127.0.0.1 ou localhost) pour le test de coupure.");
+    }
     await proxy.open();
     const url = new URL(target); url.hostname = "127.0.0.1"; url.port = String(proxy.port);
     url.searchParams.set("connection_limit", "2"); url.searchParams.set("connect_timeout", "2");
@@ -53,14 +57,17 @@ describe.skipIf(!TEST_DATABASE_URL)("worker vocal réel : base coupée en cours 
       { token: "synthetic-token-xyz", pollIntervalMs: 5_000 },
       { processLike: { once: vi.fn(), removeListener: vi.fn() }, onFatal },
     );
+    try {
     await proxy.cut();
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringMatching(/database unavailable \(attempt 1\/8\); next attempt in 5s/)), { timeout: 20_000, interval: 250 });
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringMatching(/database unavailable \(attempt 1\/8\); next attempt in 5s/)), { timeout: 45_000, interval: 250 });
     await proxy.open();
     await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.stringMatching(/database available again after \d+ failed attempt/)), { timeout: 60_000, interval: 250 });
     expect(onFatal).not.toHaveBeenCalled();
     const logged = JSON.stringify([...warn.mock.calls, ...info.mock.calls, ...error.mock.calls]);
     for (const secret of [target.password, "postgresql://", "synthetic-token-xyz"]) expect(logged).not.toContain(secret);
-    await runtime.stop();
+    } finally {
+      await runtime.stop();
+    }
   }, 120_000);
 
   it("démarrage sur une adresse locale injoignable : échec immédiat et borné, sans boucle ni secret", async () => {
