@@ -67,4 +67,13 @@ describe("Next instrumentation voice worker gate", () => {
 
     expect(startWorker).not.toHaveBeenCalled();
   });
+
+  it("garde l'import du runtime derrière une condition positive NEXT_RUNTIME (bundle Edge de next dev --webpack)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/instrumentation.ts", "utf8");
+    const guard = source.indexOf('process.env.NEXT_RUNTIME === "nodejs"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(source.indexOf('import("./lib/voice-presence-worker-runtime")')).toBeGreaterThan(guard);
+    expect(source).not.toMatch(/^import .*voice-presence-worker-runtime/m);
+  });
 });

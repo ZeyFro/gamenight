@@ -36,4 +36,16 @@ describe("artefacts Docker du worker vocal (statique, sans démon Docker)", () =
     expect(read("packaging", "systemd", "gamenight.service")).toMatch(/^Environment=VOICE_PRESENCE_ENABLED=false$/m);
     expect(read("vercel.json").toLowerCase()).not.toContain("voice");
   });
+
+  it("borne les redémarrages et l'arrêt (anti boucle de crash, délai d'arrêt cohérent)", () => {
+    const unit = read("packaging", "systemd", "gamenight.service");
+    expect(unit).toMatch(/^Restart=on-failure$/m);
+    expect(unit).toMatch(/^RestartSec=5s$/m);
+    expect(unit).toMatch(/^StartLimitIntervalSec=300$/m);
+    expect(unit).toMatch(/^StartLimitBurst=5$/m);
+    expect(unit).toMatch(/^TimeoutStopSec=45s$/m);
+    expect(compose).toContain("VOICE_WORKER_SHUTDOWN_TIMEOUT_MS: ${VOICE_WORKER_SHUTDOWN_TIMEOUT_MS:-}");
+    // Le délai applicatif par défaut (40 s) reste sous le délai de grâce de l'orchestrateur (45 s).
+    expect(read("scripts", "gamenight-server.mjs")).toContain("DEFAULT_SHUTDOWN_TIMEOUT_MS = 40_000");
+  });
 });
