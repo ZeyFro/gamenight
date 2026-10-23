@@ -157,10 +157,10 @@ export default async function SessionsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   await requireCommunityChosen(user.id, "/sessions");
-  const isVoicePresenceAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
+  const isVoicePresenceAdmin = process.env.VOICE_PRESENCE_ENABLED === "true" && (isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
     where: { userId: user.id, status: "ACTIVE", role: { in: ["ADMIN", "OWNER"] }, community: { status: "ACTIVE" } },
     select: { communityId: true },
-  });
+  }));
 
   const {
     error,
