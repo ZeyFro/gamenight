@@ -117,6 +117,10 @@ Ces orientations restent des propositions; elles ne sont ni arbitrées par le pr
 
 Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, filtre joueurs, relance sans doublon (#227) · Historique des soirées · Jeux les plus joués et stats du groupe (compléter les indicateurs : validation) · Wrapped mensuel (le Wrapped annuel serait un ajout distinct) · Vote MVP · Saisons et reset (vérifier en réel) · Bracket visuel · Saisie des scores (`TOURNAMENT_SCORES_ENABLED`, vérifier l'activation) · Annonces de tournoi · Popup/MP Steam et planning · Rappels (voir L1-01).
 
+## État de livraison (2026-10-23)
+
+Tableau détaillé « code livré / activé / vérifié / reste exact » : `docs/LIVRAISON-TABLEAU.md`. Procédures de mise en service : `docs/LIVRAISON-XP.md`, `docs/LIVRAISON-BARRIERE.md`, `docs/LIVRAISON-VOCAL.md`, `docs/LIVRAISON-DISCORD.md`, `docs/LIVRAISON-PUSH-CALENDRIER.md`. Aucun élément de nature code n’est « À faire » ; restent des essais réels (appareils, Discord, Google/Apple, Blob), la mise en service Production (autorisations séparées : migrations XP+vocal, installation du worker, activation de la collecte) et les questions produit de `docs/LIVRAISON-TABLEAU.md`.
+
 ## Bilan (rempli par la boucle, un élément à la fois)
 
 **Ordre de merge** : de haut en bas dans chaque lot, lots 1 → 7. Chaque PR a pour base la précédente : merge la première (base `main`), puis la suivante (GitHub la rebase sur `main` quand la branche de base est supprimée au merge ; à vérifier au premier merge). Les PR « statut seul » (ÉCHEC / À TOI) se mergent aussi, dans l’ordre : elles portent les statuts.
