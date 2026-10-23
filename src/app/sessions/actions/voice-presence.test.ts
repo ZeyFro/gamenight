@@ -44,14 +44,22 @@ describe("session voice consent actions", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/sessions/session-1");
   });
 
-  it("allows withdrawal even while collection is disabled", async () => {
+  it("refuses withdrawal before any voice query while collection is disabled", async () => {
     vi.stubEnv("VOICE_PRESENCE_ENABLED", "false");
+    await expect(withdrawVoicePresenceConsentAction(form("session-1"))).rejects.toThrow("redirect:/sessions/session-1?voice=disabled");
+    expect(mocks.withdraw).not.toHaveBeenCalled();
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("withdraws when collection is enabled", async () => {
+    vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     await expect(withdrawVoicePresenceConsentAction(form("session-1"))).rejects.toThrow("redirect:/sessions/session-1?voice=withdrawn");
     expect(mocks.withdraw).toHaveBeenCalledWith("session-1", "user-1");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/sessions/session-1");
   });
 
   it("requires a signed-in user before changing consent", async () => {
+    vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     mocks.getCurrentUser.mockResolvedValue(null);
     await expect(withdrawVoicePresenceConsentAction(form("session-1"))).rejects.toThrow("redirect:/");
     expect(mocks.withdraw).not.toHaveBeenCalled();

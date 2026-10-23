@@ -4,12 +4,14 @@ import { getCurrentUser } from "@/lib/current-user";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
-import { wallClockNow, formatDateTimeFr } from "@/lib/wallclock";
+import { formatDateTimeFr } from "@/lib/wallclock";
 import { pageMetadata } from "@/lib/page-title";
 
 export const metadata = pageMetadata("Durées vocales");
 
 export default async function VoicePresenceAdminPage() {
+  // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas appliquées).
+  if (process.env.VOICE_PRESENCE_ENABLED !== "true") notFound();
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) redirect("/");
   const isSiteAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
@@ -26,7 +28,8 @@ export default async function VoicePresenceAdminPage() {
     })).map(membership => membership.communityId);
   if (!isSiteAdmin && !communityIds.length) notFound();
 
-  const now = wallClockNow();
+  // expiresAt = instant réel (stopAt + 30 j), pas l'heure murale.
+  const now = new Date();
   const sessionGroups = await Promise.all(communityIds.map(async communityId => {
     const scopedDb = await scopedPrismaForCommunityId(communityId);
     return scopedDb.session.findMany({

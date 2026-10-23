@@ -24,6 +24,7 @@ export async function grantVoicePresenceConsentAction(formData: FormData): Promi
 
 export async function withdrawVoicePresenceConsentAction(formData: FormData): Promise<void> {
   const path = sessionPath(formData);
+  if (process.env.VOICE_PRESENCE_ENABLED !== "true") redirect(`${path}?voice=disabled`);
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
   const withdrawn = await withdrawSessionVoiceConsent(formData.get("sessionId") as string, user.id);
