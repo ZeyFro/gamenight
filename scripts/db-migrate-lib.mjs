@@ -137,7 +137,7 @@ export function diffMigrations(available, appliedRows) {
  * La liste `--expect` doit être EXACTEMENT les migrations en attente, dans l'ordre d'application
  * (ordre des noms, celui de `prisma migrate deploy`) : ni manquante, ni en trop, ni doublon, ni inversée.
  */
-export function assertExpectedPending({ absentFromCheckout, inProgress, pending, finished = [] }, expected) {
+export function assertExpectedPending({ absentFromCheckout, inProgress, pending, finished = /** @type {string[]} */ ([]) }, expected) {
   if (inProgress.length) throw new RefusalError(`Migration inachevée ou en échec : ${inProgress.join(", ")}`);
   if (absentFromCheckout.length) {
     throw new RefusalError(`L'historique contient des migrations absentes du checkout : ${absentFromCheckout.join(", ")}`);
