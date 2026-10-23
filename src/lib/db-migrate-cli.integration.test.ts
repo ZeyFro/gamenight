@@ -151,6 +151,53 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     expect(again.status).toBe(2);
   }, 240_000);
 
+  it("refuse (2) une liste --expect manquante, en trop ou inversée, et une URL concurrente, sans rien écrire (base neuve)", async () => {
+    const fresh = `gamenight_dbmigrate_list_${Date.now()}`;
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${fresh}"`);
+    try {
+      const env = { MIGRATION_DATABASE_URL: withDatabase(fresh) };
+      const last2 = ALL.slice(-2);
+      const cases: [string, string[], RegExp][] = [
+        ["manquante", [`--expect=${ALL.slice(1).join(",")}`], /Inattendues : \[/],
+        ["en trop", [`--expect=${ALL.join(",")},20991231000000_inconnue`], /Manquantes : \[20991231000000_inconnue\]/],
+        ["inversée", [`--expect=${[...ALL].reverse().join(",")}`], /Ordre de --expect/],
+        ["doublon", [`--expect=${last2[0]},${last2[0]}`], /doublon/],
+      ];
+      for (const [name, args, pattern] of cases) {
+        const out = run(args, env);
+        expect(out.status, name + out.stdout + out.stderr).toBe(2);
+        expect(out.stderr, name).toMatch(pattern);
+      }
+      const competing = run([`--expect=${ALL.join(",")}`], { ...env, DIRECT_URL: withDatabase(fresh) });
+      expect(competing.status).toBe(2);
+      expect(competing.stderr).toContain("cible ambiguë");
+      const client = new PrismaClient({ datasourceUrl: withDatabase(fresh) });
+      try {
+        const rows = await client.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'public'`);
+        expect(Number(rows[0].n), "aucune table créée par un refus").toBe(0);
+      } finally { await client.$disconnect(); }
+    } finally {
+      await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${fresh}" WITH (FORCE)`);
+    }
+  });
+
+  it("« rien à faire » sur une base migrée : code 2 lisible, et l'historique est strictement identique avant et après (aucune écriture)", async () => {
+    const snapshot = async () => {
+      const client = new PrismaClient({ datasourceUrl: withDatabase(NEW_DB) });
+      try {
+        const rows = await client.$queryRawUnsafe<{ d: string }[]>(
+          `SELECT md5(string_agg(id || migration_name || checksum || coalesce(finished_at::text, '') || applied_steps_count::text, ',' ORDER BY id)) AS d FROM _prisma_migrations`);
+        const tables = await client.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'public'`);
+        return `${rows[0].d}/${tables[0].n}`;
+      } finally { await client.$disconnect(); }
+    };
+    const before = await snapshot();
+    const out = run([`--expect=${ALL.slice(-2).join(",")}`], { MIGRATION_DATABASE_URL: withDatabase(NEW_DB) });
+    expect(out.status, out.stdout + out.stderr).toBe(2);
+    expect(out.stderr).toMatch(/Rien à faire : aucune migration en attente/);
+    expect(await snapshot()).toBe(before);
+  });
+
   it("migration qui échoue en cours de route (3) : la première reste appliquée, la fautive est consignée inachevée, la reprise est refusée (2)", async () => {
     const midDb = `gamenight_dbmigrate_mid_${Date.now()}`;
     const work = mkdtempSync(join(tmpdir(), "gn-dbmigrate-mid-"));
