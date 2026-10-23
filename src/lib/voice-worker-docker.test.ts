@@ -48,4 +48,34 @@ describe("artefacts Docker du worker vocal (statique, sans démon Docker)", () =
     // Le délai applicatif par défaut (40 s) reste sous le délai de grâce de l'orchestrateur (45 s).
     expect(read("scripts", "gamenight-server.mjs")).toContain("DEFAULT_SHUTDOWN_TIMEOUT_MS = 40_000");
   });
+
+  it("l'unité systemd est syntaxiquement cohérente (analyse statique ; systemd-analyze verify reste à faire sur l'hôte)", () => {
+    const sections = new Map<string, string[]>();
+    let current = "";
+    for (const line of read("packaging", "systemd", "gamenight.service").split(/\r?\n/)) {
+      if (!line.trim() || line.startsWith("#")) continue;
+      const header = /^\[(Unit|Service|Install)\]$/.exec(line);
+      if (header) { current = header[1]; sections.set(current, []); continue; }
+      expect(current, `directive hors section : ${line}`).not.toBe("");
+      expect(line, `ligne invalide : ${line}`).toMatch(/^[A-Za-z]+=.*$/);
+      sections.get(current)!.push(line);
+    }
+    expect([...sections.keys()]).toEqual(["Unit", "Service", "Install"]);
+    const service = sections.get("Service")!;
+    expect(service).toContain("ExecStart=/usr/bin/node /opt/gamenight/current/scripts/gamenight-server.mjs");
+    expect(service).toContain("EnvironmentFile=/etc/gamenight/gamenight.env");
+    expect(sections.get("Unit")).toEqual(expect.arrayContaining(["StartLimitIntervalSec=300", "StartLimitBurst=5"]));
+    expect(sections.get("Install")).toEqual(["WantedBy=multi-user.target"]);
+    expect(service.filter(l => /^(User|Group)=/.test(l))).toEqual(["User=gamenight", "Group=gamenight"]);
+  });
+
+  it("le modèle d'environnement privé ne contient que des noms (aucune valeur hors du drapeau éteint)", () => {
+    const template = read("docker", "voice-worker", "voice-worker.env.example");
+    const assignments = template.split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l));
+    expect(assignments.filter(l => !l.endsWith("="))).toEqual(["VOICE_PRESENCE_ENABLED=false"]);
+    for (const name of ["DATABASE_URL", "DISCORD_BOT_TOKEN", "DISCORD_BOT_GUILD_ID", "VOICE_PRESENCE_CONSENT_DECISION", "VOICE_PRESENCE_RETENTION_DECISION"]) {
+      expect(assignments).toContain(`${name}=`);
+    }
+    expect(template).not.toMatch(/^export /m);
+  });
 });

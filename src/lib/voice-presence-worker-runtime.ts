@@ -18,6 +18,10 @@ import {
   type VoicePresenceStopTarget,
 } from "./voice-presence-worker";
 
+// Échecs de découverte consécutifs tolérés après un premier poll réussi (délais 1x, 2x, 4x... le poll, plafonnés à 300 s) ;
+// au-delà : fatal `discovery`, journal sans détail, sortie 1 (systemd/Docker redémarrent).
+const DATABASE_RETRY_LIMIT = 8;
+
 type RuntimeProcess = Pick<NodeJS.Process, "once" | "removeListener">;
 
 function failureKind(failure: unknown) {
@@ -198,6 +202,11 @@ export async function startVoicePresenceWorkerRuntime(
       setImmediate(() => process.exit(1));
     },
     pollIntervalMs: config.pollIntervalMs,
+    maxConsecutiveFailures: DATABASE_RETRY_LIMIT,
+    onDegraded: (attempt, delayMs) => console.warn(
+      `[voice-presence] database unavailable (attempt ${attempt}/${DATABASE_RETRY_LIMIT}); next attempt in ${Math.round(delayMs / 1000)}s`,
+    ),
+    onRecovered: failedAttempts => console.info(`[voice-presence] database available again after ${failedAttempts} failed attempt(s)`),
   });
 
   let stopPromise: Promise<void> | null = null;

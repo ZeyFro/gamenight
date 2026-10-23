@@ -176,3 +176,78 @@ describe("voice presence worker (synthetic dependencies only)", () => {
     await worker.stop();
   });
 });
+
+describe("voice presence worker: base indisponible (dépendances synthétiques)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const failing = (calls: { n: number }, failFrom: number, failUntil = Infinity) => async () => {
+    calls.n += 1;
+    if (calls.n >= failFrom && calls.n < failUntil) throw new Error("postgresql://user:secret@127.0.0.1:1/db");
+    return [] as readonly VoicePresenceTarget[];
+  };
+
+  it("fait échouer le démarrage immédiatement (pas de nouvelle tentative avant un premier succès)", async () => {
+    const onFatal = vi.fn();
+    const calls = { n: 0 };
+    const worker = createVoicePresenceWorker({
+      loadTargets: failing(calls, 1), createCollector: vi.fn(), onFatal, maxConsecutiveFailures: 8,
+    });
+    await expect(worker.start()).rejects.toThrow();
+    expect(calls.n).toBe(1);
+    expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({ kind: "discovery" }));
+  });
+
+  it("applique un backoff exponentiel plafonné, se reconnecte sans fatal et le signale", async () => {
+    vi.useFakeTimers();
+    const onFatal = vi.fn();
+    const onDegraded = vi.fn();
+    const onRecovered = vi.fn();
+    const calls = { n: 0 };
+    const worker = createVoicePresenceWorker({
+      loadTargets: failing(calls, 2, 8), createCollector: vi.fn(), onFatal, onDegraded, onRecovered,
+      pollIntervalMs: 5_000, maxConsecutiveFailures: 10, maxBackoffMs: 20_000,
+    });
+    await worker.start();
+    expect(calls.n).toBe(1);
+    // 6 échecs (appels 2 à 7) avec attentes 5, 10, 20, 20, 20, 20 s, puis succès (appel 8).
+    await vi.advanceTimersByTimeAsync(5_000 * 40);
+    expect(onDegraded.mock.calls.map(([attempt, delay]) => [attempt, delay]))
+      .toEqual([[1, 5_000], [2, 10_000], [3, 20_000], [4, 20_000], [5, 20_000], [6, 20_000]]);
+    expect(onRecovered).toHaveBeenCalledExactlyOnceWith(6);
+    expect(onFatal).not.toHaveBeenCalled();
+    // pas de boucle serrée : 1 + 6 échecs + 1 succès + quelques polls ordinaires après la reprise, jamais un appel par poll pendant la panne.
+    expect(calls.n).toBeLessThan(8 + 40);
+    await worker.stop();
+  });
+
+  it("n'exécute aucune tentative pendant le délai de backoff", async () => {
+    vi.useFakeTimers();
+    const calls = { n: 0 };
+    const worker = createVoicePresenceWorker({
+      loadTargets: failing(calls, 2), createCollector: vi.fn(), onFatal: vi.fn(),
+      pollIntervalMs: 5_000, maxConsecutiveFailures: 10, maxBackoffMs: 60_000,
+    });
+    await worker.start();
+    await vi.advanceTimersByTimeAsync(5_000); // échec n°1, backoff 5 s
+    await vi.advanceTimersByTimeAsync(5_000); // échec n°2, backoff 10 s
+    const afterTwo = calls.n;
+    await vi.advanceTimersByTimeAsync(5_000); // dans le délai : aucune tentative
+    expect(calls.n).toBe(afterTwo);
+    await worker.stop();
+  });
+
+  it("abandonne après le plafond d'échecs consécutifs avec un fatal « discovery » (code de sortie 1 côté runtime)", async () => {
+    vi.useFakeTimers();
+    const onFatal = vi.fn();
+    const calls = { n: 0 };
+    const worker = createVoicePresenceWorker({
+      loadTargets: failing(calls, 2), createCollector: vi.fn(), onFatal,
+      pollIntervalMs: 5_000, maxConsecutiveFailures: 3, maxBackoffMs: 10_000,
+    });
+    await worker.start();
+    await vi.advanceTimersByTimeAsync(5_000 * 20);
+    expect(onFatal).toHaveBeenCalledOnce();
+    expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({ kind: "discovery" }));
+    expect(calls.n).toBe(4); // 1 succès + 3 échecs, puis plus rien
+  });
+});
