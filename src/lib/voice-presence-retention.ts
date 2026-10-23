@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { wallClockNow } from "@/lib/wallclock";
+import { toWallClock } from "@/lib/wallclock";
 
 const DEFAULT_BATCH_SIZE = 500;
 const VOICE_PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -7,9 +7,13 @@ const VOICE_PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 export async function purgeExpiredVoicePresenceBatch(opts: {
   now?: Date;
   limit?: number;
+  /** Horloge des baux (heure murale) ; défaut : `now` converti. */
+  leaseNow?: Date;
   dryRun: boolean;
 }) {
-  const now = opts.now ?? wallClockNow();
+  // Les échéances (stopAt, expiresAt) sont des instants réels ; seuls les baux sont en heure murale.
+  const now = opts.now ?? new Date();
+  const wallNow = opts.leaseNow ?? toWallClock(now);
   const limit = opts.limit ?? DEFAULT_BATCH_SIZE;
   if (!Number.isSafeInteger(limit) || limit < 1) throw new RangeError("Voice presence retention limit must be positive");
 
@@ -52,7 +56,7 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
           OR: [
             { leaseOwner: null },
             { leaseExpiresAt: null },
-            { leaseExpiresAt: { lte: now } },
+            { leaseExpiresAt: { lte: wallNow } },
           ],
         },
       ],

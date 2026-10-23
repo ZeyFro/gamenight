@@ -76,6 +76,7 @@ describe.skipIf(!TEST_DATABASE_URL)("simulation du Gateway vocal (faux serveur W
 
   beforeEach(async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     vi.stubEnv("DISCORD_BOT_GUILD_ID", "");
     onFatal.mockClear();
     await cleanup();

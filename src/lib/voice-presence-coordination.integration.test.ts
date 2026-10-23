@@ -273,11 +273,11 @@ describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence
       expiresAt: new Date(now.getTime() - 1),
     } });
 
-    const preview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 1, dryRun: true });
+    const preview = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 1, dryRun: true });
     expect(preview).toMatchObject({ expiredIntervals: 1, expiredConsents: 1, intervalsDeleted: 0, consentsDeleted: 0 });
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(1);
 
-    const purged = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 1, dryRun: false });
+    const purged = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 1, dryRun: false });
     expect(purged).toMatchObject({ expiredIntervals: 1, expiredConsents: 1, intervalsDeleted: 1, consentsDeleted: 1 });
     expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId: SESSION_ID } })).toBe(0);
     expect(await db.sessionVoicePresenceConsent.findUnique({ where: { id: activeConsent.id } })).not.toBeNull();
@@ -301,10 +301,10 @@ describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence
       expiresAt: new Date(now.getTime() - 1),
     } });
 
-    const canceledPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    const canceledPreview = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: true });
     expect(canceledPreview).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 0, gapsDeleted: 0 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).not.toBeNull();
-    const canceledPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    const canceledPurge = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: false });
     expect(canceledPurge).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 1, gapsDeleted: 1 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
     expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
@@ -323,7 +323,7 @@ describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence
       generation: 2,
       startedAt: oldStart,
     } });
-    const finalizedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    const finalizedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: false });
     expect(finalizedPurge).toMatchObject({ expiredControls: 1, expiredGaps: 1, controlsDeleted: 1, gapsDeleted: 1 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
     expect(await db.sessionVoicePresenceGap.count({ where: { sessionId: SESSION_ID } })).toBe(0);
@@ -339,7 +339,7 @@ describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence
       leaseExpiresAt: new Date(now.getTime() + 1),
     } });
 
-    const livePreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    const livePreview = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: true });
     expect(livePreview).toMatchObject({ expiredControls: 0, controlsDeleted: 0 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).not.toBeNull();
 
@@ -347,16 +347,16 @@ describe.skipIf(!TEST_DATABASE_URL)("coordination durable du worker de présence
       where: { sessionId: SESSION_ID },
       data: { leaseExpiresAt: new Date(now.getTime() - 1) },
     });
-    const expiredPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    const expiredPreview = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: true });
     expect(expiredPreview).toMatchObject({ expiredControls: 1, controlsDeleted: 0 });
-    const expiredPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    const expiredPurge = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: false });
     expect(expiredPurge).toMatchObject({ expiredControls: 1, controlsDeleted: 1 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
 
     await db.sessionVoicePresenceControl.create({ data: { sessionId: SESSION_ID, status: "PURGE_REQUESTED" } });
-    const unleasedPreview = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: true });
+    const unleasedPreview = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: true });
     expect(unleasedPreview).toMatchObject({ expiredControls: 1, controlsDeleted: 0 });
-    const unleasedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, limit: 10, dryRun: false });
+    const unleasedPurge = await retention.purgeExpiredVoicePresenceBatch({ now, leaseNow: now, limit: 10, dryRun: false });
     expect(unleasedPurge).toMatchObject({ expiredControls: 1, controlsDeleted: 1 });
     expect(await db.sessionVoicePresenceControl.findUnique({ where: { sessionId: SESSION_ID } })).toBeNull();
   });
