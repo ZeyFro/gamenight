@@ -6,7 +6,7 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createRunner, assertLocalTarget, run } from "./xp-balance-bascule.mjs";
-import { EXPECTED_XP_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
+import { EXPECTED_ROLLOUT_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
 
 const env = { ...process.env };
 const container = env.XP_BASCULE_CONTAINER ?? "gamenight-xp-bascule-pg";
@@ -16,10 +16,10 @@ const runner = createRunner(target, env);
 const stamp = Date.now();
 const created = [];
 
-// Schéma de départ : les migrations du checkout SAUF les deux migrations XP.
+// Schéma de départ : les migrations du checkout SAUF les migrations du lot (XP + vocal).
 const work = mkdtempSync(join(tmpdir(), "xp-baseline-"));
 cpSync(resolve("prisma"), join(work, "prisma"), { recursive: true });
-for (const name of EXPECTED_XP_MIGRATIONS) rmSync(join(work, "prisma", "migrations", name), { recursive: true });
+for (const name of EXPECTED_ROLLOUT_MIGRATIONS) rmSync(join(work, "prisma", "migrations", name), { recursive: true });
 const baselineSchema = join(work, "prisma", "schema.prisma");
 
 function freshDatabase(label) {

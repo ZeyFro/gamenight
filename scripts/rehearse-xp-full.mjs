@@ -19,7 +19,7 @@ import { assertLocalDockerContext, localDockerArgs } from "./recette-local-docke
 import {
   assertOutsideRepo, assertRehearsalTarget, assertStepOrder, compareFingerprints, createContainer, HOST,
 } from "./xp-backup-restore.mjs";
-import { EXPECTED_XP_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
+import { assertExpectedMatchesDerived, EXPECTED_ROLLOUT_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
 
 const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PW = { runtime: "gn-a2-runtime-pw", migrator: "gn-a2-migrator-pw", admin: "test" };
@@ -184,7 +184,8 @@ async function main() {
       const allMigrations = migrationNames(join(REPO, "prisma", "migrations"));
       pending = allMigrations.filter((name) => !mainMigrations.includes(name));
       check(`migrations de origin/main : ${mainMigrations.length}, absentes de main : ${pending.length}`, pending.length > 0);
-      check("migrations XP attendues absentes de main", EXPECTED_XP_MIGRATIONS.every((name) => pending.includes(name)));
+      assertExpectedMatchesDerived(EXPECTED_ROLLOUT_MIGRATIONS, pending);
+      check("lot attendu du garde (6 migrations XP + vocal) = checkout moins origin/main, dans l'ordre", true);
       check("main n'a aucune migration absente du worktree", mainMigrations.every((name) => allMigrations.includes(name)));
       createOwnedDatabase(c, NAMES.main);
       created.a.push(NAMES.main);
@@ -361,25 +362,24 @@ async function main() {
 
     // ------------------------------------------------------------------ 13. échec : bascule interrompue puis reprise
     await step("fail-bascule-resume", () => {
-      const xpOnly = pending.filter((name) => !EXPECTED_XP_MIGRATIONS.includes(name));
-      const shop = EXPECTED_XP_MIGRATIONS[1];
+      const shop = EXPECTED_ROLLOUT_MIGRATIONS.at(-1);
       const prep = (name) => { cb.sql("postgres", `CREATE DATABASE "${name}";`); created.b.push(name); cb.restore(name, backupFile); };
       prep(NAMES.resumeA);
       check("copie A restaurée sur B (état avant migration)", compareFingerprints(fpBefore, cb.fingerprint(NAMES.resumeA)).identical && !hasColumn(cb, NAMES.resumeA));
-      const broken = makeWorkdir(tmp, "wd-bascule-broken", { scripts: BASCULE_SCRIPTS, dropMigrations: xpOnly, breakMigration: shop });
+      const broken = makeWorkdir(tmp, "wd-bascule-broken", { scripts: BASCULE_SCRIPTS, breakMigration: shop });
       workdirs.push(broken);
       const target = { container: cfg.containerB, port: cfg.portB };
       const first = bascule(broken, { ...target, database: NAMES.resumeA, args: ["--execute", `--confirm-database=${NAMES.resumeA}`] });
       say(`  bascule interrompue : ${first.report.result} — ${first.report.reason}`);
-      check("bascule interrompue par une 2e migration en échec : REFUSÉ (code 1)", first.status === 1 && /^REFUSÉ/.test(first.report.result) && /migrate deploy a échoué/.test(first.report.reason));
+      check("bascule (lot complet de 6) interrompue par sa dernière migration en échec : REFUSÉ (code 1)", first.status === 1 && /^REFUSÉ/.test(first.report.result) && /migrate deploy a échoué/.test(first.report.reason));
       check("sauvegarde interne de la bascule restaurée identique avant la migration", first.report.fingerprintRestored === first.report.fingerprintBefore);
       const rows = applied(cb, NAMES.resumeA);
-      check("état intermédiaire : 1re migration XP terminée, 2e inachevée", rows.some(([n, ok]) => n === EXPECTED_XP_MIGRATIONS[0] && ok === "true") && rows.some(([n, ok]) => n === shop && ok !== "true"));
+      check("état intermédiaire : 5 migrations du lot terminées (XP + vocal), la dernière inachevée", EXPECTED_ROLLOUT_MIGRATIONS.slice(0, -1).every((m) => rows.some(([n, ok]) => n === m && ok === "true")) && rows.some(([n, ok]) => n === shop && ok !== "true"));
       const stuck = bascule(broken, { ...target, database: NAMES.resumeA, args: ["--execute", `--confirm-database=${NAMES.resumeA}`] });
       check("reprise directe refusée tant que l'état est inachevé (aucune écriture)", stuck.status === 1 && /inachevée/.test(stuck.report.reason), JSON.stringify(stuck.report));
       // Reprise documentée : restaurer la sauvegarde dans une AUTRE cible, relancer avec la migration corrigée.
       prep(NAMES.resumeB);
-      const fixed = makeWorkdir(tmp, "wd-bascule-fixed", { scripts: BASCULE_SCRIPTS, dropMigrations: xpOnly });
+      const fixed = makeWorkdir(tmp, "wd-bascule-fixed", { scripts: BASCULE_SCRIPTS });
       workdirs.push(fixed);
       const resumed = bascule(fixed, { ...target, database: NAMES.resumeB, args: ["--execute", `--confirm-database=${NAMES.resumeB}`] });
       say(`  reprise : ${resumed.report.result}`);
