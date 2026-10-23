@@ -181,7 +181,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     } finally {
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${fresh}" WITH (FORCE)`);
     }
-  });
+  }, 120_000); // 5 exécutions du CLI + une base : dépasse 5 s sur le runner de la CI
 
   it("« rien à faire » sur une base migrée : code 2 lisible, et l'historique est strictement identique avant et après (aucune écriture)", async () => {
     const snapshot = async () => {
@@ -198,7 +198,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     expect(out.status, out.stdout + out.stderr).toBe(2);
     expect(out.stderr).toMatch(/Rien à faire : aucune migration en attente/);
     expect(await snapshot()).toBe(before);
-  });
+  }, 60_000);
 
   it("migration qui échoue en cours de route (3) : la première reste appliquée, la fautive est consignée inachevée, la reprise est refusée (2)", async () => {
     const midDb = `gamenight_dbmigrate_mid_${Date.now()}`;

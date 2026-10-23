@@ -54,7 +54,7 @@ describe("diagnostic d'hôte du worker vocal (décisions pures, aucune E/S)", ()
   });
 
   it("parseEnvNames ne retient que les noms et un booléen pour le drapeau", () => {
-    const parsed = mod.parseEnvNames("# commentaire\nDATABASE_URL=postgresql://u:p@h/db\nexport DISCORD_BOT_TOKEN=abc\nVOICE_PRESENCE_ENABLED=false\nignore me\n");
+    const parsed = mod.parseEnvNames("# commentaire\nDATABASE_URL=postgresql://u:p@127.0.0.1/db\nexport DISCORD_BOT_TOKEN=abc\nVOICE_PRESENCE_ENABLED=false\nignore me\n");
     expect([...parsed.counts.keys()].sort()).toEqual(["DATABASE_URL", "DISCORD_BOT_TOKEN", "VOICE_PRESENCE_ENABLED"]);
     expect(parsed.flagIsFalse).toBe(true);
     expect(JSON.stringify([...parsed.counts])).not.toMatch(/postgresql|abc/);
