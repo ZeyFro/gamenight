@@ -128,14 +128,16 @@ Qui redémarre et jusqu'où :
 | systemd | `Restart=on-failure`, `RestartSec=5s` | `StartLimitBurst=5` en 300 s | unité `failed` (« start request repeated too quickly ») ; `systemctl is-failed gamenight.service` |
 | Docker | `restart: unless-stopped`, délai croissant du démon plafonné à 1 min | aucun plafond de tentatives ; `restart: on-failure:5` pour en imposer un | `docker ps -a`, `docker inspect --format '{{.RestartCount}}'` |
 
-Dans le processus, une base indisponible n'entraîne plus de crash immédiat (sauf au démarrage, volontairement strict) : après un premier poll réussi, 8 échecs de découverte consécutifs sont tolérés avec un délai doublé (1x, 2x, 4x... le poll, plafonné à 300 s, soit environ 17 minutes avec le poll de 15 s). Journal, sans URL ni jeton ni détail d'erreur :
+Dans le processus, une base indisponible n'entraîne plus de crash immédiat (sauf au démarrage, volontairement strict) : après un premier poll réussi, 7 échecs de découverte consécutifs sont tolérés (le 8e est fatal) avec un délai doublé (15, 30, 60, 120, 240, 300, 300 s avec le poll de 15 s, soit environ 17 minutes cumulées). Journal, sans URL ni jeton ni détail d'erreur :
 
 ```
 [voice-presence] database unavailable (attempt 3/8); next attempt in 60s
 [voice-presence] database available again after 3 failed attempt(s)
 ```
 
-Au-delà, fatal `discovery` : le worker s'arrête proprement (collecteurs fermés, bail libéré), journalise `fatal worker error (discovery); service will restart` et sort avec le code **1**, que systemd ou Docker relancent selon le tableau ci-dessus. Si une base coupée surprend un collecteur actif, la première écriture d'intervalle qui échoue est fatale (code 1) : les intervalles ouverts sont perdus par conception, le bail expire et la prochaine instance reprend en conservant une lacune.
+Au 8e échec consécutif, fatal `discovery` : le worker s'arrête proprement (collecteurs fermés, bail libéré), journalise `fatal worker error (discovery); service will restart` et sort avec le code **1**, que systemd ou Docker relancent selon le tableau ci-dessus. Si une base coupée surprend un collecteur actif, la première écriture d'intervalle qui échoue est fatale (code 1) : les intervalles ouverts sont perdus par conception, le bail expire et la prochaine instance reprend en conservant une lacune.
+
+Bail pendant une coupure longue : le bail dure 45 s et ne se renouvelle qu'au poll, donc un backoff supérieur à 45 s laisse expirer le bail. Un collecteur encore actif voit alors ses écritures refusées (intervalle non enregistré), ce qui est voulu : à la reprise, le poll réclame le bail (nouvelle génération), ouvre une lacune rétroactive depuis le dernier battement durable, fence l'ancien collecteur et la lacune se referme au premier état Gateway frais, sans créer de durée. Preuve : `voice-presence-lease-outage.integration.test.ts` (bail réclamé à un instant passé, aucune attente réelle).
 
 Codes de sortie du lanceur `scripts/gamenight-server.mjs` : `0` arrêt propre ; `1` toute erreur fatale (démarrage du serveur, fatal du worker, arrêt échoué, second signal, délai d'arrêt dépassé).
 
@@ -179,6 +181,7 @@ Tous sans Discord réel : faux Gateway WebSocket local et Postgres jetable (`TES
 | Un seul worker actif par bail | `voice-presence-coordination.integration.test.ts` (réclamation concurrente : une seule gagne) ; `voice-presence-worker-runtime.test.ts` « refuse un second runtime dans le même processus » (ajouté) |
 | Drapeau éteint, base sans tables vocales | `voice-presence-flag-off.integration.test.ts` (7 tests) |
 | Base indisponible (backoff borné, journal sans secret, reprise, abandon code 1) | `voice-presence-worker.test.ts` « base indisponible… » (4 tests, ajoutés) ; `voice-presence-worker-runtime.test.ts` « base coupée après le démarrage… » (ajouté) ; `voice-presence-db-outage.integration.test.ts` : worker réel derrière un proxy TCP coupé puis rétabli, et démarrage sur `127.0.0.1:1` (ajouté) |
+| Base coupée plus longtemps que le bail (lacune rétroactive, temps manquant non compté, ancien collecteur fencé) | `voice-presence-lease-outage.integration.test.ts` (ajouté, passé du premier coup : aucun correctif nécessaire) |
 | Diagnostic d'hôte (décisions, aucune valeur exposée, options d'écriture refusées) | `voice-host-diagnostic.test.ts` (ajouté) |
 | Unité systemd cohérente (analyse statique), modèle d'environnement sans valeurs | `voice-worker-docker.test.ts` (2 tests ajoutés) |
 
