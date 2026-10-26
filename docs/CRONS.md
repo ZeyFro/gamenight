@@ -26,4 +26,30 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et 
 | `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed |
 | `/api/backfill/steam-store` | POST | Backfill des données Steam Store |
 
+## Réponse 202 et `after()` (limite cron-job.org de 30 s)
+
+cron-job.org coupe à 30 s. Les routes dont le travail peut les dépasser répondent `202` après l’authentification et les interrupteurs, puis travaillent dans `after()` (modèle : `steam-library-full-sync`). Le résultat est dans les logs Vercel (`début` / `fin`, erreurs en `logger.error` ; un `début` sans `fin` = coupure plateforme). Éteint, une route répond toujours `{enabled:false…}` en 200, de façon synchrone.
+
+Converties en 202 :
+
+| Route | Raison | `maxDuration` |
+| --- | --- | --- |
+| `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s | 60 |
+| `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
+| `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
+
+Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
+
+Laissées synchrones (travail court ou budget interne sous 30 s) :
+
+| Route | Raison |
+| --- | --- |
+| `community-guild-sync` | budget Discord de 20 s |
+| `steam-library-sync` | budget de 25 s |
+| `discord-thread-cleanup` | au plus 25 actions par passage, uniquement des écritures en base (file) |
+| `free-game-discord` | uniquement des écritures en base (file) |
+| `monthly-tasks` | no-op hors de la date d’échéance |
+| `close-sessions` | requêtes et écritures en base, les annonces sont mises en file |
+| `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit |
+
 Les durées maximales éventuellement déclarées sont visibles dans chaque route source. Ce document ne fixe pas de fréquence ni ne prétend qu’un job externe est configuré.

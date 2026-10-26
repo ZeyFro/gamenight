@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runRetentionCleanup } from "@/lib/retention-runner";
@@ -59,14 +59,24 @@ export async function GET(request: Request) {
   }
 
   const dryRun = process.env.RETENTION_CLEANUP_MODE !== "execute";
-  const report = await runRetentionCleanup({ dryRun });
 
-  logger.info("cron:retention-cleanup", "Passage terminé.", {
-    dryRun,
-    stoppedReason: report.stoppedReason,
-    durationMs: report.durationMs,
-    errorCount: report.errors.length,
+  // cron-job.org coupe à 30 s : le passage (budget 45 s) tourne dans `after()`,
+  // la route répond 202 ; le rapport est dans les logs.
+  after(async () => {
+    const startedAt = Date.now();
+    logger.info("cron:retention-cleanup", "Passage début.", { dryRun });
+    try {
+      const report = await runRetentionCleanup({ dryRun });
+      logger.info("cron:retention-cleanup", "Passage terminé.", {
+        dryRun,
+        stoppedReason: report.stoppedReason,
+        durationMs: report.durationMs,
+        errorCount: report.errors.length,
+      });
+    } catch (error) {
+      logger.error("cron:retention-cleanup", error, { dryRun, durationMs: Date.now() - startedAt });
+    }
   });
 
-  return NextResponse.json({ enabled: true, dryRun, report });
+  return NextResponse.json({ enabled: true, dryRun, status: "accepted" }, { status: 202 });
 }
