@@ -49,7 +49,6 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
 
 ## Switches d'environnement
-- `DISCORD_GUILD_AUDIT_ENABLED` + `DISCORD_GUILD_AUDIT_ADMIN_IDS` : route temporaire `/api/admin/discord-audit` (GET JSON/CSV) ; lecture REST seule, OFF et allowlist vide par défaut ; à retirer après récupération du rapport.
 - `SESSION_CHRONICLES_ENABLED` : chronique texte des soirées DONE, éditée par le créateur et lisible selon l'accès privé à la soirée ; archive Lore paginée par serveur ; OFF par défaut, migration `session_chronicles`. Toute chronique non vide bloque la purge automatique même flag OFF ; suppression volontaire inchangée.
 - `TOURNAMENT_PREDICTIONS_ENABLED` : pronostics immuables champion avant lancement et gagnant de match avant résultat ; membres actifs, sans mise ni gain XP ; OFF par défaut, migration `tournament_predictions`
 - `COMMUNITY_QUICK_POLLS_ENABLED` : sondages éclair par serveur dans Profil → Lore, membres actifs même isolation OFF, 2–6 options immuables, un choix modifiable jusqu’à échéance (7 jours max), résultats agrégés ; aucune notification/XP ; migration `community_quick_polls`, OFF par défaut
