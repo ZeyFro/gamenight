@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runExecutorBatch } from "@/lib/notification-executor";
@@ -65,9 +65,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ enabled: false, processed: 0 });
   }
 
+  // cron-job.org coupe à 30 s : le lot (budget 50 s) tourne dans `after()`, la
+  // route répond 202. Résultat dans les logs (`début` sans `fin` = coupure plateforme).
   const owner = `cron:${randomUUID()}`;
-  const summary = await runExecutorBatch({ resolver: DISPATCH_RESOLVER, owner });
+  after(async () => {
+    const startedAt = Date.now();
+    logger.info("cron:notification-executor", "Batch début.", { owner });
+    try {
+      const summary = await runExecutorBatch({ resolver: DISPATCH_RESOLVER, owner });
+      logger.info("cron:notification-executor", "Batch fin.", {
+        ...summary,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      logger.error("cron:notification-executor", error, { owner, durationMs: Date.now() - startedAt });
+    }
+  });
 
-  logger.info("cron:notification-executor", "Batch terminé.", { ...summary });
-  return NextResponse.json({ enabled: true, ...summary });
+  return NextResponse.json({ enabled: true, status: "accepted" }, { status: 202 });
 }
