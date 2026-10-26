@@ -78,6 +78,11 @@ describe("createSessionSchema", () => {
     ).toBe(true);
   });
 
+  it("accepte une équipe facultative, mais refuse une référence vide", () => {
+    expect(createSessionSchema.safeParse({ date: "2026-06-15", time: "20:00", notifyUserIds: [], communityTeamId: "team-1" }).success).toBe(true);
+    expect(createSessionSchema.safeParse({ date: "2026-06-15", time: "20:00", notifyUserIds: [], communityTeamId: "" }).success).toBe(false);
+  });
+
   it("refuse une date ou une heure malformée", () => {
     expect(
       createSessionSchema.safeParse({ date: "invalide", time: "20:00", notifyUserIds: [] })

@@ -71,6 +71,7 @@ export const createSessionSchema = z.object({
   date: dateStringSchema,
   time: timeStringSchema,
   notifyUserIds: z.array(idSchema),
+  communityTeamId: idSchema.optional(),
 });
 
 /** `editSessionAction` — mêmes contraintes de forme que la création. */

@@ -660,12 +660,15 @@ model Session {
   // Additif : jamais NOT NULL tant que l'étape « contract » n'est pas validée.
   communityId String?
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  communityTeamId String?
+  communityTeam CommunityTeam? @relation(fields: [communityTeamId], references: [id], onDelete: SetNull)
 
   // Sessions créées comme occurrences d'une même création récurrente. Null
   // pour les anciennes séries et quand la gestion groupée est désactivée.
   recurrenceGroupId String?
 
   @@index([communityId])
+  @@index([communityTeamId])
   @@index([recurrenceGroupId])
 
   createdBy         User               @relation(fields: [createdById], references: [id])
@@ -2870,6 +2873,7 @@ model CommunityTeam {
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
   members   CommunityTeamMember[]
+  sessions  Session[]
 
   @@index([communityId, isRecruiting, createdAt])
   @@index([createdById, communityId])

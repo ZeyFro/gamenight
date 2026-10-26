@@ -48,6 +48,7 @@ export interface CalendarSession {
   createdById: string;
   decidedGameName: string | null;
   decidedGameCoverUrl: string | null;
+  communityTeamName?: string | null;
   proposals: CalendarProposalSummary[];
   /** Voteurs de la proposition gagnante (`decidedGameId`) — mêmes "joueurs inscrits" que le "Qui vient" Discord (`src/lib/sessions.ts`). Vide tant qu'aucun jeu n'est décidé (VOTING). */
   players: CalendarUser[];
@@ -83,6 +84,7 @@ const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
 
 function toCalendarSession(
   session: Session & {
+    communityTeam?: { name: string } | null;
     proposals: { gameId: string; votes: { user: CalendarUser }[]; game: { name: string } }[];
     decidedGame: { name: string; coverUrl: string | null } | null;
   }
@@ -99,6 +101,7 @@ function toCalendarSession(
     createdById: session.createdById,
     decidedGameName: session.decidedGame?.name ?? null,
     decidedGameCoverUrl: session.decidedGame?.coverUrl ?? null,
+    communityTeamName: session.communityTeam?.name ?? null,
     proposals: session.proposals.map((p) => ({
       gameName: p.game.name,
       voteCount: p.votes.length,
@@ -143,6 +146,7 @@ export async function getCalendarData(
     scopedDb.session.findMany({
       where: { date: { gte: rangeStart, lt: rangeEndExclusive }, ...(await accessibleSessionWhereFor(viewerId)) },
       include: {
+        communityTeam: { select: { name: true } },
         proposals: {
           select: {
             gameId: true,

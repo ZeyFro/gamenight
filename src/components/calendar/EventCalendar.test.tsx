@@ -72,10 +72,11 @@ describe("calendrier approuvé : mois, semaine, agenda", () => {
     expect(screen.getByRole("link", { name: "Semaine suivante" }).getAttribute("href")).toContain("date=2026-10-15");
   });
   it("l'agenda ouvre les vraies routes et la création préremplit la date choisie", () => {
-    const data = days.map((day) => day.date.getTime() === selectedDate.getTime() ? { ...day, sessions: [{ id: "soirée-a", date: new Date("2026-10-08T20:00:00Z"), status: "SCHEDULED" as const, createdById: "me", votingDeadline: null, decidedGameName: "Jeu réel", decidedGameCoverUrl: null, proposals: [], players: [] }], roulettes: [{ id: "roulette-a", scheduledAt: new Date("2026-10-08T21:00:00Z"), deadline: selectedDate }] } : day);
+    const data = days.map((day) => day.date.getTime() === selectedDate.getTime() ? { ...day, sessions: [{ id: "soirée-a", date: new Date("2026-10-08T20:00:00Z"), status: "SCHEDULED" as const, createdById: "me", votingDeadline: null, decidedGameName: "Jeu réel", decidedGameCoverUrl: null, communityTeamName: "Expédition Minecraft", proposals: [], players: [] }], roulettes: [{ id: "roulette-a", scheduledAt: new Date("2026-10-08T21:00:00Z"), deadline: selectedDate }] } : day);
     render(<EventCalendar days={data} selectedDate={selectedDate} today={selectedDate} mode="collectif" view="mois" totalUsers={2} viewerId="me" canManageCommunityDates={false} />);
     const agenda = within(screen.getByRole("complementary", { name: "Programme du jour" }));
     expect(agenda.getByRole("link", { name: /Jeu réel/ }).getAttribute("href")).toBe("/sessions/soirée-a");
+    expect(agenda.getByText("Équipe · Expédition Minecraft")).toBeTruthy();
     expect(agenda.getByRole("link", { name: /Le hasard choisira/ }).getAttribute("href")).toBe("/roulette/roulette-a");
     expect(agenda.getByRole("link", { name: /Proposer une soirée/ }).getAttribute("href")).toBe("/sessions?date=2026-10-08#nouvelle-soiree");
   });

@@ -73,6 +73,12 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
             </div>
             <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
             <p className="text-xs text-muted">Responsable : {leaderName}</p>
+            {team.sessions.length > 0 && <div className="grid gap-1 border-t border-border pt-3">
+              <p className="text-xs font-medium text-muted">Séances GameNight accessibles</p>
+              {team.sessions.map((session) => <Link key={session.id} href={`/sessions/${session.id}`} className="text-sm text-accent hover:underline">
+                {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(session.date)} · {session.decidedGame?.name ?? "Vote en cours"}
+              </Link>)}
+            </div>}
             {isLeader ? <form action={setCommunityTeamRecruitmentAction}>
               <input type="hidden" name="teamId" value={team.id} /><input type="hidden" name="open" value={String(!team.isRecruiting)} />
               <Button type="submit" size="sm">{team.isRecruiting ? "Fermer le recrutement" : "Rouvrir le recrutement"}</Button>

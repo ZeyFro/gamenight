@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import { findActiveMembership } from "@/lib/community-access";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { accessibleSessionWhereFor } from "@/lib/session-access";
+import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 
 export async function getCommunityTeamsCommunityId(userId: string): Promise<string | null> {
@@ -25,6 +27,7 @@ async function canUseTeams(tx: Prisma.TransactionClient, userId: string, communi
 
 export async function listCommunityTeams(userId: string, communityId: string) {
   const scopedDb = await getScopedPrisma(userId);
+  const accessibleSessions = await accessibleSessionWhereFor(userId);
   return scopedDb.communityTeam.findMany({
     where: { communityId },
     select: {
@@ -39,9 +42,65 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       game: { select: { name: true } },
       createdBy: { select: { discordName: true, memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
       members: { where: activeTeamMemberWhere(communityId), select: { userId: true, joinedAt: true, user: { select: { discordName: true } } }, orderBy: { joinedAt: "asc" } },
+      sessions: {
+        where: { AND: [accessibleSessions, { status: { in: ["VOTING", "SCHEDULED"] }, date: { gte: new Date() } }] },
+        select: { id: true, date: true, status: true, decidedGame: { select: { name: true } } },
+        orderBy: { date: "asc" },
+      },
     },
     orderBy: [{ isRecruiting: "desc" }, { createdAt: "desc" }],
   });
+}
+
+export async function listMemberCommunityTeamOptions(userId: string, communityId: string) {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return [];
+  const scopedDb = await getScopedPrisma(userId);
+  return scopedDb.communityTeam.findMany({
+    where: {
+      communityId,
+      members: { some: { userId, ...activeTeamMemberWhere(communityId) } },
+    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function canAttachSessionToTeam(userId: string, teamId: string, communityId: string): Promise<boolean> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return false;
+  const scopedDb = await getScopedPrisma(userId);
+  const team = await scopedDb.communityTeam.findFirst({
+    where: {
+      id: teamId,
+      communityId,
+      members: { some: { userId, ...activeTeamMemberWhere(communityId) } },
+    },
+    select: { id: true },
+  });
+  return Boolean(team);
+}
+
+export async function assertSessionTeamLinkInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  teamId: string,
+  sessionCommunityId: string | null,
+): Promise<void> {
+  const defaultCommunity = sessionCommunityId ? null : await tx.community.findUnique({
+    where: { slug: DEFAULT_COMMUNITY_SLUG }, select: { id: true },
+  });
+  const communityId = sessionCommunityId ?? defaultCommunity?.id;
+  if (!communityId) throw new Error("invalid_session_team_link");
+  const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+  const team = await scopedDb.communityTeam.findFirst({
+    where: {
+      id: teamId,
+      communityId,
+      community: { status: "ACTIVE", communityTeamsEnabled: true },
+      members: { some: { userId, communityId, user: { memberships: { some: { communityId, status: "ACTIVE" } } } } },
+    },
+    select: { id: true },
+  });
+  if (!team) throw new Error("invalid_session_team_link");
 }
 
 export type TeamInput = {
