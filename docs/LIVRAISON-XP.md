@@ -70,10 +70,10 @@ Après réouverture, la phase `reopened` (mêmes contrôles sans l'égalité des
 
 ## 6. Intermittence du scénario « achats historiques » de `scripts/recette-boutique.mjs`
 
-Cause **non démontrée**. Constats :
+Cause **non démontrée**. Ne pas confondre les passages historiques avec la tête actuelle :
 
-- Deux passages complets consécutifs sur une base dédiée (Turbopack, Chrome headless) : 4/4 et 4/4, sans modification du script.
+- Deux anciens passages complets sur une base dédiée (Turbopack, Chrome headless) : 4/4 et 4/4. Après le changement du délai des transactions boutique, un nouveau passage complet a fait 3/4 : « achats historiques » a échoué et Docker/Postgres est devenu injoignable. Le passage isolé de ce scénario avait réussi **avant** ce changement. Aucun passage complet 4/4 n'a été obtenu après le correctif; les anciens 4/4 ne valident donc pas la tête actuelle.
 - Le journal Next de la dernière exécution dans `gnw\integ` (lecture seule) se termine sur le second `GET /classement?periode=week` du scénario historique (12 s, `POST` d'achat à 46 s) : l'échec survient donc entre cette page et `stats()`, sur une machine très chargée ; le message complet de l'échec n'a pas été conservé.
 - Exclu par lecture du code : aucune route de l'application ne supprime de ligne `CommunityMemberStats` (seul `seasons.ts` fait un `updateMany` à 0, qui produirait une assertion sur `xpTotal`, pas une erreur Prisma) ; les fixtures sont supprimées en fin de run par préfixe unique, jamais pendant les scénarios.
 - Hypothèses restantes, non confirmées : (a) un `TRUNCATE` d'une autre suite d'intégration sur une base partagée (injecté volontairement ici pendant ce scénario : il produit un timeout de la page classement et « 0 utilisateur supprimé », pas l'erreur observée ; l'hypothèse ne tient que si le `TRUNCATE` tombe après le dernier chargement) ; (b) une perte de connexion à PostgreSQL (le moteur Docker s'est arrêté pendant un run précédent). Le délai de 15 s des transactions boutique a corrigé les `P2028` mais ne résout pas ce point.
-- Pour trancher au prochain échec : conserver `logs/recette-boutique-next.log` et le message complet, lancer sur une base réservée à la recette, relever `pg_stat_database` (`xact_rollback`) et les `TRUNCATE` concurrents.
+- Le point n'est toujours pas tranché : conserver `logs/recette-boutique-next.log` et le message Prisma complet, puis relancer sur une base réservée à la recette et relever `pg_stat_database` (`xact_rollback`) et les `TRUNCATE` concurrents. À la reprise du 26/10, Docker Desktop ne démarre pas; aucune recette Postgres/navigateur nouvelle n'a été exécutée.

@@ -1,11 +1,11 @@
 # Livraison : exhaustivité du cahier des charges (mission G)
 
-Base : `integ/xp-vocal-20261023` @ 856a881 (PR #325). Lecture du code et des tests uniquement; aucun test relancé pour ce document.
+Périmètre initial : mission G sur `integ/xp-vocal-20261023` @ 856a881 (PR #325). Depuis, tests récupérés dans le worktree `codex/resume-20261026`; le SHA de référence de la CI actuelle est `ef22c8b` (run 40001112027), pas le SHA historique ci-dessus. Voir aussi l’état d’intégration ci-dessous.
 
 Légende des colonnes
 - **Code livré** : fonction ou fichier lu.
 - **Activé** : `oui` = aucun drapeau, actif par défaut; sinon le drapeau (environnement ou réglage communautaire) est OFF par défaut.
-- **Vérifié** : `test auto` = un test du dépôt couvre le comportement, dans la CI verte de #325 (377/377 fichiers, 3503/3503 tests, chiffres fournis par le coordinateur, non réexécutés ici). Aucune recette réelle (navigateur authentifié, Discord, Blob) n'a été faite ici.
+- **Vérifié** : `test auto` = présence d’un test, sans présumer que toute sa couverture est exhaustive. Au SHA `ef22c8b`, la CI `test:postgres` a 377 fichiers/3 503 tests réussis; l’étape distincte `npm test` en a 2 340 passés et 1 248 ignorés. Aucune recette authentifiée Discord/Blob n’est prouvée.
 - Les tests d'intégration sont `describe.skipIf(!TEST_DATABASE_URL)` : ils ne comptent que dans le run Postgres de la CI.
 
 | # | ID ROADMAP | Élément | Code livré | Activé | Vérifié | Reste exact | Preuve |
@@ -34,18 +34,32 @@ Légende des colonnes
 | 22 | L7-09 | Événements saisonniers | `src/lib/seasonal-theme.ts` : Halloween 25 oct.-1er nov., Noël 20-26 déc., marathon d'été 1er-7 juil.; classes `gn-theme-*` dans `layout.tsx` / `globals.css` | oui | test auto | Thème visuel uniquement : aucun contenu ni événement associé | `seasonal-theme.test.ts` |
 | 23 | L4-02 | Rituels récurrents : création de séries | `src/lib/session-recurrence.ts` (hebdo, mensuel au n-ième jour de semaine, 5e jour ramené au dernier), `sessions/actions/session-lifecycle.ts` | oui | test auto | « Éditer les occurrences futures seulement » est une proposition ROADMAP non arbitrée (Q3) | `session-recurrence.test.ts`, `session-lifecycle.integration.test.ts` |
 | 24 | L4-02 | Rituels : annulation groupée des occurrences futures | `sessions-recurring-cancel` (action) | `SESSION_SERIES_CANCEL_ENABLED=true` (OFF) | test auto | Activation + migration non faites | `sessions-recurring-cancel.integration.test.ts`, `guide-sections.test.ts` l.16 |
-| 25 | (wishlist) | Wishlist : proposer, voter « intéressé » | `src/lib/wishlist.ts`, `src/app/wishlist/{page,actions}.ts`, modèles `GameWishlist` / `GameWishlistVote` | oui | aucun test dédié | Aucun test d'action wishlist (proposer, voter, marquer acheté) trouvé : la recherche de `gameWishlist` dans les tests ne renvoie que calendrier, stats, isolation et alertes de prix | `calendar.integration.test.ts`, `community-library-stats.integration.test.ts` (usage indirect) |
+| 25 | (wishlist) | Wishlist : proposer, voter « intéressé » | `src/lib/wishlist.ts`, `src/app/wishlist/{page,actions}.ts`, modèles `GameWishlist` / `GameWishlistVote` | oui | tests d’actions mockés récupérés, 13 cas | Les actions sont couvertes avec Prisma mocké; aucune recette réelle Postgres/browser n’a été faite sur cette tête | `src/app/wishlist/actions.test.ts` |
 | 26 | L6-10 | Alertes de promotion (Steam, seuil 20 % par défaut, 5-80 %, France, délai 7 j) | `src/lib/wishlist-price-alerts.ts`, branché dans `api/cron/steam-library-sync/route.ts`; réglage admin `setCommunitySteamPriceAlerts` | réglage communautaire `steamPriceAlertsEnabled` OFF (admin) | test auto | Steam seulement; Epic / console hors périmètre; aucune recette réelle de la notification | `wishlist-price-alerts.test.ts`, `…-scan.test.ts`, `…integration.test.ts` |
-| 27 | L6-11 | « On l'achète à plusieurs » (indicatif) | `app/wishlist/actions.ts` (date cible + note 300 car., refusé si acheté ou réglage OFF), `lib/wishlist.ts`, onglet admin | réglage communautaire `groupPurchasePlansEnabled` OFF | test partiel | Seul le schéma de validation du plan et le réglage admin sont testés; l'action d'enregistrement du plan n'a pas de test d'action. « Sans paiement intégré » est une proposition non arbitrée (Q4) | `wishlist-purchase-plan.test.ts`, `community-admin.test.ts` l.98 |
+| 27 | L6-11 | « On l'achète à plusieurs » (indicatif) | `app/wishlist/actions.ts` (date cible + note 300 car., refusé si acheté ou réglage OFF), `lib/wishlist.ts`, onglet admin | réglage communautaire `groupPurchasePlansEnabled` OFF | test d’action mocké | Enregistrement testé avec Prisma mocké; pas de recette Postgres. « Sans paiement intégré » reste le périmètre prudent retenu (Q4) | `src/app/wishlist/actions.test.ts`, `wishlist-purchase-plan.test.ts`, `community-admin.test.ts` |
 | 28 | (guide) | Guide | `app/guide/page.tsx` + `src/lib/guide-sections.ts` (sections d'origine, V2 sous `GUIDE_V2_ENABLED`, lignes par drapeau) | oui (sections V2 sous `GUIDE_V2_ENABLED`, OFF) | test auto | Aucun pour le contenu d'origine | `guide-sections.test.ts` |
 | 29 | L7-10 | Charte de fair-play | `src/lib/fair-play-charter.ts` (texte 5000 car. max, vide = non définie), `app/charte/{page,actions}.ts`, champ `Community.fairPlayCharter`, écriture limitée à la communauté active et aux admins | oui | test auto | Aucun | `fair-play-charter.test.ts`, `app/charte/actions.test.ts`, `actions.integration.test.ts` |
 | 30 | L7-11 | Recherche de joueurs (LFG) | `src/lib/player-classifieds.ts` + `-rules.ts`, `app/joueurs/{page,actions}.ts`; jeu + message court, expire à +24 h, suppression auteur ou admin, membres actifs | réglage communautaire `playerClassifiedsEnabled` OFF | test auto | Aucune notification (Discord ou push) à la publication d'une annonce : non défini (Q5) | `player-classifieds.test.ts`, `…access.test.ts`, `…integration.test.ts` |
+
+## État d’intégration au 26 octobre 2026
+
+| Domaine | Code / branche | Activé | Vérifié | Reste exact |
+|---|---|---|---|---|
+| XP, boutique et grades (#291) | Dans #325, tête distante observée `ef22c8b`; correctif local worker/test wishlist pas encore publié à cette mise à jour | Les notifications externes restent sous leurs réglages; état des variables Production inconnu | CI verte au SHA `ef22c8b`; 26 tests unitaires worker + wishlist sur delta local | Six migrations absentes de Neon; recette boutique après changement de délai non reproduite car Docker indisponible; ne pas fusionner #325 avant préconditions |
+| Vocal (#303) | Dans #325; garde de course stop/start local `35f966f` | Collecte reste désactivée; worker non installé | Tests ciblés 73/73 par l’agent, puis worker + wishlist 26/26 sur le delta local | Hôte/installation, migration, permissions, barrière et exploitation non vérifiés en Production |
+| Crons (#326) | PR ouverte, tête `51b5fc4` | Les interrupteurs existants restent maîtres | 12/12 routes, TSC/lint ciblés; Vercel vert au dernier relevé | Contrôler 202 sur le cron externe; `after()` n’est pas durable |
+| Mobile / recette (#327) | PR ouverte, tête `cbe20ed` | Aucun changement d’activation | Chrome headless temporaire: 320/390/768 sans débordement; service worker 10/10; self-check local | Vercel encore en attente; seule la page `/offline.html` fonctionne hors ligne, pas les données privées |
+| Discord / jeux gratuits | Code et tests dans #325 | Envois réels et automatismes restent désactivés par défaut | Tests avec doubles uniquement | Aucun message Discord réel ni recette fournisseur |
+| Web Push / calendrier | Code et tests dans #325 | Push désactivé; export iCal ponctuel; aucun abonnement/cron activé | Tests avec doubles uniquement; fichier privé local `~/.gamenight-vapid.env` absent et variables VAPID du processus non définies; valeurs Vercel inaccessibles (403) | Aucune clé locale existante à préserver; configuration distante inconnue; binding et recette sur appareil non établis |
+| Médias | Galerie privée existante dans main, réglage admin et Blob privé requis | Galerie conditionnelle | Tests privés locaux par agent | Token Blob et parcours réel non vérifiés; vidéo non implémentée |
+
+Les résultats locaux des agents ne valent pas preuve sur `main` ou Production. Les branches `work/m-a`, `m-b`, `m-c`, `m-d`, `m-f`, `m-g` sont déjà ancêtres de #325; `work/m-e` n’est pas disponible dans les remotes inspectés. La transcription historique mentionne « jamais publiée ou seulement autre PC », sans permettre de récupérer des fichiers absents.
 
 ## Synthèse chiffrée (30 lignes)
 
 - Code livré : 30/30.
 - Activé par défaut (aucun drapeau) : 19 lignes (1, 2, 3, 4, 5, 6, 9, 11, 12, 13, 14, 16, 20, 21, 22, 23, 25, 28, 29). Drapeau ou réglage OFF par défaut : 11 lignes (7, 8, 10, 15, 17, 18, 19, 24, 26, 27, 30).
-- Test automatique complet : 28 lignes; partiel : 1 (27); aucun test dédié : 1 (25).
+- Des tests automatiques existent désormais pour les 30 lignes; la couverture varie et les actions wishlist sont mockées, sans recette Postgres réelle.
 - Recette réelle (navigateur authentifié, Discord, Blob) : 0/30 faite dans cette mission.
 - Lignes avec un « reste exact » technique non vide : 3, 4, 9, 11, 12, 21, 22, 25, 27.
 
@@ -73,4 +87,4 @@ Couverture : le filtre, l'exclusion des récents, le tirage pondéré (poids 1 c
 
 ## Manques réels
 
-Aucun comportement absent ET défini sans ambiguïté n'a été trouvé : aucun code applicatif ajouté. Les écarts sont des manques de tests ou de preuves (lignes 3, 9, 25, 27 : tests d'action wishlist et du quiz, valeurs de poids de la tierlist, frontière de 7 jours, action du plan d'achat) et de maintenance de données (ligne 21 : dates de soldes Steam et Game Awards après 2027). Ces tests relèvent de fichiers de tests à créer, non écrits ici car la mission est surtout en lecture et sans exécution de la suite.
+Les manques établis sont des preuves/recettes, non un blocage à l’ajout d’un comportement produit : recettes authentifiées Discord/Blob/appareils, validation de la base Postgres dédiée, poids de tierlist et frontière de 7 jours à mieux couvrir, ainsi que la maintenance manuelle des dates Steam/Game Awards après 2027. Le test d’actions wishlist a été récupéré et exécuté; les autres lacunes de couverture restent consignées.
