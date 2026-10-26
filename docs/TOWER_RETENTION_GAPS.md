@@ -17,10 +17,10 @@
 - La présence « en jeu » ne couvre que l’activité Steam détectée; elle ne prouve pas qu’une personne est disponible ou souhaite être contactée.
 - La PWA ne permet pas de consulter hors ligne le calendrier, les équipes ou le profil. Ce périmètre doit rester volontairement limité aux données publiques tant qu’un modèle de cache privé sûr n’est pas spécifié.
 
-## Première étape recommandée
+## Statut et prochaines étapes
 
-1. Ajouter un tableau de bord d’équipes/projets durables par communauté, réutilisant le catalogue de jeux, les communautés et les sessions existantes. L’inscription et la découverte doivent exiger une appartenance ACTIVE; pas de serveur Discord séparé requis.
-2. Relier une équipe à des sessions GameNight existantes plutôt que créer un second calendrier. Conserver l’annonce LFG de 24 h pour les parties spontanées.
+1. **Livré sur `codex/tower-coordinator`** : équipes/projets durables par communauté, avec appartenance active requise; le drapeau reste désactivé par défaut.
+2. **Livré sur `codex/tower-coordinator`** : liaison facultative aux sessions existantes, sans second calendrier ni inscription automatique. Les annonces LFG de 24 h restent adaptées aux parties spontanées.
 3. Améliorer l’accueil par des liens/contextes communautaires disponibles; ne pas ajouter d’import de contacts, suivi d’invitations, ni message automatique.
 4. Garder les rappels facultatifs et les annonces externes désactivés par défaut. Avant toute notification, respecter le consentement existant et offrir un retrait; préférer le centre in-app. Aucun ping public ou récompense d’invitation brute.
 5. Reporter l’ambassadeur et le parrainage jusqu’à une définition de signaux qualitatifs et d’une modération des abus. Ne pas attribuer d’XP pour l’inscription d’un filleul.

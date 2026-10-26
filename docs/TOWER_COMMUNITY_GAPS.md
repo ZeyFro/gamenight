@@ -10,21 +10,21 @@
 - **GameNight/Discord** : les salons existants dédiés aux soirées et tournois sont les destinations logiques. L’export indique que le salon d’annonce est un salon texte standard, pas un salon Discord de type « annonces ». Les annonces bot sont séparées par flags/config et enregistrées dans l’outbox; aucun message ne doit être envoyé par ce chantier sans configuration/activation explicite.
 - **Contexte communauté** : les modèles communautaires passent par `getScopedPrisma(userId)` et exigent une adhésion ACTIVE; cette règle doit aussi protéger les équipes et projets.
 
-## Lacune démontrée et MVP recommandé
+## Lacune démontrée sur `main` et MVP livré
 
 Les modèles d’équipe actuels (`TournamentTeam`, `TournamentTeamMember`) sont dépendants d’un tournoi et ne permettent pas de vivre ensemble entre plusieurs sessions ou projets. Les petites annonces expirent au bout de 24 h. Il manque donc un espace durable de recrutement et de coordination pour une guilde ou une aventure de plusieurs semaines.
 
-MVP suivant, sans nouveaux messages Discord ni salon externe : une fiche de projet d’équipe dans l’application (jeu, titre, description, plateforme, places souhaitées, responsable, ouvert/fermé, membres et échéance), avec rejoindre/quitter et fermeture par le responsable. Réutiliser les fiches jeu, communauté active, composants de formulaire et règles d’autorisation existants. Lier les premières sessions au projet peut venir après validation de ce MVP; ne pas dupliquer calendrier, tournois ou annonces.
+MVP livré sur `codex/tower-coordinator` : fiche durable d’équipe/projet (jeu, plateforme, places, responsable, membres, recrutement ouvert/fermé), rejoindre/quitter, plafond anti-abus et contrôle de communauté active. Le formulaire de soirée existant permet à un membre de l’équipe de relier une session; l’équipe et le calendrier n’affichent que les séances déjà accessibles. Le drapeau équipes reste désactivé par défaut par communauté. Il n’y a ni message Discord, ping, XP supplémentaire ni calendrier dupliqué.
 
-Les événements membres sont déjà couverts en partie par les créations de soirées et tournois. Le manque ne justifie pas un troisième calendrier : relier une équipe à une soirée existante suffit pour une première coordination. « Qui joue ce soir ? » peut réutiliser `/sessions` et `/joueurs`; éviter un ping automatique ou une récompense pour invitation brute.
+Les événements membres sont déjà couverts en partie par les créations de soirées et tournois. « Qui joue ce soir ? » continue de réutiliser `/sessions` et `/joueurs`; aucun ping automatique ou récompense d’invitation brute n’est ajouté.
 
-## Contrôles à prévoir avant le code et la mise en service
+## Contrôles à exécuter avant intégration
 
 - Tests d’intégration : création par membre actif, refus hors communauté, capacité concurrente, rejoindre deux fois, départ, fermeture par non-responsable, isolation entre communautés et auteur retiré.
 - Validation serveur : longueur/format des textes, nombre de places borné, état ouvert, limitation de fréquence. Aucune donnée de contact externe ni ping de masse.
-- Si les sessions sont liées plus tard : vérifier l’accès via l’équipe et la communauté, conserver le contrôle `SessionInvite`, et ne pas inscrire automatiquement un membre à une soirée.
+- Pour le lien équipe-session livré : l’accès de session existant est conservé; seules les séances visibles via `accessibleSessionWhereFor` apparaissent et l’adhésion active est revérifiée dans la transaction de création. Aucun membre n’est inscrit automatiquement.
 - Notifications Discord : désactivées par défaut; n’utiliser que l’outbox et le flag existants après configuration explicite. Une annonce de projet doit rester opt-in et limiter les mentions.
-- Migration additive seulement si une table durable est retenue; sauvegarde et test PostgreSQL isolé avant intégration. Pas de migration existante modifiée.
+- Migrations additives uniquement. La CI doit confirmer la création, les courses concurrentes et les règles d’accès PostgreSQL avant intégration; aucune migration existante n’est modifiée.
 
 ## Limite des constats Discord
 
