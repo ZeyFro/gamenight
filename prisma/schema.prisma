@@ -2773,6 +2773,7 @@ model Community {
   groupPurchasePlansEnabled Boolean @default(false)
   playerClassifiedsEnabled Boolean @default(false)
   communityTeamsEnabled Boolean @default(false)
+  towerLevelsPerFloor Int @default(10)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.

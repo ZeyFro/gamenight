@@ -5,6 +5,8 @@ import { rankForLevel, titleForLevel } from "@/lib/xp";
 import { getTowerProgress } from "@/lib/tower-progression";
 import { Card } from "@/components/ui/Card";
 import { pageMetadata } from "@/lib/page-title";
+import { resolveActiveCommunityId } from "@/lib/community-isolation";
+import { prisma } from "@/lib/prisma";
 
 export const metadata = pageMetadata("Ascension");
 
@@ -19,7 +21,11 @@ export default async function AscensionPage() {
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
 
-  const progress = getTowerProgress(user.xpTotal);
+  const communityId = await resolveActiveCommunityId(user.id);
+  const community = communityId
+    ? await prisma.community.findUnique({ where: { id: communityId }, select: { towerLevelsPerFloor: true } })
+    : null;
+  const progress = getTowerProgress(user.xpTotal, community?.towerLevelsPerFloor ?? 10);
   const rank = rankForLevel(progress.level);
 
   return (
@@ -48,7 +54,7 @@ export default async function AscensionPage() {
         >
           <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress.progress * 100}%` }} />
         </div>
-        <p className="text-xs text-muted">Chaque étage couvre dix niveaux. Ton XP existante reste inchangée.</p>
+        <p className="text-xs text-muted">Chaque étage couvre {community?.towerLevelsPerFloor ?? 10} niveaux. Ton XP existante reste inchangée.</p>
       </Card>
 
       <section className="flex flex-col gap-3" aria-labelledby="tower-links-title">

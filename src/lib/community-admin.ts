@@ -111,6 +111,18 @@ export async function setCommunityTeams(input: { communityId: unknown; enabled: 
   return result.count ? "saved" as const : "unavailable" as const;
 }
 
+export async function setCommunityTowerLevelsPerFloor(input: { communityId: unknown; levelsPerFloor: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId) return "invalid" as const;
+  const raw = input.levelsPerFloor;
+  const levels = typeof raw === "number" ? raw : typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isInteger(levels) || levels < 5 || levels > 20) return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, status: { in: ["PENDING", "ACTIVE"] } },
+    data: { towerLevelsPerFloor: levels },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
 /** Identifiant Discord (snowflake) : chiffres seuls, jamais d'espace. */
 function isSnowflake(value: string): boolean {
   return /^\d{17,20}$/.test(value);
@@ -195,6 +207,7 @@ export interface AdminCommunityRow {
   absencePenaltyXp: number;
   playerClassifiedsEnabled: boolean;
   communityTeamsEnabled: boolean;
+  towerLevelsPerFloor: number;
   status: string;
   discordGuildId: string | null;
   activeMembers: number;
@@ -241,6 +254,7 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         absencePenaltyXp: c.absencePenaltyXp,
         playerClassifiedsEnabled: c.playerClassifiedsEnabled,
         communityTeamsEnabled: c.communityTeamsEnabled,
+        towerLevelsPerFloor: c.towerLevelsPerFloor,
         status: c.status,
         discordGuildId: guildId,
         activeMembers: c._count.memberships,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds, setCommunityTeams } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds, setCommunityTeams, setCommunityTowerLevelsPerFloor } from "@/lib/community-admin";
 import { setCommunitySessionGallery } from "@/lib/community-admin";
 
 /**
@@ -137,6 +137,18 @@ export async function setCommunityTeamsAction(formData: FormData): Promise<void>
   const enabled = formData.get("enabled");
   const result = await setCommunityTeams({ communityId: formData.get("communityId"), enabled: enabled === "true" ? true : enabled === "false" ? false : null });
   done(result === "saved" ? "teams-ok" : `teams-${result}`);
+}
+
+export async function setCommunityTowerLevelsPerFloorAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityTowerLevelsPerFloor")) done("rate");
+  const result = await setCommunityTowerLevelsPerFloor({
+    communityId: formData.get("communityId"),
+    levelsPerFloor: formData.get("levelsPerFloor"),
+  });
+  done(result === "saved" ? "tower-floor-ok" : `tower-floor-${result}`);
 }
 
 export async function setCommunitySessionGalleryAction(formData: FormData): Promise<void> {
