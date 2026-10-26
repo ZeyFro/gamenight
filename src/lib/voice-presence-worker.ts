@@ -189,6 +189,7 @@ export function createVoicePresenceWorker(options: {
         if (!started || stopped || failure) break;
         if (collectors.has(sessionId) || current.target.enabled === false || stopBySession.has(sessionId)) continue;
         if (options.validateTarget && !await options.validateTarget(current.target)) continue;
+        if (!started || stopped || failure) break;
         const callbacks: VoicePresenceCollectorCallbacks = {
           onFatal: failure => { void fail({ kind: "gateway", failure }); },
           onPersistenceError: error => { void fail({ kind: "persistence", error }); },

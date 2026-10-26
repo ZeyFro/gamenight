@@ -124,6 +124,28 @@ describe("voice presence worker (synthetic dependencies only)", () => {
     expect(createCollector).not.toHaveBeenCalled();
   });
 
+  it("ne démarre aucun collecteur si l'arrêt survient pendant la validation du bail", async () => {
+    let resolveValidation!: (valid: boolean) => void;
+    const validateTarget = vi.fn(() => new Promise<boolean>(resolve => { resolveValidation = resolve; }));
+    const collector = { start: vi.fn(), stop: vi.fn() };
+    const createCollector = vi.fn(() => collector);
+    const worker = createVoicePresenceWorker({
+      loadTargets: async () => [target("session-active")],
+      validateTarget,
+      createCollector,
+      onFatal: vi.fn(),
+    });
+
+    const starting = worker.start();
+    await vi.waitFor(() => expect(validateTarget).toHaveBeenCalledOnce());
+    await worker.stop();
+    resolveValidation(true);
+    await starting;
+
+    expect(collector.start).not.toHaveBeenCalled();
+    expect(createCollector).not.toHaveBeenCalled();
+  });
+
   it("stops and releases a lease when a session disappears from discovery", async () => {
     let targets = [target("session-active")];
     const collector = { start: vi.fn(), stop: vi.fn() };
