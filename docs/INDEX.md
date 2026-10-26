@@ -15,6 +15,9 @@
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
+- [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.
+- [Revue des rôles The Tower](TOWER_ROLE_REVIEW.md) — constats sans publier les détails de permissions.
+- [Lacunes progression](TOWER_PROGRESSION_GAPS.md), [GameNight et équipes](TOWER_COMMUNITY_GAPS.md) et [fidélisation](TOWER_RETENTION_GAPS.md) — fonctions présentes et prochains incréments.
 
 ## Exploitation et sécurité
 

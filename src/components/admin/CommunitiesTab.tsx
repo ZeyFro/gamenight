@@ -4,7 +4,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction, setCommunityTeamsAction } from "@/app/admin/communautes/actions";
 import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 
@@ -43,6 +43,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "classifieds-ok": { ok: true, text: "Réglage des petites annonces enregistré." },
   "classifieds-invalid": { ok: false, text: "Demande invalide." },
   "classifieds-unavailable": { ok: false, text: "Seule une communauté active peut activer les annonces." },
+  "teams-ok": { ok: true, text: "Réglage des équipes enregistré." },
+  "teams-invalid": { ok: false, text: "Demande invalide." },
+  "teams-unavailable": { ok: false, text: "Seule une communauté active peut activer les équipes." },
   "guide-invalid": { ok: false, text: "Les règles (4 000 caractères) ou les contacts (2 000 caractères) dépassent la limite." },
   "guide-unavailable": { ok: false, text: "Cette communauté n'est plus modifiable." },
   "purchase-plan-ok": { ok: true, text: "Plans d'achat collectif mis à jour." },
@@ -178,6 +181,15 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           <Button type="submit" size="sm">
             {c.playerClassifiedsEnabled ? "Désactiver" : "Activer"}
           </Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunityTeamsAction} className="flex items-center justify-between gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <input type="hidden" name="enabled" value={String(!c.communityTeamsEnabled)} />
+          <p className="text-sm text-muted">Équipes et projets durables : {c.communityTeamsEnabled ? "activés" : "désactivés"}. Aucun message Discord n’est envoyé.</p>
+          <Button type="submit" size="sm">{c.communityTeamsEnabled ? "Désactiver" : "Activer"}</Button>
         </form>
       )}
 

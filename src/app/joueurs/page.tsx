@@ -34,6 +34,7 @@ export default async function PlayerClassifiedsPage({
         <h1 className="text-xl font-semibold text-foreground">🔎 Chercher un joueur</h1>
         <Card className="text-sm text-muted">Les annonces ne sont pas disponibles dans ta communauté.</Card>
         <Link href="/jouer-maintenant" className="text-sm font-medium text-accent">Jouer maintenant →</Link>
+        <Link href="/equipes" className="text-sm font-medium text-accent">Créer une équipe durable →</Link>
       </main>
     );
   }

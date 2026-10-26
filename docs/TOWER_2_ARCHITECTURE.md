@@ -1,33 +1,14 @@
 # The Tower 2.0 — architecture et migration prudente
 
-État de conception au 26 octobre 2026. Ce document s’appuie sur l’instantané REST réel du serveur The Tower (`553922938101825536`) pris le 26 octobre à 19:12 UTC et sur le code de `origin/main` (`5bed623`). L’export privé complet reste dans `.private-audit/discord` du worktree d’audit ; il ne doit pas être commité ni transféré. Ce relevé décrit la configuration, pas l’activité ni l’usage.
+État de conception au 26 octobre 2026. Ce document s’appuie sur l’instantané REST réel de The Tower pris le 26 octobre à 19:12 UTC et sur le code de `origin/main` (`5bed623`). L’export privé complet reste local ; il ne doit pas être commité ni transféré. Ce relevé décrit la configuration, pas l’activité ni l’usage.
 
 ## Inventaire vérifié et décisions
 
 L’audit compte 16 catégories, 37 salons textuels, 19 vocaux, aucun forum, aucun salon Discord de type annonce, aucun événement planifié, 197 rôles et 313 overwrites de rôles. Les 72 catégories/salons sont classés « conserver » par l’outil. Aucun élément n’est démontré comme supprimable ou archivable. Les catégories textuelles décoratives et noms répétés ne suffisent pas à conclure qu’ils sont inutilisés.
 
-| Catégorie observée | ID | Enfants | Décision provisoire / destination logique |
-|---|---:|---:|---|
-| `_______|-Salons-textuel-|_______` | `553931981952516126` | 6 | Place centrale; conserver en vérifiant l’usage |
-| `_________|-REGLEMENT-|__________` | `553934390229467175` | 3 | Accueil et intégration; conserver |
-| `___|-Team League-Of-Legend-|__` | `553969237383970816` | 5 | Espace LoL; conserver si la communauté est active |
-| `________|-Salle de repos-|________` | `553972592424386562` | 2 | AFK / détente; conserver |
-| `______|-TEAM OVERWATCH-|______` | `553974866840125460` | 3 | Espace Overwatch; conserver si actif |
-| `__________|-Affiche-|___________` | `554000746992107520` | 5 | Annonces et actualités; conserver |
-| `_________|-TEAM CS-GO-|__________` | `556224891628814346` | 3 | Espace CS; conserver si actif |
-| `Tribunal` | `576460995472523285` | 5 | Modération; visibilité à vérifier, ne pas déplacer |
-| `•🔖tickets-off` | `734424863988776960` | 0 | Catégorie vide dans l’instantané; vérifier le bot de tickets |
-| `•🔖tickets-on` | `734424902400081932` | 0 | Catégorie vide dans l’instantané; vérifier le bot de tickets |
-| `_______|-TEAM VALORANT-|_______` | `734445254392021063` | 3 | Espace Valorant; conserver si actif |
-| `_______|-Salons-Vocaux-|_______` | `734798647715168356` | 8 | Vocaux généraux; conserver |
-| `________|-Communautée-|_______` | `735240308882800721` | 5 | Communauté, recrutement et activités; conserver |
-| `__________|-Mudae-|__________` | `765556794726023178` | 3 | Intégration Mudae; vérifier avant toute évolution |
-| `_______Irregular_______` | `854003747595747328` | 2 | Espace à droits spécifiques; conserver et auditer les droits |
-| `GameNight` | `1557465639801589923` | 3 | Noyau événements; conserver |
+La configuration observée couvre l’accueil/règlement, une place centrale, les actualités, les vocaux généraux et par jeu, quatre espaces de jeu, la communauté, GameNight, les tickets, la modération et des intégrations ludiques. La capture montre deux catégories de tickets vides; elles peuvent être des destinations dynamiques de bot. Les salons vocaux homonymes sont rangés par jeu et ne sont pas des doublons démontrés.
 
-Salons GameNight déjà identifiés : `⚙️annonce` (`1557685767151820851`), `🎮-soirées` (`1557465643849220126`), `🏆tournois` (`1557465648748302336`). Le premier est un salon texte standard, pas le type Discord « annonces ». Les salons vocaux homonymes sont rangés sous des catégories de jeux différentes : aucun regroupement n’est justifié par leur seul nom. Les deux catégories de tickets vides peuvent être des destinations dynamiques de bot.
-
-L’instantané ne comprend aucun message, activité, membre ni attribution de rôle. Il ne permet donc pas d’établir la fréquence d’usage, de vérifier la propriété d’un rôle, ni d’autoriser une fusion ou une suppression. Voir la synthèse privée pour les contrôles de rôles et permissions; notamment les rôles `ADMINISTRATOR`, les overwrites d’`Irregular` et de `Examinateur` demandent une vérification d’usage et de propriétaires avant toute réduction.
+Les noms et identifiants détaillés des catégories et salons restent dans le rapport local privé `.private-audit/discord/TOWER_DISCORD_INVENTORY.md`; ce relevé n’est pas publié dans le dépôt public. L’instantané ne comprend aucun message, activité, membre ni attribution de rôle. Il ne permet donc pas d’établir la fréquence d’usage, de vérifier la propriété d’un rôle, ni d’autoriser une fusion ou une suppression. Les rôles d’administration et overwrites spécifiques demandent une vérification d’usage et de propriétaires avant toute réduction.
 
 ## Structure cible simple
 
@@ -48,6 +29,12 @@ Le serveur Discord reste le lieu social et vocal; GameNight devient le registre 
 Le code comporte déjà les séances et invitations, calendrier, tournois et équipes de tournoi, recherche courte de joueurs (`/joueurs`, annonces expirant en 24 h), sessions spontanées, XP et niveaux, badges, défis hebdomadaires, saisons/classements, succès collectifs et notifications in-app. Il faut les relier avant d’introduire des équivalents. Les annonces aux salons Discord et MP dépendent de drapeaux séparés; toute nouvelle notification reste désactivée par défaut.
 
 La recherche `/joueurs` sert au matchmaking ponctuel, pas au recrutement durable d’une équipe : le prochain incrément communautaire peut donc ajouter une fiche de projet/équipe persistante, scopée par communauté et avec adhésion explicite, sans paiement ni mention automatique. Événements et XP doivent s’appuyer sur les événements GameNight existants, avec une source d’attribution idempotente et les limites anti-abus déjà utilisées par l’XP.
+
+### Premier incrément réalisé sur la branche de travail
+
+La branche `codex/tower-coordinator` ajoute un registre d’équipes par communauté (jeu, plateforme, projet, taille, responsable, membres, recrutement ouvert/fermé), une inscription/désinscription et un plafond de trois créations par personne sur 24 h. Les places et le plafond sont vérifiés dans une transaction sérialisable; les adhésions inactives ne comptent pas. Si le responsable quitte la communauté, l’équipe reste visible et le plus ancien membre actif peut reprendre la fermeture du recrutement. L’activation est réglée par communauté, OFF par défaut, depuis l’administration existante; aucune notification Discord ou récompense XP n’est émise.
+
+Cette première tranche ne lie pas encore les équipes aux séances/calendriers et ne propose pas de transfert manuel du responsable. Sa migration est additive; la bascule OFF masque le parcours sans effacer ses données. Une restauration de schéma après écritures nécessiterait une sauvegarde et un plan de conservation des inscriptions avant retour arrière; aucune migration Production n’a été lancée.
 
 ## Séquencement de livraison
 

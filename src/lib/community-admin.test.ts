@@ -28,6 +28,7 @@ import {
   parseChannelCategory,
   setCommunityGuide,
   setCommunityGroupPurchasePlans,
+  setCommunityTeams,
   setCommunityChannel,
 } from "./community-admin";
 
@@ -100,6 +101,21 @@ describe("setCommunityGroupPurchasePlans", () => {
     expect(await setCommunityGroupPurchasePlans({ communityId: "", enabled: true })).toBe("invalid");
     expect(await setCommunityGroupPurchasePlans({ communityId: "c-b", enabled: "true" })).toBe("invalid");
     expect(communityUpdateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("setCommunityTeams", () => {
+  beforeEach(() => communityUpdateMany.mockReset().mockResolvedValue({ count: 1 }));
+
+  it("requires a boolean and only toggles active communities", async () => {
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: true })).toBe("saved");
+    expect(communityUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c-b", status: "ACTIVE" },
+      data: { communityTeamsEnabled: true },
+    });
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: "true" })).toBe("invalid");
+    communityUpdateMany.mockResolvedValue({ count: 0 });
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: false })).toBe("unavailable");
   });
 });
 
