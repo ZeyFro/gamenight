@@ -76,4 +76,11 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     await expect(teams.setCommunityTeamRecruitment(ids.racer, ids.community, team.id, false)).resolves.toBe("missing");
     await expect(teams.setCommunityTeamRecruitment(ids.member, ids.community, team.id, false)).resolves.toBe("saved");
   });
+
+  it("prevents deleting a game from cascading into its community teams", async () => {
+    await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Explorateurs", description: "Projet durable.", platform: "PC", maxMembers: 4 });
+
+    await expect(db.game.delete({ where: { id: ids.game } })).rejects.toMatchObject({ code: "P2003" });
+    await expect(db.communityTeam.count({ where: { gameId: ids.game } })).resolves.toBe(1);
+  });
 });

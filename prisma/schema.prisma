@@ -2871,7 +2871,7 @@ model CommunityTeam {
   updatedAt   DateTime @updatedAt
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
   members   CommunityTeamMember[]
   sessions  Session[]
