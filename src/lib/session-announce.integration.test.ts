@@ -17,6 +17,23 @@ import { wallClockNow } from "@/lib/wallclock";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+// La route cron répond 202 et travaille dans after() : on collecte les tâches
+// pour les exécuter explicitement (hors contexte de requête Next).
+const afterTasks = vi.hoisted(() => [] as Array<() => Promise<void> | void>);
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (cb: () => Promise<void> | void) => void afterTasks.push(cb),
+}));
+async function callExecutorRoute(authorization?: string) {
+  const { GET } = await import("@/app/api/cron/notification-executor/route");
+  const from = afterTasks.length;
+  const res = await GET(
+    new Request("http://localhost/api/cron/notification-executor", authorization ? { headers: { authorization } } : {})
+  );
+  for (const task of afterTasks.splice(from)) await task();
+  return res;
+}
+
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) {
@@ -1022,13 +1039,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", type: 12 }));
         fetchMock.mockResolvedValueOnce(emptyResponse(204));
 
-        const { GET } = await import("@/app/api/cron/notification-executor/route");
-        const res = await GET(
-          new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
-        );
-        const body = await res.json();
-        expect(body.sent).toBe(3);
-        expect(body.failed).toBe(0);
+        const res = await callExecutorRoute("Bearer s3cret");
+        expect(res.status).toBe(202);
         expect(fetchMock).toHaveBeenCalledTimes(5);
       });
 
