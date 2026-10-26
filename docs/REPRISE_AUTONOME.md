@@ -6,8 +6,8 @@ Ce fichier remplace le point du 23 octobre. Reprendre dans un worktree dédié; 
 
 - **#325** (`integ/xp-vocal-20261023`) : HEAD distant observé `ef22c8be14072840d85b8f05a83cf2e49206e000`, Draft ouvert, CI verte sur cette tête (run `40001112027`). `test:postgres` du run : 377 fichiers et 3 503 tests réussis; étape `npm test` : 290 fichiers passés, 98 ignorés, 2 340 tests passés, 1 248 ignorés. Build, typecheck, lint et statuts Vercel/Preview verts. **Historique** : `856a881` / run `39975590098` avait 377 fichiers/3 503 tests; ne pas attribuer ces preuves à une tête plus récente. #325 ne peut pas être fusionnée avant les préconditions DB ci-dessous.
 - Travaux récupérés et conservés : test d’actions wishlist retrouvé non suivi dans `.claude/worktrees/agent-a528c0819d8080da0`; garde contre la course arrêt/démarrage du worker vocal, commit local `35f966f` dans le worktree dédié; correctifs indépendants publiés dans #326 et #327. Le travail de test wishlist et le commit worker sont dans le worktree `codex/resume-20261026`, HEAD local `35f966f` avant mise à jour documentaire.
-- **#326** (`fix/cron-after-20261026`) tête `51b5fc42a381d45b980167dcdcaaa4ba0b959165`, ouverte, test local 12/12 et typecheck/lint verts; statut Vercel vert au dernier contrôle. Utilise `after()` borné par `maxDuration`; ce n’est pas une file durable. L’inventaire cron externe et l’acceptation de 202 restent à établir.
-- **#327** (`fix/offline-recipe-20261026`) tête `cbe20ed465f6666fe590f78114e5c21a9c1f84a2`, ouverte; recette Chrome headless temporaire aux largeurs 320/390/768, self-check Windows et test service worker 10/10 réussis; statut Vercel encore en attente au dernier contrôle. Le repli reste la seule page hors ligne, pas une app hors ligne.
+- **#326** (`fix/cron-after-20261026`) tête publiée au dernier relevé `51b5fc42a381d45b980167dcdcaaa4ba0b959165`, PR ouverte. Le premier CI (run `40340616361`) a échoué : 3 tests dans `session-announce.integration.test.ts` et `tournament-announce.integration.test.ts` attendaient les anciens résultats synchrones ou appelaient `after()` hors contexte. Correction locale commitée `3be2582`, non encore poussée au relevé; tests ciblés Postgres vérifient maintenant le 202 et les lignes livrées. Vercel vert. `after()` borné par `maxDuration` n’est pas une file durable; l’inventaire cron externe et l’acceptation de 202 restent à établir.
+- **#327** fusionnée en squash : commit main `b22f239ccd37b0c3621b79e361b2dd51d943528c`, après CI `40340642194` et Vercel verts sur la tête `cbe20ed465f6666fe590f78114e5c21a9c1f84a2`. Chrome headless temporaire, largeurs 320/390/768, self-check Windows et test service worker 10/10 réussis. Cela ne fournit hors ligne que `/offline.html`, pas les données privées.
 - #291, #303, #319 et #324 ont leurs contenus dans #325, mais restent ouvertes jusqu’à intégration effective. Les branches `work/m-a`, `m-b`, `m-c`, `m-d`, `m-f`, `m-g` sont ancêtres de #325; `work/m-e` est absente des remotes. Une transcription Claude dit « jamais publiée ou seulement autre PC » : cela ne prouve pas que le travail n’a jamais existé. Les trois anciens worktrees Claude restent conservés sans modification; un contenait le test wishlist non suivi.
 
 ## Vérifications locales et limites
@@ -26,9 +26,9 @@ Ce fichier remplace le point du 23 octobre. Reprendre dans un worktree dédié; 
 
 ## Suite autorisée
 
-1. Terminer la revue indépendante du delta, contrôler le SHA distant avant chaque push, puis publier les docs/test/correctifs utiles par fast-forward seulement.
-2. Recontrôler #326/#327 sur leur tête exacte et fusionner seulement après revue et contrôles requis verts; ne pas relancer leurs suites sans changement pertinent.
-3. Actualiser et publier #325 sur sa branche uniquement après vérification de sa tête distante; exécuter CI une fois sur le SHA final. Ne pas fusionner tant que les migrations et préconditions Production ne sont pas accomplies.
+1. Pousser le correctif de tests `3be2582` sur #326 après comparaison immédiate avec la tête distante `51b5fc4`, sans force-push; attendre le CI unique sur le nouveau SHA.
+2. #327 est déjà fusionnée en `b22f239`; ne pas relancer ses suites sans changement pertinent.
+3. Actualiser et publier le checkpoint #325 (il précède encore la fusion #327) après vérification de sa tête distante; exécuter CI une fois sur le SHA final. Ne pas fusionner tant que les migrations et préconditions Production ne sont pas accomplies.
 4. #291/#303/#319/#324 ne sont remplaçables qu’après fusion effective de #325; ne pas les fermer par avance.
 
 ## Préparation de mise en service — demande encore indéterminable côté binding
