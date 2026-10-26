@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { pageMetadata } from "@/lib/page-title";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { getMemberStats } from "@/lib/member-stats";
 
 export const metadata = pageMetadata("Ascension");
 
@@ -25,7 +26,8 @@ export default async function AscensionPage() {
   const community = communityId
     ? await prisma.community.findUnique({ where: { id: communityId }, select: { towerLevelsPerFloor: true } })
     : null;
-  const progress = getTowerProgress(user.xpTotal, community?.towerLevelsPerFloor ?? 10);
+  const stats = communityId ? await getMemberStats(user.id, communityId) : null;
+  const progress = getTowerProgress(stats?.xpTotal ?? 0, community?.towerLevelsPerFloor ?? 10);
   const rank = rankForLevel(progress.level);
 
   return (
