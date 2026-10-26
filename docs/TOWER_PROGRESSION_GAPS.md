@@ -21,6 +21,10 @@ Analyse ciblée de `origin/main` (`5bed623`) et de la roadmap, le 26 octobre 202
 
 Présenter l’ascension comme une couche dérivée des niveaux XP existants : afficher étage, niveau, progression vers le prochain palier, rang et activités éligibles dans une même vue. Définir les étages à partir de plages de niveaux sans réinitialiser l’XP, modifier les événements déjà comptés ni créer une seconde monnaie. Les récompenses initiales restent cosmétiques et utilisent les badges/boutique existants; les défis s’appuient sur les soirées terminées et les objectifs déjà attestables.
 
+### Incrément livré dans cette branche
+
+La page `/ascension` affiche la progression de la communauté active à partir du même `xpTotal` déjà projeté sur l’utilisateur, en lecture sans enregistrer d’activité. Un étage couvre dix niveaux : l’étage 1 regroupe les niveaux 1–10, l’étage 2 les niveaux 11–20, etc. Le pourcentage est calculé entre les seuils XP du premier niveau de l’étage et du premier niveau suivant; il n’accorde ni ne retire d’XP. La page renvoie vers les badges, le défi affiché sur l’accueil, les saisons et le classement. Aucun modèle, migration, gain automatique, message Discord ou attribution de rôle n’est ajouté.
+
 Garder les 134 rôles `Etage` en place et leurs attributions intactes. Avant toute synchronisation future, établir séparément une table de correspondance fondée sur les attributions Discord réelles et un plan de retour arrière; l’audit de structure seul ne suffit pas. Toute attribution automatique de rôle devrait être désactivée par défaut et ne jamais retirer de rôle historique lors du premier passage.
 
 ## Tests et garde-fous

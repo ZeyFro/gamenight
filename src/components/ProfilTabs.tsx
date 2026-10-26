@@ -5,6 +5,7 @@ import { TabLink } from "@/components/ui/TabLink";
 
 const TABS = [
   { href: "/profil", label: "Aperçu" },
+  { href: "/ascension", label: "Ascension" },
   { href: "/profil/historique", label: "Historique soirées" },
   { href: "/profil/superlatifs", label: "Récompenses gagnées" },
   { href: "/profil/lore", label: "Lore du groupe" },
