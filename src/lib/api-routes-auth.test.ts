@@ -64,7 +64,7 @@ describe("routes /api hors cron et backfill", () => {
       const calendarFeed = name === "calendrier/feed/[token]" &&
         /from ["']@\/lib\/calendar-feed["']/.test(src) && /\bawait readCalendarFeed\(token,/.test(src);
       const ok =
-        /\b(?:getValidSession|auth)\(\)/.test(src) || /\bgetCurrentUser\(/.test(src) ||
+      /\b(?:getValidSession|auth|requireAdmin)\(\)/.test(src) || /\bgetCurrentUser\(/.test(src) ||
         /\b(?:verifyCronRequest|checkCronAuth)\(/.test(src) || calendarFeed;
       expect(ok, `${file} ne vérifie aucun mécanisme d’authentification reconnu`).toBe(true);
     }
