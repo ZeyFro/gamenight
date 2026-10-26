@@ -1070,12 +1070,8 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
         vi.stubEnv("CRON_SECRET", "s3cret");
         vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
-        const { GET } = await import("@/app/api/cron/notification-executor/route");
-        const res = await GET(
-          new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
-        );
-        const body = await res.json();
-        expect(body.failed).toBe(1);
+        const res = await callExecutorRoute("Bearer s3cret");
+        expect(res.status).toBe(202);
         expect(fetchMock).not.toHaveBeenCalled();
 
         const row = await db.notificationDelivery.findFirstOrThrow({
