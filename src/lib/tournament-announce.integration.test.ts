@@ -23,6 +23,22 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+const afterTasks = vi.hoisted(() => [] as Array<() => Promise<void> | void>);
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (callback: () => Promise<void> | void) => void afterTasks.push(callback),
+}));
+
+async function callExecutorRoute() {
+  const { GET } = await import("@/app/api/cron/notification-executor/route");
+  const from = afterTasks.length;
+  const response = await GET(
+    new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
+  );
+  for (const task of afterTasks.splice(from)) await task();
+  return response;
+}
+
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) {
@@ -66,6 +82,7 @@ describe.skipIf(!TEST_DATABASE_URL)(
     });
 
     beforeEach(async () => {
+      afterTasks.length = 0;
       await db.$executeRawUnsafe(
         `TRUNCATE "NotificationDelivery", "NotificationEvent", "TournamentMatch", "TournamentParticipant", "Tournament", "Game", "User" CASCADE`
       );
@@ -756,22 +773,27 @@ describe.skipIf(!TEST_DATABASE_URL)(
         vi.stubEnv("DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED", "false");
         vi.stubEnv("CRON_SECRET", "s3cret");
         vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
-        const { GET } = await import("@/app/api/cron/notification-executor/route");
-        const runCron = () =>
-          GET(new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } }));
+        const runCron = callExecutorRoute;
+        const deliveryWhere = {
+          targetSlot: { startsWith: `default-guild:TOURNAMENT:${tournament.id}:` },
+        };
 
         // 1) SEND annonce (avec vérification GET) + SEND fil — encore en
         // attente depuis AVANT la désactivation du flag.
         mockVerifiedSendOk("chan-tournois");
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
         const afterCreation = await runCron();
-        expect((await afterCreation.json()).sent).toBe(2);
+        expect(afterCreation.status).toBe(202);
+        expect(await db.notificationDelivery.count({ where: { ...deliveryWhere, status: "SENT" } })).toBe(2);
+        expect(await db.notificationDelivery.count({ where: { ...deliveryWhere, status: "FAILED" } })).toBe(0);
 
         // 2) Lancement du bracket → EDIT de l'annonce ("en cours").
         await launchBracket(tournament.id);
         mockSendOk("chan-tournois");
         const afterLaunch = await runCron();
-        expect((await afterLaunch.json()).sent).toBe(1);
+        expect(afterLaunch.status).toBe(202);
+        expect(await db.notificationDelivery.count({ where: { ...deliveryWhere, status: "SENT" } })).toBe(3);
+        expect(await db.notificationDelivery.count({ where: { ...deliveryWhere, status: "FAILED" } })).toBe(0);
 
         // 3) Trois résultats de match + EDIT de clôture + SEND du résumé de fil.
         const result = await finalizeTournament(tournament.id, creator.id);
@@ -783,17 +805,14 @@ describe.skipIf(!TEST_DATABASE_URL)(
           }));
         }
         const afterClosure = await runCron();
-        const closureBody = await afterClosure.json();
-        expect(closureBody.sent).toBe(5);
-        expect(closureBody.failed).toBe(0);
+        expect(afterClosure.status).toBe(202);
 
         // Toutes les livraisons de ce tournoi ont bien atteint SENT malgré
         // le flag désactivé tout du long.
-        const deliveries = await db.notificationDelivery.findMany({
-          where: { targetSlot: { startsWith: `default-guild:TOURNAMENT:${tournament.id}:` } },
-        });
+        const deliveries = await db.notificationDelivery.findMany({ where: deliveryWhere });
         expect(deliveries.every((d) => d.status === "SENT" || d.status === "SKIPPED")).toBe(true);
         expect(deliveries.filter((d) => d.status === "SENT")).toHaveLength(8); // annonce, fil, deux éditions, résumé et trois résultats
+        expect(deliveries.filter((d) => d.status === "FAILED")).toHaveLength(0);
       });
 
       it("configuration absente (canal tournois non renseigné) : not_configured terminal, aucun appel Discord", async () => {
@@ -841,14 +860,14 @@ describe.skipIf(!TEST_DATABASE_URL)(
         mockVerifiedSendOk("chan-tournois");
         fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "thread-1", parent_id: "chan-tournois" }));
 
-        const { GET } = await import("@/app/api/cron/notification-executor/route");
-        const res = await GET(
-          new Request("http://localhost/api/cron/notification-executor", { headers: { authorization: "Bearer s3cret" } })
-        );
-        const body = await res.json();
-        expect(body.sent).toBe(2);
-        expect(body.failed).toBe(0);
+        const res = await callExecutorRoute();
+        expect(res.status).toBe(202);
         expect(fetchMock).toHaveBeenCalledTimes(3); // GET + POST annonce + POST fil
+        const rows = await db.notificationDelivery.findMany({
+          where: { targetSlot: { startsWith: `default-guild:TOURNAMENT:${tournament.id}:` } },
+        });
+        expect(rows.filter((row) => row.status === "SENT")).toHaveLength(2);
+        expect(rows.filter((row) => row.status === "FAILED")).toHaveLength(0);
       });
     });
 

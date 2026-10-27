@@ -14,6 +14,7 @@
 - [Annulation des séries](ANNULATION_SERIES.md) et [places de session](SESSION_PLACES.md).
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
+- [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
 
 ## Exploitation et sécurité

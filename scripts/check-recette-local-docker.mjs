@@ -140,7 +140,7 @@ if (process.platform === "win32") {
   delete env.GAMENIGHT_RECIPE_PG_PORT;
   delete env.GAMENIGHT_RECIPE_PG_DATABASE;
   try {
-    const missingTargetResult = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1")], { env, encoding: "utf8" });
+    const missingTargetResult = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(root, "scripts/recette-medias.ps1")], { env, encoding: "utf8" });
     assert.notEqual(missingTargetResult.status, 0, "PowerShell wrapper must reject a missing target");
     assert.equal(existsSync(dockerLog), false, "wrapper must reject a missing target before any Docker command");
 
@@ -150,7 +150,7 @@ if (process.platform === "win32") {
       GAMENIGHT_RECIPE_PG_PORT: mockPort,
       GAMENIGHT_RECIPE_PG_DATABASE: "gamenight_recipe_fresh",
     };
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1")], { env: remoteEnv, encoding: "utf8" });
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(root, "scripts/recette-medias.ps1")], { env: remoteEnv, encoding: "utf8" });
     assert.notEqual(result.status, 0, "PowerShell wrapper must reject a remote Docker context");
     assert.equal(readFileSync(dockerLog, "utf8").trim(), "context inspect --format {{.Endpoints.docker.Host}}", "wrapper must reject before any Docker inspection");
 
@@ -180,7 +180,7 @@ if (process.platform === "win32") {
       GAMENIGHT_PLAYWRIGHT_MODULE_PATH: temporaryDirectory,
       RECIPE_TARGET_RESULT: targetResult,
     };
-    const targetRun = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", join(root, "scripts/recette-medias.ps1"), "-Script", probeScript], { env: targetEnv, encoding: "utf8" });
+    const targetRun = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(root, "scripts/recette-medias.ps1"), "-Script", probeScript], { env: targetEnv, encoding: "utf8" });
     assert.equal(targetRun.status, 0, targetRun.stderr || targetRun.stdout);
     assert.equal(readFileSync(targetResult, "utf8"), `postgresql://postgres:recipe%3Ap%40ss@127.0.0.1:${mockPort}/gamenight_recipe_fresh`);
     assert.deepEqual(readFileSync(dockerLog, "utf8").trim().split(/\r?\n/), [

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { refreshAllDiscordProfiles } from "@/lib/discord-profile";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -22,6 +22,10 @@ import { verifyCronRequest } from "@/lib/cron-auth";
  * du diagnostic et le rollout progressif (les jetons OAuth ne se peuplent
  * qu'à la prochaine vraie reconnexion de chaque utilisateur).
  */
+// Boucle HTTP sur tous les comptes, sans budget propre : 202 + `after()`
+// (cron-job.org coupe à 30 s), résultat dans les logs.
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   // Premier log AVANT toute condition — si cette ligne n'apparaît jamais
   // dans les Vercel Logs pour un run donné, la requête cron-job.org
@@ -45,23 +49,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  try {
-    const result = await refreshAllDiscordProfiles();
-    logger.info(
-      "cron:refresh-discord-profiles",
-      `OAuth : ${result.oauth.updated}/${result.oauth.checked} mis à jour (${result.oauth.skipped} sans jeton, ${result.oauth.failed} échec(s)). Bot (repli) : ${result.bot.updated}/${result.bot.checked} mis à jour.`,
-      result
-    );
-    return NextResponse.json(result);
-  } catch (error) {
-    // Même garde-fou que `cron:reminders` (bug remonté similaire) — ne
-    // jamais laisser une erreur inattendue remonter en 500 non capturé,
-    // cron-job.org compte ça comme un échec et peut finir par désactiver
-    // le job après plusieurs échecs consécutifs.
-    logger.error("cron:refresh-discord-profiles", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 200 }
-    );
-  }
+  after(async () => {
+    const startedAt = Date.now();
+    logger.info("cron:refresh-discord-profiles", "Rafraîchissement début.");
+    try {
+      const result = await refreshAllDiscordProfiles();
+      logger.info(
+        "cron:refresh-discord-profiles",
+        `fin durée=${Date.now() - startedAt} ms. OAuth : ${result.oauth.updated}/${result.oauth.checked} mis à jour (${result.oauth.skipped} sans jeton, ${result.oauth.failed} échec(s)). Bot (repli) : ${result.bot.updated}/${result.bot.checked} mis à jour.`,
+        result
+      );
+    } catch (error) {
+      logger.error("cron:refresh-discord-profiles", error, { durationMs: Date.now() - startedAt });
+    }
+  });
+
+  return NextResponse.json({ status: "accepted" }, { status: 202 });
 }
