@@ -57,6 +57,7 @@ export default function TowerLayoutAdmin() {
     <ul>{(state.actions || []).map((x,i)=><li key={i}>{x.operation} — {x.name}</li>)}</ul>
 
     <h2>Archives en attente de vérification</h2>
+    <p><a href="/admin/tower-archive" style={{textDecoration:"underline",fontWeight:700}}>📦 Ouvrir la console d’archivage privé et sauvegarde</a></p>
     <ul>{(state.archivesDeferred || []).map((x,i)=><li key={i}>{x}</li>)}</ul>
     <h2>Journal de cette session</h2>
     <ul>{log.map((x,i)=><li key={i}>{x}</li>)}</ul>
