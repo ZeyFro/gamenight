@@ -75,7 +75,7 @@ export async function GET(req:NextRequest){
    const serviceEvidence=serviceTerms.filter(t=>phrases.join(" ").toLocaleLowerCase("fr").includes(t));
    const botNames=[...new Set(messages.filter(x=>x.author?.bot||x.webhook_id).map(x=>x.author?.username||"Webhook"))].slice(0,15);
    result.push({
-    id:c.id,name:c.name,category:channels.find(x=>x.id===c.parent_id)?.name||null,topic:c.topic||"",
+    id:c.id,name:c.name,category:channels.find(x=>x.id===c.parent_id)?.name||null,topic:c.topic||"",sampleSkipped:false,
     nsfw:!!c.nsfw,messageReadStatus:r.status,pinsReadStatus:p.status,
     sampledMessages:messages.length,nonBotSamples:recent.length,pinnedCount:pins.length,
     oldestSampleAt:messages.at(-1)?.timestamp||null,newestSampleAt:messages[0]?.timestamp||null,
