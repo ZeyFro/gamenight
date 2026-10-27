@@ -11,7 +11,13 @@ export default function TowerLayoutAdmin() {
     const j = await r.json();
     setState(j);
   }
-  useEffect(() => {\n    let active = true;\n    void fetch("/api/admin/tower-layout", { cache: "no-store" })\n      .then(r => r.json())\n      .then(data => { if (active) setState(data); });\n    return () => { active = false; };\n  }, []);
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/admin/tower-layout", { cache: "no-store" })
+      .then(r => r.json())
+      .then(data => { if (active) setState(data); });
+    return () => { active = false; };
+  }, []);
   async function execute() {
     if (!confirm("Appliquer toutes les créations et renommages sur The Tower ? Aucune suppression ni archivage n'aura lieu.")) return;
     setBusy(true);
