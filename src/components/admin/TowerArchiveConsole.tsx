@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-type ArchivePreview = { guildId?: string; fingerprint?: string; preview?: Array<{ id:string; name:string; source:string }>; backup?: unknown; errors?: string[]; error?: string; note?: string };
+type ArchivePreview = { guildId?: string; fingerprint?: string; preview?: Array<{ id:string; name:string; source:string }>; backup?: unknown; errors?: string[]; error?: string; note?: string; categoriesToHide?: Array<{id:string;name:string}> };
 export default function TowerArchiveConsole() {
   const [data,setData] = useState<ArchivePreview>({});
   const [busy,setBusy] = useState(false);
@@ -47,7 +47,7 @@ export default function TowerArchiveConsole() {
           setProblem(result.error || result.errors?.join(", ") || "Archive interrompue");
           break;
         }
-        setLog(old=>[...old,...(result.moved||[])]);
+        setLog(old=>[...old,...(result.moved||[]),...(result.hidden||[]).map((x:string)=>"Catégorie masquée : "+x)]);
         if(result.completed)break;
         if(result.refreshRequired) {
           const refreshed=await fetch("/api/admin/tower-archive",{cache:"no-store"}).then(r=>r.json());
@@ -65,7 +65,7 @@ export default function TowerArchiveConsole() {
     <h1>📦 Archives privées — The Tower</h1>
     <p>Conserve les messages, ferme la visibilité aux membres et déplace les anciens salons. Les rôles administrateurs conservent leur accès.</p>
     <button onClick={()=>void refresh()} disabled={busy}>Actualiser</button>
-    <p>{data.preview?.length ?? "—"} salons à archiver</p>
+    <p>{data.preview?.length ?? "—"} salons à archiver • {data.categoriesToHide?.length ?? "—"} anciennes catégories à masquer</p>
     {!!data.error && <p role="alert">{data.error}</p>}
     {!!data.errors?.length && <ul role="alert">{data.errors.map((x,i)=><li key={i}>{x}</li>)}</ul>}
     <ul>{(data.preview||[]).map(x=><li key={x.id}>{x.source} — {x.name}</li>)}</ul>
@@ -74,7 +74,7 @@ export default function TowerArchiveConsole() {
       <button onClick={saveBackup} disabled={!data.backup||busy}>Télécharger la sauvegarde JSON</button>
       <p>{backupSaved?"Sauvegarde téléchargée dans le navigateur.":"Le bouton d'archivage reste désactivé avant le téléchargement."}</p>
       <h2>2. Archivage privé</h2>
-      <button onClick={()=>void apply()} disabled={busy||!backupSaved||!!data.errors?.length||!data.preview?.length}
+      <button onClick={()=>void apply()} disabled={busy||!backupSaved||!!data.errors?.length||!(data.preview?.length||data.categoriesToHide?.length)}
         style={{padding:18,borderRadius:10,background:"#0e7490",color:"#fff",fontWeight:700}}>
         {busy?"Archivage en cours…":"Archiver les anciens salons"}
       </button>
