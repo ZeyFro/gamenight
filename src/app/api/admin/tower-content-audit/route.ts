@@ -56,6 +56,14 @@ export async function GET(req:NextRequest){
   const batch=texts.slice(page*5,page*5+5);
   const result=[];
   for(const c of batch){
+   // Sensitive channels are inventoried by metadata only. Never sample private
+   // staff/ticket content or adult-only areas, even for an authenticated owner.
+   if(protectedIds.has(c.id)||(c.parent_id!==null&&protectedIds.has(c.parent_id))||c.nsfw||c.name.toLocaleLowerCase("fr")==="the-hell"){
+    result.push({id:c.id,name:c.name,category:c.parent_id?categoryById.get(c.parent_id)||null:null,
+     topic:"",nsfw:!!c.nsfw,sampleSkipped:true,skipReason:"sensitive_channel",
+     sampledMessages:0,nonBotSamples:0,pinnedCount:0,botNames:[],serviceEvidence:[],recentContentPatterns:[]});
+    continue;
+   }
    const r=await api("/channels/"+c.id+"/messages?limit=30");
    const messages=(r.data||[]) as DiscordMessage[];
    const p=await api("/channels/"+c.id+"/pins");
@@ -81,7 +89,7 @@ export async function GET(req:NextRequest){
    });
   }
   return NextResponse.json({guildId:GUILD,page,pageCount:Math.ceil(texts.length/5),totalTextChannels:texts.length,totalGuildChannels:channels.length,inventory,channels:result,
-   unreadableChannels:result.filter(c=>c.messageReadStatus!==200||c.pinsReadStatus!==200).map(c=>({id:c.id,messageReadStatus:c.messageReadStatus,pinsReadStatus:c.pinsReadStatus})),
-   note:"Audit en lecture seule. Inventaire de tous les types de salons; analyse des 30 messages récents et épinglés des salons texte accessibles. Indices de services non conclusifs; aucune permission effective déduite des overwrites. Aucun contenu brut de message ni identité de membre transmis."},{headers});
+   unreadableChannels:result.filter(c=>!c.sampleSkipped&&(c.messageReadStatus!==200||c.pinsReadStatus!==200)).map(c=>({id:c.id,messageReadStatus:c.messageReadStatus,pinsReadStatus:c.pinsReadStatus})),
+   note:"Audit en lecture seule. Inventaire de tous les types de salons; analyse des 30 messages récents et épinglés uniquement dans les salons non sensibles. Salons staff/tickets et NSFW inventoriés sans lecture des messages. Indices de services non conclusifs; aucune permission effective déduite des overwrites. Aucun contenu brut de message ni identité de membre transmis."},{headers});
  }catch{return NextResponse.json({error:"Audit Discord inaccessible"},{status:502,headers});}
 }
