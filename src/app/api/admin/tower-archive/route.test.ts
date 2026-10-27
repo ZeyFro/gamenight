@@ -41,7 +41,7 @@ describe("The Tower: archives en lecture seule", () => {
       })),
       child,
     ];
-    const fetcher = vi.fn(async () => Response.json(channels));
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json(channels));
     vi.stubGlobal("fetch", fetcher);
     const response = await GET();
     expect(response.status).toBe(200);
@@ -51,7 +51,7 @@ describe("The Tower: archives en lecture seule", () => {
     expect(body.preview).toEqual([{ id: child.id, name: child.name, source: legacy.name }]);
     expect(body.backup.channels[0].permission_overwrites).toEqual(child.permission_overwrites);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0][1].method).toBe("GET");
+    expect(fetcher.mock.calls[0][1]?.method).toBe("GET");
   });
 
   it("bloque toute mutation Discord même avec une confirmation propriétaire", async () => {
