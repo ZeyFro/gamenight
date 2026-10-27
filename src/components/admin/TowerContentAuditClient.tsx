@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-type Channel = {id:string;name:string;category:string|null;topic:string;sampledMessages:number;nonBotSamples:number;pinnedCount:number;recentContentPatterns:Array<{word:string;count:number}>;newestSampleAt:string|null};
+type Channel = {id:string;name:string;category:string|null;topic:string;sampledMessages:number;nonBotSamples:number;pinnedCount:number;recentContentPatterns:Array<{word:string;count:number}>;newestSampleAt:string|null;botNames?:string[];serviceEvidence?:string[]};
 type Result = {page:number;pageCount:number;totalTextChannels:number;channels:Channel[];error?:string};
 export default function AuditClient(){
  const [summary,setSummary]=useState<Result|null>(null);
@@ -28,14 +28,15 @@ export default function AuditClient(){
   <h1>🔎 The Tower — Audit réel des salons</h1>
   <p>Lecture seule. Analyse les thèmes des messages récents et les épinglés, sans exporter les noms des membres ni le texte des conversations.</p>
   <p>{summary?.totalTextChannels??"—"} salons texte • {summary?.pageCount??"—"} pages</p>
-  {!!summary?.error&&<p role="alert">{summary.error}</p>}
+  {!!summary?.error&&<p role="alert">Accès refusé ou Discord indisponible : {summary.error}. Connecte-toi à GameNight avec le compte Discord propriétaire, puis recharge cette page.</p>}
+  <p style={{fontWeight:700}}>L’audit inclut maintenant les robots existants, tickets, sanctions, accueil et modération afin d’éviter les doublons.</p>
   <button type="button" onClick={()=>void exportAll()} disabled={busy||!summary?.pageCount}
     style={{display:"block",width:"100%",borderRadius:12,padding:22,background:"#0891b2",color:"white",fontWeight:800,fontSize:20}}>
    {busy?"Analyse en cours : "+done+"/"+summary?.pageCount:"📥 TÉLÉCHARGER L’AUDIT COMPLET"}
   </button>
   {!!problem&&<p role="alert">{problem}</p>}
   <h2>Aperçu des premiers salons</h2>
-  <ul>{(summary?.channels||[]).map(c=><li key={c.id}><strong>{c.category} / {c.name}</strong> — {c.sampledMessages} messages échantillonnés, {c.pinnedCount} épinglés. Thèmes : {c.recentContentPatterns.slice(0,6).map(x=>x.word).join(", ")}</li>)}</ul>
+  <ul>{(summary?.channels||[]).map(c=><li key={c.id}><strong>{c.category} / {c.name}</strong> — {c.sampledMessages} messages échantillonnés, {c.pinnedCount} épinglés. Services détectés : {(c.serviceEvidence||[]).join(", ")||"—"} • Bots : {(c.botNames||[]).join(", ")||"—"} • Thèmes : {c.recentContentPatterns.slice(0,6).map(x=>x.word).join(", ")}</li>)}</ul>
   <p>Transmets ensuite le fichier JSON téléchargé dans cette conversation pour identifier les doublons et préserver les salons utiles.</p>
  </main>;
 }
