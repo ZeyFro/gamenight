@@ -1,86 +1,56 @@
 "use client";
 import { useEffect, useState } from "react";
-type ArchivePreview = { guildId?: string; fingerprint?: string; preview?: Array<{ id:string; name:string; source:string }>; backup?: unknown; errors?: string[]; error?: string; note?: string; categoriesToHide?: Array<{id:string;name:string}> };
+
+type ArchivePreview = {
+  guildId?: string; mode?: string; writeEnabled?: boolean;
+  preview?: Array<{ id: string; name: string; source: string }>;
+  backup?: unknown; errors?: string[]; error?: string; note?: string;
+  categoriesToHide?: Array<{ id: string; name: string }>;
+};
+
 export default function TowerArchiveConsole() {
-  const [data,setData] = useState<ArchivePreview>({});
-  const [busy,setBusy] = useState(false);
-  const [backupSaved,setBackupSaved] = useState(false);
-  const [log,setLog] = useState<string[]>([]);
-  const [problem,setProblem] = useState("");
+  const [data, setData] = useState<ArchivePreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+
   async function refresh() {
-    const response = await fetch("/api/admin/tower-archive",{cache:"no-store"});
-    const result = await response.json() as ArchivePreview;
-    setData(result);
-    setBackupSaved(false);
+    setBusy(true);
+    try {
+      const response = await fetch("/api/admin/tower-archive", { cache: "no-store" });
+      const result = await response.json() as ArchivePreview;
+      if (!response.ok || result.error) throw Error(result.error || "HTTP " + response.status);
+      setData(result);
+      setProblem("");
+    } catch (e) {
+      setData(null);
+      setProblem(e instanceof Error ? e.message : "Prévisualisation indisponible");
+    } finally { setBusy(false); }
   }
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/admin/tower-archive",{cache:"no-store"})
-      .then(r=>r.json())
-      .then((x:ArchivePreview)=>{if(active)setData(x);})
-      .catch(()=>{if(active)setProblem("Vérification indisponible");});
-    return ()=>{active=false;};
-  }, []);
+  useEffect(() => { void refresh(); }, []);
+
   function saveBackup() {
-    if (!data.backup) return;
-    const blob = new Blob([JSON.stringify({guildId:data.guildId,backup:data.backup},null,2)],{type:"application/json"});
+    if (!data?.backup) return;
+    const blob = new Blob([JSON.stringify({ guildId: data.guildId, backup: data.backup }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href=url;
-    a.download="the-tower-archive-backup-"+new Date().toISOString().slice(0,10)+".json";
+    a.href = url;
+    a.download = "the-tower-archive-backup-" + new Date().toISOString().slice(0, 10) + ".json";
     a.click();
-    URL.revokeObjectURL(url);
-    setBackupSaved(true);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  async function apply() {
-    if (!backupSaved || !data.fingerprint || !confirm("Archiver les anciens salons dans une catégorie privée ? Leurs historiques sont conservés. Les accès individuels d'origine devront être restaurés depuis la sauvegarde pour un retour arrière.")) return;
-    setBusy(true);setProblem("");
-    let fingerprint=data.fingerprint;
-    try {
-      for(let batch=0;batch<100;batch++){
-        const response=await fetch("/api/admin/tower-archive",{
-          method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({guildId:"553922938101825536",confirm:"ARCHIVER_THE_TOWER_SANS_SUPPRIMER",fingerprint}),
-        });
-        const result=await response.json();
-        if(!response.ok || result.errors?.length || result.error) {
-          setProblem(result.error || result.errors?.join(", ") || "Archive interrompue");
-          break;
-        }
-        setLog(old=>[...old,...(result.moved||[]),...(result.hidden||[]).map((x:string)=>"Catégorie masquée : "+x)]);
-        if(result.completed)break;
-        if(result.refreshRequired) {
-          const refreshed=await fetch("/api/admin/tower-archive",{cache:"no-store"}).then(r=>r.json());
-          fingerprint=refreshed.fingerprint;
-        } else {
-          fingerprint=result.fingerprint;
-        }
-        if(!fingerprint)break;
-      }
-      await refresh();
-    }catch{setProblem("Connexion interrompue : actualise la vérification.");}
-    finally{setBusy(false);}
-  }
-  return <main style={{maxWidth:880,margin:"2rem auto",padding:24}}>
-    <h1>📦 Archives privées — The Tower</h1>
-    <p>Conserve les messages, ferme la visibilité aux membres et déplace les anciens salons. Les rôles administrateurs conservent leur accès.</p>
-    <button onClick={()=>void refresh()} disabled={busy}>Actualiser</button>
-    <p>{data.preview?.length ?? "—"} salons à archiver • {data.categoriesToHide?.length ?? "—"} anciennes catégories à masquer</p>
-    {!!data.error && <p role="alert">{data.error}</p>}
-    {!!data.errors?.length && <ul role="alert">{data.errors.map((x,i)=><li key={i}>{x}</li>)}</ul>}
-    <ul>{(data.preview||[]).map(x=><li key={x.id}>{x.source} — {x.name}</li>)}</ul>
-    <section style={{padding:18,border:"2px solid #64748b",borderRadius:12}}>
-      <h2>1. Sauvegarde obligatoire</h2>
-      <button onClick={saveBackup} disabled={!data.backup||busy}>Télécharger la sauvegarde JSON</button>
-      <p>{backupSaved?"Sauvegarde téléchargée dans le navigateur.":"Le bouton d'archivage reste désactivé avant le téléchargement."}</p>
-      <h2>2. Archivage privé</h2>
-      <button onClick={()=>void apply()} disabled={busy||!backupSaved||!!data.errors?.length||!(data.preview?.length||data.categoriesToHide?.length)}
-        style={{padding:18,borderRadius:10,background:"#0e7490",color:"#fff",fontWeight:700}}>
-        {busy?"Archivage en cours…":"Archiver les anciens salons"}
-      </button>
-      {!!problem && <p role="alert">{problem}</p>}
-    </section>
-    <h2>Journal</h2>
-    <ul>{log.map((x,i)=><li key={i}>{x}</li>)}</ul>
+
+  return <main style={{ maxWidth: 880, margin: "2rem auto", padding: 24 }}>
+    <h1>📦 Archives historiques — The Tower</h1>
+    <p><strong>Consultation et sauvegarde uniquement.</strong> L’archivage est suspendu pendant l’audit des salons, tickets, sanctions et bots déjà présents. Aucune permission ou catégorie ne sera modifiée ici.</p>
+    <button type="button" onClick={() => void refresh()} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser"}</button>
+    <p>{data?.preview?.length ?? "—"} salons historiques repérés • {data?.categoriesToHide?.length ?? "—"} catégories candidates</p>
+    {!!problem && <p role="alert">Vérification impossible : {problem}. Vérifie ta connexion propriétaire et l’accès du bot à Discord.</p>}
+    {!!data?.errors?.length && <ul role="alert">{data.errors.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+    <ul>{(data?.preview || []).map(x => <li key={x.id}>{x.source} — {x.name}</li>)}</ul>
+    <h2>Sauvegarde de l’état actuel</h2>
+    <button type="button" onClick={saveBackup} disabled={busy || !data?.backup}>📥 Télécharger la sauvegarde JSON</button>
+    <p>Cette sauvegarde contient les métadonnées et permissions originales des salons candidats. Conserve-la en lieu sûr : elle peut contenir des informations sur les salons privés.</p>
+    <h2>Avant toute réorganisation</h2>
+    <p><a href="/admin/tower-content-audit">🔎 Auditer les salons et les systèmes existants</a>. Les anciennes catégories ne seront ni supprimées ni déplacées automatiquement.</p>
   </main>;
 }
