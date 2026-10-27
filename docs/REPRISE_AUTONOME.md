@@ -1,44 +1,36 @@
-# Point de reprise unique — GameNight — 22 octobre 2026
+# Point de reprise unique — GameNight — 26 octobre 2026
 
-Seul point de reprise à jour. Il remplace les reprises datées et les bilans antérieurs, qui sont historiques. Continuer dans un worktree dédié : le checkout racine est ancien et contient des modifications locales.
+Ce fichier remplace le point du 23 octobre. Reprendre dans un worktree dédié; préserver le checkout racine ancien et `.claude/worktrees/`. Ne pas déduire qu’un fichier local existe sur l’autre portable.
 
-État vérifié contre `origin/main` = `e67fd8f` (après #317, #318, #320, #321 et #322). GitHub déclare le déploiement Production de `e67fd8f` en `success` (22 octobre, 18:54 UTC); l'association actuelle des alias n'a pas été revérifiée depuis `26440e1`, dont le déploiement est détaillé plus bas.
+## Code et branches
 
-## Production
+- **#325** (`integ/xp-vocal-20261023`) : Draft ouvert. Le dernier SHA de code `27bcc0f1454c6b390fb115bce39e1edaa1dea1a0` a CI run `40343795026` verte (`test:postgres`, `npm test`, typegen, TSC, lint, build) et Vercel vert. Des commits documentaires seuls ont ensuite publié le checkpoint actualisé après les fusions #326/#327; vérifier sur GitHub la tête et le statut Vercel actuels avant toute action. Aucun code n’a changé depuis le SHA testé. **Historique** : `856a881` / run `39975590098` avait 377 fichiers/3 503 tests; ne pas attribuer ces preuves à une tête plus récente. #325 ne peut pas être fusionnée avant les préconditions DB ci-dessous.
+- Travaux récupérés et conservés : test d’actions wishlist retrouvé non suivi dans `.claude/worktrees/agent-a528c0819d8080da0`; garde contre la course arrêt/démarrage du worker vocal, commit local `35f966f` dans le worktree dédié; correctifs indépendants publiés dans #326 et #327. Le travail de test wishlist et le commit worker sont dans le worktree `codex/resume-20261026`, HEAD local `35f966f` avant mise à jour documentaire.
+- **#326** fusionnée en squash et déployée en Production : commit main `5bed623e53befe42f3809dfd2bd9e01126625dd4`; tête `3be25826fed5f59561fc93cfc22e7dea936d65c2`, CI run `40345260338` et Vercel verts. Déploiement GitHub `7335704213` réussi le 26/10 à 15:16:56 UTC. Le premier CI `40340616361` a échoué sur trois tests d’intégration restés synchrones; `3be2582` corrige les tests seulement, en collectant `after()`, attendant 202 et vérifiant Postgres. `after()` borné par `maxDuration` n’est pas une file durable; l’inventaire cron externe et l’acceptation de 202 restent à établir.
+- **#327** fusionnée en squash et déployée en Production : commit main `b22f239ccd37b0c3621b79e361b2dd51d943528c`, déploiement GitHub `7334979972` réussi le 26/10 à 14:48:46 UTC, après CI `40340642194` et Vercel verts sur la tête `cbe20ed465f6666fe590f78114e5c21a9c1f84a2`. Chrome headless temporaire, largeurs 320/390/768, self-check Windows et test service worker 10/10 réussis. Cela ne fournit hors ligne que `/offline.html`, pas les données privées.
+- #291, #303, #319 et #324 ont leurs contenus dans #325, mais restent ouvertes jusqu’à intégration effective. Les branches `work/m-a`, `m-b`, `m-c`, `m-d`, `m-f`, `m-g` sont ancêtres de #325; `work/m-e` est absente des remotes. Une transcription Claude dit « jamais publiée ou seulement autre PC » : cela ne prouve pas que le travail n’a jamais existé. Les trois anciens worktrees Claude restent conservés sans modification; un contenait le test wishlist non suivi.
 
-- Déploiement Vercel `dpl_EiRGtcdKENELiYuGvV261NPs4GHa` : `READY`, cible `production`, SHA `26440e1`, alias GameNight associés, `aliasError=null` (connecteur Vercel, 22 octobre). Il remplace l’échec du déploiement automatique de `244eee3` (deployment GitHub `7232777326`), dont la cause n’a jamais été établie.
-- Ce que cela prouve : l’association domaine ↔ déploiement à cet instant. Cela ne prouve ni le binding `DATABASE_URL` → Neon ni les configurations runtime.
-- `DATABASE_URL` : variable `sensitive`, cible `production` seule, valeur illisible, modifiée avant le build de ce déploiement, absente de Preview. Binding non prouvé formellement.
-- Neon (lecture seule, `SELECT` sur `_prisma_migrations`, branche `production`) : dernière migration appliquée `20261020110000_tournament_team_bracket`, aucune annulée parmi les 15 plus récentes. C’est la dernière migration de `main` : Production est alignée sur `main`.
-- Les journaux runtime Vercel restent en 403.
+## Vérifications locales et limites
 
-## Drapeaux Production (noms seulement)
+- Au SHA historique `856a881`, la répétition A2 a réussi 14 étapes et l’empreinte était conservée; la barrière A1 a empêché les écritures de l’ancien writer après établissement. Le test de schéma ancien vocal désactivé a réussi. Ce sont des preuves historiques, non une recette Production.
+- La recette boutique n’est toujours pas expliquée : 4/4 puis 4/4 avant le changement de délai des transactions, puis 3/4 après; le passage isolé des achats historiques avait précédé le changement. Pas de nouveau run Postgres/navigateur le 26/10 : Docker Desktop est injoignable (pipe `dockerDesktopLinuxEngine`). Les tests unitaires récupérés du worker/wishlist font 26/26; ils ne remplacent pas la recette Postgres. Voir `LIVRAISON-XP.md` §6.
+- Build/test ciblés et contrôle navigateur local ne consultent pas les profils personnels; Chrome headless avec profil temporaire a été utilisé. Ne pas redémarrer Docker au milieu d’autres projets.
 
-Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou OFF. Seule la présence est établie.
+## Production — relevé en lecture seule du 26 octobre
 
-- Présents : `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_SESSION_ENABLED`, `DISCORD_DM_TOURNAMENT_ENABLED`, `DISCORD_DM_ROULETTE_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED`, `DISCORD_THREAD_CLEANUP_MODE`, `DISCORD_THREAD_CLOSE_ON_END_ENABLED`, `STEAM_NOW_PLAYING_ENABLED`, `COMMUNITY_AUTO_CREATE_ENABLED`, `COMMUNITY_SETUP_COMMAND_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED`, `AUTH_REQUIRE_GUILD_MEMBER`.
-- Absents, donc éteints (défaut OFF) : `COMMUNITY_ADMIN_ENABLED`, `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`, `RETENTION_CLEANUP_ENABLED`/`_MODE`, `PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`, `TOURNAMENT_SCORES_ENABLED`, `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`.
-- Les identifiants de salons et de serveur du bot sont des variables `config` chiffrées. Aucune clé VAPID n’est déclarée.
+- Neon : projet `misty-tooth-45335023`, branche candidate `production` (`br-super-cell-b1ukvk08`), base `neondb`. Catalogue : 111 migrations terminées, aucune en échec/inachevée, aucune des six migrations de #325. Rôle applicatif observé : `neondb_owner`, propriétaire avec `BYPASSRLS`, création de rôle et login; pas de séparation runtime/migration.
+- Les six migrations absentes sont `20261019190000_separate_xp_balance`, `20261020150000_session_voice_presence`, `20261022120000_voice_presence_consent_coordination`, `20261022130000_voice_presence_retention_gap_bounds`, `20261022140000_voice_presence_gap_history`, `20261022142500_shop_balance_purchase_reason`. Le code XP requiert `xpBalance`; flags OFF ne protègent pas d’un schéma absent.
+- Clés Web Push : le fichier privé local `~/.gamenight-vapid.env` n’existe pas et les variables VAPID ne sont pas définies dans le processus. Les valeurs d’environnement Vercel ne sont pas accessibles (403); aucune clé distante n’a été lue, créée ou remplacée.
+- GitHub Deployments montre `c12728b172727353bf9b43057bdb594841383d61` en Production le 22/10 à 19:13 UTC, puis le squash #327 `b22f239ccd37b0c3621b79e361b2dd51d943528c` réussi le 26/10 à 14:48:46 UTC et le squash #326 `5bed623e53befe42f3809dfd2bd9e01126625dd4` réussi à 15:16:56 UTC. **Le binding runtime Vercel → Neon n’est pas prouvé** : outil Vercel a répondu 403 pour l’équipe; ne pas répéter sans nouvel accès. Aucun secret lu. Pas de preuve de barrière Production, de restauration fraîche isolée ou de drainage des writers. Les crons cron-job.org ne sont pas inventoriés.
+- Ne rien migrer/restaurer en Production, modifier les rôles/secrets, interrompre les writers, installer/activer le worker, activer les flags/crons, démarrer la collecte vocale ou envoyer des messages Discord réels sans autorisation distincte. Le vieux snapshot Neon du 20/10 n’est pas une sauvegarde fraîche.
 
-## PR ouvertes
+## Suite autorisée
 
-| PR | Tête | Contrôles | Condition restante |
-|---|---|---|---|
-| [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `d45ea94` | `verify` et Vercel verts, mergeable | Draft. Ajoute la migration `20261022142500_shop_balance_purchase_reason`, non appliquée en Production. Aucune autorisation de migration. |
-| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `1ac6e8c` | à revérifier sur ce SHA | Draft. Contient une migration vocale : la fusionner l'appliquerait au build de production, donc pas de fusion sans autorisation. Les décisions de consentement sont arrêtées et implémentées (commentaire #303 du 22 octobre à 11:01) : opt-in individuel, durées visibles par la personne, le créateur et les admins autorisés, rétention de 30 jours, suppression au retrait et à l'annulation. |
-| [#319 XP, bascule](https://github.com/ZeyFro/gamenight/pull/319) | `dd5f2f0` | pas de `verify` (base = branche de #291) | Draft, rattachée à #291. |
+1. Confirmer auprès de l’exploitant l’acceptation du code HTTP 202 par les tâches cron-job.org existantes; leurs configurations ne sont pas accessibles ici.
+2. #326 et #327 sont fusionnées et déployées; ne pas relancer leurs suites sans changement pertinent.
+3. Publier ce checkpoint corrigé sur #325 après comparaison de sa tête distante. #325 ne sera pas fusionnée tant que les migrations et préconditions Production ne sont pas accomplies.
+4. #291/#303/#319/#324 ne sont remplaçables qu’après fusion effective de #325; ne pas les fermer par avance.
 
-#315 et #316 sont fusionnées. Les décisions déjà acquises restent valables : aucune migration, interruption de writers, restauration Neon, activation de drapeau ou cron, collecte vocale réelle ni notification Discord réelle sans accord écrit pour l’action précise.
+## Préparation de mise en service — demande encore indéterminable côté binding
 
-## Recette navigateur : exécutions distinctes
-
-- 29/29 : dernier run complet rapporté, sur `1dce077`.
-- 20/22 plus reprises ciblées : exécution distincte, sur un autre SHA. Ne pas additionner ni confondre les deux.
-- Un run local plus ancien (`e27741a`) a été interrompu à l’étape 7 : ce n’est pas un succès.
-- « Code présent » n’est jamais « validé en service » : une recette locale ou sur mock ne valide pas la Production.
-
-## Reprise
-
-1. XP : demander l’autorisation de la fenêtre (sauvegarde fraîche restaurée sur cible isolée, application de la migration `20261022142500`, plan de repli). Le script de bascule, le plan de maintenance et la vérification de restauration Docker sont en préparation, sans exécution en Production ; leur état sera porté par la PR correspondante.
-2. Vocal : les décisions produit sont arrêtées (voir #303). Restent trois opérations distinctes à autoriser : la migration vocale en Production, l'installation du worker et l'activation de la collecte.
-3. Hors périmètre, à faire approuver avant construction : paiement intégré, catégories MVP personnalisables par communauté, hors-ligne complet.
+Cible candidate vérifiée dans Neon : projet `misty-tooth-45335023` / branche `br-super-cell-b1ukvk08` / base `neondb`; ce n’est pas encore une cible runtime prouvée. L’impact est l’application du lot de six migrations, dont ajout/backfill `xpBalance` et schéma vocal, avant déploiement de #325. Préconditions encore à produire : binding runtime, rôle runtime distinct et droits minimaux, inventaire/arrêt contrôlé des crons, barrière démontrée pour tous writers, sauvegarde fraîche restaurée dans une cible isolée, puis dry-run contrôlé. Repli : ne pas rouvrir si invariants échouent; isoler la copie pour diagnostic, jamais restaurer Production par-dessus des écritures réouvertes. Aucun SHA final de #325 ni fenêtre de changement n’est encore prêt; ne pas présenter une demande d’exécution vague.

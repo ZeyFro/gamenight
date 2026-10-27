@@ -27,8 +27,7 @@ et ses corrections précédentes, puis de **remplacer** son solde d'XP après co
 1. `ALTER TYPE "XpReason" ADD VALUE 'ADMIN_ADJUSTMENT'`
 2. `CREATE TABLE "XpAdjustment"` + deux index.
 
-Aucune ligne existante n'est lue ni modifiée. Elle s'applique au build de **production**
-(`prisma migrate deploy`), jamais au build Preview : une Preview branchée sur une base qui n'a
+Aucune ligne existante n'est lue ni modifiée. Elle s'applique par l'opération de migration (`node scripts/db-migrate.mjs`), jamais par le build : une Preview branchée sur une base qui n'a
 pas encore la migration ne pourra pas utiliser l'onglet « Joueurs » (le reste de l'app est inchangé).
 
 ### Avant de merger

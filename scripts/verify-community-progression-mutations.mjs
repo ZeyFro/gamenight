@@ -49,11 +49,11 @@ for (const [reason, criterion] of [["CREATE_SESSION", "SESSIONS_CREATED"], ["VOT
   const tail = reason === "TOURNAMENT_RESULT" ? ', sourceId: { endsWith: ":1st" }' : '';
   add(`badge-${reason}`, core, `badge ledger ${criterion}`, [bypassModel("XpEvent"), edits(lib("badges"), `where: { communityId: id, userId, reason: "${reason}"${tail} }`, `where: { userId, reason: "${reason}"${tail} }`)]);
 }
-add("bet-balance-community", core, "mises : un gros solde", [edits(lib("xp-bets"), 'WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE', 'WHERE "userId" = ${voterId} ORDER BY "xpTotal" DESC FOR UPDATE')]);
+add("bet-balance-community", core, "mises : un gros solde", [edits(lib("xp-bets"), 'WHERE "communityId" = ${communityId} AND "userId" = ${voterId} FOR UPDATE', 'WHERE "userId" = ${voterId} ORDER BY "xpBalance" DESC FOR UPDATE')]);
 for (const [model, criterion] of [["SuperlativeAward", "SUPERLATIVES_WON"], ["Pronostic", "PRONOSTICS_CORRECT"], ["XpBet", "BETS_WON"]]) {
   add(`badge-durable-${criterion}`, core, `badge durable ${criterion}`, [bypassModel(model), edits(lib("member-stats"), 'return { OR: [{ communityId }, ...(communityId === await getDefaultCommunityId() ? [{ communityId: null }] : [])] };', 'return { OR: [{}] };')]);
 }
-add("season-reset", views, "saison :", [bypassModel("CommunityMemberStats"), edits(lib("seasons"), 'updateMany({ where: { communityId }, data: { xpTotal: 0 } })', 'updateMany({ where: {}, data: { xpTotal: 0 } })')]);
+add("season-reset", views, "saison :", [bypassModel("CommunityMemberStats"), edits(lib("seasons"), 'updateMany({ where: { communityId }, data: { xpTotal: 0, xpBalance: 0 } })', 'updateMany({ where: {}, data: { xpTotal: 0, xpBalance: 0 } })')]);
 add("season-active-champion", views, "saison :", [edits(lib("seasons"), 'return ranked.find((u) => u.memberships.length > 0) ?? null;', 'return ranked[0] ?? null;')]);
 add("scoreboard-xp", views, "XP : retour flags OFF", [edits(lib("scoreboard"), 'const memberFilter = { communityId, userId:', 'const memberFilter = { userId:')]);
 add("profile-result", views, "profil aperçu", [bypassModel("SessionResult")]);

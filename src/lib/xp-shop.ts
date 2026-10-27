@@ -3,6 +3,9 @@ import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 
+// Défaut Prisma : 5 s, puis erreur 500 à l'expiration ; même marge que les autres transactions interactives.
+const SHOP_TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
+
 export const XP_SHOP_ITEMS = [
   { id: "title-strategist", kind: "TITLE", name: "Stratège", value: "Stratège", price: 250 },
   { id: "title-night-owl", kind: "TITLE", name: "Noctambule", value: "Noctambule", price: 350 },
@@ -26,7 +29,7 @@ export async function getShopState(userId: string, communityId: string) {
     db.communityMemberCosmetic.findMany({ where: { communityId, userId }, select: { itemId: true } }),
   ]);
   return {
-    balance: stats?.xpTotal ?? 0,
+    balance: stats?.xpBalance ?? 0,
     ownedIds: new Set(owned.map((item) => item.itemId)),
     equipped: {
       TITLE: stats?.equippedTitleId ?? null,
@@ -72,20 +75,20 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
 
     const stats = await tx.communityMemberStats.findUniqueOrThrow({
       where: { communityId_userId: { communityId, userId } },
-      select: { xpTotal: true },
+      select: { xpBalance: true },
     });
-    if (stats.xpTotal < item.price) return "insufficient" as const;
+    if (stats.xpBalance < item.price) return "insufficient" as const;
 
     await tx.communityMemberStats.update({
       where: { communityId_userId: { communityId, userId } },
-      data: { xpTotal: { decrement: item.price } },
+      data: { xpBalance: { decrement: item.price } },
     });
     await tx.xpEvent.create({
-      data: { communityId, userId, reason: "SHOP_PURCHASE", sourceId: itemId, amount: -item.price },
+      data: { communityId, userId, reason: "SHOP_BALANCE_PURCHASE", sourceId: itemId, amount: -item.price },
     });
     await tx.communityMemberCosmetic.create({ data: { communityId, userId, itemId } });
     return "purchased" as const;
-  });
+  }, SHOP_TX_OPTIONS);
 }
 
 export async function equipShopItem(
@@ -112,7 +115,7 @@ export async function equipShopItem(
       data: { [field]: item?.id ?? null },
     });
     return "equipped" as const;
-  });
+  }, SHOP_TX_OPTIONS);
 }
 
 export function cosmeticById(itemId: string | null | undefined) {

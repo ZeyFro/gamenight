@@ -65,6 +65,22 @@ describe("flux automatique GamerPower", () => {
     expect(mocks.cache).toHaveBeenCalledWith(["gamerpower-free-games-v2"], { revalidate: 900 });
   });
 
+  it("dédoublonne deux giveaways qui mènent au même produit boutique (une seule annonce)", async () => {
+    mocks.fetch.mockImplementation(async (input: URL | string) => {
+      const url = String(input);
+      if (url.includes("/api/giveaways")) {
+        return json(new URL(url).searchParams.get("platform") === "steam" ? [
+          giveaway(1, "https://www.gamerpower.com/open/portal-a"),
+          giveaway(2, "https://www.gamerpower.com/open/portal-b"),
+        ] : []);
+      }
+      return redirect("https://store.steampowered.com/app/620/Portal/");
+    });
+
+    const offers = await listAutomaticFreeGameOffers();
+    expect(offers.map((offer) => offer.id)).toEqual(["gamerpower-steam-1"]);
+  });
+
   it("garde la source Epic disponible si Steam échoue et rejette les redirects ambigus", async () => {
     mocks.fetch.mockImplementation(async (input: URL | string) => {
       const url = String(input);
