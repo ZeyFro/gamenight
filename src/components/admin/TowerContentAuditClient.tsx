@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-type Channel = {id:string;name:string;category:string|null;topic:string;sampledMessages:number;nonBotSamples:number;pinnedCount:number;recentContentPatterns:Array<{word:string;count:number}>;newestSampleAt:string|null;botNames?:string[];serviceEvidence?:string[]};
+type Channel = {id:string;name:string;category:string|null;topic:string;sampledMessages:number;nonBotSamples:number;pinnedCount:number;recentContentPatterns:Array<{word:string;count:number}>;newestSampleAt:string|null;sampleSkipped?:boolean;skipReason?:string;botNames?:string[];serviceEvidence?:string[]};
 type InventoryItem = {id:string;name:string;type:number;category:string|null;protected:boolean;legacyCandidate:boolean;overwriteCount:number;hasMemberOverwrites:boolean};
 type Result = {page:number;pageCount:number;totalTextChannels:number;totalGuildChannels:number;inventory?:InventoryItem[];channels:Channel[];unreadableChannels?:Array<{id:string;messageReadStatus:number;pinsReadStatus:number}>;error?:string};
 export default function AuditClient(){
@@ -31,7 +31,7 @@ export default function AuditClient(){
  }
  return <main style={{maxWidth:980,margin:"2rem auto",padding:24}}>
   <h1>🔎 The Tower — Audit réel des salons</h1>
-  <p>Lecture seule. Analyse les thèmes des messages récents et les épinglés, sans exporter les noms des membres ni le texte des conversations.</p>
+  <p>Lecture seule. Analyse les thèmes des messages récents et les épinglés, sans exporter les noms des membres ni le texte des conversations. Les salons privés du staff, tickets et NSFW sont inventoriés sans lire leur contenu.</p>
   <p>{summary?.totalGuildChannels??"—"} salons et catégories inventoriés, dont {summary?.totalTextChannels??"—"} salons texte • {summary?.pageCount??"—"} pages d’analyse</p>
   {!!summary?.inventory&&<p>{summary.inventory.filter(c=>c.protected).length} éléments protégés (staff/tickets/accès particuliers), {summary.inventory.filter(c=>c.legacyCandidate).length} éléments historiques à examiner, {summary.inventory.filter(c=>c.hasMemberOverwrites).length} éléments avec permissions individuelles. Aucune suppression ou modification n’est effectuée.</p>}
   {!!problem&&!summary&&<p role="alert">Impossible de charger l’audit : {problem}. Vérifie ta connexion GameNight avec le compte Discord propriétaire et les permissions de lecture du bot.</p>}
@@ -43,7 +43,7 @@ export default function AuditClient(){
   </button>
   {!!problem&&<p role="alert">{problem}</p>}
   <h2>Aperçu des premiers salons</h2>
-  <ul>{(summary?.channels||[]).map(c=><li key={c.id}><strong>{c.category} / {c.name}</strong> — {c.sampledMessages} messages échantillonnés, {c.pinnedCount} épinglés. Services détectés : {(c.serviceEvidence||[]).join(", ")||"—"} • Bots : {(c.botNames||[]).join(", ")||"—"} • Thèmes : {c.recentContentPatterns.slice(0,6).map(x=>x.word).join(", ")}</li>)}</ul>
+  <ul>{(summary?.channels||[]).map(c=><li key={c.id}><strong>{c.category} / {c.name}</strong> — {c.sampleSkipped ? "contenu sensible non lu (métadonnées uniquement)" : `${c.sampledMessages} messages échantillonnés, ${c.pinnedCount} épinglés`}. Services détectés : {(c.serviceEvidence||[]).join(", ")||"—"} • Bots : {(c.botNames||[]).join(", ")||"—"} • Thèmes : {c.recentContentPatterns.slice(0,6).map(x=>x.word).join(", ")}</li>)}</ul>
   <p>Les indices proviennent des derniers messages accessibles, pas de la configuration interne des bots. Les salons protégés et les permissions individuelles sont signalés pour éviter de casser les tickets, sanctions et historiques.</p>
   <p>Transmets ensuite le fichier JSON téléchargé dans cette conversation pour identifier les doublons et préserver les salons utiles.</p>
  </main>;
