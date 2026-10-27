@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import plan from "@/lib/tower-discord-layout.json";
 import { requireAdmin } from "@/lib/admin";
+import { getCurrentUser } from "@/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -68,7 +69,8 @@ async function overview() {
   return { channels, ...operations(channels) };
 }
 export async function GET() {
-  const admin = await requireAdmin();
+  const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
+  const admin = currentUser ? await requireAdmin() : null;
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   try {
     const { channels: _channels, ...publicData } = await overview();
@@ -78,7 +80,8 @@ export async function GET() {
   }
 }
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
+  const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
+  const admin = currentUser ? await requireAdmin() : null;
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Origin mismatch" }, { status: 403, headers });
   const body = await req.json().catch(() => ({}));
