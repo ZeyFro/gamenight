@@ -42,7 +42,6 @@ async function discord(method: string, url: string, data?: object): Promise<unkn
   }
   throw Error("Discord rate limit exhausted");
 }
-const DENY_EVERYONE: Overwrite[] = [{ id: GUILD, type: 0, allow: "0", deny: DENY_VIEW.toString() }];
 function privateFromEveryone(x: Channel) {
   const everyone = (x.permission_overwrites || []).find(o => o.id === GUILD && o.type === 0);
   return !!everyone && (BigInt(everyone.deny) & DENY_VIEW) === DENY_VIEW &&
@@ -93,6 +92,8 @@ export async function GET() {
     // Detailed recovery snapshot, available only to the owner's authenticated session.
     return NextResponse.json({
       guildId: GUILD,
+      mode: "read-only",
+      writeEnabled: false,
       archiveCategory: ARCHIVE_NAME,
       preview: p.actions.map(a => ({ id:a.id, name:a.name, source:a.source })),
       errors: p.errors,
@@ -103,58 +104,13 @@ export async function GET() {
         categories: plan.archive_candidates.map(a => channels.find(c => c.id===a.id)).filter(Boolean),
         channels: p.actions.map(a => channels.find(c=>c.id===a.id)).filter(Boolean),
       },
-      note: "Save the backup JSON before starting. The archive overwrites every legacy channel to deny @everyone, keeping administrator access.",
+      note: "Inventaire et sauvegarde uniquement. Archivage suspendu tant que les salons, les bots et les systèmes existants ne sont pas audités. Aucune modification Discord possible depuis cette route.",
     }, { headers: HEADERS });
   } catch {
     return error("Discord archive preflight unavailable", 502);
   }
 }
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   // User requested a fresh audit before any further archiving or destructive cleanup.
   return NextResponse.json({ error: "Archivage suspendu : vérification des systèmes déjà actifs requise." }, { status: 423, headers: HEADERS });
 }
-/* ORIGINAL EXECUTION DISABLED PENDING AUDIT
-export async function originalPost(req: NextRequest) {
-  if (!(await authorized())) return error("Forbidden",403);
-  if (req.headers.get("origin") !== new URL(req.url).origin) return error("Origin mismatch",403);
-  const body = await req.json().catch(() => ({}));
-  if (body?.confirm !== "ARCHIVER_THE_TOWER_SANS_SUPPRIMER" || body?.guildId !== GUILD || typeof body?.fingerprint !== "string") return error("Missing confirmation",400);
-  try {
-    const channels = await discord("GET","/guilds/"+GUILD+"/channels") as Channel[];
-    const p = prepare(channels);
-    if (p.errors.length) return NextResponse.json({errors:p.errors},{status:409,headers:HEADERS});
-    if (body.fingerprint !== p.snapshot) return error("Discord changed since the preview. Refresh and export the backup again.",409);
-    if (!p.archiveId) {
-      const archive = await discord("POST","/guilds/"+GUILD+"/channels",{
-        name:ARCHIVE_NAME,type:4,permission_overwrites:DENY_EVERYONE,
-      }) as Channel;
-      return NextResponse.json({createdArchive:archive.id, moved:[],remaining:p.actions.length,refreshRequired:true},{headers:HEADERS});
-    }
-    const moved: string[] = [];
-    const hidden: string[] = [];
-    for (const task of p.actions.slice(0,2)) {
-      await discord("PATCH","/channels/"+task.id,{
-        parent_id:p.archiveId,
-        lock_permissions:false,
-        // Replace all legacy allows with explicit deny, preventing accidental exposure.
-        permission_overwrites:DENY_EVERYONE,
-      });
-      moved.push(task.name);
-    }
-    if (p.actions.length === 0) {
-      for (const category of p.hideCategories.slice(0,2)) {
-        await discord("PATCH","/channels/"+category.id,{
-          permission_overwrites:DENY_EVERYONE,
-        });
-        hidden.push(category.name);
-      }
-    }
-    const after = await discord("GET","/guilds/"+GUILD+"/channels") as Channel[];
-    const next = prepare(after);
-    return NextResponse.json({moved,hidden,remaining:next.actions.length,remainingCategories:next.hideCategories.length,fingerprint:next.snapshot,completed:next.actions.length===0 && next.hideCategories.length===0,errors:next.errors},{headers:HEADERS});
-  } catch {
-    return error("Archive operation stopped. Refresh the inventory.",502);
-  }
-}
-
-*/
