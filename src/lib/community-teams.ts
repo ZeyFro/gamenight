@@ -151,12 +151,15 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
     await scopedDb.communityTeamMember.create({ data: { communityId, teamId, userId } });
     return "joined";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  try {
-    return await attempt();
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already";
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return attempt();
-    throw error;
+  // Une seule relance sur conflit sérialisable (P2034) ; P2002 = déjà membre, à chaque tentative.
+  for (let retry = 0; ; retry++) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already";
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
+      throw error;
+    }
   }
 }
 

@@ -7,11 +7,13 @@
  * into archives needs an effective-permission audit before being safe.
  */
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
 const API = "https://discord.com/api/v10";
-const guild = "553922938101825536";
+const guild = process.env.DISCORD_BOT_GUILD_ID;
+if (!guild) throw new Error("Missing DISCORD_BOT_GUILD_ID.");
 const manifest = JSON.parse(await fs.readFile(new URL("../docs/tower-layout-approved.json", import.meta.url), "utf8"));
 const apply = process.argv.includes("--apply");
 const yes = process.env.TOWER_DISCORD_APPLY === "I_UNDERSTAND";
@@ -35,7 +37,7 @@ async function api(method, route, body) {
 const channels = await api("GET", "/guilds/"+guild+"/channels");
 const map = new Map(channels.map(x=>[x.id,x]));
 const stamp = new Date().toISOString().replace(/[:.]/g,"-");
-const backup = path.resolve("tower-discord-backup-"+stamp+".json");
+const backup = path.join(os.tmpdir(), "tower-discord-backup-"+stamp+".json");
 await fs.writeFile(backup,JSON.stringify({guild,at:new Date().toISOString(),channels},null,2),{mode:0o600});
 console.log("Snapshot:",backup,"channels:",channels.length);
 const plan=[];
