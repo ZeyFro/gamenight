@@ -10,10 +10,6 @@ const GUILD = "553922938101825536";
 const OWNER = "699223334046531636";
 const API = "https://discord.com/api/v10";
 const headers = { "Cache-Control": "private, no-store" };
-async function allowed() {
-  const user = await requireAdmin();
-  return !!user && user.discordId === OWNER;
-}
 async function discord(method: string, resource: string, data?: object): Promise<any> {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("Discord bot unavailable");
@@ -72,7 +68,8 @@ async function overview() {
   return { channels, ...operations(channels) };
 }
 export async function GET() {
-  if (!(await allowed())) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
+  const admin = await requireAdmin();
+  if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   try {
     const { channels: _channels, ...publicData } = await overview();
     return NextResponse.json({ ...publicData, mode: "read-only", guildId: GUILD }, { headers });
@@ -81,7 +78,8 @@ export async function GET() {
   }
 }
 export async function POST(req: NextRequest) {
-  if (!(await allowed())) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
+  const admin = await requireAdmin();
+  if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Origin mismatch" }, { status: 403, headers });
   const body = await req.json().catch(() => ({}));
   if (body?.confirm !== "THE_TOWER_PHASE_1" || body?.guildId !== GUILD) {
