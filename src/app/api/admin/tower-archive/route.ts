@@ -45,7 +45,7 @@ async function discord(method: string, url: string, data?: object): Promise<unkn
 const DENY_EVERYONE: Overwrite[] = [{ id: GUILD, type: 0, allow: "0", deny: DENY_VIEW.toString() }];
 function privateFromEveryone(x: Channel) {
   const everyone = (x.permission_overwrites || []).find(o => o.id === GUILD && o.type === 0);
-  return !!everyone && (BigInt(everyone.deny) & DENY_VIEW) === DENY_VIEW;
+  return !!everyone && (BigInt(everyone.deny) & DENY_VIEW) === DENY_VIEW &&\n    (x.permission_overwrites || []).every(o => o.id === GUILD && o.type === 0 && BigInt(o.allow) === BigInt(0));
 }
 function snapshot(channels: Channel[]) {
   return createHash("sha256").update(JSON.stringify(channels
