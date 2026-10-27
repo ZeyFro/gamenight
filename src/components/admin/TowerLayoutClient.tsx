@@ -6,6 +6,7 @@ export default function TowerLayoutAdmin() {
   const [state, setState] = useState<Preview>({});
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const [problem, setProblem] = useState("");
   async function refresh() {
     const r = await fetch("/api/admin/tower-layout", { cache: "no-store" });
     const j = await r.json();
@@ -20,6 +21,7 @@ export default function TowerLayoutAdmin() {
   }, []);
   async function execute() {
     if (!confirm("Appliquer toutes les créations et renommages sur The Tower ? Aucune suppression ni archivage n'aura lieu.")) return;
+    setProblem("");
     setBusy(true);
     try {
       for (let batch = 0; batch < 30; batch++) {
@@ -29,13 +31,23 @@ export default function TowerLayoutAdmin() {
         });
         const j = await r.json();
         setLog(old => [...old, ...(j.completed || []), ...(j.error ? [j.error] : [])]);
-        if (!r.ok || j.error || j.complete || !(j.completed?.length)) break;
+        if (!r.ok || j.error) { setProblem(j.error || "Échec de la modification Discord"); break; }
+        if (j.complete || !(j.completed?.length)) break;
       }
       await refresh();
-    } finally { setBusy(false); }
+    } catch { setProblem("Connexion perdue. La vérification peut reprendre les opérations sans doublons."); } finally { setBusy(false); }
   }
   return <main style={{ maxWidth: 860, margin: "2rem auto", padding: 24 }}>
     <h1>🏰 The Tower — Réorganisation Discord</h1>
+    <section style={{ padding: 20, background: "#10263b", color: "#ffffff", border: "2px solid #22d3ee", borderRadius: 14, margin: "22px 0" }}>
+      <h2 style={{ marginTop: 0, color: "#ffffff", fontSize: 22 }}>🚀 Lancer la réorganisation</h2>
+      <p style={{ color: "#e0f2fe" }}>42 opérations prévues initialement. Cette action crée et renomme les salons, mais ne supprime rien.</p>
+      <button type="button" onClick={() => void execute()} disabled={busy || !state.actions?.length || !!state.errors?.length} style={{ display: "block", width: "100%", padding: "18px 22px", backgroundColor: busy ? "#6b7280" : "#22d3ee", color: "#082f49", fontWeight: 800, fontSize: 19, borderRadius: 12, border: "2px solid #ffffff", cursor: busy ? "progress" : "pointer", opacity: busy || !state.actions?.length || !!state.errors?.length ? 0.6 : 1 }}>
+        {busy ? "⏳ Application en cours…" : "✅ APPLIQUER LES MODIFICATIONS SUR DISCORD"}
+      </button>
+      {!!problem && <p role="alert" style={{ color: "#fecaca", fontWeight: 700 }}>{problem}</p>}
+      {state.actions?.length === 0 && <p>✅ Toutes les créations et renommages sont terminés.</p>}
+    </section>
     <p>Phase 1 : création et renommage. Aucun message, salon ou rôle supprimé. Les archives sont traitées séparément après vérification des permissions.</p>
     <button disabled={busy} onClick={() => void refresh()}>Actualiser la vérification</button>
     <p>Salons détectés : {state.totalChannels ?? "—"} | Opérations restantes : {state.actions?.length ?? "—"}</p>
@@ -43,7 +55,7 @@ export default function TowerLayoutAdmin() {
     {!!state.errors?.length && <div role="alert"><strong>Blocages :</strong><ul>{state.errors.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
     <h2>Opérations prévues</h2>
     <ul>{(state.actions || []).map((x,i)=><li key={i}>{x.operation} — {x.name}</li>)}</ul>
-    <button onClick={() => void execute()} disabled={busy || !state.actions?.length || !!state.errors?.length}>{busy ? "Opération en cours…" : "Appliquer toute la nouvelle structure"}</button>
+
     <h2>Archives en attente de vérification</h2>
     <ul>{(state.archivesDeferred || []).map((x,i)=><li key={i}>{x}</li>)}</ul>
     <h2>Journal de cette session</h2>
