@@ -44,5 +44,8 @@ next-env.d.ts
 # playwright (captures et journaux du MCP)
 .playwright*
 
+# exports locaux de l'audit Discord
+/.private-audit/
+
 # journaux de la boucle roadmap
 logs/
