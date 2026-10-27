@@ -11,7 +11,7 @@ const GUILD = "553922938101825536";
 const OWNER = "699223334046531636";
 const API = "https://discord.com/api/v10";
 const headers = { "Cache-Control": "private, no-store" };
-async function discord(method: string, resource: string, data?: object): Promise<any> {
+async function discord(method: string, resource: string, data?: object): Promise<unknown> {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("Discord bot unavailable");
   for (let retry = 0; retry < 5; retry++) {
@@ -73,7 +73,7 @@ export async function GET() {
   const admin = currentUser ? await requireAdmin() : null;
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   try {
-    const { channels: _channels, ...publicData } = await overview();
+    const publicData = operations((await overview()).channels);
     return NextResponse.json({ ...publicData, mode: "read-only", guildId: GUILD }, { headers });
   } catch {
     return NextResponse.json({ error: "Discord preflight unavailable" }, { status: 502, headers });
