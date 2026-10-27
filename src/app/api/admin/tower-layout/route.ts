@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/current-user";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type Channel = { id: string; name: string; type: number; parent_id: string | null; permission_overwrites?: Array<{ id: string; type: number; allow: string; deny: string }> };
+type Channel = { id: string; name: string; type: number; position?: number; parent_id: string | null; permission_overwrites?: Array<{ id: string; type: number; allow: string; deny: string }> };
 const GUILD = "553922938101825536";
 const OWNER = "699223334046531636";
 const API = "https://discord.com/api/v10";
