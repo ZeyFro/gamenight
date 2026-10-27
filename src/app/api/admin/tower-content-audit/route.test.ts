@@ -20,7 +20,7 @@ const channels = [
 const request = (page = "0") => new NextRequest("http://localhost/api/admin/tower-content-audit?page=" + page);
 
 function discordMock(guildStatus = 200, unreadable = false) {
-  const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/guilds/" + GUILD + "/channels"))
       return guildStatus === 200 ? Response.json(channels) : Response.json({ message: "Forbidden" }, { status: guildStatus });
@@ -72,7 +72,7 @@ describe("The Tower: inventaire de lecture seule et protection des historiques",
     const json = JSON.stringify(body);
     expect(json).not.toContain("texte-prive-ne-pas-exporter");
     expect(json).not.toContain("UtilisateurPrive");
-    expect(fetcher.mock.calls.every(c => c.length === 1)).toBe(true);
+    expect(fetcher.mock.calls.every(c => c[1]?.method === undefined)).toBe(true);
   });
 
   it("ne présente pas un refus d'accès à l'inventaire comme un serveur vide", async () => {
