@@ -58,6 +58,20 @@ function operations(channels: Channel[]) {
       else if (found.name !== c.name) actions.push({ operation: "rename-channel", category: category.name, id: found.id, name: c.name });
     }
   }
+  const orderedCategories = plan.category_order.map(c => (
+    "reuse_category_id" in c
+      ? byId.get(c.reuse_category_id as string)
+      : channels.find(x => x.type === 4 && x.name === c.name)
+  ));
+  if (orderedCategories.every((x): x is Channel => !!x)) {
+    const wanted = orderedCategories.map(x => x.id);
+    const actual = channels.filter(x => x.type === 4 && wanted.includes(x.id))
+      .sort((a,b) => (a.position ?? 0) - (b.position ?? 0))
+      .map(x => x.id);
+    if (wanted.some((id,i) => actual[i] !== id)) {
+      actions.push({ operation: "reorder-categories", category: "The Tower", name: "Ordre des catégories" });
+    }
+  }
   for (const archive of plan.archive_candidates) {
     const cat = byId.get(archive.id);
     if (!cat || cat.type !== 4) errors.push("Archive candidate absente : " + archive.name);
@@ -98,6 +112,17 @@ export async function POST(req: NextRequest) {
         await discord("PATCH", "/channels/" + task.id, { name: task.name });
       } else if (task.operation === "create-category") {
         await discord("POST", "/guilds/" + GUILD + "/channels", { name: task.name, type: 4 });
+      } else if (task.operation === "reorder-categories") {
+        const current = await discord("GET", "/guilds/" + GUILD + "/channels") as Channel[];
+        const ids = plan.category_order.map(category =>
+          "reuse_category_id" in category
+            ? category.reuse_category_id
+            : current.find(x => x.type === 4 && x.name === category.name)?.id
+        );
+        if (ids.some(id => !id)) throw new Error("Missing category for ordering");
+        await discord("PATCH", "/guilds/" + GUILD + "/channels",
+          ids.map((id, position) => ({ id, position }))
+        );
       } else {
         const current = await discord("GET", "/guilds/" + GUILD + "/channels") as Channel[];
         const parent = current.find(x => x.type === 4 && x.name === task.category);
