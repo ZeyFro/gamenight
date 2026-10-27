@@ -88,70 +88,12 @@ export async function GET() {
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   try {
     const publicData = operations((await overview()).channels);
-    return NextResponse.json({ ...publicData, mode: "read-only", guildId: GUILD }, { headers });
+    return NextResponse.json({ ...publicData, mode: "read-only", writeEnabled: false, guildId: GUILD }, { headers });
   } catch {
     return NextResponse.json({ error: "Discord preflight unavailable" }, { status: 502, headers });
   }
 }
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   // Pause structure changes until existing Discord services and content have been audited.
   return NextResponse.json({ error: "Réorganisation suspendue : audit des salons et des systèmes existants requis." }, { status: 423, headers });
 }
-/* ORIGINAL EXECUTION DISABLED PENDING AUDIT
-export async function originalPost(req: NextRequest) {
-  const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
-  const admin = currentUser ? await requireAdmin() : null;
-  if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
-  if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Origin mismatch" }, { status: 403, headers });
-  const body = await req.json().catch(() => ({}));
-  if (body?.confirm !== "THE_TOWER_PHASE_1" || body?.guildId !== GUILD) {
-    return NextResponse.json({ error: "Explicit confirmation required" }, { status: 400, headers });
-  }
-  try {
-    const state = await overview();
-    if (state.errors.length) return NextResponse.json({ error: "Preflight failed", details: state.errors }, { status: 409, headers });
-    // Small batches avoid Vercel function timeout; refresh before each invocation.
-    const completed: string[] = [];
-    for (const task of state.actions.slice(0, 4)) {
-      if (task.operation === "rename-category" || task.operation === "rename-channel") {
-        await discord("PATCH", "/channels/" + task.id, { name: task.name });
-      } else if (task.operation === "create-category") {
-        await discord("POST", "/guilds/" + GUILD + "/channels", { name: task.name, type: 4 });
-      } else if (task.operation === "reorder-categories") {
-        const current = await discord("GET", "/guilds/" + GUILD + "/channels") as Channel[];
-        const ids = plan.category_order.map(category =>
-          "reuse_category_id" in category
-            ? category.reuse_category_id
-            : current.find(x => x.type === 4 && x.name === category.name)?.id
-        );
-        if (ids.some(id => !id)) throw new Error("Missing category for ordering");
-        await discord("PATCH", "/guilds/" + GUILD + "/channels",
-          ids.map((id, position) => ({ id, position }))
-        );
-      } else {
-        const current = await discord("GET", "/guilds/" + GUILD + "/channels") as Channel[];
-        const parent = current.find(x => x.type === 4 && x.name === task.category);
-        if (!parent) break;
-        const already = current.some(x => x.parent_id === parent.id && x.name === task.name);
-        if (!already) {
-          await discord("POST", "/guilds/" + GUILD + "/channels", {
-            name: task.name, type: task.type, parent_id: parent.id,
-            // Copy category overrides explicitly. No existing channel is moved.
-            permission_overwrites: parent.permission_overwrites || [],
-          });
-        }
-      }
-      completed.push(task.operation + ": " + task.name);
-    }
-    const after = await overview();
-    return NextResponse.json({
-      completed, remaining: after.actions.length, errors: after.errors,
-      archivesDeferred: after.archivesDeferred, complete: after.actions.length === 0,
-      warning: "Phase 1 only. Archives, reparenting and permission changes are intentionally not performed.",
-    }, { headers });
-  } catch {
-    return NextResponse.json({ error: "Discord operation stopped; refresh the preview to resume safely" }, { status: 502, headers });
-  }
-}
- 
-*/
