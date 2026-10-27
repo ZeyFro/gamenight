@@ -9,27 +9,31 @@ type Preview = {
 
 export default function TowerLayoutAdmin() {
   const [state, setState] = useState<Preview | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState("");
-  async function refresh() {
-    setBusy(true);
-    try {
-      const response = await fetch("/api/admin/tower-layout", { cache: "no-store" });
+  const [retryKey, setRetryKey] = useState(0);
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/admin/tower-layout", { cache: "no-store" }).then(async response => {
       const result = await response.json() as Preview;
       if (!response.ok || result.error) throw Error(result.error || "HTTP " + response.status);
+      return result;
+    }).then(result => {
+      if (!active) return;
       setState(result);
       setProblem("");
-    } catch (e) {
+    }).catch(e => {
+      if (!active) return;
       setState(null);
       setProblem(e instanceof Error ? e.message : "Inventaire Discord inaccessible");
-    } finally { setBusy(false); }
-  }
-  useEffect(() => { void refresh(); }, []);
+    }).finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [retryKey]);
 
   return <main style={{ maxWidth: 860, margin: "2rem auto", padding: 24 }}>
     <h1>🏰 The Tower — État des salons Discord</h1>
     <p><strong>Mode lecture seule.</strong> La réorganisation automatique est suspendue pour éviter de recréer les salons d’accueil, de tickets, de sanctions et de modération déjà existants. Aucune action de cette page ne modifie Discord.</p>
-    <button type="button" onClick={() => void refresh()} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser l’inventaire"}</button>
+    <button type="button" onClick={() => { setBusy(true); setRetryKey(x => x + 1); }} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser l’inventaire"}</button>
     {!!problem && <p role="alert">Impossible de charger l’inventaire : {problem}. Connecte-toi avec le compte Discord propriétaire.</p>}
     <p>Salons détectés : {state?.totalChannels ?? "—"} • Opérations envisagées, non autorisées : {state?.actions?.length ?? "—"}</p>
     {!!state?.errors?.length && <div role="alert"><strong>Éléments à vérifier :</strong><ul>{state.errors.map((x, i) => <li key={i}>{x}</li>)}</ul></div>}

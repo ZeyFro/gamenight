@@ -10,23 +10,27 @@ type ArchivePreview = {
 
 export default function TowerArchiveConsole() {
   const [data, setData] = useState<ArchivePreview | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
 
-  async function refresh() {
-    setBusy(true);
-    try {
-      const response = await fetch("/api/admin/tower-archive", { cache: "no-store" });
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/admin/tower-archive", { cache: "no-store" }).then(async response => {
       const result = await response.json() as ArchivePreview;
       if (!response.ok || result.error) throw Error(result.error || "HTTP " + response.status);
+      return result;
+    }).then(result => {
+      if (!active) return;
       setData(result);
       setProblem("");
-    } catch (e) {
+    }).catch(e => {
+      if (!active) return;
       setData(null);
       setProblem(e instanceof Error ? e.message : "Prévisualisation indisponible");
-    } finally { setBusy(false); }
-  }
-  useEffect(() => { void refresh(); }, []);
+    }).finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [retryKey]);
 
   function saveBackup() {
     if (!data?.backup) return;
@@ -42,7 +46,7 @@ export default function TowerArchiveConsole() {
   return <main style={{ maxWidth: 880, margin: "2rem auto", padding: 24 }}>
     <h1>📦 Archives historiques — The Tower</h1>
     <p><strong>Consultation et sauvegarde uniquement.</strong> L’archivage est suspendu pendant l’audit des salons, tickets, sanctions et bots déjà présents. Aucune permission ou catégorie ne sera modifiée ici.</p>
-    <button type="button" onClick={() => void refresh()} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser"}</button>
+    <button type="button" onClick={() => { setBusy(true); setRetryKey(x => x + 1); }} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser"}</button>
     <p>{data?.preview?.length ?? "—"} salons historiques repérés • {data?.categoriesToHide?.length ?? "—"} catégories candidates</p>
     {!!problem && <p role="alert">Vérification impossible : {problem}. Vérifie ta connexion propriétaire et l’accès du bot à Discord.</p>}
     {!!data?.errors?.length && <ul role="alert">{data.errors.map((x, i) => <li key={i}>{x}</li>)}</ul>}
