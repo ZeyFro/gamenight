@@ -46,7 +46,8 @@ export async function GET(req:NextRequest){
    const r=await api("/channels/"+c.id+"/messages?limit=30");
    const messages=(r.data||[]) as DiscordMessage[];
    const p=await api("/channels/"+c.id+"/pins");
-   const pins=(p.data||[]) as DiscordMessage[];
+   const pinsPayload=p.data as DiscordMessage[]|{items?:Array<{message?:DiscordMessage}>}|null;
+   const pins=Array.isArray(pinsPayload)?pinsPayload:(pinsPayload?.items||[]).map(x=>x.message).filter((x):x is DiscordMessage=>!!x);
    const recent=messages.filter(x=>!x.author?.bot);
    const phrases=[c.name,c.topic||"",...recent.map(x=>x.content.slice(0,1200)),...pins.map(x=>x.content.slice(0,1200))];
    result.push({
