@@ -59,12 +59,14 @@ function prepare(channels: Channel[]) {
   const archive = channels.find(x => x.type === 4 && x.name === ARCHIVE_NAME);
   if (archive && !privateFromEveryone(archive)) errors.push("Archive category exists but is not explicitly private");
   const actions: Action[] = [];
+  const hideCategories: Array<{id:string;name:string}> = [];
   for (const source of plan.archive_candidates) {
     const category = byId.get(source.id);
     if (!category || category.type !== 4) {
       errors.push("Missing legacy category: "+source.name);
       continue;
     }
+    if (!privateFromEveryone(category)) hideCategories.push({id:category.id,name:category.name});
     for (const child of channels.filter(x => x.parent_id === source.id)) {
       if (![0, 2, 5, 15].includes(child.type)) {
         errors.push("Unsupported legacy channel: "+child.name);
@@ -81,7 +83,7 @@ function prepare(channels: Channel[]) {
       if (!privateFromEveryone(child)) errors.push("Archive contains potentially visible channel: "+child.name);
     }
   }
-  return { errors, actions, archiveId: archive?.id, snapshot: snapshot(channels) };
+  return { errors, actions, hideCategories, archiveId: archive?.id, snapshot: snapshot(channels) };
 }
 export async function GET() {
   if (!(await authorized())) return error("Forbidden", 403);
@@ -94,6 +96,7 @@ export async function GET() {
       archiveCategory: ARCHIVE_NAME,
       preview: p.actions.map(a => ({ id:a.id, name:a.name, source:a.source })),
       errors: p.errors,
+      categoriesToHide: p.hideCategories,
       fingerprint: p.snapshot,
       backup: {
         capturedAt: new Date().toISOString(),
@@ -123,6 +126,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({createdArchive:archive.id, moved:[],remaining:p.actions.length,refreshRequired:true},{headers:HEADERS});
     }
     const moved: string[] = [];
+    const hidden: string[] = [];
     for (const task of p.actions.slice(0,2)) {
       await discord("PATCH","/channels/"+task.id,{
         parent_id:p.archiveId,
@@ -132,9 +136,17 @@ export async function POST(req: NextRequest) {
       });
       moved.push(task.name);
     }
+    if (p.actions.length === 0) {
+      for (const category of p.hideCategories.slice(0,2)) {
+        await discord("PATCH","/channels/"+category.id,{
+          permission_overwrites:DENY_EVERYONE,
+        });
+        hidden.push(category.name);
+      }
+    }
     const after = await discord("GET","/guilds/"+GUILD+"/channels") as Channel[];
     const next = prepare(after);
-    return NextResponse.json({moved,remaining:next.actions.length,fingerprint:next.snapshot,completed:next.actions.length===0,errors:next.errors},{headers:HEADERS});
+    return NextResponse.json({moved,hidden,remaining:next.actions.length,remainingCategories:next.hideCategories.length,fingerprint:next.snapshot,completed:next.actions.length===0 && next.hideCategories.length===0,errors:next.errors},{headers:HEADERS});
   } catch {
     return error("Archive operation stopped. Refresh the inventory.",502);
   }
