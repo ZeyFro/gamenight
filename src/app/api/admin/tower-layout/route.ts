@@ -94,6 +94,11 @@ export async function GET() {
   }
 }
 export async function POST(req: NextRequest) {
+  // Pause structure changes until existing Discord services and content have been audited.
+  return NextResponse.json({ error: "Réorganisation suspendue : audit des salons et des systèmes existants requis." }, { status: 423, headers });
+}
+/* ORIGINAL EXECUTION DISABLED PENDING AUDIT
+export async function originalPost(req: NextRequest) {
   const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   const admin = currentUser ? await requireAdmin() : null;
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
@@ -148,3 +153,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Discord operation stopped; refresh the preview to resume safely" }, { status: 502, headers });
   }
 }
+ 
+*/

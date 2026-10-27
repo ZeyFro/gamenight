@@ -110,6 +110,11 @@ export async function GET() {
   }
 }
 export async function POST(req: NextRequest) {
+  // User requested a fresh audit before any further archiving or destructive cleanup.
+  return NextResponse.json({ error: "Archivage suspendu : vérification des systèmes déjà actifs requise." }, { status: 423, headers: HEADERS });
+}
+/* ORIGINAL EXECUTION DISABLED PENDING AUDIT
+export async function originalPost(req: NextRequest) {
   if (!(await authorized())) return error("Forbidden",403);
   if (req.headers.get("origin") !== new URL(req.url).origin) return error("Origin mismatch",403);
   const body = await req.json().catch(() => ({}));
@@ -151,3 +156,5 @@ export async function POST(req: NextRequest) {
     return error("Archive operation stopped. Refresh the inventory.",502);
   }
 }
+
+*/

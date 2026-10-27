@@ -7,7 +7,7 @@ const GUILD="553922938101825536";
 const OWNER="699223334046531636";
 const headers={"Cache-Control":"private, no-store","X-Robots-Tag":"noindex"};
 type Channel={id:string;name:string;type:number;parent_id:string|null;topic?:string|null;nsfw?:boolean;last_message_id?:string|null;permission_overwrites?:unknown[]};
-type DiscordMessage={id:string;content:string;timestamp:string;author?:{bot?:boolean};pinned?:boolean;attachments?:Array<{content_type?:string}>};
+type DiscordMessage={id:string;content:string;timestamp:string;author?:{bot?:boolean;username?:string};webhook_id?:string;embeds?:Array<{title?:string;description?:string}>;pinned?:boolean;attachments?:Array<{content_type?:string}>};
 async function api(route:string):Promise<{status:number;data:unknown}>{
  const token=process.env.DISCORD_BOT_TOKEN;
  if(!token)throw Error("Token missing");
@@ -49,7 +49,10 @@ export async function GET(req:NextRequest){
    const pinsPayload=p.data as DiscordMessage[]|{items?:Array<{message?:DiscordMessage}>}|null;
    const pins=Array.isArray(pinsPayload)?pinsPayload:(pinsPayload?.items||[]).map(x=>x.message).filter((x):x is DiscordMessage=>!!x);
    const recent=messages.filter(x=>!x.author?.bot);
-   const phrases=[c.name,c.topic||"",...recent.map(x=>x.content.slice(0,1200)),...pins.map(x=>x.content.slice(0,1200))];
+   const phrases=[c.name,c.topic||"",...messages.map(x=>x.content.slice(0,1200)),...messages.flatMap(x=>(x.embeds||[]).map(e=>(e.title||"")+" "+(e.description||"")).slice(0,4)),...pins.map(x=>x.content.slice(0,1200))];
+   const serviceTerms=["ticket","support","sanction","ban","bannissement","warn","avertissement","mute","modération","bienvenue","welcome","arrivée","join","départ","leave","logs","journal","signalement","report","règlement","role","rôle","autorole","verification","vérification"];
+   const serviceEvidence=serviceTerms.filter(t=>phrases.join(" ").toLocaleLowerCase("fr").includes(t));
+   const botNames=[...new Set(messages.filter(x=>x.author?.bot||x.webhook_id).map(x=>x.author?.username||"Webhook"))].slice(0,15);
    result.push({
     id:c.id,name:c.name,category:channels.find(x=>x.id===c.parent_id)?.name||null,topic:c.topic||"",
     nsfw:!!c.nsfw,messageReadStatus:r.status,pinsReadStatus:p.status,
@@ -60,6 +63,8 @@ export async function GET(req:NextRequest){
     sampleHasAttachments:messages.some(x=>(x.attachments?.length||0)>0),
     sampleHasLinks:messages.some(x=>/https?:\/\//.test(x.content)),
     botMessageCount:messages.filter(x=>x.author?.bot).length,
+    webhookMessageCount:messages.filter(x=>!!x.webhook_id).length,
+    botNames,serviceEvidence,
    });
   }
   return NextResponse.json({guildId:GUILD,page,pageCount:Math.ceil(texts.length/5),totalTextChannels:texts.length,channels:result,note:"Lecture seule; métadonnées et thèmes agrégés, aucun message nominatif ni contenu brut transmis."},{headers});
