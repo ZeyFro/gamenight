@@ -67,8 +67,11 @@ describe("The Tower: inventaire de lecture seule et protection des historiques",
     expect(body.inventory.find((x: {id:string}) => x.id === channels[1].id))
       .toMatchObject({ protected: true, hasMemberOverwrites: true, overwriteCount: 1 });
     expect(body.inventory.find((x: {id:string}) => x.id === channels[3].id).type).toBe(2);
-    expect(body.channels[0].botNames).toContain("BotExistant");
-    expect(body.channels[0].serviceEvidence).toContain("ticket");
+    expect(body.channels[0]).toMatchObject({sampleSkipped:true,skipReason:"sensitive_channel",sampledMessages:0});
+    expect(body.channels[1].botNames).toContain("BotExistant");
+    expect(body.channels[1].serviceEvidence).toContain("ticket");
+    expect(fetcher.mock.calls.some(c=>String(c[0]).includes("/channels/"+channels[1].id+"/messages"))).toBe(false);
+    expect(fetcher.mock.calls.some(c=>String(c[0]).includes("/channels/"+channels[1].id+"/pins"))).toBe(false);
     const json = JSON.stringify(body);
     expect(json).not.toContain("texte-prive-ne-pas-exporter");
     expect(json).not.toContain("UtilisateurPrive");
@@ -85,8 +88,9 @@ describe("The Tower: inventaire de lecture seule et protection des historiques",
   it("signale explicitement les salons dont les messages sont illisibles", async () => {
     discordMock(200, true);
     const body = await (await GET(request())).json();
-    expect(body.unreadableChannels).toHaveLength(2);
+    expect(body.unreadableChannels).toHaveLength(1);
     expect(body.unreadableChannels[0].messageReadStatus).toBe(403);
+    expect(body.channels[0].sampleSkipped).toBe(true);
   });
 
   it("rejette une pagination invalide sans appeler Discord", async () => {
