@@ -43,6 +43,8 @@ export async function GET(req:NextRequest){
   const channels=all.data as Channel[];
   const categoryById=new Map(channels.filter(c=>c.type===4).map(c=>[c.id,c.name]));
   const protectedIds=new Set(plan.protected_categories.map(c=>c.id));
+  // Overwrites do not prove public access; keep uncertain channels metadata-only.
+  for(const c of channels)if((c.permission_overwrites?.length??1)>0||c.nsfw||c.name.toLocaleLowerCase("fr").includes("the-hell"))protectedIds.add(c.id);
   const legacyIds=new Set(plan.archive_candidates.map(c=>c.id));
   const inventory=page===0?channels.map(c=>({
    id:c.id,name:c.name,type:c.type,category:c.parent_id?categoryById.get(c.parent_id)||null:null,
@@ -58,7 +60,7 @@ export async function GET(req:NextRequest){
   for(const c of batch){
    // Sensitive channels are inventoried by metadata only. Never sample private
    // staff/ticket content or adult-only areas, even for an authenticated owner.
-   if(protectedIds.has(c.id)||(c.parent_id!==null&&protectedIds.has(c.parent_id))||c.nsfw||c.name.toLocaleLowerCase("fr")==="the-hell"){
+   if(protectedIds.has(c.id)||(c.parent_id!==null&&protectedIds.has(c.parent_id))){
     result.push({id:c.id,name:c.name,category:c.parent_id?categoryById.get(c.parent_id)||null:null,
      topic:"",nsfw:!!c.nsfw,sampleSkipped:true,skipReason:"sensitive_channel",
      sampledMessages:0,nonBotSamples:0,pinnedCount:0,botNames:[],serviceEvidence:[],recentContentPatterns:[]});

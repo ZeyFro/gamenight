@@ -31,7 +31,7 @@ export default function AuditClient(){
  }
  return <main style={{maxWidth:980,margin:"2rem auto",padding:24}}>
   <h1>🔎 The Tower — Audit réel des salons</h1>
-  <p>Lecture seule. Analyse les thèmes des messages récents et les épinglés, sans exporter les noms des membres ni le texte des conversations. Les salons privés du staff, tickets et NSFW sont inventoriés sans lire leur contenu.</p>
+  <p>Lecture seule. Analyse les thèmes des messages récents et les épinglés, sans exporter les noms des membres ni le texte des conversations. Les salons protégés, NSFW et ceux à permissions particulières, y compris dans leur catégorie, sont inventoriés sans lire leur contenu. Cette précaution peut aussi exclure des salons publics.</p>
   <p>{summary?.totalGuildChannels??"—"} salons et catégories inventoriés, dont {summary?.totalTextChannels??"—"} salons texte • {summary?.pageCount??"—"} pages d’analyse</p>
   {!!summary?.inventory&&<p>{summary.inventory.filter(c=>c.protected).length} éléments protégés (staff/tickets/accès particuliers), {summary.inventory.filter(c=>c.legacyCandidate).length} éléments historiques à examiner, {summary.inventory.filter(c=>c.hasMemberOverwrites).length} éléments avec permissions individuelles. Aucune suppression ou modification n’est effectuée.</p>}
   {!!problem&&!summary&&<p role="alert">Impossible de charger l’audit : {problem}. Vérifie ta connexion GameNight avec le compte Discord propriétaire et les permissions de lecture du bot.</p>}

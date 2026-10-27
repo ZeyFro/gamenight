@@ -10,7 +10,8 @@ import { GET } from "./route";
 const GUILD = "553922938101825536";
 const OWNER = "699223334046531636";
 const protectedCategory = plan.protected_categories[0];
-const channels = [
+const channels: Array<{ id: string; name: string; type: number; parent_id: string | null;
+  permission_overwrites: Array<{ id: string; type: number; allow: string; deny: string }> }> = [
   { id: protectedCategory.id, name: "staff", type: 4, parent_id: null, permission_overwrites: [] },
   { id: "999000000000000002", name: "ticket-logs", type: 0, parent_id: protectedCategory.id,
     permission_overwrites: [{ id: "999000000000000009", type: 1, allow: "1024", deny: "0" }] },
@@ -19,11 +20,11 @@ const channels = [
 ];
 const request = (page = "0") => new NextRequest("http://localhost/api/admin/tower-content-audit?page=" + page);
 
-function discordMock(guildStatus = 200, unreadable = false) {
+function discordMock(guildStatus = 200, unreadable = false, inventory = channels) {
   const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/guilds/" + GUILD + "/channels"))
-      return guildStatus === 200 ? Response.json(channels) : Response.json({ message: "Forbidden" }, { status: guildStatus });
+      return guildStatus === 200 ? Response.json(inventory) : Response.json({ message: "Forbidden" }, { status: guildStatus });
     if (url.includes("/messages?limit=30")) {
       if (unreadable) return Response.json({ message: "Forbidden" }, { status: 403 });
       return Response.json([
@@ -83,6 +84,27 @@ describe("The Tower: inventaire de lecture seule et protection des historiques",
     const response = await GET(request());
     expect(response.status).toBe(502);
     expect((await response.json()).discordStatus).toBe(403);
+  });
+
+  it.each([0, 1])("ne lit jamais un salon à permissions particulières hors des catégories connues (type %s)", async type => {
+    const privateChannel = { id: "999000000000000005", name: "conversation", type: 0, parent_id: null,
+      permission_overwrites: [{ id: type === 0 ? GUILD : "999000000000000009", type, allow: "1024", deny: "0" }] };
+    const fetcher = discordMock(200, false, [...channels, privateChannel]);
+    const body = await (await GET(request())).json();
+    expect(body.inventory.find((x: {id:string}) => x.id === privateChannel.id).protected).toBe(true);
+    expect(body.channels.find((x: {id:string}) => x.id === privateChannel.id))
+      .toMatchObject({ sampleSkipped: true, topic: "", recentContentPatterns: [] });
+    expect(fetcher.mock.calls.some(c => String(c[0]).includes("/channels/" + privateChannel.id + "/"))).toBe(false);
+  });
+
+  it("protège les enfants d’une nouvelle catégorie à permissions particulières", async () => {
+    const category = { id: "999000000000000005", name: "autre", type: 4, parent_id: null,
+      permission_overwrites: [{ id: GUILD, type: 0, allow: "0", deny: "1024" }] };
+    const child = { id: "999000000000000006", name: "conversation", type: 0, parent_id: category.id, permission_overwrites: [] };
+    const fetcher = discordMock(200, false, [...channels, category, child]);
+    const body = await (await GET(request())).json();
+    expect(body.channels.find((x: {id:string}) => x.id === child.id).sampleSkipped).toBe(true);
+    expect(fetcher.mock.calls.some(c => String(c[0]).includes("/channels/" + child.id + "/"))).toBe(false);
   });
 
   it("signale explicitement les salons dont les messages sont illisibles", async () => {
