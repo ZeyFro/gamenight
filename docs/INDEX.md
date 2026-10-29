@@ -14,6 +14,7 @@
 - [Annulation des séries](ANNULATION_SERIES.md) et [places de session](SESSION_PLACES.md).
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
+- [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
 - [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.

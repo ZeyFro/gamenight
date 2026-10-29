@@ -17,6 +17,11 @@ const activeTeamMemberWhere = (communityId: string) => ({
   user: { memberships: { some: { communityId, status: "ACTIVE" as const } } },
 });
 
+export function rankCommunityTeamMembersByXp(members: { userId: string; discordName: string; xpTotal: number }[]) {
+  const rankedMembers = [...members].sort((a, b) => b.xpTotal - a.xpTotal || a.userId.localeCompare(b.userId));
+  return { totalXp: rankedMembers.reduce((total, member) => total + member.xpTotal, 0), members: rankedMembers };
+}
+
 async function canUseTeams(tx: Prisma.TransactionClient, userId: string, communityId: string): Promise<boolean> {
   const [membership, community] = await Promise.all([
     tx.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { status: true } }),
@@ -28,7 +33,7 @@ async function canUseTeams(tx: Prisma.TransactionClient, userId: string, communi
 export async function listCommunityTeams(userId: string, communityId: string) {
   const scopedDb = await getScopedPrisma(userId);
   const accessibleSessions = await accessibleSessionWhereFor(userId);
-  return scopedDb.communityTeam.findMany({
+  const teams = await scopedDb.communityTeam.findMany({
     where: { communityId },
     select: {
       id: true,
@@ -41,7 +46,7 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       _count: { select: { members: { where: activeTeamMemberWhere(communityId) } } },
       game: { select: { name: true } },
       createdBy: { select: { discordName: true, memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
-      members: { where: activeTeamMemberWhere(communityId), select: { userId: true, joinedAt: true, user: { select: { discordName: true } } }, orderBy: { joinedAt: "asc" } },
+      members: { where: activeTeamMemberWhere(communityId), select: { userId: true, joinedAt: true, user: { select: { discordName: true, communityMemberStats: { where: { communityId }, select: { xpTotal: true } } } } }, orderBy: { joinedAt: "asc" } },
       sessions: {
         where: { AND: [accessibleSessions, { status: { in: ["VOTING", "SCHEDULED"] }, date: { gte: new Date() } }] },
         select: { id: true, date: true, status: true, decidedGame: { select: { name: true } } },
@@ -50,6 +55,12 @@ export async function listCommunityTeams(userId: string, communityId: string) {
     },
     orderBy: [{ isRecruiting: "desc" }, { createdAt: "desc" }],
   });
+  return teams.map((team) => ({
+    ...team,
+    xpScore: rankCommunityTeamMembersByXp(team.members.map(({ userId, user }) => ({
+      userId, discordName: user.discordName, xpTotal: user.communityMemberStats[0]?.xpTotal ?? 0,
+    }))),
+  }));
 }
 
 export async function listMemberCommunityTeamOptions(userId: string, communityId: string) {
