@@ -50,6 +50,9 @@ for (const category of manifest.category_order) {
   const sameName = !category.reuse_category_id && channels.find(x => x.type === 4 && x.name === category.name);
   if (apply && sameName) permissions.assertExistingCategoryPermissionPolicyMatches(sameName, category);
   const parent = existing ?? sameName;
+  if (apply && parent && category.channels.some(channel => !channel.reuse_id)) {
+    permissions.permissionOverwritesForChild(parent);
+  }
   plan.push({action:existing?"rename-category":sameName?"reuse-category":"create-category",id:parent?.id,name:category.name});
   for (const ch of category.channels) {
     const old=ch.reuse_id&&map.get(ch.reuse_id);
@@ -100,4 +103,3 @@ for(const c of manifest.category_order){
   }
 }
 console.log("PHASE 1 COMPLETE. Verify real permissions and categories before any archive moves.");
-

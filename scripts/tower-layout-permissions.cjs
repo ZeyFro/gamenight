@@ -12,7 +12,10 @@ function assertCategoriesHavePermissionPolicy(categories) {
 }
 
 function permissionOverwritesForChild(parentCategory) {
-  return Array.isArray(parentCategory?.permission_overwrites) ? parentCategory.permission_overwrites : [];
+  if (!Array.isArray(parentCategory?.permission_overwrites)) {
+    throw new Error("Cannot verify parent category permissions: " + (parentCategory?.name ?? "unknown"));
+  }
+  return parentCategory.permission_overwrites;
 }
 
 function assertExistingCategoryPermissionPolicyMatches(existing, category) {
@@ -36,4 +39,3 @@ module.exports = {
   findCategoriesMissingPermissionPolicy,
   permissionOverwritesForChild,
 };
-

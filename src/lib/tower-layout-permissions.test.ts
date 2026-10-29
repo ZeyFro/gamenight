@@ -46,5 +46,11 @@ describe("Tower category permission policy", () => {
       permission_overwrites: live,
     }, { name: "Restricted", permission_overwrites: approved })).not.toThrow();
   });
-});
 
+  it("blocks creating a child channel when Discord omits the parent's overwrite policy", () => {
+    expect(() => permissions.permissionOverwritesForChild({
+      id: "category-id",
+      name: "Restricted",
+    })).toThrow("Cannot verify parent category permissions: Restricted");
+  });
+});
