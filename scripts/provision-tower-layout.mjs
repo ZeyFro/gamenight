@@ -47,13 +47,16 @@ const plan=[];
 for (const category of manifest.category_order) {
   const existing = category.reuse_category_id&&map.get(category.reuse_category_id);
   if(category.reuse_category_id && (!existing||existing.type!==4)) throw new Error("Missing/mismatched category "+category.reuse_category_id+" "+category.name);
-  plan.push({action:existing?"rename-category":"create-category",id:existing?.id,name:category.name});
+  const sameName = !category.reuse_category_id && channels.find(x => x.type === 4 && x.name === category.name);
+  if (apply && sameName) permissions.assertExistingCategoryPermissionPolicyMatches(sameName, category);
+  const parent = existing ?? sameName;
+  plan.push({action:existing?"rename-category":sameName?"reuse-category":"create-category",id:parent?.id,name:category.name});
   for (const ch of category.channels) {
     const old=ch.reuse_id&&map.get(ch.reuse_id);
     if(ch.reuse_id && !old) throw new Error("Missing existing channel "+ch.reuse_id+" "+ch.name);
     if(old && ![0,2,5,15].includes(old.type)) throw new Error("Unexpected channel type: "+old.name);
     const type=ch.type==="forum"?15:ch.type==="voice_lobby"?2:0;
-    plan.push({action:old?"rename-channel":"create-channel",id:old?.id,categoryId:existing?.id,name:ch.name,type});
+    plan.push({action:old?"rename-channel":"create-channel",id:old?.id,categoryId:parent?.id,name:ch.name,type});
   }
 }
 for(const c of manifest.archive_candidates){
@@ -97,3 +100,4 @@ for(const c of manifest.category_order){
   }
 }
 console.log("PHASE 1 COMPLETE. Verify real permissions and categories before any archive moves.");
+

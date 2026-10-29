@@ -15,8 +15,25 @@ function permissionOverwritesForChild(parentCategory) {
   return Array.isArray(parentCategory?.permission_overwrites) ? parentCategory.permission_overwrites : [];
 }
 
+function assertExistingCategoryPermissionPolicyMatches(existing, category) {
+  const expected = category.permission_overwrites;
+  const actual = existing?.permission_overwrites;
+  if (!Array.isArray(expected) || !Array.isArray(actual)) {
+    throw new Error("Cannot verify existing category permission policy: " + category.name);
+  }
+  const signature = overwrites => overwrites
+    .map(({ id, type, allow, deny }) => `${id}:${type}:${allow ?? "0"}:${deny ?? "0"}`)
+    .sort()
+    .join("\n");
+  if (signature(actual) !== signature(expected)) {
+    throw new Error("Existing category permission policy differs from manifest: " + category.name);
+  }
+}
+
 module.exports = {
   assertCategoriesHavePermissionPolicy,
+  assertExistingCategoryPermissionPolicyMatches,
   findCategoriesMissingPermissionPolicy,
   permissionOverwritesForChild,
 };
+
