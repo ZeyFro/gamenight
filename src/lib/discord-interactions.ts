@@ -64,6 +64,7 @@ export interface InteractionOutput {
   body?: unknown;
   runSetup?: () => Promise<void>;
   runRsvp?: () => Promise<void>;
+  runTower?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -105,6 +106,14 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const interaction = parsed.data;
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
+  if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
+    const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
+    return handleSignedTowerAdminInteraction(json, input.timestamp);
+  }
+  if (interaction.data?.custom_id?.startsWith("gn:tower:") || (interaction.type === 2 && interaction.data?.name === "tower")) {
+    const { handleSignedTowerInteraction } = await import("@/lib/discord-tower-challenges");
+    return handleSignedTowerInteraction(json, input.timestamp);
+  }
   if (interaction.type === 3) {
     const customId = interaction.data?.custom_id ?? "";
     const rsvp = parseSessionRsvpId(customId);

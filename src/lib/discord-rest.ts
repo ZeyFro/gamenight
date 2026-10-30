@@ -644,9 +644,9 @@ export async function createSetupChannel(input: { guildId: string; channel: Omit
     parse: (json) => { const r = setupChannelSchema.safeParse(json); return r.success && r.data.guild_id === input.guildId ? r.data : null; } });
 }
 
-export async function editSetupResponse(input: { applicationId: string; token: string; content: string; deadline: Date }) {
+export async function editSetupResponse(input: { applicationId: string; token: string; content: string; components?: DiscordActionRow[]; deadline: Date }) {
   return discordRequest({ interaction: input, method: "PATCH", path: "", deadline: input.deadline,
-    body: { content: input.content, allowed_mentions: { parse: [] } }, parse: parseMessage });
+    body: { content: input.content, ...(input.components === undefined ? {} : { components: input.components }), allowed_mentions: { parse: [] } }, parse: parseMessage });
 }
 
 export interface ListBotGuildsInput {
@@ -1298,5 +1298,21 @@ export async function deleteChannelMessage(
     now: input.now,
     allowEmptyBody: true,
     parse: () => ({ channelId: input.channelId, messageId: input.messageId }),
+  });
+}
+
+
+/** Lecture bornée d'un message choisi comme preuve ; ne retourne pas le contenu de conversation. */
+export async function getTowerProofMessage(input: { channelId: string; messageId: string; deadline: Date; now?: Date }): Promise<DiscordRestResult<{ messageId: string; channelId: string; authorId: string }>> {
+  if (![input.channelId, input.messageId].every(value => /^[0-9]{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de preuve invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "GET", path: `/channels/${input.channelId}/messages/${input.messageId}`, deadline: input.deadline, now: input.now,
+    parse: json => {
+      const parsed = z.object({ id: z.string(), channel_id: z.string(), author: z.object({ id: z.string() }) }).safeParse(json);
+      if (!parsed.success || parsed.data.id !== input.messageId || parsed.data.channel_id !== input.channelId) return null;
+      return { messageId: parsed.data.id, channelId: parsed.data.channel_id, authorId: parsed.data.author.id };
+    },
   });
 }

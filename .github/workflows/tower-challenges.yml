@@ -1,0 +1,70 @@
+name: Tower challenge rules
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/tower-challenge-*.ts'
+      - 'src/lib/tower-challenges*.ts'
+      - 'src/lib/discord-tower-*.ts'
+      - 'src/lib/discord-interactions.ts'
+      - 'src/lib/discord-rest.ts'
+      - 'prisma/**'
+      - 'src/lib/community-scoped-client.ts'
+      - 'src/lib/community-scope.test.ts'
+      - '.github/workflows/tower-challenges.yml'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tower-rules-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Ces tests purs n'utilisent ni Prisma ni les scripts d'installation.
+      - run: npm ci --ignore-scripts
+      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenge-rules.test.ts src/lib/tower-challenge-voting.test.ts src/lib/discord-tower-challenges.test.ts src/lib/discord-tower-season-vote.test.ts src/lib/discord-tower-rest.test.ts src/lib/tower-challenge-announcements.test.ts src/app/api/cron/notification-executor/route.test.ts
+
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: tower_test
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/tower_test
+      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenges.integration.test.ts src/lib/community-scoped-client.test.ts src/lib/community-scope.test.ts --maxWorkers=1
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/tower_test
+      - run: npx next typegen
+      - run: npx tsc --noEmit
