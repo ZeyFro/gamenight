@@ -72,7 +72,21 @@ export async function GET(request: Request) {
     const startedAt = Date.now();
     logger.info("cron:notification-executor", "Batch début.", { owner });
     try {
-      const summary = await runExecutorBatch({ resolver: DISPATCH_RESOLVER, owner });
+      const towerEnabled = process.env.TOWER_CHALLENGES_ENABLED === "true";
+      if (towerEnabled) {
+        try {
+          const { settleDueTowerChallenges } = await import("@/lib/tower-challenges");
+          const tower = await settleDueTowerChallenges(new Date(startedAt + 15000));
+          logger.info("cron:notification-executor", "Clôture Tower.", tower);
+        } catch (error) {
+          logger.error("cron:tower", error, { owner });
+        }
+      }
+      // Le travail Tower et les livraisons partagent le budget existant de 50 s.
+      const summary = await runExecutorBatch({
+        resolver: DISPATCH_RESOLVER, owner,
+        ...(towerEnabled ? { batchBudgetMs: Math.max(0, 50000 - (Date.now() - startedAt)) } : {}),
+      });
       logger.info("cron:notification-executor", "Batch fin.", {
         ...summary,
         durationMs: Date.now() - startedAt,

@@ -40,6 +40,7 @@ import {
 
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
+  "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerSeasonVote", "TowerSeasonVoteBallot",
   "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
@@ -60,6 +61,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
+  "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerSeasonVote", "TowerSeasonVoteBallot",
   "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
@@ -83,11 +85,14 @@ type Row = Record<string, unknown>;
 type Args = Record<string, unknown> | undefined;
 
 const FILTERED = new Set([
+  "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerSeasonVote", "TowerSeasonVoteBallot",
   "findMany", "findFirst", "findFirstOrThrow", "findUnique", "findUniqueOrThrow", "count", "aggregate",
   "groupBy", "update", "updateMany", "updateManyAndReturn", "delete", "deleteMany", "upsert",
 ]);
-const CREATES = new Set(["create", "createMany", "createManyAndReturn"]);
-const UPDATES = new Set(["update", "updateMany", "updateManyAndReturn"]);
+const CREATES = new Set([
+  "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerSeasonVote", "TowerSeasonVoteBallot","create", "createMany", "createManyAndReturn"]);
+const UPDATES = new Set([
+  "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress","update", "updateMany", "updateManyAndReturn"]);
 
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : value === undefined ? [] : [value]);
 

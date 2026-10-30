@@ -73,6 +73,19 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
             </div>
             <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
             <p className="text-xs text-muted">Responsable : {leaderName}</p>
+            {isMember && <div className="grid gap-2 border-t border-border pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">Score de l’équipe</p>
+                <p className="text-sm font-semibold text-accent">{team.xpScore.totalXp.toLocaleString("fr-FR")} XP</p>
+              </div>
+              <p className="text-xs text-muted">Somme de l’XP GameNight des membres actuels dans cette communauté.</p>
+              <ol className="grid gap-1">
+                {team.xpScore.members.map((member, index) => <li key={member.userId} className="flex justify-between gap-3 text-sm">
+                  <span className="text-foreground">{index + 1}. {member.discordName}</span>
+                  <span className="whitespace-nowrap text-muted">{member.xpTotal.toLocaleString("fr-FR")} XP</span>
+                </li>)}
+              </ol>
+            </div>}
             {team.sessions.length > 0 && <div className="grid gap-1 border-t border-border pt-3">
               <p className="text-xs font-medium text-muted">Séances GameNight accessibles</p>
               {team.sessions.map((session) => <Link key={session.id} href={`/sessions/${session.id}`} className="text-sm text-accent hover:underline">

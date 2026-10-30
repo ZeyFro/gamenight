@@ -43,6 +43,12 @@ enum FreeGameStore {
 }
 
 model User {
+  towerChallengeAttempts TowerChallengeAttempt[]
+  towerChallengeParticipations TowerChallengeAttemptParticipant[]
+  towerChallengeVotes TowerChallengeVote[]
+  towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
+  towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
   sessionGalleryMedia SessionGalleryMedia[]
   quickPollsCreated CommunityQuickPoll[]
   quickPollVotes CommunityQuickPollVote[]
@@ -2747,6 +2753,14 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  towerChallengesEnabled Boolean @default(false)
+  towerChallengeDefinitions TowerChallengeDefinition[]
+  towerChallengeAttempts TowerChallengeAttempt[]
+  towerChallengeParticipations TowerChallengeAttemptParticipant[]
+  towerChallengeVotes TowerChallengeVote[]
+  towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonVotes TowerSeasonVote[]
+  towerSeasonVoteBallots TowerSeasonVoteBallot[]
   quickPolls CommunityQuickPoll[]
   quickPollVotes CommunityQuickPollVote[]
   gameEpitaphs CommunityGameEpitaph[]
@@ -2874,6 +2888,7 @@ model CommunityTeam {
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
   members   CommunityTeamMember[]
+  towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
 
   @@index([communityId, isRecruiting, createdAt])
@@ -3123,3 +3138,145 @@ model SessionPreparation {
 
   @@id([sessionId, userId, gameId])
 }
+
+
+// Défis The Tower : isolés de l'XP historique et OFF par défaut.
+enum TowerChallengeMode {
+  SOLO
+  TEAM
+}
+
+enum TowerChallengeAttemptStatus {
+  ASSIGNED
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model TowerChallengeDefinition {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  mode TowerChallengeMode @default(SOLO)
+  title String @db.VarChar(120)
+  instructions String @db.VarChar(1500)
+  rewardFloors Int
+  // Critère d'éligibilité facultatif ; pas de cascade depuis le catalogue des jeux.
+  gameId String? @db.VarChar(191)
+  active Boolean @default(false)
+  createdAt DateTime @default(now())
+  attempts TowerChallengeAttempt[]
+
+  @@unique([id, communityId])
+  @@index([communityId, active, mode])
+}
+
+model TowerChallengeAttempt {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId String?
+  team CommunityTeam? @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: NoAction)
+  definitionId String
+  definition TowerChallengeDefinition @relation(fields: [definitionId, communityId], references: [id, communityId], onDelete: NoAction)
+  requestKey String @db.VarChar(100)
+  // Instantané : une modification du catalogue ne change pas un défi attribué.
+  title String @db.VarChar(120)
+  instructions String @db.VarChar(1500)
+  rewardFloors Int
+  assignedAt DateTime
+  expiresAt DateTime
+  status TowerChallengeAttemptStatus @default(ASSIGNED)
+  submittedAt DateTime?
+  proofText String? @db.VarChar(1500)
+  proofChannelId String? @db.VarChar(20)
+  proofMessageId String? @db.VarChar(20)
+  publicationConsent Boolean @default(false)
+  rewardedAt DateTime?
+  votes TowerChallengeVote[]
+  participants TowerChallengeAttemptParticipant[]
+
+  @@unique([id, communityId])
+  @@unique([communityId, userId, requestKey])
+  @@unique([communityId, teamId, requestKey])
+  @@index([communityId, userId, rewardedAt])
+  @@index([communityId, teamId, status])
+  @@index([communityId, status, submittedAt])
+}
+
+model TowerChallengeAttemptParticipant {
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+  rewardedAt DateTime?
+
+  @@id([attemptId, userId])
+  @@index([communityId, userId, rewardedAt])
+  @@index([communityId, rewardedAt])
+  @@index([attemptId, communityId])
+}
+
+model TowerChallengeVote {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approve Boolean
+  createdAt DateTime
+
+  @@unique([attemptId, userId])
+  @@index([communityId, attemptId])
+}
+
+model TowerChallengeProgress {
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  floorsClimbed BigInt @default(0)
+  lastSoloClaimAt DateTime?
+
+  @@id([communityId, userId])
+}
+model TowerSeasonVote {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  seasonName String @db.VarChar(80)
+  seasonStartAt DateTime
+  seasonEndAt DateTime
+  opensAt DateTime
+  closesAt DateTime
+  candidateUserIds String[]
+  createdAt DateTime @default(now())
+  ballots TowerSeasonVoteBallot[]
+
+  @@unique([id, communityId])
+  @@unique([communityId, seasonStartAt])
+}
+
+model TowerSeasonVoteBallot {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  voteId String
+  vote TowerSeasonVote @relation(fields: [voteId, communityId], references: [id, communityId], onDelete: Cascade)
+  voterUserId String
+  voter User @relation("TowerSeasonVoter", fields: [voterUserId], references: [id], onDelete: Cascade)
+  candidateUserId String
+  candidate User @relation("TowerSeasonCandidate", fields: [candidateUserId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([voteId, voterUserId])
+  @@index([communityId, voteId])
+}
+
