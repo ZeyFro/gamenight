@@ -1,11 +1,12 @@
-# CI des PR vers main : tests (dont intégration sur un Postgres de service
-# jetable), typage, lint, build. Aucun secret ni variable Vercel : la base est
-# celle du conteneur de service, jamais Neon. Pas d'auto-merge.
+# CI des PR vers main (y compris la pile The Tower) : tests (dont intégration
+# sur un Postgres de service jetable), typage, lint, build. Aucun secret ni
+# variable Vercel : la base est celle du conteneur de service, jamais Neon.
+# Pas d'auto-merge.
 name: CI
 
 on:
   pull_request:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'codex/tower-coordinator']
 
 permissions:
   contents: read

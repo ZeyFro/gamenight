@@ -49,3 +49,5 @@ next-env.d.ts
 
 # journaux de la boucle roadmap
 logs/
+
+tower-discord-backup-*.json

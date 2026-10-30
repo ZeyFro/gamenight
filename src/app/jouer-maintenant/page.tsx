@@ -60,7 +60,10 @@ export default async function JouerMaintenantPage({
         Une session spontanée, sans planification — démarre un jeu, tes potes rejoignent librement
         tant qu&apos;elle est active (3h maximum). Distinct des soirées planifiées et de la roulette.
       </p>
-      <Link href="/joueurs" className="text-sm font-medium text-accent">Il te manque un joueur ? Publie une annonce →</Link>
+      <div className="flex flex-wrap gap-3">
+        <Link href="/joueurs" className="text-sm font-medium text-accent">Il te manque un joueur ? Publie une annonce →</Link>
+        <Link href="/equipes" className="text-sm font-medium text-accent">Créer un projet d’équipe durable →</Link>
+      </div>
 
       {errorMessage && (
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p>

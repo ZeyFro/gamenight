@@ -198,6 +198,8 @@ model User {
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
+  ledCommunityTeams CommunityTeam[] @relation("CommunityTeamCreator")
+  communityTeamMemberships CommunityTeamMember[]
 
   // Confidentialité des soirées — voir `SessionInvite` plus bas. Trois
   // relations distinctes vers `User` (invité, invitant, révocateur),
@@ -424,6 +426,7 @@ model Game {
   // V2 ("Jouer maintenant") — voir `InstantSession`.
   instantSessions InstantSession[]
   playerClassifieds PlayerClassified[]
+  communityTeams CommunityTeam[]
 
   // Sprint 5 (Wishlist) — au plus une entrée wishlist par jeu (voir
   // `@@unique([gameId])` sur `GameWishlist`), donc relation singulière
@@ -657,12 +660,15 @@ model Session {
   // Additif : jamais NOT NULL tant que l'étape « contract » n'est pas validée.
   communityId String?
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  communityTeamId String?
+  communityTeam CommunityTeam? @relation(fields: [communityTeamId], references: [id], onDelete: SetNull)
 
   // Sessions créées comme occurrences d'une même création récurrente. Null
   // pour les anciennes séries et quand la gestion groupée est désactivée.
   recurrenceGroupId String?
 
   @@index([communityId])
+  @@index([communityTeamId])
   @@index([recurrenceGroupId])
 
   createdBy         User               @relation(fields: [createdById], references: [id])
@@ -2766,6 +2772,8 @@ model Community {
   freeGamesEnabled Boolean @default(false)
   groupPurchasePlansEnabled Boolean @default(false)
   playerClassifiedsEnabled Boolean @default(false)
+  communityTeamsEnabled Boolean @default(false)
+  towerLevelsPerFloor Int @default(10)
 
   // Null seulement pour la communauté par défaut tant que
   // `DISCORD_BOT_GUILD_ID` n'est pas renseignée.
@@ -2803,6 +2811,8 @@ model Community {
   instantSessions InstantSession[]
   freeGameOffers FreeGameOffer[]
   playerClassifieds PlayerClassified[]
+  teams CommunityTeam[]
+  teamMemberships CommunityTeamMember[]
   weeklyChallenges WeeklyChallenge[]
   monthlyRecaps MonthlyRecap[]
   seasons Season[]
@@ -2845,6 +2855,45 @@ model PlayerClassified {
 
   @@index([communityId, expiresAt])
   @@index([createdById, communityId])
+}
+
+model CommunityTeam {
+  id          String   @id @default(cuid())
+  communityId String
+  gameId      String
+  createdById String
+  name        String   @db.VarChar(80)
+  description String   @db.VarChar(1000)
+  platform    String   @db.VarChar(40)
+  maxMembers  Int
+  isRecruiting Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
+  createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members   CommunityTeamMember[]
+  sessions  Session[]
+
+  @@index([communityId, isRecruiting, createdAt])
+  @@index([createdById, communityId])
+  @@unique([id, communityId])
+}
+
+model CommunityTeamMember {
+  id          String   @id @default(cuid())
+  communityId String
+  teamId      String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  community Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([communityId, userId])
 }
 
 model SessionGalleryMedia {

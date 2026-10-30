@@ -1,0 +1,1 @@
+ALTER TABLE "Community" ADD COLUMN "towerLevelsPerFloor" INTEGER NOT NULL DEFAULT 10;
