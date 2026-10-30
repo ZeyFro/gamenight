@@ -220,7 +220,10 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await vote(id, "tower-a2", true)).status).toBe("CLOSED");
   });
   it("une clôture concurrente récompense une seule fois", async () => {
-    const id = await submitted(); await approve(id);
+    const id = await submitted();
+    expect((await vote(id, "tower-a1", true)).status).toBe("VOTED");
+    expect((await vote(id, "tower-a2", true)).status).toBe("VOTED");
+    expect((await vote(id, "tower-a3", false)).status).toBe("VOTED");
     expect((await settle(id)).status).toBe("OPEN");
     clock.now = new Date("2026-10-29T12:00:00Z");
     const results = await Promise.all([settle(id), settle(id)]);
@@ -275,11 +278,22 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(2));
     expect(await db.towerChallengeAttemptParticipant.count({ where: { attemptId: first.attempt.id, rewardedAt: { not: null } } })).toBe(2);
   });
-  it("refuse la preuve à l'échéance si le quorum manque", async () => {
+  it("laisse une preuve en attente après 24 h si le quorum de trois votes manque", async () => {
     const id = await submitted();
     await vote(id, "tower-a1", true); await vote(id, "tower-a2", false);
     clock.now = new Date("2026-10-29T12:00:00Z");
-    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    expect(await settle(id)).toMatchObject({ status: "OPEN", approvals: 1, rejections: 1 });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("SUBMITTED");
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
+  });
+  it("refuse une égalité après le quorum et ne récompense pas l'étage", async () => {
+    const id = await submitted();
+    for (const [userId, approve] of [
+      ["tower-a1", true], ["tower-a2", true], ["tower-a3", false], ["tower-a4", false],
+    ] as const) expect((await vote(id, userId, approve)).status).toBe("VOTED");
+    clock.now = new Date("2026-10-29T12:00:00Z");
+    expect(await settle(id)).toMatchObject({ status: "REJECTED", approvals: 2, rejections: 2 });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("REJECTED");
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
   it("clôture automatiquement une preuve sans bulletin après 24 heures", async () => {
@@ -383,7 +397,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       eligible: true, action: { kind: "send_channel_message_verified", channelId: "444444444444444444", message: { allowedMentions: { parse: [] } } },
     });
   });
-  it("clôture automatiquement à 24 h une seule fois, sans valider une preuve sans quorum", async () => {
+  it("clôture automatiquement à 24 h une seule fois et laisse sans quorum en attente", async () => {
     vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const id = await submitted();
@@ -393,15 +407,17 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     if (second.status !== "CLAIMED") throw new Error("Second défi attendu");
     await api.submitTowerChallengeProof({ ...proof(second.attemptId), ...other });
     clock.now = new Date("2026-10-29T11:59:59Z");
-    await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    const beforeClose = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(beforeClose.processed).toBe(0);
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("SUBMITTED");
     clock.now = new Date("2026-10-29T12:00:00Z");
-    await Promise.all([
+    const summaries = await Promise.all([
       api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000)),
       api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000)),
     ]);
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("APPROVED");
-    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: second.attemptId } })).status).toBe("REJECTED");
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: second.attemptId } })).status).toBe("SUBMITTED");
+    expect(summaries.reduce((total, summary) => total + summary.processed, 0)).toBe(1);
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(1));
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "false");
     expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ processed: 0 });

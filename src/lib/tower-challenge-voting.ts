@@ -37,6 +37,7 @@ export function evaluateChallengeVote(input: {
   }
   const tally = { approvals, rejections };
   if (current < closes) return { status: "OPEN", ...tally };
-  if (voters.size < 3 || approvals === rejections) return { status: "REJECTED", ...tally };
+  if (voters.size < 3) return { status: "OPEN", ...tally };
+  if (approvals === rejections) return { status: "REJECTED", ...tally };
   return { status: approvals > rejections ? "APPROVED" : "REJECTED", ...tally };
 }

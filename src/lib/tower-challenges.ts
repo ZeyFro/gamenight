@@ -479,8 +479,8 @@ export async function settleDueTowerChallenges(deadline: Date) {
       WHERE a."communityId" = ${community.id} AND a.status = 'SUBMITTED' AND a."submittedAt" <= ${cutoff}::timestamp
         AND ((a."teamId" IS NULL AND m.status = 'ACTIVE') OR (a."teamId" IS NOT NULL AND team_member."userId" IS NOT NULL))
       GROUP BY a.id, a."userId", a."communityId", a."teamId", a."submittedAt", team_member."userId"
-      HAVING COUNT(v.id) < 3
-        OR COUNT(v.id) FILTER (WHERE v.approve) = COUNT(v.id) FILTER (WHERE NOT v.approve)
+      HAVING COUNT(v.id) >= 3 AND (
+        COUNT(v.id) FILTER (WHERE v.approve) = COUNT(v.id) FILTER (WHERE NOT v.approve)
         OR COUNT(v.id) FILTER (WHERE NOT v.approve) * 2 > COUNT(v.id)
         OR a."teamId" IS NOT NULL
         OR (
@@ -498,6 +498,7 @@ export async function settleDueTowerChallenges(deadline: Date) {
                 = (${current.toISOString()}::timestamptz AT TIME ZONE 'Europe/Paris')::date
           ) < 2
         )
+      )
       ORDER BY a."submittedAt", a.id LIMIT 25
     `;
   }, { timeout: 5000, maxWait: 1000 });
