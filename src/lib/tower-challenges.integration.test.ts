@@ -296,13 +296,17 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("REJECTED");
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
-  it("clôture automatiquement une preuve sans bulletin après 24 heures", async () => {
+  it("laisse une preuve sans bulletin en attente après 24 heures faute de quorum", async () => {
     vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const id = await submitted();
     clock.now = new Date("2026-10-29T12:00:00Z");
-    await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
-    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("REJECTED");
+    const summary = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(summary.processed).toBe(0);
+    expect((await api.settleTowerChallenge({ ...author, attemptId: id })).status).toBe("OPEN");
+    const attempt = await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } });
+    expect(attempt.status).toBe("SUBMITTED");
+    expect(attempt.rewardedAt).toBeNull();
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
   it("refuse le membre externe, le membre retiré et la communauté suspendue", async () => {
