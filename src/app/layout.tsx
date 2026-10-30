@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { MotionConfig } from "framer-motion";
 import { after } from "next/server";
 import { getOnboardingProgress, missingOnboardingSteps } from "@/lib/onboarding";
@@ -21,18 +20,6 @@ import { SkipLink } from "@/components/SkipLink";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
 import { getSeasonalTheme } from "@/lib/seasonal-theme";
-
-const geistSans = DM_Sans({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const display = Space_Grotesk({ variable: "--font-display", subsets: ["latin"] });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 // PWA : manifest et méta Apple pour l'installation ; le service worker ne
 // garde qu'une page hors-ligne statique, jamais de contenu de compte.
@@ -74,7 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html
       lang="fr"
-      className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <body className={`flex min-h-full flex-col bg-background text-foreground ${user ? "gn-authenticated" : ""} ${seasonalTheme ? `gn-theme-${seasonalTheme}` : ""}`}>
         <MotionConfig reducedMotion="user">
