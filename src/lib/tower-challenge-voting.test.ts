@@ -16,8 +16,8 @@ describe("vote communautaire des défis", () => {
   it("refuse avec une majorité défavorable", () => {
     expect(evaluate([vote("a", false), vote("b", false), vote("c", true)])).toMatchObject({ status: "REJECTED" });
   });
-  it.each([0, 1, 2])("refuse à l'échéance si le quorum de trois votants n'est pas atteint (%i votes)", count => {
-    expect(evaluate(Array.from({ length: count }, (_,i) => vote(String(i), true)))).toEqual({ status: "REJECTED", approvals: count, rejections: 0 });
+  it.each([0, 1, 2])("laisse la preuve en attente à l'échéance si le quorum de trois votants manque (%i votes)", count => {
+    expect(evaluate(Array.from({ length: count }, (_,i) => vote(String(i), true)))).toEqual({ status: "OPEN", approvals: count, rejections: 0 });
   });
   it("refuse à l'échéance si les votes sont à égalité", () => {
     expect(evaluate([vote("a", true), vote("b", true), vote("c", false), vote("d", false)])).toMatchObject({ status: "REJECTED" });
