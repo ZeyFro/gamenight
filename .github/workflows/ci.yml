@@ -48,8 +48,15 @@ jobs:
 
       - run: npx prisma generate
 
-      - name: prisma migrate deploy (base de service)
+      # Le service Postgres est créé neuf pour chaque job : cette étape
+      # applique l'historique complet depuis une base vide.
+      - name: prisma migrate deploy (base vide de service)
         run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+
+      - name: Vérifier le schéma créé par les migrations Tower/équipes
+        run: npx prisma db execute --schema prisma/schema.prisma --stdin < prisma/tests/tower-migrations.assert.sql
         env:
           DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
 
