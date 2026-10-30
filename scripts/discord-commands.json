@@ -4,13 +4,141 @@
     "type": 1,
     "description": "GameNight",
     "default_member_permissions": "32",
-    "integration_types": [0],
-    "contexts": [0],
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
     "options": [
       {
         "type": 1,
         "name": "setup",
         "description": "Active GameNight sur ce serveur"
+      }
+    ]
+  },
+  {
+    "name": "tower",
+    "type": 1,
+    "description": "Tes défis et ta progression The Tower",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "defi",
+        "description": "Reçois ton défi solo ou retrouve celui en cours"
+      },
+      {
+        "type": 1,
+        "name": "progression",
+        "description": "Consulte tes étages et dépose ta preuve"
+      },
+      {
+        "type": 1,
+        "name": "classement",
+        "description": "Consulte le classement du trimestre scolaire"
+      },
+      {
+        "type": 1,
+        "name": "vote",
+        "description": "Vote pour le champion du dernier trimestre"
+      },
+      {
+        "type": 1,
+        "name": "equipe",
+        "description": "Ouvre le défi quotidien de tes équipes"
+      }
+    ]
+  },
+  {
+    "name": "tower-admin",
+    "type": 1,
+    "description": "Gère le catalogue des défis The Tower",
+    "default_member_permissions": "32",
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "ajouter",
+        "description": "Ajoute un défi solo au catalogue",
+        "options": [
+          {
+            "type": 3,
+            "name": "titre",
+            "description": "Titre du défi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          },
+          {
+            "type": 3,
+            "name": "consigne",
+            "description": "Consigne complète du défi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 1500
+          },
+          {
+            "type": 4,
+            "name": "etages",
+            "description": "Nombre d’étages gagnés",
+            "required": true,
+            "min_value": 1,
+            "max_value": 20
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "defis",
+        "description": "Liste une page des défis solo",
+        "options": [
+          {
+            "type": 4,
+            "name": "page",
+            "description": "Numéro de page (12 défis par page)",
+            "required": false,
+            "min_value": 1,
+            "max_value": 10000
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "desactiver",
+        "description": "Désactive un défi sans toucher aux tentatives",
+        "options": [
+          {
+            "type": 3,
+            "name": "id",
+            "description": "ID affiché par /tower-admin defis",
+            "required": true,
+            "min_length": 1,
+            "max_length": 64
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "importer",
+        "description": "Importe une fois le pack de départ de 12 défis solo"
+      },
+      {
+        "type": 1,
+        "name": "importer-equipe",
+        "description": "Importe une fois le pack de départ des défis d'équipe"
       }
     ]
   }
