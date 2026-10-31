@@ -1,11 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const url = process.env.TEST_DATABASE_URL;
+const testDatabaseGuard = (value: string, allowedHost?: string, allowRemote = false) => {
+  const database = new URL(value);
+  if (database.hostname === "127.0.0.1") return;
+  if (allowRemote && database.hostname.endsWith(".neon.tech") && database.hostname === allowedHost && database.pathname === "/tower_test" && database.searchParams.get("sslmode") === "require") return;
+  throw new Error("Postgres isolé uniquement : Neon exige l'hôte explicitement autorisé, tower_test et sslmode=require");
+};
 const towerTestGuildId = "987654321098765432";
 const clock = vi.hoisted(() => ({ now: new Date("2026-10-28T12:00:00Z") }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
-  if (url && new URL(url).hostname !== "127.0.0.1") throw new Error("Postgres local au runner uniquement");
+  if (url) testDatabaseGuard(url, process.env.TEST_DATABASE_HOST, process.env.TEST_DATABASE_ALLOW_REMOTE === "true");
   return { prisma: url ? new PrismaClient({ datasourceUrl: url }) : {} };
 });
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -15,6 +21,17 @@ vi.mock("node:crypto", async importOriginal => {
   return { ...actual, randomInt: vi.fn(() => 0) };
 });
 if (!url) console.warn("[tower-challenge-storage] Postgres absent : intégrations ignorées.");
+
+describe("garde de la base d'intégration Tower", () => {
+  it("n'autorise que Postgres local ou l'hôte Neon explicitement allowlisté pour tower_test", () => {
+    expect(() => testDatabaseGuard("postgresql://user:pass@127.0.0.1:5432/gamenight_test")).not.toThrow();
+    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech")).toThrow();
+    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech", true)).not.toThrow();
+    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/neondb?sslmode=require", "ep-test.neon.tech")).toThrow();
+    expect(() => testDatabaseGuard("postgresql://user:pass@ep-other.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech")).toThrow();
+    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test", "ep-test.neon.tech")).toThrow();
+  });
+});
 
 describe.skipIf(!url)("défis solo et votes persistants", () => {
   let db: import("@prisma/client").PrismaClient;
