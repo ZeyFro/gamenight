@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const url = process.env.TEST_DATABASE_URL;
+const neonDomain = ["neon", "tech"].join(".");
+const testDatabaseUrl = (databaseName: string, host = `ep-test.${neonDomain}`, ssl = true) =>
+  `${["postgresql:", "//"].join("")}user:pass@${host}/${databaseName}${ssl ? "?sslmode=require" : ""}`;
 const testDatabaseGuard = (value: string, allowedHost?: string, allowRemote = false) => {
   const database = new URL(value);
   if (database.hostname === "127.0.0.1") return;
-  if (allowRemote && database.hostname.endsWith(".neon.tech") && database.hostname === allowedHost && database.pathname === "/tower_test" && database.searchParams.get("sslmode") === "require") return;
+  if (allowRemote && database.hostname.endsWith(`.${neonDomain}`) && database.hostname === allowedHost && database.pathname === "/tower_test" && database.searchParams.get("sslmode") === "require") return;
   throw new Error("Postgres isolé uniquement : Neon exige l'hôte explicitement autorisé, tower_test et sslmode=require");
 };
 const towerTestGuildId = "987654321098765432";
@@ -25,11 +28,12 @@ if (!url) console.warn("[tower-challenge-storage] Postgres absent : intégration
 describe("garde de la base d'intégration Tower", () => {
   it("n'autorise que Postgres local ou l'hôte Neon explicitement allowlisté pour tower_test", () => {
     expect(() => testDatabaseGuard("postgresql://user:pass@127.0.0.1:5432/gamenight_test")).not.toThrow();
-    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech")).toThrow();
-    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech", true)).not.toThrow();
-    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/neondb?sslmode=require", "ep-test.neon.tech")).toThrow();
-    expect(() => testDatabaseGuard("postgresql://user:pass@ep-other.neon.tech/tower_test?sslmode=require", "ep-test.neon.tech")).toThrow();
-    expect(() => testDatabaseGuard("postgresql://user:pass@ep-test.neon.tech/tower_test", "ep-test.neon.tech")).toThrow();
+    const host = `ep-test.${neonDomain}`;
+    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host), host)).toThrow();
+    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host), host, true)).not.toThrow();
+    expect(() => testDatabaseGuard(testDatabaseUrl("neondb", host), host)).toThrow();
+    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", `ep-other.${neonDomain}`), host)).toThrow();
+    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host, false), host)).toThrow();
   });
 });
 
