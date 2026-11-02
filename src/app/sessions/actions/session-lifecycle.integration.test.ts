@@ -62,7 +62,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
   afterAll(async () => {
     await db.$disconnect();
   });
-  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   beforeEach(async () => {
     vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "false");
@@ -122,6 +122,9 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
   });
 
   it.each([false, true])("crée une série mensuelle atomique et rejoue la même intention sans dupliquer les occurrences (gestion groupée %s)", async (enabled) => {
+    // Dates attendues codées en dur (2026-11-07 puis +1 mois…) : on fige seulement Date pour que le test ne dépende pas du jour d'exécution.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
     vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", String(enabled));
     await db.community.upsert({ where: { slug: "default" }, update: { status: "ACTIVE" }, create: { slug: "default", name: "default", status: "ACTIVE" } });
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
