@@ -39,7 +39,7 @@ const handle = async (rawBody: string, headers: { signature?: string | null; tim
   const out = await handleDiscordInteraction({
     rawBody,
     signature: headers.signature === undefined ? "sig" : headers.signature,
-    timestamp: headers.timestamp === undefined ? "123" : headers.timestamp,
+    timestamp: headers.timestamp === undefined ? String(Math.floor(Date.now() / 1000)) : headers.timestamp,
   });
   if (out.runSetup) {
     expect(setup).not.toHaveBeenCalled();
@@ -89,6 +89,12 @@ describe("handleDiscordInteraction", () => {
         timestamp: "999",
         rawBody: command(),
       });
+    });
+
+    it("commande signée mais horodatage périmé ou absent : 400, aucune configuration", async () => {
+      await expect(handle(command(), { timestamp: "123" })).resolves.toEqual({ status: 400 });
+      await expect(handle(command(), { timestamp: null })).resolves.toEqual({ status: 400 });
+      expect(setup).not.toHaveBeenCalled();
     });
 
     it("corps non JSON ou de forme inattendue : 400 (après la signature)", async () => {

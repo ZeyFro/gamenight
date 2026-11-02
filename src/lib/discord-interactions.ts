@@ -149,6 +149,9 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     } };
   }
   if (interaction.type !== 2) return { status: 400 };
+  // Même règle que pour les boutons RSVP : la signature seule n'expire pas, un corps signé ancien n'est jamais rejoué.
+  const commandTimestamp = Number(input.timestamp);
+  if (!Number.isFinite(commandTimestamp) || Math.abs(Date.now() / 1000 - commandTimestamp) > 300) return { status: 400 };
 
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {
     return reply("Commande inconnue.");
