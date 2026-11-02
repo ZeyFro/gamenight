@@ -40,4 +40,34 @@ describe("postToDiscord — allowed_mentions explicite", () => {
     expect(body.allowed_mentions.users).toHaveLength(100);
     expect(body.allowed_mentions.parse).toEqual([]);
   });
+
+  it("renvoie le Retry-After en millisecondes sans deuxième envoi", async () => {
+    fetchMock.mockResolvedValue(new Response('{"retry_after":9}', {
+      status: 429, headers: { "Retry-After": "1.25" },
+    }));
+    expect(await postToDiscord(embed)).toEqual({ ok: false, error: "rate_limited", retryAfterMs: 1250 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("utilise retry_after si l'en-tête est absent ou invalide", async () => {
+    for (const headers of [new Headers(), new Headers({ "Retry-After": "invalide" }), new Headers({ "Retry-After": "-1" })]) {
+      fetchMock.mockClear().mockResolvedValue(new Response('{"retry_after":0.125}', { status: 429, headers }));
+      expect(await postToDiscord(embed)).toEqual({ ok: false, error: "rate_limited", retryAfterMs: 125 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("reste en échec sans délai inventé si la réponse 429 est inexploitable", async () => {
+    for (const body of ["invalide", '{"retry_after":-1}', '{"retry_after":"2"}', '{"retry_after":1e100}']) {
+      fetchMock.mockClear().mockResolvedValue(new Response(body, { status: 429 }));
+      expect(await postToDiscord(embed)).toEqual({ ok: false, error: "rate_limited" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("ne relance pas non plus une autre erreur HTTP", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+    expect(await postToDiscord(embed)).toEqual({ ok: false, error: "http_error" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

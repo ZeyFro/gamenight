@@ -17,7 +17,9 @@ export interface DiscordEmbed {
 export const ACCENT_COLOR = 0x8b5cf6;
 export const DESTRUCTIVE_COLOR = 0xef4444;
 
-export type PostToDiscordResult = { ok: true } | { ok: false; error: string };
+export type PostToDiscordResult =
+  | { ok: true }
+  | { ok: false; error: string; retryAfterMs?: number };
 
 /**
  * Chantier confidentialité des soirées — code d'erreur partagé renvoyé
@@ -91,6 +93,26 @@ export async function postToDiscord(
       // jusqu'à la limite de la plateforme : l'abandon tombe dans le catch ci-dessous.
       signal: AbortSignal.timeout(10_000),
     });
+
+    if (res.status === 429) {
+      // Pas de retry dans la requête : l'appelant peut planifier une nouvelle
+      // tentative après le délai Discord, sans bloquer la clôture de soirée.
+      const header = res.headers.get("Retry-After");
+      let seconds = header?.trim() ? Number(header) : NaN;
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        const body: unknown = await res.json().catch(() => null);
+        seconds = typeof body === "object" && body !== null && "retry_after" in body
+          && typeof body.retry_after === "number" ? body.retry_after : NaN;
+      }
+      const milliseconds = Math.ceil(seconds * 1000);
+      const retryAfterMs = Number.isSafeInteger(milliseconds) && milliseconds >= 0
+        ? milliseconds : undefined;
+      logger.warn("discord", "Webhook limité par Discord ; aucune relance immédiate.", {
+        status: 429,
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+      });
+      return { ok: false, error: "rate_limited", ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) };
+    }
 
     if (!res.ok) {
       const body = (await res.text().catch(() => "")).slice(0, 300);
