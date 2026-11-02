@@ -3219,7 +3219,6 @@ model TowerChallengeAttemptParticipant {
   @@id([attemptId, userId])
   @@index([communityId, userId, rewardedAt])
   @@index([communityId, rewardedAt])
-  @@index([attemptId, communityId])
 }
 
 model TowerChallengeVote {
