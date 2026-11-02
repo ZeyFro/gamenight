@@ -123,8 +123,8 @@ export function handleSignedTowerAdminInteraction(body: unknown, timestamp: stri
           .map(definition => `${definition.id} — ${definition.active ? "actif" : "désactivé"} — +${definition.rewardFloors} étage(s) — ${definition.title.slice(0, 52)}`)
           .join("\n");
       }
-    } catch {
-      logger.error("discord-tower-admin", "L’administration du catalogue a échoué.");
+    } catch (error) {
+      logger.error("discord-tower-admin", error, { task: "runTower" });
     }
     const sent = await editSetupResponse({ applicationId: interaction.application_id, token: interaction.token,
       content: content.slice(0, 1900), deadline: new Date(Date.now() + 10000) });

@@ -239,8 +239,8 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
             : feedback[result.status] ?? response.content;
         }
       }
-    } catch {
-      logger.error("discord-tower", "Le traitement du défi a échoué ; aucune confirmation de réussite envoyée.");
+    } catch (error) {
+      logger.error("discord-tower", error, { task: "runTower" });
       response = { content: "Impossible de confirmer cette action pour le moment. Consulte ta progression avant de réessayer." };
     }
     const sent = await editSetupResponse({ applicationId: i.application_id, token: i.token, ...response, deadline: new Date(Date.now() + 10000) });
