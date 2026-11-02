@@ -87,10 +87,13 @@ export async function postToDiscord(
         embeds: [embed],
         allowed_mentions: webhookAllowedMentions(content),
       }),
+      // Sans délai, un Discord muet laisserait la clôture de session pendante
+      // jusqu'à la limite de la plateforme : l'abandon tombe dans le catch ci-dessous.
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const body = (await res.text().catch(() => "")).slice(0, 300);
       logger.error("discord", `Webhook a répondu ${res.status}`, { status: res.status, body });
       return { ok: false, error: "http_error" };
     }
