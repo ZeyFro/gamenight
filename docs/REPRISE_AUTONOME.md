@@ -1,44 +1,55 @@
-# Point de reprise unique — GameNight — 22 octobre 2026
+# Point de reprise unique — GameNight — 2 novembre 2026
 
-Seul point de reprise à jour. Il remplace les reprises datées et les bilans antérieurs, qui sont historiques. Continuer dans un worktree dédié : le checkout racine est ancien et contient des modifications locales.
+Ce document décrit les constats vérifiés le 2 novembre 2026. Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
 
-État vérifié contre `origin/main` = `e67fd8f` (après #317, #318, #320, #321 et #322). GitHub déclare le déploiement Production de `e67fd8f` en `success` (22 octobre, 18:54 UTC); l'association actuelle des alias n'a pas été revérifiée depuis `26440e1`, dont le déploiement est détaillé plus bas.
+## État publié vérifié
 
-## Production
+- Référence de départ : `main` à `a8242eea0d5853964bf495b53d6d30eeb0eb2371`, fusion de #342 (timeout de 10 secondes du webhook et correctifs de tests/cron).
+- Vercel : déploiement `dpl_332EeJH56oxQpaccf2mV8VVJga2H`, cible Production, `READY` sur ce SHA. Les alias GameNight sont associés, `aliasError=null`. Cela ne prouve pas le binding de la connexion SQL du runtime, ni l'état des flags.
+- Seule PR ouverte au relevé : [#325](https://github.com/ZeyFro/gamenight/pull/325), Draft, tête `ea78a86e194f6e834b133ec772b8d8809ebe8801`, GitHub `mergeable=false`. Les preuves historiques de CI décrites dans la PR ne certifient pas son intégration au `main` actuel.
+- Le build de `main` ne lance plus de migration implicitement (voir `CLAUDE.md` et `scripts/build.mjs`). Ne pas réintroduire cette dépendance.
+- `src/lib/discord-tower-challenges.ts` journalise déjà les échecs de traitement et de livraison privée : le `catch` de traitement n'est pas vide.
 
-- Déploiement Vercel `dpl_EiRGtcdKENELiYuGvV261NPs4GHa` : `READY`, cible `production`, SHA `26440e1`, alias GameNight associés, `aliasError=null` (connecteur Vercel, 22 octobre). Il remplace l’échec du déploiement automatique de `244eee3` (deployment GitHub `7232777326`), dont la cause n’a jamais été établie.
-- Ce que cela prouve : l’association domaine ↔ déploiement à cet instant. Cela ne prouve ni le binding `DATABASE_URL` → Neon ni les configurations runtime.
-- `DATABASE_URL` : variable `sensitive`, cible `production` seule, valeur illisible, modifiée avant le build de ce déploiement, absente de Preview. Binding non prouvé formellement.
-- Neon (lecture seule, `SELECT` sur `_prisma_migrations`, branche `production`) : dernière migration appliquée `20261020110000_tournament_team_bracket`, aucune annulée parmi les 15 plus récentes. C’est la dernière migration de `main` : Production est alignée sur `main`.
-- Les journaux runtime Vercel restent en 403.
+## Neon — lecture seule
 
-## Drapeaux Production (noms seulement)
+Projet `misty-tooth-45335023`, branche primaire/par défaut `production` (`br-super-cell-b1ukvk08`), base `neondb`.
 
-Les valeurs sont `sensitive` donc illisibles : un nom présent ne dit pas ON ou OFF. Seule la présence est établie.
+Le relevé de `_prisma_migrations` a retourné 111 migrations terminées, aucune annulée ; dernière : `20261020110000_tournament_team_bracket`. Les sept migrations Tower présentes dans `main` ci-dessous n'ont aucune entrée dans ce relevé :
 
-- Présents : `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_SESSION_ENABLED`, `DISCORD_DM_TOURNAMENT_ENABLED`, `DISCORD_DM_ROULETTE_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED`, `DISCORD_THREAD_CLEANUP_MODE`, `DISCORD_THREAD_CLOSE_ON_END_ENABLED`, `STEAM_NOW_PLAYING_ENABLED`, `COMMUNITY_AUTO_CREATE_ENABLED`, `COMMUNITY_SETUP_COMMAND_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED`, `AUTH_REQUIRE_GUILD_MEMBER`.
-- Absents, donc éteints (défaut OFF) : `COMMUNITY_ADMIN_ENABLED`, `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED`, `RETENTION_CLEANUP_ENABLED`/`_MODE`, `PAGE_TITLES_ENABLED`, `GUIDE_V2_ENABLED`, `TOURNAMENT_SCORES_ENABLED`, `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`.
-- Les identifiants de salons et de serveur du bot sont des variables `config` chiffrées. Aucune clé VAPID n’est déclarée.
+1. `20261026180000_community_teams`
+2. `20261026190000_session_community_team`
+3. `20261026210000_tower_levels_per_floor`
+4. `20261026220000_community_team_game_restrict`
+5. `20261028140000_tower_challenges`
+6. `20261028230000_tower_season_vote`
+7. `20261029061000_tower_team_challenges`
 
-## PR ouvertes
+Le fichier annoncé `claude/migrations-a-marquer.md` n'est pas publié dans `main` ni dans l'historique Git disponible. La liste ci-dessus vient de la comparaison du dépôt au relevé SQL. **Une entrée manquante ne prouve pas que le SQL est déjà appliqué** : contrôler schéma, contraintes, index et données de remplissage avant tout marquage. La quatrième migration remplace notamment une contrainte de suppression en cascade par `RESTRICT`.
 
-| PR | Tête | Contrôles | Condition restante |
-|---|---|---|---|
-| [#291 XP](https://github.com/ZeyFro/gamenight/pull/291) | `d45ea94` | `verify` et Vercel verts, mergeable | Draft. Ajoute la migration `20261022142500_shop_balance_purchase_reason`, non appliquée en Production. Aucune autorisation de migration. |
-| [#303 Vocal](https://github.com/ZeyFro/gamenight/pull/303) | `1ac6e8c` | à revérifier sur ce SHA | Draft. Contient une migration vocale : la fusionner l'appliquerait au build de production, donc pas de fusion sans autorisation. Les décisions de consentement sont arrêtées et implémentées (commentaire #303 du 22 octobre à 11:01) : opt-in individuel, durées visibles par la personne, le créateur et les admins autorisés, rétention de 30 jours, suppression au retrait et à l'annulation. |
-| [#319 XP, bascule](https://github.com/ZeyFro/gamenight/pull/319) | `dd5f2f0` | pas de `verify` (base = branche de #291) | Draft, rattachée à #291. |
+Branches confirmées présentes, sans modification :
 
-#315 et #316 sont fusionnées. Les décisions déjà acquises restent valables : aucune migration, interruption de writers, restauration Neon, activation de drapeau ou cron, collecte vocale réelle ni notification Discord réelle sans accord écrit pour l’action précise.
+| Branche | Identifiant | État au relevé |
+|---|---|---|
+| `preview-tower-20261030` | `br-wispy-cake-b1ybx9c9` | ready |
+| `preview-tower-v2-20261030` | `br-crimson-lab-b1kiblgy` | ready |
+| `backup-avant-tower-migrations-20261030` | `br-old-hat-b11o5wof` | ready — à conserver |
 
-## Recette navigateur : exécutions distinctes
+Un second appel SQL ciblé a échoué avec HTTP 401 après le premier relevé réussi ; aucune écriture tentée.
 
-- 29/29 : dernier run complet rapporté, sur `1dce077`.
-- 20/22 plus reprises ciblées : exécution distincte, sur un autre SHA. Ne pas additionner ni confondre les deux.
-- Un run local plus ancien (`e27741a`) a été interrompu à l’étape 7 : ce n’est pas un succès.
-- « Code présent » n’est jamais « validé en service » : une recette locale ou sur mock ne valide pas la Production.
+## Blocages d'accès et périmètre local
 
-## Reprise
+- L'exécution de cette reprise est hébergée : le journal Windows `C:\Dev\MEMOIRE_COMMUNE` n'est pas accessible ici. Aucun commit de son contenu local ne doit être inventé.
+- Le navigateur Discord disponible arrive sur la connexion. L'accès du rôle Blacklist au salon `#qui-joue-ce-soir` n'a pas été vérifié ; aucune permission ni publication modifiée.
+- Les valeurs des flags et les intégrations réelles ne sont pas certifiées par les métadonnées de déploiement. Ne pas considérer les listes de flags du 22 octobre comme actuelles.
 
-1. XP : demander l’autorisation de la fenêtre (sauvegarde fraîche restaurée sur cible isolée, application de la migration `20261022142500`, plan de repli). Le script de bascule, le plan de maintenance et la vérification de restauration Docker sont en préparation, sans exécution en Production ; leur état sera porté par la PR correspondante.
-2. Vocal : les décisions produit sont arrêtées (voir #303). Restent trois opérations distinctes à autoriser : la migration vocale en Production, l'installation du worker et l'activation de la collecte.
-3. Hors périmètre, à faire approuver avant construction : paiement intégré, catégories MVP personnalisables par communauté, hors-ligne complet.
+## Phase 3 — accord écrit séparé avant chaque action
+
+Ne rien exécuter dans cette section sans un « OUI » du propriétaire pour l'action précise, dans cet ordre :
+
+1. Créer un snapshot de la branche Production et vérifier sa création avant la suite.
+2. Après preuve que les effets SQL existent déjà et validation des checksums, marquer les sept migrations Tower une par une ; vérifier chaque inscription. Ne pas confondre ce marquage et l'application du SQL.
+3. Supprimer uniquement les deux branches Preview Tower ci-dessus. Ne jamais supprimer `backup-avant-tower-migrations-20261030`.
+4. #325 : pas de fusion sans confirmation explicite de la fenêtre de maintenance et réalisation des étapes 1 et 2. Rappeler les six préconditions de la description de PR : binding Vercel→Neon ; rôles runtime/migration distincts ; barrière et drainage des writers ; sauvegarde fraîche restaurée en isolation ; durée/impact des migrations ; processus de migration explicite avant déploiement. Le snapshot seul ne remplace pas la restauration vérifiée. Les six migrations XP/vocal de #325 sont distinctes des sept migrations Tower ci-dessus.
+5. Activer un flag seulement à la demande du propriétaire, un à la fois. Migration vocale, installation du worker et collecte réelle restent distinctes.
+
+Le propriétaire gère la connexion Codex, les invitations, les permissions/rôles Discord et les publications Discord. Aucun secret ne doit figurer dans un fichier, une PR ou un compte rendu.
