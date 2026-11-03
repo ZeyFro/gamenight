@@ -46,6 +46,14 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 export const maxDuration = 60;
 
 /**
+ * Budget de travail, sous `maxDuration` : au-delà, la route n'entame plus de
+ * nouvel élément et répond `budgetExhausted: true` ; le reste est repris au passage
+ * suivant (chaque étape est idempotente). Évite les coupures à 60 s observées
+ * en production, qui interrompaient une clôture en plein milieu.
+ */
+export const TIME_BUDGET_MS = 45_000;
+
+/**
  * Chaque passe est isolée : une exception dans l'une (base injoignable, session
  * qui plante) ne doit ni sauter les suivantes ni renvoyer un 500 — cron-job.org
  * désactive un job après plusieurs échecs consécutifs (cf. cron reminders).
@@ -78,6 +86,9 @@ export async function GET(request: Request) {
     logger.error("cron:close-sessions", error, { task: "ensureActiveSeasonsExist" });
   }
 
+  const startedAt = Date.now();
+  const shouldContinue = () => Date.now() - startedAt < TIME_BUDGET_MS;
+
   const errors: string[] = [];
   const now = wallClockNow();
   const dueSessions = await runPass("findDueSessions", [] as { id: string; date: Date }[], errors, () =>
@@ -94,6 +105,7 @@ export async function GET(request: Request) {
   const skipped: string[] = [];
 
   for (const session of dueSessions) {
+    if (!shouldContinue()) break;
     let result: Awaited<ReturnType<typeof closeSession>>;
     try {
       result = await closeSession(session.id);
@@ -135,7 +147,7 @@ export async function GET(request: Request) {
   // requête SCHEDULED de closeOverdueScheduledSessions (cf. son
   // commentaire) — l'ordre des deux passes garantit qu'une soirée à 0
   // votant ne peut jamais atteindre DONE.
-  const done = await runPass("closeOverdueScheduledSessions", [] as string[], errors, () => closeOverdueScheduledSessions());
+  const done = await runPass("closeOverdueScheduledSessions", [] as string[], errors, () => closeOverdueScheduledSessions({ shouldContinue }));
   if (done.length > 0) {
     logger.info(
       "cron:close-sessions",
@@ -148,7 +160,7 @@ export async function GET(request: Request) {
   // − 1h) puis tirage des roulettes `OPEN` dont la deadline est dépassée.
   // Voir `src/lib/roulette.ts` pour le détail (verrous atomiques, mêmes
   // mécaniques que `claimSessionClose`).
-  const roulettes = await runPass("processOpenRoulettes", null as Awaited<ReturnType<typeof processOpenRoulettes>> | null, errors, () => processOpenRoulettes());
+  const roulettes = await runPass("processOpenRoulettes", null as Awaited<ReturnType<typeof processOpenRoulettes>> | null, errors, () => processOpenRoulettes({ shouldContinue }));
 
   // V2 ("Jouer maintenant") — même cron, même logique de déclenchement :
   // règle TOUTES les sessions instantanées dont `expiresAt` est dépassée
@@ -161,7 +173,7 @@ export async function GET(request: Request) {
   // les intervalles de présence encore ouverts) ET règle l'XP de
   // participation — jamais un état "expirée mais pas encore réglée"
   // observable après le passage de ce cron.
-  const instantSessions = await runPass("settleAllDueInstantSessions", [] as string[], errors, () => settleAllDueInstantSessions());
+  const instantSessions = await runPass("settleAllDueInstantSessions", [] as string[], errors, () => settleAllDueInstantSessions({ shouldContinue }));
   if (instantSessions.length > 0) {
     logger.info(
       "cron:close-sessions",
@@ -169,5 +181,23 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({ checked: dueSessions.length, closed, skipped, done, roulettes, instantSessions, ...(errors.length ? { errors } : {}) });
+  // Budget atteint : du travail a pu rester (repris au passage suivant).
+  const budgetExhausted = !shouldContinue();
+  if (budgetExhausted) {
+    logger.warn(
+      "cron:close-sessions",
+      `Budget de ${TIME_BUDGET_MS / 1000} s atteint — travail éventuel restant reporté au passage suivant.`
+    );
+  }
+
+  return NextResponse.json({
+    checked: dueSessions.length,
+    closed,
+    skipped,
+    done,
+    roulettes,
+    instantSessions,
+    ...(budgetExhausted ? { budgetExhausted: true } : {}),
+    ...(errors.length ? { errors } : {}),
+  });
 }

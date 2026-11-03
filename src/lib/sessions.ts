@@ -753,18 +753,25 @@ const SCHEDULED_TO_DONE_GRACE_MS = 6 * 60 * 60 * 1000;
  * donc ne peut plus jamais apparaître dans la requête `SCHEDULED`
  * ci-dessous — l'ordre des deux passes garantit cet invariant).
  */
-export async function closeOverdueScheduledSessions(): Promise<string[]> {
+export async function closeOverdueScheduledSessions(
+  options: { shouldContinue?: () => boolean } = {}
+): Promise<string[]> {
   const cutoff = new Date(wallClockNow().getTime() - SCHEDULED_TO_DONE_GRACE_MS);
   const overdue = await prisma.session.findMany({
     where: { status: "SCHEDULED", date: { lte: cutoff } },
     select: { id: true },
   });
 
+  // Budget de temps du cron appelant : on s'arrête entre deux soirées, le
+  // reste est repris au passage suivant (markSessionDone est idempotent).
+  const done: string[] = [];
   for (const session of overdue) {
+    if (options.shouldContinue && !options.shouldContinue()) break;
     await markSessionDone(session.id);
+    done.push(session.id);
   }
 
-  return overdue.map((s) => s.id);
+  return done;
 }
 
 /**
