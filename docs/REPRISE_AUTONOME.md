@@ -1,8 +1,22 @@
-# Point de reprise unique — GameNight — 2 novembre 2026
+# Point de reprise unique — GameNight — 3 novembre 2026
 
-Ce document décrit les constats vérifiés le 2 novembre 2026. Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
+Ce document décrit les constats du 2 novembre 2026, complétés le 3 novembre (section ci-dessous). Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
 
-## État publié vérifié
+## État au 3 novembre 2026
+
+Légende : **vérifié** = constaté dans le dépôt, GitHub ou les logs Vercel ; **rapporté** = déclaré par le propriétaire, non revérifié ici.
+
+- `main` à `8a1cdf37fd841cf75f52437d030a5b9fa67155d0` (#355), vérifié. Fusionnées le 3 novembre : #351, #352 (jeton OAuth révoqué effacé au lieu d'être réessayé), #353 (docs : le build ne migre plus), #354 et #355 (budget de temps de 45 s des crons `close-sessions` et `discord-thread-cleanup`).
+- PR ouvertes : seulement [#325](https://github.com/ZeyFro/gamenight/pull/325) (Draft, ne jamais fusionner hors fenêtre de maintenance). [#347](https://github.com/ZeyFro/gamenight/pull/347) est fermée sans fusion (audit dépassé par #348 à #355). Vérifié.
+- Neon : snapshot de Production créé et sept migrations Tower marquées appliquées (étapes 1 et 2 de la phase 3 ci-dessous), rapporté. Tables Tower vides. Aucun flag Tower actif : la Tour est éteinte. Rapporté.
+- Index `TowerChallengeAttemptParticipant(attemptId, communityId)` : absent du schéma et des migrations depuis #348, cohérent avec la base ; la clé primaire `(attemptId, userId)` couvre les requêtes. Vérifié dans le dépôt.
+- Vercel : `TOWER_DISCORD_GUILD_ID`, `TOWER_DISCORD_CHANNEL_ID` et `TOWER_DISCORD_GENERAL_CHANNEL_ID` créées, rapporté.
+- Discord : `/tower` et `/tower-admin` enregistrées comme commandes du serveur The Tower après réinvitation du bot (scope `bot applications.commands`, permissions minimales de `src/lib/discord-setup-permissions.ts`), rapporté. Le 403 précédent venait de l'application non autorisée sur le serveur.
+- Cron `refresh-discord-profiles` (logs Production du 3 novembre, 20:00 UTC, vérifié) : 0 échec, 0 révoqué, mais les 7 jetons OAuth stockés sont illisibles (déchiffrement impossible) et passent par le repli bot. Cause probable : clé de chiffrement différente de celle des jetons stockés, à confirmer en lecture seule. Les jetons sont réécrits à la prochaine connexion de chaque utilisateur.
+
+Prochaines étapes, chacune sur accord explicite du propriétaire : faire entrer de vrais joueurs et vérifier une annonce de soirée réelle ; puis, sur « go flags » et un par jour : `towerChallengesEnabled` (communauté), `TOWER_CHALLENGES_ENABLED`, import du catalogue par `/tower-admin`, `TOWER_DISCORD_ANNOUNCE_ENABLED`.
+
+## État publié vérifié (relevé du 2 novembre)
 
 - Référence actuelle : `main` à `dc060f57dd3aea156ab49471ef8ada25fe6a018d` (fusion de #348, index Prisma Tower aligné sur la base). Relevé initial du 2 novembre fait à `a8242eea0d5853964bf495b53d6d30eeb0eb2371` (#342). `prisma/migrations` contient **118** dossiers de migration à ce SHA : 111 relevées appliquées dans Neon + les 7 migrations Tower ci-dessous.
 - Vercel : déploiement `dpl_332EeJH56oxQpaccf2mV8VVJga2H`, cible Production, `READY` au SHA `a8242ee` (relevé initial, non revérifié depuis). Les alias GameNight étaient associés, `aliasError=null`. Cela ne prouve pas le binding de la connexion SQL du runtime, ni l'état des flags.
@@ -14,7 +28,7 @@ Ce document décrit les constats vérifiés le 2 novembre 2026. Les anciens bila
 
 Projet `misty-tooth-45335023`, branche primaire/par défaut `production` (`br-super-cell-b1ukvk08`), base `neondb`.
 
-Le relevé de `_prisma_migrations` a retourné 111 migrations terminées, aucune annulée ; dernière : `20261020110000_tournament_team_bracket`. Les sept migrations Tower présentes dans `main` ci-dessous n'ont aucune entrée dans ce relevé :
+Au 3 novembre, ces sept migrations sont marquées appliquées (rapporté, voir plus haut). Relevé du 2 novembre : `_prisma_migrations` a retourné 111 migrations terminées, aucune annulée ; dernière : `20261020110000_tournament_team_bracket`. Les sept migrations Tower présentes dans `main` ci-dessous n'ont aucune entrée dans ce relevé :
 
 1. `20261026180000_community_teams`
 2. `20261026190000_session_community_team`
@@ -44,8 +58,8 @@ Un second appel SQL ciblé a échoué avec HTTP 401 après le premier relevé r�
 
 Ne rien exécuter dans cette section sans un « OUI » du propriétaire pour l'action précise, dans cet ordre :
 
-1. Créer un snapshot de la branche Production et vérifier sa création avant la suite.
-2. Après preuve que les effets SQL existent déjà et validation des checksums, marquer les sept migrations Tower une par une ; vérifier chaque inscription. Ne pas confondre ce marquage et l'application du SQL.
+1. ~~Créer un snapshot de la branche Production~~ — fait (rapporté, 3 novembre). Le snapshot n'a jamais été restauré.
+2. ~~Marquer les sept migrations Tower~~ — fait (rapporté, 3 novembre). Rappel de la règle suivie : après preuve que les effets SQL existent déjà et validation des checksums, marquer les sept migrations Tower une par une ; vérifier chaque inscription. Ne pas confondre ce marquage et l'application du SQL.
 3. ~~Supprimer uniquement les deux branches Preview Tower~~ — fait, vérifié le 2 novembre 2026 : les deux branches sont absentes de la liste Neon. Ne jamais supprimer `backup-avant-tower-migrations-20261030`.
 4. #325 : pas de fusion sans confirmation explicite de la fenêtre de maintenance et réalisation des étapes 1 et 2. Rappeler les six préconditions de la description de PR : binding Vercel→Neon ; rôles runtime/migration distincts ; barrière et drainage des writers ; sauvegarde fraîche restaurée en isolation ; durée/impact des migrations ; processus de migration explicite avant déploiement. Le snapshot seul ne remplace pas la restauration vérifiée. Les six migrations XP/vocal de #325 sont distinctes des sept migrations Tower ci-dessus.
 5. Activer un flag seulement à la demande du propriétaire, un à la fois. Migration vocale, installation du worker et collecte réelle restent distinctes.
