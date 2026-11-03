@@ -146,7 +146,7 @@ export interface ThreadCleanupReport {
   dryRun: boolean;
   sessions: ThreadCleanupKindReport;
   tournaments: ThreadCleanupKindReport;
-  /** Plafond d'actions atteint : le reste sera traité au passage suivant. */
+  /** Plafond d'actions ou budget de temps atteint : le reste sera traité au passage suivant. */
   truncated: boolean;
 }
 
@@ -205,16 +205,21 @@ const TOURNAMENT_TARGET: CleanupTarget = {
  * Parcourt TOUS les événements terminés par pages (curseur sur l'id) —
  * jamais une fenêtre fixe sans tri, où des événements déjà traités
  * pourraient masquer indéfiniment les nouveaux. Le nombre d'intentions
- * enqueue-ées par passage reste borné (`maxActions`).
+ * enqueue-ées par passage reste borné (`maxActions`), et la durée du
+ * parcours aussi (`shouldContinue`, vérifié avant chaque page et chaque
+ * action) : le parcours relit tout l'historique terminé, qui ne fait que
+ * grandir.
  */
 async function processTarget(
   target: CleanupTarget,
   report: ThreadCleanupKindReport,
   budget: { remaining: number },
-  opts: { dryRun: boolean; now: Date }
+  opts: { dryRun: boolean; now: Date; shouldContinue?: () => boolean }
 ): Promise<boolean> {
+  const outOfTime = () => opts.shouldContinue !== undefined && !opts.shouldContinue();
   let cursor: string | undefined;
   for (;;) {
+    if (outOfTime()) return true;
     const ids = await target.loadPage(cursor);
     if (ids.length === 0) return false;
     cursor = ids[ids.length - 1];
@@ -234,7 +239,7 @@ async function processTarget(
       }
       if (decision !== "archive" && decision !== "delete") continue;
 
-      if (budget.remaining <= 0) return true;
+      if (budget.remaining <= 0 || outOfTime()) return true;
       budget.remaining -= 1;
       if (decision === "archive") {
         if (!opts.dryRun) await target.enqueueArchive(id);
@@ -256,6 +261,8 @@ export async function runDiscordThreadCleanup(opts: {
   dryRun: boolean;
   now?: Date;
   maxActions?: number;
+  /** Budget de temps du cron appelant ; absent = pas de limite de durée. */
+  shouldContinue?: () => boolean;
 }): Promise<ThreadCleanupReport> {
   const now = opts.now ?? wallClockNow();
   const budget = { remaining: opts.maxActions ?? THREAD_CLEANUP_MAX_ACTIONS_PER_RUN };
@@ -266,12 +273,10 @@ export async function runDiscordThreadCleanup(opts: {
     truncated: false,
   };
 
-  report.truncated = await processTarget(SESSION_TARGET, report.sessions, budget, { dryRun: opts.dryRun, now });
+  const targetOpts = { dryRun: opts.dryRun, now, shouldContinue: opts.shouldContinue };
+  report.truncated = await processTarget(SESSION_TARGET, report.sessions, budget, targetOpts);
   if (!report.truncated) {
-    report.truncated = await processTarget(TOURNAMENT_TARGET, report.tournaments, budget, {
-      dryRun: opts.dryRun,
-      now,
-    });
+    report.truncated = await processTarget(TOURNAMENT_TARGET, report.tournaments, budget, targetOpts);
   }
   return report;
 }
