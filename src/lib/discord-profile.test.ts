@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const { prismaMock, fetchMock } = vi.hoisted(() => ({
-  prismaMock: { user: { findMany: vi.fn(), update: vi.fn() } },
+  prismaMock: { user: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() } },
   fetchMock: vi.fn(),
 }));
 
@@ -108,5 +108,45 @@ describe("refreshAllDiscordProfiles", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.bot.rateLimited).toBe(true);
+  });
+  it("invalid_grant au renouvellement : jetons effacés (compare-and-set), compté révoqué et pas en échec", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes("/oauth2/token")
+        ? new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })
+        : profileOk("1")
+    );
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 1, failed: 0, updated: 0 });
+    expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+      where: { discordId: "1", discordRefreshToken: "refresh-1" },
+      data: { discordAccessToken: null, discordRefreshToken: null, discordTokenExpiresAt: null },
+    });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/users/@me"))).toBe(false);
+  });
+
+  it("erreur transitoire au renouvellement (500) : compté en échec, jetons conservés", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockResolvedValue(new Response("oops", { status: 500 }));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 0, failed: 1 });
+    expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("400 sans invalid_grant (ex. invalid_request) : jamais traité comme révoqué", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "invalid_request" }), { status: 400 }));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 0, failed: 1 });
+    expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
   });
 });
