@@ -423,7 +423,9 @@ export async function settleInstantSessionIfDue(instantSessionId: string): Promi
  * son commentaire de fichier) : couvre le cas "aucun navigateur ouvert à
  * l'expiration", que la purge de rétention (opt-in, `retention.ts`) soit
  * activée ou non. */
-export async function settleAllDueInstantSessions(): Promise<string[]> {
+export async function settleAllDueInstantSessions(
+  options: { shouldContinue?: () => boolean } = {}
+): Promise<string[]> {
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const now = wallClockNow();
   const due = await scopedDb.instantSession.findMany({
@@ -432,6 +434,8 @@ export async function settleAllDueInstantSessions(): Promise<string[]> {
   });
   const settled: string[] = [];
   for (const { id } of due) {
+    // Budget de temps du cron appelant : le reste au passage suivant.
+    if (options.shouldContinue && !options.shouldContinue()) break;
     const result = await endInstantSession(id, null, "expired");
     if (result.ok) settled.push(id);
   }
