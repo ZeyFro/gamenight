@@ -1,7 +1,7 @@
 # GameNight : suivi de la feuille de route
 
 Lu et mis à jour par `/next-item` (`.claude/commands/next-item.md`), lancé par `scripts/work-roadmap.ps1`.
-Règles de travail des sessions manuelles : `docs/ROADMAP-claude-code.md` (non copiées ici).
+Règles de travail des sessions manuelles : brief `ROADMAP-claude-code.md`, hors dépôt (absent de `docs/`). État courant : `docs/REPRISE_AUTONOME.md`.
 
 ## Fonctionnement de la boucle
 
@@ -13,9 +13,9 @@ Règles de travail des sessions manuelles : `docs/ROADMAP-claude-code.md` (non c
 - **Pas de plafond de PR** : il remplace l’arrêt par lot du brief `ROADMAP-claude-code.md` (qui reste valable pour les sessions manuelles et n’est pas modifié). La numérotation de ce fichier (lots 1→7) n’est pas celle du brief : ici ce fichier fait foi.
 - **Lancement** : `pwsh scripts/work-roadmap.ps1` (`-MaxItems 0` = illimité).
 
-## Lot actuel — #227 (ignoré par la boucle)
+## Lot #227 (historique, ignoré par la boucle)
 
-PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs, relance instantanée sans doublon, veto roulette asynchrone, correctifs de fiabilité. Reste à valider en réel après déploiement (flags `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`).
+L’état courant du projet est dans `docs/REPRISE_AUTONOME.md`. PR #227 **mergée** : veto du vote de jeu, filtre roulette par nombre de joueurs, relance instantanée sans doublon, veto roulette asynchrone, correctifs de fiabilité. Reste à valider en réel après déploiement (flags `VOTE_VETO_ENABLED`, `ROULETTE_PLAYER_FILTER_ENABLED`).
 
 ## Lot 1 — Fiabilité
 
@@ -115,7 +115,7 @@ Ces orientations restent des propositions; elles ne sont ni arbitrées par le pr
 
 ## Parcours livrés à valider en réel (ignorés par la boucle)
 
-Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, filtre joueurs, relance sans doublon (#227) · Historique des soirées · Jeux les plus joués et stats du groupe (compléter les indicateurs : validation) · Wrapped mensuel (le Wrapped annuel serait un ajout distinct) · Vote MVP · Saisons et reset (vérifier en réel) · Bracket visuel · Saisie des scores (`TOURNAMENT_SCORES_ENABLED`, vérifier l'activation) · Annonces de tournoi · Popup/MP Steam et planning · Rappels (voir L1-01).
+Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, filtre joueurs, relance sans doublon (#227) · Historique des soirées · Jeux les plus joués et stats du groupe (compléter les indicateurs : validation) · Wrapped mensuel (le Wrapped annuel serait un ajout distinct) · Vote MVP · Saisons et reset (vérifier en réel) · Bracket visuel · Saisie des scores (`TOURNAMENT_SCORES_ENABLED`, vérifier l'activation) · Annonces de tournoi · Popup/MP Steam et planning · Rappels (voir L1-01) · The Tower (défis par étage, équipes, vote de saison ; migrations Tower marquées appliquées, commandes `/tower` et `/tower-admin` enregistrées ; **Livré mais désactivé** tant que `TOWER_CHALLENGES_ENABLED` et `towerChallengesEnabled` sont éteints).
 
 ## Bilan (rempli par la boucle, un élément à la fois)
 
