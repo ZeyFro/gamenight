@@ -18,6 +18,13 @@ import { runDiscordThreadCleanup } from "@/lib/discord-thread-cleanup";
  */
 export const maxDuration = 60;
 
+/**
+ * Budget de durée du parcours, sous `maxDuration` : au-delà, plus aucune
+ * page ni intention n'est entamée (`report.truncated`), le reste est repris
+ * au passage suivant. Le parcours relit tout l'historique terminé.
+ */
+export const TIME_BUDGET_MS = 45_000;
+
 export async function GET(request: Request) {
   const auth = verifyCronRequest(request);
   if (!auth.ok) {
@@ -35,7 +42,11 @@ export async function GET(request: Request) {
   }
 
   const dryRun = process.env.DISCORD_THREAD_CLEANUP_MODE !== "execute";
-  const report = await runDiscordThreadCleanup({ dryRun });
+  const startedAt = Date.now();
+  const report = await runDiscordThreadCleanup({
+    dryRun,
+    shouldContinue: () => Date.now() - startedAt < TIME_BUDGET_MS,
+  });
 
   logger.info("cron:discord-thread-cleanup", "Passage terminé.", {
     dryRun,
