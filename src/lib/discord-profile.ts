@@ -30,6 +30,14 @@ function discordAvatarUrl(id: string, avatar: string | null, discriminator: stri
   return `https://cdn.discordapp.com/avatars/${id}/${avatar}.${format}`;
 }
 
+/**
+ * Délai maximal d'un appel HTTP Discord de ce cron. Sans lui, un appel
+ * bloqué figeait tout le lot jusqu'à la coupure de la fonction ; un
+ * dépassement lève une erreur, comptée en échec pour CE compte seulement
+ * (try/catch par utilisateur), et le lot continue.
+ */
+const DISCORD_HTTP_TIMEOUT_MS = 10_000;
+
 interface DiscordSelfResponse {
   id: string;
   username: string;
@@ -65,6 +73,7 @@ async function refreshDiscordAccessToken(
 
   const res = await fetch("https://discord.com/api/v10/oauth2/token", {
     method: "POST",
+    signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -269,14 +278,26 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
         accessToken = refreshed.access_token;
         // Chiffre les DEUX valeurs avant d'écrire — un seul `update`
         // Prisma pour la paire complète, jamais l'une sans l'autre.
-        await prisma.user.update({
-          where: { discordId: user.discordId },
-          data: {
-            discordAccessToken: encryptToken(refreshed.access_token, encryptionKey),
-            discordRefreshToken: encryptToken(refreshed.refresh_token, encryptionKey),
-            discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-          },
-        });
+        try {
+          await prisma.user.update({
+            where: { discordId: user.discordId },
+            data: {
+              discordAccessToken: encryptToken(refreshed.access_token, encryptionKey),
+              discordRefreshToken: encryptToken(refreshed.refresh_token, encryptionKey),
+              discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+            },
+          });
+        } catch (error) {
+          // Discord a déjà invalidé l'ancien refresh_token : la nouvelle paire
+          // est perdue et le prochain passage obtiendra invalid_grant. Log
+          // distinct pour reconnaître ce cas, puis l'erreur suit son cours.
+          logger.error(
+            "discord-profile",
+            `Rotation du jeton OAuth perdue pour ${user.discordId} : écriture en base échouée après un renouvellement réussi.`,
+            { discordId: user.discordId }
+          );
+          throw error;
+        }
       } else {
         await encryptLegacyTokens(user, accessToken, storedRefresh.value, encryptionKey);
       }
@@ -288,6 +309,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
       const res = await fetch("https://discord.com/api/v10/users/@me", {
         headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
       });
       if (res.status === 429) {
         rateLimited = true;
@@ -485,6 +507,7 @@ async function refreshAllDiscordProfilesViaBotFor(
     try {
       const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
         headers: { Authorization: `Bot ${botToken}` },
+        signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
       });
       if (res.status === 429) {
         rateLimited = true;
