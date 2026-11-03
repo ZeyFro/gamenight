@@ -202,7 +202,8 @@ de cadence/offre/flags restent des décisions opérateur distinctes.
 `npm run build` appelle `scripts/build.mjs` : avec `VERCEL_ENV=preview`,
 uniquement Prisma generate puis Next build, jamais migrate deploy. Le test
 exécute le vrai script avec processus enfants simulés dans quatre environnements.
-Production conserve migrate deploy avant Next, comme auparavant. Les anciennes
+Depuis #339, Production ne lance plus migrate deploy non plus : le build
+ne migre jamais, les migrations s’appliquent à part après snapshot Neon. Les anciennes
 migrations sont immuables. Une Preview doit utiliser une base isolée avec la
 migration additive appliquée séparément, sinon les créations échoueront faute
 de table ; aucune migration sur une base de production depuis une Preview.
