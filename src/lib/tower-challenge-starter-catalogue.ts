@@ -97,7 +97,7 @@ export const TOWER_STARTER_CHALLENGES = [
   {
     "title": "L'enquête des cinq détails",
     "instructions": "Explore une zone d'un jeu accessible, relève cinq détails cohérents et publie une présentation numérotée avec deux captures de jeu au minimum. Tu peux utiliser un jeu gratuit ou de navigateur.",
-    "rewardFloors": 3
+    "rewardFloors": 2
   },
   {
     "title": "Le défi de patience raisonnée",
@@ -107,6 +107,26 @@ export const TOWER_STARTER_CHALLENGES = [
   {
     "title": "Le reportage des trois actes",
     "instructions": "Raconte en trois actes une séquence complète de jeu (départ, difficulté, solution) avec trois captures de jeu et des légendes originales. Choisis un objectif raisonnable, sans dévoiler de messages privés ; un jeu gratuit convient.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Premier contact GameNight",
+    "instructions": "Rejoins une soirée GameNight avec au moins un membre avec qui tu n’avais encore jamais joué. Après la partie, partage une capture de jeu et cite une chose positive découverte dans cette nouvelle équipe. Aucun contact privé hors GameNight n’est demandé.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le passeur de jeu",
+    "instructions": "Fais découvrir à un membre un jeu ou un mode qu’il ne connaissait pas encore. Jouez ensemble au moins une séquence complète, puis partage une capture de jeu et résume en deux phrases ce que tu lui as montré.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "La soirée surprise",
+    "instructions": "Inscris-toi à une soirée GameNight proposée par un autre membre sur un jeu que tu n’aurais pas choisi spontanément. Participe réellement à la session puis partage une capture de jeu et une courte impression.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le duo de l’inconnu",
+    "instructions": "Avec un membre de la communauté avec qui tu n’avais jamais joué auparavant, accomplissez ensemble un objectif nécessitant une vraie coordination en plusieurs étapes. Fournis au moins deux captures montrant le départ et l’objectif terminé, plus un bref récit du rôle de chacun.",
     "rewardFloors": 3
   },
 ] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
