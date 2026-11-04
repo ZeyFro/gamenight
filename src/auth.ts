@@ -3,7 +3,7 @@ import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 import { encryptToken, getEncryptionKey } from "@/lib/discord-token-crypto";
 import { logger as appLogger } from "@/lib/logger";
-import { safeAuthErrorType } from "@/lib/safe-auth-error-type";
+import { safeAuthErrorType, safeAuthCauseType } from "@/lib/safe-auth-error-type";
 import { parseAdminDiscordIds } from "@/lib/admin-rules";
 import { listOAuthUserGuildIds } from "@/lib/discord-user-guilds";
 import { syncOAuthMemberships } from "@/lib/community-oauth";
@@ -201,7 +201,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   logger: {
     error(error) {
       // Auth.js causes can contain callback parameters: no code/token/body.
-      appLogger.warn("auth", "Auth.js authentication failed.", { type: safeAuthErrorType(error) });
+      appLogger.warn("auth", "Auth.js authentication failed.", { type: safeAuthErrorType(error), causeType: safeAuthCauseType(error) });
     },
   },
 });
