@@ -24,7 +24,7 @@ describe("Preview isolation", () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "not-used");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("must not fetch"));
     const result = await sendChannelMessage({
-      channelId: "123456789012345678", content: "no", deadline: new Date(Date.now() + 10000),
+      channelId: "123456789012345678", content: "no", allowedMentions: { parse: [] }, deadline: new Date(Date.now() + 10000),
     });
     expect(result).toMatchObject({ ok: false, kind: "not_configured" });
     expect(fetchMock).not.toHaveBeenCalled();
