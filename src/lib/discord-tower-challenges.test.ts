@@ -3,8 +3,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(), actor: vi.fn(), claim: vi.fn(), state: vi.fn(), proof: vi.fn(), vote: vi.fn(), settle: vi.fn(),
   edit: vi.fn(), readProof: vi.fn(), leaderboard: vi.fn(), seasonVote: vi.fn(), seasonBallot: vi.fn(),
-  teams: vi.fn(), teamChallenge: vi.fn(), joinTeam: vi.fn(),
+  teams: vi.fn(), teamChallenge: vi.fn(), joinTeam: vi.fn(), warn: vi.fn(), error: vi.fn(),
 }));
+vi.mock("@/lib/logger", () => ({ logger: { warn: mocks.warn, error: mocks.error } }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: mocks.verify }));
 vi.mock("@/lib/community-setup", () => ({ setupCommunityFromGuild: vi.fn() }));
 vi.mock("@/lib/discord-session-rsvp", () => ({ respondToSessionRsvp: vi.fn() }));
@@ -264,6 +265,28 @@ describe("parcours Discord The Tower signé", () => {
     const out = await run(payload("", { type: 2, message: undefined, data: { name: "tower", options: [{ name: "setup", type: 1 }] } }));
     expect(out.status).toBe(400);
     expect(mocks.actor).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new TypeError("private-token-cookie-email"), "TypeError"],
+    [Object.assign(new Error("private-token-cookie-email"), { name: "PrivateCustomName" }), "UnknownTowerError"],
+  ])("filtre l'erreur de runTower joueur et conserve la réponse de secours (%s)", async (failure, category) => {
+    mocks.actor.mockRejectedValue(failure);
+    const response = await run();
+    expect(response.body).toEqual({ type: 5, data: { flags: 64 } });
+    expect(response.runTower).toBeTypeOf("function");
+    await response.runTower!();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith("discord-tower", "Échec du traitement Tower.", {
+      task: "runTower", errorType: category,
+    });
+    expect(mocks.error).not.toHaveBeenCalled();
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.edit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      content: "Impossible de confirmer cette action pour le moment. Consulte ta progression avant de réessayer.",
+    }));
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("private-token-cookie-email");
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("PrivateCustomName");
+    expect(mocks.warn.mock.calls.flat()).not.toContain(failure);
   });
 
 });
