@@ -25,7 +25,8 @@ Le flag est donc **OFF par défaut** si la variable est absente.
 À créer seulement après validation en recette :
 
 - méthode : `GET` ;
-- URL : `https://gamenight-zeyfro.vercel.app/api/cron/tower-team-daily` ;
+- URL : `<URL_PRODUCTION_GAMENIGHT>/api/cron/tower-team-daily` ;
+- relever l’alias Production réellement actif dans Vercel au moment de l’activation ; ne pas figer dans la doc un ancien alias du projet ;
 - horaire : **09:00 chaque jour** ;
 - fuseau : **Europe/Paris** afin de suivre automatiquement CET/CEST ;
 - en-tête : `Authorization: Bearer <CRON_SECRET>` ;
