@@ -49,6 +49,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
 
 ## Switches d'environnement
+- `TOWER_ONBOARDING_PANEL_ENABLED` : panneau Discord à trois boutons (joueurs, soirées, Ascension), OFF par défaut ; exige `TOWER_DISCORD_WELCOME_CHANNEL_ID` et `TOWER_DISCORD_GUILD_ID`. Publication uniquement par un workflow autorisé distinct, aucun auto-envoi ; Preview bloquée. Les réponses aux boutons restent privées et ne changent aucun rôle.
 - `SESSION_CHRONICLES_ENABLED` : chronique texte des soirées DONE, éditée par le créateur et lisible selon l'accès privé à la soirée ; archive Lore paginée par serveur ; OFF par défaut, migration `session_chronicles`. Toute chronique non vide bloque la purge automatique même flag OFF ; suppression volontaire inchangée.
 - `TOURNAMENT_PREDICTIONS_ENABLED` : pronostics immuables champion avant lancement et gagnant de match avant résultat ; membres actifs, sans mise ni gain XP ; OFF par défaut, migration `tournament_predictions`
 - `COMMUNITY_QUICK_POLLS_ENABLED` : sondages éclair par serveur dans Profil → Lore, membres actifs même isolation OFF, 2–6 options immuables, un choix modifiable jusqu’à échéance (7 jours max), résultats agrégés ; aucune notification/XP ; migration `community_quick_polls`, OFF par défaut
