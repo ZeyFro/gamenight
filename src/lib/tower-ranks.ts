@@ -4,7 +4,7 @@ export type TowerPersonalRank = "Irregular" | "Ranker" | "High Ranker";
 export function getTowerPersonalRank(floor: number | bigint, completedSeasons: number): TowerPersonalRank {
   if (!Number.isInteger(completedSeasons) || completedSeasons < 0) throw new RangeError("Saisons terminées invalides");
   const level = typeof floor === "bigint" ? floor : BigInt(floor);
-  if (level < BigInt(1)) throw new RangeError("Étage invalide");
+  if (level < BigInt(0)) throw new RangeError("Étage invalide");
   if (level >= BigInt(100) && completedSeasons >= 1) return "High Ranker";
   if (level >= BigInt(30)) return "Ranker";
   return "Irregular";
