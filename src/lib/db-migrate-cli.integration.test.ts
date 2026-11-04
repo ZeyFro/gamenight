@@ -121,6 +121,10 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     expect(sameUrl.stderr).toContain("autre rôle");
     const sameRole = run([expectAll], { MIGRATION_DATABASE_URL: url, GAMENIGHT_RUNTIME_ROLE: new URL(url).username });
     expect(sameRole.status).toBe(2);
+    const allowed = run([expectAll, "--allow-shared-role"], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
+    expect(allowed.status, allowed.stdout + allowed.stderr).toBe(0);
+    expect(allowed.stdout).toContain("MODE DÉGRADÉ DE LANCEMENT");
+    expect(await historyTableExists(NEW_DB)).toBe(false);
     const exec = run([expectAll, "--execute", `--confirm-database=${NEW_DB}`], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
     expect(exec.status).toBe(2);
     expect(await historyTableExists(NEW_DB)).toBe(false);
