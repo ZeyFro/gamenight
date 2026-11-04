@@ -34,7 +34,7 @@ export async function listCommunityTeams(userId: string, communityId: string) {
   const scopedDb = await getScopedPrisma(userId);
   const accessibleSessions = await accessibleSessionWhereFor(userId);
   const teams = await scopedDb.communityTeam.findMany({
-    where: { communityId },
+    where: { communityId, OR: [{ isRecruiting: true }, { members: { some: {} } }] },
     select: {
       id: true,
       name: true,
@@ -234,5 +234,62 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     if (open && team._count.members >= team.maxMembers) return "full";
     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
     return updated.count ? "saved" : "missing";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/** Current captain may hand over to an active member of the same team.
+ * The original createdById is never rewritten.
+ */
+export async function transferCommunityTeamCaptain(
+  userId: string, communityId: string, teamId: string, successorId: string,
+): Promise<"transferred" | "invalid" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  if (userId === successorId) return "invalid";
+  return prisma.$transaction(async tx => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
+      select: { captainId: true, createdById: true } });
+    if (!team || (team.captainId ?? team.createdById) !== userId) return "invalid";
+    const eligible = await scopedDb.communityTeamMember.findFirst({
+      where: { teamId, communityId, userId: successorId, ...activeTeamMemberWhere(communityId) },
+      select: { id: true },
+    });
+    if (!eligible) return "invalid";
+    const changed = await scopedDb.communityTeam.updateMany({
+      where: { id: teamId, communityId, captainId: team.captainId },
+      data: { captainId: successorId, captainLastActivityAt: new Date() },
+    });
+    return changed.count ? "transferred" : "invalid";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/** Dissolution logique : conserve la ligne d'équipe et ses défis historiques.
+ * Libère les membres et démarre le délai de 7 jours pour chacun.
+ * Refuse de dissoudre une équipe ayant des défis non terminés.
+ */
+export async function dissolveCommunityTeam(
+  userId: string, communityId: string, teamId: string,
+): Promise<"dissolved" | "active_challenges" | "invalid" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  return prisma.$transaction(async tx => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
+      select: { captainId: true, createdById: true, isRecruiting: true,
+        members: { select: { userId: true } } } });
+    if (!team || (team.captainId ?? team.createdById) !== userId || team.members.length === 0) return "invalid";
+    const pending = await scopedDb.towerChallengeAttempt.count({
+      where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
+    });
+    if (pending) return "active_challenges";
+    const departed = team.members.map(member => member.userId);
+    await scopedDb.communityTeam.update({
+      where: { id: teamId }, data: { isRecruiting: false },
+    });
+    await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
+    await tx.membership.updateMany({ where: { communityId, userId: { in: departed } },
+      data: { lastTeamLeftAt: new Date() } });
+    return "dissolved";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
