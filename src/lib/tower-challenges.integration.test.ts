@@ -134,8 +134,8 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       data: rows.map(([id, userId, rewardFloors, rewardedAt]) => ({
         id, communityId: "tower-a", userId, definitionId: "tower-a-easy",
         requestKey: id, title: "Défi classement", instructions: "À réaliser",
-        rewardFloors, assignedAt: new Date("2026-04-01T08:00:00Z"),
-        expiresAt: new Date("2026-04-06T12:00:00Z"), status: "APPROVED" as const,
+        rewardFloors, assignedAt: new Date(new Date(rewardedAt).getTime() - 24 * 3600000),
+        expiresAt: new Date(new Date(rewardedAt).getTime() + 24 * 3600000), status: "APPROVED" as const,
         submittedAt: new Date(rewardedAt), proofText: "Preuve",
         proofChannelId: "123456789012345678", proofMessageId: "223456789012345678",
         publicationConsent: true, rewardedAt: new Date(rewardedAt),
