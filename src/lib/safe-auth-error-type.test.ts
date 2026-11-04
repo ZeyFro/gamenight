@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeAuthErrorType } from "./safe-auth-error-type";
+import { safeAuthErrorType, safeAuthCauseType } from "./safe-auth-error-type";
 
 describe("safeAuthErrorType", () => {
   it("uses stable Auth.js type instead of potentially minified name", () => {
@@ -14,5 +14,20 @@ describe("safeAuthErrorType", () => {
   it("handles absent or malformed errors", () => {
     expect(safeAuthErrorType(null)).toBe("UnknownAuthError");
     expect(safeAuthErrorType({ type: 4 })).toBe("UnknownAuthError");
+  });
+});
+
+describe("safeAuthCauseType", () => {
+  it("reads the allowlisted nested Auth.js type from cause.err", () => {
+    expect(safeAuthCauseType({ type: "CallbackRouteError", cause: { err: { type: "InvalidCallbackUrl", name: "m" } } }))
+      .toBe("InvalidCallbackUrl");
+  });
+  it("reads only the generic class of a JS error", () => {
+    expect(safeAuthCauseType({ cause: { err: new TypeError("private token email") } })).toBe("TypeError");
+  });
+  it("never emits messages, secrets or custom names", () => {
+    expect(safeAuthCauseType({ cause: { err: { name: "TokenLeak", type: "secret", message: "x@y.fr cookie" } } }))
+      .toBe("UnknownAuthCause");
+    expect(safeAuthCauseType({ cause: null })).toBe("UnknownAuthCause");
   });
 });
