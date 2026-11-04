@@ -269,7 +269,7 @@ export async function transferCommunityTeamCaptain(
 }
 
 /** Dissolution logique : conserve la ligne d'équipe et ses défis historiques.
- * Libère les membres et démarre le délai de 7 jours pour chacun.
+ * Libère tous les membres. Seul le capitaine qui dissout prend le délai de 7 jours.
  * Refuse de dissoudre une équipe ayant des défis non terminés.
  */
 export async function dissolveCommunityTeam(
@@ -287,13 +287,14 @@ export async function dissolveCommunityTeam(
       where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
     });
     if (pending) return "active_challenges";
-    const departed = team.members.map(member => member.userId);
     await scopedDb.communityTeam.update({
       where: { id: teamId }, data: { isRecruiting: false },
     });
     await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
-    await tx.membership.updateMany({ where: { communityId, userId: { in: departed } },
-      data: { lastTeamLeftAt: new Date() } });
+    await tx.membership.update({
+      where: { communityId_userId: { communityId, userId } },
+      data: { lastTeamLeftAt: new Date() },
+    });
     return "dissolved";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
