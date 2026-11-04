@@ -15,7 +15,9 @@ const RESULTS: Record<string, string> = {
   created: "Ton équipe est créée.", joined: "Tu as rejoint l’équipe.", already: "Tu fais déjà partie de cette équipe.",
   left: "Tu as quitté l’équipe.", leader: "Le responsable reste dans son équipe; ferme le recrutement si nécessaire.",
   closed: "Le recrutement est fermé.", full: "Cette équipe est complète.", missing: "Équipe introuvable.",
-  limit: "Limite atteinte : trois équipes créées par période de 24 heures.", invalid: "Vérifie les informations saisies.",
+  limit: "Limite atteinte : trois équipes créées par période de 24 heures.",
+  already_team: "Tu es déjà membre d’une équipe de cette communauté.",
+  cooldown: "Après un départ, tu dois attendre 7 jours avant de rejoindre une autre équipe.", invalid: "Vérifie les informations saisies.",
   invalid_game: "Choisis un jeu disponible.", rate: "Trop de demandes, réessaie dans une minute.",
   unavailable: "Les équipes ne sont pas activées ou tu n’es pas membre actif de cette communauté.",
 };
@@ -53,7 +55,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
           <label className="grid gap-1 text-sm text-foreground">Votre objectif<textarea name="description" required minLength={10} maxLength={1000} rows={3} placeholder="Construire une base et explorer ensemble pendant plusieurs semaines…" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm text-foreground">Plateforme<input name="platform" required maxLength={40} placeholder="PC, PS5, cross-play…" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
-            <label className="grid gap-1 text-sm text-foreground">Taille totale de l’équipe (toi compris)<input name="maxMembers" type="number" required min={2} max={20} defaultValue={6} className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
+            <label className="grid gap-1 text-sm text-foreground">Taille totale de l’équipe (toi compris)<input name="maxMembers" type="number" required min={2} max={8} defaultValue={6} className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           </div>
           <Button type="submit" variant="primary">Créer l’équipe</Button>
         </form>
