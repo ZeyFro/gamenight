@@ -1,12 +1,12 @@
 # The Tower — Catalogue de la saison 1 (proposition à valider)
 
-> **Non importé, non activé.** 30 défis : 22 solo et 8 équipe ; 10 faciles (+1 étage), 10 moyens (+2), 10 difficiles (+3). Le barème est une **proposition** du cahier des charges, pas une décision définitive. Toutes les preuves se limitent à des captures de jeu et des descriptions ; aucun achat ni photo privée obligatoire pour les cinq nouveaux défis gratuits.
+> **Non importé, non activé.** 36 défis : 26 solo et 10 équipe ; 13 faciles (+1 étage), 13 moyens (+2), 10 difficiles (+3). Le barème +1/+2/+3 est **confirmé**. Toutes les preuves se limitent à des captures de jeu et des descriptions ; aucun achat ni photo privée obligatoire pour les cinq nouveaux défis gratuits.
 
 ## Compatibilité des commandes existantes
 
 Les définitions sont directement dans les tableaux lus par les imports existants, sans nouveau schéma :
-- `src/lib/tower-challenge-starter-catalogue.ts` : **22** défis repris par `/tower-admin importer`.
-- `src/lib/tower-team-challenge-starter-catalogue.ts` : **8** défis repris par `/tower-admin importer-equipe`.
+- `src/lib/tower-challenge-starter-catalogue.ts` : **26** défis repris par `/tower-admin importer`.
+- `src/lib/tower-team-challenge-starter-catalogue.ts` : **10** défis repris par `/tower-admin importer-equipe`.
 
 Les fonctions `importSoloTowerChallengeStarterPack` et `importTeamTowerChallengeStarterPack` de `src/lib/tower-challenges.ts` évitent les doublons de titres par communauté et mode. Attention : l'import ne conserve pas un champ de difficulté indépendant ; le niveau est représenté par `rewardFloors`. Il ne doit pas être lancé tant que les commandes ne sont pas enregistrées et qu'une recette isolée n'a pas eu lieu.
 
@@ -44,10 +44,22 @@ Les fonctions `importSoloTowerChallengeStarterPack` et `importTeamTowerChallenge
 | 28 | La photo de classe du jeu | équipe | Moyen |
 | 29 | Les experts du détail inutile | équipe | Moyen |
 | 30 | La cérémonie de la victoire modeste | équipe | Difficile |
+| 31 | Premier contact GameNight | solo social | Facile |
+| 32 | Le passeur de jeu | solo social | Moyen |
+| 33 | La soirée surprise | solo social | Moyen |
+| 34 | Le duo de l’inconnu | solo social | Difficile |
+| 35 | Le salut de l’escouade | équipe | Facile |
+| 36 | Le mini-objectif collectif | équipe | Facile |
+
+## Fraîcheur de la preuve (§9.1)
+
+Le catalogue seul ne peut pas prouver qu’une capture a été produite après l’attribution. Le mécanisme recommandé est un **code de preuve propre à chaque tentative**, généré côté serveur uniquement après l’attribution (par exemple `TWR-7K3P`), affiché sur la fiche du défi et demandé dans la preuve. Il peut apparaître dans un chat/écriteau du jeu lorsque c’est raisonnable, ou dans une composition de preuve GameNight associant la capture au code.
+
+Une alternative doit rester possible pour les jeux où l’insertion du code est impossible. Le code n’est **pas encore implémenté dans cette PR** : la logique d’attribution est actuellement réservée par #373. Tant que ce mécanisme n’est pas livré et testé, aucune preuve ne doit être présentée comme techniquement garantie postérieure à l’attribution.
 
 ## Conditions avant import
 
-1. Accorder explicitement le barème 1/2/3 étages et vérifier qu'une difficulté ne favorise pas artificiellement une preuve facile.
+1. Vérifier après bêta que le barème confirmé 1/2/3 reste cohérent avec la difficulté réelle de chaque défi.
 2. Relire les textes pour l'accessibilité, absence d'achat obligatoire, équité, protection de la vie privée et règles du serveur.
 3. Tester les imports sur une branche de base isolée et un serveur Discord de recette avec commandes guild-only ; vérifier zéro doublon au deuxième passage.
 4. Ne pas importer en production ni activer les flags sans validation du propriétaire. La saison et le calendrier restent à décider.
