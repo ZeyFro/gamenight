@@ -109,6 +109,9 @@ export const TOWER_STARTER_CHALLENGES = [
     "instructions": "Raconte en trois actes une séquence complète de jeu (départ, difficulté, solution) avec trois captures de jeu et des légendes originales. Choisis un objectif raisonnable, sans dévoiler de messages privés ; un jeu gratuit convient.",
     "rewardFloors": 3
   },
+] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
+
+export const TOWER_SEASON1_SOCIAL_CHALLENGES = [
   {
     "title": "Premier contact GameNight",
     "instructions": "Rejoins une soirée GameNight avec au moins un membre avec qui tu n’avais encore jamais joué. Après la partie, partage une capture de jeu et cite une chose positive découverte dans cette nouvelle équipe. Aucun contact privé hors GameNight n’est demandé.",
