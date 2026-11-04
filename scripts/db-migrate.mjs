@@ -1,7 +1,7 @@
 // Migration de base, séparée du build et du démarrage (opération d'exploitation).
 //
-//   node scripts/db-migrate.mjs --expect=<migration1,migration2> [--allow-local]
-//   node scripts/db-migrate.mjs --expect=<…> --execute --confirm-database=<base> [--allow-local]
+//   node scripts/db-migrate.mjs --expect=<migration1,migration2> [--allow-local] [--allow-shared-role]
+//   node scripts/db-migrate.mjs --expect=<…> --execute --confirm-database=<base> [--allow-local] [--allow-shared-role]
 //
 // Variables : MIGRATION_DATABASE_URL (rôle de migration, connexion directe; jamais DATABASE_URL),
 // GAMENIGHT_EXPECTED_TARGET="<hôte>[:port]/<base>" hors machine locale, DATABASE_URL ou
