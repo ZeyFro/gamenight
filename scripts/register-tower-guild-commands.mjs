@@ -13,7 +13,8 @@ if (process.argv.includes("--execute") && process.argv.includes("--check")) {
   process.exit(1);
 }
 const commands = JSON.parse(readFileSync(new URL("./discord-commands.json", import.meta.url), "utf8"))
-  .filter((command) => ["tower", "tower-admin"].includes(command.name));
+  .filter((command) => ["tower", "tower-admin"].includes(command.name))
+  .map((command) => Object.fromEntries(Object.entries(command).filter(([key]) => !["integration_types", "contexts"].includes(key))));
 if (commands.length !== 2 || new Set(commands.map((c) => c.name)).size !== 2) {
   console.error("Les deux commandes Tower attendues doivent être présentes une seule fois.");
   process.exit(1);
