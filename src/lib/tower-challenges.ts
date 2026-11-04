@@ -705,7 +705,7 @@ async function towerSeasonTotals(scopedDb: Prisma.TransactionClient, communityId
         AND p."rewardedAt" >= ${season.startAt} AND p."rewardedAt" < ${season.endAt}
     )
     SELECT e."userId", SUM(e."rewardFloors")::bigint AS "rewardFloors",
-      COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins",
+      /* Le catalogue n’a pas de colonne difficulty : le barème validé 1/2/3 est la source de vérité\n       (1=facile, 2=moyen, 3=difficile). L’attempt conserve rewardFloors en snapshot. */\n      COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins",
       MAX(e."earnedAt") AS "reachedAt"
     FROM earned e
     JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
