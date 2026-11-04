@@ -19,4 +19,26 @@ describe("comptes de test Tower", () => {
     expect(isProductionTowerTestAccount({ discordId: "111", discordName: "recettebot" })).toBe(true);
     expect(isProductionTowerTestAccount({ discordId: "111", discordName: "membre-reel" })).toBe(false);
   });
+
+  it("conserve melah3 même si la liste configurée est vide ou différente", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    for (const configured of ["", " , , ", "autre-compte"]) {
+      vi.stubEnv("TOWER_TEST_ACCOUNT_IDENTIFIERS", configured);
+      expect(isProductionTowerTestAccount({ discordId: null, discordName: " MELAH3 " })).toBe(true);
+    }
+  });
+
+  it("ne bloque pas les membres dont le nom ressemble seulement à un compte de test", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("TOWER_TEST_ACCOUNT_IDENTIFIERS", "RecetteBot");
+    for (const discordName of ["melah30", "vrai-melah3", "RecetteBot2", ""]) {
+      expect(isProductionTowerTestAccount({ discordId: null, discordName })).toBe(false);
+    }
+  });
+
+  it.each(["preview", "development", ""])("autorise la recette hors Production (%s)", environment => {
+    vi.stubEnv("VERCEL_ENV", environment);
+    vi.stubEnv("TOWER_TEST_ACCOUNT_IDENTIFIERS", "999999999999999999");
+    expect(isProductionTowerTestAccount({ discordId: "999999999999999999", discordName: "melah3" })).toBe(false);
+  });
 });
