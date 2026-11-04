@@ -58,7 +58,7 @@ export const TOWER_STARTER_CHALLENGES = [
     "title": "Le podium des pires idées",
     "instructions": "Classe trois objets, lieux ou détails visibles dans ton jeu du plus raisonnable au plus suspect. Partage une capture qui les montre, ou trois captures si nécessaire, puis donne ton podium en trois lignes.",
     "rewardFloors": 2
-  }
+  },
   {
     "title": "Le jeu gratuit du soir",
     "instructions": "Dans un jeu gratuit accessible sans achat (jeu free-to-play, navigateur ou démo gratuite), termine le tutoriel ou un mini-objectif sûr. Partage une capture de l'écran de fin sans pseudo privé ni donnée personnelle.",
