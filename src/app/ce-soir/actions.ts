@@ -3,7 +3,8 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
-import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getPlayerClassifiedCommunityId } from "@/lib/player-classifieds";
 import {
@@ -37,21 +38,23 @@ export async function declareTonightAction(formData: FormData): Promise<void> {
   const createdAt = wallClockNow();
   const message = buildTonightMessage(input.data.note);
   const expiresAt = tonightExpiresAt(createdAt);
-  // Une seule déclaration par joueur : la nouvelle remplace la précédente.
-  // Deux écritures via le client scopé (garde community-scope) : si la
-  // seconde échoue, le joueur n'apparaît simplement plus et peut recliquer.
-  await scopedDb.playerClassified.deleteMany({
-    where: { communityId, createdById: user.id, message: { startsWith: TONIGHT_MESSAGE_PREFIX } },
-  });
-  await scopedDb.playerClassified.createMany({
-    data: input.data.gameIds.map((gameId) => ({
-      communityId,
-      gameId,
-      createdById: user.id,
-      message,
-      createdAt,
-      expiresAt,
-    })),
+  // Remplacement atomique : si la création échoue, les anciennes disponibilités
+  // restent présentes. Le client transactionnel garde le périmètre communautaire.
+  await prisma.$transaction(async (tx) => {
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    await scopedDb.playerClassified.deleteMany({
+      where: { communityId, createdById: user.id, message: { startsWith: TONIGHT_MESSAGE_PREFIX } },
+    });
+    await scopedDb.playerClassified.createMany({
+      data: input.data.gameIds.map((gameId) => ({
+        communityId,
+        gameId,
+        createdById: user.id,
+        message,
+        createdAt,
+        expiresAt,
+      })),
+    });
   });
   revalidatePath("/ce-soir");
   revalidatePath("/joueurs");
