@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { pageMetadata } from "@/lib/page-title";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { getTowerAdminHealth } from "@/lib/admin-health-summary";
 
 export const dynamic = "force-dynamic";
+export const metadata = pageMetadata("Santé · Admin");
 
 export default async function AdminHealthPage() {
   const admin = await requireAdmin();
@@ -30,6 +32,6 @@ export default async function AdminHealthPage() {
     <section><h2 className="font-semibold">Dernière exécution des crons</h2>
       <p className="text-sm text-muted">{report.cronLastRuns}</p>
     </section>
-    <Link href="/admin" className="text-accent underline">Retour à l'administration</Link>
+    <Link href="/admin" className="text-accent underline">Retour à l&apos;administration</Link>
   </main>;
 }
