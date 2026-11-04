@@ -113,6 +113,7 @@ export async function GET() {
   }
 }
 export async function POST(_req: NextRequest) {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503, headers: HEADERS });
   // User requested a fresh audit before any further archiving or destructive cleanup.
   return NextResponse.json({ error: "Archivage suspendu : vérification des systèmes déjà actifs requise." }, { status: 423, headers: HEADERS });
 }
