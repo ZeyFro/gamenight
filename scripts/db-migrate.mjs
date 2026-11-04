@@ -1,7 +1,7 @@
 // Migration de base, séparée du build et du démarrage (opération d'exploitation).
 //
 //   node scripts/db-migrate.mjs --expect=<migration1,migration2> [--allow-local]
-//   node scripts/db-migrate.mjs --expect=<…> --execute --confirm-database=<base> [--allow-local]
+//   node scripts/db-migrate.mjs --expect=<…> --execute --confirm-database=<base> [--allow-local] [--allow-shared-role]
 //
 // Variables : MIGRATION_DATABASE_URL (rôle de migration, connexion directe; jamais DATABASE_URL),
 // GAMENIGHT_EXPECTED_TARGET="<hôte>[:port]/<base>" hors machine locale, DATABASE_URL ou
@@ -48,6 +48,7 @@ async function main() {
     runtimeRole: process.env.GAMENIGHT_RUNTIME_ROLE,
     expectedTarget: process.env.GAMENIGHT_EXPECTED_TARGET,
     allowLocal: args.allowLocal,
+    allowSharedRole: args.allowSharedRole,
     execute: args.execute,
   });
   secrets.push(target.password);
@@ -66,6 +67,7 @@ async function main() {
     return EXIT.OK;
   }
   if (args.confirm !== target.database) throw new RefusalError("--confirm-database=<base> absent ou différent de la cible");
+  say("PROCÉDURE : avant tout --execute distant, vérifier manuellement qu'un snapshot Neon frais vient d'être créé et consigner son identifiant/horodatage. Ce contrôle n'est volontairement pas automatisé par le runner.");
 
   const env = { ...process.env, DATABASE_URL: migrationUrl };
   delete env.MIGRATION_DATABASE_URL;
