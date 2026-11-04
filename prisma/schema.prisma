@@ -43,6 +43,7 @@ enum FreeGameStore {
 }
 
 model User {
+  captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
@@ -2876,6 +2877,7 @@ model CommunityTeam {
   communityId String
   gameId      String
   createdById String
+  captainId String?
   name        String   @db.VarChar(80)
   description String   @db.VarChar(1000)
   platform    String   @db.VarChar(40)
@@ -2888,6 +2890,7 @@ model CommunityTeam {
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  captain User? @relation("CommunityTeamCaptain", fields: [captainId], references: [id], onDelete: SetNull)
   members   CommunityTeamMember[]
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
