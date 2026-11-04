@@ -10,6 +10,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et 
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
+| `/api/cron/tower-team-daily` | GET | Défis d'équipe quotidiens ; OFF par défaut, cible 09:00 Europe/Paris, Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |

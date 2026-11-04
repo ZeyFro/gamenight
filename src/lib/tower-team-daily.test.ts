@@ -44,6 +44,40 @@ describe("attribution quotidienne des défis équipe", () => {
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
+  it("ne contacte pas la base si le serveur Discord est invalide", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", "serveur-invalide");
+    expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0 });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.daily).not.toHaveBeenCalled();
+  });
+
+  it("ne commence aucun travail quand le budget est déjà expiré", async () => {
+    expect(await assignDailyTowerTeamChallenges(new Date(0))).toEqual({ checked: 0, failed: 0 });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.daily).not.toHaveBeenCalled();
+  });
+
+  it("n'attribue rien sans communauté active éligible", async () => {
+    mocks.community.mockResolvedValue(null);
+    expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0 });
+    expect(mocks.teams).not.toHaveBeenCalled();
+    expect(mocks.daily).not.toHaveBeenCalled();
+  });
+
+  it("arrête les attributions suivantes quand le budget expire pendant une équipe", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      mocks.daily.mockImplementationOnce(async () => {
+        clock.mockReturnValue(6_000);
+        return { status: "TEAM_CHALLENGE" };
+      });
+      expect(await assignDailyTowerTeamChallenges(new Date(6_000))).toEqual({ checked: 1, failed: 0 });
+      expect(mocks.daily).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("vérifie chaque équipe active avec un acteur membre", async () => {
     expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 2, failed: 0 });
     expect(mocks.daily).toHaveBeenNthCalledWith(1, {
