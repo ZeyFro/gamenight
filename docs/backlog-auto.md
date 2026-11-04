@@ -1,3 +1,9 @@
+> **Mise à jour du 4 novembre 2026 (The Tower 2.0)** : ce backlog original d'octobre est un historique. Le lancement public est prévu le 4 janvier 2027, date de repli le 1er février ; le propriétaire exige un go/no-go indépendant avant activation. Les constats de la première moitié du document ne sont pas des preuves de livraison en production.
+>
+> Chantiers ouverts : #325 (migrations XP/vocal, maintenance obligatoire), #360 (« Qui joue ce soir ? »), #362 (recherche des jeux), #367 (catalogue 30 défis), #369 (verrou Preview), #370 (équipes), #371 (cause OAuth), #372 (calendrier), #373 (classement), #374 (rangs). Les PR supplémentaires d'audit sont préparatoires, jamais une activation.
+>
+> Priorité : isolation réelle Neon/Discord/Vercel, connexion de deux comptes, puis équipes et Ascension. Aucune migration production, publication Discord ni suppression de rôles sans accord. La règle « ne pas modifier un fichier d'une autre PR ouverte » bloque notamment le schéma Prisma (#325/#370) et la reprise de référence (#325).
+>
 # Backlog auto-généré
 
 Idées d'amélioration générées par Claude (session du 2026-10-04), classées selon les sources demandées :
