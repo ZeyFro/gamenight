@@ -39,6 +39,9 @@ export const TOWER_TEAM_STARTER_CHALLENGES = [
     instructions: "Accomplissez ensemble un petit objectif, puis présentez-le comme une cérémonie officielle. Partagez une capture du jeu et une phrase de discours ; personne n'a besoin de modifier sa sauvegarde ou de dépenser quoi que ce soit.",
     rewardFloors: 3,
   },
+] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
+
+export const TOWER_SEASON1_EXTRA_TEAM_CHALLENGES = [
   {
     title: "Le salut de l’escouade",
     instructions: "Lancez une partie commune et réalisez une capture où tous les participants sont présents dans le même écran ou objectif. Ajoutez simplement le nom de l’équipe et une légende courte.",
