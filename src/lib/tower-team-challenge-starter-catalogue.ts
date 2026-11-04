@@ -39,4 +39,14 @@ export const TOWER_TEAM_STARTER_CHALLENGES = [
     instructions: "Accomplissez ensemble un petit objectif, puis présentez-le comme une cérémonie officielle. Partagez une capture du jeu et une phrase de discours ; personne n'a besoin de modifier sa sauvegarde ou de dépenser quoi que ce soit.",
     rewardFloors: 3,
   },
+  {
+    title: "Le salut de l’escouade",
+    instructions: "Lancez une partie commune et réalisez une capture où tous les participants sont présents dans le même écran ou objectif. Ajoutez simplement le nom de l’équipe et une légende courte.",
+    rewardFloors: 1,
+  },
+  {
+    title: "Le mini-objectif collectif",
+    instructions: "Choisissez ensemble un petit objectif réalisable en une session courte, terminez-le puis partagez une capture du résultat. Une phrase suffit pour expliquer qui a fait quoi.",
+    rewardFloors: 1,
+  },
 ] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
