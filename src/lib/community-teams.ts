@@ -223,13 +223,17 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
         captainId: true,
         maxMembers: true,
         createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
         members: { where: activeTeamMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
         _count: { select: { members: { where: activeTeamMemberWhere(communityId) } } },
       },
     });
     if (!team) return "missing";
-    const activeCreator = team.createdBy.memberships.length > 0;
-    const leaderId = team.captainId ?? (activeCreator ? team.createdById : team.members[0]?.userId);
+    const configuredCaptainId = team.captainId ?? team.createdById;
+    const activeCaptain = team.captainId
+      ? Boolean(team.captain?.memberships.length)
+      : team.createdBy.memberships.length > 0;
+    const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
     if (leaderId !== userId) return "missing";
     if (open && team._count.members >= team.maxMembers) return "full";
     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
