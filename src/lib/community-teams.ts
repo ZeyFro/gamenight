@@ -117,7 +117,6 @@ export async function assertSessionTeamLinkInTransaction(
 }
 
 const TEAM_REJOIN_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
-const CAPTAIN_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Must be evaluated in the same serializable transaction as the membership write. */
 async function teamJoinEligibility(tx: Prisma.TransactionClient, userId: string, communityId: string): Promise<"eligible" | "already_team" | "cooldown"> {
