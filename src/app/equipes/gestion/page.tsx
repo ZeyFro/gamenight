@@ -4,16 +4,23 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
 import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction } from "../actions";
 
-export default async function CommunityTeamManagementPage() {
+const RESULTS: Record<string, string> = {
+  transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
+  active_challenges: "Impossible : un défi de cette équipe est encore en cours.",
+  invalid: "Action non autorisée ou informations invalides.", unavailable: "Fonctionnalité indisponible.",
+};
+
+export default async function CommunityTeamManagementPage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const communityId = await getCommunityTeamsCommunityId(user.id);
   if (!communityId) redirect("/equipes");
-  const teams = await listCommunityTeams(user.id, communityId);
+  const [{ result }, teams] = await Promise.all([searchParams, listCommunityTeams(user.id, communityId)]);
   const captained = teams.filter(team => (team.captainId ?? team.createdById) === user.id);
 
   return <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
     <h1 className="text-2xl font-semibold">Gérer mes équipes</h1>
+    {result && RESULTS[result] && <p role="status">{RESULTS[result]}</p>}
     <p className="text-sm text-muted">La passation conserve le créateur historique. Une dissolution libère les membres, mais conserve les preuves et bloque une nouvelle adhésion pendant sept jours.</p>
     {captained.length === 0 && <p>Tu n'es capitaine d'aucune équipe active.</p>}
     {captained.map(team => <section key={team.id} className="rounded-lg border border-border p-4">
