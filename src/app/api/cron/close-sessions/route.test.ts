@@ -25,7 +25,10 @@ vi.mock("@/lib/instant-sessions", () => ({ settleAllDueInstantSessions: mocks.se
 vi.mock("@/lib/seasons", () => ({ ensureActiveSeasonsExist: vi.fn(async () => undefined) }));
 vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 
-import { GET, TIME_BUDGET_MS } from "./route";
+import { GET } from "./route";
+
+// Contrat public du cron : arrêter le travail à 45 secondes.
+const TIME_BUDGET_MS = 45_000;
 
 const req = () =>
   new Request("https://example.test/api/cron/close-sessions", { headers: { authorization: "Bearer s3cret" } });
@@ -91,4 +94,10 @@ describe("/api/cron/close-sessions — budget de temps", () => {
     const { maxDuration } = await import("./route");
     expect(TIME_BUDGET_MS).toBeLessThan(maxDuration * 1000 - 10_000);
   });
+});
+
+// Next.js ne permet que les méthodes HTTP et la configuration de segment.
+it("n’exporte aucun budget interne depuis le module de route Next.js", async () => {
+  const route = await import("./route");
+  expect(Object.keys(route).sort()).toEqual(["GET", "maxDuration"]);
 });

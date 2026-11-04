@@ -23,7 +23,7 @@ export const maxDuration = 60;
  * page ni intention n'est entamée (`report.truncated`), le reste est repris
  * au passage suivant. Le parcours relit tout l'historique terminé.
  */
-export const TIME_BUDGET_MS = 45_000;
+const TIME_BUDGET_MS = 45_000;
 
 export async function GET(request: Request) {
   const auth = verifyCronRequest(request);

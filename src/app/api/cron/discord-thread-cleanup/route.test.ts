@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/discord-thread-cleanup", () => ({ runDiscordThreadCleanup: mocks.runDiscordThreadCleanup }));
 vi.mock("@/lib/logger", () => ({ logger: mocks.logger }));
 
-import { GET, TIME_BUDGET_MS, maxDuration } from "./route";
+import { GET, maxDuration } from "./route";
+
+// Contrat public du cron : arrêter le travail à 45 secondes.
+const TIME_BUDGET_MS = 45_000;
 
 const emptyKind = { archiveEnqueued: [], deleteEnqueued: [], archiveFailed: [], waiting: 0 };
 const req = () =>
@@ -44,11 +47,19 @@ describe("/api/cron/discord-thread-cleanup — budget de temps", () => {
     const [opts] = mocks.runDiscordThreadCleanup.mock.calls[0] as [{ dryRun: boolean; shouldContinue: () => boolean }];
     expect(opts.dryRun).toBe(true);
     expect(opts.shouldContinue()).toBe(true);
-    now += TIME_BUDGET_MS;
+    now += TIME_BUDGET_MS - 1;
+    expect(opts.shouldContinue()).toBe(true);
+    now += 1;
     expect(opts.shouldContinue()).toBe(false);
   });
 
   it("le budget laisse une marge sous maxDuration", () => {
     expect(TIME_BUDGET_MS).toBeLessThan(maxDuration * 1000 - 10_000);
   });
+});
+
+// Next.js ne permet que les méthodes HTTP et la configuration de segment.
+it("n’exporte aucun budget interne depuis le module de route Next.js", async () => {
+  const route = await import("./route");
+  expect(Object.keys(route).sort()).toEqual(["GET", "maxDuration"]);
 });

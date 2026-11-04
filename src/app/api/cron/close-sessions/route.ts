@@ -51,7 +51,7 @@ export const maxDuration = 60;
  * suivant (chaque étape est idempotente). Évite les coupures à 60 s observées
  * en production, qui interrompaient une clôture en plein milieu.
  */
-export const TIME_BUDGET_MS = 45_000;
+const TIME_BUDGET_MS = 45_000;
 
 /**
  * Chaque passe est isolée : une exception dans l'une (base injoignable, session
