@@ -277,7 +277,6 @@ export async function submitTowerChallengeProof(input: unknown) {
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, attemptId, proofText, proofChannelId, proofMessageId, publicationConsent } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
-    if (await isExcludedTowerVoter(scopedDb, userId)) return { status: "TEST_ACCOUNT_EXCLUDED" } as const;
     await scopedDb.$queryRaw`SELECT id FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE`;
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({ where: { id: attemptId, communityId } });
     if (!attempt) return { status: "UNAVAILABLE" } as const;
@@ -316,6 +315,7 @@ export async function voteTowerChallenge(input: unknown) {
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, attemptId, approve } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
+    if (await isExcludedTowerVoter(scopedDb, userId)) return { status: "TEST_ACCOUNT_EXCLUDED" } as const;
     await scopedDb.$queryRaw`SELECT id FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE`;
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({ where: { id: attemptId, communityId } });
     if (!attempt) return { status: "UNAVAILABLE" } as const;
