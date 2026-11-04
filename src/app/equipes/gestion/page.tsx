@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
 import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction } from "../actions";
+import { pageMetadata } from "@/lib/page-title";
+
+export const metadata = pageMetadata("Gérer mes équipes");
 
 const RESULTS: Record<string, string> = {
   transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
