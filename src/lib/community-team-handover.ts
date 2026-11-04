@@ -34,6 +34,7 @@ export async function transferInactiveCommunityTeamCaptains(
         where: { id: row.id, communityId: row.communityId, captainLastActivityAt: { lte: cutoff } },
         select: {
           createdById: true,
+          captainId: true,
           members: {
             where: { user: { memberships: { some: { communityId: row.communityId, status: "ACTIVE" } } } },
             orderBy: [{ joinedAt: "asc" }, { userId: "asc" }],
@@ -42,22 +43,23 @@ export async function transferInactiveCommunityTeamCaptains(
         },
       });
       if (!team) return "skip";
+      const captainId = team.captainId ?? team.createdById;
       const currentCaptain = await tx.membership.findUnique({
-        where: { communityId_userId: { communityId: row.communityId, userId: team.createdById } },
+        where: { communityId_userId: { communityId: row.communityId, userId: captainId } },
         select: { status: true },
       });
       const mostRecentActivity = await scopedDb.communityMemberStats.findUnique({
-        where: { communityId_userId: { communityId: row.communityId, userId: team.createdById } },
+        where: { communityId_userId: { communityId: row.communityId, userId: captainId } },
         select: { streakLastActiveAt: true },
       });
       if (currentCaptain?.status === "ACTIVE" && mostRecentActivity?.streakLastActiveAt &&
         mostRecentActivity.streakLastActiveAt > cutoff) return "skip";
-      const successor = team.members.find((m) => m.userId !== team.createdById);
+      const successor = team.members.find((m) => m.userId !== captainId);
       if (!successor) return "skip";
       if (dryRun) return "eligible";
       const updated = await scopedDb.communityTeam.updateMany({
-        where: { id: row.id, communityId: row.communityId, captainLastActivityAt: { lte: cutoff }, createdById: team.createdById },
-        data: { createdById: successor.userId, captainLastActivityAt: date },
+        where: { id: row.id, communityId: row.communityId, captainLastActivityAt: { lte: cutoff }, captainId: team.captainId },
+        data: { captainId: successor.userId, captainLastActivityAt: date },
       });
       return updated.count ? "transferred" : "skip";
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
