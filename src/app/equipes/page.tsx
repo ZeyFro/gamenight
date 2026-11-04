@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
+import { GamePicker } from "./GamePicker";
 
 export const metadata = pageMetadata("Équipes et aventures");
 
@@ -29,7 +30,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
   }
   const [{ result }, games, teams] = await Promise.all([
     searchParams,
-    prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
+    prisma.game.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     listCommunityTeams(user.id, communityId),
   ]);
 
@@ -44,11 +45,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
       <Card>
         <h2 className="mb-3 font-semibold text-foreground">Lancer une aventure</h2>
         <form action={createCommunityTeamAction} className="grid gap-3">
-          <label className="grid gap-1 text-sm text-foreground">Jeu
-            <select name="gameId" required className="rounded-lg border border-border bg-background px-3 py-3 text-base">
-              <option value="">Choisir un jeu</option>{games.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}
-            </select>
-          </label>
+          <GamePicker games={games} />
           <label className="grid gap-1 text-sm text-foreground">Nom de l’équipe ou du projet<input name="name" required minLength={3} maxLength={80} placeholder="Expédition Valheim" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           <label className="grid gap-1 text-sm text-foreground">Votre objectif<textarea name="description" required minLength={10} maxLength={1000} rows={3} placeholder="Construire une base et explorer ensemble pendant plusieurs semaines…" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
