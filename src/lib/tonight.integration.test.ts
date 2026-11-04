@@ -83,6 +83,27 @@ describe.skipIf(!TEST_DATABASE_URL)("Qui joue ce soir ? : Postgres local", () =>
     expect(await db.playerClassified.count({ where: { message: "Il manque un quatrième" } })).toBe(1);
   });
 
+  it("préserve la disponibilité précédente si la nouvelle insertion échoue", async () => {
+    await as("alice");
+    await expect(actions.declareTonightAction(form([["gameId", ids.valheim]]))).rejects.toThrow("REDIRECT");
+    const original = await tonightRows("alice");
+    expect(original).toHaveLength(1);
+
+    const { replaceTonightClassifieds } = await import("./tonight-write");
+    await expect(replaceTonightClassifieds({
+      userId: ids.alice,
+      communityId: ids.on,
+      gameIds: ["jeu-inexistant-foreign-key"],
+      message: rules.buildTonightMessage("remplacement"),
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })).rejects.toThrow();
+
+    const after = await tonightRows("alice");
+    expect(after.map((row) => row.id)).toEqual(original.map((row) => row.id));
+    expect(after.map((row) => row.message)).toEqual(original.map((row) => row.message));
+  });
+
   it("refuse un jeu inconnu ou une liste vide, sans rien écrire", async () => {
     await as("alice");
     await expect(actions.declareTonightAction(form([["gameId", "inconnu"]]))).rejects.toThrow("REDIRECT:/ce-soir?error=invalid");
