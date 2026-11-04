@@ -127,6 +127,26 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     await expect(teams.setCommunityTeamRecruitment(ids.member, ids.community, team.id, false)).resolves.toBe("saved");
   });
 
+  it("applique le délai de 7 jours au capitaine qui dissout, pas aux autres membres", async () => {
+    const input = { communityId: ids.community, gameId: ids.game, description: "Projet collectif à dissoudre proprement.", platform: "PC", maxMembers: 4 };
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Équipe Dissolution" })).toBe("created");
+    const team = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, createdById: ids.leader } });
+    expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
+
+    expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("dissolved");
+    expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+
+    const [leaderMembership, memberMembership] = await Promise.all([
+      db.membership.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.community, userId: ids.leader } }, select: { lastTeamLeftAt: true } }),
+      db.membership.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.community, userId: ids.member } }, select: { lastTeamLeftAt: true } }),
+    ]);
+    expect(leaderMembership.lastTeamLeftAt).toBeInstanceOf(Date);
+    expect(memberMembership.lastTeamLeftAt).toBeNull();
+
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Retour trop tôt" })).toBe("cooldown");
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.member, name: "Nouvelle équipe libre" })).toBe("created");
+  });
+
   it("prevents deleting a game from cascading into its community teams", async () => {
     await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Explorateurs", description: "Projet durable.", platform: "PC", maxMembers: 4 });
 
