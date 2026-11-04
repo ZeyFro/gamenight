@@ -11,6 +11,7 @@ import { enqueueTowerChallengeEvent } from "@/lib/tower-challenge-announcements"
 import { TOWER_STARTER_CHALLENGES } from "@/lib/tower-challenge-starter-catalogue";
 import { TOWER_TEAM_STARTER_CHALLENGES } from "@/lib/tower-team-challenge-starter-catalogue";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
+import { isProductionTowerTestAccount } from "@/lib/tower-test-accounts";
 
 const id = z.string().min(1).max(191).regex(/^[a-zA-Z0-9_-]+$/);
 const actorSchema = z.object({ communityId: id, userId: id });
@@ -276,6 +277,7 @@ export async function submitTowerChallengeProof(input: unknown) {
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, attemptId, proofText, proofChannelId, proofMessageId, publicationConsent } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
+    if (await isExcludedTowerVoter(scopedDb, userId)) return { status: "TEST_ACCOUNT_EXCLUDED" } as const;
     await scopedDb.$queryRaw`SELECT id FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE`;
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({ where: { id: attemptId, communityId } });
     if (!attempt) return { status: "UNAVAILABLE" } as const;
@@ -299,6 +301,14 @@ export async function submitTowerChallengeProof(input: unknown) {
     await enqueueTowerChallengeEvent(scopedDb, communityId, attemptId, "proof");
     return { status: "SUBMITTED", replayed: false } as const;
   });
+}
+
+async function isExcludedTowerVoter(scopedDb: Prisma.TransactionClient, userId: string) {
+  const user = await scopedDb.user.findUnique({
+    where: { id: userId },
+    select: { discordId: true, discordName: true },
+  });
+  return user ? isProductionTowerTestAccount(user) : false;
 }
 
 export async function voteTowerChallenge(input: unknown) {
@@ -776,6 +786,7 @@ export async function castTowerSeasonVote(input: unknown) {
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, voteId, candidateUserId } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
+    if (await isExcludedTowerVoter(scopedDb, userId)) return { status: "TEST_ACCOUNT_EXCLUDED" } as const;
     const vote = await scopedDb.towerSeasonVote.findFirst({ where: { id: voteId, communityId } });
     if (!vote) return { status: "UNAVAILABLE" } as const;
     const current = now();
