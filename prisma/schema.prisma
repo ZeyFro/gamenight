@@ -2881,6 +2881,7 @@ model CommunityTeam {
   platform    String   @db.VarChar(40)
   maxMembers  Int
   isRecruiting Boolean @default(true)
+  captainLastActivityAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -2908,7 +2909,7 @@ model CommunityTeamMember {
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
-  @@index([communityId, userId])
+  @@unique([communityId, userId])
 }
 
 model SessionGalleryMedia {
@@ -3119,6 +3120,8 @@ model Membership {
   // Dernière vérification d'appartenance au serveur Discord (cron rotatif,
   // PR suivante).
   lastVerifiedAt DateTime?
+  // Dernier départ volontaire d’une équipe (délai d’attente de 7 jours).
+  lastTeamLeftAt DateTime?
 
   @@unique([communityId, userId])
   @@index([userId])
