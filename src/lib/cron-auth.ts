@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { isVercelPreview } from "@/lib/preview-safety";
 
 /**
  * Vérification d'accès partagée des routes cron/backfill (PR "Accès &
@@ -21,6 +22,7 @@ export function checkCronAuth(
   cronSecret: string | undefined,
   authHeader: string | null
 ): CronAuthResult {
+  if (isVercelPreview()) return { ok: false, status: 503 };
   if (!cronSecret) return { ok: false, status: 503 };
   // Hash des deux côtés : longueur fixe (timingSafeEqual lève sinon) et
   // aucune fuite de la longueur du secret ; temps constant sur le contenu.
