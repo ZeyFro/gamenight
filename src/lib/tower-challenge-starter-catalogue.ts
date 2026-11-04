@@ -46,7 +46,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "Le détour diplomatique",
-    "instructions": "Atteins un objectif sans enjeu en essayant une approche différente de ton habitude. Partage une capture du résultat et explique le détour en une phrase. Si ton jeu ne propose pas plusieurs chemins, change simplement ta manière d’aborder un petit objectif.",
+    "instructions": "Choisis un objectif nécessitant plusieurs étapes et termine-le avec une approche nettement différente de ton habitude, en respectant au moins deux contraintes volontaires annoncées avant de commencer. Fournis une capture avant l’objectif et une après sa réussite, puis explique en trois phrases ce que tu as changé et pourquoi.",
     "rewardFloors": 3
   },
   {
