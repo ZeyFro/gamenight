@@ -54,6 +54,16 @@ describe("The Tower: archives en lecture seule", () => {
     expect(fetcher.mock.calls[0][1]?.method).toBe("GET");
   });
 
+  it("Preview bloque POST avant toute mutation Discord", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const response = await POST(new NextRequest("http://localhost/api/admin/tower-archive", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: "preview_disabled" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("bloque toute mutation Discord même avec une confirmation propriétaire", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
