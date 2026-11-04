@@ -1,6 +1,6 @@
 # Plan de recette isolée GameNight — 4 novembre 2026
 
-**État : plan uniquement. Aucune opération Neon, Vercel ou Discord exécutée.**
+**État : infrastructure de recette non configurée. Application Discord de recette créée ; détails et limites ci-dessous. Aucune opération Neon ou Vercel exécutée pour ce plan.**
 
 Objectif : tester le parcours web et les règles Tower sans données Production ni publication sur The Tower. Références : cahier des charges The Tower 2.0 × GameNight, sections 21.5, 22 et 25 ; `docs/PREVIEW_TOWER_ISOLATION.md` ; `docs/TOWER_RECETTE_SCENARIOS.md`.
 
@@ -74,3 +74,23 @@ Une simulation locale ne valide pas une interaction Discord réelle. Le test mel
 2. Variables Vercel limitées à la branche Preview, alias stable et OAuth de l'application de recette, avec liste concrète des changements.
 3. Éventuelle activation Tower web sur recette après vérification d'isolation.
 4. Environnement bot/crons : plan séparé avant toute autorisation ; aucune dérogation au verrou Preview dans ce plan.
+
+## Point de reprise concret — 4 novembre 2026, 23h42 Paris
+
+| Élément | État établi | Suite |
+| --- | --- | --- |
+| Application Discord | GameNight Recette créée, Application ID `1567667830462226706`, nom et ID lus sur Informations générales | Aucun OAuth2 ouvert ou modifié ; redirection à configurer seulement après accord et URL stable vérifiée |
+| Serveur Discord de recette | Création envoyée une seule fois ; résultat inconnu car interface principale bloquée | Vérifier son existence avant tout nouvel essai ; aucun ID confirmé |
+| Neon recette | Projet `misty-tooth-45335023`, branche `preview-gamenight` / `br-super-hall-b1hncspo`, base `neondb`, état ready au relevé précédent | Aucune écriture ; 58 tables, 72 migrations terminées, une inachevée à rapprocher |
+| Blocage Prisma | `20261006100000_community_xp_stats` inachevée et fichier historique non retrouvé ; successeur `20261006190000_community_progression` terminé | Retrouver le SQL d'origine ou faire valider le rapprochement exact avant toute réparation ; ne pas déduire absence d'effets du compteur zéro |
+| Preview | URL stable, ciblage SQL et héritage des secrets non certifiés | Aucun alias inventé ; aucune modification Vercel effectuée |
+
+### Parcours déjà exécuté en Production — pas une recette isolée
+
+Maxime a autorisé zeyfro à la place de melah3. Connexion Discord avec zeyfro, communauté The Tower, affichage de /equipes, retour accueil, déconnexion puis reconnexion réussis. Dernier résultat confirmé le 4 novembre 2026 à **22:39:22 UTC**, URL finale `https://gamenight-zeyfro.vercel.app/`, sans message d'erreur observé. Navigateur partagé normal : navigation privée et compte melah3 non testés.
+
+Recherche réelle /equipes : Minecraft donne MINECRAFT, Minecraft Dungeons II, Minecraft Legends ; Expédition retrouve Clair Obscur: Expedition 33. Les 750 libellés n'ont aucun doublon strict après retrait des espaces extérieurs et comparaison sans casse. Les variantes sémantiques, notamment Battlefield 6 / Battlefield™ 6, ne sont pas certifiées uniques. Aucune équipe ni contenu créé.
+
+### Prochaine opération autorisable
+
+L'application de recette est disponible ; le prochain blocage est la réconciliation de l'historique Prisma, puis le choix d'un SHA et d'une URL Preview réelle. Aucun `migrate resolve`, reset, seed, changement de variable ou OAuth ne fait partie de cette mise à jour documentaire. Les accords d'exécution seront demandés sur les cibles et changements précis, après résolution de ce blocage.
