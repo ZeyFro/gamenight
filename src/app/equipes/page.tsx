@@ -34,6 +34,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
     prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
     listCommunityTeams(user.id, communityId),
   ]);
+  const hasCaptainedTeam = teams.some((team) => (team.captainId ?? team.createdById) === user.id);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -41,6 +42,9 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
         <h1 className="text-2xl font-semibold text-foreground">🧭 Équipes et aventures</h1>
         <p className="mt-2 text-sm text-muted">Monte un projet durable, recrute des compagnons et jouez à votre rythme. Aucun ping ni message Discord n’est envoyé.</p>
       </header>
+      {hasCaptainedTeam && <Link href="/equipes/gestion" className="text-sm font-medium text-accent hover:underline">
+        Gérer mes équipes →
+      </Link>}
       {result && RESULTS[result] && <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{RESULTS[result]}</p>}
 
       <Card>
