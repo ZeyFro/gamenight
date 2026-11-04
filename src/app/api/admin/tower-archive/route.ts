@@ -1,3 +1,4 @@
+import { isVercelPreview } from "@/lib/preview-safety";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { getCurrentUser } from "@/lib/current-user";
@@ -85,6 +86,7 @@ function prepare(channels: Channel[]) {
   return { errors, actions, hideCategories, archiveId: archive?.id, snapshot: snapshot(channels) };
 }
 export async function GET() {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
   if (!(await authorized())) return error("Forbidden", 403);
   try {
     const channels = await discord("GET","/guilds/"+GUILD+"/channels") as Channel[];
