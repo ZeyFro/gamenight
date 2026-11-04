@@ -57,17 +57,23 @@ export async function setCommunityTeamRecruitmentAction(formData: FormData): Pro
   done(await setCommunityTeamRecruitment(user.id, communityId, teamId.data, open === "true"));
 }
 
+function doneManagement(result: string): never {
+  revalidatePath("/equipes");
+  revalidatePath("/equipes/gestion");
+  redirect(`/equipes/gestion?result=${result}`);
+}
+
 export async function transferCommunityTeamCaptainAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("transferCommunityTeamCaptain");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   const successorId = idSchema.safeParse(formData.get("successorId"));
   if (!teamId.success || !successorId.success) done("invalid");
-  done(await transferCommunityTeamCaptain(user.id, communityId, teamId.data, successorId.data));
+  doneManagement(await transferCommunityTeamCaptain(user.id, communityId, teamId.data, successorId.data));
 }
 
 export async function dissolveCommunityTeamAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("dissolveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success || formData.get("confirm") !== "DISSOLVE") done("invalid");
-  done(await dissolveCommunityTeam(user.id, communityId, teamId.data));
+  doneManagement(await dissolveCommunityTeam(user.id, communityId, teamId.data));
 }
