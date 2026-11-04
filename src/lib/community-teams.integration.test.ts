@@ -79,6 +79,25 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await db.communityTeamMember.count({ where: { communityId: ids.community, userId: ids.racer } })).toBe(1);
   });
 
+  it("transfers leadership after thirty days only to the oldest active teammate", async () => {
+    const input = { communityId: ids.community, gameId: ids.game, description: "Exploration longue et coopérative.", platform: "PC", maxMembers: 8 };
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Vieille équipe" })).toBe("created");
+    const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });
+    expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
+    expect(await teams.joinCommunityTeam(ids.racer, ids.community, team.id)).toBe("joined");
+    await db.communityTeam.update({
+      where: { id: team.id },
+      data: { captainLastActivityAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) },
+    });
+
+    const { transferInactiveCommunityTeamCaptains } = await import("./community-team-handover");
+    expect(await transferInactiveCommunityTeamCaptains(new Date(), true)).toMatchObject({ eligible: 1, transferred: 0 });
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.leader);
+    expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ eligible: 1, transferred: 1 });
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.member);
+    expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 0 });
+  });
+
   it("does not list or mutate a project from another community scope", async () => {
     await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Projet Tower", description: "Expédition réservée à The Tower.", platform: "PC", maxMembers: 4 });
     await expect(teams.listCommunityTeams(ids.otherMember, ids.community)).resolves.toHaveLength(0);
