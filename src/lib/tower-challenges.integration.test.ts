@@ -261,9 +261,9 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     const seasonVote = await db.towerSeasonVote.create({
       data: {
         communityId: "tower-a",
-        seasonName: "S1 · 2027",
-        seasonStartAt: new Date("2027-01-03T23:00:00Z"),
-        seasonEndAt: new Date("2027-03-28T22:00:00Z"),
+        seasonName: "S2 · 2026",
+        seasonStartAt: new Date("2026-03-31T22:00:00Z"),
+        seasonEndAt: new Date("2026-06-30T22:00:00Z"),
         opensAt: new Date("2026-10-28T11:00:00Z"),
         closesAt: new Date("2026-10-30T11:00:00Z"),
         candidateUserIds: ["tower-a1", "tower-a2"],
