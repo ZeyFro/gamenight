@@ -3,8 +3,8 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
-import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { prisma } from "@/lib/prisma";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { replaceTonightClassifieds } from "@/lib/tonight-write";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getPlayerClassifiedCommunityId } from "@/lib/player-classifieds";
 import {
@@ -38,23 +38,13 @@ export async function declareTonightAction(formData: FormData): Promise<void> {
   const createdAt = wallClockNow();
   const message = buildTonightMessage(input.data.note);
   const expiresAt = tonightExpiresAt(createdAt);
-  // Remplacement atomique : si la création échoue, les anciennes disponibilités
-  // restent présentes. Le client transactionnel garde le périmètre communautaire.
-  await prisma.$transaction(async (tx) => {
-    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
-    await scopedDb.playerClassified.deleteMany({
-      where: { communityId, createdById: user.id, message: { startsWith: TONIGHT_MESSAGE_PREFIX } },
-    });
-    await scopedDb.playerClassified.createMany({
-      data: input.data.gameIds.map((gameId) => ({
-        communityId,
-        gameId,
-        createdById: user.id,
-        message,
-        createdAt,
-        expiresAt,
-      })),
-    });
+  await replaceTonightClassifieds({
+    userId: user.id,
+    communityId,
+    gameIds: input.data.gameIds,
+    message,
+    createdAt,
+    expiresAt,
   });
   revalidatePath("/ce-soir");
   revalidatePath("/joueurs");
