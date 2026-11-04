@@ -43,6 +43,8 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       maxMembers: true,
       isRecruiting: true,
       createdById: true,
+      captainId: true,
+      captain: { select: { discordName: true } },
       _count: { select: { members: { where: activeTeamMemberWhere(communityId) } } },
       game: { select: { name: true } },
       createdBy: { select: { discordName: true, memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
@@ -151,7 +153,7 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
     if (await scopedDb.communityTeam.count({ where: { communityId: input.communityId, createdById: input.userId, createdAt: { gte: since } } }) >= 3) return "limit";
     const { userId, communityId, gameId, name, description, platform, maxMembers } = input;
     const team = await scopedDb.communityTeam.create({
-      data: { communityId, gameId, createdById: userId, name, description, platform, maxMembers },
+      data: { communityId, gameId, createdById: userId, captainId: userId, name, description, platform, maxMembers },
       select: { id: true },
     });
     await scopedDb.communityTeamMember.create({ data: { communityId: input.communityId, teamId: team.id, userId: input.userId } });
@@ -198,9 +200,9 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
   return prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
-    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } } } });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, captainId: true, createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } } } });
     if (!team) return "missing";
-    if (team.createdById === userId) return "leader";
+    if ((team.captainId ?? team.createdById) === userId) return "leader";
     const deleted = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId, userId } });
     if (!deleted.count) return "missing";
     await tx.membership.update({
@@ -219,6 +221,7 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
       where: { id: teamId, communityId },
       select: {
         createdById: true,
+        captainId: true,
         maxMembers: true,
         createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
         members: { where: activeTeamMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
@@ -227,7 +230,8 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     });
     if (!team) return "missing";
     const activeCreator = team.createdBy.memberships.length > 0;
-    if (activeCreator ? team.createdById !== userId : team.members[0]?.userId !== userId) return "missing";
+    const leaderId = team.captainId ?? (activeCreator ? team.createdById : team.members[0]?.userId);
+    if (leaderId !== userId) return "missing";
     if (open && team._count.members >= team.maxMembers) return "full";
     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
     return updated.count ? "saved" : "missing";
