@@ -34,6 +34,10 @@ Cette PR ajoute `prisma/migrations/20261104140000_tower_team_membership_policy`.
 
 Ordre obligatoire : précontrôle lecture seule des doublons `(communityId,userId)` → dry-run du runner → accord explicite propriétaire → exécution de la migration → contrôle de fin → merge de la PR.
 
-Le runner `scripts/db-migrate.mjs` n'accepte que `MIGRATION_DATABASE_URL`, une cible attendue explicite et une liste `--expect` exacte. La connexion doit être directe, non poolée, avec un rôle de migration distinct du runtime.
+Le runner `scripts/db-migrate.mjs` n'accepte que `MIGRATION_DATABASE_URL`, une cible attendue explicite et une liste `--expect` exacte. La connexion doit être directe et non poolée.
+
+**Option B de lancement :** tant que Production ne possède que `neondb_owner`, le partage du rôle runtime/migration reste refusé par défaut et n'est permis que si l'opérateur ajoute explicitement `--allow-shared-role`. Le runner affiche alors `MODE DÉGRADÉ`. Immédiatement avant chaque `--execute`, un snapshot Neon frais de la branche Production doit être créé puis vérifié manuellement ; le runner rappelle cette précondition mais ne la vérifie pas via l'API.
+
+Après le lancement, la cible est de séparer un rôle runtime limité et un rôle de migration dédié. Voir `docs/NEON_ROLE_SEPARATION_POST_LAUNCH.md`.
 
 **Interdictions :** aucun test fonctionnel authentifié sur Preview tant que l'isolation Neon et l'interdiction des effets Discord/crons ne sont pas démontrées. Pas de migration de production ni d'activation de la passation sans accord explicite.
