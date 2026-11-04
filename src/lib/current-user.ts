@@ -7,9 +7,10 @@ import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getMemberStats, projectUserProgress, ZERO_MEMBER_STATS } from "@/lib/member-stats";
 import { shouldForceRelogin } from "@/lib/force-relogin";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
+import { getActiveCommunityState } from "@/lib/community-picker";
 
 export async function getCurrentUser(
-  options: { recordActivity?: boolean; allowPlatformAdminWithoutMembership?: boolean } = {}
+  options: { recordActivity?: boolean; allowPlatformAdminWithoutMembership?: boolean; allowCommunitySelection?: boolean } = {}
 ): Promise<User | null> {
   const session = await auth();
   if (!session?.user?.discordId) return null;
@@ -33,6 +34,11 @@ export async function getCurrentUser(
 
   const communityId = await writeCommunityIdForUser(user.id);
   if (communityId === null) {
+    // Only the landing/selection flow may retain an admitted identity without
+    // a selected server. No collective stats or activity are read or written.
+    if (options.allowCommunitySelection && (await getActiveCommunityState(user.id)).kind === "needs-choice") {
+      return projectUserProgress(user, ZERO_MEMBER_STATS);
+    }
     // Platform administration has its own explicit gate. Do not let its
     // bootstrap identity inherit default-community data or create stats.
     if (!options.allowPlatformAdminWithoutMembership || !isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS))) {
