@@ -65,8 +65,8 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
         <h2 id="teams-title" className="font-semibold text-foreground">Aventures de la communauté ({teams.length})</h2>
         {teams.length === 0 ? <EmptyState icon="🧭" title="Aucune aventure en cours." /> : teams.map((team) => {
           const isMember = team.members.some((member) => member.userId === user.id);
-          const leaderId = team.createdBy.memberships.length ? team.createdById : team.members[0]?.userId;
-          const leaderName = team.createdBy.memberships.length ? team.createdBy.discordName : team.members[0]?.user.discordName ?? "aucun membre actif";
+          const leaderId = team.captainId ?? (team.createdBy.memberships.length ? team.createdById : team.members[0]?.userId);
+          const leaderName = team.captain?.discordName ?? (team.createdBy.memberships.length ? team.createdBy.discordName : team.members[0]?.user.discordName ?? "aucun membre actif");
           const isLeader = leaderId === user.id;
           return <Card key={team.id} className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
