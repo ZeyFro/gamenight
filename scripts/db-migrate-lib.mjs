@@ -20,17 +20,18 @@ const ALLOWED_QUERY = new Set(["sslmode", "connect_timeout", "connection_limit",
 
 /** Arguments `--nom=valeur` et drapeaux; toute forme `--nom valeur` inconnue est refusée. */
 export function readArgs(argv) {
-  const known = new Set(["expect", "execute", "confirm-database", "allow-local"]);
-  const args = { expect: [], execute: false, confirm: undefined, allowLocal: false };
+  const known = new Set(["expect", "execute", "confirm-database", "allow-local", "allow-shared-role"]);
+  const args = { expect: [], execute: false, confirm: undefined, allowLocal: false, allowSharedRole: false };
   for (const arg of argv) {
     const match = /^--([a-z-]+)(?:=(.*))?$/.exec(arg);
     if (!match || !known.has(match[1])) throw new RefusalError(`Argument inconnu : ${arg.split("=")[0]}`);
     const [, name, value] = match;
-    if (["execute", "allow-local"].includes(name) && value !== undefined) {
+    if (["execute", "allow-local", "allow-shared-role"].includes(name) && value !== undefined) {
       throw new RefusalError(`--${name} est un drapeau sans valeur (reçu : ${arg}) : écrire ${"--" + name} seul, ou l'omettre`);
     }
     if (name === "execute") args.execute = true;
     else if (name === "allow-local") args.allowLocal = true;
+    else if (name === "allow-shared-role") args.allowSharedRole = true;
     else if (name === "confirm-database") args.confirm = value;
     else args.expect = (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
   }
@@ -80,9 +81,9 @@ export function parseTarget(connectionString) {
  *   (refus s'il n'a pas pu être fait);
  * - en local : `--allow-local` et base `gamenight_*` uniquement.
  * `skipRuntimeCheck` : pour les outils en lecture seule (scripts/prod-precheck.mjs) qui n'ont pas de rôle runtime à comparer.
- * @param {{ migrationUrl?: string, runtimeUrl?: string, runtimeRole?: string, expectedTarget?: string, allowLocal?: boolean, execute?: boolean, skipRuntimeCheck?: boolean }} options
+ * @param {{ migrationUrl?: string, runtimeUrl?: string, runtimeRole?: string, expectedTarget?: string, allowLocal?: boolean, execute?: boolean, skipRuntimeCheck?: boolean, allowSharedRole?: boolean }} options
  */
-export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTarget, allowLocal, execute, skipRuntimeCheck }) {
+export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTarget, allowLocal, execute, skipRuntimeCheck, allowSharedRole }) {
   if (!migrationUrl) throw new RefusalError("MIGRATION_DATABASE_URL est obligatoire (jamais DATABASE_URL)");
   const target = parseTarget(migrationUrl);
   const warnings = [];
@@ -91,7 +92,10 @@ export function assertTarget({ migrationUrl, runtimeUrl, runtimeRole, expectedTa
     // lecture seule : aucun rôle runtime à comparer
   } else if (runtimeName) {
     if (runtimeName === target.username) {
-      throw new RefusalError("La connexion de migration doit utiliser un autre rôle que la connexion runtime");
+      if (!allowSharedRole) {
+        throw new RefusalError("La connexion de migration utilise le même rôle que le runtime : refus par défaut. Pour le mode de lancement temporaire uniquement, ajouter --allow-shared-role après vérification du snapshot frais.");
+      }
+      warnings.push("MODE DÉGRADÉ : rôle migration = rôle runtime (--allow-shared-role). À réserver au lancement, avec snapshot Neon frais vérifié immédiatement avant --execute.");
     }
   } else {
     warnings.push("Contrôle « rôle de migration ≠ rôle runtime » NON effectué (ni DATABASE_URL ni GAMENIGHT_RUNTIME_ROLE fournis)");
