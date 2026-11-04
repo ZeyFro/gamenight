@@ -691,27 +691,32 @@ export async function getTowerSeasonLeaderboard(input: unknown) {
 }
 
 async function towerSeasonTotals(scopedDb: Prisma.TransactionClient, communityId: string, season: { startAt: Date; endAt: Date }) {
-  const rows = await scopedDb.$queryRaw<{ userId: string; rewardFloors: bigint }[]>`
+  const rows = await scopedDb.$queryRaw<{ userId: string; rewardFloors: bigint; difficultWins: bigint; reachedAt: Date }[]>`
     WITH earned AS (
-      SELECT a."userId", a."rewardFloors"
+      SELECT a."userId", a."rewardFloors", a."rewardedAt" AS "earnedAt"
       FROM "TowerChallengeAttempt" a
       WHERE a."communityId" = ${communityId} AND a."teamId" IS NULL AND a.status = 'APPROVED'
         AND a."rewardedAt" >= ${season.startAt} AND a."rewardedAt" < ${season.endAt}
       UNION ALL
-      SELECT p."userId", a."rewardFloors"
+      SELECT p."userId", a."rewardFloors", p."rewardedAt" AS "earnedAt"
       FROM "TowerChallengeAttemptParticipant" p
       JOIN "TowerChallengeAttempt" a ON a.id = p."attemptId" AND a."communityId" = p."communityId"
       WHERE p."communityId" = ${communityId} AND a.status = 'APPROVED'
         AND p."rewardedAt" >= ${season.startAt} AND p."rewardedAt" < ${season.endAt}
     )
-    SELECT e."userId", SUM(e."rewardFloors")::bigint AS "rewardFloors"
+    SELECT e."userId", SUM(e."rewardFloors")::bigint AS "rewardFloors",
+      /* Le catalogue n’a pas de colonne difficulty : le barème validé 1/2/3 est la source de vérité\n       (1=facile, 2=moyen, 3=difficile). L’attempt conserve rewardFloors en snapshot. */\n      COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins",
+      MAX(e."earnedAt") AS "reachedAt"
     FROM earned e
     JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
     GROUP BY e."userId"
-    ORDER BY "rewardFloors" DESC, e."userId" ASC
+    ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC, e."userId" ASC
     LIMIT 10
   `;
-  return rows.map(row => ({ userId: row.userId, rewardFloors: Number(row.rewardFloors) }));
+  return rows.map(row => ({
+    userId: row.userId, rewardFloors: Number(row.rewardFloors),
+    difficultWins: Number(row.difficultWins), reachedAt: row.reachedAt,
+  }));
 }
 
 
