@@ -119,7 +119,8 @@ const CAPTAIN_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Must be evaluated in the same serializable transaction as the membership write. */
 async function teamJoinEligibility(tx: Prisma.TransactionClient, userId: string, communityId: string): Promise<"eligible" | "already_team" | "cooldown"> {
-  if (await tx.communityTeamMember.findFirst({ where: { userId, communityId }, select: { id: true } })) return "already_team";
+  const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+  if (await scopedDb.communityTeamMember.findFirst({ where: { userId, communityId }, select: { id: true } })) return "already_team";
   const membership = await tx.membership.findUnique({
     where: { communityId_userId: { communityId, userId } }, select: { lastTeamLeftAt: true },
   });
