@@ -1,3 +1,5 @@
+import { parsePlayerClassifiedFilters, type PlayerClassifiedSearchParams } from "@/lib/player-classified-filters";
+import { PLAYER_PLATFORMS } from "@/lib/player-equipment";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
@@ -24,7 +26,7 @@ const ERRORS: Record<string, string> = {
 export default async function PlayerClassifiedsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<PlayerClassifiedSearchParams>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -40,10 +42,13 @@ export default async function PlayerClassifiedsPage({
     );
   }
 
-  const [{ error }, games, listings] = await Promise.all([
-    searchParams,
+  const params = await searchParams;
+  const { error } = params;
+  const parsedFilters = parsePlayerClassifiedFilters(params);
+  const filters = parsedFilters.success ? parsedFilters.data : {};
+  const [games, listings] = await Promise.all([
     prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    listPlayerClassifieds(user.id, communityId, wallClockNow()),
+    parsedFilters.success ? listPlayerClassifieds(user.id, communityId, wallClockNow(), filters) : Promise.resolve([]),
   ]);
   const admin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
 
@@ -60,7 +65,7 @@ export default async function PlayerClassifiedsPage({
         </div>
       </div>
 
-      {error && ERRORS[error] && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{ERRORS[error]}</p>}
+      {typeof error === "string" && ERRORS[error] && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{ERRORS[error]}</p>}
 
       <Card>
         <form action={createPlayerClassifiedAction} className="flex flex-col gap-3">
@@ -75,9 +80,35 @@ export default async function PlayerClassifiedsPage({
         </form>
       </Card>
 
+      <Card>
+        <form action="/joueurs" method="get" className="flex flex-col gap-3">
+          <h2 className="text-sm font-medium">Filtrer les annonces</h2>
+          <label htmlFor="filter-game">Jeu recherché</label>
+          <select id="filter-game" name="gameId" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.gameId ?? ""}>
+            <option value="">Tous les jeux</option>
+            {games.map(game => <option key={game.id} value={game.id}>{game.name}</option>)}
+          </select>
+          <label htmlFor="filter-platform">Plateforme déclarée du joueur</label>
+          <select id="filter-platform" name="platform" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.platform ?? ""}>
+            <option value="">Toutes les plateformes</option>
+            {PLAYER_PLATFORMS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
+          <label htmlFor="filter-microphone">Micro du joueur</label>
+          <select id="filter-microphone" name="microphone" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.microphone ?? ""}>
+            <option value="">Tous</option>
+            <option value="yes">Disponible</option>
+            <option value="no">Non disponible</option>
+            <option value="unknown">Non renseigné</option>
+          </select>
+          <p className="text-xs text-muted">Informations déclarées dans les profils. Elles ne garantissent pas la compatibilité cross-play.</p>
+          <Button type="submit">Filtrer</Button>
+          <Link href="/joueurs">Réinitialiser les filtres</Link>
+        </form>
+      </Card>
+      {!parsedFilters.success && <p role="alert">Les filtres sont invalides. Réinitialise-les pour voir les annonces.</p>}
       <section className="flex flex-col gap-3" aria-labelledby="classified-list-title">
         <h2 id="classified-list-title" className="text-sm font-medium text-foreground">Annonces récentes ({listings.length})</h2>
-        {listings.length === 0 ? <EmptyState icon="🎮" title="Aucune annonce en cours." /> : (
+        {listings.length === 0 ? <EmptyState icon="🎮" title={filters.gameId || filters.platform || filters.microphone || !parsedFilters.success ? "Aucune annonce ne correspond aux filtres." : "Aucune annonce en cours."} /> : (
           <ul className="flex flex-col gap-2">
             {listings.map((listing) => (
               <li key={listing.id}>
