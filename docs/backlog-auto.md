@@ -1,3 +1,26 @@
+# Relevé de backlog The Tower — 4 novembre 2026
+
+Cette section ne remplace pas le backlog historique ci-dessous. Elle liste les lots demandés et **les PR ouvertes à ce relevé**, qui ne signifient pas que les fonctions sont actives ou testées sur Discord.
+
+| Lot | PR / état de préparation | Condition avant livraison |
+| --- | --- | --- |
+| Isolation Preview | #369 brouillon | CI + audit complet des routes externes, variables séparées et Neon recette confirmé |
+| Équipes 2–8/exclusivité/passation | #370 brouillon | CI, migration isolée, arbitrage des cas concurrents, relecture Claude |
+| Auth.js cause filtrée | #371 brouillon | Vérifier whitelist et absence de données sensibles |
+| Saisons / départage / rangs | #372 / #373 / #374 brouillons | Tests frontière Paris, intersaison, calcul de classement et rangs |
+| Atlas / #tournois / Ticket Tool / tags forums | #375–#378 brouillons | Audits Discord réels, aucune action destructive |
+| Matchmaking / préférences notifications | #379 / #380 brouillons | Identifier filtres et préférences effectivement exposés aux membres |
+| Restauration snapshot / récompenses / variables héritées | #381–#383 brouillons | Procédures uniquement, aucune exécution |
+| Rôles Étage / logs / idempotence | #384–#386 brouillons | Dry-run et preuve de non-régression |
+| Santé admin / accueil 3 boutons | #387 / #388 brouillons | Flag OFF, permissions minimales, tests réels |
+| Contestation / preuves en attente / 9 h équipe | #389–#391 brouillons | Documents et conception : ne pas qualifier de fonctionnalités livrées sans implémentation et recette |
+| Catalogue saison 1 | #367 brouillon | Validation propriétaire, CI et import sur recette seulement |
+| XP / vocal | #325 brouillon | Snapshot du 02/11 restauré en isolation et fenêtre de maintenance approuvée |
+
+La PR #362 a été fusionnée lors du relevé (`main` `c422967`), mais son parcours Preview n'est pas certifié. Avant de poursuivre, recalculer l'état des PR et de la CI ; ne pas modifier les branches en relecture par Claude.
+
+---
+
 # Backlog auto-généré
 
 Idées d'amélioration générées par Claude (session du 2026-10-04), classées selon les sources demandées :
