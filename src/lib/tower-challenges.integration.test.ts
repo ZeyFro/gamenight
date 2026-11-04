@@ -117,6 +117,39 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(new Set(rows.slice(0, 3).map(row => row.definitionId)).has(rows[3].definitionId)).toBe(true);
   });
 
+  it("départage à étages égaux par défis difficiles puis par premier arrivé", async () => {
+    const rows = [
+      // tower-a1 : 6 étages, 2 difficiles, atteint son total en dernier.
+      ["rank-a1-1", "tower-a1", 3, "2026-04-03T10:00:00Z"],
+      ["rank-a1-2", "tower-a1", 3, "2026-04-05T10:00:00Z"],
+      // tower-a2 : 6 étages, seulement 1 difficile.
+      ["rank-a2-1", "tower-a2", 3, "2026-04-02T10:00:00Z"],
+      ["rank-a2-2", "tower-a2", 2, "2026-04-03T10:00:00Z"],
+      ["rank-a2-3", "tower-a2", 1, "2026-04-04T10:00:00Z"],
+      // tower-a3 : 6 étages, 2 difficiles, total atteint avant tower-a1.
+      ["rank-a3-1", "tower-a3", 3, "2026-04-02T09:00:00Z"],
+      ["rank-a3-2", "tower-a3", 3, "2026-04-04T09:00:00Z"],
+    ] as const;
+    await db.towerChallengeAttempt.createMany({
+      data: rows.map(([id, userId, rewardFloors, rewardedAt]) => ({
+        id, communityId: "tower-a", userId, definitionId: "tower-a-easy",
+        requestKey: id, title: "Défi classement", instructions: "À réaliser",
+        rewardFloors, assignedAt: new Date("2026-04-01T08:00:00Z"),
+        expiresAt: new Date("2026-04-06T12:00:00Z"), status: "APPROVED" as const,
+        submittedAt: new Date(rewardedAt), proofText: "Preuve",
+        proofChannelId: "123456789012345678", proofMessageId: "223456789012345678",
+        publicationConsent: true, rewardedAt: new Date(rewardedAt),
+      })),
+    });
+    clock.now = new Date("2026-05-01T12:00:00Z");
+    const leaderboard = await api.getTowerSeasonLeaderboard(author);
+    if (leaderboard.status !== "LEADERBOARD") throw new Error("Classement attendu");
+    expect(leaderboard.entries.slice(0, 3).map(entry => entry.discordId))
+      .toEqual(["tower-a3", "tower-a1", "tower-a2"]);
+    expect(leaderboard.entries.slice(0, 3).map(entry => entry.rewardFloors))
+      .toEqual([6, 6, 6]);
+  });
+
   it("ouvre un vote communautaire unique après la clôture du trimestre, depuis le top actif", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
