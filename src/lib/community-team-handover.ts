@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -13,16 +13,29 @@ export async function transferInactiveCommunityTeamCaptains(
   dryRun = true,
 ): Promise<{ eligible: number; transferred: number }> {
   const cutoff = new Date(date.getTime() - THIRTY_DAYS_MS);
-  const scopedDb = scopedPrisma(null);
-  const candidateTeams = await scopedDb.communityTeam.findMany({
-    where: {
-      community: { status: "ACTIVE", communityTeamsEnabled: true },
-      captainLastActivityAt: { lte: cutoff },
-    },
-    select: { id: true, communityId: true },
-    orderBy: { captainLastActivityAt: "asc" },
-    take: 25,
-  });
+  // Préfiltrer les équipes réellement transmissibles AVANT LIMIT 25.
+  // Sinon 25 capitaines sans successeur peuvent affamer toutes les suivantes.
+  const candidateTeams = await prisma.$queryRaw<{ id: string; communityId: string }[]>`
+    SELECT t.id, t."communityId"
+    FROM "CommunityTeam" t
+    JOIN "Community" c ON c.id = t."communityId"
+    WHERE c.status = 'ACTIVE' AND c."communityTeamsEnabled" = true
+      AND t."captainLastActivityAt" <= ${cutoff}
+      AND EXISTS (
+        SELECT 1 FROM "CommunityTeamMember" m
+        JOIN "Membership" mm ON mm."communityId" = m."communityId" AND mm."userId" = m."userId"
+        WHERE m."teamId" = t.id AND mm.status = 'ACTIVE'
+          AND m."userId" <> COALESCE(t."captainId", t."createdById")
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "CommunityMemberStats" s
+        WHERE s."communityId" = t."communityId"
+          AND s."userId" = COALESCE(t."captainId", t."createdById")
+          AND s."streakLastActiveAt" > ${cutoff}
+      )
+    ORDER BY t."captainLastActivityAt" ASC, t.id ASC
+    LIMIT 25
+  `;
   let eligible = 0;
   let transferred = 0;
   for (const row of candidateTeams) {
