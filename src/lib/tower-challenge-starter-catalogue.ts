@@ -58,5 +58,55 @@ export const TOWER_STARTER_CHALLENGES = [
     "title": "Le podium des pires idées",
     "instructions": "Classe trois objets, lieux ou détails visibles dans ton jeu du plus raisonnable au plus suspect. Partage une capture qui les montre, ou trois captures si nécessaire, puis donne ton podium en trois lignes.",
     "rewardFloors": 2
-  }
+  },
+  {
+    "title": "Le jeu gratuit du soir",
+    "instructions": "Dans un jeu gratuit accessible sans achat (jeu free-to-play, navigateur ou démo gratuite), termine le tutoriel ou un mini-objectif sûr. Partage une capture de l'écran de fin sans pseudo privé ni donnée personnelle.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le menu digne du musée",
+    "instructions": "Dans un jeu gratuit accessible sans achat, choisis un détail d'interface étonnant et partage une capture accompagnée d'une légende amusante et respectueuse. N'utilise aucune photo personnelle.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Première découverte gratuite",
+    "instructions": "Teste pendant au moins quinze minutes un jeu gratuit ou un jeu de navigateur sans achat. Partage une capture prise pendant la partie et cite une mécanique qui t'a surpris.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "La carte postale gratuite",
+    "instructions": "Dans un jeu gratuit accessible sans achat, photographie uniquement l'écran d'un lieu en jeu et écris une carte postale fictive de deux phrases. Aucun achat, donnée privée ou contact avec un inconnu n'est demandé.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "L'astuce qui ne coûte rien",
+    "instructions": "Dans un jeu gratuit ou une démo gratuite, essaie une option accessible à tous et explique en deux phrases son utilité avec une capture du jeu. Ne demande aucune dépense ni modification dangereuse.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le guide des trois obstacles",
+    "instructions": "Dans un jeu de ton choix déjà accessible, complète trois objectifs distincts de difficulté raisonnable sur une session. Fournis des captures montrant les étapes et un court récit chronologique. Alternative : jeu gratuit sans achat.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "L'expédition de la seconde chance",
+    "instructions": "Dans un jeu où recommencer un niveau est sans risque, termine un objectif après au moins deux tentatives de stratégies différentes. Décris les deux stratégies et montre le résultat en capture. Un jeu gratuit convient.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "L'enquête des cinq détails",
+    "instructions": "Explore une zone d'un jeu accessible, relève cinq détails cohérents et publie une présentation numérotée avec deux captures de jeu au minimum. Tu peux utiliser un jeu gratuit ou de navigateur.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Le défi de patience raisonnée",
+    "instructions": "Dans une session de jeu accessible sans mise en danger ni temps imposé, termine un objectif nécessitant plusieurs étapes et documente trois jalons visibles en jeu. Une alternative gratuite est acceptée ; aucun exploit ni dépense requis.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Le reportage des trois actes",
+    "instructions": "Raconte en trois actes une séquence complète de jeu (départ, difficulté, solution) avec trois captures de jeu et des légendes originales. Choisis un objectif raisonnable, sans dévoiler de messages privés ; un jeu gratuit convient.",
+    "rewardFloors": 3
+  },
 ] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
