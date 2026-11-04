@@ -1,4 +1,19 @@
-# Point de reprise unique — GameNight — 3 novembre 2026
+# Reprise actuelle — The Tower 2.0 × GameNight (4 novembre 2026)
+
+> **État du relevé GitHub, non certificat de livraison.** Les sections datées du 2 et du 3 novembre ci-dessous sont historiques et ne doivent pas être utilisées comme état courant.
+
+- `main` : `c422967` lors du relevé. **#362 est fusionnée** ; la recherche et le dédoublonnage de la liste des jeux sont développés, mais la recette multi-comptes reste à valider.
+- **#366** (classification d'erreurs Auth.js), **#363** (script d'enregistrement guild-only) et **#368** (décisions §26, à vérifier selon son état GitHub lors de la reprise) : distinguer fusion et activation réelle.
+- **PR de travail non fusionnées** : #325 (XP/vocal, fenêtre de maintenance obligatoire), #367 (catalogue 30 défis, non importé), #369 (sécurité Preview), #370 (équipes, migration non appliquée), et #371 à #391 (lots distincts en brouillon au relevé). Les tests CI de chaque HEAD et les revues de Claude sont nécessaires ; la simple existence d'une PR ne vaut pas fonctionnalité livrée.
+- **Base de recette** : `preview-gamenight` contient un schéma obsolète ; les données User/Community/Membership étaient vides au relevé. Aucune Preview authentifiée ne doit écrire avant migration du schéma et confirmation du raccordement Neon et du blocage des crons et envois Discord.
+- **Discord** : /tower et /tower-admin non confirmées enregistrées ; aucune action de rôles, de publication ni de suppression autorisée sans accord. Vérifier Atlas, Ticket Tool et les permissions sur le vrai serveur.
+- **Décisions** : barème +1/+2/+3 ; Ranker 30, High Ranker 100 + saison terminée ; équipe 2 à 8, une équipe par joueur et délai 7 jours ; activité capitaine 30 jours ; S1 du 4 janvier au 28 mars 2027 (heure de Paris) ; exclusion des comptes de test des votes de production. Voir `docs/TOWER_DECISIONS_26_20261104.md` sur la branche où la décision a été proposée ; confirmer sa présence sur `main` avant utilisation.
+- **Lancement** : bêta interne mi-décembre ; 4 janvier 2027 cible conditionnelle ; 1er février 2027 repli. Pas d'IA ni Activities au lancement.
+- **Toujours interdit sans accord explicite** : merge, flag, variable Vercel, migration prod, import, enregistrement des commandes, suppression de rôles/salons/messages.
+
+---
+
+## Archives de reprise 2–3 novembre 2026
 
 Ce document décrit les constats du 2 novembre 2026, complétés le 3 novembre (section ci-dessous). Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
 
