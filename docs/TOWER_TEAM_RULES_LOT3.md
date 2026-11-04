@@ -22,7 +22,7 @@ Cette branche est une proposition **non fusionnée**. Aucune migration exécuté
 
 ## Points de relecture Claude avant fusion
 
-- `createdById` sert aujourd'hui à la fois de créateur historique et de responsable : il faut envisager un `captainId` indépendant pour ne pas réécrire l'histoire de l'équipe.
+- `captainId` est indépendant du créateur historique. Vérifier les autres endroits du code qui présument que `createdById` est toujours le capitaine (éventuels écrans et actions hors `/equipes`).
 - Les signaux d'activité ne sont pas équivalents à une connexion. Confirmer la définition de « inactif 30 jours » avant automatisation.
 - Vérifier que l'index unique ne rencontre aucun doublon lors de la future migration. La base de production a actuellement zéro équipe selon le dernier audit, mais **contrôler à nouveau** au moment du déploiement.
 - Les PR #362 (recherche de jeux) et ce lot modifient `src/app/equipes/page.tsx` ; synchroniser après relecture avant fusion.
