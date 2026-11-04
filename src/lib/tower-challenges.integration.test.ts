@@ -58,6 +58,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "false");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
+    vi.stubEnv("VERCEL_ENV", "preview");
     await db.notificationEvent.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVoteBallot.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVote.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
@@ -246,6 +247,36 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await api.submitTowerChallengeProof({ ...proof(id), proofText: "Autre preuve" })).status).toBe("CONFLICT");
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).submittedAt?.toISOString()).toBe("2026-10-28T12:00:00.000Z");
   });
+  it("exclut melah3 du vote de preuve en Production sans bloquer sa participation", async () => {
+    await db.user.update({ where: { id: "tower-a4" }, data: { discordName: "melah3" } });
+    const attemptId = await submitted(41);
+    vi.stubEnv("VERCEL_ENV", "production");
+
+    expect(await vote(attemptId, "tower-a4", true)).toMatchObject({ status: "TEST_ACCOUNT_EXCLUDED" });
+    expect(await db.towerChallengeVote.count({ where: { attemptId } })).toBe(0);
+  });
+
+  it("exclut melah3 du vote de fin de saison en Production", async () => {
+    await db.user.update({ where: { id: "tower-a4" }, data: { discordName: "melah3" } });
+    const seasonVote = await db.towerSeasonVote.create({
+      data: {
+        communityId: "tower-a",
+        seasonName: "S1 · 2027",
+        seasonStartAt: new Date("2027-01-03T23:00:00Z"),
+        seasonEndAt: new Date("2027-03-28T22:00:00Z"),
+        opensAt: new Date("2026-10-28T11:00:00Z"),
+        closesAt: new Date("2026-10-30T11:00:00Z"),
+        candidateUserIds: ["tower-a1", "tower-a2"],
+      },
+    });
+    vi.stubEnv("VERCEL_ENV", "production");
+
+    expect(await api.castTowerSeasonVote({
+      communityId: "tower-a", userId: "tower-a4", voteId: seasonVote.id, candidateUserId: "tower-a1",
+    })).toMatchObject({ status: "TEST_ACCOUNT_EXCLUDED" });
+    expect(await db.towerSeasonVoteBallot.count({ where: { voteId: seasonVote.id } })).toBe(0);
+  });
+
   it("interdit le vote pour soi, les doublons et les votes tardifs", async () => {
     const id = await submitted();
     expect((await vote(id, "tower-author", true)).status).toBe("SELF_VOTE");
