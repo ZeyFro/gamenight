@@ -1,3 +1,4 @@
+import { isVercelPreview } from "@/lib/preview-safety";
 import { NextRequest, NextResponse } from "next/server";
 import plan from "@/lib/tower-discord-layout.json";
 import { requireAdmin } from "@/lib/admin";
@@ -83,6 +84,7 @@ async function overview() {
   return { channels, ...operations(channels) };
 }
 export async function GET() {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
   const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   const admin = currentUser ? await requireAdmin() : null;
   if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
@@ -94,6 +96,7 @@ export async function GET() {
   }
 }
 export async function POST(_req: NextRequest) {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503, headers });
   // Pause structure changes until existing Discord services and content have been audited.
   return NextResponse.json({ error: "Réorganisation suspendue : audit des salons et des systèmes existants requis." }, { status: 423, headers });
 }

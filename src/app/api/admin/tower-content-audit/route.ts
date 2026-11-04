@@ -1,3 +1,4 @@
+import { isVercelPreview } from "@/lib/preview-safety";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
@@ -34,6 +35,7 @@ function keywords(text:string){
  return [...count].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([word,count])=>({word,count}));
 }
 export async function GET(req:NextRequest){
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
  if(!(await guard()))return NextResponse.json({error:"Forbidden"},{status:403,headers});
  const page=Number(req.nextUrl.searchParams.get("page")||0);
  if(!Number.isInteger(page)||page<0||page>200)return NextResponse.json({error:"Invalid page"},{status:400,headers});

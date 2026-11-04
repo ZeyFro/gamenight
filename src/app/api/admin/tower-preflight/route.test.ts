@@ -22,6 +22,13 @@ describe("GET /api/admin/tower-preflight", () => {
     vi.unstubAllEnvs();
   });
 
+  it("Preview → 503 sans appel Discord, même si le flag et le bot sont configurés", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const res = await GET();
+    expect(res.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("non-admin → 403 sans appel Discord", async () => {
     requireAdmin.mockResolvedValue(null);
     const res = await GET();
