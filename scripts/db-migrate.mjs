@@ -48,6 +48,7 @@ async function main() {
     runtimeRole: process.env.GAMENIGHT_RUNTIME_ROLE,
     expectedTarget: process.env.GAMENIGHT_EXPECTED_TARGET,
     allowLocal: args.allowLocal,
+    allowSharedRole: args.allowSharedRole,
     execute: args.execute,
   });
   secrets.push(target.password);
@@ -62,10 +63,12 @@ async function main() {
   }
 
   if (!args.execute) {
-    say("DRY-RUN : aucune écriture. Relancer avec --execute --confirm-database=<base> pour appliquer.");
+    say("DRY-RUN : aucune écriture. Avant tout --execute sur Neon, vérifier manuellement qu'un snapshot frais vient d'être créé et qu'il est restaurable.");
+    say("Relancer avec --execute --confirm-database=<base> pour appliquer.");
     return EXIT.OK;
   }
   if (args.confirm !== target.database) throw new RefusalError("--confirm-database=<base> absent ou différent de la cible");
+  say("PRÉCONDITION OPÉRATEUR : un snapshot Neon frais doit avoir été vérifié immédiatement avant ce --execute. Le runner ne peut pas le contrôler automatiquement.");
 
   const env = { ...process.env, DATABASE_URL: migrationUrl };
   delete env.MIGRATION_DATABASE_URL;
