@@ -12,12 +12,12 @@ const ok = (name: string) => ({ migration_name: name, finished_at: new Date(), r
 
 describe("db-migrate : arguments", () => {
   it("lit les drapeaux et la liste attendue", () => {
-    expect(readArgs(["--expect=a, b", "--execute", "--confirm-database=appdb", "--allow-local"]))
-      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true });
+    expect(readArgs(["--expect=a, b", "--execute", "--confirm-database=appdb", "--allow-local", "--allow-shared-role"]))
+      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true, allowSharedRole: true });
   });
 
   it("refuse une valeur sur les drapeaux booléens", () => {
-    for (const arg of ["--execute=false", "--execute=", "--allow-local=non"]) expect(() => readArgs([arg])).toThrow(/drapeau sans valeur/);
+    for (const arg of ["--execute=false", "--execute=", "--allow-local=non", "--allow-shared-role=true"]) expect(() => readArgs([arg])).toThrow(/drapeau sans valeur/);
     expect(readArgs(["--execute"]).execute).toBe(true);
   });
 
@@ -52,6 +52,8 @@ describe("db-migrate : cible", () => {
     expect(() => assertTarget({ ...base, runtimeUrl: URL_RUNTIME })).toThrow(/autre rôle/);
     expect(() => assertTarget({ ...base, runtimeRole: "gn_runtime" })).toThrow(/autre rôle/);
     expect(assertTarget({ ...base, runtimeRole: "autre" }).warnings).toEqual([]);
+    const degraded = assertTarget({ ...base, runtimeRole: "gn_runtime", allowSharedRole: true });
+    expect(degraded.warnings.join(" ")).toMatch(/MODE DÉGRADÉ DE LANCEMENT/);
     expect(assertTarget(base).warnings[0]).toMatch(/NON effectué/);
   });
 
