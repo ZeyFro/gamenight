@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment } from "@/lib/community-teams";
+import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
 import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { idSchema } from "@/lib/validations";
 
@@ -55,4 +55,19 @@ export async function setCommunityTeamRecruitmentAction(formData: FormData): Pro
   const open = formData.get("open");
   if (!teamId.success || (open !== "true" && open !== "false")) done("invalid");
   done(await setCommunityTeamRecruitment(user.id, communityId, teamId.data, open === "true"));
+}
+
+export async function transferCommunityTeamCaptainAction(formData: FormData): Promise<void> {
+  const { user, communityId } = await authorizedUser("transferCommunityTeamCaptain");
+  const teamId = idSchema.safeParse(formData.get("teamId"));
+  const successorId = idSchema.safeParse(formData.get("successorId"));
+  if (!teamId.success || !successorId.success) done("invalid");
+  done(await transferCommunityTeamCaptain(user.id, communityId, teamId.data, successorId.data));
+}
+
+export async function dissolveCommunityTeamAction(formData: FormData): Promise<void> {
+  const { user, communityId } = await authorizedUser("dissolveCommunityTeam");
+  const teamId = idSchema.safeParse(formData.get("teamId"));
+  if (!teamId.success || formData.get("confirm") !== "DISSOLVE") done("invalid");
+  done(await dissolveCommunityTeam(user.id, communityId, teamId.data));
 }
