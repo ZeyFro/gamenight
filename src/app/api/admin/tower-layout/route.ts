@@ -96,6 +96,7 @@ export async function GET() {
   }
 }
 export async function POST(_req: NextRequest) {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503, headers });
   // Pause structure changes until existing Discord services and content have been audited.
   return NextResponse.json({ error: "Réorganisation suspendue : audit des salons et des systèmes existants requis." }, { status: 423, headers });
 }
