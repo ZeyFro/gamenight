@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { isVercelPreview } from "@/lib/preview-safety";
 
 export interface DiscordEmbedField {
   name: string;
@@ -74,6 +75,7 @@ export async function postToDiscord(
   embed: DiscordEmbed,
   content?: string
 ): Promise<PostToDiscordResult> {
+  if (isVercelPreview()) return { ok: false, error: "preview_blocked" };
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) {
     logger.warn("discord", "DISCORD_WEBHOOK_URL non configurée — message non envoyé.");
