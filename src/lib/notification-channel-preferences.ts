@@ -118,7 +118,7 @@ export async function getEligibleUserIdsForNotificationChannel(
     notificationPreferences: row.categoryEnabled === null
       ? undefined
       : [{ category, enabled: row.categoryEnabled }],
-  }, category, channel, row.channelEnabled === null ? undefined : { enabled: row.channelEnabled })
+  }, category, channel, row.channelEnabled === null ? undefined : { enabled: row.channelEnabled }))
     .map(({ userId }) => userId));
 }
 
