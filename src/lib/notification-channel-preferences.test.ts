@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { categoryFindMany, channelFindMany, channelUpsert } = vi.hoisted(() => ({
+const { categoryFindMany, channelFindMany, channelUpsert, queryRaw } = vi.hoisted(() => ({
   categoryFindMany: vi.fn(),
   channelFindMany: vi.fn(),
   channelUpsert: vi.fn(),
+  queryRaw: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     userNotificationPreference: { findMany: categoryFindMany },
     userNotificationChannelPreference: { findMany: channelFindMany, upsert: channelUpsert },
+    $queryRaw: queryRaw,
   },
 }));
 
 import {
   filterUsersByNotificationChannelPreference,
+  getEligibleUserIdsForNotificationChannel,
   isCoveredNotificationChannel,
   isAvailableNotificationChannel,
   resolveNotificationChannelEnabled,
@@ -27,6 +30,7 @@ describe("notification-channel-preferences", () => {
     categoryFindMany.mockResolvedValue([]);
     channelFindMany.mockResolvedValue([]);
     channelUpsert.mockResolvedValue(undefined);
+    queryRaw.mockResolvedValue([]);
   });
 
   it("garde le comportement historique quand aucune préférence de canal n'existe", () => {
@@ -76,6 +80,22 @@ describe("notification-channel-preferences", () => {
       where: { userId: { in: candidates.map(({ id }) => id) }, category: "SESSION", channel: "DISCORD_DM" },
       select: { userId: true, enabled: true },
     });
+  });
+
+  it("lit l'éligibilité des notifications en une seule requête", async () => {
+    queryRaw.mockResolvedValue([
+      { userId: "accepted", silenceReminders: false, categoryEnabled: null, channelEnabled: null },
+      { userId: "category-disabled", silenceReminders: false, categoryEnabled: false, channelEnabled: true },
+      { userId: "channel-disabled", silenceReminders: false, categoryEnabled: true, channelEnabled: false },
+      { userId: "legacy-disabled", silenceReminders: true, categoryEnabled: true, channelEnabled: true },
+    ]);
+
+    await expect(getEligibleUserIdsForNotificationChannel(
+      ["accepted", "category-disabled", "channel-disabled", "legacy-disabled"],
+      "SESSION",
+      "IN_APP",
+    )).resolves.toEqual(new Set(["accepted"]));
+    expect(queryRaw).toHaveBeenCalledOnce();
   });
 
   it("écrit le canal uniquement pour l'identité authentifiée", async () => {
