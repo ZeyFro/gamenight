@@ -436,7 +436,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   it("importe le pack de départ une seule fois sans réactiver un défi désactivé", async () => {
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const first = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(first).toEqual({ status: "IMPORTED", added: 22, alreadyPresent: 0 });
+    expect(first).toEqual({ status: "IMPORTED", added: 26, alreadyPresent: 0 });
 
     const starterChallenge = await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
@@ -444,8 +444,8 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     });
     await db.towerChallengeDefinition.update({ where: { id: starterChallenge.id }, data: { active: false } });
     const second = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: 22 });
-    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(23);
+    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: 26 });
+    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(27);
     expect(await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
       select: { active: true },

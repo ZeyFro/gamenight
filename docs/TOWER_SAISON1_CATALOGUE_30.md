@@ -5,10 +5,10 @@
 ## Compatibilité des commandes existantes
 
 Les définitions sont directement dans les tableaux lus par les imports existants, sans nouveau schéma :
-- `src/lib/tower-challenge-starter-catalogue.ts` : **22** défis historiques repris par `/tower-admin importer` ; **4 défis sociaux v2** sont exportés séparément et ne sont pas encore importés automatiquement.
-- `src/lib/tower-team-challenge-starter-catalogue.ts` : **8** défis historiques repris par `/tower-admin importer-equipe` ; **2 défis équipe faciles v2** sont exportés séparément et ne sont pas encore importés automatiquement.
+- `src/lib/tower-challenge-starter-catalogue.ts` : **26** défis repris par `/tower-admin importer`, dont **4 défis sociaux v2**.
+- `src/lib/tower-team-challenge-starter-catalogue.ts` : **10** défis repris par `/tower-admin importer-equipe`, dont **2 défis équipe faciles v2**.
 
-Les fonctions `importSoloTowerChallengeStarterPack` et `importTeamTowerChallengeStarterPack` de `src/lib/tower-challenges.ts` évitent les doublons de titres par communauté et mode. **Cette PR n’élargit pas encore ces imports** afin de ne pas modifier `tower-challenges.integration.test.ts`, réservé par #373 ; l’intégration des 6 nouveaux défis sera faite après libération de ce fichier. Attention : l'import ne conserve pas un champ de difficulté indépendant ; le niveau est représenté par `rewardFloors`. Il ne doit pas être lancé tant que les commandes ne sont pas enregistrées et qu'une recette isolée n'a pas eu lieu.
+Les fonctions `importSoloTowerChallengeStarterPack` et `importTeamTowerChallengeStarterPack` de `src/lib/tower-challenges.ts` évitent les doublons de titres par communauté et mode. Attention : l'import ne conserve pas un champ de difficulté indépendant ; le niveau est représenté par `rewardFloors`. Il ne doit pas être lancé tant que les commandes ne sont pas enregistrées et qu'une recette isolée n'a pas eu lieu.
 
 ## Tableau de revue
 
@@ -61,5 +61,5 @@ Une alternative doit rester possible pour les jeux où l’insertion du code est
 
 1. Vérifier après bêta que le barème confirmé 1/2/3 reste cohérent avec la difficulté réelle de chaque défi.
 2. Relire les textes pour l'accessibilité, absence d'achat obligatoire, équité, protection de la vie privée et règles du serveur.
-3. Tester les imports sur une branche de base isolée et un serveur Discord de recette avec commandes guild-only ; vérifier zéro doublon au deuxième passage.
+3. Tester les imports sur une base isolée ; vérifier zéro doublon au deuxième passage. Toute recette Discord autorisée se fait uniquement sur The Tower.
 4. Ne pas importer en production ni activer les flags sans validation du propriétaire. La saison et le calendrier restent à décider.

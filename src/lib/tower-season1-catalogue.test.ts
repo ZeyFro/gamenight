@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { TOWER_STARTER_CHALLENGES, TOWER_SEASON1_SOCIAL_CHALLENGES } from "./tower-challenge-starter-catalogue";
-import { TOWER_TEAM_STARTER_CHALLENGES, TOWER_SEASON1_EXTRA_TEAM_CHALLENGES } from "./tower-team-challenge-starter-catalogue";
+import { TOWER_STARTER_CHALLENGES } from "./tower-challenge-starter-catalogue";
+import { TOWER_TEAM_STARTER_CHALLENGES } from "./tower-team-challenge-starter-catalogue";
 
-const combined = [...TOWER_STARTER_CHALLENGES, ...TOWER_SEASON1_SOCIAL_CHALLENGES, ...TOWER_TEAM_STARTER_CHALLENGES, ...TOWER_SEASON1_EXTRA_TEAM_CHALLENGES];
+const combined = [...TOWER_STARTER_CHALLENGES, ...TOWER_TEAM_STARTER_CHALLENGES];
 
 describe("catalogue de la saison 1 — /tower-admin importer et importer-equipe", () => {
   it("contient 36 défis dont 10 défis d'équipe", () => {
-    expect(TOWER_STARTER_CHALLENGES).toHaveLength(22);
-    expect(TOWER_SEASON1_SOCIAL_CHALLENGES).toHaveLength(4);
-    expect(TOWER_TEAM_STARTER_CHALLENGES).toHaveLength(8);
-    expect(TOWER_SEASON1_EXTRA_TEAM_CHALLENGES).toHaveLength(2);
+    expect(TOWER_STARTER_CHALLENGES).toHaveLength(26);
+    expect(TOWER_TEAM_STARTER_CHALLENGES).toHaveLength(10);
     expect(combined).toHaveLength(36);
   });
   it("conserve un socle conséquent dans chaque difficulté", () => {
@@ -19,8 +17,10 @@ describe("catalogue de la saison 1 — /tower-admin importer et importer-equipe"
   });
   it("ajoute au moins quatre défis sociaux et deux défis d'équipe faciles", () => {
     const socialTitles = ["Premier contact GameNight", "Le passeur de jeu", "La soirée surprise", "Le duo de l’inconnu"];
-    expect(TOWER_SEASON1_SOCIAL_CHALLENGES.filter((challenge) => socialTitles.includes(challenge.title))).toHaveLength(4);
-    expect(TOWER_SEASON1_EXTRA_TEAM_CHALLENGES.filter((challenge) => challenge.rewardFloors === 1)).toHaveLength(2);
+    expect(TOWER_STARTER_CHALLENGES.filter(challenge => socialTitles.includes(challenge.title))).toHaveLength(4);
+    expect(TOWER_TEAM_STARTER_CHALLENGES.filter(challenge =>
+      ["Le salut de l’escouade", "Le mini-objectif collectif"].includes(challenge.title) && challenge.rewardFloors === 1
+    )).toHaveLength(2);
   });
   it("ne classe plus l'enquête des cinq détails comme difficile", () => {
     expect(TOWER_STARTER_CHALLENGES.find((challenge) => challenge.title === "L'enquête des cinq détails")?.rewardFloors).toBe(2);
