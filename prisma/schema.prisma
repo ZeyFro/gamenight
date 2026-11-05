@@ -46,6 +46,7 @@ model User {
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
+  towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
@@ -3270,12 +3271,14 @@ model TowerChallengeAppeal {
   status TowerChallengeAppealStatus @default(OPEN)
   reviewerUserId String?
   arbiterUserId String?
+  arbiterUser User? @relation("TowerChallengeAppealArbiter", fields: [arbiterUserId], references: [id], onDelete: NoAction)
   decisionReason String? @db.VarChar(1000)
   decidedAt DateTime?
 
   @@unique([attemptId, communityId])
   @@index([communityId, status, createdAt])
   @@index([communityId, status, dueAt])
+  @@index([communityId, status, arbiterUserId])
 }
 
 model TowerChallengeAttemptParticipant {

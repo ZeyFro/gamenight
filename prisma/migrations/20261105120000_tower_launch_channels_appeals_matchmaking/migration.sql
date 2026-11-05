@@ -31,7 +31,9 @@ CREATE TABLE "TowerChallengeAppeal" (
   CONSTRAINT "TowerChallengeAppeal_communityId_fkey"
     FOREIGN KEY ("communityId") REFERENCES "Community"("id") ON DELETE NO ACTION ON UPDATE CASCADE,
   CONSTRAINT "TowerChallengeAppeal_attemptId_communityId_fkey"
-    FOREIGN KEY ("attemptId", "communityId") REFERENCES "TowerChallengeAttempt"("id", "communityId") ON DELETE NO ACTION ON UPDATE CASCADE
+    FOREIGN KEY ("attemptId", "communityId") REFERENCES "TowerChallengeAttempt"("id", "communityId") ON DELETE NO ACTION ON UPDATE CASCADE,
+  CONSTRAINT "TowerChallengeAppeal_arbiterUserId_fkey"
+    FOREIGN KEY ("arbiterUserId") REFERENCES "User"("id") ON DELETE NO ACTION ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "TowerChallengeAppeal_attemptId_communityId_key"
   ON "TowerChallengeAppeal"("attemptId", "communityId");
@@ -39,6 +41,8 @@ CREATE INDEX "TowerChallengeAppeal_communityId_status_createdAt_idx"
   ON "TowerChallengeAppeal"("communityId", "status", "createdAt");
 CREATE INDEX "TowerChallengeAppeal_communityId_status_dueAt_idx"
   ON "TowerChallengeAppeal"("communityId", "status", "dueAt");
+CREATE INDEX "TowerChallengeAppeal_communityId_status_arbiterUserId_idx"
+  ON "TowerChallengeAppeal"("communityId", "status", "arbiterUserId");
 
 CREATE TYPE "UserNotificationChannel" AS ENUM ('IN_APP', 'WEB_PUSH', 'DISCORD_DM', 'DISCORD_MENTION');
 CREATE TABLE "UserNotificationChannelPreference" (
