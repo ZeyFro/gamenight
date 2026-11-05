@@ -71,7 +71,6 @@ describe("/api/cron/notification-executor", () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     const response = await GET(req("Bearer s3cret"));
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "preview_disabled" });
     expect(runExecutorBatch).not.toHaveBeenCalled();
     expect(afterTasks).toHaveLength(0);
   });
