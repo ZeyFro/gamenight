@@ -1,3 +1,4 @@
+import { safeTowerErrorCategory } from "@/lib/discord-tower-error-category";
 import { z } from "zod";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 import type { DiscordActionRow } from "@/lib/discord-rest";
@@ -240,7 +241,7 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
         }
       }
     } catch (error) {
-      logger.error("discord-tower", error, { task: "runTower" });
+      logger.warn("discord-tower", "Échec du traitement Tower.", { task: "runTower", errorType: safeTowerErrorCategory(error) });
       response = { content: "Impossible de confirmer cette action pour le moment. Consulte ta progression avant de réessayer." };
     }
     const sent = await editSetupResponse({ applicationId: i.application_id, token: i.token, ...response, deadline: new Date(Date.now() + 10000) });
