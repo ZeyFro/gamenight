@@ -4,12 +4,19 @@ on:
   push:
     branches: [codex/cloud-dev-pilot]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Autoriser la génération et la publication d'un brouillon
+        type: boolean
+        default: false
   schedule:
     - cron: '17 2 * * *'
       timezone: Europe/Paris
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: gamenight-cloud-dev
@@ -24,18 +31,24 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -B scripts/cloud-dev.py smoke
+      - name: Vérifier la file GitHub en lecture seule
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/cloud-dev.py select
 
   draft:
     if: >-
       github.repository == 'ZeyFro/gamenight' &&
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish)) &&
       github.run_attempt == 1 && vars.GAMENIGHT_CLOUD_DEV_ENABLED == 'true'
     needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      issues: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4

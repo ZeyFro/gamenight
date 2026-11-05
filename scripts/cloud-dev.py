@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 REPO = "ZeyFro/gamenight"
+PLAN_ISSUE = 400
 MODEL = "gpt-6.1-sol"
 MAX_INPUT = 10_000
 MAX_OUTPUT = 4_000
@@ -50,6 +51,8 @@ def load_queue():
 
 
 def available(task):
+    if gh(f"repos/{REPO}/issues/{PLAN_ISSUE}")["state"] != "open":
+        return False
     ref = branch(task)
     if gh(f"repos/{REPO}/pulls?state=all&head=ZeyFro:{ref}&per_page=1"):
         return False
@@ -168,7 +171,7 @@ def publish(task, content):
         "push", "origin", f"HEAD:refs/heads/{ref}")
     run = f"https://github.com/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     body = (
-        f"Tâche autorisée : {task['title']}.\n\nContrôles et consommation : {run}. "
+        f"Tâche autorisée : {task['title']} (suivi #{PLAN_ISSUE}).\n\nContrôles et consommation : {run}. "
         "CI habituelle sautée : elle applique des migrations au PostgreSQL jetable. "
         "Relecture et tests fonctionnels distincts avant toute intégration."
     )
@@ -204,13 +207,24 @@ def smoke():
         raise AssertionError("Une proposition invalide a été acceptée.")
     open_pr = {"number": 413, "head": {"ref": "autre-branche"}}
     with patch(__name__ + ".git", return_value=""), patch(
-        __name__ + ".gh", side_effect=[[], [open_pr], [[{"filename": "docs/INDEX.md"}]]]
+        __name__ + ".gh", side_effect=[{"state": "open"}, [], [open_pr], [[{"filename": "docs/INDEX.md"}]]]
     ):
         assert not available(fixture_task | {"id": "fixture"})
-    with patch(__name__ + ".git", return_value="") as remote, patch(__name__ + ".gh", return_value=[{}]):
+    with patch(__name__ + ".git", return_value="") as remote, patch(
+        __name__ + ".gh", side_effect=[{"state": "open"}, [{}]]
+    ):
         assert not available(fixture_task | {"id": "fixture"})
         remote.assert_not_called()
-    print("Simulation réussie : tâche réservée et doublon refusés, deux corrections maximum.")
+
+    def closed_issue(route):
+        return {"state": "closed"} if route.endswith("/issues/400") else []
+
+    with patch(__name__ + ".git", return_value="") as remote, patch(
+        __name__ + ".gh", side_effect=closed_issue
+    ):
+        assert not available(fixture_task | {"id": "fixture"})
+        remote.assert_not_called()
+    print("Simulation réussie : issue fermée, tâche réservée et doublon refusés, deux corrections maximum.")
 
 
 def main(mode):
@@ -225,6 +239,7 @@ def main(mode):
         task = next((task for task in queue if available(task)), None)
         if task:
             selection.write_text(task["id"], encoding="utf-8")
+            print(f"Tâche indépendante disponible dans le cadre de #{PLAN_ISSUE} : {task['id']}.")
         else:
             print("Aucune tâche indépendante disponible. Aucun appel OpenAI.")
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
