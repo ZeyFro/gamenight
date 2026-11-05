@@ -79,6 +79,6 @@ Le propriétaire gère la connexion Codex, les invitations, les permissions/rôl
 ## Mise à jour CI — 5 novembre 2026
 
 - **#370** : Vitest ignorait initialement le test `.mjs` selon son include; `vitest.config.mts` inclut désormais `scripts/**/*.test.mjs`. Le job ciblé passe. CI générale run 764 à vérifier, PR toujours Draft.
-- **#406** : parenthèse manquante corrigée, et fixture de préférence corrigé sur la tête actuelle `abeada1de5215fb2be1d16712b9574b65a92f784`. Le workflow ciblé run 212 passe : 9 fichiers / 85 tests; son job storage passe aussi (87 tests ciblés, typegen et tsc). CI générale run 766 a redémarré et reste en cours.
+- **#406** : parenthèse manquante corrigée, et fixture de préférence corrigé sur la tête actuelle `abeada1de5215fb2be1d16712b9574b65a92f784`. Le workflow ciblé run 212 passe : 9 fichiers / 85 tests; son job storage passe aussi (87 tests ciblés, typegen et tsc). CI générale run 766 a redémarré; `npm run test:postgres` est en cours.
 - **Base de test** : toujours aucune migration appliquée. Le runner Prisma ne peut pas être lancé depuis cette session sans checkout local et `MIGRATION_DATABASE_URL` injectée hors chat. Aucune URL, aucun secret, aucune opération Production.
 - **Prochaine action** : relever les runs 763/764, corriger les échecs concrets, puis retester; seulement ensuite vérifier si le runner exact peut être exécuté sur la branche Neon de test, avec migrations #370 puis #406 et aucune autre migration.
