@@ -27,7 +27,7 @@ Dans la version proposée de `scripts/db-migrate.mjs` de #370, le runner compare
 
 Références : [runner proposé dans #370](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate.mjs), [contrôle de la liste attendue](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate-lib.mjs), [ordre lexicographique de Prisma Migrate](https://www.prisma.io/docs/orm/v6/prisma-migrate/getting-started) et [application des migrations en attente](https://www.prisma.io/docs/orm/v6/prisma-migrate/workflows/development-and-production).
 
-**Protection proposée — non implémentée ici :** le runner devrait refuser l'exécution si le plus ancien fichier en attente précède le nom de la dernière migration appliquée avec succès; afficher les deux noms et demander une revue explicite de l'historique. Ajouter un test unitaire couvrant une migration #325 en attente après #370/#406 appliquées. En attendant cette protection, ne pas exécuter cette séquence tardive sans revue et autorisation distincte pour chaque migration.
+**Protection ajoutée dans la tête de la PR #370** (`711210265fa6164f523a49b3cd8d9f818abf154d`) : le runner refuse maintenant l'exécution si la plus ancienne migration en attente précède la dernière migration réussie. Le message affiche les deux noms et demande de réconcilier l'historique. Le nouveau fichier `scripts/db-migrate-lib.test.mjs` couvre le cas #325 tardif, l'ordre normal et les autres refus de précontrôle. La CI de cette tête est encore en cours; la protection n'est donc pas encore validée par CI. La PR #325 reste gelée et chaque migration de Production nécessite toujours son autorisation séparée.
 
 ## Détail par migration
 
