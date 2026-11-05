@@ -1,3 +1,11 @@
+> **Mise à jour du 4 novembre 2026 (The Tower 2.0)** : ce backlog original d'octobre est un historique. Le lancement public est prévu le 4 janvier 2027, date de repli le 1er février ; le propriétaire exige un go/no-go indépendant avant activation. Les constats de la première moitié du document ne sont pas des preuves de livraison en production.
+>
+> État vérifié au 4 novembre 2026, référence `main=7cd6015` : parmi les dix chantiers initialement cités ici, #360 (« Qui joue ce soir ? »), #362 (recherche des jeux), #367 (catalogue 30 défis), #369 (verrou Preview), #371 (cause OAuth), #372 (calendrier), #373 (classement) et #374 (rangs) sont fusionnés. #325 reste gelée jusqu'en janvier et #370 reste ouverte, avec migration obligatoire avant merge. Fusionné ne signifie ni configuré ni testé réellement.
+>
+> Autres PR ouvertes au relevé : #384, #385, #387, #388, #392, #394, #395, #396, #397 et #399 (plan de recette). Les PR d'audit et de documentation sont préparatoires, jamais une activation. Revérifier cette liste avant toute reprise ultérieure.
+>
+> Priorité : isolation réelle Neon/Discord/Vercel, connexion de deux comptes, puis équipes et Ascension. Aucune migration production, publication Discord ni suppression de rôles sans accord. Le schéma Prisma reste réservé par #370 ; #325, gelée, ne réserve aucun fichier selon la décision actuelle de Maxime. La reprise de référence reste volontairement inchangée dans ce lot.
+>
 # Backlog auto-généré
 
 Idées d'amélioration générées par Claude (session du 2026-10-04), classées selon les sources demandées :
