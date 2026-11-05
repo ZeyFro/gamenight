@@ -43,10 +43,16 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   const author = { communityId: "tower-a", userId: "tower-author" };
   const members = ["tower-author", "tower-a1", "tower-a2", "tower-a3", "tower-a4", "tower-outsider"];
   const claimInput = (n = 1) => ({ ...author, requestKey: "tower-claim-key-" + String(n).padStart(8, "0") });
-  const proof = (attemptId: string) => ({
-    ...author, attemptId, proofText: "Voici ma réalisation.",
-    proofChannelId: "123456789012345678", proofMessageId: "223456789012345678", publicationConsent: true,
-  });
+  const proof = async (attemptId: string) => {
+    const [row] = await db.$queryRaw<{ proofCode: string | null }[]>`
+      SELECT "proofCode" FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = 'tower-a'
+    `;
+    if (!row?.proofCode) throw new Error("Code TWR attendu après attribution");
+    return {
+      ...author, attemptId, proofText: `Voici ma réalisation. ${row.proofCode}`,
+      proofChannelId: "123456789012345678", proofMessageId: "223456789012345678", publicationConsent: true,
+    };
+  };
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     api = await import("./tower-challenges");
@@ -61,6 +67,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     await db.notificationEvent.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVoteBallot.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVote.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
+    await db.$executeRaw`DELETE FROM "TowerChallengeAppeal" WHERE "communityId" IN ('tower-a', 'tower-b')`;
     await db.towerChallengeAttempt.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.communityTeamMember.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.communityTeam.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
@@ -90,8 +97,14 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   }
   async function submitted(n = 1) {
     const id = await claim(n);
-    expect((await api.submitTowerChallengeProof(proof(id))).status).toBe("SUBMITTED");
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("SUBMITTED");
     return id;
+  }
+  async function markRejected(attemptId: string) {
+    await db.$executeRaw`
+      UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = ${clock.now}
+      WHERE id = ${attemptId} AND "communityId" = 'tower-a'
+    `;
   }
   async function vote(id: string, userId: string, approve: boolean) {
     return api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: id, approve });
@@ -234,6 +247,21 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2026-10-29T00:00:00Z");
     expect((await api.claimSoloTowerChallenge(claimInput(2))).status).toBe("CLAIMED");
   });
+  it("génère et affiche le code dès l’attribution, puis l’exige dans la description de la preuve", async () => {
+    const id = await claim();
+    const state = await api.getTowerChallengeState({ ...author, attemptId: id });
+    if (state.status !== "STATE") throw new Error("Fiche de défi attendue");
+    const code = state.attempts[0]?.proofCode;
+    expect(code).toMatch(/^TWR-[A-HJ-NP-Z2-9]{8}$/);
+    expect(await api.submitTowerChallengeProof({ ...(await proof(id)), proofText: "Capture jointe, sans le code." })).toMatchObject({
+      status: "PROOF_CODE_REQUIRED",
+    });
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("SUBMITTED");
+    const [stored] = await db.$queryRaw<{ proofCode: string }[]>`
+      SELECT "proofCode" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(stored?.proofCode).toBe(code);
+  });
   it("n'offre pas deux défis quand les clés concurrentes diffèrent", async () => {
     const results = await Promise.all([api.claimSoloTowerChallenge(claimInput(1)), api.claimSoloTowerChallenge(claimInput(2))]);
     expect(results.map(r => r.status).sort()).toEqual(["CLAIMED", "COOLDOWN"]);
@@ -249,20 +277,20 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   });
   it("permet une preuve sans consentement au partage général", async () => {
     const id = await claim();
-    expect(await api.submitTowerChallengeProof({ ...proof(id), publicationConsent: false })).toMatchObject({ status: "SUBMITTED", replayed: false });
+    expect(await api.submitTowerChallengeProof({ ...(await proof(id)), publicationConsent: false })).toMatchObject({ status: "SUBMITTED", replayed: false });
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).publicationConsent).toBe(false);
   });
   it("refuse la preuve à 48 h exactement", async () => {
     const id = await claim();
     clock.now = new Date("2026-10-30T12:00:00Z");
-    expect((await api.submitTowerChallengeProof(proof(id))).status).toBe("EXPIRED");
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("EXPIRED");
     expect(await db.towerChallengeVote.count()).toBe(0);
   });
   it("un dépôt rejoué ne change ni la preuve ni la fermeture du vote", async () => {
     const id = await submitted();
     clock.now = new Date("2026-10-28T13:00:00Z");
-    expect(await api.submitTowerChallengeProof(proof(id))).toMatchObject({ status: "SUBMITTED", replayed: true });
-    expect((await api.submitTowerChallengeProof({ ...proof(id), proofText: "Autre preuve" })).status).toBe("CONFLICT");
+    expect(await api.submitTowerChallengeProof(await proof(id))).toMatchObject({ status: "SUBMITTED", replayed: true });
+    expect((await api.submitTowerChallengeProof({ ...(await proof(id)), proofText: "Autre preuve" })).status).toBe("CONFLICT");
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).submittedAt?.toISOString()).toBe("2026-10-28T12:00:00.000Z");
   });
   it("interdit le vote pour soi, les doublons et les votes tardifs", async () => {
@@ -274,6 +302,92 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await vote(id, "tower-a1", false)).status).toBe("ALREADY_VOTED");
     clock.now = new Date("2026-10-29T12:00:00Z");
     expect((await vote(id, "tower-a2", true)).status).toBe("CLOSED");
+  });
+  it("limite la contestation à l’auteur, impose un motif et conserve une seule demande", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    const rejectedAt = clock.now;
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "   " })).toMatchObject({ status: "INVALID" });
+    expect(await api.submitTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", attemptId: id, reason: "Je conteste." }))
+      .toMatchObject({ status: "UNAVAILABLE" });
+    const appealable = await api.getTowerChallengeAppealableAttempts(author);
+    expect(appealable.status === "APPEALABLE_ATTEMPTS" && appealable.attempts.map(attempt => attempt.id)).toContain(id);
+    clock.now = new Date(rejectedAt.getTime() + 7 * 24 * 3600000);
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "À la limite exacte." }))
+      .toMatchObject({ status: "WINDOW_CLOSED" });
+    expect(await api.getTowerChallengeAppealableAttempts(author)).toMatchObject({ status: "APPEALABLE_ATTEMPTS", attempts: [] });
+    clock.now = rejectedAt;
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Le contexte de la capture n’a pas été pris en compte." }))
+      .toMatchObject({ status: "APPEAL_SUBMITTED" });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Une deuxième demande." }))
+      .toMatchObject({ status: "ALREADY_APPEALED" });
+    const [appeal] = await db.$queryRaw<{ authorUserId: string; status: string; dueAt: Date }[]>`
+      SELECT "authorUserId", status, "dueAt" FROM "TowerChallengeAppeal"
+      WHERE "communityId" = 'tower-a' AND "attemptId" = ${id}
+    `;
+    expect(appeal).toMatchObject({ authorUserId: author.userId, status: "OPEN", dueAt: new Date("2026-11-04T12:00:00.000Z") });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Après le délai." }))
+      .toMatchObject({ status: "ALREADY_APPEALED" });
+  });
+  it("réserve un auteur staff à l’arbitre nommé et rend une décision une seule fois", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    await db.membership.update({ where: { communityId_userId: author }, data: { role: "ADMIN" } });
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "OWNER" } });
+    const appeal = await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen indépendant demandé." });
+    expect(appeal.status).toBe("APPEAL_SUBMITTED");
+    const queue = await api.getTowerChallengeStaffQueue({ communityId: "tower-a", userId: "tower-a1" });
+    expect(queue).toMatchObject({ status: "STAFF_QUEUE", isStaff: true });
+    if (queue.status !== "STAFF_QUEUE") throw new Error("File staff attendue");
+    const appealId = queue.appeals[0]?.id;
+    if (!appealId) throw new Error("Contestation ouverte attendue");
+    const candidates = await api.getTowerChallengeArbiterCandidates({ communityId: "tower-a", userId: "tower-a1", appealId });
+    expect(candidates.status).toBe("CANDIDATES");
+    if (candidates.status !== "CANDIDATES") throw new Error("Candidats attendus");
+    expect(candidates.candidates.map(candidate => candidate.userId)).toContain("tower-a2");
+    expect(await api.appointTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", appealId, arbiterUserId: "tower-a2" }))
+      .toMatchObject({ status: "ARBITER_ASSIGNED" });
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", appealId, decision: "OVERTURNED", decisionReason: "Je suis le propriétaire." }))
+      .toMatchObject({ status: "FORBIDDEN" });
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-b", userId: "tower-outsider", appealId, decision: "OVERTURNED", decisionReason: "Autre communauté." }))
+      .toMatchObject({ status: "UNAVAILABLE" });
+    const decisions = await Promise.all([1, 2].map(() => api.decideTowerChallengeAppeal({
+      communityId: "tower-a", userId: "tower-a2", appealId, decision: "OVERTURNED", decisionReason: "Arbitrage indépendant." })));
+    expect(decisions.map(result => result.status).sort()).toEqual(["ALREADY_DECIDED", "APPEAL_OVERTURNED"]);
+    const [attempt] = await db.$queryRaw<{ status: string; rewardedAt: Date | null }[]>`
+      SELECT status, "rewardedAt" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    const [record] = await db.$queryRaw<{ status: string; reviewerUserId: string; decisionReason: string }[]>`
+      SELECT status, "reviewerUserId", "decisionReason" FROM "TowerChallengeAppeal" WHERE id = ${appealId} AND "communityId" = 'tower-a'
+    `;
+    expect(attempt?.status).toBe("APPROVED");
+    expect(attempt?.rewardedAt).toEqual(clock.now);
+    expect(record).toMatchObject({ status: "OVERTURNED", reviewerUserId: "tower-a2", decisionReason: "Arbitrage indépendant." });
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(1));
+  });
+  it("laisse la contestation ouverte si l’auteur a atteint son plafond quotidien", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "ADMIN" } });
+    await db.towerChallengeAttempt.createMany({ data: [1, 2].map(index => ({
+      id: "appeal-cap-" + index, communityId: "tower-a", userId: "tower-author", definitionId: "tower-a-easy",
+      requestKey: "appeal-cap-0000000" + index, title: "Réussite déjà créditée", instructions: "Déjà terminée.",
+      rewardFloors: 1, assignedAt: clock.now, expiresAt: new Date(clock.now.getTime() + 48 * 3600000),
+      status: "APPROVED" as const, rewardedAt: new Date(clock.now.getTime() + index * 1000),
+    })) });
+    await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Je demande un réexamen." });
+    const [record] = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "TowerChallengeAppeal" WHERE "communityId" = 'tower-a' AND "attemptId" = ${id}
+    `;
+    if (!record) throw new Error("Contestation créée attendue");
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", appealId: record.id,
+      decision: "OVERTURNED", decisionReason: "La preuve est valide." })).toMatchObject({ status: "DAILY_LIMIT" });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("REJECTED");
+    const [appeal] = await db.$queryRaw<{ status: string }[]>`
+      SELECT status FROM "TowerChallengeAppeal" WHERE id = ${record.id} AND "communityId" = 'tower-a'
+    `;
+    expect(appeal?.status).toBe("OPEN");
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
   it("une clôture concurrente récompense une seule fois", async () => {
     const id = await submitted();
@@ -310,7 +424,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await db.towerChallengeAttempt.count({ where: { teamId: team.id } })).toBe(1);
     expect((await api.joinTowerTeamChallenge({ ...author, attemptId: first.attempt.id })).status).toBe("JOINED");
     expect((await api.joinTowerTeamChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id })).status).toBe("JOINED");
-    expect((await api.submitTowerChallengeProof(proof(first.attempt.id))).status).toBe("SUBMITTED");
+    expect((await api.submitTowerChallengeProof(await proof(first.attempt.id))).status).toBe("SUBMITTED");
     expect((await api.voteTowerChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id, approve: true })).status).toBe("SELF_VOTE");
     for (const userId of ["tower-a2", "tower-a3", "tower-a4"]) {
       expect((await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: first.attempt.id, approve: true })).status).toBe("VOTED");
@@ -366,10 +480,43 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(attempt.rewardedAt).toBeNull();
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
+  it("signale à J+7 puis archive à J+30 sans supprimer la preuve ni créditer de récompense", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    const originalProof = (await proof(id)).proofText;
+    clock.now = new Date("2026-11-04T12:00:00Z");
+    const firstReport = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(firstReport).toMatchObject({ reported: 1, archived: 0 });
+    const [reported] = await db.$queryRaw<{ staffReportedAt: Date | null }[]>`
+      SELECT "staffReportedAt" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(reported?.staffReportedAt).toEqual(clock.now);
+    const replayReport = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(replayReport).toMatchObject({ reported: 0, archived: 0 });
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "ADMIN" } });
+    const queue = await api.getTowerChallengeStaffQueue({ communityId: "tower-a", userId: "tower-a1" });
+    expect(queue).toMatchObject({ status: "STAFF_QUEUE", isStaff: true });
+    if (queue.status !== "STAFF_QUEUE") throw new Error("File staff attendue");
+    expect(queue.proofs.map(item => item.id)).toContain(id);
+
+    clock.now = new Date("2026-11-27T12:00:00Z");
+    const archive = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(archive).toMatchObject({ reported: 0, archived: 1 });
+    const [stored] = await db.$queryRaw<{
+      status: string; archivedAt: Date | null; rewardedAt: Date | null; proofText: string | null; proofCode: string | null;
+    }[]>`
+      SELECT status, "archivedAt", "rewardedAt", "proofText", "proofCode" FROM "TowerChallengeAttempt"
+      WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(stored).toMatchObject({ status: "SUBMITTED", archivedAt: clock.now, rewardedAt: null, proofText: originalProof });
+    expect(stored?.proofCode).toBeTruthy();
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ reported: 0, archived: 0 });
+  });
   it("refuse le membre externe, le membre retiré et la communauté suspendue", async () => {
     const id = await submitted();
     expect((await api.voteTowerChallenge({ communityId: "tower-a", userId: "tower-outsider", attemptId: id, approve: true })).status).toBe("UNAVAILABLE");
-    expect((await api.submitTowerChallengeProof({ ...proof(id), communityId: "tower-b" })).status).toBe("UNAVAILABLE");
+    expect((await api.submitTowerChallengeProof({ ...(await proof(id)), communityId: "tower-b" })).status).toBe("UNAVAILABLE");
     await db.membership.update({ where: { communityId_userId: author }, data: { status: "LEFT" } });
     expect((await settle(id)).status).toBe("UNAVAILABLE");
     await db.community.update({ where: { id: "tower-a" }, data: { status: "SUSPENDED" } });
@@ -436,7 +583,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     vi.stubEnv("TOWER_DISCORD_GENERAL_CHANNEL_ID", "444444444444444444");
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const id = await submitted();
-    await api.submitTowerChallengeProof(proof(id));
+    await api.submitTowerChallengeProof(await proof(id));
     const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_PROOF_SUBMITTED" } });
     expect(await db.notificationEvent.count({ where: { sourceId: id, eventType: "TOWER_PROOF_SUBMITTED" } })).toBe(1);
     const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: event.id } });
@@ -466,7 +613,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     const other = { communityId: "tower-a", userId: "tower-a1" };
     const second = await api.claimSoloTowerChallenge({ ...other, requestKey: "tower-another-key-000001" });
     if (second.status !== "CLAIMED") throw new Error("Second défi attendu");
-    await api.submitTowerChallengeProof({ ...proof(second.attemptId), ...other });
+    await api.submitTowerChallengeProof({ ...(await proof(second.attemptId)), ...other });
     clock.now = new Date("2026-10-29T11:59:59Z");
     const beforeClose = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
     expect(beforeClose.processed).toBe(0);

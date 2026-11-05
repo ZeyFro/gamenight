@@ -4,11 +4,13 @@ import { Card } from "@/components/ui/Card";
 import { getCurrentUser } from "@/lib/current-user";
 import { getMemberStats } from "@/lib/member-stats";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
-import { getTowerChallengeState, getTowerSeasonLeaderboard, getTowerTeamDailyStates } from "@/lib/tower-challenges";
+import { getTowerChallengeAppealableAttempts, getTowerChallengeState, getTowerSeasonLeaderboard, getTowerTeamDailyStates } from "@/lib/tower-challenges";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { getTowerProgress } from "@/lib/tower-progression";
 import { prisma } from "@/lib/prisma";
 import { pageMetadata } from "@/lib/page-title";
+import { TowerChallengeAppealForm } from "@/components/tower/TowerChallengeAppealForm";
+import { isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
 
 export const metadata = pageMetadata("The Tower");
 
@@ -28,20 +30,25 @@ export default async function TowerPage() {
     </main>;
   }
 
-  const [community, stats, challenges, leaderboard, teamStates] = await Promise.all([
+  const [community, membership, stats, challenges, leaderboard, teamStates, appealable] = await Promise.all([
     prisma.community.findUnique({ where: { id: communityId }, select: {
       name: true, towerLevelsPerFloor: true, towerChallengesEnabled: true, communityTeamsEnabled: true, discordGuildId: true,
     } }),
+    prisma.membership.findUnique({ where: { communityId_userId: { communityId, userId: user.id } }, select: { status: true, role: true } }),
     getMemberStats(user.id, communityId),
     getTowerChallengeState({ communityId, userId: user.id }),
     getTowerSeasonLeaderboard({ communityId, userId: user.id }),
     getTowerTeamDailyStates({ communityId, userId: user.id }),
+    getTowerChallengeAppealableAttempts({ communityId, userId: user.id }),
   ]);
   const ascension = getTowerProgress(stats?.xpTotal ?? 0, community?.towerLevelsPerFloor ?? 10);
   const season = leaderboard.status === "LEADERBOARD" ? leaderboard.season : getTowerSchoolSeason();
   const currentChallenge = challenges.status === "STATE"
     ? challenges.attempts.find(attempt => attempt.status === "ASSIGNED" || attempt.status === "SUBMITTED")
     : null;
+  const appealableAttempts = appealable.status === "APPEALABLE_ATTEMPTS"
+    ? appealable.attempts.filter(attempt => isTowerChallengeAppealWindowOpen(attempt.rejectedAt, new Date()))
+    : [];
   const names = leaderboard.status === "LEADERBOARD" && leaderboard.entries.length
     ? await prisma.user.findMany({ where: { discordId: { in: leaderboard.entries.map(entry => entry.discordId) } }, select: { discordId: true, discordName: true } })
     : [];
@@ -57,6 +64,8 @@ export default async function TowerPage() {
       {discordChannel && <Link href={discordChannel} target="_blank" rel="noreferrer" className="mt-5 inline-flex rounded-xl bg-accent px-4 py-2 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
         Ouvrir les défis sur Discord ↗
       </Link>}
+      {membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER")
+        && <Link href="/admin/tower-appeals" className="mt-3 inline-flex rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-surface-hover">Ouvrir la file de modération</Link>}
     </header>
 
     <section className="grid gap-4 md:grid-cols-2" aria-label="Progression personnelle">
@@ -80,9 +89,21 @@ export default async function TowerPage() {
           <h2 className="text-xl font-semibold text-foreground">{currentChallenge.title}</h2>
           <p className="text-sm text-muted">{challengeStatus[currentChallenge.status] ?? currentChallenge.status} · +{currentChallenge.rewardFloors} étage(s) personnels</p>
           <p className="whitespace-pre-wrap text-sm text-foreground">{currentChallenge.instructions}</p>
+          {currentChallenge.proofCode && <div className="rounded-lg bg-surface-hover p-3">
+            <p className="text-sm font-semibold text-foreground">Code de preuve : <code>{currentChallenge.proofCode}</code></p>
+            <p className="mt-1 text-xs text-muted">Inscris-le dans le jeu si possible. Sinon, ajoute-le à la composition GameNight qui accompagne la capture. Il associe les éléments de preuve, mais ne prouve pas la date de la capture.</p>
+          </div>}
           <p className="text-xs text-muted">Échéance : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(currentChallenge.expiresAt)} (Paris)</p>
         </> : <p className="text-sm text-muted">{community?.towerChallengesEnabled ? "Aucun défi solo en cours. Choisis-en un avec /tower defi sur Discord." : "Les défis ne sont pas encore activés pour cette communauté."}</p>}
       </Card>
+      {appealableAttempts.length > 0 && <Card className="flex flex-col gap-3 lg:col-span-2">
+        <h2 className="text-lg font-semibold text-foreground">Contester un refus</h2>
+        {appealableAttempts.map(attempt => <div key={attempt.id} className="border-t border-border pt-3 first:border-0 first:pt-0">
+          <p className="font-medium text-foreground">{attempt.title}{attempt.teamName ? ` · ${attempt.teamName}` : ""}</p>
+          <p className="text-sm text-muted">Une contestation motivée est possible pendant les sept jours qui suivent le refus.</p>
+          <TowerChallengeAppealForm attemptId={attempt.id} />
+        </div>)}
+      </Card>}
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Défis d’équipe · aujourd’hui</p>
         {teamStates.status === "TEAM_STATES" && teamStates.teams.length ? teamStates.teams.map(team => <div key={team.id} className="border-t border-border pt-3 first:border-0 first:pt-0">
@@ -90,6 +111,9 @@ export default async function TowerPage() {
           {team.attempt ? <>
             <p className="mt-1 text-sm text-foreground">{team.attempt.title} · {challengeStatus[team.attempt.status] ?? team.attempt.status}</p>
             <p className="whitespace-pre-wrap text-sm text-muted">{team.attempt.instructions}</p>
+            {team.attempt.proofCode && <p className="rounded-lg bg-surface-hover p-3 text-xs text-muted">
+              Code de preuve : <code className="font-semibold text-foreground">{team.attempt.proofCode}</code>. Inscris-le dans le jeu si possible, sinon dans la composition GameNight jointe à la capture. Il associe les éléments, sans prouver la date de capture.
+            </p>}
             <p className="text-xs text-muted">{team.attempt.participantCount} participant(s) confirmé(s) · +{team.attempt.rewardFloors} étage(s) personnel(s) chacun</p>
             <p className="text-xs text-muted">{team.attempt.joined
               ? team.attempt.pendingReward ? "Ta récompense attend la remise à zéro du plafond quotidien."
