@@ -87,7 +87,7 @@ describe("notification-channel-preferences", () => {
       { userId: "accepted", silenceReminders: false, categoryEnabled: null, channelEnabled: null },
       { userId: "category-disabled", silenceReminders: false, categoryEnabled: false, channelEnabled: true },
       { userId: "channel-disabled", silenceReminders: false, categoryEnabled: true, channelEnabled: false },
-      { userId: "legacy-disabled", silenceReminders: true, categoryEnabled: true, channelEnabled: true },
+      { userId: "legacy-disabled", silenceReminders: true, categoryEnabled: null, channelEnabled: true },
     ]);
 
     await expect(getEligibleUserIdsForNotificationChannel(
