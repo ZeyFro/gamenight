@@ -35,14 +35,7 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
 
   const createdAt = wallClockNow();
   if (input.data.startsAt && input.data.startsAt <= createdAt) redirect("/joueurs?error=invalid");
-  type ClassifiedCreateData = Prisma.PlayerClassifiedUncheckedCreateInput & {
-    platform: string | null;
-    microphoneRequirement: "REQUIRED" | "OPTIONAL" | "NONE" | null;
-    partyType: "CASUAL" | "COMPETITIVE" | "COOPERATIVE" | null;
-    startsAt: Date | null;
-    durationMinutes: number | null;
-  };
-  const data: ClassifiedCreateData = {
+  const data: Prisma.PlayerClassifiedUncheckedCreateInput = {
     communityId,
     gameId: game.id,
     createdById: user.id,
