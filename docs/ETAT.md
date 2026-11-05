@@ -4,13 +4,13 @@
 
 - Branche documentaire : `docs/readme-migration-runner-20261105`; PR #413 en brouillon, empilée sur `docs/plan-migrations-20261105`. Le README corrige l'affirmation obsolète sur les migrations automatiques; `docs/PLAN-MIGRATIONS.md` décrit le risque des migrations tardives et la garde ajoutée au runner.
 - **#370**, tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` : garde contre les migrations en attente plus anciennes, tests unitaires, précontrôle des doublons et des créateurs orphelins. CI générale run 764 entièrement verte (runner, Postgres de service jetable, tests, typegen, tsc, lint, build); Tower rules/storage run 210 verts. Preview Vercel limitée par le quota quotidien.
-- **#406**, tête `abeada1de5215fb2be1d16712b9574b65a92f784` : workflow ciblé run 212 vert, 9 fichiers/85 tests; storage vert, 87 tests avec typegen et tsc. Preview Vercel réussie.
+- **#406**, tête actuelle `1a495ede501784167b597c43438c1527b2d58082` : le CI précédent run 766 a échoué uniquement sur le budget webhook (33 requêtes au lieu de 32 dans deux cas); 3 614 tests passent. Le chemin Web Push saute désormais l'interrogation des préférences si la livraison est désactivée faute de configuration; le test ciblé couvre ce cas et les seuils restent inchangés. CI run 769 et Tower rules run 215 sont en cours. Vercel échoue par limite quotidienne de déploiements.
 - **Neon test uniquement** : branche `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, parent exact `br-super-cell-b1ukvk08`; état Ready, ni primaire ni par défaut. Précontrôles lecture seule : 118 migrations réussies, aucune en cours, zéro doublon de membres, zéro créateur orphelin. Aucun SQL de migration exécuté.
 - Issue #400 a reçu le suivi des checks et des précontrôles. Aucun changement Production/configuration, aucune action Discord, aucun essai réel, aucune fusion.
 
 ## Reste et blocages
 
-- CI générale #406 run 766 est encore dans `npm run test:postgres`; attendre sa conclusion et corriger tout échec concret.
+- CI générale #406 run 769 et Tower rules run 215 doivent valider le correctif de budget; corriger tout échec concret.
 - Le runner Prisma n'a pas été exécuté sur Neon test : aucun checkout du dépôt ni `MIGRATION_DATABASE_URL` injectée dans le shell de cette session. Ne pas envoyer d'URL ou de secret dans le chat et ne pas contourner le runner avec du SQL direct.
 - #370 reste Draft malgré sa CI verte : migration non exercée par le runner sur Neon test et Preview Vercel bloquée par la limite de déploiements.
 - #406 reste Draft et dépend de son contrôle CI général et du test runner sur Neon test.
