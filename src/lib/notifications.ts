@@ -2,6 +2,9 @@ import { logger } from "@/lib/logger";
 import type { Notification, NotificationType } from "@prisma/client";
 import { getActiveScopedPrisma, scopedPrismaForCommunity } from "@/lib/community-scoped-client";
 import { sendUserWebPush } from "@/lib/web-push-delivery";
+import { getEligibleUserIdsForNotificationChannel } from "@/lib/notification-channel-preferences";
+import type { AvailableNotificationChannel } from "@/lib/notification-channel-preferences";
+import type { AvailableNotificationCategory } from "@/lib/notification-preferences";
 
 export interface CreateNotificationInput {
   communityId: string | null;
@@ -12,6 +15,7 @@ export interface CreateNotificationInput {
   relatedSessionId?: string;
   relatedBadgeId?: string;
   relatedGameId?: string;
+  personalCategory?: AvailableNotificationCategory;
 }
 
 function requireNotificationCommunity(input: CreateNotificationInput): void {
@@ -33,9 +37,15 @@ function requireNotificationCommunity(input: CreateNotificationInput): void {
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
   try {
     requireNotificationCommunity(input);
-    const scopedDb = scopedPrismaForCommunity(input.communityId);
-    await scopedDb.notification.create({ data: input });
-    await deliverWebPush(input);
+  } catch (error) {
+    logger.error("notifications", error, { userId: input.userId, type: input.type });
+    return;
+  }
+  try {
+    const inApp = await eligibleInputs([input], "IN_APP");
+    const push = await eligibleInputs([input], "WEB_PUSH");
+    if (inApp.length > 0) await writeInApp(inApp, true);
+    if (push.length > 0) await deliverWebPush(push[0]);
   } catch (error) {
     logger.error("notifications", error, { userId: input.userId, type: input.type });
   }
@@ -45,15 +55,52 @@ export async function createNotifications(inputs: CreateNotificationInput[]): Pr
   if (inputs.length === 0) return;
   try {
     for (const input of inputs) requireNotificationCommunity(input);
-    const groups = new Map<string | null, CreateNotificationInput[]>();
-    for (const input of inputs) groups.set(input.communityId, [...(groups.get(input.communityId) ?? []), input]);
-    for (const [communityId, group] of groups) {
-      const scopedDb = scopedPrismaForCommunity(communityId);
-      await scopedDb.notification.createMany({ data: group });
-    }
-    for (const input of inputs) await deliverWebPush(input);
   } catch (error) {
     logger.error("notifications", error, { count: inputs.length });
+    return;
+  }
+  try {
+    const [inApp, push] = await Promise.all([
+      eligibleInputs(inputs, "IN_APP"),
+      eligibleInputs(inputs, "WEB_PUSH"),
+    ]);
+    await writeInApp(inApp, false);
+    for (const input of push) await deliverWebPush(input);
+  } catch (error) {
+    logger.error("notifications", error, { count: inputs.length });
+  }
+}
+
+async function eligibleInputs(
+  inputs: CreateNotificationInput[],
+  channel: Extract<AvailableNotificationChannel, "IN_APP" | "WEB_PUSH">,
+): Promise<CreateNotificationInput[]> {
+  const byCategory = new Map<AvailableNotificationCategory, CreateNotificationInput[]>();
+  const eligible = inputs.filter((input) => input.personalCategory === undefined);
+  for (const input of inputs) {
+    if (!input.personalCategory) continue;
+    byCategory.set(input.personalCategory, [...(byCategory.get(input.personalCategory) ?? []), input]);
+  }
+  for (const [category, group] of byCategory) {
+    const allowedIds = await getEligibleUserIdsForNotificationChannel(group.map(({ userId }) => userId), category, channel);
+    eligible.push(...group.filter(({ userId }) => allowedIds.has(userId)));
+  }
+  return eligible;
+}
+
+async function writeInApp(inputs: CreateNotificationInput[], single: boolean): Promise<void> {
+  if (inputs.length === 0) return;
+  const groups = new Map<string | null, CreateNotificationInput[]>();
+  for (const input of inputs) groups.set(input.communityId, [...(groups.get(input.communityId) ?? []), input]);
+  for (const [communityId, group] of groups) {
+    try {
+      const scopedDb = scopedPrismaForCommunity(communityId);
+      const data = group.map(({ personalCategory: _personalCategory, ...row }) => row);
+      if (single) await scopedDb.notification.create({ data: data[0] });
+      else await scopedDb.notification.createMany({ data });
+    } catch (error) {
+      logger.error("notifications", error, { count: group.length });
+    }
   }
 }
 

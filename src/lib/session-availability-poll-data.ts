@@ -10,7 +10,7 @@ import { createOnce } from "@/lib/creation-intent";
 import { availabilityPollAnswerSchema, parseAvailabilityPollInput } from "@/lib/session-availability-poll";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue, wallClockNow } from "@/lib/wallclock";
 import { resolveSessionSchedule, SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterUsersByNotificationChannelPreference } from "@/lib/notification-channel-preferences";
 
 export class AvailabilityPollError extends Error {
   constructor(message = "Ce sondage n'est plus accessible.") {
@@ -169,7 +169,7 @@ export async function chooseAvailabilityPollSlot(userId: string, pollId: string,
         where: { id: { in: participants.filter(id => id !== userId) } },
         select: { id: true, silenceReminders: true },
       });
-      const recipients = await filterUsersByNotificationPreference(candidates, "SESSION", tx);
+      const recipients = await filterUsersByNotificationChannelPreference(candidates, "SESSION", "IN_APP", tx);
       if (recipients.length) await scopedDb.notification.createMany({ data: recipients.map(recipient => ({
         communityId: poll.communityId, userId: recipient.id, type: "SESSION_CREATED",
         title: "📣 Nouvelle soirée", message: formatDateTimeFr(session.date), relatedSessionId: session.id,
