@@ -19,6 +19,16 @@ Les ordres SQL ci-dessous décrivent le DDL et les écritures des fichiers publi
 
 Cet ordre est un **ordre de dépendance et de nommage**, pas une recommandation d’appliquer en bloc. Avant de le retenir sur une base réelle, comparer son schéma et son historique de migrations au commit exact des branches. Si une migration est déjà appliquée, ne pas la rejouer; réconcilier d’abord son nom, checksum, état et objets. Le runner de migration doit rester la source d’exécution approuvée. Ne pas fusionner de code qui suppose un schéma absent.
 
+## Migrations anciennes ajoutées après des migrations plus récentes
+
+Le simple merge de #370 et #406 n'applique rien. **Si leurs migrations ont d'abord été exécutées manuellement**, puis que les six fichiers #325 arrivent dans le checkout plus tard, leurs noms d'horodatage sont antérieurs à ceux de #370/#406.
+
+Dans la version proposée de `scripts/db-migrate.mjs` de #370, le runner compare les fichiers disponibles à `_prisma_migrations` et exige que `--expect` corresponde exactement à la liste en attente. Il ne compare toutefois pas le plus ancien fichier en attente à la migration réussie la plus récente déjà appliquée. Si #325 constitue ensuite la liste exacte passée à `--expect`, le runner appelle `prisma migrate deploy`; Prisma applique les migrations présentes sur disque qui restent en attente, dans l'ordre lexicographique des dossiers, en laissant les migrations #370/#406 déjà appliquées dans l'historique. Il n'annule pas ces migrations plus récentes. Le dry-run liste les noms « À appliquer » et l'exécution exige `--execute` plus `--confirm-database`, mais le runner ne signale pas spécialement cet ordre tardif et ne le refuse pas.
+
+Références : [runner proposé dans #370](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate.mjs), [contrôle de la liste attendue](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate-lib.mjs), [ordre lexicographique de Prisma Migrate](https://www.prisma.io/docs/orm/v6/prisma-migrate/getting-started) et [application des migrations en attente](https://www.prisma.io/docs/orm/v6/prisma-migrate/workflows/development-and-production).
+
+**Protection proposée — non implémentée ici :** le runner devrait refuser l'exécution si le plus ancien fichier en attente précède le nom de la dernière migration appliquée avec succès; afficher les deux noms et demander une revue explicite de l'historique. Ajouter un test unitaire couvrant une migration #325 en attente après #370/#406 appliquées. En attendant cette protection, ne pas exécuter cette séquence tardive sans revue et autorisation distincte pour chaque migration.
+
 ## Détail par migration
 
 ### 1. #325 — `20261019190000_separate_xp_balance`
