@@ -50,4 +50,14 @@ describe("GET /api/cron/tower-team-daily", () => {
     expect(deadline.getTime()).toBeGreaterThanOrEqual(before + 19_000);
     expect(deadline.getTime()).toBeLessThanOrEqual(Date.now() + 20_100);
   });
+
+  it("signale les échecs partiels en HTTP 503 pour permettre une relance idempotente", async () => {
+    vi.stubEnv("TOWER_TEAM_DAILY_ENABLED", "true");
+    mocks.assign.mockResolvedValueOnce({ checked: 2, failed: 1 });
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ enabled: true, checked: 2, failed: 1 });
+  });
 });

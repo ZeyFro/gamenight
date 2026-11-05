@@ -18,5 +18,8 @@ export async function GET(request: Request) {
   }
 
   const summary = await assignDailyTowerTeamChallenges(new Date(Date.now() + 20_000));
-  return NextResponse.json({ enabled: true, ...summary });
+  return NextResponse.json(
+    { enabled: true, ...summary },
+    { status: summary.failed > 0 ? 503 : 200 },
+  );
 }
