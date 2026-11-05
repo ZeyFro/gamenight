@@ -42,7 +42,7 @@ export function resolveNotificationChannelEnabled(
   return isPersonalNotificationEnabled(user, category) && (channelPreference?.enabled ?? true);
 }
 
-type PreferenceDb = Pick<typeof prisma, "user" | "userNotificationPreference" | "userNotificationChannelPreference">;
+type PreferenceDb = Pick<typeof prisma, "user" | "userNotificationPreference" | "userNotificationChannelPreference" | "$queryRaw">;
 
 /** Batch read of the legacy/category gate and the channel-specific override. */
 export async function filterUsersByNotificationChannelPreference<
@@ -82,6 +82,13 @@ export async function filterUsersByNotificationChannelPreference<
   );
 }
 
+type EligibleNotificationRow = {
+  userId: string;
+  silenceReminders: boolean;
+  categoryEnabled: boolean | null;
+  channelEnabled: boolean | null;
+};
+
 export async function getEligibleUserIdsForNotificationChannel(
   userIds: string[],
   category: AvailableNotificationCategory,
@@ -90,12 +97,29 @@ export async function getEligibleUserIdsForNotificationChannel(
 ): Promise<Set<string>> {
   const uniqueIds = [...new Set(userIds)];
   if (uniqueIds.length === 0) return new Set();
-  const users = await db.user.findMany({
-    where: { id: { in: uniqueIds } },
-    select: { id: true, silenceReminders: true },
-  });
-  const eligible = await filterUsersByNotificationChannelPreference(users, category, channel, db);
-  return new Set(eligible.map(({ id }) => id));
+  const rows = await db.$queryRaw<EligibleNotificationRow[]>\`
+    SELECT
+      u.id AS "userId",
+      u."silenceReminders",
+      category_preference.enabled AS "categoryEnabled",
+      channel_preference.enabled AS "channelEnabled"
+    FROM "User" u
+    LEFT JOIN "UserNotificationPreference" category_preference
+      ON category_preference."userId" = u.id
+      AND category_preference.category = ${category}::"UserNotificationCategory"
+    LEFT JOIN "UserNotificationChannelPreference" channel_preference
+      ON channel_preference."userId" = u.id
+      AND channel_preference.category = ${category}::"UserNotificationCategory"
+      AND channel_preference.channel = ${channel}::"UserNotificationChannel"
+    WHERE u.id = ANY(${uniqueIds}::text[])
+  \`;
+  return new Set(rows.filter((row) => resolveNotificationChannelEnabled({
+    silenceReminders: row.silenceReminders,
+    notificationPreferences: row.categoryEnabled === null
+      ? undefined
+      : [{ category, enabled: row.categoryEnabled }],
+  }, category, channel, row.channelEnabled === null ? undefined : { enabled: row.channelEnabled })
+    .map(({ userId }) => userId));
 }
 
 export async function setOwnNotificationChannelPreference(
