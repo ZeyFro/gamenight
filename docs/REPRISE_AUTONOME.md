@@ -65,3 +65,13 @@ Ne rien exécuter dans cette section sans un « OUI » du propriétaire pour l'a
 5. Activer un flag seulement à la demande du propriétaire, un à la fois. Migration vocale, installation du worker et collecte réelle restent distinctes.
 
 Le propriétaire gère la connexion Codex, les invitations, les permissions/rôles Discord et les publications Discord. Aucun secret ne doit figurer dans un fichier, une PR ou un compte rendu.
+
+
+## Point de reprise — 5 novembre 2026, session Codex
+
+- **Terminé dans la branche de #370** `feat/tower-team-rules-20261104` : le runner bloque les migrations en attente plus anciennes que la dernière migration réussie; tests unitaires ajoutés dans `scripts/db-migrate-lib.test.mjs`; le précontrôle #370 vérifie maintenant aussi les créateurs d'équipe orphelins. Tête `711210265fa6164f523a49b3cd8d9f818abf154d`. #370 reste Draft.
+- **Vérifications GitHub** : CI run 757 et règles Tower run 203 en cours au dernier relevé; Vercel indique `failure` avec `build-rate-limit`. Aucun résultat de test local dans cette session, car aucun checkout du dépôt n'est présent.
+- **Branche Neon de test préparée** : `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, projet `misty-tooth-45335023`, parent explicite `production` (`br-super-cell-b1ukvk08)); état Ready, ni primaire ni par défaut. Précontrôles en lecture seule : 118 migrations terminées, dernière `20261029061000_tower_team_challenges`, zéro en cours; zéro groupe membre en doublon et zéro créateur orphelin; tables concernées par #370/#406 vides. Aucun SQL de migration exécuté.
+- **Blocage technique avant recette SQL** : le runner exige `MIGRATION_DATABASE_URL` dans le shell et les sources Node locales; ni checkout ni variable directe n'existent dans cette session. Ne jamais envoyer l'URL ou un secret dans le chat. Reprendre avec le dépôt disponible et la variable injectée localement; vérifier le dry-run exact #370, puis #406 après revue du diff, sans inclure #325 ni aucune autre migration.
+- **PR et dépendances** : #325 reste gelée; #406 et #370 restent Draft avec migrations non exécutées. #407 dépend de #406 et doit être revérifiée avec #396; #408 dépend de #370/#406. #413 reste Draft et contient les mises à jour README/plan de migrations; cette section est sur sa branche.
+- **Prochaine action exacte** : attendre les checks de #370; corriger les échecs éventuels. Ensuite, si le runner local est disponible, dry-runner sur la branche de test avec liste exacte et confirmer l'identité de cible avant toute exécution. Ne pas toucher à Production, configuration, variables ou Discord.
