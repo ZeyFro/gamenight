@@ -1,0 +1,8 @@
+[
+  {
+    "id": "index-reprise",
+    "title": "Indiquer le suivi vivant dans l’index documentaire",
+    "path": "docs/INDEX.md",
+    "instructions": "Dans la section Archives, conserve le lien REPRISE_AUTONOME.md en précisant que c'est un relevé historique daté. Remplace l'indication d'utiliser uniquement ce document par un lien vers https://github.com/ZeyFro/gamenight/issues/400 pour le suivi actuel des tâches The Tower. Ajoute un lien relatif DEVELOPPEMENT_CLOUD.md vers la procédure de l'automatisation. Ne modifie pas le reste."
+  }
+]

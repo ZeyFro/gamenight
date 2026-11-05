@@ -1,0 +1,61 @@
+name: Développement cloud
+
+on:
+  push:
+    branches: [codex/cloud-dev-pilot]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * *'
+      timezone: Europe/Paris
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gamenight-cloud-dev
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -B scripts/cloud-dev.py smoke
+
+  draft:
+    if: >-
+      github.repository == 'ZeyFro/gamenight' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+      github.run_attempt == 1 && vars.GAMENIGHT_CLOUD_DEV_ENABLED == 'true'
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sélectionner une tâche indépendante
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/cloud-dev.py select
+      - name: Proposer et vérifier le changement
+        if: steps.select.outputs.task == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.GAMENIGHT_CLOUD_DEV_OPENAI_KEY }}
+        run: python3 -B scripts/cloud-dev.py propose
+      - name: Publier uniquement une PR brouillon
+        if: steps.select.outputs.task == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/cloud-dev.py publish
