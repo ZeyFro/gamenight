@@ -19,9 +19,9 @@
 | Accueil | Conserver YAGPDB et le panneau à 3 boutons (§4.2). Pas d'onboarding natif Discord |
 | Ouverture | Bêta interne mi-décembre 2026 ; ouverture publique prévue le **4 janvier 2027** |
 | Hors lancement | Pas d'IA concierge ni de Discord Activities au lancement |
-| Identité / équité | **Exclusion des comptes de test en production** : `melah3` ne vote jamais et ne gagne aucune récompense en production. `zeyfro` reste le compte réel votant, sous réserve des règles habituelles. Ne jamais dédupliquer des personnes par pseudo ; prévoir une liste d’IDs Discord de test gérée côté serveur (valeurs non publiées), contrôlée pour les votes solo, équipe et saison. Les tests isolés restent sur une base fictive |
+| Identité / équité | **Exclusion des comptes de test abandonnée** : Maxime continue de tester avec son propre compte Discord. Aucun identifiant de test ni filtre spécial de vote ne sera configuré. Les contrôles d'accès et d'équité habituels restent applicables |
 | Preuves sans quorum | Après 24 h : restent en attente sans re-vote. Signalement staff après 7 jours ; archivage après 30 jours sans décision, sans récompense et sans effacement des preuves |
-| Contestation | Option 7B : joueur auteur, motif/élément nouveau, une seule décision motivée par le modérateur, historique auditable. Le délai proposé de 7 jours reste à confirmer avant développement |
+| Contestation | Option 7B : joueur auteur, motif/élément nouveau, une seule décision motivée par le modérateur, historique auditable. Délai : 24 heures après l'annonce du résultat du vote, décision consignée dans l'issue #400 et docs/ROADMAP.md; le cahier canonique reste inchangé |
 | Conflit d'intérêts | Si la preuve contestée appartient au modérateur Maxime / zeyfro, il se récuse. **Arbitre indépendant désigné parmi ses collègues**, sans pouvoir d'attribution de rôles/administration du serveur ; décision conservée avec auteur et motif. Si l'arbitre est impliqué ou absent, attente sans auto-validation ni récompense. |
 
 ## Conflits de code et écarts à traiter avant lancement
@@ -34,7 +34,7 @@
 | Bloquant | `src/lib/community-teams.ts:127-186` | Création max 3/24 h et adhésions multiples possibles ; aucune règle démontrée **une équipe par joueur / délai 7 jours après départ** ; le capitaine ne peut actuellement pas quitter sa propre équipe |
 | Important | `src/lib/community-teams.ts:190-210` | Un membre ancien peut seulement gérer le recrutement si le capitaine n'est plus membre actif. **Aucune passation automatique après 30 jours d'inactivité** |
 | Important | `src/lib/tower-challenges.ts:109-149` | Le défi d'équipe du jour est attribué au **premier accès** si absent, pas garanti à 09:00 par cette fonction ; il faut contrôler le cron protégé et sa cadence externe |
-| Important | `src/lib/tower-challenge-voting.ts:23-42` | Déduplication des votes par `voterId`, **pas par personne physique** ; `melah3` et `zeyfro` pourraient compter séparément sans exclusion des comptes de test côté serveur |
+| Important | `src/lib/tower-challenge-voting.ts:23-42` | Déduplication des votes par `voterId`, pas par personne physique. C'est cohérent avec la décision d'abandonner l'exclusion des comptes de test; Maxime teste avec son propre compte Discord |
 | Important | `src/lib/tower-challenges.ts:670-766` | Classement / vote de saison existent, mais pas de preuve d'automatisation des titres, badges, Hall of Fame, de la proposition du top 1 ni des critères Ranker / High Ranker |
 | Important | `src/lib/tower-challenge-starter-catalogue.ts` et `src/lib/tower-team-challenge-starter-catalogue.ts` | Le barème +1/+2/+3 est représenté par `rewardFloors` ; le catalogue de 30 défis est en PR brouillon #367 **non importé** |
 | Bloquant | Permissions Discord et Atlas | Pas de preuve d'arrêt des attributions d'étages d'Atlas ni de suppression sécurisée des doublons. Aucun retrait de rôle automatique |
@@ -51,7 +51,7 @@
 
 - **Novembre** : environnement de recette isolé ; correctifs entrée/OAuth, équipes, calendrier, double source Atlas, votes distincts et backend contestations.
 - **Début décembre** : règles publiques relues, bots et permissions configurés en recette, migration restauration snapshot vérifiée, catalogues importés seulement en recette.
-- **Mi-décembre** : bêta interne avec de vrais utilisateurs, sans faux comptes comptés dans les votes réels ; suivi des anomalies.
+- **Mi-décembre** : bêta interne avec de vrais utilisateurs, avec les comptes personnels des testeurs; aucun compte de test exclu par configuration ; suivi des anomalies.
 - **Fin décembre** : corrections, go/no-go indépendant de Claude et tests de déploiement/restauration.
 - **4 janvier 2027** : ouverture publique **seulement si critères et preuves complets** ; sinon report daté, pas d'activation partielle présentée comme livrée.
 
