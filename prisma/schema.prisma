@@ -3231,7 +3231,7 @@ model TowerChallengeAttempt {
   proofText String? @db.VarChar(1500)
   proofChannelId String? @db.VarChar(20)
   proofMessageId String? @db.VarChar(20)
-  proofCode String? @db.VarChar(8)
+  proofCode String? @db.VarChar(12)
   publicationConsent Boolean @default(false)
   rewardedAt DateTime?
   rejectedAt DateTime?
@@ -3269,6 +3269,7 @@ model TowerChallengeAppeal {
   dueAt DateTime
   status TowerChallengeAppealStatus @default(OPEN)
   reviewerUserId String?
+  arbiterUserId String?
   decisionReason String? @db.VarChar(1000)
   decidedAt DateTime?
 

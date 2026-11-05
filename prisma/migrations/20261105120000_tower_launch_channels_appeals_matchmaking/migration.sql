@@ -1,10 +1,10 @@
 ALTER TABLE "TowerChallengeAttempt"
-  ADD COLUMN "proofCode" VARCHAR(8),
+  ADD COLUMN "proofCode" VARCHAR(12),
   ADD COLUMN "rejectedAt" TIMESTAMP(3),
   ADD COLUMN "staffReportedAt" TIMESTAMP(3),
   ADD COLUMN "archivedAt" TIMESTAMP(3),
   ADD CONSTRAINT "TowerChallengeAttempt_proofCode_format_check"
-    CHECK ("proofCode" IS NULL OR "proofCode" ~ '^TWR-[A-Z0-9]{4}$');
+    CHECK ("proofCode" IS NULL OR "proofCode" ~ '^TWR-[A-Z0-9]{8}$');
 
 CREATE UNIQUE INDEX "TowerChallengeAttempt_communityId_proofCode_key"
   ON "TowerChallengeAttempt"("communityId", "proofCode");
@@ -22,6 +22,7 @@ CREATE TABLE "TowerChallengeAppeal" (
   "dueAt" TIMESTAMP(3) NOT NULL,
   "status" "TowerChallengeAppealStatus" NOT NULL DEFAULT 'OPEN',
   "reviewerUserId" TEXT,
+  "arbiterUserId" TEXT,
   "decisionReason" VARCHAR(1000),
   "decidedAt" TIMESTAMP(3),
   CONSTRAINT "TowerChallengeAppeal_pkey" PRIMARY KEY ("id"),
