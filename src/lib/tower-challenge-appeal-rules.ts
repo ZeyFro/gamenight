@@ -1,11 +1,11 @@
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+export const TOWER_CHALLENGE_APPEAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type TowerCommunityRole = "MEMBER" | "ADMIN" | "OWNER";
 
-export function isTowerChallengeAppealWindowOpen(rejectedAt: Date, current: Date): boolean {
-  const rejected = rejectedAt.getTime();
+export function isTowerChallengeAppealWindowOpen(resultAnnouncedAt: Date, current: Date): boolean {
+  const announced = resultAnnouncedAt.getTime();
   const now = current.getTime();
-  return Number.isFinite(rejected) && Number.isFinite(now) && now >= rejected && now - rejected < SEVEN_DAYS_MS;
+  return Number.isFinite(announced) && Number.isFinite(now) && now >= announced && now - announced < TOWER_CHALLENGE_APPEAL_WINDOW_MS;
 }
 
 export function canReviewTowerChallengeAppeal(input: {
