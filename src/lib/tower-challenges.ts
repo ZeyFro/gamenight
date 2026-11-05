@@ -85,7 +85,7 @@ async function reportAndArchiveUnquorateProofs(scopedDb: Prisma.TransactionClien
         WHERE appeal."communityId" = a."communityId" AND appeal."attemptId" = a.id AND appeal.status = 'OPEN') AS "hasOpenAppeal"
     FROM "TowerChallengeAttempt" a
     WHERE a."communityId" = ${communityId} AND a.status = 'SUBMITTED'
-      AND a."submittedAt" <= ${new Date(current.getTime() - TOWER_CHALLENGE_APPEAL_WINDOW_MS)}
+      AND a."submittedAt" <= ${new Date(current.getTime() - 7 * 24 * 3600000)}
       AND a."archivedAt" IS NULL
       AND (a."staffReportedAt" IS NULL OR a."submittedAt" <= ${new Date(current.getTime() - 30 * 24 * 3600000)})
       AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAppeal" appeal
@@ -832,7 +832,7 @@ export async function getTowerChallengeAppealableAttempts(input: unknown) {
       LEFT JOIN "CommunityTeam" team ON team.id = a."teamId" AND team."communityId" = a."communityId"
       LEFT JOIN "TowerChallengeAppeal" appeal ON appeal."communityId" = a."communityId" AND appeal."attemptId" = a.id
       WHERE a."communityId" = ${communityId} AND a."userId" = ${userId} AND a.status = 'REJECTED'
-        AND a."rejectedAt" > ${new Date(current.getTime() - 7 * 24 * 3600000)} AND a."rejectedAt" <= ${current}
+        AND a."rejectedAt" > ${new Date(current.getTime() - TOWER_CHALLENGE_APPEAL_WINDOW_MS)} AND a."rejectedAt" <= ${current}
         AND a."archivedAt" IS NULL AND appeal.id IS NULL
       ORDER BY a."rejectedAt" DESC, a.id LIMIT 25
     `;
