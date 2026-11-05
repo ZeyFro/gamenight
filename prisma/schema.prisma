@@ -47,6 +47,7 @@ model User {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
   sessionGalleryMedia SessionGalleryMedia[]
@@ -2518,6 +2519,25 @@ model UserNotificationPreference {
   @@id([userId, category])
 }
 
+enum UserNotificationChannel {
+  IN_APP
+  WEB_PUSH
+  DISCORD_DM
+  DISCORD_MENTION
+}
+
+model UserNotificationChannelPreference {
+  userId    String
+  category  UserNotificationCategory
+  channel   UserNotificationChannel
+  enabled   Boolean                  @default(true)
+  updatedAt DateTime                 @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category, channel])
+}
+
 // Destination logique d'une livraison, indépendante du transport réellement
 // utilisé (`DeliveryTransport`) — une livraison DISCORD_CHANNEL part en
 // webhook aujourd'hui, en bot demain, sans que cette valeur change.
@@ -2759,6 +2779,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
   quickPolls CommunityQuickPoll[]
@@ -2862,6 +2883,11 @@ model PlayerClassified {
   message     String   @db.VarChar(240)
   createdAt   DateTime
   expiresAt   DateTime
+  startsAt    DateTime?
+  durationMinutes Int?
+  partyType   PartyType?
+  platform    String?  @db.VarChar(40)
+  microphoneRequirement MicrophoneRequirement?
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -2869,6 +2895,18 @@ model PlayerClassified {
 
   @@index([communityId, expiresAt])
   @@index([createdById, communityId])
+}
+
+enum PartyType {
+  CASUAL
+  COMPETITIVE
+  COOPERATIVE
+}
+
+enum MicrophoneRequirement {
+  REQUIRED
+  OPTIONAL
+  NONE
 }
 
 model CommunityTeam {
@@ -3193,10 +3231,15 @@ model TowerChallengeAttempt {
   proofText String? @db.VarChar(1500)
   proofChannelId String? @db.VarChar(20)
   proofMessageId String? @db.VarChar(20)
+  proofCode String? @db.VarChar(8)
   publicationConsent Boolean @default(false)
   rewardedAt DateTime?
+  rejectedAt DateTime?
+  staffReportedAt DateTime?
+  archivedAt DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
+  appeal TowerChallengeAppeal?
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3204,6 +3247,34 @@ model TowerChallengeAttempt {
   @@index([communityId, userId, rewardedAt])
   @@index([communityId, teamId, status])
   @@index([communityId, status, submittedAt])
+  @@unique([communityId, proofCode])
+  @@index([communityId, status, submittedAt, staffReportedAt, archivedAt])
+}
+
+enum TowerChallengeAppealStatus {
+  OPEN
+  UPHELD
+  OVERTURNED
+}
+
+model TowerChallengeAppeal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: NoAction)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: NoAction)
+  authorUserId String
+  reason String @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  dueAt DateTime
+  status TowerChallengeAppealStatus @default(OPEN)
+  reviewerUserId String?
+  decisionReason String? @db.VarChar(1000)
+  decidedAt DateTime?
+
+  @@unique([attemptId, communityId])
+  @@index([communityId, status, createdAt])
+  @@index([communityId, status, dueAt])
 }
 
 model TowerChallengeAttemptParticipant {
