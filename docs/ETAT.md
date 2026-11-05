@@ -15,6 +15,9 @@
 - Aucun secret/URL de production codé ou communiqué; aucun réglage GitHub Actions, Vercel ou Production modifié; aucun appel au cron, essai Discord, accès base/Neon, migration, snapshot ou fusion.
 
 ## Reste / limites
+- #407 : le job `rules` passe; le job `storage` échoue car `TowerChallengeAppeal` manque dans le schéma de la branche de base, fourni par #406. Les tests d'intégration et le typage ultérieur ont donc été interrompus; aucun accès à une base réelle n'a eu lieu.
+- #396 : CI en cours au dernier contrôle après publication du workflow; vérifier le résultat avant relecture.
+- #412 : le check Preview est encore en attente au dernier contrôle; aucun diagnostic Vercel n'a été ouvert.
 - Vérifier les checks de CI déclenchés après les derniers commits de #407, #396 et #412.
 - #412 est empilée sur #411; relire les dépendances de la pile documentaire avant fusion.
 - Pour activer le workflow #396, le propriétaire devra créer le secret `CRON_SECRET` et la variable d'hôte, fusionner après revue, puis vérifier le premier déclenchement. Les schedules ne s'exécutent que depuis la branche par défaut.
