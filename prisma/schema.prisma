@@ -2507,6 +2507,9 @@ enum UserNotificationCategory {
   // `enabled = NOT silenceReminders`, jamais une réactivation silencieuse
   // pour un compte ayant déjà demandé le silence global.
   INSTANT_SESSION
+  // RÃ©compense individuelle dÃ©jÃ  produite par reward-notifications.ts.
+  // Aucun canal personnel ne suit silenceReminders par dÃ©faut.
+  REWARD
 }
 
 model UserNotificationPreference {

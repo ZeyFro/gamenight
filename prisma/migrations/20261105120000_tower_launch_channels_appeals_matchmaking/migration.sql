@@ -44,6 +44,7 @@ CREATE INDEX "TowerChallengeAppeal_communityId_status_dueAt_idx"
 CREATE INDEX "TowerChallengeAppeal_communityId_status_arbiterUserId_idx"
   ON "TowerChallengeAppeal"("communityId", "status", "arbiterUserId");
 
+ALTER TYPE "UserNotificationCategory" ADD VALUE 'REWARD';
 CREATE TYPE "UserNotificationChannel" AS ENUM ('IN_APP', 'WEB_PUSH', 'DISCORD_DM', 'DISCORD_MENTION');
 CREATE TABLE "UserNotificationChannelPreference" (
   "userId" TEXT NOT NULL,
