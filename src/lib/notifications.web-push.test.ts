@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { create, createMany, scopedPrismaForCommunity, sendUserWebPush, loggerError, loggerWarn, eligibleChannelUserIds } = vi.hoisted(() => {
   const create = vi.fn();
@@ -24,7 +24,16 @@ import { createNotification, createNotifications } from "./notifications";
 describe("notification Web Push", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("WEB_PUSH_ENABLED", "true");
+    vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.invalid");
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "test-public-key");
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "test-private-key");
     eligibleChannelUserIds.mockImplementation((userIds: string[]) => Promise.resolve(new Set(userIds)));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("envoie après l’écriture in-app réussie, avec une URL relative", async () => {
@@ -58,6 +67,18 @@ describe("notification Web Push", () => {
     expect(create).not.toHaveBeenCalled();
     expect(sendUserWebPush).not.toHaveBeenCalled();
     expect(loggerError).toHaveBeenCalledOnce();
+  });
+
+  it("n'interroge pas les préférences Web Push quand le canal est désactivé", async () => {
+    vi.stubEnv("WEB_PUSH_ENABLED", "false");
+    await createNotifications([{
+      userId: "user-1", communityId: "community-1", type: "REMINDER", title: "Rappel", message: "Ce soir",
+      personalCategory: "SESSION",
+    }]);
+
+    expect(eligibleChannelUserIds).toHaveBeenCalledOnce();
+    expect(eligibleChannelUserIds).toHaveBeenCalledWith(["user-1"], "SESSION", "IN_APP");
+    expect(sendUserWebPush).not.toHaveBeenCalled();
   });
 
   it("keeps push when in-app is disabled for the personal category", async () => {
