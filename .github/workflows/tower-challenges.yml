@@ -35,7 +35,7 @@ jobs:
           cache: npm
       # Ces tests purs n'utilisent ni Prisma ni les scripts d'installation.
       - run: npm ci --ignore-scripts
-      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenge-rules.test.ts src/lib/tower-challenge-voting.test.ts src/lib/discord-tower-challenges.test.ts src/lib/discord-tower-season-vote.test.ts src/lib/discord-tower-rest.test.ts src/lib/tower-challenge-announcements.test.ts src/app/api/cron/notification-executor/route.test.ts src/lib/notification-channel-preferences.test.ts src/lib/discord-session-created.preferences.test.ts
+      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenge-rules.test.ts src/lib/tower-challenge-voting.test.ts src/lib/discord-tower-challenges.test.ts src/lib/discord-tower-season-vote.test.ts src/lib/discord-tower-rest.test.ts src/lib/tower-challenge-announcements.test.ts src/app/api/cron/notification-executor/route.test.ts src/lib/notification-channel-preferences.test.ts src/lib/discord-session-created.preferences.test.ts src/lib/notifications.web-push.test.ts
 
   storage:
     runs-on: ubuntu-latest
