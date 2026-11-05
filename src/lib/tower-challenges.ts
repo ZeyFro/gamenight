@@ -13,7 +13,7 @@ import { TOWER_TEAM_STARTER_CHALLENGES } from "@/lib/tower-team-challenge-starte
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
 import { getPendingProofAgingAction } from "@/lib/tower-challenge-aging-rules";
-import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
+import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen, TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "@/lib/tower-challenge-appeal-rules";
 
 const id = z.string().min(1).max(191).regex(/^[a-zA-Z0-9_-]+$/);
 const actorSchema = z.object({ communityId: id, userId: id });
@@ -85,7 +85,7 @@ async function reportAndArchiveUnquorateProofs(scopedDb: Prisma.TransactionClien
         WHERE appeal."communityId" = a."communityId" AND appeal."attemptId" = a.id AND appeal.status = 'OPEN') AS "hasOpenAppeal"
     FROM "TowerChallengeAttempt" a
     WHERE a."communityId" = ${communityId} AND a.status = 'SUBMITTED'
-      AND a."submittedAt" <= ${new Date(current.getTime() - 7 * 24 * 3600000)}
+      AND a."submittedAt" <= ${new Date(current.getTime() - TOWER_CHALLENGE_APPEAL_WINDOW_MS)}
       AND a."archivedAt" IS NULL
       AND (a."staffReportedAt" IS NULL OR a."submittedAt" <= ${new Date(current.getTime() - 30 * 24 * 3600000)})
       AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAppeal" appeal
@@ -460,7 +460,7 @@ export async function submitTowerChallengeAppeal(input: unknown) {
         id, "communityId", "attemptId", "authorUserId", reason, "createdAt", "dueAt", status
       ) VALUES (
         ${id}, ${communityId}, ${attemptId}, ${userId}, ${reason}, ${current},
-        ${new Date(attempt.rejectedAt.getTime() + 7 * 24 * 3600000)}, 'OPEN'
+        ${new Date(attempt.rejectedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS)}, 'OPEN'
       ) ON CONFLICT ("communityId", "attemptId") DO NOTHING
       RETURNING id
     `;
