@@ -143,6 +143,13 @@ export function diffMigrations(available, appliedRows) {
  */
 export function assertExpectedPending({ absentFromCheckout, inProgress, pending, finished = /** @type {string[]} */ ([]) }, expected) {
   if (inProgress.length) throw new RefusalError(`Migration inachevée ou en échec : ${inProgress.join(", ")}`);
+  const latestFinished = finished.at(-1);
+  const earliestPending = pending[0];
+  if (latestFinished && earliestPending && earliestPending < latestFinished) {
+    throw new RefusalError(
+      `Migration ancienne ajoutée hors ordre : ${earliestPending} est en attente après la migration déjà appliquée ${latestFinished}. Arrêt; réconcilier l'historique avant toute exécution.`,
+    );
+  }
   if (absentFromCheckout.length) {
     throw new RefusalError(`L'historique contient des migrations absentes du checkout : ${absentFromCheckout.join(", ")}`);
   }
