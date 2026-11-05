@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 const url = process.env.TEST_DATABASE_URL;
 const neonDomain = ["neon", "tech"].join(".");
@@ -306,17 +307,19 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   it("limite la contestation à l’auteur, impose un motif et conserve une seule demande", async () => {
     const id = await submitted();
     await markRejected(id);
-    const rejectedAt = clock.now;
+    const resultAnnouncedAt = clock.now;
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "   " })).toMatchObject({ status: "INVALID" });
     expect(await api.submitTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", attemptId: id, reason: "Je conteste." }))
       .toMatchObject({ status: "UNAVAILABLE" });
     const appealable = await api.getTowerChallengeAppealableAttempts(author);
     expect(appealable.status === "APPEALABLE_ATTEMPTS" && appealable.attempts.map(attempt => attempt.id)).toContain(id);
-    clock.now = new Date(rejectedAt.getTime() + 7 * 24 * 3600000);
+    clock.now = new Date(resultAnnouncedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS - 1);
+    expect(await api.getTowerChallengeAppealableAttempts(author)).toMatchObject({ status: "APPEALABLE_ATTEMPTS", attempts: [{ id }] });
+    clock.now = new Date(resultAnnouncedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS);
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "À la limite exacte." }))
       .toMatchObject({ status: "WINDOW_CLOSED" });
     expect(await api.getTowerChallengeAppealableAttempts(author)).toMatchObject({ status: "APPEALABLE_ATTEMPTS", attempts: [] });
-    clock.now = rejectedAt;
+    clock.now = resultAnnouncedAt;
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Le contexte de la capture n’a pas été pris en compte." }))
       .toMatchObject({ status: "APPEAL_SUBMITTED" });
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Une deuxième demande." }))
@@ -325,7 +328,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       SELECT "authorUserId", status, "dueAt" FROM "TowerChallengeAppeal"
       WHERE "communityId" = 'tower-a' AND "attemptId" = ${id}
     `;
-    expect(appeal).toMatchObject({ authorUserId: author.userId, status: "OPEN", dueAt: new Date("2026-11-04T12:00:00.000Z") });
+    expect(appeal).toMatchObject({ authorUserId: author.userId, status: "OPEN", dueAt: new Date("2026-10-29T12:00:00.000Z") });
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Après le délai." }))
       .toMatchObject({ status: "ALREADY_APPEALED" });
   });
