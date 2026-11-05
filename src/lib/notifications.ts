@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import type { Notification, NotificationType } from "@prisma/client";
 import { getActiveScopedPrisma, scopedPrismaForCommunity } from "@/lib/community-scoped-client";
 import { sendUserWebPush } from "@/lib/web-push-delivery";
+import { webPushConfig } from "@/lib/web-push-config";
 import { getEligibleUserIdsForNotificationChannel } from "@/lib/notification-channel-preferences";
 import type { AvailableNotificationChannel } from "@/lib/notification-channel-preferences";
 import type { AvailableNotificationCategory } from "@/lib/notification-preferences";
@@ -20,6 +21,11 @@ export interface CreateNotificationInput {
 
 function requireNotificationCommunity(input: CreateNotificationInput): void {
   if (input.communityId === undefined) throw new Error("La communauté de la notification doit être explicite.");
+}
+
+function eligibleWebPushInputs(inputs: CreateNotificationInput[]): Promise<CreateNotificationInput[]> {
+  if (process.env.VERCEL_ENV === "preview" || !webPushConfig(process.env)) return Promise.resolve([]);
+  return eligibleInputs(inputs, "WEB_PUSH");
 }
 
 /**
@@ -42,8 +48,10 @@ export async function createNotification(input: CreateNotificationInput): Promis
     return;
   }
   try {
-    const inApp = await eligibleInputs([input], "IN_APP");
-    const push = await eligibleInputs([input], "WEB_PUSH");
+    const [inApp, push] = await Promise.all([
+      eligibleInputs([input], "IN_APP"),
+      eligibleWebPushInputs([input]),
+    ]);
     if (inApp.length > 0) await writeInApp(inApp, true);
     if (push.length > 0) await deliverWebPush(push[0]);
   } catch (error) {
@@ -62,7 +70,7 @@ export async function createNotifications(inputs: CreateNotificationInput[]): Pr
   try {
     const [inApp, push] = await Promise.all([
       eligibleInputs(inputs, "IN_APP"),
-      eligibleInputs(inputs, "WEB_PUSH"),
+      eligibleWebPushInputs(inputs),
     ]);
     await writeInApp(inApp, false);
     for (const input of push) await deliverWebPush(input);
