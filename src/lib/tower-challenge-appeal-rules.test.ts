@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen } from "./tower-challenge-appeal-rules";
 
 describe("délai de contestation Tower", () => {
-  const rejectedAt = new Date("2026-11-01T12:00:00.000Z");
+  const resultAnnouncedAt = new Date("2026-11-01T12:00:00.000Z");
 
-  it("accepte avant J+7 et ferme à J+7 exactement", () => {
-    expect(isTowerChallengeAppealWindowOpen(rejectedAt, new Date("2026-11-08T11:59:59.999Z"))).toBe(true);
-    expect(isTowerChallengeAppealWindowOpen(rejectedAt, new Date("2026-11-08T12:00:00.000Z"))).toBe(false);
+  it("accepte jusqu'à la milliseconde précédant les 24 heures et ferme à l'échéance", () => {
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-02T11:59:59.999Z"))).toBe(true);
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-02T12:00:00.000Z"))).toBe(false);
   });
 
   it("ferme si les dates sont invalides ou inversées", () => {
-    expect(isTowerChallengeAppealWindowOpen(new Date("invalid"), rejectedAt)).toBe(false);
-    expect(isTowerChallengeAppealWindowOpen(rejectedAt, new Date("2026-11-01T11:59:59.999Z"))).toBe(false);
+    expect(isTowerChallengeAppealWindowOpen(new Date("invalid"), resultAnnouncedAt)).toBe(false);
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-01T11:59:59.999Z"))).toBe(false);
   });
 });
 
