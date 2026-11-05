@@ -1,28 +1,36 @@
 # État de reprise — 5 novembre 2026
 
 ## Branche et PR en cours
-- Branche courante : docs/plan-migrations-20261105.
-- PR documentaire #411, brouillon, empilée sur #410 : https://github.com/ZeyFro/gamenight/pull/411
-- #410 reste empilée sur #409 vers main; les PR sont à laisser en brouillon.
+- Branche courante : `docs/tower-decision-updates-20261105`.
+- PR documentaire #412, brouillon, empilée sur #411 : https://github.com/ZeyFro/gamenight/pull/412.
+- #412 contient les mises à jour de la roadmap, du document de décisions et cet état; le cahier canonique reste intact.
 - Aucune PR n'est fusionnée.
 
 ## Fait
-- docs/PLAN-MIGRATIONS.md recense les huit fichiers de migration présents dans les PR ouvertes #325 (six), #370 (une) et #406 (une); aucune autre PR ouverte examinée ne modifie de migration.
-- Le document détaille tables, colonnes, types, écritures/backfills, caractère additif, SQL de rollback proposé, dépendances, contrôles avant/après, ordre et questions d'autorisation.
-- Analyse faite sur les SQL, schéma Prisma et diffs GitHub uniquement. Aucun accès à Neon, Production, une base ou _prisma_migrations; l'état réellement appliqué sur une base reste non vérifié.
-- Aucun SQL exécuté : ni migration, ni rollback, ni snapshot, ni écriture de base.
+- PR #411 : `docs/PLAN-MIGRATIONS.md` inventorie les huit fichiers des PR #325, #370 et #406; compare SQL et schéma, décrit les objets, risques, dépendances, propositions de rollback, contrôles et questions d'autorisation. Analyse des fichiers seulement; aucune connexion ni opération de base.
+- PR #407 : fenêtre de contestation alignée à 24 heures après l'annonce du résultat; constante unique `TOWER_CHALLENGE_APPEAL_WINDOW_MS`, règles, texte membre et tests unitaires/intégration mis à jour. Signalement sans quorum J+7 inchangé.
+- Issue #400 : décision de 24 heures inscrite dans l'introduction et T10; commentaire de décision ajouté.
+- PR #395 : abandonnée, commentée et clôturée sans fusion. Audit de #370/#396 : aucune dépendance fonctionnelle; seul chevauchement documentaire dans `.env.example`.
+- Roadmap et document de décisions mis à jour pour abandonner l'exclusion des comptes de test et enregistrer le délai de contestation. Aucun changement dans `docs/CAHIER_DES_CHARGES.md`.
+- PR #396 : workflow GitHub Actions préparé dans le brouillon. Deux créneaux UTC, appel limité à 09:00 Europe/Paris, idempotence de l'endpoint, trois essais maximum sur HTTP 503; URL fournie par variable et authentification par secret GitHub. Procédure d'activation documentée.
+- Aucun secret/URL de production codé ou communiqué; aucun réglage GitHub Actions, Vercel ou Production modifié; aucun appel au cron, essai Discord, accès base/Neon, migration, snapshot ou fusion.
 
 ## Reste / limites
-- Vérifier par revue que les rollbacks proposés concordent avec la cible et les dépendances réelles; plusieurs font perdre des données après usage.
-- Avant toute opération future, l'opérateur doit établir l'état du schéma et de _prisma_migrations, une sauvegarde fraîche restaurée en isolation et des contrôles adaptés.
-- Toute migration demande un accord explicite distinct, fichier par fichier et cible par cible.
+- #407 : le job `rules` passe; le job `storage` échoue car `TowerChallengeAppeal` manque dans le schéma de la branche de base, fourni par #406. Les tests d'intégration et le typage ultérieur ont donc été interrompus; aucun accès à une base réelle n'a eu lieu.
+- #396 : CI en cours au dernier contrôle après publication du workflow; vérifier le résultat avant relecture.
+- #412 : le check Preview est encore en attente au dernier contrôle; aucun diagnostic Vercel n'a été ouvert.
+- Vérifier les checks de CI déclenchés après les derniers commits de #407, #396 et #412.
+- #412 est empilée sur #411; relire les dépendances de la pile documentaire avant fusion.
+- La revue de #411 doit confirmer les SQL de rollback proposés; certaines opérations pourraient perdre des données. Aucun état réel de schéma ou de `_prisma_migrations` n'est connu.
+- Pour activer le workflow #396, le propriétaire devra créer le secret `CRON_SECRET` et la variable d'hôte, fusionner après revue, puis vérifier le premier déclenchement. Les schedules ne s'exécutent que depuis la branche par défaut.
+- #407 garde sa dépendance de schéma envers #406 et nécessite une revalidation de compatibilité avec #396 avant toute fusion.
 
 ## Garde-fous permanents
-- Aucune migration ni opération Neon/Production sans accord explicite distinct pour chaque fichier de migration.
+- Aucune migration ni opération Neon/Production sans accord explicite distinct pour chaque migration.
 - Aucune modification de configuration Production ou de variables d'environnement.
-- Aucune modification Discord sans autorisation; aucun essai réel Discord.
+- Aucune modification Discord ni essai réel Discord sans autorisation.
 - Aucune fusion : les PR restent en brouillon.
-- Ne jamais demander ni publier de secret dans le chat.
+- Ne jamais demander ni publier un secret dans le chat.
 
 ## Prochaine action exacte
-Relire #411 et ses SQL de retour arrière. Si une migration est envisagée ultérieurement, confirmer d'abord la cible et son état en lecture seule, valider une restauration de sauvegarde sur cible isolée, puis demander l'autorisation spécifique du fichier exact; ne rien exécuter avant ces étapes et cet accord.
+Vérifier le diff et les checks de #412, puis relire dans l'ordre la pile documentaire (#409, #410, #411, #412) et les dépendances de code avant toute décision de fusion; ne fusionner aucune PR.
