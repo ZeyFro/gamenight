@@ -7,6 +7,7 @@
 - Aucune PR n'est fusionnée.
 
 ## Fait
+- PR #411 : `docs/PLAN-MIGRATIONS.md` inventorie les huit fichiers des PR #325, #370 et #406; compare SQL et schéma, décrit les objets, risques, dépendances, propositions de rollback, contrôles et questions d'autorisation. Analyse des fichiers seulement; aucune connexion ni opération de base.
 - PR #407 : fenêtre de contestation alignée à 24 heures après l'annonce du résultat; constante unique `TOWER_CHALLENGE_APPEAL_WINDOW_MS`, règles, texte membre et tests unitaires/intégration mis à jour. Signalement sans quorum J+7 inchangé.
 - Issue #400 : décision de 24 heures inscrite dans l'introduction et T10; commentaire de décision ajouté.
 - PR #395 : abandonnée, commentée et clôturée sans fusion. Audit de #370/#396 : aucune dépendance fonctionnelle; seul chevauchement documentaire dans `.env.example`.
@@ -20,6 +21,7 @@
 - #412 : le check Preview est encore en attente au dernier contrôle; aucun diagnostic Vercel n'a été ouvert.
 - Vérifier les checks de CI déclenchés après les derniers commits de #407, #396 et #412.
 - #412 est empilée sur #411; relire les dépendances de la pile documentaire avant fusion.
+- La revue de #411 doit confirmer les SQL de rollback proposés; certaines opérations pourraient perdre des données. Aucun état réel de schéma ou de `_prisma_migrations` n'est connu.
 - Pour activer le workflow #396, le propriétaire devra créer le secret `CRON_SECRET` et la variable d'hôte, fusionner après revue, puis vérifier le premier déclenchement. Les schedules ne s'exécutent que depuis la branche par défaut.
 - #407 garde sa dépendance de schéma envers #406 et nécessite une revalidation de compatibilité avec #396 avant toute fusion.
 
