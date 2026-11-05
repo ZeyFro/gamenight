@@ -376,7 +376,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       id: "appeal-cap-" + index, communityId: "tower-a", userId: "tower-author", definitionId: "tower-a-easy",
       requestKey: "appeal-cap-0000000" + index, title: "Réussite déjà créditée", instructions: "Déjà terminée.",
       rewardFloors: 1, assignedAt: clock.now, expiresAt: new Date(clock.now.getTime() + 48 * 3600000),
-      status: "APPROVED" as const, rewardedAt: new Date(clock.now.getTime() + index * 1000),
+      status: "APPROVED" as const, rewardedAt: clock.now,
     })) });
     await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Je demande un réexamen." });
     const [record] = await db.$queryRaw<{ id: string }[]>`
