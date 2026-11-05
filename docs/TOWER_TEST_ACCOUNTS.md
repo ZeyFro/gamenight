@@ -17,17 +17,13 @@ Ne sont pas bloqués par cette règle :
 
 Le contrôle n'est actif que lorsque `VERCEL_ENV=production`.
 
-`melah3` est inclus par défaut dans la liste d'exclusion.
-
-Des comptes supplémentaires peuvent être ajoutés avec :
+Avant la fusion, renseigner côté serveur la liste des IDs Discord des comptes de test. Aucun ID réel ne doit être publié dans le dépôt.
 
 ```text
-TOWER_TEST_ACCOUNT_IDENTIFIERS=discordId1,discordId2,NomDeCompteRecette
+TOWER_TEST_ACCOUNT_IDENTIFIERS=999999999999999999
 ```
 
-La comparaison d'un nom Discord est insensible à la casse. Les identifiants numériques Discord sont également acceptés.
-
-Le fichier `.env.example` n'est volontairement pas modifié dans cette PR tant que #370 le réserve. Il devra recevoir cette variable avant fusion de ce lot.
+La valeur ci-dessus est fictive. Seuls les IDs numériques sont acceptés ; les noms affichés ne sont jamais utilisés. Une liste vide n’exclut aucun compte.
 
 ## Réponses métier
 

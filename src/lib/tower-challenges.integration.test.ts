@@ -181,6 +181,25 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(closed.candidates.find(candidate => candidate.userId === "tower-a2")?.votes).toBe(1);
     expect(await db.towerSeasonVoteBallot.count({ where: { communityId: "tower-a" } })).toBe(2);
   });
+  it("ouvre le vote de l’été dès le début de S4, sans intersaison", async () => {
+    await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
+      id: "summer-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
+      requestKey: "summer-finalist-" + index, title: "Défi été", instructions: "À réaliser",
+      rewardFloors: index + 2, assignedAt: new Date("2026-07-02T12:00:00Z"),
+      expiresAt: new Date("2026-07-04T12:00:00Z"), status: "APPROVED" as const,
+      submittedAt: new Date("2026-07-03T12:00:00Z"), proofText: "Preuve",
+      proofChannelId: "123456789012345678", proofMessageId: "223456789012345678",
+      publicationConsent: true, rewardedAt: new Date("2026-07-03T13:00:00Z"),
+    })) });
+    clock.now = new Date("2026-09-01T12:00:00Z");
+    const opened = await api.getTowerSeasonVote(author);
+    if (opened.status !== "VOTE_OPEN") throw new Error("Scrutin de l’été attendu ouvert");
+    expect(opened.season.name).toBe("Été · 2026");
+    expect(opened.season.active).toBe(false);
+    expect(opened.closesAt).toEqual(new Date("2026-09-03T12:00:00Z"));
+    expect(opened.candidates.map(candidate => candidate.userId)).toEqual(["tower-a2", "tower-a1"]);
+  });
+
   it("ouvre le vote de S4 pendant l’intersaison du 1er au 3 janvier", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-boundary-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
@@ -247,8 +266,9 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await api.submitTowerChallengeProof({ ...proof(id), proofText: "Autre preuve" })).status).toBe("CONFLICT");
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).submittedAt?.toISOString()).toBe("2026-10-28T12:00:00.000Z");
   });
-  it("exclut melah3 du vote de preuve en Production sans bloquer sa participation", async () => {
-    await db.user.update({ where: { id: "tower-a4" }, data: { discordName: "melah3" } });
+  it("exclut le compte de test du vote de preuve en Production sans bloquer sa participation", async () => {
+    vi.stubEnv("TOWER_TEST_ACCOUNT_IDENTIFIERS", "999999999999999999");
+    await db.user.update({ where: { id: "tower-a4" }, data: { discordId: "999999999999999999", discordName: "Compte de test" } });
     const attemptId = await submitted(41);
     vi.stubEnv("VERCEL_ENV", "production");
 
@@ -256,8 +276,9 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await db.towerChallengeVote.count({ where: { attemptId } })).toBe(0);
   });
 
-  it("exclut melah3 du vote de fin de saison en Production", async () => {
-    await db.user.update({ where: { id: "tower-a4" }, data: { discordName: "melah3" } });
+  it("exclut le compte de test du vote de fin de saison en Production", async () => {
+    vi.stubEnv("TOWER_TEST_ACCOUNT_IDENTIFIERS", "999999999999999999");
+    await db.user.update({ where: { id: "tower-a4" }, data: { discordId: "999999999999999999", discordName: "Compte de test" } });
     const seasonVote = await db.towerSeasonVote.create({
       data: {
         communityId: "tower-a",

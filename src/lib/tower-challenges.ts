@@ -305,7 +305,7 @@ export async function submitTowerChallengeProof(input: unknown) {
 async function isExcludedTowerVoter(scopedDb: Prisma.TransactionClient, userId: string) {
   const user = await scopedDb.user.findUnique({
     where: { id: userId },
-    select: { discordId: true, discordName: true },
+    select: { discordId: true },
   });
   return user ? isProductionTowerTestAccount(user) : false;
 }

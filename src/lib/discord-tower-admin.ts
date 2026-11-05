@@ -1,3 +1,4 @@
+import { safeTowerErrorCategory } from "@/lib/discord-tower-error-category";
 import { z } from "zod";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 import { editSetupResponse } from "@/lib/discord-rest";
@@ -124,7 +125,7 @@ export function handleSignedTowerAdminInteraction(body: unknown, timestamp: stri
           .join("\n");
       }
     } catch (error) {
-      logger.error("discord-tower-admin", error, { task: "runTower" });
+      logger.warn("discord-tower-admin", "Échec du traitement Tower.", { task: "runTower", errorType: safeTowerErrorCategory(error) });
     }
     const sent = await editSetupResponse({ applicationId: interaction.application_id, token: interaction.token,
       content: content.slice(0, 1900), deadline: new Date(Date.now() + 10000) });
