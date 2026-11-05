@@ -100,7 +100,7 @@ export default async function TowerPage() {
         <h2 className="text-lg font-semibold text-foreground">Contester un refus</h2>
         {appealableAttempts.map(attempt => <div key={attempt.id} className="border-t border-border pt-3 first:border-0 first:pt-0">
           <p className="font-medium text-foreground">{attempt.title}{attempt.teamName ? ` · ${attempt.teamName}` : ""}</p>
-          <p className="text-sm text-muted">Une contestation motivée est possible pendant les sept jours qui suivent le refus.</p>
+          <p className="text-sm text-muted">Une contestation motivée est possible dans les 24 heures qui suivent l’annonce du résultat du vote.</p>
           <TowerChallengeAppealForm attemptId={attempt.id} />
         </div>)}
       </Card>}
