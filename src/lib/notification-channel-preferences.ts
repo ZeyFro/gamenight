@@ -97,7 +97,7 @@ export async function getEligibleUserIdsForNotificationChannel(
 ): Promise<Set<string>> {
   const uniqueIds = [...new Set(userIds)];
   if (uniqueIds.length === 0) return new Set();
-  const rows = await db.$queryRaw<EligibleNotificationRow[]>\`
+  const rows = await db.$queryRaw<EligibleNotificationRow[]>`
     SELECT
       u.id AS "userId",
       u."silenceReminders",
@@ -112,7 +112,7 @@ export async function getEligibleUserIdsForNotificationChannel(
       AND channel_preference.category = ${category}::"UserNotificationCategory"
       AND channel_preference.channel = ${channel}::"UserNotificationChannel"
     WHERE u.id = ANY(${uniqueIds}::text[])
-  \`;
+  `;
   return new Set(rows.filter((row) => resolveNotificationChannelEnabled({
     silenceReminders: row.silenceReminders,
     notificationPreferences: row.categoryEnabled === null
