@@ -30,6 +30,8 @@
 
 ## Recettes et documents de référence
 
+- [Cahier des charges global — The Tower 2.0 × GameNight](TOWER_CAHIER_DES_CHARGES_GLOBAL.md) — exigences de référence, décisions et critères de réception.
+
 - [Recette finale](RECETTE_FINALE.md) — photographie datée des parcours et validations locales ; ne vaut pas validation de configuration distante.
 - [Recette locale authentifiée](RECETTE_LOCALE_AUTHENTIFIEE.md) — protocole et preuves d’une session locale datée.
 - [Stabilisation V2](STABILISATION_V2.md) — relevé technique historique.
