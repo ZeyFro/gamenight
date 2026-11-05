@@ -37,6 +37,19 @@ async function main() {
       return;
     }
     console.log("OK : 0 doublon (communityId, userId) dans CommunityTeamMember.");
+
+    const orphanCreators = await db.$queryRawUnsafe(`
+      SELECT t."createdById"
+      FROM "CommunityTeam" t
+      LEFT JOIN "User" u ON u."id" = t."createdById"
+      WHERE u."id" IS NULL
+    `);
+    if (orphanCreators.length) {
+      console.error(`REFUSÉ : ${orphanCreators.length} créateur(s) d'équipe orphelin(s). La clé étrangère captainId échouerait; ne pas migrer.`);
+      process.exitCode = 2;
+      return;
+    }
+    console.log("OK : 0 créateur orphelin dans CommunityTeam.");
   } finally {
     await db.$disconnect();
   }
