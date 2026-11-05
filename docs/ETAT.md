@@ -2,28 +2,20 @@
 
 ## Fait
 
-- Branche documentaire : `docs/readme-migration-runner-20261105`; PR #413 en brouillon, empilée sur `docs/plan-migrations-20261105`. Le README corrige l'affirmation obsolète sur les migrations automatiques; `docs/PLAN-MIGRATIONS.md` décrit le risque des migrations tardives et la garde ajoutée au runner.
-- **#370**, tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` : garde contre les migrations en attente plus anciennes, tests unitaires, précontrôle des doublons et des créateurs orphelins. CI générale run 764 entièrement verte (runner, Postgres de service jetable, tests, typegen, tsc, lint, build); Tower rules/storage run 210 verts. Preview Vercel limitée par le quota quotidien.
-- **#406**, tête actuelle `1a495ede501784167b597c43438c1527b2d58082` : le CI précédent run 766 a échoué uniquement sur le budget webhook (33 requêtes au lieu de 32 dans deux cas); 3 614 tests passent. Le chemin Web Push saute désormais l'interrogation des préférences si la livraison est désactivée faute de configuration; le test ciblé couvre ce cas et les seuils restent inchangés. CI run 769 et Tower rules run 215 sont en cours. Vercel échoue par limite quotidienne de déploiements.
-- **Neon test uniquement** : branche `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, parent exact `br-super-cell-b1ukvk08`; état Ready, ni primaire ni par défaut. Précontrôles lecture seule : 118 migrations réussies, aucune en cours, zéro doublon de membres, zéro créateur orphelin. Aucun SQL de migration exécuté.
-- Issue #400 a reçu le suivi des checks et des précontrôles. Aucun changement Production/configuration, aucune action Discord, aucun essai réel, aucune fusion.
+- PR documentaire #413 reste en brouillon sur `docs/readme-migration-runner-20261105`, empilée sur la branche documentaire #411. Le README, le plan de migrations et ce suivi sont dans la PR; aucune fusion.
+- **#370**, tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` : garde chronologique fail-closed et tests dédiés présents. CI générale run 764 et Tower rules/storage run 210 entièrement verts. Preview Vercel en échec sur la limite quotidienne, sans action manuelle.
+- **#406**, tête `1a495ede501784167b597c43438c1527b2d58082` : correction du budget de requêtes en évitant la lecture de préférence Web Push lorsque sa livraison est désactivée, sans relever le seuil. CI générale run 769 et Tower rules/storage run 215 verts. Preview Vercel limitée par le quota quotidien.
+- **#396** CI générale run 754 et Preview Vercel vertes. **#397** et **#394** sont fusionnées; le catalogue v2 de 36 défis est déjà raccordé.
+- Branche Neon test `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, parent `br-super-cell-b1ukvk08), revalidée Ready, non primaire et non par défaut. Contrôles antérieurs en lecture seule : 118 migrations réussies, aucune inachevée, zéro doublon membre et zéro créateur orphelin. Aucune migration exécutée.
+- Inventaire de reprise : seule l'issue #400 est ouverte; sept PR ouvertes, toutes en Draft. #325 reste gelée.
 
 ## Reste et blocages
 
-- CI générale #406 run 769 et Tower rules run 215 doivent valider le correctif de budget; corriger tout échec concret.
-- Le runner Prisma n'a pas été exécuté sur Neon test : aucun checkout du dépôt ni `MIGRATION_DATABASE_URL` injectée dans le shell de cette session. Ne pas envoyer d'URL ou de secret dans le chat et ne pas contourner le runner avec du SQL direct.
-- #370 reste Draft malgré sa CI verte : migration non exercée par le runner sur Neon test et Preview Vercel bloquée par la limite de déploiements.
-- #406 reste Draft et dépend de son contrôle CI général et du test runner sur Neon test.
-- #325 reste gelée. #407 dépend de #406 et doit être revalidée avec #396; #408 dépend de #370 et #406. Aucune PR n'est fusionnée.
-
-## Garde-fous
-
-- Aucune migration de Production ni opération de suppression sur Production sans autorisation explicite et distincte.
-- Aucune modification de configuration Production ou des variables d'environnement.
-- Aucune modification Discord ni essai réel Discord sans autorisation.
-- Ne publier aucun secret ni URL de connexion dans le chat.
-- Ne fusionner aucune PR Draft, défaillante ou bloquée par une dépendance, migration ou revue.
+- **#370 puis #406** : l'application sur la branche de test n'est pas lancée. Ce workspace n'a pas de checkout git ni de `MIGRATION_DATABASE_URL`. Ne jamais envoyer cette URL dans le chat, ni contourner le runner par du SQL direct.
+- **#407** échoue encore sur le test de stockage car le schéma `TowerChallengeAppeal` de #406 n'est pas dans sa base CI; **#408** échoue au typage/stockage en attendant les champs Prisma de #406 et les règles de #370.
+- #396 dépend de #370 pour l'intégration; son workflow planifié n'est pas activé. #325 reste exclue des tests; sa migration plus ancienne serait refusée si présentée après #370/#406.
+- Aucune modification de Production, configuration, Discord ou Neon; aucune fusion ni essai réel.
 
 ## Prochaine action exacte
 
-Relever la conclusion de CI générale #406 run 766. Puis, quand un checkout local est disponible avec `MIGRATION_DATABASE_URL` injectée hors chat, confirmer encore l'identité de la branche Neon test, lancer le dry-run exact du runner pour #370 puis #406 sans inclure d'autre migration, vérifier la liste d'attente et les précontrôles, et n'appliquer ces migrations que sur cette branche de test si ces contrôles passent. Ne toucher ni à Production ni à #325.
+Sur un checkout local de la branche #370, injecter secrètement `MIGRATION_DATABASE_URL` pointant exclusivement vers `br-snowy-snow-b1cggq2w`, puis exécuter le précontrôle et le dry-run du runner en vérifiant l'identité et la liste exacte des migrations. Si tout passe, appliquer uniquement #370 sur cette branche. Refaire ensuite le même contrôle avec la branche de #406 et n'appliquer que sa migration. En cas de cible ou migration inattendue, arrêter. Ne pas toucher à Production ni à #325.
