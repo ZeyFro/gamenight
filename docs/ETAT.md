@@ -1,32 +1,29 @@
 # État de reprise — 5 novembre 2026
 
 ## Branche et PR en cours
-- Branche courante : `feat/tower-community-entry-points-20261105`.
-- PR brouillon #410 vers la branche documentaire #409 : https://github.com/ZeyFro/gamenight/pull/410
-- Tête de #410 avant ce point de reprise : `053ed897f8aa8fc1a04f3a4350140fdc1e407d9e`. Le commit d'état ci-dessous sera la nouvelle tête.
-- #409 reste brouillon vers `main`, tête `638bf02748c166317dbe245235add7c4c03d2a65`. Aucune PR n'est fusionnée.
+- Branche courante : `docs/plan-migrations-20261105`.
+- Nouvelle PR documentaire brouillon en préparation, empilée sur #410; #410 reste empilée sur #409 vers `main`.
+- #409, #410 et la nouvelle PR sont à laisser en brouillon; aucune PR n'est fusionnée.
+- Le document `docs/PLAN-MIGRATIONS.md` recense les huit migrations visibles dans les PR ouvertes #325, #370 et #406.
 
 ## Fait
-- #396 : idempotence vérifiée (jour Europe/Paris, clé unique et upsert); échec partiel d'attribution renvoyé en HTTP 503. CI et Preview avaient été rapportés verts au SHA `1f1136dc0a37fef6949052034e89214f8bafce9d`.
-- #410 / P1-03 : liens vers Équipes, Soirées et The Tower ajoutés aux deux pages d'accueil; test ciblé ajouté. SHA de code `053ed897f8aa8fc1a04f3a4350140fdc1e407d9e`. Aucun test local exécuté dans cette session; le statut Vercel visible à l'ouverture était en attente.
-- P3-04 : les règles de cooldown solo de 12 h, expiration/dépôt de preuve sous 48 h, quota de deux succès par jour en heure de Paris et le barème des étages existent déjà sur `main`, avec tests unitaires. Aucun doublon de PR créé.
-- Aucune migration, opération Neon/Production, modification de configuration ou action Discord effectuée.
+- Inventaire des chemins de migration dans les fichiers modifiés par toutes les PR actuellement ouvertes : six dans #325, une dans #370, une dans #406; aucune autre migration n'est incluse dans les autres PR ouvertes examinées.
+- Lecture des huit fichiers SQL et des définitions Prisma nécessaires pour nommer les tables, colonnes, types, contraintes, backfills, ordre et propositions de rollback.
+- Aucun accès à Neon, Production, une base ou `_prisma_migrations); l'état réellement appliqué des fichiers reste non vérifié.
+- Aucun SQL exécuté : ni migration, ni rollback, ni snapshot, ni écriture de base.
 
-## Reste et blocages
-- P1-01 et P1-02, ainsi que le volet Discord de P1-03, exigent un accès ou des actions Discord : en attente d'autorisation.
-- P2-01 dépend de #370; P2-02 de #406; P2-03 de #370 et #406; P2-04 dépend de #370 et #408.
-- #370 et #406 contiennent chacune une migration : aucune opération ni fusion avant accord spécifique distinct pour la migration concernée.
-- P3-03 / #407 dépend de #406 et de la compatibilité avec #396; le délai de contestation de 7 jours doit être confirmé avant son implémentation.
-- #395 ne devient opérationnelle qu'après configuration de l'ID en Production; ne pas modifier cette configuration.
-- #408 reste dépendante de #370 et #406. #325 reste gelée avec six migrations et ses préconditions documentées.
-- Le test ciblé de #410 n'a pas été exécuté localement dans cet environnement; attendre ses checks CI. Aucun essai réel Discord.
+## Reste / limites
+- Le plan décrit les migrations présentes dans les PR non fusionnées; ce n'est pas l'inventaire des migrations effectivement en attente sur une base réelle.
+- Les ordres SQL de retour arrière sont des propositions à vérifier, plusieurs entraînent une perte de données après usage.
+- Les contrôles de structure/données, de sauvegarde/restauration et post-application restent à effectuer par l'opérateur, avec autorisation distincte pour chaque migration.
+- Aucune configuration, variable d'environnement, permission, rôle ou salon Discord n'a été modifié; aucun essai Discord n'a été fait.
 
 ## Garde-fous permanents
-- Aucune migration ni opération Neon/Production sans accord explicite distinct pour chaque migration.
+- Aucune migration ni opération Neon/Production sans accord explicite distinct pour chaque fichier de migration.
 - Aucune modification de configuration Production ou de variables d'environnement.
-- Aucune modification de permissions, rôles ou salons Discord; aucun essai réel Discord sans accord explicite.
-- Aucune fusion : toutes les PR restent en brouillon.
+- Aucune modification Discord sans autorisation; aucun essai réel Discord.
+- Aucune fusion : les PR restent en brouillon.
 - Ne jamais demander ni publier de secret dans le chat.
 
 ## Prochaine action exacte
-Vérifier les checks CI de #410 sur sa tête publiée. Si les checks passent, reprendre le premier lot restant qui ne dépend ni d'une migration non autorisée, ni d'une décision produit en attente, ni d'une action Discord; s'il n'existe pas de lot code distinct de ceux déjà livrés, consigner le blocage dans ce fichier sans créer de PR doublon.
+Relire la PR documentaire et corriger le plan si nécessaire. Avant toute migration future, vérifier l'état de la cible et de `_prisma_migrations` en lecture seule, établir/restaurer une sauvegarde isolée, puis demander et consigner une autorisation spécifique pour le fichier exact et la cible; aucune opération n'est autorisée par la présente PR.
