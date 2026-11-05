@@ -1,5 +1,17 @@
 # État de reprise — 5 novembre 2026
 
+## Reprise autonome — situation actuelle
+
+- **Branche documentaire** : `docs/readme-migration-runner-20261105`, PR brouillon #413, empilée sur `docs/plan-migrations-20261105`. Aucun merge effectué.
+- **#370**, tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` : garde de chronologie et tests présents; précontrôle des doublons et créateurs orphelins. CI générale run 764 entièrement verte, Tower rules/storage run 210 vert. Preview Vercel bloquée par la limite quotidienne de déploiements. PR reste Draft.
+- **#406**, tête `abeada1de5215fb2be1d16712b9574b65a92f784` : workflow ciblé run 212 vert (85 tests sur 9 fichiers), storage vert (87 tests, typegen et tsc). CI générale run 766 encore dans `npm run test:postgres`; Preview Vercel réussie. PR reste Draft.
+- **Branche Neon de test** : `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, parent vérifié `br-super-cell-b1ukvk08`; état Ready, ni primaire ni par défaut. Précontrôles lecture seule : 118 migrations réussies, 0 en cours, 0 groupe de membres en doublon, 0 créateur orphelin. Aucune migration appliquée, aucune écriture ou suppression dans Neon.
+- **Blocage pour lancer Prisma sur la branche de test** : cette session ne dispose ni d'un checkout du dépôt ni de `MIGRATION_DATABASE_URL` injectée dans le shell. Ne jamais transmettre l'URL ou le mot de passe dans le chat; utiliser un mécanisme d'injection sécurisé. Ne pas remplacer le runner Prisma par du SQL direct.
+- **Garde-fous** : #325 reste gelée; aucune opération Production, changement de configuration, action Discord, essai réel Discord ou fusion. #407 dépend de #406 et doit être revalidée avec #396; #408 dépend de #370/#406.
+- **Prochaine action exacte** : relever le résultat complet de CI générale #406 run 766 et corriger tout échec concret. Ensuite fournir un checkout local avec `MIGRATION_DATABASE_URL` injectée hors chat; confirmer l'identité de la branche de test, effectuer le dry-run exact du runner pour #370 puis #406 sans aucune autre migration, et n'exécuter que si la liste en attente est exacte et les précontrôles passent.
+
+---
+
 ## Branche et PR en cours
 - Branche courante : `docs/tower-decision-updates-20261105`.
 - PR documentaire #412, brouillon, empilée sur #411 : https://github.com/ZeyFro/gamenight/pull/412.
