@@ -1,5 +1,18 @@
 # Plan des migrations en attente de revue
 
+> **Actualisation du 6 novembre :** ce plan est préparatoire. #370 `6cff66b` et
+> #406 `97353dc` conservent les SQL/checksums ci-dessous ; leurs correctifs d’audit
+> et leurs tests sont décrits dans ETAT.md. #407 `6ec348d` ajoute désormais une
+> neuvième migration distincte, `20261106150000_tower_fixed_arbiter`, hors du
+> périmètre des deux migrations proposées. Ne pas l’inclure implicitement.
+> #325 reste exclusivement à Claude Code ; la table de nommage historique plus
+> bas ne donne aucune instruction d’exécuter ses migrations.
+> #418 `05ccb6c` ne permet que le dry-run après fusion manuelle autorisée.
+> Rôle/secret/environnement distants non préparés : administration GitHub403 et
+> mapping endpoint de test à vérifier. Aucun SQL applicatif distant exécuté.
+> Toute migration, même de test, attend un nouvel accord explicite et la
+> validation dry-run/sauvegarde. Les anciens accords ne lèvent pas ces verrous.
+
 > **Périmètre et limites de vérification.** Ce document recense les fichiers de migration présents dans les PR ouvertes de ce dépôt au 5 novembre 2026. L’inventaire des fichiers modifiés dans toutes les PR ouvertes a trouvé huit migrations : six dans #325, une dans #370 et une dans #406; aucune autre PR ouverte ne modifie un fichier `prisma/migrations/**/migration.sql`. Les PR ne sont pas fusionnées. **Je n’ai pas consulté de base, Neon, Production ni la table `_prisma_migrations`** : « en attente » signifie ici « portée par une PR non fusionnée », et ne prouve pas que la migration est absente d’une base donnée. Vérifier la cible et son état avant toute décision ou exécution.
 
 Les ordres SQL ci-dessous décrivent le DDL et les écritures des fichiers publiés sur les têtes actuelles des PR. Les commandes de retour arrière sont des **propositions à examiner**, pas un mécanisme Prisma ni des instructions à exécuter sans sauvegarde restaurée, contrôle de dépendances et autorisation distincte pour la migration concernée. Plusieurs retours arrière supprimeraient des données créées depuis l’application.

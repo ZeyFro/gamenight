@@ -1,3 +1,8 @@
+> **Reprise actuelle — 6 novembre 2026 :** lire d’abord [ETAT.md](ETAT.md) et l’issue #400.
+> Les relevés ci-dessous sont historiques ; leurs anciennes têtes, autorisations et
+> conditions d’arrêt ne remplacent pas les instructions actuelles du propriétaire.
+> #325 est exclusivement réservée à Claude Code. Aucun secret dans les journaux.
+
 # Point de reprise unique — GameNight — 3 novembre 2026
 
 Ce document décrit les constats du 2 novembre 2026, complétés le 3 novembre (section ci-dessous). Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
