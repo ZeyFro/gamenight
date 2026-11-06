@@ -19,14 +19,16 @@ Les états CI ci-dessous sont des relevés ; consulter GitHub avant de reprendre
   index Prisma aligné sans modifier le SQL. 23 tests ciblés, lint/tsc réussis.
 - #406 `97353dc` : secours MP roulette sans mention publique du créateur ;
   27 tests PostgreSQL/Discord simulé réussis, lint/tsc réussis. #370 intégrée.
-  B14 aligné sur 24 h et arbitre fixe. CI des nouvelles têtes en cours au relevé.
-- #418 `05ccb6c` : workflow limité au dry-run, rôles runtime/migration distincts
+  B14 aligné sur 24 h et arbitre fixe. CI et Preview vertes sur ces têtes.
+- #418 `3cb3d00` : workflow limité au dry-run, rôles runtime/migration distincts
   et paramétrés, runner chronologique #370, contrôle READ ONLY identité/DDL.
-  16 tests, lint/tsc réussis, revue statique effectuée. Pas encore activé.
+  Endpoint direct confirmé par le connecteur Neon de ChatGPT puis corrigé dans
+  les deux étapes ; 17 tests ciblés, cinq vérifications hors réseau du runner,
+  lint/tsc réussis. CI de cette nouvelle tête en cours au relevé ; pas encore activé.
 - #408 `0e9ff59` : parents corrigés intégrés ; 60 tests ciblés, typegen/tsc,
   lint et build réussis, npm ci complet (605 paquets, TLS actif).
 - #416 `3f2702f` : #408 intégrée ; 81 tests ciblés, typegen/tsc et lint ciblé
-  réussis. Aucun enregistrement Discord. CI distante des nouvelles têtes en attente.
+  réussis. Aucun enregistrement Discord. CI dédiée et Preview vertes ; #408 verte.
 - #413 porte ce point de reprise et un reciblage documentaire vers main.
 
 ## Migrations et droits : distinguer local et distant
@@ -36,28 +38,40 @@ aucune inachevée ; répétition supplémentaire avec un rôle DDL restreint et 
 applicatif conservé. #407 porte une migration additionnelle 121 testée localement.
 Ces résultats ne prouvent aucune exécution Neon.
 
-Lecture seule de la connexion Cloud : projet et branche de test attendus,
-historique 118 terminées, #370/#406 absentes, rôle dédié absent. L'endpoint ne
-correspond pas à celui épinglé dans #418 ; l'essai READ ONLY de cet endpoint a
-été refusé par le contrôle d'identité. Aucune écriture distante réalisée.
+Relevé précédent en lecture seule : projet et branche de test attendus,
+historique 118 terminées, #370/#406 absentes, rôle dédié absent. Ce relevé SQL
+n'a pas été répété pendant la correction d'endpoint.
+
+Le connecteur Neon de ChatGPT a confirmé le 6 novembre vers 18 h 35 Paris le
+mapping exact vers l'endpoint direct
+`ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech` et la base `neondb` :
+[preuve indépendante](https://github.com/ZeyFro/gamenight/pull/418#issuecomment-6691282780).
+La cible obsolète a été corrigée dans #418 ; le blocage de mapping est levé.
+Les contrôles d'identité, branche et rôles restent obligatoires. Cette preuve
+ne remplace pas le premier dry-run Prisma. Aucune écriture distante réalisée.
 
 L'API GitHub refuse l'administration de `neon-migration-test` (403). Aucun
 environnement, secret, rôle ou mot de passe distant créé par cette session.
-La sauvegarde `backup-tower-migration-test-20261106` a été confirmée par le
-propriétaire ; sa présence/exploitabilité reste à revalider avant exécution.
+La sauvegarde `backup-tower-migration-test-20261106` (`br-purple-mud-b1nt0tfi`)
+a été reconfirmée ready, enfant de la cible, no_compute et non par défaut par
+le même contrôle indépendant ; aucun exercice de restauration n'est prouvé ici.
+Revalider son exploitabilité avant une éventuelle exécution autorisée.
 Procédure de rôle : branche de #418, `docs/operations/NEON_TEST_MIGRATION_ROLE.md`.
 
 ## Reprise et blocages
 
-1. Vérifier le mapping indépendant endpoint → branche Neon de test et obtenir
-   l'accès GitHub aux environnements/secrets, sans transmettre de secret au chat.
-   Ensuite finaliser le rôle restreint et le secret ; aucun grant global.
+1. Le mapping endpoint est confirmé et corrigé : ne pas recommencer cet audit
+   sans nouvelle divergence. Obtenir l'accès GitHub aux environnements/secrets,
+   sans transmettre de secret au chat. La phase actuelle reste limitée au dry-run ;
+   ne pas créer de rôle ni exécuter de migration dans le lot de correction.
+   Préparation restreinte rôle/secret encore non réalisée ; aucun grant global.
 2. Après fusion manuelle explicitement autorisée de #418, premier dry-run Actions.
    Toute migration, y compris test, attend son accord explicite, une sauvegarde
    validée et les précontrôles ; #370 puis #406 seulement. La migration #407 exige
    sa propre revue et autorisation. Production option B : préparation uniquement.
-3. Relever la CI des dépendances actualisées #408, #413, #416 ; vérifier les résultats distants
-   des nouvelles têtes #370/#406/#418. Un push groupé par PR, aucun skip ci.
+3. #370/#406/#407/#408/#416 et l'ancienne tête documentaire #413 ont leurs CI
+   vertes. Relever seulement les nouvelles CI #418 et #413 de cette correction.
+   Un push groupé par PR et par lot complet ; aucun skip ci.
 4. #325 exclusivement Claude Code. Prévenir le propriétaire seulement lorsque
    #370 ET #406 seront réellement fusionnées et leurs migrations appliquées ;
    ce jalon n'est pas atteint. Claude renommera alors ses migrations.

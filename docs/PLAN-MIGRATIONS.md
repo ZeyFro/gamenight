@@ -7,9 +7,12 @@
 > périmètre des deux migrations proposées. Ne pas l’inclure implicitement.
 > #325 reste exclusivement à Claude Code ; la table de nommage historique plus
 > bas ne donne aucune instruction d’exécuter ses migrations.
-> #418 `05ccb6c` ne permet que le dry-run après fusion manuelle autorisée.
-> Rôle/secret/environnement distants non préparés : administration GitHub403 et
-> mapping endpoint de test à vérifier. Aucun SQL applicatif distant exécuté.
+> #418 `3cb3d00` ne permet que le dry-run après fusion manuelle autorisée.
+> Mapping endpoint confirmé en lecture seule par le connecteur Neon de ChatGPT :
+> [preuve du 6 novembre vers 18 h 35 Paris](https://github.com/ZeyFro/gamenight/pull/418#issuecomment-6691282780).
+> Les deux cibles de #418 sont corrigées ; identité/branche/rôles inchangés.
+> Rôle/secret/environnement distants encore non préparés : administration GitHub403.
+> Phase actuelle limitée au dry-run ; aucune écriture Neon ni migration distante.
 > Toute migration, même de test, attend un nouvel accord explicite et la
 > validation dry-run/sauvegarde. Les anciens accords ne lèvent pas ces verrous.
 
