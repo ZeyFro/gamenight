@@ -4,7 +4,6 @@ import { formatDateTimeFr } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { createNotifications } from "@/lib/notifications";
 import type { Session, User } from "@prisma/client";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
 import { getDefaultCommunityId } from "@/lib/default-community";
@@ -28,8 +27,7 @@ export async function announceSessionCreated(
       id: { not: creator.id, ...(notifiedUserIds ? { in: notifiedUserIds } : {}) },
     },
   });
-  const eligibleByPreference = await filterUsersByNotificationPreference(candidates, "SESSION");
-  const others = await filterByActiveSessionInvite(session.id, session.createdById, eligibleByPreference);
+  const others = await filterByActiveSessionInvite(session.id, session.createdById, candidates);
 
   // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
   // les mentions qu'aurait portées l'ancien message Discord, EN PLUS
@@ -45,6 +43,7 @@ export async function announceSessionCreated(
       title: "📣 Nouvelle soirée",
       message: formatDateTimeFr(session.date),
       relatedSessionId: session.id,
+      personalCategory: "SESSION" as const,
     }))
   );
 

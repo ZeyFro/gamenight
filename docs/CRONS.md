@@ -4,12 +4,13 @@ Toutes les routes de cette liste sont présentes dans le code. Les méthodes son
 
 Les routes `/api/cron/*` et `/api/backfill/*` exigent `CRON_SECRET` et répondent 503 lorsque ce secret n’est pas configuré. Envoyer l’en-tête `Authorization: Bearer <CRON_SECRET>`. Les interrupteurs fonctionnels des jobs restent indépendants de cette authentification.
 
-Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et leurs cadences sont configurées par l’opérateur dans un service externe ; leur état réel n’est pas vérifiable depuis le code seul. Ne déduire aucun horaire des anciens comptes rendus.
+Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’équipe Tower est préparé dans le workflow GitHub Actions `.github/workflows/tower-team-daily.yml` de #396; le schedule n’est pris en compte qu’après fusion dans la branche par défaut. Les autres tâches sont configurées par l’opérateur selon leur procédure propre; leur état réel n’est pas vérifiable depuis le code seul. Ne déduire aucun horaire des anciens comptes rendus.
 
 ## Routes cron et backfill
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
+| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 07:00/08:00 avec garde 09:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
@@ -21,6 +22,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et 
 | `/api/cron/retention-cleanup` | GET | Nettoyage de rétention |
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
+| `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
 | `/api/backfill/game-news` | POST | Backfill des nouvelles de jeux |
 | `/api/backfill/igdb-coop` | GET, POST | Backfill des données coop IGDB |
 | `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed |
@@ -51,6 +53,7 @@ Laissées synchrones (travail court ou budget interne) :
 | `monthly-tasks` | no-op hors de la date d’échéance | défaut plateforme |
 | `close-sessions` | requêtes et écritures en base, les annonces sont mises en file ; budget de 45 s (#354), arrêt signalé par `budgetExhausted: true` | 60 |
 | `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit | 60 |
+| `team-captain-handover` | au plus 25 équipes préfiltrées ; dry-run sauf `TEAM_CAPTAIN_HANDOVER_MODE=execute` | 60 |
 
 Un budget atteint n’est pas une erreur : le travail restant est repris au passage suivant (étapes idempotentes). Au-delà de 30 s, cron-job.org coupe la connexion mais la fonction continue jusqu’à son budget.
 

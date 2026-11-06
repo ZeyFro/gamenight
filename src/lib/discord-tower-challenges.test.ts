@@ -53,7 +53,7 @@ beforeEach(() => {
   mocks.claim.mockResolvedValue({ status: "CLAIMED", attemptId: "attempt_1", replayed: false });
   mocks.state.mockResolvedValue({ status: "STATE", floor: "1", attempts: [{
     id: "attempt_1", title: "Construis", instructions: "Une maison", status: "ASSIGNED", rewardFloors: 2,
-    assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null,
+    proofCode: "TWR-ABCD2345", assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null,
   }] });
   mocks.edit.mockResolvedValue({ ok: true, data: { messageId: message, channelId: channel } });
   mocks.readProof.mockResolvedValue({ ok: true, data: { messageId: message, channelId: channel, authorId: user } });
@@ -70,7 +70,7 @@ beforeEach(() => {
   mocks.teams.mockResolvedValue({ status: "TEAMS", teams: [{ id: "team_1", name: "Les grimpeurs" }] });
   mocks.teamChallenge.mockResolvedValue({ status: "TEAM_CHALLENGE", team: { id: "team_1", name: "Les grimpeurs", memberCount: 3 },
     attempt: { id: "team_attempt_1", title: "Le défi collectif", instructions: "Jouez ensemble.", rewardFloors: 2,
-      status: "ASSIGNED", assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null },
+      status: "ASSIGNED", proofCode: "TWR-TEAM2345", assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null },
     participantCount: 1, joined: false, pendingReward: false });
   mocks.joinTeam.mockResolvedValue({ status: "JOINED", teamId: "team_1", replayed: false });
   mocks.leaderboard.mockResolvedValue({ status: "LEADERBOARD", season: { name: "Trimestre 1", active: true,
@@ -90,6 +90,8 @@ describe("parcours Discord The Tower signé", () => {
     expect(mocks.actor).toHaveBeenCalledWith({ guildId: guild, discordId: user, username: "Joueur" });
     expect(mocks.claim).toHaveBeenCalledWith({ ...actor, requestKey: "100000000000000006" });
     expect(mocks.edit).toHaveBeenCalledWith(expect.objectContaining({ components: expect.any(Array) }));
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("TWR-ABCD2345");
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("ne prouve pas la date de capture");
   });
   it("n'ouvre aucun accès si la signature ou un drapeau est absent", async () => {
     mocks.verify.mockReturnValue(false);
@@ -114,8 +116,18 @@ describe("parcours Discord The Tower signé", () => {
   it("ouvre le formulaire de preuve sans appel externe", async () => {
     const out = await run(payload("gn:tower:proof:attempt_1"));
     expect(out.body).toMatchObject({ type: 9, data: { custom_id: "gn:tower:proof:attempt_1" } });
+    expect(JSON.stringify(out.body)).toContain("composition si impossible");
     expect(mocks.actor).not.toHaveBeenCalled();
     expect(mocks.readProof).not.toHaveBeenCalled();
+  });
+  it("garde le code visible même si le texte du défi remplit la limite Discord", async () => {
+    mocks.state.mockResolvedValue({ status: "STATE", floor: "1", attempts: [{
+      id: "attempt_1", title: "Construis", instructions: "x".repeat(1500), status: "ASSIGNED", rewardFloors: 2,
+      proofCode: "TWR-ABCD2345", assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null,
+    }] });
+    const out = await run(payload("gn:tower:mine"));
+    await out.runTower?.();
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("TWR-ABCD2345");
   });
   it("enregistre une preuve consentie dont le message appartient au membre", async () => {
     const out = await run(modal()); await out.runTower?.();
@@ -175,6 +187,8 @@ describe("parcours Discord The Tower signé", () => {
     await team.runTower?.();
     expect(mocks.teamChallenge).toHaveBeenCalledWith({ ...actor, teamId: "team_1" });
     expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("Défi quotidien");
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("TWR-TEAM2345");
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("ne prouve pas la date de capture");
 
     mocks.teamChallenge.mockResolvedValueOnce({ status: "TEAM_CHALLENGE", team: { id: "team_1", name: "Les grimpeurs", memberCount: 3 },
       attempt: { id: "team_attempt_1", title: "Le défi collectif", instructions: "Jouez ensemble.", rewardFloors: 2,
