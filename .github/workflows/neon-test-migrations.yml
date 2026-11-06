@@ -1,20 +1,15 @@
-name: Neon Test migrations #370 + #406
+name: Neon Test dry-run #370 + #406
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Run only the read-only preflight, or apply the two authorized migrations to the isolated Neon test branch."
+        description: "Read-only identity, DDL privilege checks and migration dry-run on the isolated test branch."
         required: true
         type: choice
         options:
           - dry-run
-          - apply
         default: dry-run
-      confirmation:
-        description: "Required for apply: type APPLY_370_AND_406_TO_NEON_TEST"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -40,7 +35,7 @@ jobs:
       - name: Checkout the reviewed migration runner
         uses: actions/checkout@v4
         with:
-          ref: ea78a86e194f6e834b133ec772b8d8809ebe8801
+          ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
           path: runner-source
           sparse-checkout: |
             scripts
@@ -81,46 +76,18 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
 
+      - name: Verify dedicated role, ownership and privileges (read-only)
+        run: node scripts/neon-test-preflight.mjs
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          GAMENIGHT_EXPECTED_TARGET: ep-snowy-mode-b10ef254.c-5.eu-central-1.aws.neon.tech/neondb
+          GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
+          GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}
+
       - name: Validate the exact direct Neon Test target and pending list (read-only)
         run: node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy,20261105120000_tower_launch_channels_appeals_matchmaking
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
           GAMENIGHT_EXPECTED_TARGET: ep-snowy-mode-b10ef254.c-5.eu-central-1.aws.neon.tech/neondb
-          GAMENIGHT_RUNTIME_ROLE: neondb_owner
-
-      - name: Check data preconditions (read-only)
-        run: |
-          node --input-type=module <<'NODE'
-          import { PrismaClient } from "@prisma/client";
-          const prisma = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
-          try {
-            const [duplicates] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM (SELECT "communityId", "userId" FROM "CommunityTeamMember" GROUP BY "communityId", "userId" HAVING count(*) > 1) AS d`;
-            const [orphans] = await prisma.$queryRaw`SELECT count(*)::int AS count FROM "CommunityTeam" t LEFT JOIN "User" u ON u.id = t."createdById" WHERE t."createdById" IS NOT NULL AND u.id IS NULL`;
-            if (duplicates.count !== 0 || orphans.count !== 0) {
-              throw new Error(`Refusing: duplicate memberships=${duplicates.count}, orphan creators=${orphans.count}`);
-            }
-            console.log(`Preconditions pass: duplicate memberships=${duplicates.count}, orphan creators=${orphans.count}.`);
-          } finally {
-            await prisma.$disconnect();
-          }
-          NODE
-        env:
-          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-
-      - name: Require the exact test-only confirmation for apply
-        if: ${{ inputs.operation == 'apply' }}
-        env:
-          CONFIRMATION: ${{ inputs.confirmation }}
-        run: |
-          if [ "$CONFIRMATION" != "APPLY_370_AND_406_TO_NEON_TEST" ]; then
-            echo "Refusing: exact test-only confirmation is missing."
-            exit 1
-          fi
-
-      - name: Apply exactly #370 then #406
-        if: ${{ inputs.operation == 'apply' }}
-        run: node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy,20261105120000_tower_launch_channels_appeals_matchmaking --execute --confirm-database=neondb
-        env:
-          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-          GAMENIGHT_EXPECTED_TARGET: ep-snowy-mode-b10ef254.c-5.eu-central-1.aws.neon.tech/neondb
-          GAMENIGHT_RUNTIME_ROLE: neondb_owner
+          GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
+          GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}
