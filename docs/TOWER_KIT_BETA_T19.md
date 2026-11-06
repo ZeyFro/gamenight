@@ -33,7 +33,7 @@ Pour chaque scénario, cocher **Réussi / Échec / Non exécuté** et noter la c
 | B11 | Auteur/participant tente de voter, puis quorum et majorité | Auto-vote et vote participant refusés; scrutin de 24 h, quorum et majorité appliqués | Doubles locaux; aucun faux votant Discord |
 | B12 | Égalité, quorum incomplet, vote tardif, double clic | Pas de validation sans quorum/majorité; aucune double écriture | Base isolée / horloge simulée |
 | B13 | Valider plusieurs preuves solo/équipe en concurrence, près de minuit Paris | Quotas quotidiens respectés, report et idempotence conformes | Base isolée avec concurrence; jamais sur Neon |
-| B14 | Contester dans/après 7 j, motif vide, conflit d'intérêts | Motif obligatoire, limite exacte appliquée; arbitre indépendant désigné et décision traçable; aucune double récompense | Base isolée / horloge simulée |
+| B14 | Contester dans/après 24 h à compter de l'annonce effective du résultat, motif vide, conflit d'intérêts | Motif obligatoire, limite exacte appliquée; arbitre indépendant fixe configuré à l’avance, gelé pendant toute contestation ouverte, changements journalisés et décision traçable; aucune double récompense | Base isolée / horloge simulée |
 | B15 | Simuler preuve sans quorum à J+7 puis J+30 | Signalement staff unique à J+7; archivage à J+30 sans effacement ni récompense automatique | Base isolée / horloge simulée; aucun ping staff réel |
 | B16 | Simuler fin de saison, intersaison, été→S4 et heure d'été/hiver | Étages permanents conservés, classement/départage corrects, scrutin existant non perdu | Base isolée / horloge simulée |
 | B17 | Seuils Ranker30, HighRanker100 sans/avec saison terminée | Rang produit visible conforme, aucun pouvoir admin | Base isolée |

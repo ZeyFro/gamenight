@@ -19,7 +19,7 @@ export function canReviewTowerChallengeAppeal(input: {
 }): boolean {
   if (input.reviewerId === input.authorId || input.isParticipant || input.hasVoted) return false;
   const authorIsStaff = input.authorRole === "ADMIN" || input.authorRole === "OWNER";
-  if (authorIsStaff) {
+  if (authorIsStaff || input.arbiterId !== null) {
     return input.reviewerId === input.arbiterId && input.reviewerRole === "MEMBER";
   }
   return input.reviewerRole === "ADMIN" || input.reviewerRole === "OWNER";

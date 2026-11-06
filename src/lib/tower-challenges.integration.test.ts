@@ -368,24 +368,31 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ announcementsQueued: 0 });
     expect(await db.notificationDelivery.count({ where: { eventId: event.id } })).toBe(1);
   });
+  it("interdit au propriétaire auteur de choisir l’arbitre de sa contestation", async () => {
+    const attemptId = await submitted(); await markRejected(attemptId);
+    await db.membership.update({ where: { communityId_userId: author }, data: { role: "OWNER" } });
+    expect(await api.configureTowerChallengeArbiter({ ...author, arbiterUserId: "tower-a2" })).toEqual({status: "ARBITER_CONFIGURED"});
+    expect((await api.submitTowerChallengeAppeal({ ...author, attemptId, reason: "Réexamen" })).status).toBe("APPEAL_SUBMITTED");
+    const [appeal] = await db.$queryRaw<{ id: string }[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId" = ${attemptId}`;
+    expect(await api.appointTowerChallengeArbiter({ ...author, appealId: appeal.id, arbiterUserId: "tower-a2" })).toEqual({ status: "FORBIDDEN" });
+  });
   it("réserve un auteur staff à l’arbitre nommé et rend une décision une seule fois", async () => {
     const id = await submitted();
     await markRejected(id);
     await db.membership.update({ where: { communityId_userId: author }, data: { role: "ADMIN" } });
     await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "OWNER" } });
+    expect(await api.configureTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", arbiterUserId: "tower-a2" })).toEqual({status: "ARBITER_CONFIGURED"});
     const appeal = await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen indépendant demandé." });
     expect(appeal.status).toBe("APPEAL_SUBMITTED");
     const queue = await api.getTowerChallengeStaffQueue({ communityId: "tower-a", userId: "tower-a1" });
     expect(queue).toMatchObject({ status: "STAFF_QUEUE", isStaff: true });
     if (queue.status !== "STAFF_QUEUE") throw new Error("File staff attendue");
-    const appealId = queue.appeals[0]?.id;
+    expect(queue.appeals).toHaveLength(0);
+    const [opened] = await db.$queryRaw<{id: string}[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId"=${id}`;
+    const appealId = opened?.id;
     if (!appealId) throw new Error("Contestation ouverte attendue");
-    const candidates = await api.getTowerChallengeArbiterCandidates({ communityId: "tower-a", userId: "tower-a1", appealId });
-    expect(candidates.status).toBe("CANDIDATES");
-    if (candidates.status !== "CANDIDATES") throw new Error("Candidats attendus");
-    expect(candidates.candidates.map(candidate => candidate.userId)).toContain("tower-a2");
-    expect(await api.appointTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", appealId, arbiterUserId: "tower-a2" }))
-      .toMatchObject({ status: "ARBITER_ASSIGNED" });
+    expect(await api.getTowerChallengeArbiterCandidates({ communityId: "tower-a", userId: "tower-a1", appealId })).toEqual({status: "FORBIDDEN"});
+    expect(await api.appointTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", appealId, arbiterUserId: "tower-a3" })).toEqual({status: "FORBIDDEN"});
     expect(await api.decideTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", appealId, decision: "OVERTURNED", decisionReason: "Je suis le propriétaire." }))
       .toMatchObject({ status: "FORBIDDEN" });
     expect(await api.decideTowerChallengeAppeal({ communityId: "tower-b", userId: "tower-outsider", appealId, decision: "OVERTURNED", decisionReason: "Autre communauté." }))
@@ -403,6 +410,92 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(attempt?.rewardedAt).toEqual(clock.now);
     expect(record).toMatchObject({ status: "OVERTURNED", reviewerUserId: "tower-a2", decisionReason: "Arbitrage indépendant." });
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(1));
+  });
+  it("journalise la configuration, refuse les membres et isole les communautés", async () => {
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    expect(await api.configureTowerChallengeArbiter({...author,userId:"tower-a1",arbiterUserId:"tower-a2"})).toEqual({status:"FORBIDDEN"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:author.userId})).toEqual({status:"ARBITER_INELIGIBLE"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-outsider"})).toEqual({status:"ARBITER_INELIGIBLE"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"})).toEqual({status:"ARBITER_CONFIGURED"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"})).toEqual({status:"UNCHANGED"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a3"})).toEqual({status:"ARBITER_CONFIGURED"});
+    const records=await db.towerArbiterConfigurationChange.findMany({where:{communityId:author.communityId},orderBy:{id:"asc"}});
+    expect(records.map(r=>[r.previousArbiterUserId,r.arbiterUserId,r.changedByUserId])).toEqual([[null,"tower-a2",author.userId],["tower-a2","tower-a3",author.userId]]);
+    expect(await db.towerArbiterConfigurationChange.count({where:{communityId:"tower-b"}})).toBe(0);
+  });
+  it("gèle l’arbitre même pendant une contestation ordinaire invisible au propriétaire", async () => {
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a1"}},data:{role:"OWNER"}});
+    const owner={communityId:"tower-a",userId:"tower-a1"};
+    await api.configureTowerChallengeArbiter({...owner,arbiterUserId:"tower-a2"});
+    const attemptId=await submitted();await vote(attemptId,"tower-a1",false);await markRejected(attemptId);
+    await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"});
+    const queue = await api.getTowerChallengeStaffQueue(owner);
+    expect(queue.status === "STAFF_QUEUE" ? queue.appeals : []).toHaveLength(0);
+    expect(await api.configureTowerChallengeArbiter({...owner,arbiterUserId:"tower-a3"})).toEqual({status:"CONFIGURATION_LOCKED"});
+    expect(await db.towerArbiterConfigurationChange.count({where:{communityId:"tower-a"}})).toBe(1);
+  });
+  it("conserve l’arbitre du propriétaire après rétrogradation et refuse un arbitre devenu staff", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"});
+    const [appeal]=await db.$queryRaw<{id:string}[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId"=${attemptId}`;
+    await db.membership.update({where:{communityId_userId:author},data:{role:"MEMBER"}});
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a1"}},data:{role:"ADMIN"}});
+    const input={communityId:"tower-a",appealId:appeal.id,decision:"UPHELD",decisionReason:"Décision"};
+    expect(await api.decideTowerChallengeAppeal({...input,userId:"tower-a1"})).toEqual({status:"FORBIDDEN"});
+    const queue=await api.getTowerChallengeStaffQueue({communityId:"tower-a",userId:"tower-a1"});
+    expect(queue.status==="STAFF_QUEUE"?queue.appeals:[]).toHaveLength(0);
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{role:"ADMIN"}});
+    expect(await api.decideTowerChallengeAppeal({...input,userId:"tower-a2"})).toEqual({status:"FORBIDDEN"});
+  });
+  it("sérialise ouverture et configuration concurrentes sans changer l’arbitre après ouverture", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    const results=await Promise.all([api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"}),api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a3"})]);
+    expect(results[0].status).toBe("APPEAL_SUBMITTED");
+    expect(["ARBITER_CONFIGURED","CONFIGURATION_LOCKED"]).toContain(results[1].status);
+    const [appeal]=await db.$queryRaw<{arbiterUserId:string}[]>`SELECT "arbiterUserId" FROM "TowerChallengeAppeal" WHERE "attemptId"=${attemptId}`;
+    const config=await api.getTowerChallengeArbiterConfiguration(author);
+    expect(config.status).toBe("ARBITER_CONFIGURATION");
+    if(config.status!=="ARBITER_CONFIGURATION")throw Error("Configuration attendue");
+    expect(appeal.arbiterUserId).toBe(config.arbiterUserId);expect(config.locked).toBe(true);
+  });
+  it("refuse un propriétaire sans arbitre préalable et les motifs dépassant 1000 caractères", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"})).toEqual({status:"ARBITER_NOT_CONFIGURED"});
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"x".repeat(1001)})).toEqual({status:"INVALID"});
+    expect(await api.decideTowerChallengeAppeal({...author,appealId:"absent",decision:"UPHELD",decisionReason:"x".repeat(1001)})).toEqual({status:"INVALID"});
+  });
+  it.each(["REMOVED","ADMIN","VOTED","PARTICIPANT"])("conserve le dossier sans décision si l’arbitre devient inéligible : %s", async kind => {
+    const attemptId=await submitted();
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    if(kind==="REMOVED")await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{status:"REMOVED"}});
+    if(kind==="ADMIN")await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{role:"ADMIN"}});
+    if(kind==="VOTED")expect((await vote(attemptId,"tower-a2",false)).status).toBe("VOTED");
+    if(kind==="PARTICIPANT")await db.towerChallengeAttemptParticipant.create({data:{communityId:"tower-a",attemptId,userId:"tower-a2"}});
+    await markRejected(attemptId);
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"})).toEqual({status:"APPEAL_SUBMITTED"});
+    const appeal=await db.towerChallengeAppeal.findFirstOrThrow({where:{communityId:"tower-a"}});
+    expect(appeal).toMatchObject({status:"OPEN",arbiterUserId:"tower-a2"});
+    const decision=await api.decideTowerChallengeAppeal({communityId:"tower-a",userId:"tower-a2",appealId:appeal.id,decision:"UPHELD",decisionReason:"Décision"});
+    expect(["FORBIDDEN","UNAVAILABLE"]).toContain(decision.status);
+    expect((await db.towerChallengeAppeal.findUniqueOrThrow({where:{id:appeal.id}})).status).toBe("OPEN");
+  });
+  it("refuse une nomination héritée sans configuration préalable", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await db.$executeRaw`INSERT INTO "TowerChallengeAppeal" (id,"communityId","attemptId","authorUserId",reason,"dueAt","arbiterUserId") VALUES ('legacy-arbiter','tower-a',${attemptId},${author.userId},'Réexamen',${clock.now},'tower-a2')`;
+    expect(await api.decideTowerChallengeAppeal({communityId:"tower-a",userId:"tower-a2",appealId:"legacy-arbiter",decision:"UPHELD",decisionReason:"Décision"})).toEqual({status:"FORBIDDEN"});
+  });
+  it("journalise les changements concurrents dans un ordre cohérent", async () => {
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await Promise.all(["tower-a2","tower-a3"].map(arbiterUserId=>api.configureTowerChallengeArbiter({...author,arbiterUserId})));
+    const rows=await db.towerArbiterConfigurationChange.findMany({where:{communityId:"tower-a"},orderBy:{id:"asc"}});
+    expect(rows).toHaveLength(2);expect(rows[0].previousArbiterUserId).toBe(null);expect(rows[1].previousArbiterUserId).toBe(rows[0].arbiterUserId);
   });
   it("laisse la contestation ouverte si l’auteur a atteint son plafond quotidien", async () => {
     const id = await submitted();

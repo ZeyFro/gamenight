@@ -1296,7 +1296,7 @@ async function buildMessageContent(
   // Double ping : TOUS les invités éligibles restent mentionnés, MP ou non.
   const mentioned = [...eligible];
   // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
-  if (creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) {
+  if (!session.createdViaRoulette && creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) {
     const [mentionAllowed] = await filterUsersByNotificationChannelPreference([creatorRecipient], category, "DISCORD_MENTION");
     if (mentionAllowed) mentioned.push(creatorRecipient);
   }

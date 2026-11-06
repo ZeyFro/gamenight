@@ -2778,6 +2778,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
   towerChallengeAttempts TowerChallengeAttempt[]
@@ -2955,6 +2956,7 @@ model CommunityTeamMember {
 
   @@unique([teamId, userId])
   @@unique([communityId, userId])
+  @@index([communityId, userId])
 }
 
 model SessionGalleryMedia {
@@ -3363,3 +3365,16 @@ model TowerSeasonVoteBallot {
   @@index([communityId, voteId])
 }
 
+
+// Le dernier changement est la configuration ; les précédents restent le journal.
+model TowerArbiterConfigurationChange {
+  id BigInt @id @default(autoincrement())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  previousArbiterUserId String?
+  arbiterUserId String
+  changedByUserId String
+  createdAt DateTime @default(now())
+
+  @@index([communityId, id(sort: Desc)])
+}

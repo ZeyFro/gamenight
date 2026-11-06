@@ -126,3 +126,162 @@ Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, fi
 | 5/6/7 | 1 | L5-02, L5-04, L6-10 à L6-12, L7-05, L7-11 | `feat/roadmap-product-basics` | #276 | Fusionnée dans `8c1525f`; CI et validation décrites dans la PR |
 | 6 | 2 | L6-06 | `feat/session-chronicles-next` | #273 | Fusionnée dans `fd95637`; CI verte au head `fbaa830`, Vercel Preview Ready, Postgres local 2 972/2 972 |
 
+
+
+---
+
+## The Tower 2.0 × GameNight — roadmap globale par PR
+
+Cette section complète la feuille de route GameNight ci-dessus. Le cahier produit de référence est [docs/CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md). La version enrichie [docs/TOWER_CAHIER_DES_CHARGES_GLOBAL.md](TOWER_CAHIER_DES_CHARGES_GLOBAL.md) apporte une navigation et des consignes opérationnelles ; elle ne remplace pas le texte canonique. Le plan d'exécution transversal reste l'issue [#400](https://github.com/ZeyFro/gamenight/issues/400).
+
+Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne doivent pas être recréés. #370, #395 et #396 sont également des PR de suivi existantes. Les étapes terminées dans le dépôt ne sont pas requalifiées comme essais réels Discord ou Production.
+
+### Phase 1 — Fondation communautaire
+
+### P1-01 — Accueil et orientation du nouveau membre
+
+- **Objectif :** Rendre le parcours d'arrivée compréhensible en réutilisant YAGPDB et le panneau à trois actions retenu.
+- **Critères d'acceptation :** Un nouveau membre comprend le règlement, choisit ses intérêts et atteint une première action sans inscription GameNight imposée; le parcours existe sur ordinateur et mobile.
+- **Tests attendus :** Matrice de parcours en compte neuf, contrôle mobile, vérification des droits sans modifier les permissions.
+- **Dépendances / suivi :** Décision d'accueil consignée dans docs/TOWER_DECISIONS_26_20261104.md; suivi global #400.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P1-02 — Audit et remise en cohérence des bots, tickets et rôles historiques
+
+- **Objectif :** Cartographier l'usage réel des bots historiques et les dépendances des rôles avant toute évolution.
+- **Critères d'acceptation :** Inventaire sourcé des rôles et fonctions conservés, remplacés ou candidats au retrait; aucun élément n'est retiré sans validation de ses dépendances.
+- **Tests attendus :** Audit lecture seule du serveur et tests des parcours applicatifs déjà présents.
+- **Dépendances / suivi :** Audits/documentation déjà suivis via #384 et #404; plan parent #400. Vérifier leur état avant d'ouvrir un nouveau lot.
+- **Décision §26 :** l'ancien système d'étages doit être remplacé; aucune suppression de rôle ne fait partie de cette PR. Les changements Discord sont exécutés séparément après vérification des dépendances.
+
+### P1-03 — Navigation et présentation cohérentes sur Discord et GameNight
+
+- **Objectif :** Harmoniser les entrées vers équipes, soirées et Ascension en réutilisant les composants et salons existants.
+- **Critères d'acceptation :** Les parcours principaux sont accessibles depuis les espaces prévus, sans doublons de salon ou de bot; textes et liens sont à jour.
+- **Tests attendus :** Vérification des liens, navigation mobile et revue des libellés.
+- **Dépendances / suivi :** #400; tâches d'audit P1-02.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### Phase 2 — Fonctionnalités sociales
+
+### P2-01 — Règles d'équipe et passation du capitaine
+
+- **Objectif :** Appliquer les règles de composition, d'exclusivité, de délai et de passation.
+- **Critères d'acceptation :** 2–8 membres, une équipe active par joueur, délai de 7 jours après départ et transfert selon l'activité de 30 jours; historique fondateur conservé.
+- **Tests attendus :** Tests ciblés et PostgreSQL sur contraintes, concurrence, départ, dissolution et passation.
+- **Dépendances / suivi :** PR existante #370; sa migration reste un prérequis de livraison/production.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P2-02 — Préférences de notifications
+
+- **Objectif :** Permettre les préférences par catégorie et canal, sans couper les annonces communautaires générales.
+- **Critères d'acceptation :** Chaque parcours respecte le choix du joueur et isole les communautés; valeur par défaut et kit bêta sont documentés.
+- **Tests attendus :** Tests unitaires et PostgreSQL d'isolation et d'opt-out.
+- **Dépendances / suivi :** PR existante #406, incluant la migration partagée; ne pas la recréer.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P2-03 — Recherche d'équipe et commande serveur /equipe
+
+- **Objectif :** Filtrer le recrutement et exposer liste, profil d'équipe et demande d'adhésion via la commande de serveur.
+- **Critères d'acceptation :** Filtres par jeux, plateforme, horaires, micro et type; réponses privées; validation côté serveur des règles d'équipe.
+- **Tests attendus :** Tests des filtres, permissions Discord simulées, idempotence et tests PostgreSQL des règles.
+- **Dépendances / suivi :** PR existante #408; dépend de #370 et du schéma de #406.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P2-04 — Connexion des équipes aux soirées et aux forums
+
+- **Objectif :** Faire circuler les joueurs entre équipes persistantes, recrutement et soirées GameNight.
+- **Critères d'acceptation :** Un capitaine peut associer une soirée et des critères de recrutement sans dupliquer les membres ni les notifications.
+- **Tests attendus :** Tests de liaison/déliaison, autorisations et absence de doublon.
+- **Dépendances / suivi :** Fondation équipes déjà livrée via #329; règles #370 puis #408.
+- **Décision §26 :** règles d'équipe déjà tranchées dans la décision approuvée du 04/11/2026; les critères ci-dessus les appliquent.
+
+### Phase 3 — Nouvelle Ascension
+
+### P3-01 — Exclusion des comptes de test des votes de Production
+
+- **Objectif :** Empêcher les comptes explicitement réservés aux tests de fausser les votes et récompenses réelles.
+- **Critères d'acceptation :** Les comptes de test sont refusés uniquement sur les voies de vote Production prévues; les autres comptes et environnements restent inchangés.
+- **Tests attendus :** Tests unitaires et PostgreSQL des votes de preuve et de saison, plus contrôle des environnements.
+- **Dépendances / suivi :** PR existante #395; avant fusion, résoudre sa coordination documentaire avec #370.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P3-02 — Attribution quotidienne du défi d'équipe
+
+- **Objectif :** Garantir l'attribution idempotente du défi d'équipe à 09:00 Europe/Paris.
+- **Critères d'acceptation :** Route protégée, flag OFF par défaut, attribution unique, reprise après échec et aucune exécution Preview.
+- **Tests attendus :** Tests de cadence, idempotence, mauvais serveur, échéance et Preview; vérifier séparément le scheduler externe.
+- **Dépendances / suivi :** PR existante #396 et règles d'équipe #370; aucun cron externe à créer sans accord opérationnel.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P3-03 — Preuves, votes, quorum et contestations
+
+- **Objectif :** Terminer le cycle de preuve avec auditabilité et protections anti-abus.
+- **Critères d'acceptation :** Preuve liée à l'attribution, vote 24 h, quorum de 3, majorité stricte, absence d'auto-vote, contestation motivée et aucune double récompense.
+- **Tests attendus :** Tests de concurrence et PostgreSQL sur quorum, égalité, rejouabilité, contestation et attribution unique.
+- **Dépendances / suivi :** PR existante #407, schéma #406, compatibilité avec #396.
+- **BLOQUÉ-DÉCISION — le délai de contestation de 7 jours reste à confirmer avant de l'implémenter.**
+
+### P3-04 — Quotas et progression d'Ascension
+
+- **Objectif :** Garantir les limites d'attribution et de réussite, et l'absence de double progression.
+- **Critères d'acceptation :** Attribution solo espacée de 12 h, expiration 48 h, plafond de deux succès par jour partagé solo/équipe; récompense +1/+2/+3.
+- **Tests attendus :** Tests ciblés avec événements concurrents, fuseaux, expiration et reprise.
+- **Dépendances / suivi :** Décision de barème confirmée dans docs/TOWER_DECISIONS_26_20261104.md; plan #400.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### Phase 4 — Saisons et fidélisation
+
+### P4-01 — Saisons et classements selon les règles validées
+
+- **Objectif :** Aligner les périodes, classements et départages avec les décisions du propriétaire.
+- **Critères d'acceptation :** Calendrier 2027 exact; intersaisons explicitement sans score; classement par étages, défis difficiles puis heure d'arrivée.
+- **Tests attendus :** Tests de bornes calendaires, fuseau Europe/Paris, départage et transition entre saisons.
+- **Dépendances / suivi :** Lots déjà fusionnés #372, #373 et #374; vérifier les écarts recensés dans docs/TOWER_DECISIONS_26_20261104.md.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P4-02 — Récompenses saisonnières et Hall of Fame
+
+- **Objectif :** Publier les distinctions prévues à partir des résultats réels, sans accorder de pouvoirs techniques.
+- **Critères d'acceptation :** Top 3 reçoit les éléments cosmétiques convenus; top 1 peut proposer un défi suivant le processus établi; résultat idempotent.
+- **Tests attendus :** Tests d'unicité, réexécution du traitement et autorisations.
+- **Dépendances / suivi :** P4-01 et #400.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P4-03 — Animation et récapitulatifs communautaires
+
+- **Objectif :** Mettre en avant les réussites sans spam ni activité artificielle.
+- **Critères d'acceptation :** Annonces fondées sur des résultats réels, fréquence bornée et préférences prises en compte.
+- **Tests attendus :** Tests de déduplication, limites d'envoi, opt-out et textes sans données privées.
+- **Dépendances / suivi :** P3-01 à P3-03 et préférences #406.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### Phase 5 — Lancement public
+
+### P5-01 — Kit bêta et scénarios de réception
+
+- **Objectif :** Préparer les testeurs et consigner les anomalies avant ouverture.
+- **Critères d'acceptation :** Scénarios couvrant compte neuf, équipe, défi, preuve, vote, contestation, mobile et récupération; registre d'anomalies exploitable.
+- **Tests attendus :** Revue de cohérence du kit puis exécution réelle datée par des testeurs.
+- **Dépendances / suivi :** Kit de suivi #402 et PR #406; ne pas confondre scénario écrit et parcours réellement testé.
+- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+
+### P5-02 — Préparation technique de lancement
+
+- **Objectif :** Consolider déploiement, migrations, variables et commandes dans une procédure répétable.
+- **Critères d'acceptation :** Chaque migration a un plan contrôlé et retour arrière; variables présentes par nom; commandes documentées; flags par défaut éteints.
+- **Tests attendus :** Dry-run en environnement isolé, CI exacte et contrôle de déploiement sans activation.
+- **Dépendances / suivi :** Réutiliser #325 et #329; aucun merge ou action Production par cette feuille de route.
+- **Autorisation opérationnelle :** toute migration ou action sur la base Production reste un point d'arrêt distinct, conformément à AGENTS.md.
+
+### P5-03 — Go/no-go et ouverture publique
+
+- **Objectif :** Décider si tous les critères §25 sont réellement démontrés et ouvrir uniquement une expérience cohérente.
+- **Critères d'acceptation :** Chaque critère §25 a une preuve code, configuration et essai réel; limites facultatives publiées; go/no-go consigné.
+- **Tests attendus :** Recette complète par un nouveau membre, tests de restauration et revue indépendante des incidents.
+- **Dépendances / suivi :** P1 à P5; plan parent #400; kit #402.
+- **Décision §26 :** ouverture publique prévue le 4 janvier 2027, uniquement si les critères sont démontrés; tout changement de configuration reste soumis à l'autorisation correspondante.
+
+### Ordre de reprise
+
+Les PR existantes #406–#408 restent brouillon et gardent leurs dépendances documentées. Parmi les tâches de code ouvertes, commencer par la revue/validation de #395 (sans migration) ; les tâches qui requièrent #370/#406 ou une écriture Production restent en attente de ces dépendances. Après chaque PR ouverte, reprendre la première tâche de code non bloquée et empiler sa branche sur la précédente si elle n'est pas fusionnée.

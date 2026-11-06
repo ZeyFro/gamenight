@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
-import { appointTowerChallengeArbiter, decideTowerChallengeAppeal } from "@/lib/tower-challenges";
+import { configureTowerChallengeArbiter, appointTowerChallengeArbiter, decideTowerChallengeAppeal } from "@/lib/tower-challenges";
 
 export type TowerAppealReviewState = { status: string };
 
@@ -44,4 +44,12 @@ export async function appointTowerChallengeArbiterAction(
   });
   revalidatePath("/admin/tower-appeals");
   return { status: result.status };
+}
+
+export async function configureTowerChallengeArbiterAction(_previous: TowerAppealReviewState, formData: FormData): Promise<TowerAppealReviewState> {
+  const actor = await getActor();
+  if (!actor) return {status:"FORBIDDEN"};
+  const result=await configureTowerChallengeArbiter({...actor,arbiterUserId:String(formData.get("arbiterUserId") ?? "")});
+  revalidatePath("/admin/tower-appeals");
+  return {status:result.status};
 }
