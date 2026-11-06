@@ -186,7 +186,7 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : PostgreSQL", () => {
     expect(await stats()).toMatchObject({ xpTotal: 1_950, xpBalance: 50 });
   });
 
-  it("le reset photographie la progression puis remet les deux compteurs à zéro en gardant les objets", async () => {
+  it("le reset photographie la progression, remet xpTotal à zéro et conserve le solde et les objets (décision A)", async () => {
     await shop.buyShopItem(userId, communityId, "title-strategist");
     await shop.equipShopItem(userId, communityId, "TITLE", "title-strategist");
     const seasons = await import("./seasons");
@@ -194,7 +194,14 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : PostgreSQL", () => {
     await db.season.updateMany({ where: { communityId }, data: { endDate: new Date(0) } });
     await seasons.finalizeSeasonIfDue();
     expect(await db.seasonSnapshot.findFirstOrThrow({ where: { userId } })).toMatchObject({ xp: 2_000, level: 7 });
-    expect(await stats()).toMatchObject({ xpTotal: 0, xpBalance: 0, equippedTitleId: "title-strategist" });
+    // Solde conservé : 2 000 moins les 250 de l'achat. Seule la progression de saison repart à zéro.
+    expect(await stats()).toMatchObject({ xpTotal: 0, xpBalance: 1_750, equippedTitleId: "title-strategist" });
     expect((await shop.getShopState(userId, communityId)).ownedIds.has("title-strategist")).toBe(true);
+    // Les gains suivants créditent les deux compteurs ; le solde conservé reste dépensable.
+    const { awardXp } = await import("./xp-actions");
+    expect((await awardXp(userId, communityId, "VOTE", "post-reset-gain", 30, { applyStreak: false })).awarded).toBe(true);
+    expect(await stats()).toMatchObject({ xpTotal: 30, xpBalance: 1_780 });
+    expect(await shop.buyShopItem(userId, communityId, "frame-nebula")).toBe("purchased");
+    expect(await stats()).toMatchObject({ xpTotal: 30 });
   });
 });

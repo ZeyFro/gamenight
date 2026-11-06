@@ -119,7 +119,7 @@ export async function ensureActiveSeasonExists(communityId?: string): Promise<vo
   }
 }
 
-/** Snapshot, remise à zéro et saison suivante partagent la transaction et le verrou de communauté. */
+/** Snapshot, remise à zéro de la progression (xpTotal ; le solde xpBalance est conservé) et saison suivante partagent la transaction et le verrou de communauté. */
 export async function finalizeSeasonIfDue(): Promise<void> {
   for (const communityId of await listCronCommunityIds()) await finalizeCommunitySeasonIfDue(communityId);
 }
@@ -149,7 +149,7 @@ async function finalizeCommunitySeasonIfDue(communityId: string): Promise<void> 
       seasonId: season.id, userId: u.id, xp: u.xpTotal,
       level: levelForXp(u.xpTotal), rank: rankForLevel(levelForXp(u.xpTotal)).name, position: u.position,
     })) });
-    await scopedDb.communityMemberStats.updateMany({ where: { communityId }, data: { xpTotal: 0, xpBalance: 0 } });
+    await scopedDb.communityMemberStats.updateMany({ where: { communityId }, data: { xpTotal: 0 } }); // décision A : la progression de saison repart à 0, le solde de la boutique (xpBalance) est conservé
     await scopedDb.season.create({ data: {
       communityId, number: season.number + 1, name: `Saison ${season.number + 1}`,
       startDate: now, endDate: endOfMonthUTC(now), isActive: true,
@@ -163,7 +163,7 @@ async function finalizeCommunitySeasonIfDue(communityId: string): Promise<void> 
   if (!outcome) return;
   const result = await postToCommunity(communityId, {
     title: `🏆 ${season.name} terminée !`,
-    description: `Champion : <@${outcome.discordId}> avec ${outcome.xpTotal} XP !\nL'XP du serveur repart à 0 — nouvelle saison lancée.`,
+    description: `Champion : <@${outcome.discordId}> avec ${outcome.xpTotal} XP !\nL'XP de saison repart à 0 (le solde de la boutique est conservé) — nouvelle saison lancée.`,
     color: ACCENT_COLOR,
   });
   if (!result.ok) logger.warn("seasons", "Notif Discord fin de saison non envoyée.", { seasonId: season.id });

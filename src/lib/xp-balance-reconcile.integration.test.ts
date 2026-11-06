@@ -113,7 +113,7 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-balance-reconcile : base neuve avec les 
     communityId = (await db.community.create({ data: { slug: "rec", name: "Rec", status: "ACTIVE" } })).id;
   });
 
-  it("recale gains, ancien achat SHOP_PURCHASE, pari, ligne créée sans solde et reset de saison ; xpTotal et ledger intacts", async () => {
+  it("recale gains, ancien achat SHOP_PURCHASE, pari, ligne créée sans solde et xpTotal ramené à 0 hors saison ; xpTotal et ledger intacts", async () => {
     await member("gain", 500); await oldCode("gain", "VOTE", 100); await oldCode("gain", "SHOP_PURCHASE", -250);     // 500 +100 -250 = 350
     await member("bet", 800);
     await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId: "bet" } }, data: { xpTotal: { decrement: 100 } } });
@@ -123,7 +123,7 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-balance-reconcile : base neuve avec les 
     await db.communityMemberStats.create({ data: { communityId, userId: "fresh", xpTotal: 0, xpBalance: 0 } }); // ligne née de l'ancien code
     await oldCode("fresh", "VOTE", 50);
     await member("season", 300);
-    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId: "season" } }, data: { xpTotal: 0 } }); // reset de saison de l'ancien code
+    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId: "season" } }, data: { xpTotal: 0 } }); // xpTotal ramené à 0 hors saison (SQL manuel) : aucune Season récente, donc recalable
     await member("quiet", 70);
     const totalsBefore = Object.fromEntries(Object.entries(await stats()).map(([k, v]) => [k, v.xpTotal]));
     const eventsBefore = await db.xpEvent.count();
@@ -148,6 +148,29 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-balance-reconcile : base neuve avec les 
       season: { xpTotal: 0, xpBalance: 0 }, quiet: { xpTotal: 70, xpBalance: 70 } });
     expect(Object.fromEntries(Object.entries(await stats()).map(([k, v]) => [k, v.xpTotal]))).toEqual({ ...totalsBefore });
     expect(await db.xpEvent.count()).toBe(eventsBefore);
+  });
+
+  it("décision A : une saison démarrée depuis la fenêtre dans une communauté concernée fait refuser le recalage (dry-run et exécution), rien d'écrit", async () => {
+    await member("gain", 500); await oldCode("gain", "VOTE", 100);          // écart à corriger : solde 500, cible 600
+    // Reset de saison : xpTotal à 0, xpBalance CONSERVÉ (le solde n'est plus déductible de xpTotal).
+    await member("reset", 300);
+    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId: "reset" } }, data: { xpTotal: 0 } });
+    await db.season.create({ data: { communityId, number: 2, name: "Saison 2", startDate: new Date(), endDate: new Date(Date.now() + 30 * 86_400_000), isActive: true } });
+    const before = await snapshot();
+
+    await expect(run()).rejects.toThrow(/saison a démarré depuis la fenêtre.*conserve xpBalance/);
+    await expect(run(["--execute", confirm()])).rejects.toThrow(/saison a démarré depuis la fenêtre/);
+    expect(await snapshot()).toBe(before);
+  });
+
+  it("une saison démarrée avant la fenêtre, ou dans une autre communauté, ne bloque pas le recalage", async () => {
+    await member("gain", 500); await oldCode("gain", "VOTE", 100);
+    await db.season.create({ data: { communityId, number: 1, name: "Saison 1", startDate: new Date("2020-01-01T00:00:00Z"), endDate: new Date("2020-02-01T00:00:00Z"), isActive: false } });
+    const other = await db.community.create({ data: { slug: "rec-other", name: "Autre", status: "ACTIVE" } });
+    await db.season.create({ data: { communityId: other.id, number: 2, name: "Saison 2", startDate: new Date(), endDate: new Date(Date.now() + 86_400_000), isActive: true } });
+    const dry = await run();
+    expect(dry.code).toBe(0);
+    expect(dry.report.corrections.map((c: { userId: string; target: number }) => [c.userId, c.target])).toEqual([["gain", 600]]);
   });
 
   it("idempotent : un second passage (dry-run puis exécution) ne change rien", async () => {

@@ -9,8 +9,9 @@ import { join, relative, resolve } from "node:path";
  * future. Un nouvel écrivain légitime d'un seul compteur doit être ajouté à ALLOWED_SINGLE avec sa raison.
  */
 const SRC = resolve("src");
-const ALLOWED_SINGLE: Record<string, { only: "xpBalance"; why: string }> = {
+const ALLOWED_SINGLE: Record<string, { only: "xpTotal" | "xpBalance"; why: string }> = {
   "src/lib/xp-shop.ts": { only: "xpBalance", why: "les achats de boutique débitent le solde seul ; la progression (xpTotal) est conservée" },
+  "src/lib/seasons.ts": { only: "xpTotal", why: "décision A : le reset de saison remet la progression à zéro et conserve le solde de la boutique" },
 };
 
 function walk(dir: string, out: string[] = []) {
@@ -54,7 +55,7 @@ describe("écrivains des compteurs XP", () => {
         if (!total && !balance) continue;
         if (total && balance) continue;
         const allowed = ALLOWED_SINGLE[rel];
-        if (allowed && !total && balance) continue;
+        if (allowed && (allowed.only === "xpBalance" ? !total && balance : total && !balance)) continue;
         offenders.push(`${rel}:${line} écrit ${total ? "xpTotal" : "xpBalance"} seul`);
       }
     }
@@ -70,10 +71,10 @@ describe("écrivains des compteurs XP", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("l'exception boutique reste limitée au débit du solde (jamais xpTotal)", () => {
-    const text = readFileSync("src/lib/xp-shop.ts", "utf8");
-    for (const { body } of dataBlocks(text)) expect(writes(body, "xpTotal")).toBe(false);
-    expect(Object.keys(ALLOWED_SINGLE)).toEqual(["src/lib/xp-shop.ts"]);
+  it("les deux exceptions restent limitées : boutique = solde seul, reset de saison = progression seule", () => {
+    for (const { body } of dataBlocks(readFileSync("src/lib/xp-shop.ts", "utf8"))) expect(writes(body, "xpTotal")).toBe(false);
+    for (const { body } of dataBlocks(readFileSync("src/lib/seasons.ts", "utf8"))) expect(writes(body, "xpBalance")).toBe(false);
+    expect(Object.keys(ALLOWED_SINGLE).sort()).toEqual(["src/lib/seasons.ts", "src/lib/xp-shop.ts"]);
   });
 
   it("détecte un écrivain à compteur unique (contre-test de la garde)", () => {

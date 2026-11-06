@@ -34,6 +34,8 @@ Les noms ci-dessous sont ceux d'avant le renommage de la phase 4 ; les scripts r
 
 ### Cas 01 : soldes divergés (code nouveau déjà utilisé)
 
+Après la première clôture de saison (décision A : `xpTotal` remis à 0, `xpBalance` conservé), `xpBalance <> xpTotal` pour la plupart des joueurs : le retour arrière 01 refuse alors systématiquement. Après cette clôture, privilégier la correction applicative.
+
 Le retour arrière refuse : `xpBalance` contient des achats qui n'existent pas dans `xpTotal`. Ne jamais recopier `xpBalance = xpTotal` ni `xpTotal = xpBalance` en masse. Arbitrage à faire joueur par joueur avec le propriétaire (exporter `communityId, userId, xpTotal, xpBalance` des lignes divergentes ; choisir restitution, annulation ou maintien du nouveau code). En attendant, le correctif applicatif est préférable au retour arrière.
 
 ### Cas 06 : achats au solde existants

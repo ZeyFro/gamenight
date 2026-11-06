@@ -4,7 +4,7 @@
 //   XP_RECONCILE_DATABASE_URL=postgresql://… node scripts/xp-balance-reconcile.mjs --execute --confirm-database=<base> [--since=<ISO>] [--include-mixed]
 //
 // Pourquoi : entre la migration (xpBalance = xpTotal) et le déploiement du nouveau code, l'ANCIEN code ne connaît que xpTotal :
-// il crédite/débite xpTotal (gains, achats SHOP_PURCHASE, paris, pénalités, corrections admin, reset de saison) sans toucher xpBalance.
+// il crédite/débite xpTotal (gains, achats SHOP_PURCHASE, paris, pénalités, corrections admin, reset de saison) sans toucher xpBalance. (Décision A : le reset de saison conserve xpBalance ; le script refuse dans une communauté où une saison a démarré depuis la fenêtre.)
 //
 // Formule (la seule qui soit sans état, donc idempotente) : le nouveau code garde xpBalance = xpTotal sauf pour les achats de
 // boutique, qui ne débitent QUE xpBalance (ledger XpEvent reason SHOP_BALANCE_PURCHASE, montant négatif). Donc :
@@ -186,6 +186,17 @@ export async function reconcile(argv, env, log) {
       const rows = await readRows(tx, since);
       const activity = await readActivity(tx, since);
       const plan = classifyRows(rows, { includeMixed: args.includeMixed });
+      // Décision A : un reset de saison remet xpTotal à 0 et CONSERVE xpBalance. Dès qu'une saison a démarré dans une communauté
+      // concernée depuis la fenêtre (reset de l'ancien code ou du nouveau), xpBalance n'est plus déductible de xpTotal : la formule
+      // abaisserait à tort le solde conservé. Refus (dry-run compris), arbitrage manuel de ces communautés.
+      const impacted = [...new Set([...plan.corrections, ...plan.negatives, ...plan.mixedPending].map((entry) => entry.communityId))];
+      if (impacted.length) {
+        const seasons = await tx.$queryRawUnsafe(`SELECT DISTINCT "communityId" FROM "Season"
+          WHERE "communityId" = ANY($1::text[]) AND "startDate" >= $2::timestamptz - interval '3 hours'`, impacted, since.toISOString());
+        if (seasons.length) {
+          throw new RefusalError(`Une saison a démarré depuis la fenêtre dans ${seasons.length} communauté(s) concernée(s) (${seasons.map((r) => r.communityId).slice(0, 5).join(", ")}) : le reset de saison conserve xpBalance (décision A), la formule ne s'applique plus. Aucune écriture : arbitrage manuel.`);
+        }
+      }
       let written = 0;
       if (args.execute && plan.corrections.length) {
         // Verrous explicites (ordre stable) sur les seules lignes à écrire, puis relecture sous verrou : un écrit concurrent

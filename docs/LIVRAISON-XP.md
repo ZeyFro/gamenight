@@ -84,7 +84,7 @@ Cause **non démontrée**. Ne pas confondre les passages historiques avec la tê
 
 ## 7. Recalage du solde après migration (`scripts/xp-balance-reconcile.mjs`)
 
-Filet de la décision D2 (rôle partagé, barrière hors rôle). La migration `separate_xp_balance` fixe `xpBalance = xpTotal`. Tant que l'ancien code tourne encore, il écrit `xpTotal` (et le ledger, ou la table des paris) sans connaître `xpBalance` : gains, `SHOP_PURCHASE`, paris, pénalités, corrections admin, reset de saison. Le script ramène `xpBalance` à la valeur attendue ; il ne modifie JAMAIS `xpTotal`, le ledger, ni les objets.
+Filet de la décision D2 (rôle partagé, barrière hors rôle). La migration `separate_xp_balance` fixe `xpBalance = xpTotal`. Tant que l'ancien code tourne encore, il écrit `xpTotal` (et le ledger, ou la table des paris) sans connaître `xpBalance` : gains, `SHOP_PURCHASE`, paris, pénalités, corrections admin (l'ancien reset de saison remettait `xpTotal` à 0 ; voir plus bas). Le script ramène `xpBalance` à la valeur attendue ; il ne modifie JAMAIS `xpTotal`, le ledger, ni les objets.
 
 **Formule** : `cible = max(0, xpTotal + somme(XpEvent SHOP_BALANCE_PURCHASE.amount depuis --since))`. Le nouveau code tient `xpBalance = xpTotal` partout sauf pour les achats de boutique (seuls à débiter `xpBalance` seul, montants négatifs) ; le calcul est donc sans état, et un second passage ne trouve rien. Un ancien achat `SHOP_PURCHASE` fait après la migration baisse `xpTotal` (comme avant) : le solde le suit, la progression reste baissée du même montant (pas de restitution automatique).
 
@@ -105,13 +105,18 @@ XP_RECONCILE_DATABASE_URL=<url> [XP_RECONCILE_ALLOW_REMOTE="<hôte>[:port]/<base
 
 **Lire le résultat**
 - `Écarts à corriger : N (hausses, baisses, somme nette)` puis les 10 plus gros `communityId userId : xpTotal, xpBalance -> cible`. Attendu après un incident d'ancien code : quelques lignes ; `AUCUNE CORRECTION` = rien à faire (état du second passage).
-- `sans trace dans le ledger` : écart sans événement ni pari depuis la fenêtre (reset de saison de l'ancien code, SQL manuel). À comprendre avant d'exécuter.
+- `sans trace dans le ledger` : écart sans événement ni pari depuis la fenêtre (SQL manuel, ligne née de l'ancien code). À comprendre avant d'exécuter.
+- Refus « Une saison a démarré depuis la fenêtre » : un reset de saison remet `xpTotal` à 0 et CONSERVE `xpBalance` (décision A, ci-dessous) ; dans les communautés concernées le solde n'est plus déductible de `xpTotal`, la formule le baisserait à tort. Le script refuse alors (dry-run compris, code 2, rien d'écrit) : arbitrage manuel de ces communautés, ou recalage à faire AVANT toute clôture de saison. Une saison démarrée avant la fenêtre ou dans une communauté sans écart ne bloque pas.
 - `À ARBITRER solde exact négatif` : `xpTotal + achats` < 0, le CHECK `xpBalance >= 0` interdit la valeur exacte ; un solde négatif suppose un achat du nouveau code (joueur « mixte ») : le joueur est listé et le script n'écrit 0 (jamais de valeur négative) qu'avec `--include-mixed` ; sinon « non écrit », à arbitrer à la main.
 - `À ARBITRER achats du nouveau code` : joueur « mixte » (au moins un `SHOP_BALANCE_PURCHASE` depuis la fenêtre) avec un écart. Des plafonds du nouveau code (pénalité d'absence, correction admin) séparent légitimement les compteurs : NON écrit sans `--include-mixed`, à arbitrer à la main.
-- `--include-mixed` : à n'utiliser qu'après lecture du rapport. Après un reset de saison du nouveau code, les anciens `SHOP_BALANCE_PURCHASE` restent comptés par la formule et le solde serait abaissé à tort ; sans ce drapeau, le joueur est seulement listé.
+- `--include-mixed` : à n'utiliser qu'après lecture du rapport. Sans ce drapeau, le joueur est seulement listé. (Après un reset de saison, le script refuse de toute façon dans la communauté concernée.)
 - Sorties : 0 ok, 2 refusé, 4 concurrence ou verrou, 1 inattendu. Après exécution : `xp-lot-invariants.mjs --phase=reopened` doit rester vert (l'empreinte, `xpBalance` exclu, ne change pas si seul `xpBalance` a bougé ; `xpTotal` mis à jour par l'ancien code la change, ce qui est attendu).
 
 Vérifié localement (base jetable 127.0.0.1) : `src/lib/xp-balance-reconcile.integration.test.ts` (écritures d'ancien code puis recalage exact, idempotence, dry-run sans écriture, refus sans confirmation, cas négatif, joueurs mixtes, migration absente ou inachevée, verrou externe, CLI). Boutique : `xp-shop.integration.test.ts` (achats parallèles, CHECK) et `xp-shop-lock.integration.test.ts` (une seule connexion, `lock_timeout` de 8 s : sans lui, un verrou externe fait attendre l'achat jusqu'à sa libération, le délai de transaction de Prisma n'interrompant pas la requête en attente). Non vérifié : durée et verrous sur le volume Production.
+
+### Reset de saison (décision A du propriétaire, 6 novembre 2026)
+
+Le reset de saison remet `xpTotal` (XP de saison : niveau, grade, classement) à 0 et **conserve `xpBalance`** (solde de la boutique) ainsi que les objets possédés. Le snapshot de saison photographie `xpTotal` avant la remise à zéro. Conséquences : après une première clôture de saison, `xpBalance <> xpTotal` est normal (le retour arrière `01_separate_xp_balance` refuse donc, voir `docs/XP-MIGRATIONS-ROLLBACK.md`) ; l'invariant `xpBalance = xpTotal` n'est valable qu'entre la migration et la première clôture de saison ou le premier achat (`xp-lot-invariants --phase=after`). Couvert par `xp-shop.integration.test.ts` (reset, puis gain, puis achat) et `xp-counter-writers.test.ts` (la clôture de saison est le seul écrivain de `xpTotal` seul).
 
 ## 8. Durées mesurées (6 novembre 2026, PostgreSQL 16.15 local jetable, `fsync=on`, 4 cœurs, jamais Neon)
 
