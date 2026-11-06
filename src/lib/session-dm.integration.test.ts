@@ -506,6 +506,26 @@ describe.skipIf(!TEST_DATABASE_URL)("MP des soirées (intégration Postgres isol
       expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: fallback.id } })).toMatchObject({ status: "FAILED", errorClass: "resolver:expired" });
     });
 
+    it("ne mentionne jamais le créateur roulette dont le MP est déjà fermé", async () => {
+      const creator = await makeUser();
+      const session = await makeReadySession(creator.id, []);
+      closedDms.add(creator.discordId);
+      await drain();
+      await db.session.update({ where: { id: session.id }, data: { createdViaRoulette: true } });
+      vi.stubEnv("DISCORD_DM_ROULETTE_ENABLED", "true");
+      fetchMock.mockClear();
+      await announceLib.enqueueSessionReminderDelivery(session.id, 60);
+      await drain();
+      const posts = calls("POST", /\/channels\/thread-1\/messages$/)
+        .map(([, init]) => JSON.parse(String(init.body)));
+      expect(posts).toHaveLength(1);
+      for (const body of posts) {
+        expect(body.content).not.toContain(`<@${creator.discordId}>`);
+        expect(body.allowed_mentions.users ?? []).not.toContain(creator.discordId);
+      }
+      expect(calls("POST", /\/channels\/dm-[^/]+\/messages$/)).toHaveLength(0);
+    });
+
     it("une nouvelle génération mentionne une seule fois le créateur au MP déjà fermé, sans retenter son MP", async () => {
       const creator = await makeUser();
       const session = await makeReadySession(creator.id, []);
