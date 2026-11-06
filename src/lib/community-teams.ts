@@ -217,7 +217,7 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({
-      where: { id: teamId, communityId },
+      where: { id: teamId, communityId, members: { some: { userId, ...activeTeamMemberWhere(communityId) } } },
       select: {
         createdById: true,
         captainId: true,

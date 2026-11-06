@@ -2913,6 +2913,7 @@ model CommunityTeamMember {
 
   @@unique([teamId, userId])
   @@unique([communityId, userId])
+  @@index([communityId, userId])
 }
 
 model SessionGalleryMedia {

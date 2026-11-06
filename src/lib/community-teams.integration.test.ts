@@ -58,6 +58,20 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await db.communityTeamMember.count({ where: { communityId: ids.community, userId: ids.leader } })).toBe(1);
   });
 
+  it.each([0, 25])("compte les créations des dernières 24 h, même après dissolution (ancienne création : %i h)", async (oldHours) => {
+    const now = Date.now();
+    for (let i = 0; i < 3; i++) {
+      await db.communityTeam.create({ data: { communityId: ids.community, gameId: ids.game,
+        createdById: ids.leader, captainId: ids.leader, name: "Ancienne équipe " + i,
+        description: "Projet historique sans membres.", platform: "PC", maxMembers: 4,
+        isRecruiting: false, createdAt: new Date(now - (i === 0 ? oldHours : 1) * 3600000) } });
+    }
+    const result = await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community,
+      gameId: ids.game, name: "Nouvelle tentative", description: "Projet collectif dans la limite.", platform: "PC", maxMembers: 4 });
+    expect(result).toBe(oldHours === 0 ? "limit" : "created");
+    expect(await db.communityTeam.count({ where: { communityId: ids.community } })).toBe(oldHours === 0 ? 3 : 4);
+  });
+
   it("enforces seven days after a departure, including simultaneous admissions", async () => {
     const input = { communityId: ids.community, gameId: ids.game, description: "Projet d'équipe durable.", platform: "PC", maxMembers: 8 };
     expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Équipe A" })).toBe("created");
@@ -134,6 +148,10 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
 
     expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("dissolved");
+    expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+
+    expect(await teams.setCommunityTeamRecruitment(ids.leader, ids.community, team.id, true)).toBe("missing");
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
     expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
 
     const [leaderMembership, memberMembership] = await Promise.all([
