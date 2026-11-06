@@ -19,7 +19,7 @@ Les noms ci-dessous sont ceux d'avant le renommage de la phase 4 ; les scripts r
 2. Un fichier = une transaction. Un refus (`Rollback interdit : …`) annule tout, sans effet.
 3. Chaque fichier supprime lui-même sa ligne `_prisma_migrations` (par suffixe). Après le dernier, `node scripts/db-migrate.mjs --expect=<les 6 noms>` doit de nouveau proposer les 6 migrations (preuve de réconciliation).
 4. Données vocales (02 à 05) : **exporter d'abord** (`\copy … TO …` des tables concernées, en local sécurisé, données personnelles), puis accepter la perte dans la MÊME session avec `SET gamenight.allow_voice_data_loss = 'on';`. Sans cela, refus dès qu'une ligne existe.
-5. Aucun retour arrière ne se fait à chaud : écritures coupées (barrière), workers vocaux arrêtés, crons en pause, `pg_stat_activity` vérifié.
+5. Aucun retour arrière ne se fait à chaud : écritures coupées (barrière), workers vocaux arrêtés, crons en pause, `pg_stat_activity` vérifié. Seul le fichier 01 pose un `lock_timeout` ; le 06 réécrit toute la table `XpEvent` (durée non mesurée, proportionnelle à son volume) : le lancer uniquement sous maintenance.
 
 ## Par migration
 
@@ -44,7 +44,7 @@ Le retour arrière refuse tant qu'un `XpEvent` porte `SHOP_BALANCE_PURCHASE`. Ce
 
 ```sql
 -- aucune des 6 lignes ne subsiste
-SELECT migration_name FROM _prisma_migrations WHERE migration_name ~ '(separate_xp_balance|session_voice_presence|voice_presence_|shop_balance_purchase_reason)$';
+SELECT migration_name FROM _prisma_migrations WHERE migration_name ~ '_(separate_xp_balance|session_voice_presence|voice_presence_consent_coordination|voice_presence_retention_gap_bounds|voice_presence_gap_history|shop_balance_purchase_reason)$';
 -- objets absents
 SELECT to_regclass('"SessionVoicePresenceInterval"'), to_regclass('"SessionVoicePresenceConsent"'),
        to_regclass('"SessionVoicePresenceControl"'), to_regclass('"SessionVoicePresenceGap"');

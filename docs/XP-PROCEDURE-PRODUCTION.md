@@ -18,6 +18,10 @@ Documents liés : commandes détaillées `docs/LIVRAISON-XP.md` ; contexte et r�
 
 Le lot ne s'applique qu'une fois #370 et #406 fusionnées et les 6 migrations renommées avec un horodatage postérieur à toutes celles de `main` (phase 4) : la garde chronologique du runner refuse sinon.
 
+## Variables des scripts de contrôle (cible distante)
+
+Hors machine locale, `xp-lot-invariants.mjs` exige `XP_INVARIANTS_DATABASE_URL` et `XP_INVARIANTS_ALLOW_REMOTE="<hôte>[:port]/<base>"`, `xp-balance-reconcile.mjs` exige `XP_RECONCILE_DATABASE_URL` et `XP_RECONCILE_ALLOW_REMOTE="<hôte>[:port]/<base>"`, `prod-precheck.mjs` exige `GAMENIGHT_PRECHECK_DATABASE_URL` et `GAMENIGHT_EXPECTED_TARGET` : identiques à la cible attendue, sinon refus (code 2). À renseigner aux étapes 1, 4, 8 et 10 ; aucune URL n'est affichée.
+
 ## Étapes
 
 1. **J-1, lecture seule.** `node scripts/check-xp-rollout-migration-gate.mjs` ; `GAMENIGHT_PRECHECK_DATABASE_URL=… GAMENIGHT_EXPECTED_TARGET="<hôte>/<base>" node scripts/prod-precheck.mjs --state=pre` (aucune des 6 migrations, aucune inachevée, volumes) ; `xp-lot-invariants.mjs --phase=before` ; noter l'`EMPREINTE`. Comparer le comptage de `CommunityMemberStats` au seuil de ~300 000 lignes (§8) ; au-dessus, refaire la mesure avant d'aller plus loin. Preuve de liaison : l'hôte de la variable Production correspond à `GAMENIGHT_EXPECTED_TARGET`.

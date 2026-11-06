@@ -9,4 +9,5 @@ Fichiers `NN_*.down.sql` : un par migration, à exécuter dans l'ORDRE INVERSE (
   `SET gamenight.allow_voice_data_loss = 'on';` dans la MÊME session psql, avant d'appeler le fichier.
 - Chaque fichier supprime aussi sa ligne `_prisma_migrations` (recherche par suffixe : insensible au renommage de la phase 4).
 - Usage : `psql "$URL" -v ON_ERROR_STOP=1 -f scripts/rollback-xp-lot/06_shop_balance_purchase_reason.down.sql`
+- Avec perte vocale acceptée (après export) : `SET` et fichier dans la MÊME session, ex. `psql "$URL" -v ON_ERROR_STOP=1 -c "SET gamenight.allow_voice_data_loss = 'on'" -f scripts/rollback-xp-lot/05_voice_presence_gap_history.down.sql` (deux options `-c`/`-f` d'un même appel `psql` partagent la session).
 - Répétition locale jetable : `scripts/rehearse-xp-rollback.sh` (127.0.0.1 uniquement).
