@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { immediateDefaultRewardResolver } from "@/lib/community-announce";
 import { processNextDelivery } from "@/lib/notification-executor";
+import { getEligibleUserIdsForNotificationChannel } from "@/lib/notification-channel-preferences";
 
 export interface RewardNotice {
   type: Extract<NotificationType, "PRONOSTIC" | "XP_BET">;
@@ -47,10 +48,13 @@ export async function persistRewardNotice(
     })) as Prisma.InputJsonValue,
   }], skipDuplicates: true });
   if (created.count === 0) return;
-  await scopedDb.notification.create({ data: {
-    id: eventId, communityId: credit.communityId, userId: credit.userId,
-    type: notice.type, title: notice.title, message: notice.message, relatedSessionId: notice.relatedSessionId,
-  } });
+  const inAppRecipients = await getEligibleUserIdsForNotificationChannel([credit.userId], "REWARD", "IN_APP", tx);
+  if (inAppRecipients.has(credit.userId)) {
+    await scopedDb.notification.create({ data: {
+      id: eventId, communityId: credit.communityId, userId: credit.userId,
+      type: notice.type, title: notice.title, message: notice.message, relatedSessionId: notice.relatedSessionId,
+    } });
+  }
   const bot = process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED === "true";
   const community = await tx.community.findUniqueOrThrow({ where: { id: credit.communityId }, select: { slug: true } });
   // Aucun serveur tiers ne peut utiliser le webhook historique de default.
