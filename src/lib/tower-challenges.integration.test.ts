@@ -106,6 +106,9 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = ${clock.now}
       WHERE id = ${attemptId} AND "communityId" = 'tower-a'
     `;
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const event = await db.notificationEvent.create({ data: { communityId: "tower-a", category: "ACHIEVEMENT", eventType: "TOWER_CHALLENGE_REJECTED", sourceId: attemptId } });
+    await db.notificationDelivery.create({ data: { eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND", status: "SENT", sentAt: clock.now, recipientKey: "123456789012345678", discordChannelId: "123456789012345678", discordMessageId: "223456789012345678", targetSlot: towerTestGuildId + ":TOWER:" + attemptId + ":rejection" } });
   }
   async function vote(id: string, userId: string, approve: boolean) {
     return api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: id, approve });
@@ -331,6 +334,39 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(appeal).toMatchObject({ authorUserId: author.userId, status: "OPEN", dueAt: new Date("2026-10-29T12:00:00.000Z") });
     expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Après le délai." }))
       .toMatchObject({ status: "ALREADY_APPEALED" });
+  });
+  it("enfile le refus une seule fois et attend sa livraison avant d'ouvrir la contestation", async () => {
+    vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "true");
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    vi.stubEnv("TOWER_DISCORD_CHANNEL_ID", "123456789012345678");
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    for (const voter of ["tower-a1", "tower-a2", "tower-a3"]) await vote(id, voter, false);
+    clock.now = new Date(clock.now.getTime() + 24 * 3600000);
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    expect(await db.notificationEvent.count({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } })).toBe(1);
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen demandé." })).toMatchObject({ status: "AWAITING_ANNOUNCEMENT" });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } });
+    const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(delivery.status).toBe("PENDING");
+    await db.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", sentAt: clock.now, discordChannelId: "123456789012345678", discordMessageId: "223456789012345678" } });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen demandé." })).toMatchObject({ status: "APPEAL_SUBMITTED" });
+  });
+  it("reprend un refus décidé pendant que les annonces étaient désactivées", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    vi.stubEnv("TOWER_DISCORD_CHANNEL_ID", "123456789012345678");
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    for (const voter of ["tower-a1", "tower-a2", "tower-a3"]) await vote(id, voter, false);
+    clock.now = new Date(clock.now.getTime() + 24 * 3600000);
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } });
+    expect(await db.notificationDelivery.count({ where: { eventId: event.id } })).toBe(0);
+    vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "true");
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ announcementsQueued: 1 });
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ announcementsQueued: 0 });
+    expect(await db.notificationDelivery.count({ where: { eventId: event.id } })).toBe(1);
   });
   it("réserve un auteur staff à l’arbitre nommé et rend une décision une seule fois", async () => {
     const id = await submitted();

@@ -5,10 +5,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-deadline";
 import { logger } from "@/lib/logger";
+import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "@/lib/tower-challenge-rules";
 import { evaluateChallengeVote } from "@/lib/tower-challenge-voting";
-import { enqueueTowerChallengeEvent } from "@/lib/tower-challenge-announcements";
+import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
 import { TOWER_STARTER_CHALLENGES } from "@/lib/tower-challenge-starter-catalogue";
 import { TOWER_TEAM_STARTER_CHALLENGES } from "@/lib/tower-team-challenge-starter-catalogue";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
@@ -355,39 +356,9 @@ export async function joinTowerTeamChallenge(input: unknown) {
 }
 
 async function assignDailyTowerTeamChallenges(deadline: Date) {
-  const summary = { checked: 0, failed: 0 };
-  const guildId = process.env.TOWER_DISCORD_GUILD_ID;
-  if (process.env.TOWER_CHALLENGES_ENABLED !== "true" || !/^[0-9]{16,20}$/.test(guildId ?? "")
-    || Date.now() >= deadline.getTime()) return summary;
-  const teams = await prisma.$transaction(async tx => {
-    const community = await tx.community.findFirst({
-      where: { discordGuildId: guildId, status: "ACTIVE", towerChallengesEnabled: true, communityTeamsEnabled: true }, select: { id: true },
-    });
-    if (!community) return [];
-    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [community.id], includesDefault: false });
-    return scopedDb.communityTeam.findMany({
-      where: { communityId: community.id, community: { status: "ACTIVE", communityTeamsEnabled: true },
-        members: { some: { user: { memberships: { some: { communityId: community.id, status: "ACTIVE" } } } } } },
-      orderBy: { id: "asc" }, take: 100,
-      select: { id: true, communityId: true, members: {
-        where: { user: { memberships: { some: { communityId: community.id, status: "ACTIVE" } } } },
-        orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true },
-      } },
-    });
-  }, { timeout: 5000, maxWait: 1000 });
-  for (const team of teams) {
-    if (Date.now() >= deadline.getTime()) break;
-    const member = team.members[0];
-    if (!member) continue;
-    try {
-      await getTeamDailyTowerChallenge({ communityId: team.communityId, userId: member.userId, teamId: team.id });
-      summary.checked++;
-    } catch (error) {
-      summary.failed++;
-      logger.error("tower:attribution-équipe", error, { communityId: team.communityId, teamId: team.id });
-    }
-  }
-  return summary;
+  // Lazy import avoids a module-initialization cycle with getTeamDailyTowerChallenge.
+  const { assignDailyTowerTeamChallenges: assign } = await import("@/lib/tower-team-daily");
+  return assign(deadline);
 }
 
 export async function submitTowerChallengeProof(input: unknown) {
@@ -454,22 +425,24 @@ export async function submitTowerChallengeAppeal(input: unknown) {
   const { communityId, userId, attemptId, reason } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
     const [attempt] = await scopedDb.$queryRaw<{
-      id: string; userId: string; status: string; rejectedAt: Date | null; archivedAt: Date | null;
+      id: string; userId: string; status: string; announcedAt: Date | null; archivedAt: Date | null;
     }[]>`
-      SELECT id, "userId", status, "rejectedAt", "archivedAt" FROM "TowerChallengeAttempt"
-      WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE
+      SELECT a.id, a."userId", a.status, a."archivedAt", notice."announcedAt" FROM "TowerChallengeAttempt" a
+      ${towerRejectionAnnouncementJoin(communityId)}
+      WHERE a.id = ${attemptId} AND a."communityId" = ${communityId} FOR UPDATE OF a
     `;
     if (!attempt || attempt.userId !== userId) return { status: "UNAVAILABLE" } as const;
     if (attempt.status !== "REJECTED" || attempt.archivedAt) return { status: "CLOSED" } as const;
     const current = now();
-    if (!attempt.rejectedAt || !isTowerChallengeAppealWindowOpen(attempt.rejectedAt, current)) return { status: "WINDOW_CLOSED" } as const;
+    if (!attempt.announcedAt || attempt.announcedAt > current) return { status: "AWAITING_ANNOUNCEMENT" } as const;
+    if (!isTowerChallengeAppealWindowOpen(attempt.announcedAt, current)) return { status: "WINDOW_CLOSED" } as const;
     const id = randomUUID();
     const created = await scopedDb.$queryRaw<{ id: string }[]>`
       INSERT INTO "TowerChallengeAppeal" (
         id, "communityId", "attemptId", "authorUserId", reason, "createdAt", "dueAt", status
       ) VALUES (
         ${id}, ${communityId}, ${attemptId}, ${userId}, ${reason}, ${current},
-        ${new Date(attempt.rejectedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS)}, 'OPEN'
+        ${new Date(attempt.announcedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS)}, 'OPEN'
       ) ON CONFLICT ("communityId", "attemptId") DO NOTHING
       RETURNING id
     `;
@@ -752,6 +725,7 @@ export async function settleTowerChallenge(input: unknown) {
         UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = COALESCE("rejectedAt", ${current})
         WHERE id = ${attemptId} AND "communityId" = ${communityId} AND status = 'SUBMITTED'
       `;
+      await enqueueTowerChallengeEvent(scopedDb, communityId, attemptId, "rejection");
       return { status: "REJECTED" } as const;
     }
     if (!attempt.teamId) {
@@ -834,16 +808,17 @@ export async function getTowerChallengeAppealableAttempts(input: unknown) {
   return withTower({ communityId, userId }, async scopedDb => {
     const current = now();
     const attempts = await scopedDb.$queryRaw<{
-      id: string; title: string; rejectedAt: Date; teamName: string | null;
+      id: string; title: string; rejectedAt: Date; announcedAt: Date; teamName: string | null;
     }[]>`
-      SELECT a.id, a.title, a."rejectedAt", team.name AS "teamName"
+      SELECT a.id, a.title, a."rejectedAt", notice."announcedAt", team.name AS "teamName"
       FROM "TowerChallengeAttempt" a
+      ${towerRejectionAnnouncementJoin(communityId)}
       LEFT JOIN "CommunityTeam" team ON team.id = a."teamId" AND team."communityId" = a."communityId"
       LEFT JOIN "TowerChallengeAppeal" appeal ON appeal."communityId" = a."communityId" AND appeal."attemptId" = a.id
       WHERE a."communityId" = ${communityId} AND a."userId" = ${userId} AND a.status = 'REJECTED'
-        AND a."rejectedAt" > ${new Date(current.getTime() - TOWER_CHALLENGE_APPEAL_WINDOW_MS)} AND a."rejectedAt" <= ${current}
+        AND notice."announcedAt" > ${new Date(current.getTime() - TOWER_CHALLENGE_APPEAL_WINDOW_MS)} AND notice."announcedAt" <= ${current}
         AND a."archivedAt" IS NULL AND appeal.id IS NULL
-      ORDER BY a."rejectedAt" DESC, a.id LIMIT 25
+      ORDER BY notice."announcedAt" DESC, a.id LIMIT 25
     `;
     return { status: "APPEALABLE_ATTEMPTS" as const, attempts };
   });
@@ -852,12 +827,13 @@ export async function getTowerChallengeAppealableAttempts(input: unknown) {
 
 // Même déclencheur que la file de notifications ; aucun nouveau service à héberger.
 export async function settleDueTowerChallenges(deadline: Date) {
-  const summary = { processed: 0, failed: 0, reported: 0, archived: 0 };
+  const summary = { processed: 0, failed: 0, reported: 0, archived: 0, announcementsQueued: 0 };
   const guildId = process.env.TOWER_DISCORD_GUILD_ID;
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true" || !/^[0-9]{16,20}$/.test(guildId ?? "")
     || !Number.isFinite(deadline.getTime()) || Date.now() >= deadline.getTime()) return summary;
   const assignments = await assignDailyTowerTeamChallenges(deadline);
   summary.failed += assignments.failed;
+  if (!assignments.complete && !assignments.failed) summary.failed++;
   const current = now();
   const cutoff = new Date(current.getTime() - 24 * 3600000).toISOString();
   const candidates = await prisma.$transaction(async tx => {
@@ -921,12 +897,15 @@ export async function settleDueTowerChallenges(deadline: Date) {
         const community = await tx.community.findFirst({
           where: { discordGuildId: guildId, status: "ACTIVE", towerChallengesEnabled: true }, select: { id: true },
         });
-        if (!community) return { reported: 0, archived: 0 };
+        if (!community) return { reported: 0, archived: 0, announcementsQueued: 0 };
         const scopedDb = scopedTransactionPrisma(tx, { communityIds: [community.id], includesDefault: false });
-        return reportAndArchiveUnquorateProofs(scopedDb, community.id, current);
+        const aged = await reportAndArchiveUnquorateProofs(scopedDb, community.id, current);
+        const announcementsQueued = await requeueTowerRejectionNotices(scopedDb, community.id, deadline);
+        return { ...aged, announcementsQueued };
       }, { timeout: 5000, maxWait: 1000 });
       summary.reported += aging.reported;
       summary.archived += aging.archived;
+      summary.announcementsQueued += aging.announcementsQueued;
     } catch (error) {
       summary.failed++;
       logger.error("tower:signalement-preuves", error, { guildId });

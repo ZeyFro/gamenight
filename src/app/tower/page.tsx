@@ -47,7 +47,7 @@ export default async function TowerPage() {
     ? challenges.attempts.find(attempt => attempt.status === "ASSIGNED" || attempt.status === "SUBMITTED")
     : null;
   const appealableAttempts = appealable.status === "APPEALABLE_ATTEMPTS"
-    ? appealable.attempts.filter(attempt => isTowerChallengeAppealWindowOpen(attempt.rejectedAt, new Date()))
+    ? appealable.attempts.filter(attempt => isTowerChallengeAppealWindowOpen(attempt.announcedAt, new Date()))
     : [];
   const names = leaderboard.status === "LEADERBOARD" && leaderboard.entries.length
     ? await prisma.user.findMany({ where: { discordId: { in: leaderboard.entries.map(entry => entry.discordId) } }, select: { discordId: true, discordName: true } })

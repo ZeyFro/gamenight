@@ -7,6 +7,7 @@ const initialState: TowerAppealFormState = { status: "" };
 const messages: Record<string, string> = {
   APPEAL_SUBMITTED: "Ta contestation est transmise à l’équipe de modération.",
   ALREADY_APPEALED: "Une contestation existe déjà pour cette preuve.",
+  AWAITING_ANNOUNCEMENT: "L’annonce du résultat est en attente. Ton délai de 24 heures n’a pas encore commencé.",
   WINDOW_CLOSED: "Le délai de contestation de 24 heures après l’annonce du résultat du vote est terminé.",
   CLOSED: "Cette preuve ne peut plus être contestée.",
   UNAVAILABLE: "Cette contestation n’est pas accessible depuis la communauté active.",
