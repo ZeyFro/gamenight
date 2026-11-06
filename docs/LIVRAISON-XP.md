@@ -46,6 +46,8 @@ GAMENIGHT_EXPECTED_TARGET="<hôte>[:port]/<base>" node scripts/db-migrate.mjs --
 ... node scripts/db-migrate.mjs --expect=$LOT --execute --confirm-database=$BASE
 ```
 
+Option B (décision D2, rôle partagé) : le runner de #370 refuse par défaut un rôle de migration identique au rôle runtime ; ajouter `--allow-shared-role` aux DEUX commandes (message « MODE DÉGRADÉ ») seulement après un snapshot Neon frais vérifié immédiatement avant `--execute`. Cette option et la garde chronologique viennent du runner de #370, adopté tel quel à la fusion de `main` (phase 4) ; avant, le runner de cette branche n'a pas l'option.
+
 Codes de sortie : 0 ok, 2 refusé, 3 migration en échec, 4 contrôle après migration en échec. Sur 3 : ne pas relancer ni `migrate resolve` sans revue de l'état exact. Ne jamais appliquer seulement une partie du lot. (En local : ajouter `--allow-local`, base `gamenight_*`.)
 
 ## 3. Contrôles après migration (avant toute réouverture des écritures)

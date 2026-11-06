@@ -13,7 +13,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { EXPECTED_ROLLOUT_MIGRATIONS } from "./xp-rollout-migration-gate.mjs";
 import {
-  formatTimestamp, isRewritable, planRename, renderMappingSection, replaceNames,
+  formatTimestamp, isBatchAfterOthers, isRewritable, planRename, renderMappingSection, replaceNames,
 } from "./rename-xp-lot-migrations-lib.mjs";
 
 const MIGRATIONS = "prisma/migrations";
@@ -39,15 +39,19 @@ function parseArgs(argv) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const gateText = readFileSync(GATE, "utf8");
-  if (/export const XP_LOT_RENAMED = true;/.test(gateText)) {
-    console.log("Rien à faire : XP_LOT_RENAMED est déjà à true (lot déjà renommé).");
-    return;
-  }
+  const alreadyRenamed = /export const XP_LOT_RENAMED = true;/.test(gateText);
   const batch = [...EXPECTED_ROLLOUT_MIGRATIONS];
   const all = readdirSync(MIGRATIONS, { withFileTypes: true })
     .filter((e) => e.isDirectory() && existsSync(`${MIGRATIONS}/${e.name}/migration.sql`)).map((e) => e.name);
   for (const name of batch) if (!all.includes(name)) throw new Error(`Migration du lot absente du checkout : ${name}`);
   const others = all.filter((name) => !batch.includes(name));
+  // Déjà renommé ET toujours postérieur à tout le reste : rien à faire. Si une migration plus récente est arrivée depuis
+  // (autre PR fusionnée avant le merge de #325), le lot est renommé une seconde fois avec l'horodatage réel du moment.
+  if (alreadyRenamed && isBatchAfterOthers(batch, others)) {
+    console.log("Rien à faire : lot déjà renommé et postérieur à toutes les autres migrations.");
+    return;
+  }
+  if (alreadyRenamed) console.log("Re-renommage : une migration plus récente que le lot est apparue depuis le premier renommage.");
   const now = new Date();
   const base = args.timestamp ?? formatTimestamp(now);
   const mapping = planRename({ batch, others, base, now });
@@ -79,7 +83,10 @@ function main() {
   }
   writeFileSync(GATE, readFileSync(GATE, "utf8").replace("export const XP_LOT_RENAMED = false;", "export const XP_LOT_RENAMED = true;"));
   const livraison = "docs/LIVRAISON-XP.md";
-  if (existsSync(livraison)) writeFileSync(livraison, readFileSync(livraison, "utf8").trimEnd() + "\n" + renderMappingSection(mapping, now.toISOString().slice(0, 10)));
+  if (existsSync(livraison)) {
+    const title = alreadyRenamed ? "\n## 9 bis. Nouveau renommage" : "\n## 9. Renommage";
+    writeFileSync(livraison, readFileSync(livraison, "utf8").trimEnd() + "\n" + renderMappingSection(mapping, now.toISOString().slice(0, 10)).replace("\n## 9. Renommage", title));
+  }
   console.log("Renommage appliqué. Suite : node scripts/check-xp-rollout-migration-gate.mjs ; npx vitest run src/lib/xp-rollout-gate.test.ts src/lib/xp-lot-rename.test.ts ; prisma migrate deploy sur base jetable ; committer ; un seul push.");
 }
 

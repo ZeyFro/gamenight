@@ -11,8 +11,13 @@ export const HISTORICAL_DOCS = [
   "docs/XP-ROLE-BARRIER-REHEARSAL.md",
   "docs/XP-ROLLOUT-DECISION-20261019.md",
 ];
+/**
+ * Fixtures de la PR Tower #370 qui utilisent volontairement l'ANCIEN nom du lot comme « migration plus ancienne » : les réécrire avec
+ * l'horodatage réel casserait leurs tests (constaté en simulation).
+ */
+export const FIXTURE_FILES = ["scripts/db-migrate-lib.test.mjs"];
 /** Chemins jamais touchés par le remplacement de texte. */
-export const NEVER_REWRITE_PREFIXES = ["prisma/migrations/", "docs/archive/", "node_modules/", ".next/"];
+export const NEVER_REWRITE_PREFIXES = ["prisma/migrations/", "docs/archive/", "docs/xp-phase4/", "node_modules/", ".next/"];
 
 export function timestampOf(name) {
   const m = TS.exec(name);
@@ -80,7 +85,7 @@ export function replaceNames(text, mapping) {
 }
 
 export function isRewritable(path) {
-  return !NEVER_REWRITE_PREFIXES.some((prefix) => path.startsWith(prefix)) && !HISTORICAL_DOCS.includes(path);
+  return !NEVER_REWRITE_PREFIXES.some((prefix) => path.startsWith(prefix)) && !HISTORICAL_DOCS.includes(path) && !FIXTURE_FILES.includes(path);
 }
 
 /** Table de correspondance consignée dans docs/LIVRAISON-XP.md au moment du renommage. */

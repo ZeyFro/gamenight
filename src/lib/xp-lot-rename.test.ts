@@ -45,6 +45,8 @@ describe("plan de renommage du lot", () => {
     expect(isRewritable("prisma/migrations/x/migration.sql")).toBe(false);
     expect(isRewritable("docs/XP-ROLLOUT-DECISION-20261019.md")).toBe(false);
     expect(isRewritable("docs/archive/reprises/x.md")).toBe(false);
+    expect(isRewritable("docs/xp-phase4/test-fixes-after-main-merge.patch")).toBe(false);
+    expect(isRewritable("scripts/db-migrate-lib.test.mjs")).toBe(false); // fixture du runner Tower : ancien nom voulu
     expect(isRewritable("scripts/xp-lot-invariants.mjs")).toBe(true);
   });
 });
@@ -130,6 +132,27 @@ describe("script rename-xp-lot-migrations.mjs", () => {
     expect(readFileSync(join(root, "docs/XP-ROLLOUT-DECISION-20261019.md"), "utf8")).toContain(batch[0]); // historique inchangé
     expect(readFileSync(join(root, "scripts/xp-rollout-migration-gate.mjs"), "utf8")).toContain("XP_LOT_RENAMED = true;");
     // idempotent : un second passage ne fait rien
+    expect(run(root, "--apply").stdout).toMatch(/Rien à faire/);
+  });
+  it("re-renomme le lot quand une migration plus récente est arrivée après le premier renommage", () => {
+    const root = sandbox(older);
+    const ago = (seconds: number) => formatTimestamp(new Date(Date.now() - seconds * 1000));
+    expect(run(root, "--apply", `--timestamp=${ago(300)}`).status).toBe(0);
+    const firstNames = readdirSync(join(root, "prisma/migrations")).filter((n) => timestampOf(n) > "20261106150000");
+    // Une autre PR fusionne une migration datée APRÈS le premier renommage, puis le lot doit repasser derrière elle.
+    const late = `${ago(120)}_autre_pr_tardive`;
+    mkdirSync(join(root, "prisma/migrations", late));
+    writeFileSync(join(root, "prisma/migrations", late, "migration.sql"), "SELECT 1;\n");
+    expect(spawnSync("git", ["add", "-A"], { cwd: root }).status).toBe(0);
+    expect(spawnSync("git", ["commit", "-q", "-m", "autre PR"], { cwd: root }).status).toBe(0);
+    const second = run(root, "--apply");
+    expect(second.status, second.stderr).toBe(0);
+    expect(second.stdout).toMatch(/Re-renommage/);
+    const names = readdirSync(join(root, "prisma/migrations"));
+    const batchNow = names.filter((n) => /_(separate_xp_balance|shop_balance_purchase_reason)$/.test(n));
+    for (const n of batchNow) expect(timestampOf(n) > timestampOf(late)).toBe(true);
+    for (const old of firstNames) expect(names).not.toContain(old);
+    expect(readFileSync(join(root, "docs/LIVRAISON-XP.md"), "utf8")).toContain("9 bis");
     expect(run(root, "--apply").stdout).toMatch(/Rien à faire/);
   });
 });
