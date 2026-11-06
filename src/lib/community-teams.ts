@@ -34,7 +34,7 @@ export async function listCommunityTeams(userId: string, communityId: string) {
   const scopedDb = await getScopedPrisma(userId);
   const accessibleSessions = await accessibleSessionWhereFor(userId);
   const teams = await scopedDb.communityTeam.findMany({
-    where: { communityId },
+    where: { communityId, OR: [{ isRecruiting: true }, { members: { some: {} } }] },
     select: {
       id: true,
       name: true,
@@ -43,6 +43,8 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       maxMembers: true,
       isRecruiting: true,
       createdById: true,
+      captainId: true,
+      captain: { select: { discordName: true } },
       _count: { select: { members: { where: activeTeamMemberWhere(communityId) } } },
       game: { select: { name: true } },
       createdBy: { select: { discordName: true, memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
@@ -114,6 +116,19 @@ export async function assertSessionTeamLinkInTransaction(
   if (!team) throw new Error("invalid_session_team_link");
 }
 
+const TEAM_REJOIN_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Must be evaluated in the same serializable transaction as the membership write. */
+async function teamJoinEligibility(tx: Prisma.TransactionClient, userId: string, communityId: string): Promise<"eligible" | "already_team" | "cooldown"> {
+  const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+  if (await scopedDb.communityTeamMember.findFirst({ where: { userId, communityId }, select: { id: true } })) return "already_team";
+  const membership = await tx.membership.findUnique({
+    where: { communityId_userId: { communityId, userId } }, select: { lastTeamLeftAt: true },
+  });
+  if (membership?.lastTeamLeftAt && membership.lastTeamLeftAt.getTime() + TEAM_REJOIN_WAIT_MS > Date.now()) return "cooldown";
+  return "eligible";
+}
+
 export type TeamInput = {
   userId: string;
   communityId: string;
@@ -124,10 +139,12 @@ export type TeamInput = {
   maxMembers: number;
 };
 
-export async function createCommunityTeam(input: TeamInput): Promise<"created" | "limit" | "invalid_game" | "unavailable"> {
+export async function createCommunityTeam(input: TeamInput): Promise<"created" | "limit" | "invalid_game" | "unavailable" | "already_team" | "cooldown"> {
   if (await getCommunityTeamsCommunityId(input.userId) !== input.communityId) return "unavailable";
   const attempt = () => prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, input.userId, input.communityId)) return "unavailable";
+    const eligible = await teamJoinEligibility(tx, input.userId, input.communityId);
+    if (eligible !== "eligible") return eligible;
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [input.communityId], includesDefault: false });
     const game = await scopedDb.game.findUnique({ where: { id: input.gameId }, select: { id: true } });
     if (!game) return "invalid_game";
@@ -135,7 +152,7 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
     if (await scopedDb.communityTeam.count({ where: { communityId: input.communityId, createdById: input.userId, createdAt: { gte: since } } }) >= 3) return "limit";
     const { userId, communityId, gameId, name, description, platform, maxMembers } = input;
     const team = await scopedDb.communityTeam.create({
-      data: { communityId, gameId, createdById: userId, name, description, platform, maxMembers },
+      data: { communityId, gameId, createdById: userId, captainId: userId, name, description, platform, maxMembers },
       select: { id: true },
     });
     await scopedDb.communityTeamMember.create({ data: { communityId: input.communityId, teamId: team.id, userId: input.userId } });
@@ -144,12 +161,13 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
   try {
     return await attempt();
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return attempt();
     throw error;
   }
 }
 
-export async function joinCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"joined" | "already" | "closed" | "full" | "missing" | "unavailable"> {
+export async function joinCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"joined" | "already" | "closed" | "full" | "missing" | "unavailable" | "already_team" | "cooldown"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
   const attempt = () => prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
@@ -158,6 +176,8 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
     if (!team) return "missing";
     if (!team.isRecruiting) return "closed";
     if (await scopedDb.communityTeamMember.findUnique({ where: { teamId_userId: { teamId, userId } } })) return "already";
+    const eligible = await teamJoinEligibility(tx, userId, communityId);
+    if (eligible !== "eligible") return eligible;
     if (await scopedDb.communityTeamMember.count({ where: { teamId, communityId, ...activeTeamMemberWhere(communityId) } }) >= team.maxMembers) return "full";
     await scopedDb.communityTeamMember.create({ data: { communityId, teamId, userId } });
     return "joined";
@@ -167,7 +187,7 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
     try {
       return await attempt();
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already";
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
       throw error;
     }
@@ -179,11 +199,15 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
   return prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
-    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } } } });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, captainId: true, createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } } } });
     if (!team) return "missing";
-    if (team.createdById === userId) return "leader";
+    if ((team.captainId ?? team.createdById) === userId) return "leader";
     const deleted = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId, userId } });
-    return deleted.count ? "left" : "missing";
+    if (!deleted.count) return "missing";
+    await tx.membership.update({
+      where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
+    });
+    return "left";
   });
 }
 
@@ -193,20 +217,84 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({
-      where: { id: teamId, communityId },
+      where: { id: teamId, communityId, members: { some: { userId, ...activeTeamMemberWhere(communityId) } } },
       select: {
         createdById: true,
+        captainId: true,
         maxMembers: true,
         createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
         members: { where: activeTeamMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
         _count: { select: { members: { where: activeTeamMemberWhere(communityId) } } },
       },
     });
     if (!team) return "missing";
-    const activeCreator = team.createdBy.memberships.length > 0;
-    if (activeCreator ? team.createdById !== userId : team.members[0]?.userId !== userId) return "missing";
+    const configuredCaptainId = team.captainId ?? team.createdById;
+    const activeCaptain = team.captainId
+      ? Boolean(team.captain?.memberships.length)
+      : team.createdBy.memberships.length > 0;
+    const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
+    if (leaderId !== userId) return "missing";
     if (open && team._count.members >= team.maxMembers) return "full";
-    const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open } });
+    const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
     return updated.count ? "saved" : "missing";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/** Current captain may hand over to an active member of the same team.
+ * The original createdById is never rewritten.
+ */
+export async function transferCommunityTeamCaptain(
+  userId: string, communityId: string, teamId: string, successorId: string,
+): Promise<"transferred" | "invalid" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  if (userId === successorId) return "invalid";
+  return prisma.$transaction(async tx => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
+      select: { captainId: true, createdById: true } });
+    if (!team || (team.captainId ?? team.createdById) !== userId) return "invalid";
+    const eligible = await scopedDb.communityTeamMember.findFirst({
+      where: { teamId, communityId, userId: successorId, ...activeTeamMemberWhere(communityId) },
+      select: { id: true },
+    });
+    if (!eligible) return "invalid";
+    const changed = await scopedDb.communityTeam.updateMany({
+      where: { id: teamId, communityId, captainId: team.captainId },
+      data: { captainId: successorId, captainLastActivityAt: new Date() },
+    });
+    return changed.count ? "transferred" : "invalid";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/** Dissolution logique : conserve la ligne d'équipe et ses défis historiques.
+ * Libère tous les membres. Seul le capitaine qui dissout prend le délai de 7 jours.
+ * Refuse de dissoudre une équipe ayant des défis non terminés.
+ */
+export async function dissolveCommunityTeam(
+  userId: string, communityId: string, teamId: string,
+): Promise<"dissolved" | "active_challenges" | "invalid" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  return prisma.$transaction(async tx => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
+      select: { captainId: true, createdById: true, isRecruiting: true,
+        members: { select: { userId: true } } } });
+    if (!team || (team.captainId ?? team.createdById) !== userId || team.members.length === 0) return "invalid";
+    const pending = await scopedDb.towerChallengeAttempt.count({
+      where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
+    });
+    if (pending) return "active_challenges";
+    await scopedDb.communityTeam.update({
+      where: { id: teamId }, data: { isRecruiting: false },
+    });
+    await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
+    await tx.membership.update({
+      where: { communityId_userId: { communityId, userId } },
+      data: { lastTeamLeftAt: new Date() },
+    });
+    return "dissolved";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
