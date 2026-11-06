@@ -1,8 +1,24 @@
-import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { verifyProof } from "../../scripts/neon-test/proof.mjs";
+// Instantané fictif cohérent, indépendant des futures évolutions légitimes de main.
+// Les empreintes opérateur réelles restent celles du manifest scellé, non modifié.
+const { snapshots } = vi.hoisted(() => ({ snapshots: {
+  ".github/workflows/neon-test-migrations.yml": "approved workflow",
+  "scripts/neon-test-preflight.mjs": "approved preflight",
+  "package.json": "approved package",
+  "package-lock.json": "approved lock",
+  "prisma/schema.prisma": "approved schema",
+} as Record<string, string> }));
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const { createHash } = await import("node:crypto");
+  return { ...actual, readFileSync: (path: string | URL, options?: BufferEncoding) => {
+    if (String(path).endsWith("/approved-sources.json")) return JSON.stringify(Object.fromEntries(Object.entries(snapshots).map(([file, content]) => [file, createHash("sha256").update(content).digest("hex")])));
+    return actual.readFileSync(path, options);
+  } };
+});
 const env = { OPERATION: "validate", GITHUB_REF: "refs/heads/main", GITHUB_REPOSITORY: "ZeyFro/gamenight", DRY_RUN_ID: "42291255308" };
-const source = (path: string) => ({ encoding: "base64", content: readFileSync(path.slice("contents/".length).split("?ref=")[0]).toString("base64") });
+const source = (path: string) => ({ encoding: "base64", content: Buffer.from(snapshots[path.slice("contents/".length).split("?ref=")[0]]).toString("base64") });
 const validRun = () => ({ conclusion: "success", event: "workflow_dispatch", head_branch: "main", head_sha: "b603dd03d398588f3a70086997f313af6e5dbbb1", path: ".github/workflows/neon-test-migrations.yml", updated_at: new Date().toISOString() });
 it("accepte une preuve récente du workflow de dry-run scellé", async () => {
   await expect(verifyProof(env, async path => path.startsWith("contents/") ? source(path) : validRun())).resolves.toBeUndefined();
