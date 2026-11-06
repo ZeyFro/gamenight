@@ -6,6 +6,8 @@ import { submitTowerChallengeAppealAction, type TowerAppealFormState } from "@/a
 const initialState: TowerAppealFormState = { status: "" };
 const messages: Record<string, string> = {
   APPEAL_SUBMITTED: "Ta contestation est transmise à l’équipe de modération.",
+  ARBITER_NOT_CONFIGURED: "Un arbitre indépendant doit être configuré avant une contestation du staff.",
+  ARBITER_INELIGIBLE: "L’arbitre configuré est indisponible ou impliqué dans ce dossier. Aucun remplacement automatique n’est effectué.",
   ALREADY_APPEALED: "Une contestation existe déjà pour cette preuve.",
   AWAITING_ANNOUNCEMENT: "L’annonce du résultat est en attente. Ton délai de 24 heures n’a pas encore commencé.",
   WINDOW_CLOSED: "Le délai de contestation de 24 heures après l’annonce du résultat du vote est terminé.",
@@ -18,7 +20,7 @@ export function TowerChallengeAppealForm({ attemptId }: { attemptId: string }) {
   return <form action={action} className="mt-3 flex flex-col gap-2 rounded-xl border border-border p-3">
     <input type="hidden" name="attemptId" value={attemptId} />
     <label htmlFor={`tower-appeal-${attemptId}`} className="text-sm font-medium text-foreground">Contester ce refus</label>
-    <textarea id={`tower-appeal-${attemptId}`} name="reason" required minLength={1} maxLength={1500} rows={3}
+    <textarea id={`tower-appeal-${attemptId}`} name="reason" required minLength={1} maxLength={1000} rows={3}
       className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
       placeholder="Explique pourquoi la preuve devrait être réexaminée." />
     <button type="submit" disabled={pending}

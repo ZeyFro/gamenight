@@ -29,12 +29,12 @@ const proofSchema = attemptSchema.extend({
   publicationConsent: z.boolean(),
 });
 const voteSchema = attemptSchema.extend({ approve: z.boolean() });
-const appealSchema = attemptSchema.extend({ reason: z.string().trim().min(1).max(1500) });
+const appealSchema = attemptSchema.extend({ reason: z.string().trim().min(1).max(1000) });
 const appealDecisionSchema = z.object({
   communityId: id, userId: id, appealId: id,
-  decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(1).max(1500),
+  decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(1).max(1000),
 });
-const appealArbiterSchema = z.object({ communityId: id, userId: id, appealId: id, arbiterUserId: id });
+const arbiterConfigurationSchema = actorSchema.extend({ arbiterUserId: id });
 type Actor = z.infer<typeof actorSchema>;
 const now = () => new Date(Date.now());
 
@@ -424,6 +424,7 @@ export async function submitTowerChallengeAppeal(input: unknown) {
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, attemptId, reason } = parsed.data;
   return withTower({ communityId, userId }, async scopedDb => {
+    await lockArbiterConfiguration(scopedDb, communityId);
     const [attempt] = await scopedDb.$queryRaw<{
       id: string; userId: string; status: string; announcedAt: Date | null; archivedAt: Date | null;
     }[]>`
@@ -436,13 +437,17 @@ export async function submitTowerChallengeAppeal(input: unknown) {
     const current = now();
     if (!attempt.announcedAt || attempt.announcedAt > current) return { status: "AWAITING_ANNOUNCEMENT" } as const;
     if (!isTowerChallengeAppealWindowOpen(attempt.announcedAt, current)) return { status: "WINDOW_CLOSED" } as const;
+    const author = await scopedDb.membership.findFirst({ where: {communityId, userId, status: "ACTIVE"} });
+    const needsArbiter = author?.role === "OWNER" || author?.role === "ADMIN";
+    const arbiterUserId = needsArbiter ? await currentArbiter(scopedDb, communityId) : null;
+    if (needsArbiter && !arbiterUserId) return {status: "ARBITER_NOT_CONFIGURED"} as const;
     const id = randomUUID();
     const created = await scopedDb.$queryRaw<{ id: string }[]>`
       INSERT INTO "TowerChallengeAppeal" (
-        id, "communityId", "attemptId", "authorUserId", reason, "createdAt", "dueAt", status
+        id, "communityId", "attemptId", "authorUserId", reason, "createdAt", "dueAt", status, "arbiterUserId"
       ) VALUES (
         ${id}, ${communityId}, ${attemptId}, ${userId}, ${reason}, ${current},
-        ${new Date(attempt.announcedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS)}, 'OPEN'
+        ${new Date(attempt.announcedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS)}, 'OPEN', ${arbiterUserId}
       ) ON CONFLICT ("communityId", "attemptId") DO NOTHING
       RETURNING id
     `;
@@ -485,20 +490,16 @@ export async function getTowerChallengeStaffQueue(input: unknown) {
       JOIN "User" author ON author.id = appeal."authorUserId"
       LEFT JOIN "Membership" author_membership ON author_membership."communityId" = appeal."communityId"
         AND author_membership."userId" = appeal."authorUserId" AND author_membership.status = 'ACTIVE'
-      WHERE appeal."communityId" = ${communityId} AND appeal.status = 'OPEN'
+      WHERE appeal."communityId" = ${communityId} AND appeal.status = 'OPEN' AND appeal."authorUserId" <> ${userId}
         AND (
           appeal."arbiterUserId" = ${userId}
           OR (
-            ${isStaff} AND appeal."authorUserId" <> ${userId}
+            ${isStaff} AND appeal."arbiterUserId" IS NULL AND appeal."authorUserId" <> ${userId}
             AND COALESCE(author_membership.role, 'MEMBER') NOT IN ('ADMIN', 'OWNER')
             AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAttemptParticipant" p
               WHERE p."communityId" = appeal."communityId" AND p."attemptId" = appeal."attemptId" AND p."userId" = ${userId})
             AND NOT EXISTS (SELECT 1 FROM "TowerChallengeVote" v
               WHERE v."communityId" = appeal."communityId" AND v."attemptId" = appeal."attemptId" AND v."userId" = ${userId})
-          )
-          OR (
-            ${membership?.role === "OWNER"}
-            AND COALESCE(author_membership.role, 'MEMBER') IN ('ADMIN', 'OWNER')
           )
         )
       ORDER BY appeal."createdAt", appeal.id LIMIT 50
@@ -508,68 +509,52 @@ export async function getTowerChallengeStaffQueue(input: unknown) {
   });
 }
 
-export async function getTowerChallengeArbiterCandidates(input: unknown) {
-  const parsed = z.object({ communityId: id, userId: id, appealId: id }).safeParse(input);
+// Anciennes entrées de nomination par dossier : toujours fermées côté serveur.
+export async function getTowerChallengeArbiterCandidates(input: unknown) { void input; return { status: "FORBIDDEN" } as const; }
+export async function appointTowerChallengeArbiter(input: unknown) { void input; return { status: "FORBIDDEN" } as const; }
+
+async function lockArbiterConfiguration(scopedDb: Prisma.TransactionClient, communityId: string) {
+  await scopedDb.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'tower-arbiter:' + communityId}, 0))`;
+}
+
+async function currentArbiter(scopedDb: Prisma.TransactionClient, communityId: string) {
+  const [row] = await scopedDb.$queryRaw<{ arbiterUserId: string }[]>`
+    SELECT "arbiterUserId" FROM "TowerArbiterConfigurationChange"
+    WHERE "communityId" = ${communityId} ORDER BY id DESC LIMIT 1
+  `;
+  return row?.arbiterUserId ?? null;
+}
+
+export async function configureTowerChallengeArbiter(input: unknown) {
+  const parsed = arbiterConfigurationSchema.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
-  const { communityId, userId, appealId } = parsed.data;
-  return withTower({ communityId, userId }, async scopedDb => {
-    const [owner] = await scopedDb.$queryRaw<{ role: string }[]>`
-      SELECT role FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${userId} AND status = 'ACTIVE'
-    `;
-    if (owner?.role !== "OWNER") return { status: "FORBIDDEN" } as const;
-    const [appeal] = await scopedDb.$queryRaw<{ attemptId: string; authorUserId: string; authorRole: string; status: string }[]>`
-      SELECT appeal."attemptId", appeal."authorUserId", COALESCE(author_membership.role, 'MEMBER') AS "authorRole", appeal.status
-      FROM "TowerChallengeAppeal" appeal
-      LEFT JOIN "Membership" author_membership ON author_membership."communityId" = appeal."communityId"
-        AND author_membership."userId" = appeal."authorUserId" AND author_membership.status = 'ACTIVE'
-      WHERE appeal.id = ${appealId} AND appeal."communityId" = ${communityId}
-    `;
-    if (!appeal || appeal.status !== "OPEN" || !["ADMIN", "OWNER"].includes(appeal.authorRole)) return { status: "UNAVAILABLE" } as const;
-    const candidates = await scopedDb.$queryRaw<{ userId: string; discordName: string }[]>`
-      SELECT m."userId", u."discordName" FROM "Membership" m JOIN "User" u ON u.id = m."userId"
-      WHERE m."communityId" = ${communityId} AND m.status = 'ACTIVE' AND m.role = 'MEMBER'
-        AND m."userId" <> ${appeal.authorUserId}
-        AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAttemptParticipant" p
-          WHERE p."communityId" = ${communityId} AND p."attemptId" = ${appeal.attemptId} AND p."userId" = m."userId")
-        AND NOT EXISTS (SELECT 1 FROM "TowerChallengeVote" v
-          WHERE v."communityId" = ${communityId} AND v."attemptId" = ${appeal.attemptId} AND v."userId" = m."userId")
-      ORDER BY u."discordName", m."userId" LIMIT 100
-    `;
-    return { status: "CANDIDATES" as const, candidates };
+  const {communityId, userId, arbiterUserId} = parsed.data;
+  return withTower({communityId, userId}, async scopedDb => {
+    await lockArbiterConfiguration(scopedDb, communityId);
+    const owner = await scopedDb.membership.findFirst({ where: { communityId, userId, status: "ACTIVE", role: "OWNER" } });
+    if (!owner) return { status: "FORBIDDEN" } as const;
+    const [open] = await scopedDb.$queryRaw<{ present: boolean }[]>`SELECT EXISTS(SELECT 1 FROM "TowerChallengeAppeal" WHERE "communityId"=${communityId} AND status='OPEN') AS present`;
+    if (open.present) return { status: "CONFIGURATION_LOCKED" } as const;
+    const candidate = await scopedDb.membership.findFirst({ where: { communityId, userId: arbiterUserId, status: "ACTIVE", role: "MEMBER" } });
+    if (!candidate || userId === arbiterUserId) return { status: "ARBITER_INELIGIBLE" } as const;
+    const previous = await currentArbiter(scopedDb, communityId);
+    if (previous === arbiterUserId) return { status: "UNCHANGED" } as const;
+    await scopedDb.towerArbiterConfigurationChange.create({ data: { communityId, previousArbiterUserId: previous, arbiterUserId, changedByUserId: userId } });
+    return { status: "ARBITER_CONFIGURED" } as const;
   });
 }
 
-export async function appointTowerChallengeArbiter(input: unknown) {
-  const parsed = appealArbiterSchema.safeParse(input);
+export async function getTowerChallengeArbiterConfiguration(input: unknown) {
+  const parsed = actorSchema.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
-  const { communityId, userId, appealId, arbiterUserId } = parsed.data;
-  return withTower({ communityId, userId }, async scopedDb => {
-    const [owner] = await scopedDb.$queryRaw<{ role: string }[]>`
-      SELECT role FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${userId} AND status = 'ACTIVE' FOR SHARE
-    `;
-    if (owner?.role !== "OWNER") return { status: "FORBIDDEN" } as const;
-    const [appeal] = await scopedDb.$queryRaw<{ attemptId: string; authorUserId: string; arbiterUserId: string | null; status: string }[]>`
-      SELECT "attemptId", "authorUserId", "arbiterUserId", status FROM "TowerChallengeAppeal"
-      WHERE id = ${appealId} AND "communityId" = ${communityId} FOR UPDATE
-    `;
-    if (!appeal || appeal.status !== "OPEN") return { status: "UNAVAILABLE" } as const;
-    if (appeal.arbiterUserId) return { status: "ARBITER_ALREADY_SET" } as const;
-    const [candidate] = await scopedDb.$queryRaw<{ role: string }[]>`
-      SELECT role FROM "Membership" WHERE "communityId" = ${communityId} AND "userId" = ${arbiterUserId} AND status = 'ACTIVE'
-    `;
-    if (candidate?.role !== "MEMBER" || arbiterUserId === appeal.authorUserId) return { status: "ARBITER_INELIGIBLE" } as const;
-    const [involved] = await scopedDb.$queryRaw<{ participant: boolean; voted: boolean }[]>`
-      SELECT EXISTS (SELECT 1 FROM "TowerChallengeAttemptParticipant" p
-        WHERE p."communityId" = ${communityId} AND p."attemptId" = ${appeal.attemptId} AND p."userId" = ${arbiterUserId}) AS participant,
-        EXISTS (SELECT 1 FROM "TowerChallengeVote" v
-        WHERE v."communityId" = ${communityId} AND v."attemptId" = ${appeal.attemptId} AND v."userId" = ${arbiterUserId}) AS voted
-    `;
-    if (involved?.participant || involved?.voted) return { status: "ARBITER_INELIGIBLE" } as const;
-    await scopedDb.$executeRaw`
-      UPDATE "TowerChallengeAppeal" SET "arbiterUserId" = ${arbiterUserId}
-      WHERE id = ${appealId} AND "communityId" = ${communityId} AND status = 'OPEN' AND "arbiterUserId" IS NULL
-    `;
-    return { status: "ARBITER_ASSIGNED" } as const;
+  const { communityId, userId } = parsed.data;
+  return withTower({communityId, userId}, async scopedDb => {
+    const owner = await scopedDb.membership.findFirst({ where: { communityId, userId, status: "ACTIVE", role: "OWNER" } });
+    if (!owner) return { status: "FORBIDDEN" } as const;
+    const [open] = await scopedDb.$queryRaw<{ present: boolean }[]>`SELECT EXISTS(SELECT 1 FROM "TowerChallengeAppeal" WHERE "communityId"=${communityId} AND status='OPEN') AS present`;
+    const history = await scopedDb.towerArbiterConfigurationChange.findMany({ where: { communityId }, orderBy: { id: "desc" }, take: 20, select: { arbiterUserId: true, previousArbiterUserId: true, changedByUserId: true, createdAt: true } });
+    const candidates = await scopedDb.membership.findMany({ where: { communityId, status: "ACTIVE", role: "MEMBER" }, select: { userId: true, user: { select: { discordName: true } } }, orderBy: { userId: "asc" } });
+    return { status: "ARBITER_CONFIGURATION" as const, arbiterUserId: history[0]?.arbiterUserId ?? null, locked: open.present, history, candidates: candidates.map(c => ({userId: c.userId, discordName: c.user.discordName})) };
   });
 }
 
@@ -590,6 +575,10 @@ export async function decideTowerChallengeAppeal(input: unknown) {
     `;
     if (!appeal) return { status: "UNAVAILABLE" } as const;
     if (appeal.status !== "OPEN") return { status: "ALREADY_DECIDED" } as const;
+    if (appeal.arbiterUserId !== null || ["ADMIN", "OWNER"].includes(appeal.authorRole)) {
+      const configured = await currentArbiter(scopedDb, communityId);
+      if (!configured || configured !== appeal.arbiterUserId) return {status:"FORBIDDEN"} as const;
+    }
     const [attempt] = await scopedDb.$queryRaw<{
       id: string; userId: string; teamId: string | null; status: string; rewardFloors: number;
       rewardedAt: Date | null; archivedAt: Date | null;
