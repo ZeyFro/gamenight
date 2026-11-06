@@ -6,7 +6,6 @@ import { createNotifications } from "@/lib/notifications";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
 import type { Roulette, User } from "@prisma/client";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { communityMemberUserWhere } from "@/lib/community-isolation";
 import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 
@@ -49,7 +48,7 @@ export async function announceRouletteCreated(
   const candidates = await prisma.user.findMany({
     where: { id: { in: notifiedUserIds, not: creator.id }, ...(await communityMemberUserWhere(roulette.communityId)) },
   });
-  const others = await filterUsersByNotificationPreference(candidates, "ROULETTE");
+  const others = candidates;
 
   await createNotifications(
     others.map((u) => ({
@@ -58,6 +57,7 @@ export async function announceRouletteCreated(
       type: "SESSION_CREATED" as const,
       title: "🎰 Roulette du gambling",
       message: `Propose tes 2 jeux avant ${formatDateTimeFr(roulette.deadline)}`,
+      personalCategory: "ROULETTE" as const,
     }))
   );
 
@@ -93,8 +93,7 @@ export async function announceRouletteResult(
   const candidates = await prisma.user.findMany({
     where: { id: { in: winnerUserIds } },
   });
-  const eligibleByPreference = await filterUsersByNotificationPreference(candidates, "ROULETTE");
-  const winners = await filterByActiveSessionInvite(sessionId, session.createdById, eligibleByPreference);
+  const winners = await filterByActiveSessionInvite(sessionId, session.createdById, candidates);
 
   await createNotifications(
     winners.map((u) => ({
@@ -104,6 +103,7 @@ export async function announceRouletteResult(
       title: `🎰 La roue a choisi : ${gameName}`,
       message: formatDateTimeFr(roulette.scheduledAt),
       relatedSessionId: sessionId,
+      personalCategory: "ROULETTE" as const,
     }))
   );
 

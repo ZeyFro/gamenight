@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 const url = process.env.TEST_DATABASE_URL;
 const neonDomain = ["neon", "tech"].join(".");
@@ -43,10 +44,16 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   const author = { communityId: "tower-a", userId: "tower-author" };
   const members = ["tower-author", "tower-a1", "tower-a2", "tower-a3", "tower-a4", "tower-outsider"];
   const claimInput = (n = 1) => ({ ...author, requestKey: "tower-claim-key-" + String(n).padStart(8, "0") });
-  const proof = (attemptId: string) => ({
-    ...author, attemptId, proofText: "Voici ma réalisation.",
-    proofChannelId: "123456789012345678", proofMessageId: "223456789012345678", publicationConsent: true,
-  });
+  const proof = async (attemptId: string) => {
+    const [row] = await db.$queryRaw<{ proofCode: string | null }[]>`
+      SELECT "proofCode" FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = 'tower-a'
+    `;
+    if (!row?.proofCode) throw new Error("Code TWR attendu après attribution");
+    return {
+      ...author, attemptId, proofText: `Voici ma réalisation. ${row.proofCode}`,
+      proofChannelId: "123456789012345678", proofMessageId: "223456789012345678", publicationConsent: true,
+    };
+  };
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     api = await import("./tower-challenges");
@@ -61,6 +68,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     await db.notificationEvent.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVoteBallot.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.towerSeasonVote.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
+    await db.$executeRaw`DELETE FROM "TowerChallengeAppeal" WHERE "communityId" IN ('tower-a', 'tower-b')`;
     await db.towerChallengeAttempt.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.communityTeamMember.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
     await db.communityTeam.deleteMany({ where: { communityId: { in: ["tower-a", "tower-b"] } } });
@@ -90,8 +98,17 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   }
   async function submitted(n = 1) {
     const id = await claim(n);
-    expect((await api.submitTowerChallengeProof(proof(id))).status).toBe("SUBMITTED");
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("SUBMITTED");
     return id;
+  }
+  async function markRejected(attemptId: string) {
+    await db.$executeRaw`
+      UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = ${clock.now}
+      WHERE id = ${attemptId} AND "communityId" = 'tower-a'
+    `;
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const event = await db.notificationEvent.create({ data: { communityId: "tower-a", category: "ACHIEVEMENT", eventType: "TOWER_CHALLENGE_REJECTED", sourceId: attemptId } });
+    await db.notificationDelivery.create({ data: { eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND", status: "SENT", sentAt: clock.now, recipientKey: "123456789012345678", discordChannelId: "123456789012345678", discordMessageId: "223456789012345678", targetSlot: towerTestGuildId + ":TOWER:" + attemptId + ":rejection" } });
   }
   async function vote(id: string, userId: string, approve: boolean) {
     return api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: id, approve });
@@ -234,6 +251,21 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2026-10-29T00:00:00Z");
     expect((await api.claimSoloTowerChallenge(claimInput(2))).status).toBe("CLAIMED");
   });
+  it("génère et affiche le code dès l’attribution, puis l’exige dans la description de la preuve", async () => {
+    const id = await claim();
+    const state = await api.getTowerChallengeState({ ...author, attemptId: id });
+    if (state.status !== "STATE") throw new Error("Fiche de défi attendue");
+    const code = state.attempts[0]?.proofCode;
+    expect(code).toMatch(/^TWR-[A-HJ-NP-Z2-9]{8}$/);
+    expect(await api.submitTowerChallengeProof({ ...(await proof(id)), proofText: "Capture jointe, sans le code." })).toMatchObject({
+      status: "PROOF_CODE_REQUIRED",
+    });
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("SUBMITTED");
+    const [stored] = await db.$queryRaw<{ proofCode: string }[]>`
+      SELECT "proofCode" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(stored?.proofCode).toBe(code);
+  });
   it("n'offre pas deux défis quand les clés concurrentes diffèrent", async () => {
     const results = await Promise.all([api.claimSoloTowerChallenge(claimInput(1)), api.claimSoloTowerChallenge(claimInput(2))]);
     expect(results.map(r => r.status).sort()).toEqual(["CLAIMED", "COOLDOWN"]);
@@ -249,20 +281,20 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   });
   it("permet une preuve sans consentement au partage général", async () => {
     const id = await claim();
-    expect(await api.submitTowerChallengeProof({ ...proof(id), publicationConsent: false })).toMatchObject({ status: "SUBMITTED", replayed: false });
+    expect(await api.submitTowerChallengeProof({ ...(await proof(id)), publicationConsent: false })).toMatchObject({ status: "SUBMITTED", replayed: false });
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).publicationConsent).toBe(false);
   });
   it("refuse la preuve à 48 h exactement", async () => {
     const id = await claim();
     clock.now = new Date("2026-10-30T12:00:00Z");
-    expect((await api.submitTowerChallengeProof(proof(id))).status).toBe("EXPIRED");
+    expect((await api.submitTowerChallengeProof(await proof(id))).status).toBe("EXPIRED");
     expect(await db.towerChallengeVote.count()).toBe(0);
   });
   it("un dépôt rejoué ne change ni la preuve ni la fermeture du vote", async () => {
     const id = await submitted();
     clock.now = new Date("2026-10-28T13:00:00Z");
-    expect(await api.submitTowerChallengeProof(proof(id))).toMatchObject({ status: "SUBMITTED", replayed: true });
-    expect((await api.submitTowerChallengeProof({ ...proof(id), proofText: "Autre preuve" })).status).toBe("CONFLICT");
+    expect(await api.submitTowerChallengeProof(await proof(id))).toMatchObject({ status: "SUBMITTED", replayed: true });
+    expect((await api.submitTowerChallengeProof({ ...(await proof(id)), proofText: "Autre preuve" })).status).toBe("CONFLICT");
     expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).submittedAt?.toISOString()).toBe("2026-10-28T12:00:00.000Z");
   });
   it("interdit le vote pour soi, les doublons et les votes tardifs", async () => {
@@ -274,6 +306,220 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await vote(id, "tower-a1", false)).status).toBe("ALREADY_VOTED");
     clock.now = new Date("2026-10-29T12:00:00Z");
     expect((await vote(id, "tower-a2", true)).status).toBe("CLOSED");
+  });
+  it("limite la contestation à l’auteur, impose un motif et conserve une seule demande", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    const resultAnnouncedAt = clock.now;
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "   " })).toMatchObject({ status: "INVALID" });
+    expect(await api.submitTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", attemptId: id, reason: "Je conteste." }))
+      .toMatchObject({ status: "UNAVAILABLE" });
+    const appealable = await api.getTowerChallengeAppealableAttempts(author);
+    expect(appealable.status === "APPEALABLE_ATTEMPTS" && appealable.attempts.map(attempt => attempt.id)).toContain(id);
+    clock.now = new Date(resultAnnouncedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS - 1);
+    expect(await api.getTowerChallengeAppealableAttempts(author)).toMatchObject({ status: "APPEALABLE_ATTEMPTS", attempts: [{ id }] });
+    clock.now = new Date(resultAnnouncedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS);
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "À la limite exacte." }))
+      .toMatchObject({ status: "WINDOW_CLOSED" });
+    expect(await api.getTowerChallengeAppealableAttempts(author)).toMatchObject({ status: "APPEALABLE_ATTEMPTS", attempts: [] });
+    clock.now = resultAnnouncedAt;
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Le contexte de la capture n’a pas été pris en compte." }))
+      .toMatchObject({ status: "APPEAL_SUBMITTED" });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Une deuxième demande." }))
+      .toMatchObject({ status: "ALREADY_APPEALED" });
+    const [appeal] = await db.$queryRaw<{ authorUserId: string; status: string; dueAt: Date }[]>`
+      SELECT "authorUserId", status, "dueAt" FROM "TowerChallengeAppeal"
+      WHERE "communityId" = 'tower-a' AND "attemptId" = ${id}
+    `;
+    expect(appeal).toMatchObject({ authorUserId: author.userId, status: "OPEN", dueAt: new Date("2026-10-29T12:00:00.000Z") });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Après le délai." }))
+      .toMatchObject({ status: "ALREADY_APPEALED" });
+  });
+  it("enfile le refus une seule fois et attend sa livraison avant d'ouvrir la contestation", async () => {
+    vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "true");
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    vi.stubEnv("TOWER_DISCORD_CHANNEL_ID", "123456789012345678");
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    for (const voter of ["tower-a1", "tower-a2", "tower-a3"]) await vote(id, voter, false);
+    clock.now = new Date(clock.now.getTime() + 24 * 3600000);
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    expect(await db.notificationEvent.count({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } })).toBe(1);
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen demandé." })).toMatchObject({ status: "AWAITING_ANNOUNCEMENT" });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } });
+    const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(delivery.status).toBe("PENDING");
+    await db.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", sentAt: clock.now, discordChannelId: "123456789012345678", discordMessageId: "223456789012345678" } });
+    expect(await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen demandé." })).toMatchObject({ status: "APPEAL_SUBMITTED" });
+  });
+  it("reprend un refus décidé pendant que les annonces étaient désactivées", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    vi.stubEnv("TOWER_DISCORD_CHANNEL_ID", "123456789012345678");
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    for (const voter of ["tower-a1", "tower-a2", "tower-a3"]) await vote(id, voter, false);
+    clock.now = new Date(clock.now.getTime() + 24 * 3600000);
+    expect(await settle(id)).toMatchObject({ status: "REJECTED" });
+    const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_CHALLENGE_REJECTED" } });
+    expect(await db.notificationDelivery.count({ where: { eventId: event.id } })).toBe(0);
+    vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "true");
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ announcementsQueued: 1 });
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ announcementsQueued: 0 });
+    expect(await db.notificationDelivery.count({ where: { eventId: event.id } })).toBe(1);
+  });
+  it("interdit au propriétaire auteur de choisir l’arbitre de sa contestation", async () => {
+    const attemptId = await submitted(); await markRejected(attemptId);
+    await db.membership.update({ where: { communityId_userId: author }, data: { role: "OWNER" } });
+    expect(await api.configureTowerChallengeArbiter({ ...author, arbiterUserId: "tower-a2" })).toEqual({status: "ARBITER_CONFIGURED"});
+    expect((await api.submitTowerChallengeAppeal({ ...author, attemptId, reason: "Réexamen" })).status).toBe("APPEAL_SUBMITTED");
+    const [appeal] = await db.$queryRaw<{ id: string }[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId" = ${attemptId}`;
+    expect(await api.appointTowerChallengeArbiter({ ...author, appealId: appeal.id, arbiterUserId: "tower-a2" })).toEqual({ status: "FORBIDDEN" });
+  });
+  it("réserve un auteur staff à l’arbitre nommé et rend une décision une seule fois", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    await db.membership.update({ where: { communityId_userId: author }, data: { role: "ADMIN" } });
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "OWNER" } });
+    expect(await api.configureTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", arbiterUserId: "tower-a2" })).toEqual({status: "ARBITER_CONFIGURED"});
+    const appeal = await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Réexamen indépendant demandé." });
+    expect(appeal.status).toBe("APPEAL_SUBMITTED");
+    const queue = await api.getTowerChallengeStaffQueue({ communityId: "tower-a", userId: "tower-a1" });
+    expect(queue).toMatchObject({ status: "STAFF_QUEUE", isStaff: true });
+    if (queue.status !== "STAFF_QUEUE") throw new Error("File staff attendue");
+    expect(queue.appeals).toHaveLength(0);
+    const [opened] = await db.$queryRaw<{id: string}[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId"=${id}`;
+    const appealId = opened?.id;
+    if (!appealId) throw new Error("Contestation ouverte attendue");
+    expect(await api.getTowerChallengeArbiterCandidates({ communityId: "tower-a", userId: "tower-a1", appealId })).toEqual({status: "FORBIDDEN"});
+    expect(await api.appointTowerChallengeArbiter({ communityId: "tower-a", userId: "tower-a1", appealId, arbiterUserId: "tower-a3" })).toEqual({status: "FORBIDDEN"});
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", appealId, decision: "OVERTURNED", decisionReason: "Je suis le propriétaire." }))
+      .toMatchObject({ status: "FORBIDDEN" });
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-b", userId: "tower-outsider", appealId, decision: "OVERTURNED", decisionReason: "Autre communauté." }))
+      .toMatchObject({ status: "UNAVAILABLE" });
+    const decisions = await Promise.all([1, 2].map(() => api.decideTowerChallengeAppeal({
+      communityId: "tower-a", userId: "tower-a2", appealId, decision: "OVERTURNED", decisionReason: "Arbitrage indépendant." })));
+    expect(decisions.map(result => result.status).sort()).toEqual(["ALREADY_DECIDED", "APPEAL_OVERTURNED"]);
+    const [attempt] = await db.$queryRaw<{ status: string; rewardedAt: Date | null }[]>`
+      SELECT status, "rewardedAt" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    const [record] = await db.$queryRaw<{ status: string; reviewerUserId: string; decisionReason: string }[]>`
+      SELECT status, "reviewerUserId", "decisionReason" FROM "TowerChallengeAppeal" WHERE id = ${appealId} AND "communityId" = 'tower-a'
+    `;
+    expect(attempt?.status).toBe("APPROVED");
+    expect(attempt?.rewardedAt).toEqual(clock.now);
+    expect(record).toMatchObject({ status: "OVERTURNED", reviewerUserId: "tower-a2", decisionReason: "Arbitrage indépendant." });
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(1));
+  });
+  it("journalise la configuration, refuse les membres et isole les communautés", async () => {
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    expect(await api.configureTowerChallengeArbiter({...author,userId:"tower-a1",arbiterUserId:"tower-a2"})).toEqual({status:"FORBIDDEN"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:author.userId})).toEqual({status:"ARBITER_INELIGIBLE"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-outsider"})).toEqual({status:"ARBITER_INELIGIBLE"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"})).toEqual({status:"ARBITER_CONFIGURED"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"})).toEqual({status:"UNCHANGED"});
+    expect(await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a3"})).toEqual({status:"ARBITER_CONFIGURED"});
+    const records=await db.towerArbiterConfigurationChange.findMany({where:{communityId:author.communityId},orderBy:{id:"asc"}});
+    expect(records.map(r=>[r.previousArbiterUserId,r.arbiterUserId,r.changedByUserId])).toEqual([[null,"tower-a2",author.userId],["tower-a2","tower-a3",author.userId]]);
+    expect(await db.towerArbiterConfigurationChange.count({where:{communityId:"tower-b"}})).toBe(0);
+  });
+  it("gèle l’arbitre même pendant une contestation ordinaire invisible au propriétaire", async () => {
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a1"}},data:{role:"OWNER"}});
+    const owner={communityId:"tower-a",userId:"tower-a1"};
+    await api.configureTowerChallengeArbiter({...owner,arbiterUserId:"tower-a2"});
+    const attemptId=await submitted();await vote(attemptId,"tower-a1",false);await markRejected(attemptId);
+    await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"});
+    const queue = await api.getTowerChallengeStaffQueue(owner);
+    expect(queue.status === "STAFF_QUEUE" ? queue.appeals : []).toHaveLength(0);
+    expect(await api.configureTowerChallengeArbiter({...owner,arbiterUserId:"tower-a3"})).toEqual({status:"CONFIGURATION_LOCKED"});
+    expect(await db.towerArbiterConfigurationChange.count({where:{communityId:"tower-a"}})).toBe(1);
+  });
+  it("conserve l’arbitre du propriétaire après rétrogradation et refuse un arbitre devenu staff", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"});
+    const [appeal]=await db.$queryRaw<{id:string}[]>`SELECT id FROM "TowerChallengeAppeal" WHERE "attemptId"=${attemptId}`;
+    await db.membership.update({where:{communityId_userId:author},data:{role:"MEMBER"}});
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a1"}},data:{role:"ADMIN"}});
+    const input={communityId:"tower-a",appealId:appeal.id,decision:"UPHELD",decisionReason:"Décision"};
+    expect(await api.decideTowerChallengeAppeal({...input,userId:"tower-a1"})).toEqual({status:"FORBIDDEN"});
+    const queue=await api.getTowerChallengeStaffQueue({communityId:"tower-a",userId:"tower-a1"});
+    expect(queue.status==="STAFF_QUEUE"?queue.appeals:[]).toHaveLength(0);
+    await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{role:"ADMIN"}});
+    expect(await api.decideTowerChallengeAppeal({...input,userId:"tower-a2"})).toEqual({status:"FORBIDDEN"});
+  });
+  it("sérialise ouverture et configuration concurrentes sans changer l’arbitre après ouverture", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    const results=await Promise.all([api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"}),api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a3"})]);
+    expect(results[0].status).toBe("APPEAL_SUBMITTED");
+    expect(["ARBITER_CONFIGURED","CONFIGURATION_LOCKED"]).toContain(results[1].status);
+    const [appeal]=await db.$queryRaw<{arbiterUserId:string}[]>`SELECT "arbiterUserId" FROM "TowerChallengeAppeal" WHERE "attemptId"=${attemptId}`;
+    const config=await api.getTowerChallengeArbiterConfiguration(author);
+    expect(config.status).toBe("ARBITER_CONFIGURATION");
+    if(config.status!=="ARBITER_CONFIGURATION")throw Error("Configuration attendue");
+    expect(appeal.arbiterUserId).toBe(config.arbiterUserId);expect(config.locked).toBe(true);
+  });
+  it("refuse un propriétaire sans arbitre préalable et les motifs dépassant 1000 caractères", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"})).toEqual({status:"ARBITER_NOT_CONFIGURED"});
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"x".repeat(1001)})).toEqual({status:"INVALID"});
+    expect(await api.decideTowerChallengeAppeal({...author,appealId:"absent",decision:"UPHELD",decisionReason:"x".repeat(1001)})).toEqual({status:"INVALID"});
+  });
+  it.each(["REMOVED","ADMIN","VOTED","PARTICIPANT"])("conserve le dossier sans décision si l’arbitre devient inéligible : %s", async kind => {
+    const attemptId=await submitted();
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await api.configureTowerChallengeArbiter({...author,arbiterUserId:"tower-a2"});
+    if(kind==="REMOVED")await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{status:"REMOVED"}});
+    if(kind==="ADMIN")await db.membership.update({where:{communityId_userId:{communityId:"tower-a",userId:"tower-a2"}},data:{role:"ADMIN"}});
+    if(kind==="VOTED")expect((await vote(attemptId,"tower-a2",false)).status).toBe("VOTED");
+    if(kind==="PARTICIPANT")await db.towerChallengeAttemptParticipant.create({data:{communityId:"tower-a",attemptId,userId:"tower-a2"}});
+    await markRejected(attemptId);
+    expect(await api.submitTowerChallengeAppeal({...author,attemptId,reason:"Réexamen"})).toEqual({status:"APPEAL_SUBMITTED"});
+    const appeal=await db.towerChallengeAppeal.findFirstOrThrow({where:{communityId:"tower-a"}});
+    expect(appeal).toMatchObject({status:"OPEN",arbiterUserId:"tower-a2"});
+    const decision=await api.decideTowerChallengeAppeal({communityId:"tower-a",userId:"tower-a2",appealId:appeal.id,decision:"UPHELD",decisionReason:"Décision"});
+    expect(["FORBIDDEN","UNAVAILABLE"]).toContain(decision.status);
+    expect((await db.towerChallengeAppeal.findUniqueOrThrow({where:{id:appeal.id}})).status).toBe("OPEN");
+  });
+  it("refuse une nomination héritée sans configuration préalable", async () => {
+    const attemptId=await submitted();await markRejected(attemptId);
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await db.$executeRaw`INSERT INTO "TowerChallengeAppeal" (id,"communityId","attemptId","authorUserId",reason,"dueAt","arbiterUserId") VALUES ('legacy-arbiter','tower-a',${attemptId},${author.userId},'Réexamen',${clock.now},'tower-a2')`;
+    expect(await api.decideTowerChallengeAppeal({communityId:"tower-a",userId:"tower-a2",appealId:"legacy-arbiter",decision:"UPHELD",decisionReason:"Décision"})).toEqual({status:"FORBIDDEN"});
+  });
+  it("journalise les changements concurrents dans un ordre cohérent", async () => {
+    await db.membership.update({where:{communityId_userId:author},data:{role:"OWNER"}});
+    await Promise.all(["tower-a2","tower-a3"].map(arbiterUserId=>api.configureTowerChallengeArbiter({...author,arbiterUserId})));
+    const rows=await db.towerArbiterConfigurationChange.findMany({where:{communityId:"tower-a"},orderBy:{id:"asc"}});
+    expect(rows).toHaveLength(2);expect(rows[0].previousArbiterUserId).toBe(null);expect(rows[1].previousArbiterUserId).toBe(rows[0].arbiterUserId);
+  });
+  it("laisse la contestation ouverte si l’auteur a atteint son plafond quotidien", async () => {
+    const id = await submitted();
+    await markRejected(id);
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "ADMIN" } });
+    await db.towerChallengeAttempt.createMany({ data: [1, 2].map(index => ({
+      id: "appeal-cap-" + index, communityId: "tower-a", userId: "tower-author", definitionId: "tower-a-easy",
+      requestKey: "appeal-cap-0000000" + index, title: "Réussite déjà créditée", instructions: "Déjà terminée.",
+      rewardFloors: 1, assignedAt: clock.now, expiresAt: new Date(clock.now.getTime() + 48 * 3600000),
+      status: "APPROVED" as const, rewardedAt: clock.now,
+    })) });
+    await api.submitTowerChallengeAppeal({ ...author, attemptId: id, reason: "Je demande un réexamen." });
+    const [record] = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "TowerChallengeAppeal" WHERE "communityId" = 'tower-a' AND "attemptId" = ${id}
+    `;
+    if (!record) throw new Error("Contestation créée attendue");
+    expect(await api.decideTowerChallengeAppeal({ communityId: "tower-a", userId: "tower-a1", appealId: record.id,
+      decision: "OVERTURNED", decisionReason: "La preuve est valide." })).toMatchObject({ status: "DAILY_LIMIT" });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id } })).status).toBe("REJECTED");
+    const [appeal] = await db.$queryRaw<{ status: string }[]>`
+      SELECT status FROM "TowerChallengeAppeal" WHERE id = ${record.id} AND "communityId" = 'tower-a'
+    `;
+    expect(appeal?.status).toBe("OPEN");
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
   it("une clôture concurrente récompense une seule fois", async () => {
     const id = await submitted();
@@ -310,7 +556,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await db.towerChallengeAttempt.count({ where: { teamId: team.id } })).toBe(1);
     expect((await api.joinTowerTeamChallenge({ ...author, attemptId: first.attempt.id })).status).toBe("JOINED");
     expect((await api.joinTowerTeamChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id })).status).toBe("JOINED");
-    expect((await api.submitTowerChallengeProof(proof(first.attempt.id))).status).toBe("SUBMITTED");
+    expect((await api.submitTowerChallengeProof(await proof(first.attempt.id))).status).toBe("SUBMITTED");
     expect((await api.voteTowerChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id, approve: true })).status).toBe("SELF_VOTE");
     for (const userId of ["tower-a2", "tower-a3", "tower-a4"]) {
       expect((await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: first.attempt.id, approve: true })).status).toBe("VOTED");
@@ -366,10 +612,43 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(attempt.rewardedAt).toBeNull();
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(0));
   });
+  it("signale à J+7 puis archive à J+30 sans supprimer la preuve ni créditer de récompense", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
+    const id = await submitted();
+    const originalProof = (await proof(id)).proofText;
+    clock.now = new Date("2026-11-04T12:00:00Z");
+    const firstReport = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(firstReport).toMatchObject({ reported: 1, archived: 0 });
+    const [reported] = await db.$queryRaw<{ staffReportedAt: Date | null }[]>`
+      SELECT "staffReportedAt" FROM "TowerChallengeAttempt" WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(reported?.staffReportedAt).toEqual(clock.now);
+    const replayReport = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(replayReport).toMatchObject({ reported: 0, archived: 0 });
+    await db.membership.update({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } }, data: { role: "ADMIN" } });
+    const queue = await api.getTowerChallengeStaffQueue({ communityId: "tower-a", userId: "tower-a1" });
+    expect(queue).toMatchObject({ status: "STAFF_QUEUE", isStaff: true });
+    if (queue.status !== "STAFF_QUEUE") throw new Error("File staff attendue");
+    expect(queue.proofs.map(item => item.id)).toContain(id);
+
+    clock.now = new Date("2026-11-27T12:00:00Z");
+    const archive = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    expect(archive).toMatchObject({ reported: 0, archived: 1 });
+    const [stored] = await db.$queryRaw<{
+      status: string; archivedAt: Date | null; rewardedAt: Date | null; proofText: string | null; proofCode: string | null;
+    }[]>`
+      SELECT status, "archivedAt", "rewardedAt", "proofText", "proofCode" FROM "TowerChallengeAttempt"
+      WHERE id = ${id} AND "communityId" = 'tower-a'
+    `;
+    expect(stored).toMatchObject({ status: "SUBMITTED", archivedAt: clock.now, rewardedAt: null, proofText: originalProof });
+    expect(stored?.proofCode).toBeTruthy();
+    expect(await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000))).toMatchObject({ reported: 0, archived: 0 });
+  });
   it("refuse le membre externe, le membre retiré et la communauté suspendue", async () => {
     const id = await submitted();
     expect((await api.voteTowerChallenge({ communityId: "tower-a", userId: "tower-outsider", attemptId: id, approve: true })).status).toBe("UNAVAILABLE");
-    expect((await api.submitTowerChallengeProof({ ...proof(id), communityId: "tower-b" })).status).toBe("UNAVAILABLE");
+    expect((await api.submitTowerChallengeProof({ ...(await proof(id)), communityId: "tower-b" })).status).toBe("UNAVAILABLE");
     await db.membership.update({ where: { communityId_userId: author }, data: { status: "LEFT" } });
     expect((await settle(id)).status).toBe("UNAVAILABLE");
     await db.community.update({ where: { id: "tower-a" }, data: { status: "SUSPENDED" } });
@@ -436,7 +715,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     vi.stubEnv("TOWER_DISCORD_GENERAL_CHANNEL_ID", "444444444444444444");
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const id = await submitted();
-    await api.submitTowerChallengeProof(proof(id));
+    await api.submitTowerChallengeProof(await proof(id));
     const event = await db.notificationEvent.findFirstOrThrow({ where: { sourceId: id, eventType: "TOWER_PROOF_SUBMITTED" } });
     expect(await db.notificationEvent.count({ where: { sourceId: id, eventType: "TOWER_PROOF_SUBMITTED" } })).toBe(1);
     const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: event.id } });
@@ -466,7 +745,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     const other = { communityId: "tower-a", userId: "tower-a1" };
     const second = await api.claimSoloTowerChallenge({ ...other, requestKey: "tower-another-key-000001" });
     if (second.status !== "CLAIMED") throw new Error("Second défi attendu");
-    await api.submitTowerChallengeProof({ ...proof(second.attemptId), ...other });
+    await api.submitTowerChallengeProof({ ...(await proof(second.attemptId)), ...other });
     clock.now = new Date("2026-10-29T11:59:59Z");
     const beforeClose = await api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
     expect(beforeClose.processed).toBe(0);
