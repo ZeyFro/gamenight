@@ -26,8 +26,8 @@ describe("Next instrumentation voice worker gate", () => {
   it("does not start a worker from a normal self-hosted web instance", async () => {
     vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     vi.stubEnv("DISCORD_BOT_TOKEN", "synthetic-token");
-    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "synthetic-consent-decision");
-    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "synthetic-retention-decision");
+    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "20261023-synthetic-consent");
+    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "20261023-synthetic-retention");
 
     await register();
 
@@ -47,8 +47,8 @@ describe("Next instrumentation voice worker gate", () => {
     vi.stubEnv("VOICE_PRESENCE_WORKER_MODE", "standalone");
     vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     vi.stubEnv("DISCORD_BOT_TOKEN", "synthetic-token");
-    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "synthetic-consent-decision");
-    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "synthetic-retention-decision");
+    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "20261023-synthetic-consent");
+    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "20261023-synthetic-retention");
 
     await register();
 
@@ -59,8 +59,8 @@ describe("Next instrumentation voice worker gate", () => {
     vi.stubEnv("VOICE_PRESENCE_WORKER_MODE", "standalone");
     vi.stubEnv("VOICE_PRESENCE_ENABLED", "true");
     vi.stubEnv("DISCORD_BOT_TOKEN", "synthetic-token");
-    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "synthetic-consent-decision");
-    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "synthetic-retention-decision");
+    vi.stubEnv("VOICE_PRESENCE_CONSENT_DECISION", "20261023-synthetic-consent");
+    vi.stubEnv("VOICE_PRESENCE_RETENTION_DECISION", "20261023-synthetic-retention");
     vi.stubEnv("VERCEL", "1");
 
     await register();

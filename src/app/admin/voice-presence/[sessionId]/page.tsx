@@ -8,6 +8,7 @@ import { formatDateTimeFr } from "@/lib/wallclock";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
 import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
 import { pageMetadata } from "@/lib/page-title";
+import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 
 export const metadata = pageMetadata("Durées vocales de la soirée");
 
@@ -16,6 +17,8 @@ export default async function VoicePresenceAdminSessionPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
+  // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas appliquées).
+  if (!isVoicePresenceEnabled()) notFound();
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) redirect("/");
   const { sessionId } = await params;
@@ -52,7 +55,7 @@ export default async function VoicePresenceAdminSessionPage({
       <div>
         <Link href="/admin/voice-presence" className="text-sm text-muted hover:underline">← Durées vocales</Link>
         <h1 className="mt-2 text-xl font-semibold text-foreground sm:text-2xl">{formatDateTimeFr(session.date)}</h1>
-        <p className="mt-1 text-sm text-muted">Panneau de présence vocale autorisé par ton rôle d&apos;admin.</p>
+        <p className="mt-1 text-sm text-muted">Panneau de présence vocale : créateur de la soirée ou admin invité.</p>
       </div>
       <SessionVoicePresencePanel sessionId={session.id} presence={presence} />
     </main>

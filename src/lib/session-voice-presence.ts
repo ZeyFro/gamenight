@@ -6,7 +6,11 @@ import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { toWallClock, wallClockNow } from "@/lib/wallclock";
-import { finalizeVoiceIntervalAtCutoff } from "./voice-presence-policy";
+import {
+  finalizeVoiceIntervalAtCutoff,
+  voiceCollectionCutoffForInterval,
+  voiceCollectionEarliestSessionDate,
+} from "./voice-presence-policy";
 import { fenceSessionVoicePresenceLeasePreservingGap } from "./voice-presence-coordination";
 import { isVoicePresenceEnabled, type SessionVoiceConfig } from "./session-voice-config";
 
@@ -20,7 +24,9 @@ export async function grantSessionVoiceConsent(sessionId: string, userId: string
     if (!users.length) return false;
     const sessions = await tx.$queryRaw<{ id: string; createdById: string; communityId: string | null }[]>`
       SELECT id, "createdById", "communityId" FROM "Session"
-      WHERE id = ${sessionId} AND status = 'SCHEDULED' FOR UPDATE
+      WHERE id = ${sessionId} AND status = 'SCHEDULED'
+        AND date >= ${voiceCollectionEarliestSessionDate(toWallClock(now))}
+      FOR UPDATE
     `;
     const session = sessions[0];
     if (!session?.communityId) return false;
@@ -96,13 +102,15 @@ export async function storeSessionVoiceInterval(config: SessionVoiceConfig | nul
     ? { OR: [{ discordGuildId: config.guildId }, { slug: "default", discordGuildId: null }] }
     : { discordGuildId: config.guildId };
 
+  const wallStartedAt = toWallClock(new Date(interval.startedAt));
   const user = await prisma.user.findUnique({ where: { discordId: interval.memberKey }, select: { id: true } });
   if (!user) return false;
   const session = await prisma.session.findFirst({
     where: {
       id: config.sessionId,
       status: { in: ["SCHEDULED", "DONE"] },
-      date: { lte: toWallClock(new Date(interval.startedAt)) },
+      // Borne dure D7 : jamais plus de 12 h après Session.date, même sans clôture de la soirée.
+      date: { lte: wallStartedAt, gte: voiceCollectionEarliestSessionDate(wallStartedAt) },
       community: { is: {
         ...communityGuildFilter,
         status: "ACTIVE",
@@ -127,9 +135,10 @@ export async function storeSessionVoiceInterval(config: SessionVoiceConfig | nul
     `;
     if (!users.length) return false;
 
-    const sessions = await tx.$queryRaw<{ id: string; createdById: string; communityId: string | null; status: string }[]>`
-      SELECT id, "createdById", "communityId", status FROM "Session"
-      WHERE id = ${config.sessionId} AND status IN ('SCHEDULED', 'DONE') AND date <= ${toWallClock(startedAt)}
+    const sessions = await tx.$queryRaw<{ id: string; createdById: string; communityId: string | null; status: string; date: Date }[]>`
+      SELECT id, "createdById", "communityId", status, date FROM "Session"
+      WHERE id = ${config.sessionId} AND status IN ('SCHEDULED', 'DONE') AND date <= ${wallStartedAt}
+        AND date >= ${voiceCollectionEarliestSessionDate(wallStartedAt)}
       FOR SHARE
     `;
     const currentSession = sessions[0];
@@ -198,10 +207,14 @@ export async function storeSessionVoiceInterval(config: SessionVoiceConfig | nul
     const consent = consents[0];
     if (!consent || startedAt < consent.consentedAt) return false;
 
+    const collectionCutoff = voiceCollectionCutoffForInterval(currentSession.date, interval.startedAt);
     const effective = finalizeVoiceIntervalAtCutoff({
       startedAt: interval.startedAt,
       endedAt: interval.endedAt,
-      cutoffAt: stopping ? control.stopAt : null,
+      // Fin d'intervalle bornée par la clôture durable (stopAt) ET par la borne dure de 12 h après Session.date.
+      cutoffAt: stopping
+        ? new Date(Math.min(control.stopAt!.getTime(), collectionCutoff.getTime()))
+        : collectionCutoff,
       partial: interval.partial === true,
     });
     if (!effective) return false;
@@ -232,7 +245,7 @@ export async function storeSessionVoiceInterval(config: SessionVoiceConfig | nul
 export async function readSessionVoicePresence(sessionId: string, viewerId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { createdById: true, communityId: true, status: true },
+    select: { createdById: true, communityId: true, status: true, date: true },
   });
   if (!session) return null;
 
@@ -242,11 +255,13 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   const membership = await findActiveMembership(viewerId, await statsCommunityIdForSession(session.communityId));
   const isCommunityAdmin = !!membership && hasCommunityRole(membership.role, "ADMIN");
   const isAdmin = isSiteAdmin || isCommunityAdmin;
-  // Keep the underlying invite role even for an admin so an invited admin can
-  // grant personal consent without making unrelated sessions consentable.
+  // Décision D6 : toute soirée est privée (créateur + invités ACTIFS). Sans accès à la soirée, rien n'est lisible,
+  // admin de communauté ou de site compris ; les durées de tous ne sont lisibles que par le créateur et les admins
+  // INVITÉS. Un invité non admin ne lit que ses propres durées. Le rôle d'invitation reste conservé pour qu'un admin
+  // invité puisse donner son propre accord sans rendre consentables des soirées sans rapport.
   const accessRole = await getSessionAccessRole(viewerId, sessionId);
-  const canReadAll = isCreator || isAdmin;
-  if (!canReadAll && accessRole !== "guest") return null;
+  if (!accessRole) return null;
+  const canReadAll = isCreator || (isAdmin && accessRole === "guest");
 
   // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas encore appliquées).
   if (!isVoicePresenceEnabled()) {
@@ -258,18 +273,28 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
   });
   // expiresAt = stopAt (instant réel) + 30 j : comparer à un instant réel, pas à l'heure murale.
   const now = new Date();
-  const consented = !!ownConsent && (ownConsent.expiresAt === null || ownConsent.expiresAt > now);
+  // D7 : une soirée restée SCHEDULED au-delà de 12 h après sa date n'est plus collectée ; l'accord n'est plus actif
+  // (il sera purgé 30 jours après cette borne par la rétention).
+  const collectionOpen = session.status !== "SCHEDULED" || session.date >= voiceCollectionEarliestSessionDate(toWallClock(now));
+  const consented = collectionOpen && !!ownConsent && (ownConsent.expiresAt === null || ownConsent.expiresAt > now);
+  const intervalWhere = {
+    sessionId,
+    consentId: { not: null },
+    expiresAt: { gt: now },
+    ...(!canReadAll ? { userId: viewerId } : {}),
+  };
   const totals = await prisma.sessionVoicePresenceInterval.groupBy({
     by: ["userId"],
-    where: {
-      sessionId,
-      consentId: { not: null },
-      expiresAt: { gt: now },
-      ...(!canReadAll ? { userId: viewerId } : {}),
-    },
+    where: intervalWhere,
     _sum: { durationSeconds: true },
-    _max: { partial: true },
   });
+  // Postgres n'a pas de max(boolean) : les personnes ayant au moins un intervalle partiel sont lues par un second regroupement.
+  const partialRows = totals.length ? await prisma.sessionVoicePresenceInterval.groupBy({
+    by: ["userId"],
+    where: { ...intervalWhere, partial: true },
+    _count: { _all: true },
+  }) : [];
+  const partialUserIds = new Set(partialRows.map(row => row.userId));
   const users = totals.length ? await prisma.user.findMany({
     where: { id: { in: totals.map(row => row.userId) } },
     select: { id: true, discordName: true },
@@ -291,7 +316,7 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
     enabled: process.env.VOICE_PRESENCE_ENABLED === "true",
     consented,
     canWithdraw: !!ownConsent,
-    canConsent: session.status === "SCHEDULED" && (accessRole === "guest" || isCreator),
+    canConsent: session.status === "SCHEDULED" && collectionOpen && (accessRole === "guest" || isCreator),
     canReadAll,
     hasGaps: gapPeriods.length > 0,
     gapPeriods,
@@ -300,7 +325,7 @@ export async function readSessionVoicePresence(sessionId: string, viewerId: stri
         userId: row.userId,
         name: names.get(row.userId) ?? "Membre",
         durationSeconds: row._sum.durationSeconds ?? 0,
-        partial: row._max.partial ?? false,
+        partial: partialUserIds.has(row.userId),
       }))
       .sort((a, b) => b.durationSeconds - a.durationSeconds),
   };

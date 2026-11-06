@@ -90,7 +90,7 @@ describe.skipIf(!TEST_DATABASE_URL)("simulation du Gateway vocal (faux serveur W
       id: SESSION_ID,
       communityId: COMMUNITY_ID,
       createdById: ALICE_ID,
-      date: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      date: new Date(Date.now() - 3 * 60 * 60 * 1000), // dans la borne D7 de 12 h,
       status: "SCHEDULED",
       invites: { create: { user: { connect: { id: BOB_ID } }, invitedBy: { connect: { id: ALICE_ID } }, status: "ACTIVE" } },
     } });

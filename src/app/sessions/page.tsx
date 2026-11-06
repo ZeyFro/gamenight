@@ -42,6 +42,7 @@ import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { getCommunityTeamsCommunityId, listMemberCommunityTeamOptions } from "@/lib/community-teams";
 import { pickCreationCommunityId } from "@/lib/community-channels";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 
 export const metadata = pageMetadata("Soirées");
 
@@ -162,7 +163,7 @@ export default async function SessionsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   await requireCommunityChosen(user.id, "/sessions");
-  const isVoicePresenceAdmin = process.env.VOICE_PRESENCE_ENABLED === "true" && (isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
+  const isVoicePresenceAdmin = isVoicePresenceEnabled() && (isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
     where: { userId: user.id, status: "ACTIVE", role: { in: ["ADMIN", "OWNER"] }, community: { status: "ACTIVE" } },
     select: { communityId: true },
   }));

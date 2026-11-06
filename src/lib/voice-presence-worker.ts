@@ -30,6 +30,21 @@ export type VoicePresenceCollector = {
   stop(): void | Promise<void>;
 };
 
+/**
+ * Format exigé des références de décision du propriétaire (VOICE_PRESENCE_CONSENT_DECISION / _RETENTION_DECISION) :
+ * `YYYYMMDD-identifiant` (date de la décision, puis 3 à 64 caractères `a-z 0-9 . _ -`), par exemple `20261023-consentement-v1`.
+ * Une simple chaîne non vide ne suffit plus. scripts/voice-host-diagnostic.mjs porte la même expression (test de synchronisation).
+ */
+export const VOICE_PRESENCE_DECISION_PATTERN = /^(\d{4})(\d{2})(\d{2})-[a-z0-9][a-z0-9._-]{2,63}$/;
+
+export function isValidVoicePresenceDecision(value: string) {
+  const match = VOICE_PRESENCE_DECISION_PATTERN.exec(value);
+  if (!match) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const MIN_POLL_INTERVAL_MS = 5_000;
 
@@ -47,8 +62,8 @@ export function voicePresenceWorkerConfig(
 
   if (
     !token ||
-    !consentDecision ||
-    !retentionDecision ||
+    !isValidVoicePresenceDecision(consentDecision) ||
+    !isValidVoicePresenceDecision(retentionDecision) ||
     !Number.isSafeInteger(pollIntervalMs) ||
     pollIntervalMs < MIN_POLL_INTERVAL_MS
   ) {

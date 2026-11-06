@@ -206,7 +206,8 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
 
     await runtime.stop();
     expect(mocks.sessionFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ date: { lte: new Date(dueAt) } }),
+      // Borne dure D7 : jamais plus de 12 h après Session.date, même sans close-sessions.
+      where: expect.objectContaining({ date: { lte: new Date(dueAt), gte: new Date(new Date(dueAt).getTime() - 12 * 3_600_000) } }),
     }));
   });
 
@@ -234,7 +235,7 @@ describe("voice presence worker runtime (synthetic Prisma and Gateway only)", ()
     expect(mocks.sessionFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         status: "SCHEDULED",
-        date: { lte: expect.any(Date) },
+        date: { lte: expect.any(Date), gte: expect.any(Date) },
         community: expect.objectContaining({ is: expect.objectContaining({
           status: "ACTIVE",
           channelConfigs: { some: { category: "VOICE", enabled: true } },

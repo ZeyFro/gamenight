@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +7,23 @@ const read = (...parts: string[]) => readFileSync(path.join(process.cwd(), ...pa
 describe("artefacts Docker du worker vocal (statique, sans démon Docker)", () => {
   const dockerfile = read("docker", "voice-worker", "Dockerfile");
   const compose = read("docker", "voice-worker", "compose.yaml");
+
+  it(".dockerignore racine : exclut secrets, git, dépendances, journaux et tests sans retirer ce dont le Dockerfile a besoin", () => {
+    const patterns = read(".dockerignore").split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    for (const excluded of [".env*", ".git", "node_modules", ".next", "logs", "scratch", "**/*.test.ts", "**/*.test.tsx"]) {
+      expect(patterns, excluded).toContain(excluded);
+    }
+    expect(patterns).toContain("!.env.example");
+    // Chemins utilisés par le Dockerfile (COPY, build Next, CMD) : aucun motif d'exclusion ne doit les couvrir.
+    const positive = patterns.filter(p => !p.startsWith("!"));
+    for (const needed of ["package.json", "package-lock.json", "prisma", "src", "public", "scripts/gamenight-server.mjs", "next.config.ts", "tsconfig.json", "postcss.config.mjs"]) {
+      const covered = positive.some(p => !p.includes("*") && (needed === p || needed.startsWith(`${p}/`)));
+      expect(covered, `${needed} est exclu du contexte Docker`).toBe(false);
+      expect(existsSync(path.join(process.cwd(), needed)), `${needed} manquant`).toBe(true);
+    }
+    for (const copied of ["COPY package.json package-lock.json ./", "COPY prisma ./prisma", "COPY . ."]) expect(dockerfile).toContain(copied);
+    expect(dockerfile).toContain("scripts/gamenight-server.mjs");
+  });
 
   it("tourne sans privilèges, avec healthcheck et arrêt propre", () => {
     expect(dockerfile).toMatch(/^USER node$/m);

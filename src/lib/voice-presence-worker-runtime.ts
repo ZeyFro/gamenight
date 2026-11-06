@@ -17,6 +17,7 @@ import {
   type VoicePresenceWorkerConfig,
   type VoicePresenceStopTarget,
 } from "./voice-presence-worker";
+import { voiceCollectionEarliestSessionDate } from "./voice-presence-policy";
 
 // Échecs de découverte consécutifs tolérés après un premier poll réussi (délais 1x, 2x, 4x... le poll, plafonnés à 300 s) ;
 // au-delà : fatal `discovery`, journal sans détail, sortie 1 (systemd/Docker redémarrent).
@@ -81,10 +82,12 @@ export async function startVoicePresenceWorkerRuntime(
   };
   const worker = createVoicePresenceWorker({
     loadTargets: async () => {
+      const wallNow = wallClockNow();
       const sessions = await prisma.session.findMany({
         where: {
           status: "SCHEDULED",
-          date: { lte: wallClockNow() },
+          // Borne dure D7 : 12 h après Session.date au plus, même si close-sessions est absent.
+          date: { lte: wallNow, gte: voiceCollectionEarliestSessionDate(wallNow) },
           community: { is: {
             status: "ACTIVE",
             channelConfigs: { some: { category: "VOICE", enabled: true } },

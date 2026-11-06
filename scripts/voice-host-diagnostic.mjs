@@ -18,6 +18,9 @@ export const ACTIVATION_NAMES = [
   "DISCORD_BOT_TOKEN", "DISCORD_BOT_GUILD_ID", "VOICE_PRESENCE_CONSENT_DECISION", "VOICE_PRESENCE_RETENTION_DECISION",
   "AUTH_SECRET", "CRON_SECRET",
 ];
+// Même expression que VOICE_PRESENCE_DECISION_PATTERN (src/lib/voice-presence-worker.ts) : YYYYMMDD-identifiant. Test de synchronisation.
+export const DECISION_PATTERN = /^(\d{4})(\d{2})(\d{2})-[a-z0-9][a-z0-9._-]{2,63}$/;
+export const DECISION_NAMES = ["VOICE_PRESENCE_CONSENT_DECISION", "VOICE_PRESENCE_RETENTION_DECISION"];
 export const OPTIONAL_NAMES = ["VOICE_PRESENCE_WORKER_MODE", "VOICE_PRESENCE_POLL_INTERVAL_MS", "VOICE_WORKER_SHUTDOWN_TIMEOUT_MS"];
 
 const OPTIONS_WITH_VALUE = new Set(["--env-file", "--unit", "--image"]);
@@ -47,13 +50,16 @@ const atLeast = (version, min) => {
 export function parseEnvNames(content) {
   const counts = new Map();
   let flagIsFalse = false;
+  // Seulement un booléen par référence de décision (format valide ou non), jamais la valeur.
+  const decisionFormatOk = new Map();
   for (const line of content.split(/\r?\n/)) {
     const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
     if (!match) continue;
     counts.set(match[1], (counts.get(match[1]) ?? 0) + 1);
     if (match[1] === "VOICE_PRESENCE_ENABLED") flagIsFalse = match[2].trim() === "false";
+    if (DECISION_NAMES.includes(match[1])) decisionFormatOk.set(match[1], DECISION_PATTERN.test(match[2].trim()));
   }
-  return { counts, flagIsFalse };
+  return { counts, flagIsFalse, decisionFormatOk };
 }
 
 const check = (id, status, detail) => ({ id, status, detail });
@@ -84,6 +90,12 @@ export function evaluate(f) {
       const present = (name) => (env.names.get(name) ?? 0) > 0;
       for (const name of REQUIRED_NAMES) out.push(check(`var:${name}`, present(name) ? "ok" : "fail", present(name) ? "présente" : "ABSENTE (requise)"));
       for (const name of ACTIVATION_NAMES) out.push(check(`var:${name}`, present(name) ? "ok" : "info", present(name) ? "présente" : "absente (requise seulement à l'activation de la collecte)"));
+      for (const name of DECISION_NAMES) {
+        // Une référence présente mais mal formée ferait refuser le démarrage du worker : avertir sans afficher la valeur.
+        if (present(name) && env.decisionFormatOk?.get(name) === false) {
+          out.push(check(`format:${name}`, "warn", "format invalide (attendu YYYYMMDD-identifiant, ex. 20261023-consentement-v1) : le worker refuserait de démarrer"));
+        }
+      }
       for (const name of OPTIONAL_NAMES) out.push(check(`var:${name}`, "info", present(name) ? "présente" : "absente (optionnelle)"));
       const flagCount = env.names.get("VOICE_PRESENCE_ENABLED") ?? 0;
       out.push(check("collecte-eteinte", flagCount === 1 && env.flagIsFalse ? "ok" : "fail",
@@ -108,7 +120,7 @@ function run(cmd, args) {
 
 export async function collectFacts(opts) {
   const dockerVersion = run("docker", ["--version"]);
-  let envInfo = { exists: false, mode: null, uid: null, gid: null, names: null, flagIsFalse: false };
+  let envInfo = { exists: false, mode: null, uid: null, gid: null, names: null, flagIsFalse: false, decisionFormatOk: new Map() };
   if (existsSync(opts.envFile)) {
     const st = statSync(opts.envFile);
     envInfo = { exists: true, mode: process.platform === "win32" ? null : st.mode & 0o777, uid: st.uid, gid: st.gid, names: null, flagIsFalse: false };
@@ -116,6 +128,7 @@ export async function collectFacts(opts) {
       const parsed = parseEnvNames(readFileSync(opts.envFile, "utf8"));
       envInfo.names = parsed.counts;
       envInfo.flagIsFalse = parsed.flagIsFalse;
+      envInfo.decisionFormatOk = parsed.decisionFormatOk;
     } catch { /* illisible : signalé comme tel, sans détail */ }
   }
   let diskFreeBytes = null;

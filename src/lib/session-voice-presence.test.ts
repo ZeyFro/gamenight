@@ -60,7 +60,7 @@ beforeEach(() => {
   mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
     const query = strings.join("");
     if (query.includes('FROM "User"')) return [{ id: "user-1" }];
-    if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1", status: "SCHEDULED" }];
+    if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1", status: "SCHEDULED", date: new Date(0) }];
     if (query.includes('FROM "Community"')) return [{ id: "community-1" }];
     if (query.includes('FROM "CommunityChannelConfig"')) return [{ id: "voice-config" }];
     if (query.includes('FROM "SessionInvite"')) return [{ id: "invite-1" }];
@@ -78,7 +78,7 @@ beforeEach(() => {
   }));
   mocks.membershipFind.mockResolvedValue({ role: "MEMBER" });
   mocks.userFindUnique.mockResolvedValue({ id: "user-1", discordId: "789012345678901234", role: "USER" });
-  mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
+  mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED", date: new Date() });
   mocks.consentFindUnique.mockResolvedValue({ id: "consent-1", expiresAt: null });
   mocks.controlFindUnique.mockResolvedValue({ gapDetected: false, gapStartedAt: null, lastGapAt: null });
   mocks.gapFindMany.mockResolvedValue([]);
@@ -116,7 +116,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     mocks.membershipQueryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = strings.join("");
       if (query.includes('FROM "User"')) return [{ id: "user-1" }];
-      if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1", status: "SCHEDULED" }];
+      if (query.includes('FROM "Session"')) return [{ id: "session-test", createdById: "creator-id", communityId: "community-1", status: "SCHEDULED", date: new Date(0) }];
       if (query.includes('FROM "Community"')) {
         return values.at(-1) === true && query.includes('"slug" = \'default\'') && query.includes('"discordGuildId" IS NULL')
           ? [{ id: "community-1" }]
@@ -172,7 +172,8 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     await storeSessionVoiceInterval(config, { ...interval, startedAt, endedAt: startedAt + 60_000 });
 
     expect(mocks.sessionFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ date: { lte: new Date("2026-07-14T20:00:00.000Z") } }),
+      // Borne dure D7 : [date de départ - 12 h ; date de départ] en heure murale.
+      where: expect.objectContaining({ date: { lte: new Date("2026-07-14T20:00:00.000Z"), gte: new Date("2026-07-14T08:00:00.000Z") } }),
     }));
   });
 
@@ -234,10 +235,11 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     expect(await readSessionVoicePresence("session-test", "guest-id")).toBeNull();
     expect(mocks.intervalGroupBy).not.toHaveBeenCalled();
     mocks.accessRole.mockResolvedValue("guest");
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED", date: new Date() });
     mocks.userFindUnique.mockResolvedValue({ id: "guest-id", discordId: "guest", role: "USER" });
     mocks.consentFindUnique.mockResolvedValue({ id: "guest-consent", expiresAt: null });
-    mocks.intervalGroupBy.mockResolvedValue([{ userId: "user-1", _sum: { durationSeconds: 65 }, _max: { partial: false } }]);
+    mocks.intervalGroupBy.mockImplementation(async (args: { where: { partial?: boolean } }) =>
+      args.where.partial === true ? [] : [{ userId: "user-1", _sum: { durationSeconds: 65 } }]);
     mocks.userFindMany.mockResolvedValue([{ id: "user-1", discordName: "Member" }]);
     expect(await readSessionVoicePresence("session-test", "guest-id")).toMatchObject({
       consented: true,
@@ -249,7 +251,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     expect(mocks.intervalGroupBy).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: "guest-id" }) }));
 
     mocks.accessRole.mockResolvedValue("creator");
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED", date: new Date() });
     mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
     const gapStartedAt = new Date("2026-10-22T10:00:00.000Z");
     mocks.gapFindMany.mockResolvedValue([{ startedAt: gapStartedAt, resumedAt: null }]);
@@ -265,19 +267,32 @@ describe("voice presence session link (synthetic DB doubles)", () => {
     const adminPresence = await readSessionVoicePresence("session-test", "community-admin");
     expect(adminPresence).toMatchObject({ canReadAll: true, canConsent: true });
     expect(mocks.accessRole).toHaveBeenCalledWith("community-admin", "session-test");
-    mocks.accessRole.mockResolvedValue(null);
-    expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canReadAll: true, canConsent: false });
     expect(mocks.intervalGroupBy).toHaveBeenLastCalledWith(expect.objectContaining({
       where: expect.not.objectContaining({ userId: expect.any(String) }),
     }));
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    // D6 : un admin non invité à la soirée privée ne lit rien (ni durées, ni lacunes), même admin de communauté.
+    mocks.intervalGroupBy.mockClear();
+    mocks.accessRole.mockResolvedValue(null);
+    expect(await readSessionVoicePresence("session-test", "community-admin")).toBeNull();
+    expect(mocks.intervalGroupBy).not.toHaveBeenCalled();
+    mocks.accessRole.mockResolvedValue("guest");
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE", date: new Date() });
     expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ canConsent: false, canWithdraw: true });
     process.env.VOICE_PRESENCE_ENABLED = "false";
     expect(await readSessionVoicePresence("session-test", "community-admin")).toMatchObject({ enabled: false, canWithdraw: false });
   });
 
+  it("D7 : une soirée SCHEDULED au-delà de 12 h n'a plus d'accord actif ni de consentement possible, mais le retrait reste offert", async () => {
+    mocks.accessRole.mockResolvedValue("creator");
+    mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED", date: new Date(Date.now() - 20 * 3_600_000) });
+    expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({ consented: false, canConsent: false, canWithdraw: true });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "SCHEDULED", date: new Date(Date.now() - 5 * 3_600_000) });
+    expect(await readSessionVoicePresence("session-test", "owner-id")).toMatchObject({ consented: true, canConsent: true });
+  });
+
   it("does not treat expired consent as active but leaves withdrawal available during retention", async () => {
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE", date: new Date() });
     mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
     mocks.accessRole.mockResolvedValue("creator");
     mocks.consentFindUnique.mockResolvedValue({ id: "expired-consent", expiresAt: new Date(Date.now() - 1) });
@@ -291,7 +306,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
 
   it("returns every retained gap period in chronological order for authorized readers", async () => {
     mocks.accessRole.mockResolvedValue("creator");
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE", date: new Date() });
     mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
     const firstStart = new Date("2026-10-22T10:00:00.000Z");
     const firstResume = new Date("2026-10-22T10:05:00.000Z");
@@ -316,7 +331,7 @@ describe("voice presence session link (synthetic DB doubles)", () => {
 
   it("masks gap history after the cutoff retention window even before cleanup runs", async () => {
     mocks.accessRole.mockResolvedValue("creator");
-    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE" });
+    mocks.sessionFindUnique.mockResolvedValue({ createdById: "owner-id", communityId: "community-1", status: "DONE", date: new Date() });
     mocks.userFindUnique.mockResolvedValue({ id: "owner-id", discordId: "owner", role: "USER" });
     mocks.controlFindUnique.mockResolvedValue({ stopAt: new Date(Date.now() - 31 * 24 * 60 * 60_000) });
     mocks.gapFindMany.mockResolvedValue([{ startedAt: new Date(0), resumedAt: new Date(60_000) }]);

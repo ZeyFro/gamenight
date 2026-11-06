@@ -33,8 +33,8 @@ Source : `src/lib/discord-voice-gateway.ts` (Identify avec `intents: 1 | 128`) e
 | `VOICE_PRESENCE_WORKER_MODE` | fixé par l'unité / le compose | `standalone` ; ne pas le définir sur les instances web. |
 | `DISCORD_BOT_TOKEN` | activation | Jeton du bot. |
 | `DISCORD_BOT_GUILD_ID` | activation | Serveur de la communauté par défaut. |
-| `VOICE_PRESENCE_CONSENT_DECISION` | activation | Référence de la décision de consentement. |
-| `VOICE_PRESENCE_RETENTION_DECISION` | activation | Référence de la décision de rétention. |
+| `VOICE_PRESENCE_CONSENT_DECISION` | activation | Référence de la décision de consentement, au format exact `YYYYMMDD-identifiant` (date réelle de la décision, puis 3 à 64 caractères `a-z 0-9 . _ -`), par exemple `20261023-consentement-v1`. Toute autre valeur fait refuser le démarrage du worker. |
+| `VOICE_PRESENCE_RETENTION_DECISION` | activation | Référence de la décision de rétention, même format (`20261023-retention-v1`). Le diagnostic d'hôte avertit d'un format invalide sans afficher la valeur. |
 | `AUTH_SECRET`, `CRON_SECRET` | activation | Repris du compose existant. |
 | `VOICE_PRESENCE_POLL_INTERVAL_MS` | optionnel | Poll, minimum 5000, défaut 15000. |
 | `VOICE_WORKER_SHUTDOWN_TIMEOUT_MS` | optionnel | Arrêt propre, 1000 à 600000, défaut 40000 (garder sous 45 s). |

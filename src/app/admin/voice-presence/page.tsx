@@ -6,12 +6,14 @@ import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { pageMetadata } from "@/lib/page-title";
+import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
+import { accessibleSessionWhere } from "@/lib/session-access";
 
 export const metadata = pageMetadata("Durées vocales");
 
 export default async function VoicePresenceAdminPage() {
   // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas appliquées).
-  if (process.env.VOICE_PRESENCE_ENABLED !== "true") notFound();
+  if (!isVoicePresenceEnabled()) notFound();
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   if (!user) redirect("/");
   const isSiteAdmin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
@@ -34,6 +36,8 @@ export default async function VoicePresenceAdminPage() {
     const scopedDb = await scopedPrismaForCommunityId(communityId);
     return scopedDb.session.findMany({
       where: {
+        // Décision D6 : seules les soirées dont le viewer est le créateur ou un invité ACTIF (admin invité) sont listées.
+        AND: [accessibleSessionWhere(user.id)],
         voicePresenceConsents: {
           some: {
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
@@ -55,7 +59,7 @@ export default async function VoicePresenceAdminPage() {
       <div>
         <Link href="/sessions" className="text-sm text-muted hover:underline">← Soirées</Link>
         <h1 className="mt-2 text-xl font-semibold text-foreground sm:text-2xl">Durées vocales</h1>
-        <p className="mt-1 text-sm text-muted">Cette page ne montre que les données de présence vocale de soirées autorisées par ton rôle d&apos;admin.</p>
+        <p className="mt-1 text-sm text-muted">Cette page ne montre que les durées vocales des soirées que tu as créées ou auxquelles tu es invité en tant qu&apos;admin.</p>
       </div>
       {sessions.length ? (
         <ul className="flex flex-col gap-3">

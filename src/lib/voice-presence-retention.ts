@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { toWallClock } from "@/lib/wallclock";
+import { VOICE_PRESENCE_RETENTION_MS, voiceCollectionRetentionSessionDate } from "./voice-presence-policy";
 
 const DEFAULT_BATCH_SIZE = 500;
-const VOICE_PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export async function purgeExpiredVoicePresenceBatch(opts: {
   now?: Date;
@@ -17,6 +17,11 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
   const limit = opts.limit ?? DEFAULT_BATCH_SIZE;
   if (!Number.isSafeInteger(limit) || limit < 1) throw new RangeError("Voice presence retention limit must be positive");
 
+  // Borne dure de collecte (D7) : une soirée restée SCHEDULED sans clôture n'est plus collectée 12 h après sa date ;
+  // ses accords, lacunes et contrôle sans échéance (expiresAt NULL) expirent 30 jours après cette borne.
+  const staleSessionDate = voiceCollectionRetentionSessionDate(wallNow);
+  const staleScheduled = { is: { status: "SCHEDULED" as const, date: { lte: staleSessionDate } } };
+
   const intervals = await prisma.sessionVoicePresenceInterval.findMany({
     where: { expiresAt: { lte: now } },
     orderBy: { expiresAt: "asc" },
@@ -24,7 +29,7 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     select: { id: true },
   });
   const consents = await prisma.sessionVoicePresenceConsent.findMany({
-    where: { expiresAt: { lte: now } },
+    where: { OR: [{ expiresAt: { lte: now } }, { expiresAt: null, session: staleScheduled }] },
     orderBy: { expiresAt: "asc" },
     take: limit,
     select: { id: true },
@@ -37,12 +42,17 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     WHERE gap."expiresAt" <= ${now}
        OR (
          gap."expiresAt" IS NULL
+         AND session.status = 'SCHEDULED'
+         AND session."date" <= ${staleSessionDate}
+       )
+       OR (
+         gap."expiresAt" IS NULL
          AND session.status = 'DONE'
          AND control.status IN ('STOP_REQUESTED', 'FINALIZED')
          AND control."stopAt" IS NOT NULL
          AND control."stopAt" <= ${new Date(now.getTime() - VOICE_PRESENCE_RETENTION_MS)}
        )
-    ORDER BY COALESCE(gap."expiresAt", control."stopAt" + INTERVAL '30 days') ASC
+    ORDER BY COALESCE(gap."expiresAt", control."stopAt" + INTERVAL '30 days', session."date" + INTERVAL '30 days 12 hours') ASC
     LIMIT ${limit}
   `;
   const controls = await prisma.sessionVoicePresenceControl.findMany({
@@ -50,6 +60,15 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
       OR: [
         { status: "PURGED" },
         { status: "FINALIZED", stopAt: { lte: new Date(now.getTime() - VOICE_PRESENCE_RETENTION_MS) } },
+        {
+          status: "ACTIVE",
+          session: staleScheduled,
+          OR: [
+            { leaseOwner: null },
+            { leaseExpiresAt: null },
+            { leaseExpiresAt: { lte: wallNow } },
+          ],
+        },
         {
           status: "PURGE_REQUESTED",
           session: { is: { status: "CANCELLED" } },
@@ -90,7 +109,7 @@ export async function purgeExpiredVoicePresenceBatch(opts: {
     : { count: 0 };
   const controlDelete = controls.length
     ? await prisma.sessionVoicePresenceControl.deleteMany({
-      where: { sessionId: { in: controls.map(row => row.sessionId) }, status: { in: ["PURGED", "FINALIZED", "PURGE_REQUESTED"] } },
+      where: { sessionId: { in: controls.map(row => row.sessionId) }, status: { in: ["PURGED", "FINALIZED", "PURGE_REQUESTED", "ACTIVE"] } },
     })
     : { count: 0 };
 

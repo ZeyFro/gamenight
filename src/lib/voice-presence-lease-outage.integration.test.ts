@@ -54,7 +54,7 @@ describe.skipIf(!TEST_DATABASE_URL)("bail expiré pendant une coupure de base", 
     await db.community.create({ data: { id: COMMUNITY_ID, slug: COMMUNITY_ID, name: "Voice lease", discordGuildId: GUILD_ID, status: "ACTIVE" } });
     await db.user.create({ data: { id: ALICE_ID, discordId: ALICE_DISCORD, discordName: "Alice" } });
     await db.communityChannelConfig.create({ data: { communityId: COMMUNITY_ID, category: "VOICE", discordChannelId: CHANNEL_ID, enabled: true } });
-    await db.session.create({ data: { id: SESSION_ID, communityId: COMMUNITY_ID, createdById: ALICE_ID, date: new Date(Date.now() - 24 * 3600_000), status: "SCHEDULED" } });
+    await db.session.create({ data: { id: SESSION_ID, communityId: COMMUNITY_ID, createdById: ALICE_ID, date: new Date(Date.now() - 3 * 3600_000), status: "SCHEDULED" } });
     await db.sessionVoicePresenceConsent.create({ data: { sessionId: SESSION_ID, userId: ALICE_ID, consentedAt: new Date(Date.now() - 2 * 24 * 3600_000) } });
   });
 

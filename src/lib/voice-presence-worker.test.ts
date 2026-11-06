@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createVoicePresenceWorker,
+  isValidVoicePresenceDecision,
+  VOICE_PRESENCE_DECISION_PATTERN,
   voicePresenceWorkerConfig,
   type VoicePresenceTarget,
 } from "./voice-presence-worker";
@@ -9,8 +12,8 @@ const enabledEnv = {
   VOICE_PRESENCE_WORKER_MODE: "standalone",
   VOICE_PRESENCE_ENABLED: "true",
   DISCORD_BOT_TOKEN: "synthetic-token",
-  VOICE_PRESENCE_CONSENT_DECISION: "synthetic-consent-decision",
-  VOICE_PRESENCE_RETENTION_DECISION: "synthetic-retention-decision",
+  VOICE_PRESENCE_CONSENT_DECISION: "20261023-synthetic-consent",
+  VOICE_PRESENCE_RETENTION_DECISION: "20261023-synthetic-retention",
 };
 
 const target = (sessionId: string, channelId = "456789012345678901"): VoicePresenceTarget => ({
@@ -58,6 +61,26 @@ describe("voice presence worker (synthetic dependencies only)", () => {
       VOICE_PRESENCE_ENABLED: "true",
       DISCORD_BOT_TOKEN: "synthetic-token",
     })).toThrow("Voice presence worker configuration incomplete");
+  });
+
+  it("exige une référence de décision au format YYYYMMDD-identifiant, pas une simple chaîne non vide", () => {
+    for (const bad of ["x", "synthetic-consent-decision", "20261023", "20261023-", "20261023-ab", "2026-10-23-consent", "20261301-consent-v1", "20260230-consent-v1", "20261023-Consent", "20261023-consent v1", " 20261023-consent-v1"]) {
+      expect(isValidVoicePresenceDecision(bad), bad).toBe(false);
+    }
+    for (const good of ["20261023-consent-v1", "20261023-retention.v2_a", "20240229-abc"]) {
+      expect(isValidVoicePresenceDecision(good), good).toBe(true);
+    }
+    for (const name of ["VOICE_PRESENCE_CONSENT_DECISION", "VOICE_PRESENCE_RETENTION_DECISION"] as const) {
+      expect(() => voicePresenceWorkerConfig({ ...enabledEnv, [name]: "synthetic-consent-decision" }), name)
+        .toThrow("Voice presence worker configuration incomplete");
+      expect(() => voicePresenceWorkerConfig({ ...enabledEnv, [name]: "" }), name).toThrow("Voice presence worker configuration incomplete");
+    }
+    expect(voicePresenceWorkerConfig({ ...enabledEnv, VOICE_PRESENCE_CONSENT_DECISION: "20261023-consent-v1" })).toMatchObject({ token: "synthetic-token" });
+  });
+
+  it("garde la même expression de décision dans le diagnostic d'hôte (anti dérive)", () => {
+    const script = readFileSync("scripts/voice-host-diagnostic.mjs", "utf8");
+    expect(script).toContain(`DECISION_PATTERN = ${VOICE_PRESENCE_DECISION_PATTERN.toString()}`);
   });
 
   it("discovers active session targets, starts their collector, and stops it when the session ends", async () => {

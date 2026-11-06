@@ -1,10 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { VOICE_PRESENCE_RETENTION_MS, voiceCollectionEarliestSessionDate } from "./voice-presence-policy";
 
 export type VoicePresenceEndMode = "FINALIZE" | "PURGE";
 
 export const VOICE_PRESENCE_LEASE_MS = 45_000;
-const VOICE_PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
 async function findOpenVoicePresenceGap(tx: Prisma.TransactionClient, sessionId: string) {
   return tx.sessionVoicePresenceGap.findFirst({
@@ -129,6 +129,7 @@ export async function claimSessionVoicePresenceLease(
     const sessions = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Session"
       WHERE id = ${sessionId} AND status = 'SCHEDULED' AND date <= ${now}
+        AND date >= ${voiceCollectionEarliestSessionDate(now)}
       FOR UPDATE
     `;
     if (!sessions.length) return { claimed: false as const };
@@ -214,6 +215,7 @@ export async function validateSessionVoicePresenceLease(
     const sessions = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Session"
       WHERE id = ${sessionId} AND status = 'SCHEDULED' AND date <= ${now}
+        AND date >= ${voiceCollectionEarliestSessionDate(now)}
       FOR UPDATE
     `;
     if (!sessions.length) return false;

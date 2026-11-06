@@ -8,7 +8,7 @@ const mod = (await import(/* @vite-ignore */ url)) as {
   evaluate: (facts: unknown) => { id: string; status: string; detail: string }[];
   exitCodeFor: (checks: { status: string }[]) => number;
   parseArgs: (argv: string[]) => { error?: string; opts?: Record<string, unknown> };
-  parseEnvNames: (content: string) => { counts: Map<string, number>; flagIsFalse: boolean };
+  parseEnvNames: (content: string) => { counts: Map<string, number>; flagIsFalse: boolean; decisionFormatOk: Map<string, boolean> };
   REQUIRED_NAMES: string[];
   ACTIVATION_NAMES: string[];
 };
@@ -58,6 +58,19 @@ describe("diagnostic d'hôte du worker vocal (décisions pures, aucune E/S)", ()
     expect([...parsed.counts.keys()].sort()).toEqual(["DATABASE_URL", "DISCORD_BOT_TOKEN", "VOICE_PRESENCE_ENABLED"]);
     expect(parsed.flagIsFalse).toBe(true);
     expect(JSON.stringify([...parsed.counts])).not.toMatch(/postgresql|abc/);
+  });
+
+  it("signale en avertissement une référence de décision mal formée, sans exposer sa valeur", () => {
+    const parsed = mod.parseEnvNames("VOICE_PRESENCE_CONSENT_DECISION=oui-ok\nVOICE_PRESENCE_RETENTION_DECISION=20261023-retention-v1\n");
+    expect(Object.fromEntries(parsed.decisionFormatOk)).toEqual({
+      VOICE_PRESENCE_CONSENT_DECISION: false,
+      VOICE_PRESENCE_RETENTION_DECISION: true,
+    });
+    expect(JSON.stringify([...parsed.counts, ...parsed.decisionFormatOk])).not.toMatch(/oui-ok|20261023/);
+    const checks = mod.evaluate(facts({ env: { exists: true, mode: 0o600, uid: 0, gid: 0, ...names([...mod.REQUIRED_NAMES, ...mod.ACTIVATION_NAMES]), decisionFormatOk: parsed.decisionFormatOk } }));
+    expect(status(checks, "format:VOICE_PRESENCE_CONSENT_DECISION")).toBe("warn");
+    expect(status(checks, "format:VOICE_PRESENCE_RETENTION_DECISION")).toBeUndefined();
+    expect(JSON.stringify(checks)).not.toMatch(/oui-ok/);
   });
 
   it("refuse toute option d'écriture ou inconnue (usage = code 2) et accepte les options en lecture", () => {

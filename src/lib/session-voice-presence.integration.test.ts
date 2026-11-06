@@ -69,7 +69,7 @@ describe.skipIf(!TEST_DATABASE_URL)("session voice presence : course de révocat
       id: SESSION_ID,
       communityId: COMMUNITY_ID,
       createdById: USER_ID,
-      date: new Date(priorStart.getTime() - 24 * 60 * 60 * 1000),
+      date: new Date(priorStart.getTime() - 3 * 60 * 60 * 1000), // dans la borne D7 de 12 h,
       status: "SCHEDULED",
     } });
     await db.sessionVoicePresenceControl.create({ data: {

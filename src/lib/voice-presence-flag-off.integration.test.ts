@@ -48,6 +48,7 @@ describe.skipIf(!TEST_DATABASE_URL)("drapeau vocal éteint sur un schéma sans t
   let retention: typeof import("./retention-runner");
   let actions: typeof import("@/app/sessions/actions/voice-presence");
   let adminPage: typeof import("@/app/admin/voice-presence/page");
+  let adminDetailPage: typeof import("@/app/admin/voice-presence/[sessionId]/page");
   let n = 0;
 
   beforeAll(async () => {
@@ -82,6 +83,7 @@ describe.skipIf(!TEST_DATABASE_URL)("drapeau vocal éteint sur un schéma sans t
     retention = await import("./retention-runner");
     actions = await import("@/app/sessions/actions/voice-presence");
     adminPage = await import("@/app/admin/voice-presence/page");
+    adminDetailPage = await import("@/app/admin/voice-presence/[sessionId]/page");
   }, 240_000);
 
   afterAll(async () => {
@@ -152,6 +154,14 @@ describe.skipIf(!TEST_DATABASE_URL)("drapeau vocal éteint sur un schéma sans t
 
   it("la page admin des durées vocales répond notFound avant toute requête", async () => {
     await expect(adminPage.default()).rejects.toMatchObject({ digest: expect.stringContaining("404") });
+  }, 60_000);
+
+  it("la page admin de détail répond notFound avant toute requête (ni utilisateur, ni tables vocales)", async () => {
+    const { getCurrentUser } = await import("@/lib/current-user");
+    vi.mocked(getCurrentUser).mockClear();
+    await expect(adminDetailPage.default({ params: Promise.resolve({ sessionId: "any" }) }))
+      .rejects.toMatchObject({ digest: expect.stringContaining("404") });
+    expect(getCurrentUser).not.toHaveBeenCalled();
   }, 60_000);
 
   // Contrôle négatif : drapeau allumé sur le même schéma sans tables vocales => les accès échouent.
