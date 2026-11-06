@@ -1,3 +1,4 @@
+import { createECDH } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { create, createMany, scopedPrismaForCommunity, sendUserWebPush, loggerError, loggerWarn, eligibleChannelUserIds } = vi.hoisted(() => {
@@ -27,8 +28,12 @@ describe("notification Web Push", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("WEB_PUSH_ENABLED", "true");
     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.invalid");
-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "test-public-key");
-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "test-private-key");
+    // Une paire P-256 cohérente est requise par la validation stricte de #325.
+    // Générée uniquement dans ce test ; aucun secret VAPID de déploiement.
+    const vapid = createECDH("prime256v1");
+    vapid.generateKeys();
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", vapid.getPublicKey().toString("base64url"));
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", vapid.getPrivateKey().toString("base64url"));
     eligibleChannelUserIds.mockImplementation((userIds: string[]) => Promise.resolve(new Set(userIds)));
   });
 
