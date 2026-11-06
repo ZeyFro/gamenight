@@ -28,7 +28,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { CountUp } from "@/components/ui/CountUp";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
-import { TowerEntryPoints } from "@/components/app/TowerEntryPoints";
 import { Avatar } from "@/components/ui/Avatar";
 import { LoginLanding } from "@/components/app/LoginLanding";
 import { XpProgress } from "@/components/app/XpProgress";
@@ -301,7 +300,6 @@ async function HomeContent({
           📖 Guide
         </ButtonLink>
       </ParallaxHeader>
-      <TowerEntryPoints />
 
       <Stagger className="gn-home-sections" staggerDelay={0.04}>
         {/* Prochaine soirée + Stats du groupe côte à côte sur desktop —

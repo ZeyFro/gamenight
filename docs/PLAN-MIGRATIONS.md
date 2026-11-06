@@ -45,7 +45,29 @@ node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy
 
 Exiger zéro doublon/orphelin et une seule migration attendue. Consigner les contrôles, la cible, le SHA et la sauvegarde fraîche restaurable ; demander l’accord pour ce fichier sur cette branche. Après accord seulement, reprendre le même dry-run et ajouter `--execute --confirm-database=<BASE_VERIFIEE>` à la commande. Tout refus ou erreur impose l’arrêt, sans `resolve`, reset ou SQL de contournement.
 
-Pour #406, utiliser un checkout d’intégration contenant **les deux têtes ci-dessus et le runner de #370** : #406 seule ne contient pas ce runner. Après les contrôles de #370, répéter le dry-run avec `--expect=20261105120000_tower_launch_channels_appeals_matchmaking`, puis l’accord séparé et le contrôle final à 120 migrations. Si un rôle partagé est réellement nécessaire, son usage doit être explicitement accepté et signalé ; ne pas copier automatiquement l’option Production.
+Pour #406, utiliser un checkout d’intégration contenant **les deux têtes revues et le runner de #370**. La tête 97353dc intègre désormais #370 ; les anciennes têtes #406 seules ne contenaient pas ce runner. Après les contrôles de #370, répéter le dry-run avec `--expect=20261105120000_tower_launch_channels_appeals_matchmaking`, puis l’accord séparé et le contrôle final à 120 migrations. Si un rôle partagé est réellement nécessaire, son usage doit être explicitement accepté et signalé ; ne pas copier automatiquement l’option Production.
+
+### Restauration de la branche de test — préparation, aucune exécution
+
+Sauvegarde indépendante annoncée et vérifiée par le propriétaire :
+`backup-tower-migration-test-20261106` (`br-purple-mud-b1nt0tfi`),
+parent cible `br-snowy-snow-b1cggq2w`, LSN `0/2A355C30`.
+Revalider via le contrôle Neon autorisé son état ready, sa filiation, son point
+restaurable et la période de rétention ; une déclaration historique ne suffit pas.
+Ne pas modifier cette branche de sauvegarde. Dix branches sont déjà utilisées :
+aucune création ou suppression supplémentaire n'est autorisée.
+
+En cas d'échec : arrêter les migrations suivantes et les writers de recette,
+conserver les diagnostics expurgés et l'historique Prisma, puis faire revoir le
+plan de restauration par le propriétaire. Identifier uniquement la branche de
+TEST comme destination ; exclure explicitement Production et la sauvegarde.
+Faire confirmer dans l'interface Neon la procédure supportée pour restaurer
+cette destination depuis le point sauvegardé, son impact sur les données de test
+et les connexions, puis demander l'autorisation distincte avant toute écriture.
+Si le mécanisme exige une nouvelle branche ou une suppression, rester bloqué :
+aucune libération de quota ni opération destructive automatique. Après restauration
+autorisée, revérifier identité, historique, contraintes et intégrité avant reprise.
+Aucune restauration n'a été exécutée ni son exploitabilité prouvée par cette session.
 
 ### Production — option B, procédure préparée uniquement
 

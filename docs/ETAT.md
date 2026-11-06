@@ -23,8 +23,11 @@ Les états CI ci-dessous sont des relevés ; consulter GitHub avant de reprendre
 - #418 `05ccb6c` : workflow limité au dry-run, rôles runtime/migration distincts
   et paramétrés, runner chronologique #370, contrôle READ ONLY identité/DDL.
   16 tests, lint/tsc réussis, revue statique effectuée. Pas encore activé.
-- #408 : intégration des parents #407/#406 corrigés en cours ; 60 tests ciblés
-  déjà réussis. #413 porte ce point de reprise ; #416 attend cette intégration.
+- #408 `0e9ff59` : parents corrigés intégrés ; 60 tests ciblés, typegen/tsc,
+  lint et build réussis, npm ci complet (605 paquets, TLS actif).
+- #416 `3f2702f` : #408 intégrée ; 81 tests ciblés, typegen/tsc et lint ciblé
+  réussis. Aucun enregistrement Discord. CI distante des nouvelles têtes en attente.
+- #413 porte ce point de reprise et un reciblage documentaire vers main.
 
 ## Migrations et droits : distinguer local et distant
 
@@ -53,7 +56,7 @@ Procédure de rôle : branche de #418, `docs/operations/NEON_TEST_MIGRATION_ROLE
    Toute migration, y compris test, attend son accord explicite, une sauvegarde
    validée et les précontrôles ; #370 puis #406 seulement. La migration #407 exige
    sa propre revue et autorisation. Production option B : préparation uniquement.
-3. Finir la CI et les dépendances #408, #413, #416 ; vérifier les résultats distants
+3. Relever la CI des dépendances actualisées #408, #413, #416 ; vérifier les résultats distants
    des nouvelles têtes #370/#406/#418. Un push groupé par PR, aucun skip ci.
 4. #325 exclusivement Claude Code. Prévenir le propriétaire seulement lorsque
    #370 ET #406 seront réellement fusionnées et leurs migrations appliquées ;
@@ -65,3 +68,9 @@ Procédure de rôle : branche de #418, `docs/operations/NEON_TEST_MIGRATION_ROLE
 Aucune fusion, passage Ready, migration distante, variable Vercel, flag,
 modification Discord ou API payante effectuée. Quota réel non mesurable : cible
 10 % non garantie ; poursuivre raisonnablement sans boucle ni relance inutile.
+
+Attention #410 : fusionnée historiquement dans l'ancienne branche documentaire,
+ses points d'entrée UI ne sont pas dans main. Le reciblage documentaire #413
+n'importe pas ces fichiers hérités ; #410 et son historique ne sont pas modifiés.
+Préserver ce travail et prévoir sa réintégration séparée après libération d'une
+place sous le plafond de dix PR de code. Ne pas annoncer sa livraison sur main.

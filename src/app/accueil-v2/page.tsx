@@ -15,7 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { CountUp } from "@/components/ui/CountUp";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
-import { TowerEntryPoints } from "@/components/app/TowerEntryPoints";
 import { Avatar } from "@/components/ui/Avatar";
 import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
@@ -77,7 +76,6 @@ export default async function AccueilV2Page() {
             📖 Guide
           </ButtonLink>
         </ParallaxHeader>
-      <TowerEntryPoints />
 
         <Stagger className="flex flex-col gap-8" staggerDelay={0.1}>
           {/* 1 — La prochaine soirée, puis les actions. */}
