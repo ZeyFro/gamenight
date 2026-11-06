@@ -4,6 +4,42 @@
 
 Les ordres SQL ci-dessous décrivent le DDL et les écritures des fichiers publiés sur les têtes actuelles des PR. Les commandes de retour arrière sont des **propositions à examiner**, pas un mécanisme Prisma ni des instructions à exécuter sans sauvegarde restaurée, contrôle de dépendances et autorisation distincte pour la migration concernée. Plusieurs retours arrière supprimeraient des données créées depuis l’application.
 
+## Exécution Tower retenue — préparation du 6 novembre 2026
+
+Le périmètre autorisé de préparation est **#370 puis #406 uniquement**. Les autres migrations recensées historiquement ci-dessous restent gelées et ne doivent pas entrer dans le checkout opérateur. Aucune migration Neon ou Production n’a été exécutée par cette session.
+
+### Preuve locale et provenance
+
+Répétition sur PostgreSQL 16 isolé, copie locale d’un historique fictif à 118 migrations : dry-run exact puis exécution du runner #370, passage à 119 ; assemblage local de #370 et #406, dry-run exact puis exécution #406, passage à **120 terminées, zéro inachevée**. Les six tests Vitest du garde chronologique passent. Les agrégats locaux donnent zéro doublon membre et zéro créateur orphelin. Le script distant de précontrôle refuse volontairement localhost (même avec un argument `--allow-local`, non pris en charge) ; il n’a pas été modifié ni présenté comme exécuté avec succès. Le premier lancement de ces tests avec `node --test` était inadapté (tests Vitest), puis la commande correcte a réussi ; aucun changement du runner.
+
+| PR / tête vérifiée | Migration | SHA-256 du SQL |
+| --- | --- | --- |
+| #370 `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` | `20261104140000_tower_team_membership_policy` | `9f642e6200bef888669e9c058bf1623ad582cd2772ea5e433a7b78bfa596db8f` |
+| #406 `1a495ede501784167b597c43438c1527b2d58082` | `20261105120000_tower_launch_channels_appeals_matchmaking` | `e7782519fcdf5e9637f131fbd348ceb07c8f6f177dbe87f82ba9a18f6c94a9de` |
+
+Le rôle local de test était `postgres`, sans rôle runtime fourni : avertissement explicite du runner, acceptable uniquement pour cette répétition locale. Ce résultat ne prouve ni l’état de Neon ni la restauration d’une sauvegarde Production.
+
+### Branche Neon de test — arrêt avant toute écriture distante
+
+Cible attendue : projet `misty-tooth-45335023`, branche `tower-migration-test-20261105` (`br-snowy-snow-b1cggq2w`), non primaire et non par défaut. Revalider ces métadonnées et la correspondance de l’hôte direct avant connexion ; l’ancien relevé de 118 migrations n’est pas une vérification actuelle.
+
+Injecter `MIGRATION_DATABASE_URL` par liaison secrète, jamais dans un fichier, une commande contenant sa valeur ou le chat. Définir `GAMENIGHT_EXPECTED_TARGET` avec l’hôte direct vérifié et la base exacte, et `GAMENIGHT_RUNTIME_ROLE` avec le rôle runtime vérifié. Aucune URL concurrente de migration ne doit être injectée. Utiliser Node 22 et un checkout propre #370 avec `npm ci` et `prisma generate`. Ces commandes n’autorisent pas l’exécution distante :
+
+```sh
+node scripts/check-team-membership-duplicates.mjs
+node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy
+```
+
+Exiger zéro doublon/orphelin et une seule migration attendue. Consigner les contrôles, la cible, le SHA et la sauvegarde fraîche restaurable ; demander l’accord pour ce fichier sur cette branche. Après accord seulement, reprendre le même dry-run et ajouter `--execute --confirm-database=<BASE_VERIFIEE>` à la commande. Tout refus ou erreur impose l’arrêt, sans `resolve`, reset ou SQL de contournement.
+
+Pour #406, utiliser un checkout d’intégration contenant **les deux têtes ci-dessus et le runner de #370** : #406 seule ne contient pas ce runner. Après les contrôles de #370, répéter le dry-run avec `--expect=20261105120000_tower_launch_channels_appeals_matchmaking`, puis l’accord séparé et le contrôle final à 120 migrations. Si un rôle partagé est réellement nécessaire, son usage doit être explicitement accepté et signalé ; ne pas copier automatiquement l’option Production.
+
+### Production — option B, procédure préparée uniquement
+
+Ne commencer qu’après validation de la branche de test, revue indépendante et accord explicite de migration Production. Revalider l’identité Production, le nombre réel de migrations et les agrégats d’intégrité ; aucune donnée de Production ne sert aux tests. Injecter séparément sa connexion directe via le gestionnaire de secrets et définir la cible exacte. Si le rôle runtime et de migration est bien `neondb_owner`, définir `GAMENIGHT_RUNTIME_ROLE=neondb_owner` et ajouter `--allow-shared-role` : mode dégradé explicite, pas une séparation de rôles.
+
+Pour chaque fichier, dans l’ordre #370 puis #406 : checkout approprié, contrôle d’intégrité, dry-run exact avec `--allow-shared-role`, accord désignant fichier et cible, **snapshot frais vérifié restaurable immédiatement avant chaque exécution**, puis seulement `--execute --confirm-database=<BASE_VERIFIEE>`. Exiger « aucune en attente » et zéro migration inachevée après chaque étape ; un nouveau dry-run déjà appliqué renvoie 2 (« Rien à faire »). Toute divergence bloque la suite. Ne pas lancer de rollback, redéploiement, migration ancienne ou merge automatiquement. L’accord de migration n’autorise ni Ready ni merge, ni flags, ni Discord.
+
 ## Synthèse et ordre proposé
 
 | Ordre | Fichier | PR | Dépendance / raison |
@@ -23,11 +59,11 @@ Cet ordre est un **ordre de dépendance et de nommage**, pas une recommandation 
 
 Le simple merge de #370 et #406 n'applique rien. **Si leurs migrations ont d'abord été exécutées manuellement**, puis que les six fichiers #325 arrivent dans le checkout plus tard, leurs noms d'horodatage sont antérieurs à ceux de #370/#406.
 
-Dans la version proposée de `scripts/db-migrate.mjs` de #370, le runner compare les fichiers disponibles à `_prisma_migrations` et exige que `--expect` corresponde exactement à la liste en attente. Il ne compare toutefois pas le plus ancien fichier en attente à la migration réussie la plus récente déjà appliquée. Si #325 constitue ensuite la liste exacte passée à `--expect`, le runner appelle `prisma migrate deploy`; Prisma applique les migrations présentes sur disque qui restent en attente, dans l'ordre lexicographique des dossiers, en laissant les migrations #370/#406 déjà appliquées dans l'historique. Il n'annule pas ces migrations plus récentes. Le dry-run liste les noms « À appliquer » et l'exécution exige `--execute` plus `--confirm-database`, mais le runner ne signale pas spécialement cet ordre tardif et ne le refuse pas.
+Dans la version initiale, antérieure au correctif chronologique décrit ci-dessous, de `scripts/db-migrate.mjs` de #370, le runner comparait les fichiers disponibles à `_prisma_migrations` et exige que `--expect` corresponde exactement à la liste en attente. Il ne compare toutefois pas le plus ancien fichier en attente à la migration réussie la plus récente déjà appliquée. Si #325 constitue ensuite la liste exacte passée à `--expect`, le runner appelle `prisma migrate deploy`; Prisma applique les migrations présentes sur disque qui restent en attente, dans l'ordre lexicographique des dossiers, en laissant les migrations #370/#406 déjà appliquées dans l'historique. Il n'annule pas ces migrations plus récentes. Le dry-run liste les noms « À appliquer » et l'exécution exige `--execute` plus `--confirm-database`, mais le runner ne signale pas spécialement cet ordre tardif et ne le refuse pas.
 
 Références : [runner proposé dans #370](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate.mjs), [contrôle de la liste attendue](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate-lib.mjs), [ordre lexicographique de Prisma Migrate](https://www.prisma.io/docs/orm/v6/prisma-migrate/getting-started) et [application des migrations en attente](https://www.prisma.io/docs/orm/v6/prisma-migrate/workflows/development-and-production).
 
-**Protection ajoutée dans la tête de la PR #370** (`711210265fa6164f523a49b3cd8d9f818abf154d`) : le runner refuse maintenant l'exécution si la plus ancienne migration en attente précède la dernière migration réussie. Le message affiche les deux noms et demande de réconcilier l'historique. Le nouveau fichier `scripts/db-migrate-lib.test.mjs` couvre le cas #325 tardif, l'ordre normal et les autres refus de précontrôle. Le test ciblé `Test migration runner guards` passe sur la tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb`; la CI générale reste en cours. La PR #325 reste gelée et chaque migration de Production nécessite toujours son autorisation séparée.
+**Protection ajoutée dans la tête de la PR #370** (`711210265fa6164f523a49b3cd8d9f818abf154d`) : le runner refuse maintenant l'exécution si la plus ancienne migration en attente précède la dernière migration réussie. Le message affiche les deux noms et demande de réconcilier l'historique. Le nouveau fichier `scripts/db-migrate-lib.test.mjs` couvre le cas #325 tardif, l'ordre normal et les autres refus de précontrôle. Le test ciblé `Test migration runner guards` passe sur la tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb`; la CI générale a depuis réussi sur cette tête. La PR #325 reste gelée et chaque migration de Production nécessite toujours son autorisation séparée.
 
 ## Détail par migration
 
