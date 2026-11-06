@@ -15,6 +15,22 @@ async function limitLockWait(tx: Prisma.TransactionClient) {
   await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = ${SHOP_LOCK_TIMEOUT_MS}`);
 }
 
+/** Erreur PostgreSQL « lock_not_available » (55P03) : une autre session garde la ligne verrouillée au-delà du délai. */
+export function isShopLockTimeout(error: unknown) {
+  const e = error as { code?: string; meta?: { code?: string }; message?: string } | null;
+  return e?.meta?.code === "55P03" || e?.code === "55P03" || /lock timeout/i.test(String(e?.message ?? ""));
+}
+
+/** Transaction boutique : un délai de verrou dépassé devient le statut visible « busy » (rien n'est écrit), toute autre erreur remonte. */
+async function shopTransaction<T>(run: (tx: Prisma.TransactionClient) => Promise<T>) {
+  try {
+    return await prisma.$transaction(run, SHOP_TX_OPTIONS);
+  } catch (error) {
+    if (isShopLockTimeout(error)) return "busy" as const;
+    throw error;
+  }
+}
+
 export const XP_SHOP_ITEMS = [
   { id: "title-strategist", kind: "TITLE", name: "Stratège", value: "Stratège", price: 250 },
   { id: "title-night-owl", kind: "TITLE", name: "Noctambule", value: "Noctambule", price: 350 },
@@ -72,7 +88,7 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
   const item = getShopItem(itemId);
   if (!item) return "invalid" as const;
 
-  return prisma.$transaction(async (tx) => {
+  return shopTransaction(async (tx) => {
     await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
@@ -98,7 +114,7 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
     });
     await tx.communityMemberCosmetic.create({ data: { communityId, userId, itemId } });
     return "purchased" as const;
-  }, SHOP_TX_OPTIONS);
+  });
 }
 
 export async function equipShopItem(
@@ -110,7 +126,7 @@ export async function equipShopItem(
   const item = itemId ? getShopItem(itemId) : null;
   if (itemId && (!item || item.kind !== kind)) return "invalid" as const;
 
-  return prisma.$transaction(async (tx) => {
+  return shopTransaction(async (tx) => {
     await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
@@ -126,7 +142,7 @@ export async function equipShopItem(
       data: { [field]: item?.id ?? null },
     });
     return "equipped" as const;
-  }, SHOP_TX_OPTIONS);
+  });
 }
 
 export function cosmeticById(itemId: string | null | undefined) {

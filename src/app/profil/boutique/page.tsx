@@ -19,6 +19,7 @@ const STATUS_MESSAGES: Record<string, string> = {
   invalid: "Objet invalide.",
   unavailable: "Cette communauté n’est plus accessible.",
   no_community: "Choisis une communauté pour utiliser sa réserve d’XP.",
+  busy: "La boutique est occupée. Rien n’a été débité : réessaie dans un instant.",
 };
 
 export default async function XpShopPage({

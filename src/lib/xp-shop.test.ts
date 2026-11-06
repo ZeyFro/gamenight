@@ -85,3 +85,15 @@ describe("boutique : solde distinct de la progression", () => {
     }
   });
 });
+
+describe("isShopLockTimeout", () => {
+  it("reconnaît l'annulation PostgreSQL 55P03 sous ses formes Prisma et rien d'autre", async () => {
+    const { isShopLockTimeout } = await import("./xp-shop");
+    expect(isShopLockTimeout({ meta: { code: "55P03" } })).toBe(true);
+    expect(isShopLockTimeout({ code: "55P03" })).toBe(true);
+    expect(isShopLockTimeout(new Error("canceling statement due to lock timeout"))).toBe(true);
+    expect(isShopLockTimeout({ code: "P2002", message: "Unique constraint failed" })).toBe(false);
+    expect(isShopLockTimeout(new Error("Transaction API error"))).toBe(false);
+    expect(isShopLockTimeout(null)).toBe(false);
+  });
+});

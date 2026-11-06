@@ -51,7 +51,7 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : une seule connexion, verrou e
     expect(await db.communityMemberStats.findUniqueOrThrow({ where: statsKey() })).toMatchObject({ xpTotal: 1_000, xpBalance: 750, equippedTitleId: "title-strategist" });
   });
 
-  it("verrou externe sur la ligne de stats : échec explicite « lock timeout » après 8 s, une seule connexion applicative, aucune écriture", async () => {
+  it("verrou externe sur la ligne de stats : statut « busy » après 8 s, une seule connexion applicative, aucune écriture", async () => {
     const { PrismaClient } = await import("@prisma/client");
     const holder = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
     let release!: () => void;
@@ -65,10 +65,11 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : une seule connexion, verrou e
     }, { timeout: 60_000 });
     await acquired;
     let failure: unknown;
+    let outcome: unknown;
     let connections = -1;
     const started = Date.now();
     try {
-      const purchase = shop.buyShopItem(userId, communityId, "frame-nebula").catch((error: unknown) => { failure = error; });
+      const purchase = shop.buyShopItem(userId, communityId, "frame-nebula").then((value: unknown) => { outcome = value; }, (error: unknown) => { failure = error; });
       await new Promise((resolve) => setTimeout(resolve, 3_000)); // l'achat attend désormais le verrou
       const [row] = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = ${APP_NAME}`;
       connections = row.n;
@@ -79,8 +80,8 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : une seule connexion, verrou e
       await holder.$disconnect();
     }
     expect(connections).toBe(1);
-    expect(failure, "l'achat doit échouer, pas réussir ni rester silencieux").toBeInstanceOf(Error);
-    expect(String((failure as Error).message)).toMatch(/lock timeout/);
+    expect(failure, "le délai de verrou ne doit pas remonter en erreur 500").toBeUndefined();
+    expect(outcome, "statut visible « busy » (rien débité)").toBe("busy");
     expect(Date.now() - started).toBeGreaterThanOrEqual(7_500);
     expect(Date.now() - started).toBeLessThan(15_000); // avant le délai de transaction : l'erreur vient de PostgreSQL, pas de l'expiration Prisma
     expect(await db.communityMemberStats.findUniqueOrThrow({ where: statsKey() })).toMatchObject({ xpTotal: 1_000, xpBalance: 1_000 });

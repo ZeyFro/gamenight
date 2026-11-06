@@ -76,7 +76,7 @@ try {
     people[key] = user;
   }
   people.eve = await db.user.create({ data: { discordId: `${run}-eve`, discordName: "Eve", onboardingCompleted: true } });
-  const { alice, bob, carol, dave, eve } = people;
+  const { alice, bob, carol, dave } = people;
   const games = {};
   for (const name of ["Alpha", "Beta"]) {
     games[name] = await db.game.create({ data: { name: `${name} ${run.slice(-6)}`, source: "MANUAL", addedById: alice.id, minPlayers: 1, maxPlayers: 4 } });
