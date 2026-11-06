@@ -43,10 +43,13 @@ enum FreeGameStore {
 }
 
 model User {
+  captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
+  towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
   sessionGalleryMedia SessionGalleryMedia[]
@@ -2505,17 +2508,39 @@ enum UserNotificationCategory {
   // `enabled = NOT silenceReminders`, jamais une réactivation silencieuse
   // pour un compte ayant déjà demandé le silence global.
   INSTANT_SESSION
+  // RÃ©compense individuelle dÃ©jÃ  produite par reward-notifications.ts.
+  // Aucun canal personnel ne suit silenceReminders par dÃ©faut.
+  REWARD
 }
 
 model UserNotificationPreference {
   userId    String
   category  UserNotificationCategory
   enabled   Boolean                  @default(true)
-  updatedAt DateTime                 @updatedAt
+  updatedAt DateTime                 @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, category])
+}
+
+enum UserNotificationChannel {
+  IN_APP
+  WEB_PUSH
+  DISCORD_DM
+  DISCORD_MENTION
+}
+
+model UserNotificationChannelPreference {
+  userId    String
+  category  UserNotificationCategory
+  channel   UserNotificationChannel
+  enabled   Boolean                  @default(true)
+  updatedAt DateTime                 @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category, channel])
 }
 
 // Destination logique d'une livraison, indépendante du transport réellement
@@ -2759,6 +2784,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
   quickPolls CommunityQuickPoll[]
@@ -2862,6 +2888,11 @@ model PlayerClassified {
   message     String   @db.VarChar(240)
   createdAt   DateTime
   expiresAt   DateTime
+  startsAt    DateTime?
+  durationMinutes Int?
+  partyType   PartyType?
+  platform    String?  @db.VarChar(40)
+  microphoneRequirement MicrophoneRequirement?
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -2871,22 +2902,37 @@ model PlayerClassified {
   @@index([createdById, communityId])
 }
 
+enum PartyType {
+  CASUAL
+  COMPETITIVE
+  COOPERATIVE
+}
+
+enum MicrophoneRequirement {
+  REQUIRED
+  OPTIONAL
+  NONE
+}
+
 model CommunityTeam {
   id          String   @id @default(cuid())
   communityId String
   gameId      String
   createdById String
+  captainId String?
   name        String   @db.VarChar(80)
   description String   @db.VarChar(1000)
   platform    String   @db.VarChar(40)
   maxMembers  Int
   isRecruiting Boolean @default(true)
+  captainLastActivityAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  captain User? @relation("CommunityTeamCaptain", fields: [captainId], references: [id], onDelete: SetNull)
   members   CommunityTeamMember[]
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
@@ -2908,6 +2954,7 @@ model CommunityTeamMember {
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
+  @@unique([communityId, userId])
   @@index([communityId, userId])
 }
 
@@ -3119,6 +3166,8 @@ model Membership {
   // Dernière vérification d'appartenance au serveur Discord (cron rotatif,
   // PR suivante).
   lastVerifiedAt DateTime?
+  // Dernier départ volontaire d’une équipe (délai d’attente de 7 jours).
+  lastTeamLeftAt DateTime?
 
   @@unique([communityId, userId])
   @@index([userId])
@@ -3193,10 +3242,15 @@ model TowerChallengeAttempt {
   proofText String? @db.VarChar(1500)
   proofChannelId String? @db.VarChar(20)
   proofMessageId String? @db.VarChar(20)
+  proofCode String? @db.VarChar(12)
   publicationConsent Boolean @default(false)
   rewardedAt DateTime?
+  rejectedAt DateTime?
+  staffReportedAt DateTime?
+  archivedAt DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
+  appeal TowerChallengeAppeal?
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3204,6 +3258,37 @@ model TowerChallengeAttempt {
   @@index([communityId, userId, rewardedAt])
   @@index([communityId, teamId, status])
   @@index([communityId, status, submittedAt])
+  @@unique([communityId, proofCode])
+  @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+enum TowerChallengeAppealStatus {
+  OPEN
+  UPHELD
+  OVERTURNED
+}
+
+model TowerChallengeAppeal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: NoAction)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: NoAction)
+  authorUserId String
+  reason String @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  dueAt DateTime
+  status TowerChallengeAppealStatus @default(OPEN)
+  reviewerUserId String?
+  arbiterUserId String?
+  arbiterUser User? @relation("TowerChallengeAppealArbiter", fields: [arbiterUserId], references: [id], onDelete: NoAction)
+  decisionReason String? @db.VarChar(1000)
+  decidedAt DateTime?
+
+  @@unique([attemptId, communityId])
+  @@index([communityId, status, createdAt])
+  @@index([communityId, status, dueAt])
+  @@index([communityId, status, arbiterUserId])
 }
 
 model TowerChallengeAttemptParticipant {
