@@ -50,17 +50,16 @@ jobs:
             if ! status="$(curl --silent --output "$response_file" --write-out '%{http_code}' \
               --max-time 40 --request GET \
               --header "Authorization: Bearer ${CRON_SECRET}" "$endpoint")"; then
-              echo "The endpoint request failed or timed out."
-              exit 1
+              status="000"
             fi
 
-            if [[ "$status" == "503" ]]; then
+            if [[ "$status" == "503" || "$status" == "504" || "$status" == "000" ]]; then
               if [[ "$attempt" -lt 3 ]]; then
-                echo "Endpoint returned HTTP 503; retry $((attempt + 1))/3."
+                echo "Endpoint returned a retryable error; retry $((attempt + 1))/3."
                 sleep "$((attempt * 15))"
                 continue
               fi
-              echo "Endpoint returned HTTP 503 on all 3 attempts."
+              echo "Endpoint returned a retryable error on all 3 attempts."
               exit 1
             fi
 
@@ -69,8 +68,8 @@ jobs:
               exit 1
             fi
 
-            if ! jq -e '.enabled == true and .failed == 0' "$response_file" >/dev/null; then
-              echo "Endpoint did not confirm enabled=true and failed=0."
+            if ! jq -e '.enabled == true and .failed == 0 and .complete == true' "$response_file" >/dev/null; then
+              echo "Endpoint did not confirm enabled=true, failed=0 and complete=true."
               exit 1
             fi
 

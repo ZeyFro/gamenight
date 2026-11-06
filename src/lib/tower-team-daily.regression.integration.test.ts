@@ -139,4 +139,48 @@ describe.skipIf(!url)("#396 — contre-tests du lot, des reprises et du budget",
       await work;
     }
   }, 10_000);
+
+  it("respecte aussi l'échéance quand un second verrou est rencontré tard dans la transaction", async () => {
+    await seedTeams(1);
+    let releaseCommunity!: () => void;
+    let releaseDefinition!: () => void;
+    let communityReady!: () => void;
+    let definitionReady!: () => void;
+    const communityGate = new Promise<void>(resolve => { releaseCommunity = resolve; });
+    const definitionGate = new Promise<void>(resolve => { releaseDefinition = resolve; });
+    const lockedCommunity = new Promise<void>(resolve => { communityReady = resolve; });
+    const lockedDefinition = new Promise<void>(resolve => { definitionReady = resolve; });
+    const firstLock = db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Community" WHERE id = ${communityId} FOR UPDATE`;
+      communityReady();
+      await communityGate;
+    }, { timeout: 5000 });
+    const secondLock = db.$transaction(async tx => {
+      await tx.$executeRaw`LOCK TABLE "TowerChallengeDefinition" IN ACCESS EXCLUSIVE MODE`;
+      definitionReady();
+      await definitionGate;
+    }, { timeout: 5000 });
+    let work: Promise<unknown> | undefined;
+    try {
+      await Promise.all([lockedCommunity, lockedDefinition]);
+      const { getTeamDailyTowerChallenge } = await import("./tower-challenges");
+      let settled = false;
+      work = getTeamDailyTowerChallenge({ communityId, userId: userId(0), teamId: teamId(0) }, new Date(Date.now() + 1000))
+        .then(value => { settled = true; return value; }, error => { settled = true; return { error }; });
+      await pause(600);
+      releaseCommunity();
+      await firstLock;
+      await pause(600);
+      const bounded = settled;
+      releaseDefinition();
+      await secondLock;
+      await work;
+      expect(bounded, "le budget est absolu, pas renouvelé par chaque instruction SQL").toBe(true);
+      expect(await db.towerChallengeAttempt.count({ where: { communityId } })).toBe(0);
+    } finally {
+      releaseCommunity();
+      releaseDefinition();
+      await Promise.allSettled([firstLock, secondLock, work]);
+    }
+  }, 10_000);
 });

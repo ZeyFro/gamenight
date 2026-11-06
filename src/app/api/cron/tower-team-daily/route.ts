@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { assignDailyTowerTeamChallenges } from "@/lib/tower-team-daily";
+import { logger } from "@/lib/logger";
 
 export const maxDuration = 30;
 
@@ -17,9 +18,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ enabled: false, checked: 0, failed: 0 });
   }
 
-  const summary = await assignDailyTowerTeamChallenges(new Date(Date.now() + 20_000));
+  let summary;
+  try {
+    summary = await assignDailyTowerTeamChallenges(new Date(Date.now() + 20_000));
+  } catch {
+    logger.error("tower:team-daily", "Attribution interrompue avant le bilan du lot");
+    return NextResponse.json({ enabled: true, checked: 0, failed: 1, complete: false }, { status: 503 });
+  }
   return NextResponse.json(
     { enabled: true, ...summary },
-    { status: summary.failed > 0 ? 503 : 200 },
+    { status: summary.failed > 0 || !summary.complete ? 503 : 200 },
   );
 }
