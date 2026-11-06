@@ -37,6 +37,12 @@ export const EXPECTED_ROLLOUT_MIGRATIONS = [
   "20261022142500_shop_balance_purchase_reason",
 ];
 
+/**
+ * Vrai une fois le lot renommé avec l'horodatage réel (phase 4, scripts/rename-xp-lot-migrations.mjs). Tant que c'est faux, le lot
+ * est plus ancien que des migrations de main : la garde chronologique du runner le refuserait. À retirer avec cette porte après le merge.
+ */
+export const XP_LOT_RENAMED = false;
+
 /** Migrations du checkout absentes de la référence (ex. origin/main), triées : le lot à appliquer. */
 export function deriveRolloutMigrations(checkoutMigrations, refMigrations) {
   const ref = new Set(refMigrations);
