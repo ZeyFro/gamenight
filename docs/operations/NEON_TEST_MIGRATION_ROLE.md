@@ -39,10 +39,14 @@ les droits nécessaires et l'absence de privilèges globaux ; il ne provisionne 
 
 ## Verrous avant activation
 
-1. Vérifier indépendamment le mapping endpoint → projet/branche. L'URL Cloud
-   observée le 6 novembre ne correspond pas à l'endpoint épinglé du workflow.
-   Le contrôle a refusé toute écriture ; ne pas modifier la cible pour masquer
-   cet écart. Ne publier aucune URL de connexion.
+1. Mapping endpoint → projet/branche confirmé en lecture seule par le connecteur
+   Neon de ChatGPT le 6 novembre vers 18 h 35 Paris :
+   [preuve indépendante](https://github.com/ZeyFro/gamenight/pull/418#issuecomment-6691282780).
+   Endpoint direct : `ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech`,
+   base `neondb`, projet et branche exactement ceux indiqués en tête.
+   Le workflow épingle cette cible ; ses contrôles projet/branche/base/login et
+   séparation des rôles restent obligatoires à chaque dry-run. Ne publier aucune
+   URL de connexion ni confondre cette preuve avec un dry-run Prisma réussi.
 2. Obtenir un accès GitHub autorisé à créer l'environnement, sa restriction à
    main et son secret : l'intégration actuelle renvoie 403. Ne pas utiliser un
    secret de dépôt comme remplacement plus large.

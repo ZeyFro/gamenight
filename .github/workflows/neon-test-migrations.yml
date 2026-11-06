@@ -80,7 +80,7 @@ jobs:
         run: node scripts/neon-test-preflight.mjs
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-          GAMENIGHT_EXPECTED_TARGET: ep-snowy-mode-b10ef254.c-5.eu-central-1.aws.neon.tech/neondb
+          GAMENIGHT_EXPECTED_TARGET: ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech/neondb
           GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
           GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}
 
@@ -88,6 +88,6 @@ jobs:
         run: node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy,20261105120000_tower_launch_channels_appeals_matchmaking
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-          GAMENIGHT_EXPECTED_TARGET: ep-snowy-mode-b10ef254.c-5.eu-central-1.aws.neon.tech/neondb
+          GAMENIGHT_EXPECTED_TARGET: ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech/neondb
           GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
           GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}
