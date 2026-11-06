@@ -58,6 +58,10 @@ export async function GET(request: Request) {
     );
   }
 
+  if (process.env.VERCEL_ENV === "preview") {
+    return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
+  }
+
   const enabled = process.env.NOTIFICATION_EXECUTOR_ENABLED === "true";
   if (!enabled) {
     // Aucun claim, aucune consommation de tentative, aucun appel Discord —

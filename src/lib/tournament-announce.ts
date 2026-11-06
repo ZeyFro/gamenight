@@ -14,7 +14,7 @@ import {
   parseDmRole,
 } from "@/lib/discord-dm";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterUsersByNotificationChannelPreference } from "@/lib/notification-channel-preferences";
 import {
   createNotificationEvent,
   enqueueDelivery,
@@ -748,13 +748,15 @@ function resolveTournamentAnnounceRendering(tournament: TournamentWithMatches | 
 async function resolveEligibleTournamentMentions(
   candidateMentionIds: string[],
   communityId: string | null,
+  channel: "DISCORD_DM" | "DISCORD_MENTION" | null = "DISCORD_MENTION",
 ): Promise<{ id: string; discordId: string; silenceReminders: boolean }[]> {
   if (candidateMentionIds.length === 0) return [];
   const candidates = await prisma.user.findMany({
     where: { id: { in: candidateMentionIds }, ...(await communityMemberUserWhere(communityId)) },
     select: { id: true, discordId: true, silenceReminders: true },
   });
-  return filterUsersByNotificationPreference(candidates, "TOURNAMENT");
+  if (channel === null) return candidates;
+  return filterUsersByNotificationChannelPreference(candidates, "TOURNAMENT", channel);
 }
 
 /**
@@ -765,6 +767,7 @@ async function resolveEligibleTournamentMentions(
 async function resolveTournamentCreatorDmRecipient(
   creatorId: string,
   communityId: string | null,
+  channel: "DISCORD_DM" | "DISCORD_MENTION" | null = "DISCORD_DM",
 ): Promise<{ id: string; discordId: string; silenceReminders: boolean } | null> {
   if (!(await isMemberOfCommunity(creatorId, communityId))) return null;
   const creator = await prisma.user.findUnique({
@@ -772,7 +775,7 @@ async function resolveTournamentCreatorDmRecipient(
     select: { id: true, discordId: true, silenceReminders: true },
   });
   if (!creator) return null;
-  const [allowed] = await filterUsersByNotificationPreference([creator], "TOURNAMENT");
+  const [allowed] = channel === null ? [creator] : await filterUsersByNotificationChannelPreference([creator], "TOURNAMENT", channel);
   return allowed ?? null;
 }
 
@@ -781,13 +784,14 @@ async function resolveTournamentCreatorDmRecipient(
  * sélection du créateur ET avoir la préférence `TOURNAMENT` active. */
 async function isTournamentDmRecipientEligible(
   tournament: Pick<Tournament, "createdById" | "notifiedUserIds" | "communityId">,
-  userId: string
+  userId: string,
+  channel: "DISCORD_DM" | "DISCORD_MENTION" | null = "DISCORD_DM",
 ): Promise<boolean> {
   if (!(await isMemberOfCommunity(userId, tournament.communityId))) return false;
-  if (userId === tournament.createdById) return (await resolveTournamentCreatorDmRecipient(userId, tournament.communityId)) !== null;
+  if (userId === tournament.createdById) return (await resolveTournamentCreatorDmRecipient(userId, tournament.communityId, channel)) !== null;
   const selected = resolveNotifiedUserIds(tournament.notifiedUserIds) ?? [];
   if (!selected.includes(userId)) return false;
-  return (await resolveEligibleTournamentMentions([userId], tournament.communityId)).length > 0;
+  return (await resolveEligibleTournamentMentions([userId], tournament.communityId, channel)).length > 0;
 }
 
 /**
@@ -813,7 +817,7 @@ async function resolveTournamentDirectMessage(
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id))) {
+  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id, isEdit ? null : "DISCORD_DM"))) {
     return { eligible: false, reason: "preference_declined" };
   }
 
@@ -859,7 +863,7 @@ async function resolveTournamentDirectMessageFallback(
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id))) {
+  if (!(await isTournamentDmRecipientEligible(tournament, recipient.id, "DISCORD_MENTION"))) {
     return { eligible: false, reason: "preference_declined" };
   }
 
@@ -1130,11 +1134,14 @@ async function resolveAnnounceDelivery(
     // pote éligible ET le créateur reçoivent en plus l'invitation en MP.
     // Préférence TOURNAMENT relue MAINTENANT (traitement réel), jamais un
     // instantané figé à l'enqueue. Secours (créateur seulement) si son MP est fermé.
-    const eligible = rendering.candidateMentionIds
+    const eligibleMentions = rendering.candidateMentionIds
       ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds, tournament.communityId)
       : [];
+    const eligibleDms = rendering.candidateMentionIds
+      ? await resolveEligibleTournamentMentions(rendering.candidateMentionIds, tournament.communityId, "DISCORD_DM")
+      : [];
     if (isTournamentDirectMessageEnabled()) {
-      const creator = eligible.some((u) => u.id === tournament.createdById)
+      const creator = eligibleDms.some((u) => u.id === tournament.createdById)
         ? null
         : await resolveTournamentCreatorDmRecipient(tournament.createdById, tournament.communityId);
       await enqueueDirectMessages({
@@ -1142,7 +1149,7 @@ async function resolveAnnounceDelivery(
         sourceId: tournament.id,
         eventType: "TOURNAMENT_DM",
         kind: "announce",
-        users: creator ? [...eligible, creator] : eligible,
+        users: creator ? [...eligibleDms, creator] : eligibleDms,
       });
     }
 
@@ -1150,7 +1157,7 @@ async function resolveAnnounceDelivery(
     // (comme les MP, occurrence fixe → idempotent sur un retry), traité quand le
     // fil existe (`dependency_not_ready` sinon). Seulement s'il y a quelqu'un à
     // mentionner (le créateur n'est jamais mentionné).
-    if (eligible.some((u) => u.id !== tournament.createdById)) {
+    if (eligibleMentions.some((u) => u.id !== tournament.createdById)) {
       const inviteEvent = await createNotificationEvent({
         category: "TOURNAMENT",
         eventType: "TOURNAMENT_THREAD_INVITE",

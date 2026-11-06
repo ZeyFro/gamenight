@@ -31,4 +31,11 @@ describe("livraison Web Push", () => {
     expect(sendNotification).toHaveBeenCalledOnce();
     expect(deleteMany).toHaveBeenCalledWith({ where: { id: "sub-1", userId: "user-1" } });
   });
+
+  it("ne contacte aucun service externe en Preview même si Web Push est configuré", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await sendUserWebPush("user-1", { title: "Test", body: "Texte", url: "/profil" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
 });
