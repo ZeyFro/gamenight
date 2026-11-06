@@ -1,28 +1,30 @@
 # Plan des migrations en attente de revue
 
-> **Actualisation du 6 novembre :** ce plan est préparatoire. #370 `6cff66b` et
-> #406 `97353dc` conservent les SQL/checksums ci-dessous ; leurs correctifs d’audit
-> et leurs tests sont décrits dans ETAT.md. #407 `6ec348d` ajoute désormais une
-> neuvième migration distincte, `20261106150000_tower_fixed_arbiter`, hors du
-> périmètre des deux migrations proposées. Ne pas l’inclure implicitement.
-> #325 reste exclusivement à Claude Code ; la table de nommage historique plus
-> bas ne donne aucune instruction d’exécuter ses migrations.
-> #418 `3cb3d00` ne permet que le dry-run après fusion manuelle autorisée.
-> Mapping endpoint confirmé en lecture seule par le connecteur Neon de ChatGPT :
-> [preuve du 6 novembre vers 18 h 35 Paris](https://github.com/ZeyFro/gamenight/pull/418#issuecomment-6691282780).
-> Les deux cibles de #418 sont corrigées ; identité/branche/rôles inchangés.
-> Rôle/secret/environnement distants encore non préparés : administration GitHub403.
-> Phase actuelle limitée au dry-run ; aucune écriture Neon ni migration distante.
-> Toute migration, même de test, attend un nouvel accord explicite et la
-> validation dry-run/sauvegarde. Les anciens accords ne lèvent pas ces verrous.
-
-> **Périmètre et limites de vérification.** Ce document recense les fichiers de migration présents dans les PR ouvertes de ce dépôt au 5 novembre 2026. L’inventaire des fichiers modifiés dans toutes les PR ouvertes a trouvé huit migrations : six dans #325, une dans #370 et une dans #406; aucune autre PR ouverte ne modifie un fichier `prisma/migrations/**/migration.sql`. Les PR ne sont pas fusionnées. **Je n’ai pas consulté de base, Neon, Production ni la table `_prisma_migrations`** : « en attente » signifie ici « portée par une PR non fusionnée », et ne prouve pas que la migration est absente d’une base donnée. Vérifier la cible et son état avant toute décision ou exécution.
+> **État vérifié le 6 novembre :** #418 fusionnée dans main b603dd0 ;
+> [dry-run natif 42291255308 SUCCESS](https://github.com/ZeyFro/gamenight/actions/runs/42291255308).
+> Le runner trouve seulement #370 puis #406, checksums ci-dessous, sans écriture.
+> [Contrôle indépendant après run et sauvegarde ready](https://github.com/ZeyFro/gamenight/issues/400#issuecomment-6696087598) :
+> 118 entrées Prisma, aucune inachevée, aucune entrée #370/#406 ; sauvegarde au
+> point0/2A355C30. La restauration reste à éprouver séparément, sans l'exécuter ici.
+> Environnement/secret/rôle dédiés configurés par Work ; ne pas les recréer.
+> L'application des deux migrations nécessite un workflow séparé, sa revue,
+> validations intermédiaires et accord explicite distinct. Aucun apply autorisé ici.
+>
+> **Ordre opérationnel décidé : #370 puis #406 avant #325.** Le jalon officiel
+> « #370 et #406 mergées et migrées, #325 peut passer en phase4 » exige les deux
+> PR fusionnées sur main ET leurs migrations appliquées sur Neon Production.
+> Après ce jalon, ne fusionner aucune autre PR contenant une migration tant que
+> #325 n'a pas été migrée. #325 exclusivement Claude Code : ses fichiers et
+> horodatages réels lui appartiennent, aucune modification dans cette PR.
+> La migration121 ajoutée par #407 reste hors périmètre et soumise à ce gel.
+>
+> **Inventaire historique du 5 novembre, distinct des preuves actuelles ci-dessus.** Ce document recense les fichiers de migration présents dans les PR ouvertes de ce dépôt au 5 novembre 2026. L’inventaire des fichiers modifiés dans toutes les PR ouvertes a trouvé huit migrations : six dans #325, une dans #370 et une dans #406; aucune autre PR ouverte ne modifie un fichier `prisma/migrations/**/migration.sql`. Les PR ne sont pas fusionnées. **Je n’ai pas consulté de base, Neon, Production ni la table `_prisma_migrations`** : « en attente » signifie ici « portée par une PR non fusionnée », et ne prouve pas que la migration est absente d’une base donnée. Vérifier la cible et son état avant toute décision ou exécution.
 
 Les ordres SQL ci-dessous décrivent le DDL et les écritures des fichiers publiés sur les têtes actuelles des PR. Les commandes de retour arrière sont des **propositions à examiner**, pas un mécanisme Prisma ni des instructions à exécuter sans sauvegarde restaurée, contrôle de dépendances et autorisation distincte pour la migration concernée. Plusieurs retours arrière supprimeraient des données créées depuis l’application.
 
 ## Exécution Tower retenue — préparation du 6 novembre 2026
 
-Le périmètre autorisé de préparation est **#370 puis #406 uniquement**. Les autres migrations recensées historiquement ci-dessous restent gelées et ne doivent pas entrer dans le checkout opérateur. Aucune migration Neon ou Production n’a été exécutée par cette session.
+Le périmètre autorisé de préparation est **#370 puis #406 uniquement**. Les autres migrations recensées historiquement ci-dessous restent hors périmètre et ne doivent pas entrer dans le checkout opérateur. Aucune migration Neon ou Production n’a été exécutée par cette session.
 
 ### Preuve locale et provenance
 
@@ -48,7 +50,7 @@ node scripts/db-migrate.mjs --expect=20261104140000_tower_team_membership_policy
 
 Exiger zéro doublon/orphelin et une seule migration attendue. Consigner les contrôles, la cible, le SHA et la sauvegarde fraîche restaurable ; demander l’accord pour ce fichier sur cette branche. Après accord seulement, reprendre le même dry-run et ajouter `--execute --confirm-database=<BASE_VERIFIEE>` à la commande. Tout refus ou erreur impose l’arrêt, sans `resolve`, reset ou SQL de contournement.
 
-Pour #406, utiliser un checkout d’intégration contenant **les deux têtes revues et le runner de #370**. La tête 97353dc intègre désormais #370 ; les anciennes têtes #406 seules ne contenaient pas ce runner. Après les contrôles de #370, répéter le dry-run avec `--expect=20261105120000_tower_launch_channels_appeals_matchmaking`, puis l’accord séparé et le contrôle final à 120 migrations. Si un rôle partagé est réellement nécessaire, son usage doit être explicitement accepté et signalé ; ne pas copier automatiquement l’option Production.
+Pour #406, utiliser un checkout d’intégration contenant **les deux têtes revues et le runner de #370**. La tête 97353dc intègre désormais #370 ; les anciennes têtes #406 seules ne contenaient pas ce runner. Après les contrôles de #370, répéter le dry-run avec `--expect=20261105120000_tower_launch_channels_appeals_matchmaking`, puis l’accord séparé et le contrôle final à 120 migrations. Sur Neon Test, le rôle dédié validé par le dry-run est obligatoire ; aucun rôle partagé ni copie de l’option Production.
 
 ### Restauration de la branche de test — préparation, aucune exécution
 
@@ -78,7 +80,7 @@ Ne commencer qu’après validation de la branche de test, revue indépendante e
 
 Pour chaque fichier, dans l’ordre #370 puis #406 : checkout approprié, contrôle d’intégrité, dry-run exact avec `--allow-shared-role`, accord désignant fichier et cible, **snapshot frais vérifié restaurable immédiatement avant chaque exécution**, puis seulement `--execute --confirm-database=<BASE_VERIFIEE>`. Exiger « aucune en attente » et zéro migration inachevée après chaque étape ; un nouveau dry-run déjà appliqué renvoie 2 (« Rien à faire »). Toute divergence bloque la suite. Ne pas lancer de rollback, redéploiement, migration ancienne ou merge automatiquement. L’accord de migration n’autorise ni Ready ni merge, ni flags, ni Discord.
 
-## Synthèse et ordre proposé
+## Inventaire historique des noms — pas un ordre d’exécution
 
 | Ordre | Fichier | PR | Dépendance / raison |
 |---:|---|---:|---|
@@ -88,10 +90,10 @@ Pour chaque fichier, dans l’ordre #370 puis #406 : checkout approprié, contr�
 | 4 | `20261022130000_voice_presence_retention_gap_bounds/migration.sql` | #325 | Ajoute `gapStartedAt` à `SessionVoicePresenceControl`, créée en 3. |
 | 5 | `20261022140000_voice_presence_gap_history/migration.sql` | #325 | Crée l’historique et le remplit depuis le contrôle et `gapStartedAt` de 4. |
 | 6 | `20261022142500_shop_balance_purchase_reason/migration.sql` | #325 | Ajout d’enum indépendant; placé à sa position chronologique dans l’historique Prisma. |
-| 7 | `20261104140000_tower_team_membership_policy/migration.sql` | #370 | Ordre chronologique après #325; index d’unicité et colonnes utilisées par les règles d’équipe. |
+| 7 | `20261104140000_tower_team_membership_policy/migration.sql` | #370 | Ordre opérationnel avant #325 ; index d’unicité et colonnes utilisées par les règles d’équipe. |
 | 8 | `20261105120000_tower_launch_channels_appeals_matchmaking/migration.sql` | #406 | Ordre chronologique après #370; schéma partagé requis par #407 et #408. |
 
-Cet ordre est un **ordre de dépendance et de nommage**, pas une recommandation d’appliquer en bloc. Avant de le retenir sur une base réelle, comparer son schéma et son historique de migrations au commit exact des branches. Si une migration est déjà appliquée, ne pas la rejouer; réconcilier d’abord son nom, checksum, état et objets. Le runner de migration doit rester la source d’exécution approuvée. Ne pas fusionner de code qui suppose un schéma absent.
+Cette table conserve les noms historiques ; son ancien ordre est remplacé par #370 puis #406 avant #325, avec le jalon et le gel explicités en tête. Elle ne permet aucune exécution en bloc. Avant de le retenir sur une base réelle, comparer son schéma et son historique de migrations au commit exact des branches. Si une migration est déjà appliquée, ne pas la rejouer; réconcilier d’abord son nom, checksum, état et objets. Le runner de migration doit rester la source d’exécution approuvée. Ne pas fusionner de code qui suppose un schéma absent.
 
 ## Migrations anciennes ajoutées après des migrations plus récentes
 
@@ -101,7 +103,7 @@ Dans la version initiale, antérieure au correctif chronologique décrit ci-dess
 
 Références : [runner proposé dans #370](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate.mjs), [contrôle de la liste attendue](https://github.com/ZeyFro/gamenight/blob/feat/tower-team-rules-20261104/scripts/db-migrate-lib.mjs), [ordre lexicographique de Prisma Migrate](https://www.prisma.io/docs/orm/v6/prisma-migrate/getting-started) et [application des migrations en attente](https://www.prisma.io/docs/orm/v6/prisma-migrate/workflows/development-and-production).
 
-**Protection ajoutée dans la tête de la PR #370** (`711210265fa6164f523a49b3cd8d9f818abf154d`) : le runner refuse maintenant l'exécution si la plus ancienne migration en attente précède la dernière migration réussie. Le message affiche les deux noms et demande de réconcilier l'historique. Le nouveau fichier `scripts/db-migrate-lib.test.mjs` couvre le cas #325 tardif, l'ordre normal et les autres refus de précontrôle. Le test ciblé `Test migration runner guards` passe sur la tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb`; la CI générale a depuis réussi sur cette tête. La PR #325 reste gelée et chaque migration de Production nécessite toujours son autorisation séparée.
+**Protection ajoutée dans la tête de la PR #370** (`711210265fa6164f523a49b3cd8d9f818abf154d`) : le runner refuse maintenant l'exécution si la plus ancienne migration en attente précède la dernière migration réussie. Le message affiche les deux noms et demande de réconcilier l'historique. Le nouveau fichier `scripts/db-migrate-lib.test.mjs` couvre le cas #325 tardif, l'ordre normal et les autres refus de précontrôle. Le test ciblé `Test migration runner guards` passe sur la tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb`; la CI générale a depuis réussi sur cette tête. La PR #325 reste exclusivement réservée à Claude Code et chaque migration de Production nécessite toujours son autorisation séparée.
 
 ## Détail par migration
 

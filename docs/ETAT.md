@@ -1,90 +1,87 @@
 # État de reprise — 6 novembre 2026
 
 Source de vérité : [issue #400](https://github.com/ZeyFro/gamenight/issues/400).
-Les états CI ci-dessous sont des relevés ; consulter GitHub avant de reprendre.
+Les états CI sont des relevés ; relire les têtes et commentaires avant reprise.
 
-## Travail vérifié
+## Dry-run Neon Test réellement réussi
 
-- #395 et #414 sont fermées sans fusion. L'exclusion des comptes de test des
-  votes est retirée ; aucun pilote API payant ne doit être activé.
-- #407 `6ec348d` : arbitre indépendant fixe configuré à l'avance, changements
-  journalisés et gelés pendant une contestation ouverte ; cas OWNER réservé à
-  cet arbitre. Délai de 24 h après annonce effective. 114 tests ciblés, suite
-  locale 3 707/3 707, lint/typegen/tsc/build réussis ; CI et Preview vertes.
-  Nouvelle migration `20261106150000_tower_fixed_arbiter` uniquement appliquée
-  localement. PR toujours Draft.
-- #396 `e582df3` : trois défauts corrigés ; contre-tests d'origine conservés.
-  Revalidation indépendante PostgreSQL : 51/51, CI et Preview vertes, Draft.
-- #370 `6cff66b` : réouverture après dissolution refusée, tests 3 créations/24 h,
-  index Prisma aligné sans modifier le SQL. 23 tests ciblés, lint/tsc réussis.
-- #406 `97353dc` : secours MP roulette sans mention publique du créateur ;
-  27 tests PostgreSQL/Discord simulé réussis, lint/tsc réussis. #370 intégrée.
-  B14 aligné sur 24 h et arbitre fixe. CI et Preview vertes sur ces têtes.
-- #418 `3cb3d00` : workflow limité au dry-run, rôles runtime/migration distincts
-  et paramétrés, runner chronologique #370, contrôle READ ONLY identité/DDL.
-  Endpoint direct confirmé par le connecteur Neon de ChatGPT puis corrigé dans
-  les deux étapes ; 17 tests ciblés, cinq vérifications hors réseau du runner,
-  lint/tsc réussis. CI de cette nouvelle tête en cours au relevé ; pas encore activé.
-- #408 `0e9ff59` : parents corrigés intégrés ; 60 tests ciblés, typegen/tsc,
-  lint et build réussis, npm ci complet (605 paquets, TLS actif).
-- #416 `3f2702f` : #408 intégrée ; 81 tests ciblés, typegen/tsc et lint ciblé
-  réussis. Aucun enregistrement Discord. CI dédiée et Preview vertes ; #408 verte.
-- #413 porte ce point de reprise et un reciblage documentaire vers main.
+#418 est fusionnée dans main, `b603dd03d398588f3a70086997f313af6e5dbbb1`.
+[Run 42291255308](https://github.com/ZeyFro/gamenight/actions/runs/42291255308),
+job migrate, tentative 1 : SUCCESS, après approbation standard de ZeyFro.
+Le préflight Prisma natif et le runner ont vérifié le projet
+`misty-tooth-45335023`, la branche `tower-migration-test-20261105`
+(`br-snowy-snow-b1cggq2w`), la base `neondb`, l'endpoint direct et le rôle
+`gamenight_test_migrator`, distinct du rôle applicatif, avec propriété/droits DDL.
+TLS est requis par la configuration ; la version négociée n'est pas publiée.
 
-## Migrations et droits : distinguer local et distant
+Seulement deux migrations en attente, dans cet ordre :
 
-Répétitions PostgreSQL local isolé : 118 → 119 → 120 migrations terminées,
-aucune inachevée ; répétition supplémentaire avec un rôle DDL restreint et DML
-applicatif conservé. #407 porte une migration additionnelle 121 testée localement.
-Ces résultats ne prouvent aucune exécution Neon.
+1. `20261104140000_tower_team_membership_policy`, SHA-256
+   `9f642e6200bef888669e9c058bf1623ad582cd2772ea5e433a7b78bfa596db8f`.
+2. `20261105120000_tower_launch_channels_appeals_matchmaking`, SHA-256
+   `e7782519fcdf5e9637f131fbd348ceb07c8f6f177dbe87f82ba9a18f6c94a9de`.
 
-Relevé précédent en lecture seule : projet et branche de test attendus,
-historique 118 terminées, #370/#406 absentes, rôle dédié absent. Ce relevé SQL
-n'a pas été répété pendant la correction d'endpoint.
-
-Le connecteur Neon de ChatGPT a confirmé le 6 novembre vers 18 h 35 Paris le
-mapping exact vers l'endpoint direct
-`ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech` et la base `neondb` :
-[preuve indépendante](https://github.com/ZeyFro/gamenight/pull/418#issuecomment-6691282780).
-La cible obsolète a été corrigée dans #418 ; le blocage de mapping est levé.
-Les contrôles d'identité, branche et rôles restent obligatoires. Cette preuve
-ne remplace pas le premier dry-run Prisma. Aucune écriture distante réalisée.
-
-L'API GitHub refuse l'administration de `neon-migration-test` (403). Aucun
-environnement, secret, rôle ou mot de passe distant créé par cette session.
+Le journal confirme DRY-RUN, aucune écriture. La lecture indépendante Work après
+le run confirme 118 entrées Prisma, aucune inachevée et aucune entrée pour ces
+deux migrations. [Preuve complète et sauvegarde](https://github.com/ZeyFro/gamenight/issues/400#issuecomment-6696087598).
 La sauvegarde `backup-tower-migration-test-20261106` (`br-purple-mud-b1nt0tfi`)
-a été reconfirmée ready, enfant de la cible, no_compute et non par défaut par
-le même contrôle indépendant ; aucun exercice de restauration n'est prouvé ici.
-Revalider son exploitabilité avant une éventuelle exécution autorisée.
-Procédure de rôle : branche de #418, `docs/operations/NEON_TEST_MIGRATION_ROLE.md`.
+est ready, enfant de la cible, no_compute, point `0/2A355C30` ; limite 10 branches.
+**La restauration reste à éprouver séparément.** Ne modifier/supprimer aucune
+sauvegarde ni créer une branche pour contourner la limite.
 
-## Reprise et blocages
+Work a configuré environnement protégé main/ZeyFro, rôle et secret. Les refus
+API Cloud pour approbation/listes de secrets ne prouvent pas leur absence.
+Ne pas recréer ces ressources. Aucun secret à demander dans le chat.
 
-1. Le mapping endpoint est confirmé et corrigé : ne pas recommencer cet audit
-   sans nouvelle divergence. Obtenir l'accès GitHub aux environnements/secrets,
-   sans transmettre de secret au chat. La phase actuelle reste limitée au dry-run ;
-   ne pas créer de rôle ni exécuter de migration dans le lot de correction.
-   Préparation restreinte rôle/secret encore non réalisée ; aucun grant global.
-2. Après fusion manuelle explicitement autorisée de #418, premier dry-run Actions.
-   Toute migration, y compris test, attend son accord explicite, une sauvegarde
-   validée et les précontrôles ; #370 puis #406 seulement. La migration #407 exige
-   sa propre revue et autorisation. Production option B : préparation uniquement.
-3. #370/#406/#407/#408/#416 et l'ancienne tête documentaire #413 ont leurs CI
-   vertes. Relever seulement les nouvelles CI #418 et #413 de cette correction.
-   Un push groupé par PR et par lot complet ; aucun skip ci.
-4. #325 exclusivement Claude Code. Prévenir le propriétaire seulement lorsque
-   #370 ET #406 seront réellement fusionnées et leurs migrations appliquées ;
-   ce jalon n'est pas atteint. Claude renommera alors ses migrations.
-5. Recette isolée authentifiée, commandes/accueil/Atlas/rôles/bots Discord,
-   catalogue, flags et kit bêta demandent configuration autorisée et/ou vrais
-   membres. Tests simulés et Preview verte ne valent pas recette réelle.
+## PR et dépendances
 
-Aucune fusion, passage Ready, migration distante, variable Vercel, flag,
-modification Discord ou API payante effectuée. Quota réel non mesurable : cible
-10 % non garantie ; poursuivre raisonnablement sans boucle ni relance inutile.
+- #370 `6cff66b` : réouverture d'une équipe dissoute refusée, limite de créations
+  couverte, index conservé sans réécriture SQL. 23 tests locaux ; CI verte.
+- #406 `23ba5a8` : correctif roulette et B14, puis fixtures VAPID P-256 et
+  restauration des environnements de test T4/T5. CI générale, rules/storage et
+  Preview vertes. Compatibilité stricte avec #325 à simuler sur copie jetable.
+- #396 `e582df3` : trois défauts corrigés, contre-tests conservés, 51 tests
+  PostgreSQL revalidés et CI verte ; PR encore Draft.
+- #407 `6ec348d` : arbitre fixe configuré à l'avance, journalisé et gelé pendant
+  une contestation ouverte ; cas OWNER réservé à cet arbitre, délai 24 h après
+  annonce effective. 114 tests ciblés et 3 707 en suite locale, CI verte.
+  Migration `20261106150000_tower_fixed_arbiter` uniquement locale, hors du
+  périmètre des deux migrations autorisées à préparer.
+- #408 `0e9ff59` et #416 `3f2702f` : parents intégrés, respectivement 60 et 81 tests
+  ciblés, CI vertes. #416 reste empilée sur #408 ; aucun enregistrement Discord.
+- #415 (préflight local), #417 (podium en lecture seule) et #413 (documentation)
+  sont des lots autonomes sans migration : intégrer main, vérifier le périmètre,
+  tests/typage/lint/CI et revue indépendante avant Ready. Le propriétaire a
+  autorisé ce Ready ciblé ; aucune fusion automatique. SHA et résultats dans #400.
+- #395 et #414 fermées sans fusion ; exclusion des comptes de test retirée,
+  aucune API OpenAI payante ni activation de pilote payant.
 
-Attention #410 : fusionnée historiquement dans l'ancienne branche documentaire,
-ses points d'entrée UI ne sont pas dans main. Le reciblage documentaire #413
-n'importe pas ces fichiers hérités ; #410 et son historique ne sont pas modifiés.
-Préserver ce travail et prévoir sa réintégration séparée après libération d'une
-place sous le plafond de dix PR de code. Ne pas annoncer sa livraison sur main.
+## Ordre obligatoire et prochaine reprise
+
+1. Préparer dans une PR Draft un workflow manuel distinct d'application de #370
+   puis #406 sur Neon Test. Le runner applique tous les dossiers présents :
+   stage118+370 seul, contrôle après119, ajout406 seulement ensuite et contrôle120.
+   Vérifier checksums, schéma, données, rôle et TLS avant/après chaque étape.
+   Aucun apply tant que revue, restauration, contrôles et accord distinct manquent.
+2. #370 et #406 ne sont pas fusionnées ; aucune migration de ces PR appliquée
+   à Neon Test ou Production au dernier relevé. Production option B : préparation
+   seulement après validation Neon Test, autorisation Production séparée.
+3. #325 appartient exclusivement à Claude Code. Le jalon officiel exige
+   **#370 ET #406 fusionnées sur main ET leurs migrations appliquées en Production**.
+   Alors seulement annoncer : « #370 et #406 mergées et migrées, #325 peut passer
+   en phase 4 ». Après ce jalon, ne fusionner aucune autre PR contenant une
+   migration tant que #325 n'a pas été migrée. Claude seul attribuera ses nouveaux
+   horodatages réels ; ne pas contourner le garde chronologique ni modifier #325.
+4. Recette/OAuth, Discord/Atlas/rôles/bots, catalogue/flags/activation/bêta :
+   configuration autorisée, intégrations et preuves de vrais membres encore
+   nécessaires. Tests locaux/Preview ne valent pas recette réelle ni ouverture.
+
+Les répétitions SQL antérieures étaient sur PostgreSQL fictif local :118→119→120,
+puis121 pour #407. Elles ne sont pas des migrations distantes. Aucun merge,
+Ready hors du lot autorisé, migration distante, variable Vercel, flag ou action
+Discord effectué par cette préparation. Quota réel non mesurable : cible10 %
+non garantie ; poursuivre utilement sans boucle ni relance inutile.
+
+#410 a été fusionnée historiquement dans une ancienne branche documentaire,
+mais son UI n'est pas dans main. Son historique est préservé et aucun fichier UI
+n'est importé par #413 ; réintégration séparée à prévoir selon plafond de PR.
