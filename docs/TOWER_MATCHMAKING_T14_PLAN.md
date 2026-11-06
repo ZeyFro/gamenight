@@ -79,3 +79,14 @@ Le document `TOWER_MATCHMAKING_GAPS.md` contient un relevé historique : son ét
 Tranche 1 : formulaire GET jeu/plateforme/micro, validation serveur partagée, filtrage Prisma et états vides livrés localement. Micro inconnu traité par null. Signature de lecture compatible avec les appelants existants. Aucun changement de schéma ; horaires, type de partie et cross-play restent non développés. Tests de règles, de page et de composition de requête ciblés ; les tests avec mocks ne remplacent pas une intégration Postgres ni une recette navigateur.
 
 Validation de cette tranche locale : 31 tests passés sur 5 fichiers (règles des filtres, composition de requête, page, annonces historiques, règles de ce soir), ESLint ciblé, génération des types Next et `tsc --noEmit` réussis. Intégration Postgres non exécutée : aucune base locale disponible pour cette mission. Build complet et recette navigateur non exécutés. L'absence de collision a été confirmée par le coordinateur sur les listes de fichiers distantes des PR en cours avant modification ; aucun fichier réservé n'a été modifié.
+
+## Intégration du 6 novembre 2026
+
+La branche #408 intègre #407 `6ec348d` et #406 `97353dc`, dont #370 `6cff66b`.
+Les filtres et la commande conservent leurs tests existants : 60 tests ciblés
+réussis sur PostgreSQL local avec Discord simulé ; typegen, TypeScript et lint
+ciblé réussis. L'installation complète Node 22 par npm ci et la génération Prisma
+ont réussi avec strict-ssl actif, sans désactivation TLS ni saut du postinstall.
+Le résultat du build et de la CI est consigné dans #400 avant clôture de tâche.
+La migration arbitre additionnelle reste uniquement locale ; aucun déploiement,
+flag, commande Discord, migration distante ou essai authentifié réel effectué.
