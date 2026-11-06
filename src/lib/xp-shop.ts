@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
@@ -5,6 +6,14 @@ import { writeCommunityIdForUser } from "@/lib/community-stats";
 
 // Défaut Prisma : 5 s, puis erreur 500 à l'expiration ; même marge que les autres transactions interactives.
 const SHOP_TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
+
+// Le délai de transaction de Prisma n'interrompt pas une requête en attente de verrou : sans limite, un verrou tenu par une autre
+// session (maintenance, script de recalage) ferait attendre l'achat aussi longtemps que le verrou. PostgreSQL l'annule ici
+// (« canceling statement due to lock timeout »), avant les 15 s de la transaction ; rien n'est écrit.
+const SHOP_LOCK_TIMEOUT_MS = 8_000;
+async function limitLockWait(tx: Prisma.TransactionClient) {
+  await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = ${SHOP_LOCK_TIMEOUT_MS}`);
+}
 
 export const XP_SHOP_ITEMS = [
   { id: "title-strategist", kind: "TITLE", name: "Stratège", value: "Stratège", price: 250 },
@@ -64,6 +73,7 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
   if (!item) return "invalid" as const;
 
   return prisma.$transaction(async (tx) => {
+    await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR UPDATE`;
@@ -101,6 +111,7 @@ export async function equipShopItem(
   if (itemId && (!item || item.kind !== kind)) return "invalid" as const;
 
   return prisma.$transaction(async (tx) => {
+    await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     if (item) {

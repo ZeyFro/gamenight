@@ -77,3 +77,33 @@ Cause **non démontrée**. Ne pas confondre les passages historiques avec la tê
 - Exclu par lecture du code : aucune route de l'application ne supprime de ligne `CommunityMemberStats` (seul `seasons.ts` fait un `updateMany` à 0, qui produirait une assertion sur `xpTotal`, pas une erreur Prisma) ; les fixtures sont supprimées en fin de run par préfixe unique, jamais pendant les scénarios.
 - Hypothèses restantes, non confirmées : (a) un `TRUNCATE` d'une autre suite d'intégration sur une base partagée (injecté volontairement ici pendant ce scénario : il produit un timeout de la page classement et « 0 utilisateur supprimé », pas l'erreur observée ; l'hypothèse ne tient que si le `TRUNCATE` tombe après le dernier chargement) ; (b) une perte de connexion à PostgreSQL (le moteur Docker s'est arrêté pendant un run précédent). Le délai de 15 s des transactions boutique a corrigé les `P2028` mais ne résout pas ce point.
 - Le point n'est toujours pas tranché : conserver `logs/recette-boutique-next.log` et le message Prisma complet, puis relancer sur une base réservée à la recette et relever `pg_stat_database` (`xact_rollback`) et les `TRUNCATE` concurrents. À la reprise du 26/10, Docker Desktop ne démarre pas; aucune recette Postgres/navigateur nouvelle n'a été exécutée.
+
+## 7. Recalage du solde après migration (`scripts/xp-balance-reconcile.mjs`)
+
+Filet de la décision D2 (rôle partagé, barrière hors rôle). La migration `separate_xp_balance` fixe `xpBalance = xpTotal`. Tant que l'ancien code tourne encore, il écrit `xpTotal` (et le ledger, ou la table des paris) sans connaître `xpBalance` : gains, `SHOP_PURCHASE`, paris, pénalités, corrections admin, reset de saison. Le script ramène `xpBalance` à la valeur attendue ; il ne modifie JAMAIS `xpTotal`, le ledger, ni les objets.
+
+**Formule** : `cible = max(0, xpTotal + somme(XpEvent SHOP_BALANCE_PURCHASE.amount depuis --since))`. Le nouveau code tient `xpBalance = xpTotal` partout sauf pour les achats de boutique (seuls à débiter `xpBalance` seul, montants négatifs) ; le calcul est donc sans état, et un second passage ne trouve rien. Un ancien achat `SHOP_PURCHASE` fait après la migration baisse `xpTotal` (comme avant) : le solde le suit, la progression reste baissée du même montant (pas de restitution automatique).
+
+**Quand** : après la migration et avant la réouverture des écritures du nouveau code (section 3 verte, barrière encore posée), puis à nouveau si un doute subsiste. Après réouverture, la formule reste exacte pour les joueurs sans achat du nouveau code ; ceux qui en ont (« mixtes ») ne sont plus recalés d'office (voir plus bas).
+
+**Commande** (rôle autorisé à écrire `CommunityMemberStats`, par exemple le rôle de migration ; aucune URL n'est affichée) :
+
+```
+XP_RECONCILE_DATABASE_URL=<url> [XP_RECONCILE_ALLOW_REMOTE="<hôte>[:port]/<base>"] node scripts/xp-balance-reconcile.mjs [--since=<ISO>]
+# relire le rapport puis, une seule fois :
+... node scripts/xp-balance-reconcile.mjs --execute --confirm-database=$BASE [--since=<ISO>]
+```
+
+- Dry-run par défaut (transaction `READ ONLY`). `--execute` exige `--confirm-database=<base de l'URL>` ; sans lui, refus (2) sans écriture.
+- Cible : base locale `gamenight_*` ou exactement `XP_RECONCILE_ALLOW_REMOTE`. Refus si `separate_xp_balance` n'est pas terminée, si une migration est inachevée, si colonne, contrainte validée ou valeur d'enum manquent.
+- `--since` : instant ISO avec fuseau ; défaut = `finished_at` de `separate_xp_balance` dans `_prisma_migrations`. Refusé s'il est postérieur à cette fin (fenêtre incomplète).
+- Une transaction, `lock_timeout` 5 s, `statement_timeout` 30 s, lignes à écrire verrouillées (`FOR UPDATE`, ordre stable), relecture sous verrou puis contrôle final : tout écart nouveau ou restant annule (ROLLBACK, sortie 4) ; verrou non obtenu = sortie 4, rien d'écrit.
+
+**Lire le résultat**
+- `Écarts à corriger : N (hausses, baisses, somme nette)` puis les 10 plus gros `communityId userId : xpTotal, xpBalance -> cible`. Attendu après un incident d'ancien code : quelques lignes ; `AUCUNE CORRECTION` = rien à faire (état du second passage).
+- `sans trace dans le ledger` : écart sans événement ni pari depuis la fenêtre (reset de saison de l'ancien code, SQL manuel). À comprendre avant d'exécuter.
+- `À ARBITRER solde exact négatif` : `xpTotal + achats` < 0, le CHECK `xpBalance >= 0` interdit la valeur exacte ; le script écrit 0 (jamais de valeur négative) et liste le joueur.
+- `À ARBITRER achats du nouveau code` : joueur « mixte » (au moins un `SHOP_BALANCE_PURCHASE` depuis la fenêtre) avec un écart. Des plafonds du nouveau code (pénalité d'absence, correction admin) séparent légitimement les compteurs : NON écrit sans `--include-mixed`, à arbitrer à la main.
+- Sorties : 0 ok, 2 refusé, 4 concurrence ou verrou, 1 inattendu. Après exécution : `xp-lot-invariants.mjs --phase=reopened` doit rester vert (l'empreinte, `xpBalance` exclu, ne change pas si seul `xpBalance` a bougé ; `xpTotal` mis à jour par l'ancien code la change, ce qui est attendu).
+
+Vérifié localement (base jetable 127.0.0.1) : `src/lib/xp-balance-reconcile.integration.test.ts` (écritures d'ancien code puis recalage exact, idempotence, dry-run sans écriture, refus sans confirmation, cas négatif, joueurs mixtes, migration absente ou inachevée, verrou externe, CLI). Boutique : `xp-shop.integration.test.ts` (achats parallèles, CHECK) et `xp-shop-lock.integration.test.ts` (une seule connexion, `lock_timeout` de 8 s : sans lui, un verrou externe fait attendre l'achat jusqu'à sa libération, le délai de transaction de Prisma n'interrompant pas la requête en attente). Non vérifié : durée et verrous sur le volume Production.

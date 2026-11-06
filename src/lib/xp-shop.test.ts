@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { db, stats } = vi.hoisted(() => {
   const stats = { xpTotal: 2_000, xpBalance: 1_000 };
   const db = {
-    $transaction: vi.fn(), $queryRaw: vi.fn(),
+    $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRawUnsafe: vi.fn(),
     communityMemberStats: {
       createMany: vi.fn(), findUnique: vi.fn(async () => stats), findUniqueOrThrow: vi.fn(async () => stats),
       update: vi.fn(async ({ data }: { data: Record<string, { decrement: number }> }) => {
@@ -56,5 +56,32 @@ describe("boutique : solde distinct de la progression", () => {
     await buyShopItem("user", "community", "title-strategist");
     await equipShopItem("user", "community", "TITLE", null);
     expect(db.$transaction.mock.calls.map((call) => call[1])).toEqual([{ timeout: 15_000, maxWait: 10_000 }, { timeout: 15_000, maxWait: 10_000 }]);
+  });
+
+  it("borne l'attente de verrou en premier (lock_timeout 8 s, avant les 15 s de la transaction) pour l'achat et l'équipement", async () => {
+    await buyShopItem("user", "community", "title-strategist");
+    await equipShopItem("user", "community", "TITLE", null);
+    expect(db.$executeRawUnsafe.mock.calls).toEqual([["SET LOCAL lock_timeout = 8000"], ["SET LOCAL lock_timeout = 8000"]]);
+    expect(db.$executeRawUnsafe.mock.invocationCallOrder[0]).toBeLessThan(db.$queryRaw.mock.invocationCallOrder[0] ?? Infinity);
+  });
+
+  it("n'utilise que `tx` dans la transaction : jamais le client global (pas de seconde connexion)", async () => {
+    const fresh = () => ({
+      $executeRawUnsafe: vi.fn(), $queryRaw: vi.fn(),
+      communityMemberStats: { createMany: vi.fn(), findUniqueOrThrow: vi.fn(async () => ({ xpBalance: 1_000 })), update: vi.fn() },
+      communityMemberCosmetic: { findUnique: vi.fn(async () => null), create: vi.fn() },
+      xpEvent: { create: vi.fn() },
+    });
+    const tx = fresh();
+    db.$transaction.mockImplementation(async (callback) => callback(tx));
+    expect(await buyShopItem("user", "community", "title-strategist")).toBe("purchased");
+    expect(await equipShopItem("user", "community", "TITLE", "title-strategist")).toBe("not_owned");
+    expect(tx.communityMemberStats.update).toHaveBeenCalledTimes(1);
+    expect(tx.xpEvent.create).toHaveBeenCalledTimes(1);
+    const global = db as unknown as ReturnType<typeof fresh>;
+    for (const fn of [global.$executeRawUnsafe, global.$queryRaw, global.communityMemberStats.createMany, global.communityMemberStats.findUniqueOrThrow,
+      global.communityMemberStats.update, global.communityMemberCosmetic.findUnique, global.communityMemberCosmetic.create, global.xpEvent.create]) {
+      expect(fn).not.toHaveBeenCalled();
+    }
   });
 });

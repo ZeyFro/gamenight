@@ -96,6 +96,42 @@ describe.skipIf(!TEST_DATABASE_URL)("boutique XP : PostgreSQL", () => {
     expect(await db.communityMemberCosmetic.count()).toBe(1);
   });
 
+  it("deux achats parallèles pour un solde unique : exactement un débit, un refus propre, un événement, un objet", async () => {
+    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpBalance: 300 } });
+    const results = await Promise.all([
+      shop.buyShopItem(userId, communityId, "frame-nebula"),
+      shop.buyShopItem(userId, communityId, "frame-solar"),
+    ]);
+    expect(results.sort()).toEqual(["insufficient", "purchased"]);
+    expect(await stats()).toMatchObject({ xpTotal: 2_000, xpBalance: 0 });
+    expect(await db.xpEvent.findMany({ where: { userId, reason: "SHOP_BALANCE_PURCHASE" } })).toHaveLength(1);
+    expect(await db.communityMemberCosmetic.count({ where: { communityId, userId } })).toBe(1);
+  });
+
+  it("rafale d'achats : le solde ne devient jamais négatif et reste égal à la somme du ledger", async () => {
+    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpBalance: 700 } });
+    const ids = ["title-strategist", "title-night-owl", "frame-nebula", "frame-solar", "color-mint", "color-coral", "color-ice"];
+    const results = await Promise.all(ids.map((id) => shop.buyShopItem(userId, communityId, id)));
+    const bought = results.filter((r) => r === "purchased").length;
+    const spent = (await db.xpEvent.aggregate({ where: { userId, reason: "SHOP_BALANCE_PURCHASE" }, _sum: { amount: true } }))._sum.amount ?? 0;
+    expect(bought).toBeGreaterThan(0);
+    expect(results.every((r) => r === "purchased" || r === "insufficient")).toBe(true);
+    expect(await db.xpEvent.count({ where: { userId, reason: "SHOP_BALANCE_PURCHASE" } })).toBe(bought);
+    expect(await db.communityMemberCosmetic.count({ where: { communityId, userId } })).toBe(bought);
+    expect(spent).toBeLessThan(0);
+    const after = await stats();
+    expect(after.xpBalance).toBe(700 + spent);
+    expect(after.xpBalance).toBeGreaterThanOrEqual(0);
+    expect(after.xpTotal).toBe(2_000);
+  });
+
+  it("filet de la base : même un débit applicatif défaillant ne peut pas rendre xpBalance négatif (CHECK)", async () => {
+    await db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpBalance: 100 } });
+    await expect(db.communityMemberStats.update({ where: { communityId_userId: { communityId, userId } }, data: { xpBalance: { decrement: 250 } } }))
+      .rejects.toThrow(/xpBalance_nonnegative/);
+    expect(await stats()).toMatchObject({ xpTotal: 2_000, xpBalance: 100 });
+  });
+
   it("gain et achat simultanés conservent le crédit des deux compteurs", async () => {
     const { awardXp } = await import("./xp-actions");
     await Promise.all([
