@@ -43,8 +43,7 @@ jobs:
           ref: ea78a86e194f6e834b133ec772b8d8809ebe8801
           path: runner-source
           sparse-checkout: |
-            scripts/db-migrate.mjs
-            scripts/db-migrate-lib.mjs
+            scripts
           persist-credentials: false
 
       - name: Checkout the exact approved migration files
@@ -52,7 +51,7 @@ jobs:
         with:
           ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
           path: migration-370
-          sparse-checkout: prisma/migrations/20261104140000_tower_team_membership_policy
+          sparse-checkout: prisma/migrations
           persist-credentials: false
 
       - name: Checkout the exact approved migration files
@@ -60,7 +59,7 @@ jobs:
         with:
           ref: 1a495ede501784167b597c43438c1527b2d58082
           path: migration-406
-          sparse-checkout: prisma/migrations/20261105120000_tower_launch_channels_appeals_matchmaking
+          sparse-checkout: prisma/migrations
           persist-credentials: false
 
       - name: Assemble only the two requested migrations
