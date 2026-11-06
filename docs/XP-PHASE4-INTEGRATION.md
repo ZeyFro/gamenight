@@ -34,6 +34,14 @@ Fusion de #325 dans « future main A » (= #370 + #406) et « B » (= #407 tel q
 
 ## 3. Correctifs de tests à faire à la fusion de `main` (références, patch non appliqué)
 
+Répartition confirmée par le propriétaire (6 novembre, information de ChatGPT) :
+
+| Correctif | Responsable | Quand |
+|---|---|---|
+| **T1, T2** | **Claude Code, dans #325** (checklist de la phase 4, section 4, étape 2) | au moment de fusionner `main` dans #325 |
+| T3 | l'outil de renommage (aucune action) | — |
+| T4, T5 | côté #370 / #406 (ChatGPT) ; la branche #325 n'a pas été touchée | avant leur merge ; à **vérifier** après la fusion de `main` : si T4 (`afterEach(vi.unstubAllEnvs)` dans `web-push-delivery.test.ts`) ou T5 (vraie paire VAPID dans `notifications.web-push.test.ts`) manque encore, signaler au propriétaire puis l'appliquer dans #325 |
+
 Fichiers de référence : `docs/xp-phase4/test-fixes-after-main-merge.patch` (contextes de l'arbre simulé : `git apply --3way` ou refaire à la main).
 
 | # | Fichier | Correctif |
@@ -55,7 +63,7 @@ git merge --no-ff --no-commit origin/main
 # 1. Conflits : ici « theirs » = main (version Tower) pour les deux fichiers du runner
 git checkout --theirs scripts/db-migrate.mjs scripts/db-migrate-lib.mjs
 #    web-push-delivery.test.ts : garder les deux blocs `it`
-# 2. Correctifs de tests T1, T2, T4, T5 (section 3), puis :
+# 2. Correctifs de tests T1 et T2 (à notre charge, section 3) ; vérifier que T4 et T5 sont bien arrivés avec #370/#406 (sinon les appliquer et le dire) ; puis :
 git add -A && git commit -m "chore(merge): fusion de main (runner Tower, tests web-push)"
 # 3. Renommage (arbre propre exigé) — dry-run d'abord, relire les 6 correspondances et les fichiers réécrits
 node scripts/rename-xp-lot-migrations.mjs
