@@ -17,5 +17,6 @@ export const XP_REASON_LABELS: Record<XpReason, string> = {
   XP_BET_WON: "a gagné un pari d'XP",
   TOURNAMENT_RESULT: "a marqué en tournoi",
   SHOP_PURCHASE: "a acheté un cosmétique",
+  SHOP_BALANCE_PURCHASE: "a acheté un cosmétique",
   ADMIN_ADJUSTMENT: "a reçu une correction d'un admin",
 };

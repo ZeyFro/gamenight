@@ -1,0 +1,223 @@
+# Référence (NON appliquée) : correctifs de tests trouvés par la simulation du 6 novembre 2026 (fusion de #325 avec #370 + #406 et #407).
+# Les fichiers concernés appartiennent aux PR Tower ou testent leur runner ; ils ne peuvent être modifiés qu'au moment de la fusion de main dans #325 (phase 4).
+# Les contextes viennent de l'arbre simulé : appliquer avec `git apply --3way`, ou refaire à la main d'après docs/XP-PHASE4-INTEGRATION.md (T1 à T5).
+diff --git a/src/lib/web-push-delivery.test.ts b/src/lib/web-push-delivery.test.ts
+index fe5f667..ef2959a 100644
+--- a/src/lib/web-push-delivery.test.ts
++++ b/src/lib/web-push-delivery.test.ts
+@@ -1,32 +1,51 @@
++import { createECDH } from "node:crypto";
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ 
+-const { findMany, deleteMany, sendNotification } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn() }));
++const { findMany, deleteMany, sendNotification, warn } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn(), warn: vi.fn() }));
+ vi.mock("@/lib/prisma", () => ({ prisma: { webPushSubscription: { findMany, deleteMany } } }));
++vi.mock("@/lib/logger", () => ({ logger: { warn, error: vi.fn(), info: vi.fn() } }));
+ vi.mock("web-push", () => ({ default: { sendNotification } }));
+ 
+ import { sendUserWebPush } from "./web-push-delivery";
+ 
++const ecdh = createECDH("prime256v1");
++ecdh.generateKeys();
++const PUBLIC = ecdh.getPublicKey().toString("base64url");
++const PRIVATE = ecdh.getPrivateKey().toString("base64url");
++const payload = { title: "Test", body: "Texte", url: "/profil" };
++
+ describe("livraison Web Push", () => {
+   beforeEach(() => {
+     vi.clearAllMocks();
+     vi.stubEnv("WEB_PUSH_ENABLED", "true");
+     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.test");
+-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "public");
+-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "private");
++    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", PUBLIC);
++    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", PRIVATE);
+     findMany.mockResolvedValue([{ id: "sub-1", endpoint: "https://fcm.googleapis.com/send/x", p256dh: "public-key", auth: "auth-key" }]);
+     sendNotification.mockResolvedValue({ statusCode: 201 });
+   });
+ 
+-  it("ne contacte aucun service si la configuration est absente ou désactivée", async () => {
++  it("ne contacte aucun service si la fonction est éteinte, sans bruit dans le journal", async () => {
+     vi.stubEnv("WEB_PUSH_ENABLED", "false");
+-    await sendUserWebPush("user-1", { title: "Test", body: "Texte", url: "/profil" });
++    await sendUserWebPush("user-1", payload);
+     expect(findMany).not.toHaveBeenCalled();
+     expect(sendNotification).not.toHaveBeenCalled();
++    expect(warn).not.toHaveBeenCalled();
++  });
++
++  it("allumée mais mal configurée : journal compréhensible sans clé, aucun envoi, aucune exception", async () => {
++    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "private-secret-value");
++    await expect(sendUserWebPush("user-1", payload)).resolves.toBeUndefined();
++    expect(sendNotification).not.toHaveBeenCalled();
++    expect(findMany).not.toHaveBeenCalled();
++    expect(warn).toHaveBeenCalledWith("web-push", expect.stringContaining("WEB_PUSH_VAPID_PRIVATE_KEY"), expect.anything());
++    expect(JSON.stringify(warn.mock.calls)).not.toContain("private-secret-value");
++    expect(JSON.stringify(warn.mock.calls)).not.toContain(PRIVATE);
+   });
+ 
+   it("envoie uniquement aux souscriptions de l'utilisateur et supprime celles révoquées", async () => {
+     sendNotification.mockRejectedValueOnce({ statusCode: 410 });
+-    await sendUserWebPush("user-1", { title: "Test", body: "Texte", url: "/profil" });
++    await sendUserWebPush("user-1", payload);
+     expect(findMany).toHaveBeenCalledWith({ where: { userId: "user-1" }, select: { id: true, endpoint: true, p256dh: true, auth: true } });
+     expect(sendNotification).toHaveBeenCalledOnce();
+     expect(deleteMany).toHaveBeenCalledWith({ where: { id: "sub-1", userId: "user-1" } });
+@@ -38,4 +57,27 @@ describe("livraison Web Push", () => {
+     expect(findMany).not.toHaveBeenCalled();
+     expect(sendNotification).not.toHaveBeenCalled();
+   });
++
++  it("supprime aussi sur 404 et conserve l'abonnement sur 429, 500, 503 ou erreur réseau", async () => {
++    sendNotification.mockRejectedValueOnce({ statusCode: 404 });
++    await sendUserWebPush("user-1", payload);
++    expect(deleteMany).toHaveBeenCalledTimes(1);
++    deleteMany.mockClear();
++    for (const failure of [{ statusCode: 429 }, { statusCode: 500 }, { statusCode: 503 }, new Error("ECONNRESET")]) {
++      sendNotification.mockRejectedValueOnce(failure);
++      await expect(sendUserWebPush("user-1", payload)).resolves.toBeUndefined();
++    }
++    expect(deleteMany).not.toHaveBeenCalled();
++    expect(warn).toHaveBeenCalledTimes(4);
++  });
++
++  it("un appareil en échec n'empêche pas les suivants", async () => {
++    findMany.mockResolvedValue([
++      { id: "a", endpoint: "https://fcm.googleapis.com/send/a", p256dh: "p", auth: "a" },
++      { id: "b", endpoint: "https://fcm.googleapis.com/send/b", p256dh: "p", auth: "a" },
++    ]);
++    sendNotification.mockRejectedValueOnce({ statusCode: 500 });
++    await sendUserWebPush("user-1", payload);
++    expect(sendNotification).toHaveBeenCalledTimes(2);
++  });
+ });
+
+######## 2. Assertions de nos tests sur l'ancien message du runner (commit de fusion) ########
+diff --git a/scripts/rehearse-xp-full.mjs b/scripts/rehearse-xp-full.mjs
+index 9422370..42a56b5 100644
+--- a/scripts/rehearse-xp-full.mjs
++++ b/scripts/rehearse-xp-full.mjs
+@@ -353,7 +353,7 @@ async function main() {
+       refuse("hôte poolé", /poolé/, { allowLocal: false, extraEnv: { ...remoteUrl("db-pooler.example.invalid").extraEnv, GAMENIGHT_RUNTIME_ROLE: "gn_runtime", GAMENIGHT_EXPECTED_TARGET: "db-pooler.example.invalid/gamenight_xp_cible" } });
+       refuse("cible locale sans --allow-local", /sans --allow-local/, { allowLocal: false, ...remote() });
+       refuse("base locale hors gamenight_*", /Base locale refusée/, { database: "postgres", ...remote() });
+-      refuse("rôle de migration = rôle runtime", /autre rôle/, { user: "gn_runtime", password: PW.runtime });
++      refuse("rôle de migration = rôle runtime", /même rôle que le runtime/, { user: "gn_runtime", password: PW.runtime });
+       const self = run(process.execPath, ["scripts/rehearse-xp-full.mjs"], { env: { XP_FULL_HOST: ex } });
+       check("rehearse-xp-full lui-même refuse un hôte non local (code 2)", self.status === 2 && /Hôte refusé/.test(self.out), self.out);
+       const neon = bascule(REPO, { container: cfg.containerA, port: cfg.portA, database: "neondb" });
+diff --git a/src/lib/db-migrate-cli.integration.test.ts b/src/lib/db-migrate-cli.integration.test.ts
+index 271de31..f343a72 100644
+--- a/src/lib/db-migrate-cli.integration.test.ts
++++ b/src/lib/db-migrate-cli.integration.test.ts
+@@ -118,7 +118,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
+     const url = withDatabase(NEW_DB);
+     const sameUrl = run([expectAll], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
+     expect(sameUrl.status).toBe(2);
+-    expect(sameUrl.stderr).toContain("autre rôle");
++    expect(sameUrl.stderr).toContain("même rôle que le runtime");
+     const sameRole = run([expectAll], { MIGRATION_DATABASE_URL: url, GAMENIGHT_RUNTIME_ROLE: new URL(url).username });
+     expect(sameRole.status).toBe(2);
+     const exec = run([expectAll, "--execute", `--confirm-database=${NEW_DB}`], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
+diff --git a/src/lib/db-migrate-lib.test.ts b/src/lib/db-migrate-lib.test.ts
+index a4c7a05..9ef11c6 100644
+--- a/src/lib/db-migrate-lib.test.ts
++++ b/src/lib/db-migrate-lib.test.ts
+@@ -49,8 +49,8 @@ describe("db-migrate : cible", () => {
+ 
+   it("refuse le même rôle que le runtime (URL ou nom de rôle) et avertit si le contrôle est impossible", () => {
+     const base = { migrationUrl: url("gn_runtime", "x", HOST, "appdb"), expectedTarget: `${HOST}/appdb` };
+-    expect(() => assertTarget({ ...base, runtimeUrl: URL_RUNTIME })).toThrow(/autre rôle/);
+-    expect(() => assertTarget({ ...base, runtimeRole: "gn_runtime" })).toThrow(/autre rôle/);
++    expect(() => assertTarget({ ...base, runtimeUrl: URL_RUNTIME })).toThrow(/même rôle que le runtime/);
++    expect(() => assertTarget({ ...base, runtimeRole: "gn_runtime" })).toThrow(/même rôle que le runtime/);
+     expect(assertTarget({ ...base, runtimeRole: "autre" }).warnings).toEqual([]);
+     expect(assertTarget(base).warnings[0]).toMatch(/NON effectué/);
+   });
+
+######## 3. Correctifs post-fusion (avant le renommage) ########
+# sim: correctifs tests runner (allowSharedRole, fixture neutre)
+
+diff --git a/scripts/db-migrate-lib.test.mjs b/scripts/db-migrate-lib.test.mjs
+index b426f40..1b520b8 100644
+--- a/scripts/db-migrate-lib.test.mjs
++++ b/scripts/db-migrate-lib.test.mjs
+@@ -1,7 +1,7 @@
+ import { describe, expect, it } from "vitest";
+ import { assertExpectedPending, RefusalError } from "./db-migrate-lib.mjs";
+ 
+-const migration325 = "20261019190000_separate_xp_balance";
++const migration325 = "20261019190000_ancienne_migration_fixture";
+ const migration370 = "20261104140000_tower_team_membership_policy";
+ const migration406 = "20261105120000_tower_launch_channels_appeals_matchmaking";
+ 
+diff --git a/src/lib/db-migrate-lib.test.ts b/src/lib/db-migrate-lib.test.ts
+index 9ef11c6..54d7811 100644
+--- a/src/lib/db-migrate-lib.test.ts
++++ b/src/lib/db-migrate-lib.test.ts
+@@ -13,7 +13,7 @@ const ok = (name: string) => ({ migration_name: name, finished_at: new Date(), r
+ describe("db-migrate : arguments", () => {
+   it("lit les drapeaux et la liste attendue", () => {
+     expect(readArgs(["--expect=a, b", "--execute", "--confirm-database=appdb", "--allow-local"]))
+-      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true });
++      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true, allowSharedRole: false });
+   });
+ 
+   it("refuse une valeur sur les drapeaux booléens", () => {
+
+# sim: correctifs tests web-push (VERCEL_ENV fuité, paire VAPID valide)
+
+diff --git a/src/lib/notifications.web-push.test.ts b/src/lib/notifications.web-push.test.ts
+index 2d7cb5d..5ee1807 100644
+--- a/src/lib/notifications.web-push.test.ts
++++ b/src/lib/notifications.web-push.test.ts
+@@ -1,3 +1,4 @@
++import { createECDH } from "node:crypto";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ const { create, createMany, scopedPrismaForCommunity, sendUserWebPush, loggerError, loggerWarn, eligibleChannelUserIds } = vi.hoisted(() => {
+@@ -21,14 +22,20 @@ vi.mock("@/lib/notification-channel-preferences", () => ({ getEligibleUserIdsFor
+ 
+ import { createNotification, createNotifications } from "./notifications";
+ 
++// Paire VAPID valide : webPushConfig() vérifie désormais que les clés sont lisibles et appariées.
++const ecdh = createECDH("prime256v1");
++ecdh.generateKeys();
++const VAPID_PUBLIC = ecdh.getPublicKey().toString("base64url");
++const VAPID_PRIVATE = ecdh.getPrivateKey().toString("base64url");
++
+ describe("notification Web Push", () => {
+   beforeEach(() => {
+     vi.clearAllMocks();
+     vi.stubEnv("VERCEL_ENV", "production");
+     vi.stubEnv("WEB_PUSH_ENABLED", "true");
+     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.invalid");
+-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "test-public-key");
+-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "test-private-key");
++    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", VAPID_PUBLIC);
++    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", VAPID_PRIVATE);
+     eligibleChannelUserIds.mockImplementation((userIds: string[]) => Promise.resolve(new Set(userIds)));
+   });
+ 
+diff --git a/src/lib/web-push-delivery.test.ts b/src/lib/web-push-delivery.test.ts
+index ef2959a..0b39132 100644
+--- a/src/lib/web-push-delivery.test.ts
++++ b/src/lib/web-push-delivery.test.ts
+@@ -1,5 +1,5 @@
+ import { createECDH } from "node:crypto";
+-import { beforeEach, describe, expect, it, vi } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ const { findMany, deleteMany, sendNotification, warn } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn(), warn: vi.fn() }));
+ vi.mock("@/lib/prisma", () => ({ prisma: { webPushSubscription: { findMany, deleteMany } } }));
+@@ -25,6 +25,10 @@ describe("livraison Web Push", () => {
+     sendNotification.mockResolvedValue({ statusCode: 201 });
+   });
+ 
++  afterEach(() => {
++    vi.unstubAllEnvs();
++  });
++
+   it("ne contacte aucun service si la fonction est éteinte, sans bruit dans le journal", async () => {
+     vi.stubEnv("WEB_PUSH_ENABLED", "false");
+     await sendUserWebPush("user-1", payload);

@@ -38,9 +38,11 @@ import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { pageMetadata } from "@/lib/page-title";
 import { MAX_MESSAGE_TEXT_LENGTH } from "@/lib/message-templates";
+import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { getCommunityTeamsCommunityId, listMemberCommunityTeamOptions } from "@/lib/community-teams";
 import { pickCreationCommunityId } from "@/lib/community-channels";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 
 export const metadata = pageMetadata("Soirées");
 
@@ -161,6 +163,10 @@ export default async function SessionsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   await requireCommunityChosen(user.id, "/sessions");
+  const isVoicePresenceAdmin = isVoicePresenceEnabled() && (isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)) || !!await prisma.membership.findFirst({
+    where: { userId: user.id, status: "ACTIVE", role: { in: ["ADMIN", "OWNER"] }, community: { status: "ACTIVE" } },
+    select: { communityId: true },
+  }));
 
   const [teamsCommunityId, routedSessionCommunityId] = await Promise.all([
     getCommunityTeamsCommunityId(user.id),
@@ -281,6 +287,11 @@ export default async function SessionsPage({
           <ButtonLink href="/sessions/sondages" variant="secondary" size="sm">
             Préparer une soirée
           </ButtonLink>
+          {isVoicePresenceAdmin && (
+            <ButtonLink href="/admin/voice-presence" variant="secondary" size="sm">
+              Durées vocales
+            </ButtonLink>
+          )}
           {/* Roue du gambling (Sprint 3) — accès depuis /sessions, cf. spec. */}
           <ButtonLink href="/roulette" variant="secondary" size="sm">
             🎰 Roulette

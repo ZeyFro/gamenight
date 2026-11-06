@@ -16,23 +16,23 @@ export interface XpBetTarget {
  * `RELEASE_YEARS` dans `GameFilterDrawer`) + un seul `<input
  * type="range">` (contrairement au double-slider corrigé là-bas, un seul
  * curseur ne pose pas ce problème) pour la mise, avec la valeur affichée
- * en direct. `maxBetAmount(xpTotal)` peut être 0 (moins de 10 XP en
+ * en direct. `maxBetAmount(xpBalance)` peut être 0 (moins de 10 XP en
  * poche) — le formulaire se désactive alors plutôt que d'afficher un
  * slider inutilisable.
  */
 export function XpBetForm({
   sessionId,
   voterId,
-  xpTotal,
+  xpBalance,
   targets,
 }: {
   sessionId: string;
   voterId: string;
-  xpTotal: number;
+  xpBalance: number;
   targets: XpBetTarget[];
 }) {
   const candidates = targets.filter((t) => t.id !== voterId);
-  const max = maxBetAmount(xpTotal);
+  const max = maxBetAmount(xpBalance);
   const [targetUserId, setTargetUserId] = useState(candidates[0]?.id ?? "");
   const [amount, setAmount] = useState(Math.min(XP_BET_MIN, max));
 
@@ -77,7 +77,7 @@ export function XpBetForm({
           className="w-full accent-accent"
         />
         <p className="text-xs text-muted">
-          {XP_BET_MIN}–{max} XP (max 50% de ton solde : {xpTotal} XP)
+          {XP_BET_MIN}–{max} XP (max 50% de ton solde : {xpBalance} XP)
         </p>
       </div>
 

@@ -6,8 +6,13 @@ vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (TEST_DATABASE_URL) {
     const destination = new URL(TEST_DATABASE_URL);
+    // Ports de test : 55439 / 55443 par défaut. Sur un poste où Windows réserve cette plage, la personne qui lance la
+    // suite peut déclarer EXPLICITEMENT un autre port de recette (GAMENIGHT_TEST_DB_PORT, 55400-55599) : il doit être
+    // celui de l'URL ; hôte 127.0.0.1, protocole postgres et base `gamenight_test` restent obligatoires.
+    const declared = process.env.GAMENIGHT_TEST_DB_PORT ?? "";
+    const declaredOk = /^55[45]\d\d$/.test(declared) && declared === destination.port;
     if (!["postgres:", "postgresql:"].includes(destination.protocol) ||
-      destination.hostname !== "127.0.0.1" || !["55439", "55443"].includes(destination.port) ||
+      destination.hostname !== "127.0.0.1" || !(["55439", "55443"].includes(destination.port) || declaredOk) ||
       destination.pathname !== "/gamenight_test") {
       throw new Error("Finalisation MVP : PostgreSQL de test dédié 127.0.0.1:55439/gamenight_test uniquement.");
     }

@@ -61,3 +61,18 @@ Ne configure pas ces URLs vers Neon, Preview ou Production. Après les tests, re
 ## Compilation
 
 npm run build (scripts/build.mjs) lance seulement prisma generate puis next build : aucune migration au build, quel que soit l’environnement. Les migrations de production s’appliquent à part, manuellement, après un snapshot Neon (voir CLAUDE.md). Pour compiler localement, garde quand même DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
+
+## Migration explicite d'une base locale (rôles distincts)
+
+`scripts/db-migrate.mjs` est en dry-run par défaut et refuse toute cible non contrôlée. En local : `--allow-local`, base `gamenight_*`, `MIGRATION_DATABASE_URL` (rôle de migration) différent du rôle runtime (`DATABASE_URL` ou `GAMENIGHT_RUNTIME_ROLE`).
+
+    node scripts/db-migrate.mjs --allow-local --expect=<migration1,migration2>                                   # dry-run
+    node scripts/db-migrate.mjs --allow-local --expect=<…> --execute --confirm-database=<base>                  # applique
+
+Tests : `src/lib/db-migrate-cli.integration.test.ts` (refus, dry-run sans écriture, échec en cours de route, rôle sans droit) et `src/lib/runtime-no-ddl.integration.test.ts` (rôle runtime sans DDL), chacun avec `TEST_DATABASE_URL` sur un PostgreSQL local jetable, un fichier à la fois : `npx vitest run <fichier>`.
+
+### Avertissement : la cible n'est protégée que par l'opérateur
+
+Rien dans `db-migrate.mjs` ni dans `rehearse-xp-role-barrier.mjs` n'empêche techniquement de viser Production, hormis `GAMENIGHT_EXPECTED_TARGET` (`<hôte>[:port]/<base>`) et `--confirm-database`. L'opérateur doit vérifier lui-même la cible affichée (« Cible : hôte:port/base ») avant tout `--execute`. Hors machine locale, `--execute` exige aussi `DATABASE_URL` ou `GAMENIGHT_RUNTIME_ROLE` (contrôle « rôle de migration différent du rôle runtime ») et refuse sinon (code 2). Les drapeaux `--execute` et `--allow-local` n'acceptent pas de valeur.
+
+La liste `--expect=` doit contenir exactement les migrations en attente par rapport à `origin/main`, dans l’ordre de `ls prisma/migrations` ; la liste à jour et la procédure sont dans `docs/LIVRAISON-XP.md` et `docs/REPRISE_AUTONOME.md`.

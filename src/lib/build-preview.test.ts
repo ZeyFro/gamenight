@@ -28,3 +28,14 @@ syncBuiltinESMExports();`);
     } finally { rmSync(folder, { recursive: true }); }
   });
 });
+
+describe("build : aucune migration implicite", () => {
+  it("package.json et vercel.json ne migrent pas; seul `node scripts/db-migrate.mjs` (explicite) migre", () => {
+    const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts as Record<string, string>;
+    expect(scripts.build).toBe("node scripts/build.mjs");
+    expect(readFileSync("scripts/build.mjs", "utf8")).not.toMatch(/migrate/i);
+    const implicit = Object.entries(scripts).filter(([, cmd]) => /migrate/i.test(cmd));
+    expect(implicit).toEqual([]);
+    expect(readFileSync("vercel.json", "utf8")).not.toMatch(/migrate|buildCommand/i);
+  });
+});

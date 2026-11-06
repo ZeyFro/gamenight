@@ -346,7 +346,7 @@ try {
     await sleep(1500);
     assert.equal((await dates("Date Alice")).length, 1, "un MEMBER a supprimé une date serveur");
     // Témoin positif : l'ADMIN rejoue la même suppression forgée sur la date d'Alice -> supprimée (droit de gestion).
-    const adminReplay = await contexts.casey.request.post(calendar, { headers, data: forged, maxRedirects: 0 });
+    await contexts.casey.request.post(calendar, { headers, data: forged, maxRedirects: 0 });
     await waitFor(async () => (await dates("Date Alice")).length === 0, "ADMIN n'a pas pu supprimer la date d'Alice");
     assert.equal((await dates("Date Casey")).length, 1, `date de Casey préservée (${original.id})`);
   });

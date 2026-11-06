@@ -54,7 +54,7 @@ async function awardXpRaw(userId: string, communityId: string | null, reason: Xp
       if (id !== defaultId && await scopedDb.xpEvent.findFirst({ where: { communityId: defaultId, userId, reason, sourceId }, select: { id: true } })) return;
       await scopedDb.xpEvent.create({ data: { communityId: id, userId, reason, sourceId, amount } });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
-      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId: id, userId } }, data: { xpTotal: { increment: amount } } });
+      await scopedDb.communityMemberStats.update({ where: { communityId_userId: { communityId: id, userId } }, data: { xpTotal: { increment: amount }, xpBalance: { increment: amount } } });
     });
   } catch (error) {
     if (!isUniqueConstraintViolation(error)) throw error;

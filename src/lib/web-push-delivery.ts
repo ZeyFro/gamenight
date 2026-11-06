@@ -1,13 +1,17 @@
 import webpush from "web-push";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { webPushConfig } from "@/lib/web-push-config";
+import { webPushConfig, webPushConfigIssue, webPushIssueMessage } from "@/lib/web-push-config";
 
 export type WebPushPayload = { title: string; body: string; url: string };
 
 export async function sendUserWebPush(userId: string, payload: WebPushPayload): Promise<void> {
   const config = webPushConfig(process.env);
-  if (!config) return;
+  if (!config) {
+    const issue = webPushConfigIssue(process.env);
+    if (issue && issue.code !== "disabled") logger.warn("web-push", webPushIssueMessage(issue), { variables: issue.variables });
+    return;
+  }
 
   const subscriptions = await prisma.webPushSubscription.findMany({
     where: { userId },
@@ -27,7 +31,7 @@ export async function sendUserWebPush(userId: string, payload: WebPushPayload): 
       if (statusCode === 404 || statusCode === 410) {
         await prisma.webPushSubscription.deleteMany({ where: { id: subscription.id, userId } });
       } else {
-        logger.warn("web-push", "Échec de livraison push.", { userId, statusCode });
+        logger.warn("web-push", "Échec de livraison push, abonnement conservé.", { userId, statusCode, error: error instanceof Error ? error.name : undefined });
       }
     }
   }

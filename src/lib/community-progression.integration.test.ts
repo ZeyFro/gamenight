@@ -45,7 +45,7 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
     currentUser.mockResolvedValue(await db.user.findUniqueOrThrow({ where: { id: ids.both } }));
   });
   const stats = (c: string, u = "both") => db.communityMemberStats.findUnique({ where: { communityId_userId: { communityId: ids[c], userId: ids[u] } } });
-  const setStats = (c: string, data: { xpTotal?: number; streakCount?: number; streakLastActiveAt?: Date; bestStreakCount?: number }) => db.communityMemberStats.create({ data: { communityId: ids[c], userId: ids.both, ...data } });
+  const setStats = (c: string, data: { xpTotal?: number; streakCount?: number; streakLastActiveAt?: Date; bestStreakCount?: number }) => db.communityMemberStats.create({ data: { communityId: ids[c], userId: ids.both, xpBalance: data.xpTotal ?? 0, ...data } });
   const session = (c: string) => db.session.create({ data: { communityId: ids[c], createdById: ids.both, date: new Date(), status: "SCHEDULED", decidedGameId: ids.game } });
 
   it("20 badges crédités ne reprennent aucune transaction ; un crédit manquant reste réparable", async () => {

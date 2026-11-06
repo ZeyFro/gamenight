@@ -65,3 +65,10 @@ Ne rien exécuter dans cette section sans un « OUI » du propriétaire pour l'a
 5. Activer un flag seulement à la demande du propriétaire, un à la fois. Migration vocale, installation du worker et collecte réelle restent distinctes.
 
 Le propriétaire gère la connexion Codex, les invitations, les permissions/rôles Discord et les publications Discord. Aucun secret ne doit figurer dans un fichier, une PR ou un compte rendu.
+
+## #325 : lot de 6 migrations en attente (6 novembre 2026)
+
+- #325 (`integ/xp-vocal-20261023`, Draft) a été mise à jour avec `origin/main` le 6 novembre 2026 (phase 1 : fusion, sans rebase ni force-push). La PR s'adapte à `main` : le build de `main` (`scripts/build.mjs`) est conservé tel quel, il ne migre jamais.
+- Elle apporte un lot de six migrations XP et vocales, non appliquées en Production et distinctes des sept migrations Tower de `main`. Elles s'appliquent en une exécution explicite de `node scripts/db-migrate.mjs`, avant le déploiement du code, selon `docs/LIVRAISON-XP.md` (liste exacte à jour, dry-run, précontrôle, retour arrière). Aucune migration n'est appliquée par cette mise à jour.
+- Renommage : les noms actuels du lot (horodatages d'octobre) sont antérieurs à des migrations de `main` déjà terminées sur une base à jour ; le runner de #370 refuse une migration en attente plus ancienne qu'une migration terminée. Le renommage (horodatages postérieurs à toute migration de `main`, contenu SQL inchangé) est prévu en phase 4, après la fusion de #370 et #406.
+- Point d'entrée unique documenté : `node scripts/db-migrate.mjs` (le script npm `db:migrate` est retiré). Les préconditions Production de ce fichier restent à produire par le propriétaire ; aucun accord d'exécution n'est donné ici.

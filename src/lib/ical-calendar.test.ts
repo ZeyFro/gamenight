@@ -26,4 +26,17 @@ describe("export iCalendar", () => {
     expect(output).toContain("\\\\fin\\nligne");
     expect(lines.some((line) => line.startsWith(" "))).toBe(true);
   });
+
+  it("garde des UID stables entre deux exports et une structure RFC 5545 minimale", () => {
+    const session = { id: "abc123", date: new Date("2026-10-16T20:00:00Z"), title: "Soirée", status: "SCHEDULED" as const, url: "https://example.test/sessions/abc123" };
+    const first = buildIcalCalendar([session], new Date("2026-01-01T00:00:00Z"));
+    const second = buildIcalCalendar([session], new Date("2026-06-01T00:00:00Z"));
+    expect(first).toContain("UID:abc123@gamenight\r\n");
+    expect(second).toContain("UID:abc123@gamenight\r\n");
+    expect(first.endsWith("END:VCALENDAR\r\n")).toBe(true);
+    expect(first.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
+    expect(first.startsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n")).toBe(true);
+    expect(first.indexOf("BEGIN:VTIMEZONE")).toBeLessThan(first.indexOf("BEGIN:VEVENT"));
+    expect(first.match(/BEGIN:VEVENT/g)).toHaveLength(first.match(/END:VEVENT/g)!.length);
+  });
 });
