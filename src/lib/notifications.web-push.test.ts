@@ -1,3 +1,4 @@
+import { encodeVapidFixture } from "@/test-utils/vapid";
 import { createECDH } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,8 +33,9 @@ describe("notification Web Push", () => {
     // Générée uniquement dans ce test ; aucun secret VAPID de déploiement.
     const vapid = createECDH("prime256v1");
     vapid.generateKeys();
-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", vapid.getPublicKey().toString("base64url"));
-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", vapid.getPrivateKey().toString("base64url"));
+    const keys = encodeVapidFixture(vapid);
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", keys.publicKey);
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", keys.privateKey);
     eligibleChannelUserIds.mockImplementation((userIds: string[]) => Promise.resolve(new Set(userIds)));
   });
 
