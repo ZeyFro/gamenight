@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createECDH } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { findMany, deleteMany, sendNotification } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { webPushSubscription: { findMany, deleteMany } } }));
@@ -11,10 +12,16 @@ describe("livraison Web Push", () => {
     vi.clearAllMocks();
     vi.stubEnv("WEB_PUSH_ENABLED", "true");
     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.test");
-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "public");
-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "private");
+    const vapid = createECDH("prime256v1");
+    vapid.generateKeys();
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", vapid.getPublicKey().toString("base64url"));
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", vapid.getPrivateKey().toString("base64url"));
     findMany.mockResolvedValue([{ id: "sub-1", endpoint: "https://fcm.googleapis.com/send/x", p256dh: "public-key", auth: "auth-key" }]);
     sendNotification.mockResolvedValue({ statusCode: 201 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("ne contacte aucun service si la configuration est absente ou désactivée", async () => {
