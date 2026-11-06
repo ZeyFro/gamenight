@@ -50,7 +50,7 @@ describe.skipIf(!TEST_DATABASE_URL)("petites annonces LFG : Postgres local", () 
 
   it("un membre publie une annonce : jeu + message coupé, expire à +24 h, visible des autres membres", async () => {
     await as("alice");
-    await expect(actions.createPlayerClassifiedAction(form({ gameId: ids.game, message: "  Il manque un quatrième  " }))).rejects.toThrow("REDIRECT:/joueurs");
+    await expect(actions.createPlayerClassifiedAction(form({ gameId: ids.game, message: "  Il manque un quatrième  " }))).rejects.toThrow(/^REDIRECT:\/joueurs$/);
     const row = await db.playerClassified.findFirstOrThrow();
     expect(row).toMatchObject({ communityId: ids.on, gameId: ids.game, createdById: ids.alice, message: "Il manque un quatrième" });
     expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(24 * 60 * 60 * 1000);
@@ -60,7 +60,7 @@ describe.skipIf(!TEST_DATABASE_URL)("petites annonces LFG : Postgres local", () 
 
   it("annonce expirée ou auteur retiré de la communauté : masquée", async () => {
     await as("alice");
-    await expect(actions.createPlayerClassifiedAction(form({ gameId: ids.game, message: "Ce soir ?" }))).rejects.toThrow("REDIRECT:/joueurs");
+    await expect(actions.createPlayerClassifiedAction(form({ gameId: ids.game, message: "Ce soir ?" }))).rejects.toThrow(/^REDIRECT:\/joueurs$/);
     const row = await db.playerClassified.findFirstOrThrow();
     expect(await lib.listPlayerClassifieds(ids.bob, ids.on, new Date(row.expiresAt.getTime() - 1))).toHaveLength(1);
     expect(await lib.listPlayerClassifieds(ids.bob, ids.on, row.expiresAt)).toHaveLength(0);

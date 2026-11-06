@@ -21,11 +21,11 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
   const input = playerClassifiedSchema.safeParse({
     gameId: formData.get("gameId"),
     message: formData.get("message"),
-    platform: formData.get("platform"),
-    microphoneRequirement: formData.get("microphoneRequirement"),
-    partyType: formData.get("partyType"),
-    startsDate: formData.get("startsDate"),
-    startsTime: formData.get("startsTime"),
+    platform: formData.get("platform") ?? undefined,
+    microphoneRequirement: formData.get("microphoneRequirement") ?? undefined,
+    partyType: formData.get("partyType") ?? undefined,
+    startsDate: formData.get("startsDate") ?? undefined,
+    startsTime: formData.get("startsTime") ?? undefined,
     durationMinutes: formData.get("durationMinutes"),
   });
   if (!input.success) redirect("/joueurs?error=invalid");
