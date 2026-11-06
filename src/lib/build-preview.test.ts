@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
-describe("build : migrations séparées du déploiement", () => {
+describe("build : migrations protégées en Preview", () => {
   it.each(["preview", "production", "development", ""])("exécute le script réel, environnement %s, processus enfants simulés", (environment) => {
     const folder = mkdtempSync(join(tmpdir(), "gamenight-preview-build-"));
     const shim = join(folder, "shim.mjs"), trace = join(folder, "trace.json");
@@ -24,6 +24,7 @@ syncBuiltinESMExports();`);
         ["node_modules/next/dist/bin/next", "build"],
       ]);
       expect(calls.flat()).not.toContain("migrate");
+      expect(calls.flat()).not.toContain("deploy");
     } finally { rmSync(folder, { recursive: true }); }
   });
 });

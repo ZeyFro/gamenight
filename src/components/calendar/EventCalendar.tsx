@@ -45,7 +45,7 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
             return <div key={day.date.toISOString()} className={`gn-calendar-day ${selected ? "selected" : ""} ${day.date.getUTCMonth() !== selectedDate.getUTCMonth() ? "outside" : ""}`}>
               <Link prefetch={false} scroll={false} href={href(day.date)} className="gn-calendar-date" aria-label={`Afficher ${label}${selected ? ", date sélectionnée" : ""}`} aria-current={sameUtcDate(day.date, today) ? "date" : undefined}>{day.date.getUTCDate()}</Link>
               <div className="gn-calendar-chips">
-                {day.sessions.slice(0, 2).map((session) => <Link prefetch={false} href={`/sessions/${session.id}`} className="gn-calendar-event" key={session.id}><b>{session.decidedGameName ?? `Soirée · ${SESSION_STATUS_LABELS[session.status].label}`}</b><span>{TIME.format(session.date)}</span></Link>)}
+                {day.sessions.slice(0, 2).map((session) => <Link prefetch={false} href={`/sessions/${session.id}`} className="gn-calendar-event" key={session.id}><b>{session.decidedGameName ?? `Soirée · ${SESSION_STATUS_LABELS[session.status].label}`}</b>{session.communityTeamName && <small>Équipe · {session.communityTeamName}</small>}<span>{TIME.format(session.date)}</span></Link>)}
                 {day.roulettes?.slice(0, 1).map((roulette) => <Link prefetch={false} href={`/roulette/${roulette.id}`} className="gn-calendar-event roulette" key={roulette.id}><b>Roulette</b><span>{TIME.format(roulette.scheduledAt)}</span></Link>)}
                 {day.communityDates.slice(0, 1).map((event) => event.href?.startsWith("https://")
                   ? <a key={event.id} href={event.href} target="_blank" rel="noopener noreferrer" className="gn-calendar-event"><b>{event.title}</b></a>
@@ -64,6 +64,7 @@ export function EventCalendar({ days, selectedDate, today, mode, pote, potes, vi
         {selectedDay?.sessions.map((session) => <Link prefetch={false} key={session.id} href={`/sessions/${session.id}`} className="gn-agenda-event">
           <span className="text-xs text-accent">{SESSION_STATUS_LABELS[session.status].label} · {TIME.format(session.date)}</span>
           <h4>{session.decidedGameName ?? "On choisit le jeu ensemble"}</h4>
+          {session.communityTeamName && <p>Équipe · {session.communityTeamName}</p>}
           <p>{session.decidedGameName ? `${session.players.length} joueur(s) inscrit(s)` : `${session.proposals.length} proposition(s)`}</p>
           <small className="mt-3 block">Ouvrir la soirée →</small>
         </Link>)}

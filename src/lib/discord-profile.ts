@@ -30,6 +30,14 @@ function discordAvatarUrl(id: string, avatar: string | null, discriminator: stri
   return `https://cdn.discordapp.com/avatars/${id}/${avatar}.${format}`;
 }
 
+/**
+ * Délai maximal d'un appel HTTP Discord de ce cron. Sans lui, un appel
+ * bloqué figeait tout le lot jusqu'à la coupure de la fonction ; un
+ * dépassement lève une erreur, comptée en échec pour CE compte seulement
+ * (try/catch par utilisateur), et le lot continue.
+ */
+const DISCORD_HTTP_TIMEOUT_MS = 10_000;
+
 interface DiscordSelfResponse {
   id: string;
   username: string;
@@ -58,13 +66,14 @@ interface DiscordTokenResponse {
  */
 async function refreshDiscordAccessToken(
   refreshToken: string
-): Promise<DiscordTokenResponse | "rate_limited" | null> {
+): Promise<DiscordTokenResponse | "rate_limited" | "revoked" | null> {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const clientSecret = process.env.DISCORD_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
 
   const res = await fetch("https://discord.com/api/v10/oauth2/token", {
     method: "POST",
+    signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -74,6 +83,13 @@ async function refreshDiscordAccessToken(
     }),
   });
   if (res.status === 429) return "rate_limited";
+  if (res.status === 400) {
+    // Échec définitif propre à CE jeton (révoqué, expiré ou rotation
+    // perdue) : Discord répond 400 `{"error":"invalid_grant"}`. Le
+    // réessayer à chaque passage ne réussira jamais.
+    const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+    if (body?.error === "invalid_grant") return "revoked";
+  }
   if (!res.ok) return null;
 
   return (await res.json()) as DiscordTokenResponse;
@@ -131,6 +147,8 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   failed: number;
   skipped: number;
   unreadable: number;
+  /** Jetons `invalid_grant` effacés ce passage (compte basculé vers le repli bot). */
+  revoked: number;
   unreadableUsers: OAuthProfileUser[];
   /** Discord a répondu 429 : le lot s'est arrêté, le reste est repris au passage horaire suivant. */
   rateLimited: boolean;
@@ -167,6 +185,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
       failed: 0,
       skipped: 0,
       unreadable: users.length,
+      revoked: 0,
       unreadableUsers: users.map((u) => ({
         discordId: u.discordId,
         discordName: u.discordName,
@@ -180,6 +199,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
   let failed = 0;
   let skipped = 0;
   let unreadable = 0;
+  let revoked = 0;
   let rateLimited = false;
   const unreadableUsers: OAuthProfileUser[] = [];
 
@@ -224,8 +244,27 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
           logger.warn("discord-profile", "Discord a répondu 429 (renouvellement de jeton) — lot OAuth interrompu.");
           break;
         }
+        if (refreshed === "revoked") {
+          // `invalid_grant` : jeton définitivement inutilisable. On efface
+          // la paire stockée (compare-and-set sur la valeur lue, pour ne
+          // jamais écraser un jeton neuf posé par une reconnexion entre-
+          // temps) : le compte sort du lot OAuth, passe au repli bot dès ce
+          // passage (`discordRefreshToken: null`) et retrouve un jeton à sa
+          // prochaine vraie connexion (`auth.ts`). Un seul log par compte.
+          await prisma.user.updateMany({
+            where: { discordId: user.discordId, discordRefreshToken: user.discordRefreshToken },
+            data: { discordAccessToken: null, discordRefreshToken: null, discordTokenExpiresAt: null },
+          });
+          revoked += 1;
+          logger.warn(
+            "discord-profile",
+            `Jeton OAuth Discord révoqué pour ${user.discordId} (invalid_grant) — jetons effacés, repli bot jusqu'à la prochaine connexion.`,
+            { discordId: user.discordId }
+          );
+          continue;
+        }
         if (!refreshed) {
-          // `refresh_token` révoqué/expiré côté Discord — rien à faire
+          // Échec transitoire ou de configuration (5xx, 401 client…) — rien à faire
           // ici, l'utilisateur redonnera un jeton valide à sa prochaine
           // vraie reconnexion (callback `jwt` dans auth.ts).
           failed += 1;
@@ -239,14 +278,26 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
         accessToken = refreshed.access_token;
         // Chiffre les DEUX valeurs avant d'écrire — un seul `update`
         // Prisma pour la paire complète, jamais l'une sans l'autre.
-        await prisma.user.update({
-          where: { discordId: user.discordId },
-          data: {
-            discordAccessToken: encryptToken(refreshed.access_token, encryptionKey),
-            discordRefreshToken: encryptToken(refreshed.refresh_token, encryptionKey),
-            discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-          },
-        });
+        try {
+          await prisma.user.update({
+            where: { discordId: user.discordId },
+            data: {
+              discordAccessToken: encryptToken(refreshed.access_token, encryptionKey),
+              discordRefreshToken: encryptToken(refreshed.refresh_token, encryptionKey),
+              discordTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+            },
+          });
+        } catch (error) {
+          // Discord a déjà invalidé l'ancien refresh_token : la nouvelle paire
+          // est perdue et le prochain passage obtiendra invalid_grant. Log
+          // distinct pour reconnaître ce cas, puis l'erreur suit son cours.
+          logger.error(
+            "discord-profile",
+            `Rotation du jeton OAuth perdue pour ${user.discordId} : écriture en base échouée après un renouvellement réussi.`,
+            { discordId: user.discordId }
+          );
+          throw error;
+        }
       } else {
         await encryptLegacyTokens(user, accessToken, storedRefresh.value, encryptionKey);
       }
@@ -258,6 +309,7 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
       const res = await fetch("https://discord.com/api/v10/users/@me", {
         headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
       });
       if (res.status === 429) {
         rateLimited = true;
@@ -302,10 +354,10 @@ export async function refreshAllDiscordProfilesViaOAuth(): Promise<{
 
   logger.info(
     "discord-profile",
-    `Cron OAuth terminé${rateLimited ? " (INTERROMPU : 429)" : ""} : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s), ${unreadable} illisible(s) sur ${users.length}.`
+    `Cron OAuth terminé${rateLimited ? " (INTERROMPU : 429)" : ""} : ${updated} mis à jour, ${failed} échec(s), ${skipped} ignoré(s), ${unreadable} illisible(s), ${revoked} révoqué(s) sur ${users.length}.`
   );
 
-  return { checked: users.length, updated, failed, skipped, unreadable, unreadableUsers, rateLimited };
+  return { checked: users.length, updated, failed, skipped, unreadable, revoked, unreadableUsers, rateLimited };
 }
 
 /**
@@ -334,6 +386,7 @@ export async function refreshAllDiscordProfiles(): Promise<{
     failed: number;
     skipped: number;
     unreadable: number;
+    revoked: number;
     unreadableUsers: OAuthProfileUser[];
     rateLimited: boolean;
   };
@@ -454,6 +507,7 @@ async function refreshAllDiscordProfilesViaBotFor(
     try {
       const res = await fetch(`https://discord.com/api/users/${user.discordId}`, {
         headers: { Authorization: `Bot ${botToken}` },
+        signal: AbortSignal.timeout(DISCORD_HTTP_TIMEOUT_MS),
       });
       if (res.status === 429) {
         rateLimited = true;

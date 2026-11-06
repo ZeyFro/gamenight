@@ -6,7 +6,7 @@
 
 ## ⚠️ Migrations : MERGE MANUEL
 
-Trois PR contiennent une migration Prisma (appliquée à la base de production par `prisma migrate deploy` au build Vercel), pas deux :
+Trois PR contiennent une migration Prisma (à l’époque appliquée à la base de production par `prisma migrate deploy` au build Vercel ; ce n’est plus le cas depuis #339 : le build ne migre plus), pas deux :
 
 | PR | Migration | Nature |
 | -- | --------- | ------ |

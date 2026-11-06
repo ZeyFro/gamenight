@@ -33,7 +33,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
 
   function form(key: string) {
     const form = new FormData();
-    for (const [name, value] of Object.entries({ creationKey: key, date: "2026-12-01", time: "20:00", gameId: "game", name: "Tournoi", maxPlayers: "4", deadlineOffset: "1" })) form.set(name, value);
+    for (const [name, value] of Object.entries({ creationKey: key, date: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), time: "20:00", gameId: "game", name: "Tournoi", maxPlayers: "4", deadlineOffset: "1" })) form.set(name, value);
     form.append("participantId", "guest");
     form.append("participantId", "creator");
     form.append("notifyUserId", "guest");

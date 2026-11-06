@@ -1,16 +1,17 @@
-// Enregistre les commandes GLOBALES de l'application Discord (scripts/discord-commands.json).
+// Ajoute/remplace uniquement les commandes Tower de l'application Discord.
 // Par défaut : simulation (affiche le corps, n'appelle pas Discord).
 //   node scripts/register-discord-commands.mjs            # simulation
-//   node scripts/register-discord-commands.mjs --execute  # PUT réel
-// ⚠ Le PUT REMPLACE toutes les commandes globales de l'application : à n'exécuter
-// qu'une fois l'endpoint d'interactions configuré, et jamais depuis un test.
+//   node scripts/register-discord-commands.mjs --execute  # GET + PUT réel
+// Le PUT Discord remplace toutes les commandes globales : le script conserve donc
+// celles qui ne sont pas gérées par Tower et ne les supprime pas.
 // Variables : DISCORD_CLIENT_ID, DISCORD_BOT_TOKEN.
 import { readFileSync } from "node:fs";
+import mergeManagedCommands from "./discord-command-merge.cjs";
 
 const commands = JSON.parse(readFileSync(new URL("./discord-commands.json", import.meta.url), "utf8"));
 
 if (!process.argv.includes("--execute")) {
-  console.log("Simulation (ajoute --execute pour enregistrer) :");
+  console.log("Simulation uniquement. En mode réel, les autres commandes globales sont conservées :");
   console.log(JSON.stringify(commands, null, 2));
   process.exit(0);
 }
@@ -22,10 +23,19 @@ if (!appId || !/^\d+$/.test(appId) || !token) {
   process.exit(1);
 }
 
-const response = await fetch(`https://discord.com/api/v10/applications/${appId}/commands`, {
+const endpoint = `https://discord.com/api/v10/applications/${appId}/commands`;
+const headers = { Authorization: `Bot ${token}`, "Content-Type": "application/json" };
+const currentResponse = await fetch(endpoint, { headers });
+if (!currentResponse.ok) {
+  console.error(`Lecture des commandes impossible (${currentResponse.status}); aucune écriture effectuée.`);
+  process.exit(1);
+}
+const current = await currentResponse.json();
+const merged = mergeManagedCommands(current, commands);
+const response = await fetch(endpoint, {
   method: "PUT",
-  headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
-  body: JSON.stringify(commands),
+  headers,
+  body: JSON.stringify(merged),
 });
 if (!response.ok) {
   console.error(`Échec ${response.status} : ${await response.text()}`);
@@ -33,3 +43,4 @@ if (!response.ok) {
 }
 const registered = await response.json();
 console.log(`Commandes enregistrées : ${registered.map((c) => c.name).join(", ")}`);
+

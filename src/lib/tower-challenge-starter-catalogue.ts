@@ -1,0 +1,132 @@
+export const TOWER_STARTER_CHALLENGES = [
+  {
+    "title": "Le guide touristique du chaos",
+    "instructions": "Dans un jeu que tu possèdes, partage dans le salon Défis une capture d’écran d’un lieu ou d’une scène. Présente trois détails comme si tu guidais des touristes dans un endroit complètement absurde. Si ton jeu n’a pas de carte, choisis trois détails visibles sur le même écran. Aucun élément de ta vraie vie ne doit apparaître.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "La légende de l’objet banal",
+    "instructions": "Choisis un objet ou un détail visible dans ton jeu, partage sa capture dans le salon Défis et invente-lui une origine mythique ridicule en deux phrases. S’il n’y a pas d’objets, prends un élément de l’interface. Pas besoin de modifier ta sauvegarde.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "La victoire la moins glorieuse",
+    "instructions": "Accomplis un petit objectif sans enjeu dans ton jeu, puis présente-le comme une victoire historique. Partage une capture en jeu et un discours de champion d’une phrase. Ne mets personne d’autre en difficulté pour la preuve.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le trophée invisible",
+    "instructions": "Choisis une petite réussite de ta session que le jeu ne récompense pas spécialement. Partage une capture ou un lien de preuve dans le salon Défis et donne-lui un nom de trophée beaucoup trop solennel.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le musée du plan foireux",
+    "instructions": "Partage une capture d’un détour, d’un raté ou d’une situation cocasse de ta partie, puis raconte en une phrase ce que tu ferais différemment. Le défi porte sur la situation, jamais sur une personne à humilier.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "La critique cinq étoiles",
+    "instructions": "Choisis un lieu, un objet ou un écran de ton jeu. Publie une capture dans le salon Défis et écris une critique touristique en une phrase, avec une note sur cinq étoiles pour un critère parfaitement inutile.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Carte postale de nulle part",
+    "instructions": "Trouve une scène ou un écran qui ferait une carte postale inattendue. Partage une capture en jeu avec une légende de voyageur pompeuse ou beaucoup trop dramatique. Vérifie que l’image ne révèle aucune information personnelle réelle.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le boss du rien",
+    "instructions": "Choisis un obstacle, un objet ou un détail de ton jeu et présente-le comme le grand antagoniste de l’histoire. Partage une capture et donne-lui un titre de boss final. Ne désigne pas un vrai membre de la communauté.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Zoom sur le détail",
+    "instructions": "Repère un petit détail que tu n’avais jamais remarqué dans ton jeu. Partage une capture dans le salon Défis et explique en une phrase pourquoi il mérite une enquête officielle.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le détour diplomatique",
+    "instructions": "Choisis un objectif nécessitant plusieurs étapes et termine-le avec une approche nettement différente de ton habitude, en respectant au moins deux contraintes volontaires annoncées avant de commencer. Fournis une capture avant l’objectif et une après sa réussite, puis explique en trois phrases ce que tu as changé et pourquoi.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Un mot, tout un jeu",
+    "instructions": "Choisis une capture de ta session et résume-la avec un seul mot, puis explique en une phrase pourquoi ce mot est beaucoup trop précis. Partage la preuve dans le salon Défis.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le podium des pires idées",
+    "instructions": "Classe trois objets, lieux ou détails visibles dans ton jeu du plus raisonnable au plus suspect. Partage une capture qui les montre, ou trois captures si nécessaire, puis donne ton podium en trois lignes.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le jeu gratuit du soir",
+    "instructions": "Dans un jeu gratuit accessible sans achat (jeu free-to-play, navigateur ou démo gratuite), termine le tutoriel ou un mini-objectif sûr. Partage une capture de l'écran de fin sans pseudo privé ni donnée personnelle.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le menu digne du musée",
+    "instructions": "Dans un jeu gratuit accessible sans achat, choisis un détail d'interface étonnant et partage une capture accompagnée d'une légende amusante et respectueuse. N'utilise aucune photo personnelle.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Première découverte gratuite",
+    "instructions": "Teste pendant au moins quinze minutes un jeu gratuit ou un jeu de navigateur sans achat. Partage une capture prise pendant la partie et cite une mécanique qui t'a surpris.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "La carte postale gratuite",
+    "instructions": "Dans un jeu gratuit accessible sans achat, photographie uniquement l'écran d'un lieu en jeu et écris une carte postale fictive de deux phrases. Aucun achat, donnée privée ou contact avec un inconnu n'est demandé.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "L'astuce qui ne coûte rien",
+    "instructions": "Dans un jeu gratuit ou une démo gratuite, essaie une option accessible à tous et explique en deux phrases son utilité avec une capture du jeu. Ne demande aucune dépense ni modification dangereuse.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le guide des trois obstacles",
+    "instructions": "Dans un jeu de ton choix déjà accessible, complète trois objectifs distincts de difficulté raisonnable sur une session. Fournis des captures montrant les étapes et un court récit chronologique. Alternative : jeu gratuit sans achat.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "L'expédition de la seconde chance",
+    "instructions": "Dans un jeu où recommencer un niveau est sans risque, termine un objectif après au moins deux tentatives de stratégies différentes. Décris les deux stratégies et montre le résultat en capture. Un jeu gratuit convient.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "L'enquête des cinq détails",
+    "instructions": "Explore une zone d'un jeu accessible, relève cinq détails cohérents et publie une présentation numérotée avec deux captures de jeu au minimum. Tu peux utiliser un jeu gratuit ou de navigateur.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le défi de patience raisonnée",
+    "instructions": "Dans une session de jeu accessible sans mise en danger ni temps imposé, termine un objectif nécessitant plusieurs étapes et documente trois jalons visibles en jeu. Une alternative gratuite est acceptée ; aucun exploit ni dépense requis.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Le reportage des trois actes",
+    "instructions": "Raconte en trois actes une séquence complète de jeu (départ, difficulté, solution) avec trois captures de jeu et des légendes originales. Choisis un objectif raisonnable, sans dévoiler de messages privés ; un jeu gratuit convient.",
+    "rewardFloors": 3
+  },
+  {
+    "title": "Premier contact GameNight",
+    "instructions": "Rejoins une soirée GameNight avec au moins un membre avec qui tu n’avais encore jamais joué. Après la partie, partage une capture de jeu et cite une chose positive découverte dans cette nouvelle équipe. Aucun contact privé hors GameNight n’est demandé.",
+    "rewardFloors": 1
+  },
+  {
+    "title": "Le passeur de jeu",
+    "instructions": "Fais découvrir à un membre un jeu ou un mode qu’il ne connaissait pas encore. Jouez ensemble au moins une séquence complète, puis partage une capture de jeu et résume en deux phrases ce que tu lui as montré.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "La soirée surprise",
+    "instructions": "Inscris-toi à une soirée GameNight proposée par un autre membre sur un jeu que tu n’aurais pas choisi spontanément. Participe réellement à la session puis partage une capture de jeu et une courte impression.",
+    "rewardFloors": 2
+  },
+  {
+    "title": "Le duo de l’inconnu",
+    "instructions": "Avec un membre de la communauté avec qui tu n’avais jamais joué auparavant, accomplissez ensemble un objectif nécessitant une vraie coordination en plusieurs étapes. Fournis au moins deux captures montrant le départ et l’objectif terminé, plus un bref récit du rôle de chacun.",
+    "rewardFloors": 3
+  },
+] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;

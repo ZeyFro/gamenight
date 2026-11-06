@@ -25,7 +25,7 @@ export default async function ServeursPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   if (!isCommunityPickerEnabled()) notFound();
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ allowCommunitySelection: true });
   if (!user) redirect("/");
 
   const { next } = await searchParams;

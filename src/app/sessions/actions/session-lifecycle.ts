@@ -1,12 +1,15 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import type { Session } from "@prisma/client";
 
 import { resumeCreation } from "@/lib/creation-resume";
 import { MAX_MESSAGE_TEXT_LENGTH, normalizeMessageText } from "@/lib/message-templates";
 
 import { createOnce, creationKey } from "@/lib/creation-intent";
 import { createVotingSessionInTransaction } from "@/lib/session-creation";
+import { canAttachSessionToTeam } from "@/lib/community-teams";
+import { getDefaultCommunityId } from "@/lib/default-community";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -72,11 +75,12 @@ export async function createSession(formData: FormData) {
     date: String(formData.get("date") ?? ""),
     time: String(formData.get("time") ?? ""),
     notifyUserIds: parseNotifyRecipientsFromFormData(formData),
+    communityTeamId: String(formData.get("communityTeamId") ?? "").trim() || undefined,
   });
   if (!input.success) {
     redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
   }
-  const { date: dateStr, time: timeStr, notifyUserIds } = input.data;
+  const { date: dateStr, time: timeStr, notifyUserIds, communityTeamId } = input.data;
 
   const schedule = resolveSessionSchedule({
     dateStr,
@@ -118,6 +122,11 @@ export async function createSession(formData: FormData) {
   if (isCommunityIsolationEnabled() && communityId === null) {
     redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
   }
+  if (communityTeamId && !await canAttachSessionToTeam(
+    user.id,
+    communityTeamId,
+    communityId ?? await getDefaultCommunityId(),
+  )) redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
 
   // Figé une seule fois ici, jamais relu depuis l'env ensuite — voir le
   // commentaire du champ dans schema.prisma (chantier annonces bot).
@@ -141,23 +150,31 @@ export async function createSession(formData: FormData) {
   // l'échec redevient visible (l'action lève, la création peut être
   // retentée), au lieu de réussir à moitié sans trace.
   // shortcut: grouped cancellation covers future occurrences only; add recurrence rules before supporting grouped schedule edits.
-  const { result: session, replayed } = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
-    const sessions = [];
-    for (const occurrenceDate of occurrenceDates) {
-      sessions.push(await createVotingSessionInTransaction(tx, {
-        date: occurrenceDate,
-        votingDeadline: new Date(occurrenceDate.getTime() - (date.getTime() - votingDeadline.getTime())),
-        customReminderMessage,
-        reminderTimings,
-        notifiedUserIds,
-        createdById: user.id,
-        announceViaBot,
-        communityId,
-        recurrenceGroupId,
-      }));
-    }
-    return sessions[0];
-  }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
+  let creation: Awaited<ReturnType<typeof createOnce<Session>>>;
+  try {
+    creation = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
+      const sessions = [];
+      for (const occurrenceDate of occurrenceDates) {
+        sessions.push(await createVotingSessionInTransaction(tx, {
+          date: occurrenceDate,
+          votingDeadline: new Date(occurrenceDate.getTime() - (date.getTime() - votingDeadline.getTime())),
+          customReminderMessage,
+          reminderTimings,
+          notifiedUserIds,
+          createdById: user.id,
+          announceViaBot,
+          communityId,
+          communityTeamId,
+          recurrenceGroupId,
+        }));
+      }
+      return sessions[0];
+    }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid_session_team_link") redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
+    throw error;
+  }
+  const { result: session, replayed } = creation;
   measure("creationTransaction");
 
   const xpResult = await awardXp(user.id, session.communityId,
@@ -194,6 +211,10 @@ export async function createSession(formData: FormData) {
   measure("proposalAndLegacyNotice");
 
   revalidatePath("/sessions");
+  if (communityTeamId) {
+    revalidatePath("/equipes");
+    revalidatePath("/calendrier");
+  }
 
   const params = new URLSearchParams();
   if (deadlineAdjusted) params.set("deadline", "ajustee");

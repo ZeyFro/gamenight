@@ -32,6 +32,11 @@ vi.mock("@/lib/prisma", async () => {
   return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) };
 });
 
+// Dates relatives à aujourd'hui : createSession refuse une soirée trop proche (< 30 min)
+// ou passée (session_trop_proche), donc une date codée en dur finit par casser la CI.
+const futureDate = (days: number) =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
 if (!TEST_DATABASE_URL) {
   console.warn(
     "[session-lifecycle.integration.test] TEST_DATABASE_URL absente — suite SKIPPÉE. " +
@@ -57,7 +62,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
   afterAll(async () => {
     await db.$disconnect();
   });
-  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   beforeEach(async () => {
     vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", "false");
@@ -109,7 +114,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     currentUserMock.mockResolvedValue(creator);
     for (let day = 1; day <= 4; day++) {
       await expect(
-        createSession(formData({ date: `2026-11-0${day}`, time: "20:00" }))
+        createSession(formData({ date: futureDate(30 + day), time: "20:00" }))
       ).rejects.toThrow(/^REDIRECT:\/sessions\//);
     }
     expect(await db.session.count({ where: { createdById: creator.id } })).toBe(4);
@@ -117,6 +122,9 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
   });
 
   it.each([false, true])("crée une série mensuelle atomique et rejoue la même intention sans dupliquer les occurrences (gestion groupée %s)", async (enabled) => {
+    // Dates attendues codées en dur (2026-11-07 puis +1 mois…) : on fige seulement Date pour que le test ne dépende pas du jour d'exécution.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
     vi.stubEnv("SESSION_SERIES_CANCEL_ENABLED", String(enabled));
     await db.community.upsert({ where: { slug: "default" }, update: { status: "ACTIVE" }, create: { slug: "default", name: "default", status: "ACTIVE" } });
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
@@ -150,7 +158,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     await expect(
       createSession(
         formData({
-          date: "2026-11-01",
+          date: futureDate(30),
           time: "20:00",
           notifyUserId: [invitedA.id, invitedB.id],
         })
@@ -178,7 +186,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     currentUserMock.mockResolvedValue(creator);
 
     await expect(
-      createSession(formData({ date: "2026-11-01", time: "20:00" }))
+      createSession(formData({ date: futureDate(30), time: "20:00" }))
     ).rejects.toThrow(/^REDIRECT:\/sessions\//);
 
     const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
@@ -193,7 +201,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     const creator = await makeUser();
     const friend = await makeUser();
     currentUserMock.mockResolvedValue(creator);
-    await expect(createSession(formData({ date: "2026-11-01", time: "20:00",
+    await expect(createSession(formData({ date: futureDate(30), time: "20:00",
       notifyUserId: [creator.id, friend.id, friend.id],
     }))).rejects.toThrow(/^REDIRECT:\/sessions\//);
     const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
@@ -211,7 +219,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
     await expect(
       createSession(
         formData({
-          date: "2026-11-01",
+          date: futureDate(30),
           time: "20:00",
           notifyUserId: [real.id, "id-invente-qui-nexiste-pas"],
         })
@@ -256,7 +264,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
         await expect(
           createSession(
             formData({
-              date: "2026-11-01",
+              date: futureDate(30),
               time: "20:00",
               notifyUserId: [invitedA.id, invitedB.id],
             })
@@ -291,7 +299,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
         currentUserMock.mockResolvedValue(creator);
 
         await expect(
-          createSession(formData({ date: "2026-11-01", time: "20:00", notifyUserId: guests.map((g) => g.id) }))
+          createSession(formData({ date: futureDate(30), time: "20:00", notifyUserId: guests.map((g) => g.id) }))
         ).rejects.toThrow(/^REDIRECT:\/sessions\//);
 
         const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });
@@ -317,7 +325,7 @@ describe.skipIf(!TEST_DATABASE_URL)("createSession — invitations exactes (int�
         currentUserMock.mockResolvedValue(creator);
 
         await expect(
-          createSession(formData({ date: "2026-11-01", time: "20:00" }))
+          createSession(formData({ date: futureDate(30), time: "20:00" }))
         ).rejects.toThrow(/^REDIRECT:\/sessions\//);
 
         const session = await db.session.findFirstOrThrow({ where: { createdById: creator.id } });

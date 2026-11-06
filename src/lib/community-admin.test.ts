@@ -28,6 +28,8 @@ import {
   parseChannelCategory,
   setCommunityGuide,
   setCommunityGroupPurchasePlans,
+  setCommunityTeams,
+  setCommunityTowerLevelsPerFloor,
   setCommunityChannel,
 } from "./community-admin";
 
@@ -99,6 +101,37 @@ describe("setCommunityGroupPurchasePlans", () => {
     });
     expect(await setCommunityGroupPurchasePlans({ communityId: "", enabled: true })).toBe("invalid");
     expect(await setCommunityGroupPurchasePlans({ communityId: "c-b", enabled: "true" })).toBe("invalid");
+    expect(communityUpdateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("setCommunityTeams", () => {
+  beforeEach(() => communityUpdateMany.mockReset().mockResolvedValue({ count: 1 }));
+
+  it("requires a boolean and only toggles active communities", async () => {
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: true })).toBe("saved");
+    expect(communityUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c-b", status: "ACTIVE" },
+      data: { communityTeamsEnabled: true },
+    });
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: "true" })).toBe("invalid");
+    communityUpdateMany.mockResolvedValue({ count: 0 });
+    expect(await setCommunityTeams({ communityId: "c-b", enabled: false })).toBe("unavailable");
+  });
+});
+
+describe("setCommunityTowerLevelsPerFloor", () => {
+  beforeEach(() => communityUpdateMany.mockReset().mockResolvedValue({ count: 1 }));
+
+  it("saves a bounded integer and rejects malformed values", async () => {
+    expect(await setCommunityTowerLevelsPerFloor({ communityId: "c-b", levelsPerFloor: "8" })).toBe("saved");
+    expect(communityUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c-b", status: { in: ["PENDING", "ACTIVE"] } },
+      data: { towerLevelsPerFloor: 8 },
+    });
+    for (const value of ["4", "21", "8.5", "", "many"]) {
+      expect(await setCommunityTowerLevelsPerFloor({ communityId: "c-b", levelsPerFloor: value })).toBe("invalid");
+    }
     expect(communityUpdateMany).toHaveBeenCalledTimes(1);
   });
 });

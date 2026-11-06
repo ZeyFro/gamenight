@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Community, CommunityRole, Membership, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/current-user";
 import {
   communityIdFilter,
   getIsolationScope,
@@ -85,6 +84,7 @@ export async function getScoreboardCommunityId(
 
 /** Utilisateur connecté, membre ACTIVE de la communauté ACTIVE `communityId` ; sinon 404. */
 export async function requireMembership(communityId: string): Promise<CommunityAccess> {
+  const { getCurrentUser } = await import("@/lib/current-user");
   const user = await getCurrentUser();
   if (!user) notFound();
   const membership = await findActiveMembership(user.id, communityId);

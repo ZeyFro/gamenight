@@ -18,7 +18,7 @@ import {
  */
 export async function selectCommunityAction(formData: FormData): Promise<void> {
   if (!isCommunityPickerEnabled()) notFound();
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ allowCommunitySelection: true });
   if (!user) redirect("/");
 
   const communityId = formData.get("communityId");
@@ -32,7 +32,7 @@ export async function selectCommunityAction(formData: FormData): Promise<void> {
 
 export async function changeCommunityAction(communityId: string): Promise<boolean> {
   if (!isCommunityPickerEnabled()) notFound();
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ allowCommunitySelection: true });
   if (!user || !communityId || !(await setActiveCommunity(user.id, communityId))) return false;
   revalidatePath("/", "layout");
   return true;

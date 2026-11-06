@@ -60,7 +60,7 @@ Ne configure pas ces URLs vers Neon, Preview ou Production. Après les tests, re
 
 ## Compilation
 
-npm run build ne migre plus (prisma generate puis next build); les migrations s'appliquent avec `node scripts/db-migrate.mjs` ou `npx prisma migrate deploy` en local. Pour compiler localement, garde donc DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
+npm run build (scripts/build.mjs) lance seulement prisma generate puis next build : aucune migration au build, quel que soit l’environnement. Les migrations de production s’appliquent à part, manuellement, après un snapshot Neon (voir CLAUDE.md). Pour compiler localement, garde quand même DATABASE_URL dirigée vers la base locale. La CI lance directement npx next build après avoir préparé sa base PostgreSQL de service.
 
 ## Migration explicite d'une base locale (rôles distincts)
 
@@ -75,8 +75,4 @@ Tests : `src/lib/db-migrate-cli.integration.test.ts` (refus, dry-run sans écrit
 
 Rien dans `db-migrate.mjs` ni dans `rehearse-xp-role-barrier.mjs` n'empêche techniquement de viser Production, hormis `GAMENIGHT_EXPECTED_TARGET` (`<hôte>[:port]/<base>`) et `--confirm-database`. L'opérateur doit vérifier lui-même la cible affichée (« Cible : hôte:port/base ») avant tout `--execute`. Hors machine locale, `--execute` exige aussi `DATABASE_URL` ou `GAMENIGHT_RUNTIME_ROLE` (contrôle « rôle de migration différent du rôle runtime ») et refuse sinon (code 2). Les drapeaux `--execute` et `--allow-local` n'acceptent pas de valeur.
 
-La liste `--expect=` doit contenir exactement les 6 migrations en attente par rapport à `origin/main`, dans cet ordre :
-
-    20261019190000_separate_xp_balance,20261020150000_session_voice_presence,20261022120000_voice_presence_consent_coordination,20261022130000_voice_presence_retention_gap_bounds,20261022140000_voice_presence_gap_history,20261022142500_shop_balance_purchase_reason
-
-(ordre vérifié avec `ls prisma/migrations`).
+La liste `--expect=` doit contenir exactement les migrations en attente par rapport à `origin/main`, dans l’ordre de `ls prisma/migrations` ; la liste à jour et la procédure sont dans `docs/LIVRAISON-XP.md` et `docs/REPRISE_AUTONOME.md`.

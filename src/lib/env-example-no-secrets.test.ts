@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
  */
 const ALLOWED_VALUES: Record<string, string> = {
   AUTH_URL: "http://localhost:3000",
+  TOWER_CHALLENGES_ENABLED: "false",
+  TOWER_DISCORD_ANNOUNCE_ENABLED: "false",
 };
 
 const assignments = readFileSync(".env.example", "utf8")

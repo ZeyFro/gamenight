@@ -64,6 +64,7 @@ export interface InteractionOutput {
   body?: unknown;
   runSetup?: () => Promise<void>;
   runRsvp?: () => Promise<void>;
+  runTower?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -105,6 +106,25 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const interaction = parsed.data;
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
+  if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
+    const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
+    return handleSignedTowerAdminInteraction(json, input.timestamp);
+  }
+  if (interaction.data?.custom_id?.startsWith("gn:tower:") || (interaction.type === 2 && interaction.data?.name === "tower")) {
+    const { handleSignedTowerInteraction } = await import("@/lib/discord-tower-challenges");
+    return handleSignedTowerInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith("gn:welcome:")) {
+    const stamp = Number(input.timestamp);
+    if (!Number.isFinite(stamp) || Math.abs(Date.now() / 1000 - stamp) > 300 ||
+        interaction.application_id !== process.env.DISCORD_CLIENT_ID ||
+        interaction.guild_id !== process.env.TOWER_DISCORD_GUILD_ID ||
+        interaction.channel_id !== process.env.TOWER_DISCORD_WELCOME_CHANNEL_ID) return { status: 400 };
+    if (process.env.TOWER_ONBOARDING_PANEL_ENABLED !== "true") return reply("Ce panneau n'est pas encore activé.");
+    const { welcomeActionUrl } = await import("@/lib/tower-onboarding-panel");
+    const url = welcomeActionUrl(interaction.data.custom_id.slice("gn:welcome:".length));
+    return url ? reply("Ouvre GameNight : " + url) : { status: 400 };
+  }
   if (interaction.type === 3) {
     const customId = interaction.data?.custom_id ?? "";
     const rsvp = parseSessionRsvpId(customId);
@@ -140,6 +160,9 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     } };
   }
   if (interaction.type !== 2) return { status: 400 };
+  // Même règle que pour les boutons RSVP : la signature seule n'expire pas, un corps signé ancien n'est jamais rejoué.
+  const commandTimestamp = Number(input.timestamp);
+  if (!Number.isFinite(commandTimestamp) || Math.abs(Date.now() / 1000 - commandTimestamp) > 300) return { status: 400 };
 
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {
     return reply("Commande inconnue.");

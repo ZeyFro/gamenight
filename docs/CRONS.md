@@ -34,22 +34,24 @@ Converties en 202 :
 
 | Route | Raison | `maxDuration` |
 | --- | --- | --- |
-| `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s | 60 |
+| `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s ; règle aussi la clôture des défis Tower quand `TOWER_CHALLENGES_ENABLED=true` (échéance de 15 s, lots de 25 tentatives, dans le même budget de 50 s) | 60 |
 | `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
 | `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
 
 Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
 
-Laissées synchrones (travail court ou budget interne sous 30 s) :
+Laissées synchrones (travail court ou budget interne) :
 
-| Route | Raison |
-| --- | --- |
-| `community-guild-sync` | budget Discord de 20 s |
-| `steam-library-sync` | budget de 25 s |
-| `discord-thread-cleanup` | au plus 25 actions par passage, uniquement des écritures en base (file) |
-| `free-game-discord` | uniquement des écritures en base (file) |
-| `monthly-tasks` | no-op hors de la date d’échéance |
-| `close-sessions` | requêtes et écritures en base, les annonces sont mises en file |
-| `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit |
+| Route | Raison | `maxDuration` |
+| --- | --- | --- |
+| `community-guild-sync` | budget Discord de 20 s | défaut plateforme |
+| `steam-library-sync` | budget de 25 s | 45 |
+| `discord-thread-cleanup` | au plus 25 actions et budget de 45 s par passage (#355), uniquement des écritures en base (file) ; arrêt signalé par `truncated: true` | 60 |
+| `free-game-discord` | uniquement des écritures en base (file) | 60 |
+| `monthly-tasks` | no-op hors de la date d’échéance | défaut plateforme |
+| `close-sessions` | requêtes et écritures en base, les annonces sont mises en file ; budget de 45 s (#354), arrêt signalé par `budgetExhausted: true` | 60 |
+| `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit | 60 |
+
+Un budget atteint n’est pas une erreur : le travail restant est repris au passage suivant (étapes idempotentes). Au-delà de 30 s, cron-job.org coupe la connexion mais la fonction continue jusqu’à son budget.
 
 Les durées maximales éventuellement déclarées sont visibles dans chaque route source. Ce document ne fixe pas de fréquence ni ne prétend qu’un job externe est configuré.

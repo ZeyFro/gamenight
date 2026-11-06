@@ -177,7 +177,9 @@ export async function sendRouletteReminderIfDue(rouletteId: string): Promise<voi
 }
 
 /** Traite toutes les roulettes `OPEN` — rappel puis tirage si dû, dans cet ordre (cf. cron `/api/cron/close-sessions`). */
-export async function processOpenRoulettes(): Promise<{ checked: number }> {
+export async function processOpenRoulettes(
+  options: { shouldContinue?: () => boolean } = {}
+): Promise<{ checked: number; deferred?: true }> {
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const openRoulettes = await scopedDb.roulette.findMany({
     where: { status: "OPEN" },
@@ -185,6 +187,10 @@ export async function processOpenRoulettes(): Promise<{ checked: number }> {
   });
 
   for (const { id } of openRoulettes) {
+    // Budget de temps du cron appelant : le reste au passage suivant.
+    if (options.shouldContinue && !options.shouldContinue()) {
+      return { checked: openRoulettes.length, deferred: true };
+    }
     await sendRouletteReminderIfDue(id);
     await spinRouletteIfDue(id);
   }

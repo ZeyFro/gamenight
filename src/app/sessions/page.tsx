@@ -39,6 +39,9 @@ import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validation
 import { pageMetadata } from "@/lib/page-title";
 import { MAX_MESSAGE_TEXT_LENGTH } from "@/lib/message-templates";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
+import { getCommunityTeamsCommunityId, listMemberCommunityTeamOptions } from "@/lib/community-teams";
+import { pickCreationCommunityId } from "@/lib/community-channels";
+import { getDefaultCommunityId } from "@/lib/default-community";
 
 export const metadata = pageMetadata("Soirées");
 
@@ -50,6 +53,7 @@ type SessionParticipant = {
 
 type SessionRowData = Session & {
   decidedGame: Game | null;
+  communityTeam: { name: string } | null;
   _count: { proposals: number };
   proposals: { gameId: string; votes: { userId: string; user: SessionParticipant }[] }[];
 };
@@ -101,6 +105,7 @@ function SessionRow({
                 ? session.decidedGame.name
                 : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
             </p>
+            {session.communityTeam && <p className="truncate text-xs text-accent">Équipe · {session.communityTeam.name}</p>}
           </div>
           <span
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
@@ -162,6 +167,15 @@ export default async function SessionsPage({
     select: { communityId: true },
   }));
 
+  const [teamsCommunityId, routedSessionCommunityId] = await Promise.all([
+    getCommunityTeamsCommunityId(user.id),
+    pickCreationCommunityId(user.id),
+  ]);
+  const sessionCommunityId = routedSessionCommunityId ?? await getDefaultCommunityId();
+  const teamOptions = teamsCommunityId === sessionCommunityId
+    ? await listMemberCommunityTeamOptions(user.id, sessionCommunityId)
+    : [];
+
   const {
     error,
     gameId,
@@ -219,6 +233,7 @@ export default async function SessionsPage({
     where: await accessibleSessionWhereFor(user.id),
     include: {
       decidedGame: true,
+      communityTeam: { select: { name: true } },
       _count: { select: { proposals: true } },
       proposals: {
         select: {
@@ -305,6 +320,15 @@ export default async function SessionsPage({
         <Card>
           <CreationForm action={createSession} className="flex flex-col gap-3">
             <h2 id="nouvelle-soiree" className="scroll-mt-24 font-semibold text-foreground">Nouvelle soirée</h2>
+
+            {teamOptions.length > 0 && <label className="flex flex-col gap-1 text-xs text-muted">
+              Associer à une équipe (facultatif)
+              <select name="communityTeamId" defaultValue="" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground">
+                <option value="">Aucune équipe</option>
+                {teamOptions.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+              <span>La soirée reste privée selon ses invitations habituelles.</span>
+            </label>}
 
             {preselectedGame && (
               <div className="flex flex-col gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">

@@ -8,13 +8,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * suivant), et ne jamais enchaîner le repli bot derrière un 429 OAuth.
  */
 
-const { prismaMock, fetchMock } = vi.hoisted(() => ({
-  prismaMock: { user: { findMany: vi.fn(), update: vi.fn() } },
+const { prismaMock, fetchMock, loggerMock } = vi.hoisted(() => ({
+  prismaMock: { user: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() } },
   fetchMock: vi.fn(),
+  loggerMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/logger", () => ({ logger: loggerMock }));
 vi.mock("@/lib/discord-token-crypto", () => ({
   DiscordTokenEncryptionKeyError: class extends Error {},
   getEncryptionKey: () => Buffer.alloc(32),
@@ -108,5 +109,90 @@ describe("refreshAllDiscordProfiles", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.bot.rateLimited).toBe(true);
+  });
+  it("invalid_grant au renouvellement : jetons effacés (compare-and-set), compté révoqué et pas en échec", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes("/oauth2/token")
+        ? new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })
+        : profileOk("1")
+    );
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 1, failed: 0, updated: 0 });
+    expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+      where: { discordId: "1", discordRefreshToken: "refresh-1" },
+      data: { discordAccessToken: null, discordRefreshToken: null, discordTokenExpiresAt: null },
+    });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/users/@me"))).toBe(false);
+  });
+
+  it("erreur transitoire au renouvellement (500) : compté en échec, jetons conservés", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockResolvedValue(new Response("oops", { status: 500 }));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 0, failed: 1 });
+    expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("400 sans invalid_grant (ex. invalid_request) : jamais traité comme révoqué", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "invalid_request" }), { status: 400 }));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ revoked: 0, failed: 1 });
+    expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
+  });
+  it("chaque appel Discord porte un délai maximal (signal d'abandon)", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired], [{ discordId: "9" }]);
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes("/oauth2/token")
+        ? new Response(JSON.stringify({ access_token: "a2", refresh_token: "r2", expires_in: 3600 }), { status: 200 })
+        : profileOk(String(url).includes("@me") ? "1" : "9")
+    );
+
+    await refreshAllDiscordProfiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
+  it("délai dépassé sur un compte : compté en échec, le lot continue", async () => {
+    stubUsers([oauthUser("1"), oauthUser("2")]);
+    fetchMock
+      .mockRejectedValueOnce(new DOMException("The operation was aborted due to timeout", "TimeoutError"))
+      .mockResolvedValueOnce(profileOk("2"));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ failed: 1, updated: 1, rateLimited: false });
+  });
+
+  it("rotation réussie mais écriture en base échouée : log distinct « rotation perdue », compté en échec", async () => {
+    const expired = { ...oauthUser("1"), discordTokenExpiresAt: new Date(Date.now() - 1000) };
+    stubUsers([expired]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ access_token: "a2", refresh_token: "r2", expires_in: 3600 }), { status: 200 })
+    );
+    prismaMock.user.update.mockRejectedValueOnce(new Error("db down"));
+
+    const result = await refreshAllDiscordProfiles();
+
+    expect(result.oauth).toMatchObject({ failed: 1, updated: 0 });
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      "discord-profile",
+      expect.stringContaining("Rotation du jeton OAuth perdue"),
+      { discordId: "1" }
+    );
   });
 });

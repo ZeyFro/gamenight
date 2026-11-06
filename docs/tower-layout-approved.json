@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "guild_id": "553922938101825536",
+  "source_snapshot": "2026-10-26T19:12:26.066Z",
+  "mode": "proposal_no_changes_applied",
+  "principles": [
+    "Reuse existing channel IDs wherever possible",
+    "Never delete channels, messages, categories or roles",
+    "Archive old game/Mudae categories privately, retaining overwrites, without exposing private channel histories",
+    "Verify permissions before moving any category or channel",
+    "GameNight required only for teams, event registration, Tower grade progression; public discussion remains accessible",
+    "No production database or role permission modification as part of channel layout"
+  ],
+  "category_order": [
+    {
+      "name": "🏰・LE PORTAIL",
+      "reuse_category_id": "553934390229467175",
+      "channels": [
+        {
+          "name": "📜・règlement",
+          "reuse_id": "553926084245192716"
+        },
+        {
+          "name": "🎭・choisir-ses-rôles",
+          "reuse_id": "734076276435845230"
+        },
+        {
+          "name": "👋・bienvenue",
+          "create": true
+        },
+        {
+          "name": "📖・guide-de-la-tour",
+          "create": true
+        },
+        {
+          "name": "📢・annonces",
+          "reuse_id": "553922938101825539"
+        }
+      ]
+    },
+    {
+      "name": "🎲・LES ÉPREUVES GAMENIGHT",
+      "reuse_category_id": "1557465639801589923",
+      "channels": [
+        {
+          "name": "📢・annonces-gamenight",
+          "reuse_id": "1557685767151820851"
+        },
+        {
+          "name": "🎮・soirées",
+          "reuse_id": "1557465643849220126"
+        },
+        {
+          "name": "🏆・tournois",
+          "reuse_id": "1557465648748302336"
+        },
+        {
+          "name": "📅・calendrier",
+          "create": true
+        },
+        {
+          "name": "🎯・défis-communautaires",
+          "create": true
+        }
+      ]
+    },
+    {
+      "name": "💬・LE HALL DES RÉGULIERS",
+      "reuse_category_id": "553931981952516126",
+      "channels": [
+        {
+          "name": "💬・général",
+          "reuse_id": "554022025753133066"
+        },
+        {
+          "name": "🙋・présentations",
+          "create": true
+        },
+        {
+          "name": "🎮・qui-joue-ce-soir",
+          "create": true
+        },
+        {
+          "name": "📰・actualités-gaming",
+          "reuse_id": "735242100697727106"
+        },
+        {
+          "name": "📊・sondages",
+          "reuse_id": "735240817555275806"
+        }
+      ]
+    },
+    {
+      "name": "⚔️・LE HALL DES ÉQUIPES",
+      "reuse_category_id": "735240308882800721",
+      "channels": [
+        {
+          "name": "🔎・recherche-de-joueurs",
+          "create": true,
+          "type": "forum"
+        },
+        {
+          "name": "🛡️・recrutement-équipes",
+          "create": true,
+          "type": "forum"
+        },
+        {
+          "name": "🌍・projets-et-aventures",
+          "create": true,
+          "type": "forum"
+        },
+        {
+          "name": "🏆・équipes-et-guildes",
+          "reuse_id": "734420879026683905"
+        }
+      ]
+    },
+    {
+      "name": "🗼・L'ASCENSION",
+      "create_category": true,
+      "channels": [
+        {
+          "name": "📖・comment-gravir-la-tour",
+          "create": true
+        },
+        {
+          "name": "⚡・épreuves",
+          "create": true
+        },
+        {
+          "name": "🏅・progression-et-rangs",
+          "create": true
+        },
+        {
+          "name": "🎁・récompenses",
+          "create": true
+        },
+        {
+          "name": "📜・chroniques-de-la-tour",
+          "create": true
+        }
+      ]
+    },
+    {
+      "name": "🔊・LES SALLES DE LA TOUR",
+      "reuse_category_id": "734798647715168356",
+      "channels": [
+        {
+          "name": "🔊・général-1",
+          "reuse_id": "554022356343848961"
+        },
+        {
+          "name": "🔊・général-2",
+          "reuse_id": "650015462125469746"
+        },
+        {
+          "name": "🎮・gaming-1",
+          "reuse_id": "554009966365900800"
+        },
+        {
+          "name": "🎮・gaming-2",
+          "reuse_id": "553978832017948673"
+        },
+        {
+          "name": "➕・créer-un-vocal",
+          "create": true,
+          "type": "voice_lobby"
+        },
+        {
+          "name": "🎵・musique",
+          "reuse_id": "735175196893249547"
+        },
+        {
+          "name": "💤・afk",
+          "reuse_id": "553971912737292299"
+        }
+      ]
+    },
+    {
+      "name": "👑・LE SOMMET",
+      "create_category": true,
+      "channels": [
+        {
+          "name": "🏆・classements",
+          "create": true
+        },
+        {
+          "name": "⭐・hall-of-fame",
+          "create": true
+        },
+        {
+          "name": "👑・rankers",
+          "create": true
+        },
+        {
+          "name": "⚔️・défis-entre-équipes",
+          "create": true
+        }
+      ]
+    }
+  ],
+  "archive_candidates": [
+    {
+      "id": "553969237383970816",
+      "name": "Team League of Legends"
+    },
+    {
+      "id": "553974866840125460",
+      "name": "Team Overwatch"
+    },
+    {
+      "id": "556224891628814346",
+      "name": "Team CS-GO"
+    },
+    {
+      "id": "734445254392021063",
+      "name": "Team Valorant"
+    },
+    {
+      "id": "765556794726023178",
+      "name": "Mudae"
+    }
+  ],
+  "protected_categories": [
+    {
+      "id": "576460995472523285",
+      "reason": "Tribunal/staff logs"
+    },
+    {
+      "id": "734424863988776960",
+      "reason": "Ticket bot dynamic category"
+    },
+    {
+      "id": "734424902400081932",
+      "reason": "Ticket bot dynamic category"
+    },
+    {
+      "id": "854003747595747328",
+      "reason": "Irregular private access"
+    }
+  ],
+  "pending_review": [
+    "All unlisted channels stay untouched and visible/hidden as-is until reviewed",
+    "Confirm every source/destination effective permission before moving channels",
+    "Never move private staff or NSFW channels to public categories automatically",
+    "Forum availability and bot manage channels permission must be tested live",
+    "Discord and GameNight deep-link URLs must use actual configured app domain",
+    "Existing users may have different effective permissions: reject migration if changed"
+  ],
+  "enablement": {
+    "game_night_required_for": [
+      "create_or_manage_team",
+      "join_event",
+      "earn_tower_grade",
+      "progression_rewards"
+    ],
+    "not_required_for": [
+      "join_server",
+      "read_public_channels",
+      "chat_public_channels",
+      "join_public_voice"
+    ]
+  }
+}

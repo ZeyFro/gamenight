@@ -86,7 +86,7 @@ async function HomeContent({
   // page serait tombée dans la branche "connecté" plus bas puis aurait
   // rendu une page blanche au lieu du bouton de connexion, l'inverse du
   // but de la feature.
-  const user = await getCurrentUser();
+  const user = await getCurrentUser({ allowCommunitySelection: true });
   const { error, redirect: redirectParam } = await searchParams;
   const errorMessage = error
     ? (AUTH_ERROR_MESSAGES[error] ??

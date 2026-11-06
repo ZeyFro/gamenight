@@ -8,7 +8,7 @@ Les états de lots, rapports et CODEX-PROGRESS datés sont historiques : ils son
 Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (adaptateur Neon sur le chemin de déploiement) · Auth.js v5 (Discord OAuth) · Vercel · Vitest.
 
 ## Commandes
-- `npm run lint` · `npx tsc --noEmit` · `npx next build` (`npm run build` = `prisma generate` + `next build` : il ne migre jamais, ni en Production ni en Preview)
+- `npm run lint` · `npx tsc --noEmit` · `npx next build` (`npm run build` = `prisma generate` + `next build` : aucune migration au build)
 - `npx vitest run <fichier>` : tests unitaires ciblés
 - Tests d'intégration : Postgres Docker local, jamais Neon. En session cloud, le hook SessionStart (`.claude/hooks/session-start.mjs`) fait les étapes 1-2 sans Docker (Postgres 16, 127.0.0.1:55439) et exporte `TEST_DATABASE_URL` : lancer directement l'étape 3.
   1. `docker run -d --name gamenight-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gamenight_test -p 127.0.0.1:55439:5432 postgres:16-alpine -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c checkpoint_timeout=1h -c max_wal_size=8GB`
@@ -24,7 +24,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (ada
 - Exception décidée par le propriétaire (2026-10-15) : la boucle roadmap (`scripts/work-roadmap.ps1`, suivi `docs/ROADMAP.md`) fusionne elle-même les PR `claude/lot[1-7]-*` qu'elle a construites, après la porte `scripts/roadmap-gate.mjs` et les contrôles `verify` et `Vercel` verts, puis attend le déploiement de production. Toute nouvelle migration est exclue de cette auto-fusion et exige une revue explicite. Claude ne fusionne jamais dans cette boucle : `gh pr merge` / `gh pr ready` lui restent interdits. Arrêt propre : fichier `logs/STOP`.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
-- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée à la main avec `node scripts/db-migrate.mjs`, jamais par le build : un merge sur `main` ne migre plus la Production, l'opérateur applique les migrations avant de fusionner le code qui en dépend). Changement Prisma seulement si justifié.
+- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée manuellement après snapshot Neon, jamais au build). Les migrations s’appliquent par `node scripts/db-migrate.mjs` (procédure : `docs/LIVRAISON-XP.md`). Changement Prisma seulement si justifié.
 - Pas de refactor large, pas de try/catch silencieux.
 - Commits/PR en français, style `type(scope): …`.
 
@@ -49,6 +49,7 @@ Règles de ping (#116) : le créateur reçoit les MP mais n'est jamais mentionn�
 - Roulette : jamais de mention ; MP d'invitation édité à la fin, MP de rappel conservé.
 
 ## Switches d'environnement
+- `TOWER_ONBOARDING_PANEL_ENABLED` : panneau Discord à trois boutons (joueurs, soirées, Ascension), OFF par défaut ; exige `TOWER_DISCORD_WELCOME_CHANNEL_ID` et `TOWER_DISCORD_GUILD_ID`. Publication uniquement par un workflow autorisé distinct, aucun auto-envoi ; Preview bloquée. Les réponses aux boutons restent privées et ne changent aucun rôle.
 - `SESSION_CHRONICLES_ENABLED` : chronique texte des soirées DONE, éditée par le créateur et lisible selon l'accès privé à la soirée ; archive Lore paginée par serveur ; OFF par défaut, migration `session_chronicles`. Toute chronique non vide bloque la purge automatique même flag OFF ; suppression volontaire inchangée.
 - `TOURNAMENT_PREDICTIONS_ENABLED` : pronostics immuables champion avant lancement et gagnant de match avant résultat ; membres actifs, sans mise ni gain XP ; OFF par défaut, migration `tournament_predictions`
 - `COMMUNITY_QUICK_POLLS_ENABLED` : sondages éclair par serveur dans Profil → Lore, membres actifs même isolation OFF, 2–6 options immuables, un choix modifiable jusqu’à échéance (7 jours max), résultats agrégés ; aucune notification/XP ; migration `community_quick_polls`, OFF par défaut
@@ -65,7 +66,11 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `GAME_PREPARATION_TIME_ENABLED` : affiche et autorise la saisie d'une durée estimée (1–10 080 minutes) sourcée sur la fiche jeu ; OFF par défaut
 - `FREE_GAME_FEED_ENABLED` : ajoute au catalogue de jeux gratuits les offres GamerPower filtrées pour Steam/Epic ; attribution affichée, les conditions et la région restent à vérifier sur la boutique ; OFF par défaut, exige aussi `freeGamesEnabled` pour la communauté
 - `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED` : autorise l'ajout planifié des offres gratuites à l'outbox Discord ; OFF par défaut, exige aussi `FREE_GAME_FEED_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED`, `freeGamesEnabled` et un salon communautaire dédié
+- `WHO_PLAYS_TONIGHT_ENABLED` : page `/ce-soir` « Qui joue ce soir ? » : un membre se déclare dispo en un clic pour 1 à 3 jeux (petites annonces `PlayerClassified` au préfixe « 🟢 Dispo ce soir », échéance 4 h du matin, remplacées à chaque déclaration) et voit joueurs dispo par jeu, parties « Jouer maintenant » en cours et ses soirées visibles de ce soir ; sans migration, exige aussi `playerClassifiedsEnabled` ; aucune notification ; OFF par défaut (404)
 - `CALENDAR_SUBSCRIPTIONS_ENABLED` : abonnement iCal privé et révocable par serveur depuis `/calendrier`; migration `calendar_feed_tokens`, membre et communauté ACTIVE requis à chaque lecture; OFF par défaut
+- `TOWER_CHALLENGES_ENABLED` : active les parcours de défis uniquement avec le drapeau communautaire `towerChallengesEnabled`, membre actif et migration dédiée ; OFF par défaut. La clôture automatique réutilise le cron protégé `notification-executor`, dont la cadence reste externe.
+- `TOWER_DISCORD_ANNOUNCE_ENABLED` : verrou supplémentaire des annonces de preuve avec consentement et des réussites vers les salons configurés ; réutilise `NOTIFICATION_EXECUTOR_ENABLED` et la file existante. OFF par défaut.
+- `TOWER_DISCORD_GUILD_ID` / `TOWER_DISCORD_CHANNEL_ID` / `TOWER_DISCORD_GENERAL_CHANNEL_ID` : identifiants de serveur, défis et annonces. Ne pas publier de valeurs de serveur dans `.env.example`.
 - `SESSION_SERIES_CANCEL_ENABLED` : associe les nouvelles séries récurrentes et permet à leur créateur d’annuler les occurrences futures en vote/planifiées après confirmation; migration `recurring_session_cancellation`, anciennes séries indépendantes; OFF par défaut
 - `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` · `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED` : annonces soirées / tournois via le bot ; exigent aussi `DISCORD_BOT_GUILD_ID` et le salon (`…_SESSION_CHANNEL_ID` / `…_TOURNAMENT_CHANNEL_ID`)
 - `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` : invitation « Jouer maintenant » par MP (aucun salon requis)
@@ -85,9 +90,7 @@ Tous OFF par défaut : actifs uniquement si la valeur vaut exactement `true` (`M
 - `TOURNAMENT_SCORES_ENABLED` : saisie facultative des scores de match (bracket seulement, ni annonces ni MP) ; exige la migration `tournament_match_scores`
 - `VOTE_VETO_ENABLED` : veto au vote de jeu (1 par personne et par soirée, remplaçable ; un jeu vetoé n'est ni retenu ni tiré ; veto refusé s'il ne reste aucun jeu candidat ; roulette asynchrone : 1 veto par participant tant que la soirée est à venir, relance sans les jeux vetoés, annonce éditée) ; exige les migrations `add_session_veto` et `add_roulette_veto`
 - `ROULETTE_PLAYER_FILTER_ENABLED` : roulette (asynchrone et instantanée) : ne tire que les jeux qui acceptent le nombre de joueurs inscrits, repli sur toutes les entrées si aucune ne convient ; allume aussi « Relancer » sans doublon et « Recommencer » de la roulette instantanée ; sans migration
-
-## Livraison (mise en service, rien n’est activé ni appliqué en Production)
-Procédures et preuves, une par domaine : `docs/LIVRAISON-XP.md` (migrations XP, invariants `scripts/xp-lot-invariants.mjs`), `docs/LIVRAISON-BARRIERE.md` (précontrôle `scripts/prod-precheck.mjs`, rôles, barrière d’écriture, sauvegarde, repli par stade, inventaire des writers), `docs/LIVRAISON-VOCAL.md` (worker, diagnostic d’hôte `scripts/voice-host-diagnostic.mjs`), `docs/LIVRAISON-DISCORD.md` (variables, permissions, crons externes, recette opérateur), `docs/LIVRAISON-PUSH-CALENDRIER.md`, `docs/LIVRAISON-TABLEAU.md` (code livré / activé / vérifié / reste exact). Les 6 migrations du lot XP + vocal s’appliquent en UNE exécution explicite de `scripts/db-migrate.mjs` AVANT le déploiement du code ; le build ne migre plus.
+- `TOWER_DISCORD_PREFLIGHT_ENABLED` : `GET /api/admin/tower-preflight` (admins) : inventaire en lecture seule des salons du serveur `DISCORD_BOT_GUILD_ID` ; éteint = 404, jamais d’écriture Discord
 
 ## Outils
 - Superpowers : planifier une grosse fonctionnalité.

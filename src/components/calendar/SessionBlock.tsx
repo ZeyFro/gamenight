@@ -60,7 +60,7 @@ export function SessionBlock({ session }: { session: CalendarSession }) {
           type="button"
           className={`w-full truncate rounded-md px-2 py-1 text-left text-[11px] font-medium transition-opacity hover:opacity-90 ${STATUS_BLOCK_CLASSES[session.status]}`}
         >
-          🎮 {toTimeInputValue(session.date)} · {title}
+          🎮 {toTimeInputValue(session.date)} · {title}{session.communityTeamName ? ` · ${session.communityTeamName}` : ""}
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -86,6 +86,7 @@ export function SessionBlock({ session }: { session: CalendarSession }) {
             </div>
 
             <p className="mt-2 text-sm text-muted">{formatDateTimeFr(session.date)}</p>
+            {session.communityTeamName && <p className="mt-1 text-sm text-accent">Équipe · {session.communityTeamName}</p>}
 
             {session.status === "VOTING" && session.votingDeadline && (
               <p className="mt-1 text-xs text-warning">

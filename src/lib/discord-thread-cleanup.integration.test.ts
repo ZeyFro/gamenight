@@ -233,6 +233,23 @@ describe.skipIf(!TEST_DATABASE_URL)("discord-thread-cleanup (intégration Postgr
       expect(await slotRows(slots.delete)).toHaveLength(0);
     });
 
+    it("budget de temps épuisé : rien n'est entamé, rapport tronqué (repris au passage suivant)", async () => {
+      const creator = await makeUser();
+      const session = await makeSession(creator.id, { status: "DONE" });
+      await markThreadCreated("SESSION", session.id, "thread-budget");
+      const slots = sessionAnnounce.sessionThreadCleanupSlots(session.id);
+
+      const stopped = await cleanup.runDiscordThreadCleanup({ dryRun: false, shouldContinue: () => false });
+      expect(stopped.truncated).toBe(true);
+      expect(stopped.sessions.archiveEnqueued).toEqual([]);
+      expect(await slotRows(slots.archive)).toHaveLength(0);
+
+      const resumed = await cleanup.runDiscordThreadCleanup({ dryRun: false, shouldContinue: () => true });
+      expect(resumed.truncated).toBe(false);
+      expect(resumed.sessions.archiveEnqueued).toEqual([session.id]);
+      expect(await slotRows(slots.archive)).toHaveLength(1);
+    });
+
     it("n'archive jamais pendant qu'une autre livraison doit encore passer par le fil", async () => {
       const creator = await makeUser();
       const session = await makeSession(creator.id, { status: "DONE" });

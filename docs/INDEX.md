@@ -14,17 +14,24 @@
 - [Annulation des séries](ANNULATION_SERIES.md) et [places de session](SESSION_PLACES.md).
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
+- [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
+- [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.
+- [Revue des rôles The Tower](TOWER_ROLE_REVIEW.md) — constats sans publier les détails de permissions.
+- [Lacunes progression](TOWER_PROGRESSION_GAPS.md), [GameNight et équipes](TOWER_COMMUNITY_GAPS.md) et [fidélisation](TOWER_RETENTION_GAPS.md) — fonctions présentes et prochains incréments.
 
 ## Exploitation et sécurité
 
 - [Routes cron et backfill](CRONS.md) — routes, méthodes et garde d’authentification ; les cadences sont hors dépôt.
 - [Réconciliation sécurité du travail de Claude](SECURITE_CLAUDE.md) — constats, preuves, correctifs et limites restant à vérifier.
 - [Déploiement multi-communautés](COMMUNITY_ROLLOUT.md) — ordre de configuration et limites opérationnelles.
-- [Feuille de route](ROADMAP.md) — suivi vivant des lots.
+- [Feuille de route GameNight et The Tower 2.0](ROADMAP.md) — suivi vivant et découpage en PR.
 
 ## Recettes et documents de référence
+
+- [Cahier des charges canonique — The Tower 2.0 × GameNight](CAHIER_DES_CHARGES.md) — texte de référence fourni par Maxime, conservé mot pour mot.
+- [Édition de navigation et décisions d'exploitation](TOWER_CAHIER_DES_CHARGES_GLOBAL.md) — complément enrichi ; en cas de divergence initiale, le cahier canonique prévaut.
 
 - [Recette finale](RECETTE_FINALE.md) — photographie datée des parcours et validations locales ; ne vaut pas validation de configuration distante.
 - [Recette locale authentifiée](RECETTE_LOCALE_AUTHENTIFIEE.md) — protocole et preuves d’une session locale datée.

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const runExecutorBatch = vi.fn();
+const settleDueTowerChallenges = vi.fn();
+vi.mock("@/lib/tower-challenges", () => ({ settleDueTowerChallenges: (...a: unknown[]) => settleDueTowerChallenges(...a) }));
 vi.mock("@/lib/notification-executor", () => ({ runExecutorBatch: (...a: unknown[]) => runExecutorBatch(...a) }));
 vi.mock("@/lib/notification-dispatch", () => ({ DISPATCH_RESOLVER: {} }));
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
@@ -22,6 +24,8 @@ describe("/api/cron/notification-executor", () => {
     vi.clearAllMocks();
     runExecutorBatch.mockResolvedValue({ processed: 2, sent: 2, failed: 0 });
     vi.stubEnv("CRON_SECRET", "s3cret");
+    vi.stubEnv("TOWER_CHALLENGES_ENABLED", "false");
+    settleDueTowerChallenges.mockResolvedValue({ processed: 1, approved: 1, rejected: 0 });
     vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
   });
 
@@ -56,4 +60,11 @@ describe("/api/cron/notification-executor", () => {
     expect((await GET(req("Bearer s3cret"))).status).toBe(503);
     expect(afterTasks).toHaveLength(0);
   });
+  it("réutilise le cron existant pour clôturer les défis avant livraison, seulement si activé", async () => {
+    vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
+    await GET(req("Bearer s3cret"));
+    await afterTasks[0]();
+    expect(settleDueTowerChallenges).toHaveBeenCalledWith(expect.any(Date));
+  });
+
 });
