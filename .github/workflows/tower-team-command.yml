@@ -1,0 +1,71 @@
+# La PR /equipe est empilée sur #408, hors des branches de la CI générale.
+# Vérification locale au runner uniquement : aucun secret ni appel Discord réel.
+name: Tower team command
+
+on:
+  pull_request:
+    branches: [main, 'codex/tower-pr-equipes-20261105']
+    paths:
+      - 'scripts/discord-commands.json'
+      - 'src/lib/discord-team-command*.ts'
+      - 'src/lib/discord-interactions*.ts'
+      - 'src/lib/community-team*.ts'
+      - 'src/lib/player-classified*.ts'
+      - 'src/app/joueurs/**'
+      - 'src/app/api/discord/interactions/**'
+      - 'prisma/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tower-team-command.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tower-team-command-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-team-command:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gamenight_test
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+      - name: Test team command and its storage dependencies
+        run: >-
+          npx vitest run --maxWorkers=1
+          src/lib/discord-team-command.test.ts
+          src/lib/discord-team-command-manifest.test.ts
+          src/lib/discord-interactions.test.ts
+          src/lib/community-teams.integration.test.ts
+          src/lib/community-teams-rules.test.ts
+          src/lib/player-classifieds.integration.test.ts
+          src/lib/player-classified-filters.test.ts
+          src/lib/player-classified-filters-data.test.ts
+          src/app/joueurs/page.test.tsx
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+      - run: npx next typegen
+      - run: npx tsc --noEmit
+      - run: npm run lint
