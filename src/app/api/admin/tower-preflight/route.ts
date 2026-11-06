@@ -1,3 +1,4 @@
+import { isVercelPreview } from "@/lib/preview-safety";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logger } from "@/lib/logger";
@@ -14,6 +15,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * éteint sauf `TOWER_DISCORD_PREFLIGHT_ENABLED=true`. Aucune écriture Discord.
  */
 export async function GET() {
+  if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
   const user = await requireAdmin();
   if (!user) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE });

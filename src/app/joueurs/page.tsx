@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createPlayerClassifiedAction, deletePlayerClassifiedAction } from "./actions";
 import { pageMetadata } from "@/lib/page-title";
+import { isTonightEnabled } from "@/lib/tonight-rules";
 
 export const metadata = pageMetadata("Chercher un joueur");
 
@@ -53,7 +54,10 @@ export default async function PlayerClassifiedsPage({
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🔎 Chercher un joueur</h1>
           <p className="mt-1 text-sm text-muted">Annonces visibles par les membres actifs de ta communauté. Elles expirent après 24 h.</p>
         </div>
-        <Link href="/jouer-maintenant" className="text-sm font-medium text-accent">Jouer maintenant →</Link>
+        <div className="flex flex-col items-end gap-1">
+          {isTonightEnabled() && <Link href="/ce-soir" className="text-sm font-medium text-accent">Qui joue ce soir ? →</Link>}
+          <Link href="/jouer-maintenant" className="text-sm font-medium text-accent">Jouer maintenant →</Link>
+        </div>
       </div>
 
       {error && ERRORS[error] && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{ERRORS[error]}</p>}

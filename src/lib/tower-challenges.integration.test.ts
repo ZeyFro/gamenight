@@ -117,6 +117,39 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(new Set(rows.slice(0, 3).map(row => row.definitionId)).has(rows[3].definitionId)).toBe(true);
   });
 
+  it("départage à étages égaux par défis difficiles puis par premier arrivé", async () => {
+    const rows = [
+      // tower-a1 : 6 étages, 2 difficiles, atteint son total en dernier.
+      ["rank-a1-1", "tower-a1", 3, "2026-04-03T10:00:00Z"],
+      ["rank-a1-2", "tower-a1", 3, "2026-04-05T10:00:00Z"],
+      // tower-a2 : 6 étages, seulement 1 difficile.
+      ["rank-a2-1", "tower-a2", 3, "2026-04-02T10:00:00Z"],
+      ["rank-a2-2", "tower-a2", 2, "2026-04-03T10:00:00Z"],
+      ["rank-a2-3", "tower-a2", 1, "2026-04-04T10:00:00Z"],
+      // tower-a3 : 6 étages, 2 difficiles, total atteint avant tower-a1.
+      ["rank-a3-1", "tower-a3", 3, "2026-04-02T09:00:00Z"],
+      ["rank-a3-2", "tower-a3", 3, "2026-04-04T09:00:00Z"],
+    ] as const;
+    await db.towerChallengeAttempt.createMany({
+      data: rows.map(([id, userId, rewardFloors, rewardedAt]) => ({
+        id, communityId: "tower-a", userId, definitionId: "tower-a-easy",
+        requestKey: id, title: "Défi classement", instructions: "À réaliser",
+        rewardFloors, assignedAt: new Date(new Date(rewardedAt).getTime() - 24 * 3600000),
+        expiresAt: new Date(new Date(rewardedAt).getTime() + 24 * 3600000), status: "APPROVED" as const,
+        submittedAt: new Date(rewardedAt), proofText: "Preuve",
+        proofChannelId: "123456789012345678", proofMessageId: "223456789012345678",
+        publicationConsent: true, rewardedAt: new Date(rewardedAt),
+      })),
+    });
+    clock.now = new Date("2026-05-01T12:00:00Z");
+    const leaderboard = await api.getTowerSeasonLeaderboard(author);
+    if (leaderboard.status !== "LEADERBOARD") throw new Error("Classement attendu");
+    expect(leaderboard.entries.slice(0, 3).map(entry => entry.discordId))
+      .toEqual(["tower-a3", "tower-a1", "tower-a2"]);
+    expect(leaderboard.entries.slice(0, 3).map(entry => entry.rewardFloors))
+      .toEqual([6, 6, 6]);
+  });
+
   it("ouvre un vote communautaire unique après la clôture du trimestre, depuis le top actif", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
@@ -147,7 +180,26 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(closed.candidates.find(candidate => candidate.userId === "tower-a2")?.votes).toBe(1);
     expect(await db.towerSeasonVoteBallot.count({ where: { communityId: "tower-a" } })).toBe(2);
   });
-  it("ouvre le vote du trimestre achevé même pendant l'année scolaire active", async () => {
+  it("ouvre le vote de l’été dès le début de S4, sans intersaison", async () => {
+    await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
+      id: "summer-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
+      requestKey: "summer-finalist-" + index, title: "Défi été", instructions: "À réaliser",
+      rewardFloors: index + 2, assignedAt: new Date("2026-07-02T12:00:00Z"),
+      expiresAt: new Date("2026-07-04T12:00:00Z"), status: "APPROVED" as const,
+      submittedAt: new Date("2026-07-03T12:00:00Z"), proofText: "Preuve",
+      proofChannelId: "123456789012345678", proofMessageId: "223456789012345678",
+      publicationConsent: true, rewardedAt: new Date("2026-07-03T13:00:00Z"),
+    })) });
+    clock.now = new Date("2026-09-01T12:00:00Z");
+    const opened = await api.getTowerSeasonVote(author);
+    if (opened.status !== "VOTE_OPEN") throw new Error("Scrutin de l’été attendu ouvert");
+    expect(opened.season.name).toBe("Été · 2026");
+    expect(opened.season.active).toBe(false);
+    expect(opened.closesAt).toEqual(new Date("2026-09-03T12:00:00Z"));
+    expect(opened.candidates.map(candidate => candidate.userId)).toEqual(["tower-a2", "tower-a1"]);
+  });
+
+  it("ouvre le vote de S4 pendant l’intersaison du 1er au 3 janvier", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-boundary-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
       requestKey: "season-boundary-" + index, title: "Défi trimestre", instructions: "À réaliser",
@@ -160,7 +212,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2027-01-01T12:00:00Z");
     const opened = await api.getTowerSeasonVote(author);
     if (opened.status !== "VOTE_OPEN") throw new Error("Scrutin du trimestre terminé attendu");
-    expect(opened.season.name).toContain("Trimestre 1");
+    expect(opened.season.name).toBe("S4 · 2026");
     expect(opened.season.active).toBe(false);
     expect(opened.closesAt).toEqual(new Date("2027-01-03T12:00:00Z"));
 
@@ -436,7 +488,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   it("importe le pack de départ une seule fois sans réactiver un défi désactivé", async () => {
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const first = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(first).toEqual({ status: "IMPORTED", added: 12, alreadyPresent: 0 });
+    expect(first).toEqual({ status: "IMPORTED", added: 26, alreadyPresent: 0 });
 
     const starterChallenge = await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
@@ -444,8 +496,8 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     });
     await db.towerChallengeDefinition.update({ where: { id: starterChallenge.id }, data: { active: false } });
     const second = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: 12 });
-    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(13);
+    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: 26 });
+    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(27);
     expect(await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
       select: { active: true },

@@ -114,6 +114,17 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const { handleSignedTowerInteraction } = await import("@/lib/discord-tower-challenges");
     return handleSignedTowerInteraction(json, input.timestamp);
   }
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith("gn:welcome:")) {
+    const stamp = Number(input.timestamp);
+    if (!Number.isFinite(stamp) || Math.abs(Date.now() / 1000 - stamp) > 300 ||
+        interaction.application_id !== process.env.DISCORD_CLIENT_ID ||
+        interaction.guild_id !== process.env.TOWER_DISCORD_GUILD_ID ||
+        interaction.channel_id !== process.env.TOWER_DISCORD_WELCOME_CHANNEL_ID) return { status: 400 };
+    if (process.env.TOWER_ONBOARDING_PANEL_ENABLED !== "true") return reply("Ce panneau n'est pas encore activé.");
+    const { welcomeActionUrl } = await import("@/lib/tower-onboarding-panel");
+    const url = welcomeActionUrl(interaction.data.custom_id.slice("gn:welcome:".length));
+    return url ? reply("Ouvre GameNight : " + url) : { status: 400 };
+  }
   if (interaction.type === 3) {
     const customId = interaction.data?.custom_id ?? "";
     const rsvp = parseSessionRsvpId(customId);

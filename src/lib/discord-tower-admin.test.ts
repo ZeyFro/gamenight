@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   add: vi.fn(), deactivate: vi.fn(), importPack: vi.fn(), list: vi.fn(),
   importTeamPack: vi.fn(),
-  edit: vi.fn(), error: vi.fn(),
+  edit: vi.fn(), error: vi.fn(), warn: vi.fn(),
 }));
 vi.mock("@/lib/tower-challenges", () => ({
   addSoloTowerChallengeDefinition: mocks.add,
@@ -13,7 +13,7 @@ vi.mock("@/lib/tower-challenges", () => ({
   listSoloTowerChallengeDefinitions: mocks.list,
 }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit }));
-vi.mock("@/lib/logger", () => ({ logger: { error: mocks.error } }));
+vi.mock("@/lib/logger", () => ({ logger: { error: mocks.error, warn: mocks.warn } }));
 import { handleSignedTowerAdminInteraction } from "./discord-tower-admin";
 
 const app = "100000000000000001";
@@ -80,4 +80,26 @@ describe("droits des commandes The Tower", () => {
     expect(mocks.importTeamPack).toHaveBeenCalledWith({ guildId: guild });
     expect(mocks.edit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Catalogue d'équipe prêt : 8") }));
   });
+  it.each([
+    [new TypeError("private-token-cookie-email"), "TypeError"],
+    [Object.assign(new Error("private-token-cookie-email"), { name: "PrivateCustomName" }), "UnknownTowerError"],
+  ])("filtre l'erreur de runTower admin et conserve la réponse de secours (%s)", async (failure, category) => {
+    mocks.list.mockRejectedValue(failure);
+    mocks.edit.mockResolvedValue({ ok: true });
+    const response = handleSignedTowerAdminInteraction(body("32"), String(Math.floor(Date.now() / 1000)));
+    expect(response.body).toEqual({ type: 5, data: { flags: 64 } });
+    expect(response.runTower).toBeTypeOf("function");
+    await response.runTower!();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith("discord-tower-admin", "Échec du traitement Tower.", {
+      task: "runTower", errorType: category,
+    });
+    expect(mocks.error).not.toHaveBeenCalled();
+    expect(mocks.edit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      content: "Impossible de traiter le catalogue maintenant.",
+    }));
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("private-token-cookie-email");
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain("PrivateCustomName");
+    expect(mocks.warn.mock.calls.flat()).not.toContain(failure);
+  });
+
 });

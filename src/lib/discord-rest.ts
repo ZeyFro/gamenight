@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { isVercelPreview } from "@/lib/preview-safety";
 
 /**
  * Client Discord REST (bot) — fondations pour les futurs salons/fils/MP
@@ -299,6 +300,9 @@ interface RawHttpResult {
  * commentaire en tête de fichier pour le contrat complet.
  */
 async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestResult<T>> {
+  if (isVercelPreview() && opts.method !== "GET") {
+    return { ok: false, kind: "not_configured", message: "Discord writes blocked in Preview.", retryable: false };
+  }
   const now = opts.now ?? new Date();
   const remaining = remainingBudgetMs(opts.deadline, now);
   if (remaining < MIN_REQUEST_BUDGET_MS) {
