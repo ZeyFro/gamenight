@@ -255,6 +255,28 @@ describe.skipIf(!TEST_DATABASE_URL)("présence vocale : borne de 12 h, lecture D
       }
     });
 
+    it("drapeau remis à false, tables présentes : le runner de rétention purge quand même les données expirées", async () => {
+      vi.stubEnv("VOICE_PRESENCE_ENABLED", "");
+      expect(await retention.voicePresenceTablesExist()).toBe(true);
+      const sessionId = await seedSession({ date: new Date("2026-09-01T18:00:00.000Z"), status: "DONE" });
+      const consent = await consentFor(sessionId, USERS.creator.id);
+      const startedAt = new Date("2026-09-01T18:10:00.000Z");
+      await db.sessionVoicePresenceInterval.create({ data: {
+        sessionId, userId: USERS.creator.id, consentId: consent.id, channelId: CHANNEL_ID, startedAt,
+        endedAt: new Date(startedAt.getTime() + 60_000), durationSeconds: 60, expiresAt: new Date(Date.now() - HOUR),
+      } });
+      const { runRetentionCleanup } = await import("./retention-runner");
+
+      const preview = await runRetentionCleanup({ dryRun: true });
+      expect(preview.errors.filter(error => error.startsWith("voicePresence"))).toEqual([]);
+      expect(preview.voicePresence?.expiredIntervals).toBeGreaterThanOrEqual(1);
+      expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId } })).toBe(1);
+
+      const real = await runRetentionCleanup({ dryRun: false });
+      expect(real.errors.filter(error => error.startsWith("voicePresence"))).toEqual([]);
+      expect(await db.sessionVoicePresenceInterval.count({ where: { sessionId } })).toBe(0);
+    }, 60_000);
+
     it("ne supprime pas la ligne de contrôle d'une soirée périmée tant qu'un bail est valide", async () => {
       const date = new Date("2026-09-01T18:00:00.000Z");
       const sessionId = await seedSession({ date });

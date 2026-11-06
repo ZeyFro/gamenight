@@ -4,6 +4,23 @@ import { VOICE_PRESENCE_RETENTION_MS, voiceCollectionRetentionSessionDate } from
 
 const DEFAULT_BATCH_SIZE = 500;
 
+/**
+ * Les quatre tables vocales existent-elles ? Requête sur le catalogue seulement (jamais sur les tables) : permet de
+ * purger les données déjà collectées même si le drapeau de collecte a été remis à `false`, tout en restant inoffensif
+ * tant que les migrations vocales ne sont pas appliquées.
+ */
+export async function voicePresenceTablesExist(): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ present: boolean }[]>`
+    SELECT (
+      to_regclass('"SessionVoicePresenceInterval"') IS NOT NULL
+      AND to_regclass('"SessionVoicePresenceConsent"') IS NOT NULL
+      AND to_regclass('"SessionVoicePresenceControl"') IS NOT NULL
+      AND to_regclass('"SessionVoicePresenceGap"') IS NOT NULL
+    ) AS present
+  `;
+  return rows[0]?.present === true;
+}
+
 export async function purgeExpiredVoicePresenceBatch(opts: {
   now?: Date;
   limit?: number;

@@ -14,6 +14,8 @@ Dans les commandes, `$LOT` désigne cette liste, `$BASE` le nom de la base cible
 
 Barrière d'écriture vérifiée sur anciens et nouveaux runtimes, dump custom restauré dans une cible isolée, rôle de migration distinct du rôle runtime : voir « Séquence de bascule » de la décision de publication. Sans cela, ne pas continuer.
 
+Procédure Production complète, ordonnée et non exécutée (décisions D2 option B, D3 snapshot + restauration de test) : `docs/XP-PROCEDURE-PRODUCTION.md`. Retours arrière par migration : `docs/XP-MIGRATIONS-ROLLBACK.md`.
+
 ## 1. Précontrôles (lecture seule)
 
 Sur le checkout approuvé :
@@ -66,7 +68,7 @@ Après réouverture, la phase `reopened` (mêmes contrôles sans l'égalité des
 
 - `src/lib/xp-counters.integration.test.ts` : une assertion sur les deux compteurs pour gain, pari posé/gagné/perdu, solde au prix exact et un point en dessous, équipement/retrait sans débit ni événement, pénalité plafonnée (progression et solde non négatifs), grade/niveau à 5 000 XP (niveau 11) avec solde épuisé, ancien `SHOP_PURCHASE` conservé et nouvel achat exclu du classement par période. Complète `xp-shop`, `admin-xp` (correction), reset de saison et migration.
 - `src/lib/xp-lot-invariants.integration.test.ts` : état main (sans les 6), dry-run et exécution réelle de `db-migrate.mjs`, phase `after` avec empreinte identique, dérive d'un ancien writer, xpTotal négatif avant le lot, migration inachevée, refus de cible distante, lecture seule.
-- Durée et verrous sur le volume Production : inconnus.
+- Durée et verrous : mesurés en local sur trois volumes (section 8) ; volume Production réel : non connu au moment de l'écriture (comptage lecture seule à produire par le propriétaire).
 
 ## 6. Intermittence du scénario « achats historiques » de `scripts/recette-boutique.mjs`
 
@@ -102,8 +104,24 @@ XP_RECONCILE_DATABASE_URL=<url> [XP_RECONCILE_ALLOW_REMOTE="<hôte>[:port]/<base
 **Lire le résultat**
 - `Écarts à corriger : N (hausses, baisses, somme nette)` puis les 10 plus gros `communityId userId : xpTotal, xpBalance -> cible`. Attendu après un incident d'ancien code : quelques lignes ; `AUCUNE CORRECTION` = rien à faire (état du second passage).
 - `sans trace dans le ledger` : écart sans événement ni pari depuis la fenêtre (reset de saison de l'ancien code, SQL manuel). À comprendre avant d'exécuter.
-- `À ARBITRER solde exact négatif` : `xpTotal + achats` < 0, le CHECK `xpBalance >= 0` interdit la valeur exacte ; le script écrit 0 (jamais de valeur négative) et liste le joueur.
+- `À ARBITRER solde exact négatif` : `xpTotal + achats` < 0, le CHECK `xpBalance >= 0` interdit la valeur exacte ; un solde négatif suppose un achat du nouveau code (joueur « mixte ») : le joueur est listé et le script n'écrit 0 (jamais de valeur négative) qu'avec `--include-mixed` ; sinon « non écrit », à arbitrer à la main.
 - `À ARBITRER achats du nouveau code` : joueur « mixte » (au moins un `SHOP_BALANCE_PURCHASE` depuis la fenêtre) avec un écart. Des plafonds du nouveau code (pénalité d'absence, correction admin) séparent légitimement les compteurs : NON écrit sans `--include-mixed`, à arbitrer à la main.
 - Sorties : 0 ok, 2 refusé, 4 concurrence ou verrou, 1 inattendu. Après exécution : `xp-lot-invariants.mjs --phase=reopened` doit rester vert (l'empreinte, `xpBalance` exclu, ne change pas si seul `xpBalance` a bougé ; `xpTotal` mis à jour par l'ancien code la change, ce qui est attendu).
 
 Vérifié localement (base jetable 127.0.0.1) : `src/lib/xp-balance-reconcile.integration.test.ts` (écritures d'ancien code puis recalage exact, idempotence, dry-run sans écriture, refus sans confirmation, cas négatif, joueurs mixtes, migration absente ou inachevée, verrou externe, CLI). Boutique : `xp-shop.integration.test.ts` (achats parallèles, CHECK) et `xp-shop-lock.integration.test.ts` (une seule connexion, `lock_timeout` de 8 s : sans lui, un verrou externe fait attendre l'achat jusqu'à sa libération, le délai de transaction de Prisma n'interrompant pas la requête en attente). Non vérifié : durée et verrous sur le volume Production.
+
+## 8. Durées mesurées (6 novembre 2026, PostgreSQL 16.15 local jetable, `fsync=on`, 4 cœurs, jamais Neon)
+
+Banc : cluster dédié 127.0.0.1:55447, baseline = les 118 migrations de `main`, données `generate_series` (`CommunityMemberStats` : `xpTotal` aléatoire 0–50 000 ; `XpEvent` : 20 par membre, 1 par membre à 1 000 000), puis les 6 migrations dans l'ordre, chacune dans une transaction (`psql -1`). Sonde de verrou : lecture de la table toutes les ~50 ms pendant la migration. Les 5 migrations hors n°1 durent 30–60 ms quel que soit le volume.
+
+| Volume (`CommunityMemberStats`) | Essais | Migration 1 `separate_xp_balance` | Lecture bloquée (pire sonde) | Taille de table avant → après |
+|---|---|---|---|---|
+| 1 000 | 3 | 41, 50, 51 ms (médiane 50 ms) | ≤ 54 ms | 0,28 → 0,42 Mo |
+| 100 000 | 4 | 1 058, 1 255, 1 258, 1 468 ms (médiane 1,26 s) | 1,0–1,4 s | 19 → 33 Mo (×1,7) |
+| 1 000 000 | 4 | 16,96 ; 17,15 ; 18,16 ; 18,57 s (médiane 17,7 s) | 17–18,6 s | 183 → 307 Mo (×1,7) |
+
+Lecture : coût linéaire (~17 µs par ligne). `ADD COLUMN` + `UPDATE` + `ADD CONSTRAINT CHECK` tiennent un verrou `ACCESS EXCLUSIVE` jusqu'au COMMIT : la table est illisible pendant toute la migration 1 (la sonde le confirme), et l'`UPDATE` double la taille de la table (tuples morts, à récupérer par autovacuum). Seuil de 5 s atteint vers 300 000 lignes. `xpBalance = xpTotal` vérifié sur toutes les lignes après chaque essai.
+
+Décision D4 : à tout volume plausible (< 300 000 lignes), la migration n'a pas besoin d'être réécrite ; la barrière d'écriture est de toute façon posée pendant la fenêtre. Si le comptage Production dépasse ~300 000 lignes, refaire la mesure avant de décider (`CHECK … NOT VALID` + `VALIDATE` ou `UPDATE` par lots dans une NOUVELLE migration additive). Limites : machine de test, Neon (stockage, WAL, cache) plus lent possible ; mesure indicative, à confirmer sur la copie restaurée (D3) si elle est faite.
+
+Retours arrière : `scripts/rollback-xp-lot/` ; répétition `scripts/rehearse-xp-rollback.sh <base modèle>` (9 contrôles : schéma identique à la baseline après retour 6→1, données XP inchangées, lignes `_prisma_migrations` supprimées, lot rejouable, refus sur solde divergé / achat au solde / données vocales).

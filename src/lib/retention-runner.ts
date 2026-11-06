@@ -2,7 +2,7 @@ import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { cronCommunityScope } from "@/lib/community-isolation";
-import { purgeExpiredVoicePresenceBatch } from "@/lib/voice-presence-retention";
+import { purgeExpiredVoicePresenceBatch, voicePresenceTablesExist } from "@/lib/voice-presence-retention";
 import {
   RETENTION_BATCH_SIZE,
   RETENTION_CRON_LOCK_LEASE_MS,
@@ -132,9 +132,10 @@ export async function runRetentionCleanup(opts: {
       logger.error("retention-runner", error, { step: "chat" });
     }
 
-    // Drapeau éteint : aucune requête sur les tables vocales (migrations éventuellement pas appliquées).
+    // La rétention ne dépend pas du drapeau de collecte : des données déjà collectées doivent expirer même après un retour
+    // à `false`. Tant que les migrations vocales ne sont pas appliquées (tables absentes), aucune requête sur ces tables.
     try {
-      if (process.env.VOICE_PRESENCE_ENABLED === "true") {
+      if (process.env.VOICE_PRESENCE_ENABLED === "true" || (await voicePresenceTablesExist())) {
         report.voicePresence = await purgeExpiredVoicePresenceBatch({ limit, dryRun: opts.dryRun, now: new Date() });
       }
     } catch (error) {
