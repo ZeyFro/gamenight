@@ -24,11 +24,16 @@ describe("définition installable de /equipe", () => {
     const env = { ...process.env };
     delete env.DISCORD_CLIENT_ID;
     delete env.DISCORD_BOT_TOKEN;
-    const result = spawnSync(process.execPath, [fileURLToPath(new URL("../../scripts/register-discord-commands.mjs", import.meta.url))], {
+    const result = spawnSync(process.execPath, [
+      "--import", "data:text/javascript,globalThis.fetch = () => { throw new Error('Réseau interdit en simulation'); };",
+      fileURLToPath(new URL("../../scripts/register-discord-commands.mjs", import.meta.url)),
+    ], {
       env, encoding: "utf8", timeout: 5_000,
     });
     expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
     const manifest = JSON.parse(result.stdout.slice(result.stdout.indexOf("["))) as Array<{name: string}>;
+    expect(manifest).toEqual(commands);
     expect(manifest.map(command => command.name)).toContain("equipe");
     expect(manifest.map(command => command.name)).toEqual(expect.arrayContaining(["gamenight", "tower", "tower-admin"]));
   });
