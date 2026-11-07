@@ -2,20 +2,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 const url = process.env.TEST_DATABASE_URL;
-const neonDomain = ["neon", "tech"].join(".");
-const testDatabaseUrl = (databaseName: string, host = `ep-test.${neonDomain}`, ssl = true) =>
-  `${["postgresql:", "//"].join("")}user:pass@${host}/${databaseName}${ssl ? "?sslmode=require" : ""}`;
-const testDatabaseGuard = (value: string, allowedHost?: string, allowRemote = false) => {
+// Aucun paramètre d'URL n'est nécessaire aux tests locaux ; les refuser
+// empêche notamment host/hostaddr/service de rediriger le client PostgreSQL.
+const testDatabaseGuard = (value: string) => {
   const database = new URL(value);
-  if (database.hostname === "127.0.0.1") return;
-  if (allowRemote && database.hostname.endsWith(`.${neonDomain}`) && database.hostname === allowedHost && database.pathname === "/tower_test" && database.searchParams.get("sslmode") === "require") return;
-  throw new Error("Postgres isolé uniquement : Neon exige l'hôte explicitement autorisé, tower_test et sslmode=require");
+  if ((database.protocol === "postgresql:" || database.protocol === "postgres:")
+    && database.hostname === "127.0.0.1"
+    && /^\/(?:gamenight_[a-zA-Z0-9_]+|tower_test)$/.test(database.pathname)
+    && !database.search && !database.hash) return;
+  throw new Error("Postgres de test local uniquement : 127.0.0.1, base gamenight_* ou tower_test, sans options d'URL");
 };
 const towerTestGuildId = "987654321098765432";
 const clock = vi.hoisted(() => ({ now: new Date("2026-10-28T12:00:00Z") }));
 vi.mock("@/lib/prisma", async () => {
+  if (url) testDatabaseGuard(url);
   const { PrismaClient } = await import("@prisma/client");
-  if (url) testDatabaseGuard(url, process.env.TEST_DATABASE_HOST, process.env.TEST_DATABASE_ALLOW_REMOTE === "true");
   return { prisma: url ? new PrismaClient({ datasourceUrl: url }) : {} };
 });
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -27,14 +28,42 @@ vi.mock("node:crypto", async importOriginal => {
 if (!url) console.warn("[tower-challenge-storage] Postgres absent : intégrations ignorées.");
 
 describe("garde de la base d'intégration Tower", () => {
-  it("n'autorise que Postgres local ou l'hôte Neon explicitement allowlisté pour tower_test", () => {
-    expect(() => testDatabaseGuard("postgresql://user:pass@127.0.0.1:5432/gamenight_test")).not.toThrow();
-    const host = `ep-test.${neonDomain}`;
-    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host), host)).toThrow();
-    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host), host, true)).not.toThrow();
-    expect(() => testDatabaseGuard(testDatabaseUrl("neondb", host), host)).toThrow();
-    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", `ep-other.${neonDomain}`), host)).toThrow();
-    expect(() => testDatabaseGuard(testDatabaseUrl("tower_test", host, false), host)).toThrow();
+  it.each([
+    "postgresql://user:pass@127.0.0.1:5432/gamenight_test",
+    "postgres://user:pass@127.0.0.1:55439/gamenight_guard407",
+    "postgresql://user:pass@127.0.0.1:5432/tower_test",
+  ])("autorise uniquement une base jetable locale : %s", value => {
+    expect(() => testDatabaseGuard(value)).not.toThrow();
+  });
+
+  it("refuse Neon même avec les anciens paramètres d'autorisation", () => {
+    const host = `ep-test.${["neon", "tech"].join(".")}`;
+    vi.stubEnv("TEST_DATABASE_HOST", host);
+    vi.stubEnv("TEST_DATABASE_ALLOW_REMOTE", "true");
+    try {
+      expect(() => Reflect.apply(testDatabaseGuard, undefined, [
+        `postgresql://${host}/tower_test?sslmode=require`, host, true,
+      ])).toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    "postgresql://remote.example/tower_test",
+    "postgresql://user:pass@localhost/gamenight_test",
+    "postgresql://[::1]/gamenight_test",
+    "https://127.0.0.1/gamenight_test",
+    "postgresql://user:pass@127.0.0.1/production",
+    "postgresql://user:pass@127.0.0.1/gamenight_",
+    "postgresql://user:pass@127.0.0.1/gamenight_test?host=remote.example",
+    "postgresql://user:pass@127.0.0.1/gamenight_test?hostaddr=192.0.2.1",
+    "postgresql://user:pass@127.0.0.1/gamenight_test?service=production",
+    "postgresql://user:pass@127.0.0.1/gamenight_test?options=-csearch_path%3Dpublic",
+    "postgresql://user:pass@127.0.0.1/gamenight_test#remote",
+    "not-a-url",
+  ])("refuse une cible ou une option non autorisée : %s", value => {
+    expect(() => testDatabaseGuard(value)).toThrow();
   });
 });
 
