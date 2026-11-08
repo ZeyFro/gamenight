@@ -52,3 +52,35 @@ Tower limité au serveur ne gère que `tower` et `tower-admin`, pas `equipe`.
 Le mode d'enregistrement de `/equipe` doit donc être choisi et approuvé avant
 toute écriture. Ne changer aucun rôle, droit, drapeau ou configuration pour
 exécuter cette simulation. Aucun enregistrement réel n'est réalisé ici.
+
+## Préparation hors ligne d'un enregistrement limité au serveur
+
+`scripts/plan-team-guild-commands.mjs` prépare un JSON lisible sans requête réseau,
+sans variable d'environnement et sans mode d'exécution. Il exige trois options,
+sans répétition : `--application-id`, `--guild-id`, `--snapshot`. Le snapshot JSON
+local doit contenir uniquement `application_id`, `guild_id` et `commands` (tableau
+des commandes du serveur, avec leurs identités Discord). Les identifiants de
+l'enveloppe et de chaque commande doivent correspondre aux options. Une commande
+globale, une autre application, un autre serveur, un doublon ou un champ inconnu
+fait refuser le plan. Ne fournir aucun token ou secret dans ce fichier.
+
+Le résultat distingue le `payload` proposé pour un **POST** de création/mise à
+jour de la seule commande `/equipe`, et `plannedCommands`, vue de comparaison qui
+préserve les autres commandes. Cette vue n'est pas un corps de PUT : aucun
+remplacement global des commandes n'est préparé. La route inclut explicitement
+le serveur, sans possibilité de sélectionner une route globale. Les champs
+`contexts` et `integration_types`, réservés aux commandes globales dans cette
+API, ne sont pas transmis au payload de serveur ; les identifiants en lecture
+seule ne le sont pas non plus.
+
+Si `/equipe` existe déjà, le plan conserve `default_member_permissions` ainsi
+que `default_permission` et `nsfw` lorsqu'ils sont présents ; une permission
+par défaut absente ou de type inconnu entraîne un refus. Le snapshot ne couvre
+pas les permissions spécifiques par utilisateur, rôle ou salon : leur contrôle
+réel reste à faire séparément après autorisation. Le plan ne prouve ni la
+fraîcheur du snapshot, ni l'installation effective de l'application.
+
+Référence officielle vérifiée : [Create Guild Application Command](https://docs.discord.com/developers/interactions/application-commands#create-guild-application-command).
+Les tests remplacent `fetch` par une erreur et limitent l'environnement du
+sous-processus à `NODE_ENV=test`. Les options `--execute`, `--check` et `--token` sont refusées.
+L'enregistrement réel demeure une opération distincte exigeant un accord.
