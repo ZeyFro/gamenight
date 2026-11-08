@@ -72,6 +72,8 @@ jobs:
           set -euo pipefail
           cp migration-370/scripts/db-migrate.mjs operator/scripts/db-migrate.mjs
           cp migration-370/scripts/db-migrate-lib.mjs operator/scripts/db-migrate-lib.mjs
+          # Garde d'URL du runner épinglé : n'admet que la forme exacte sslaccept=strict (empreintes vérifiées avant et après).
+          node scripts/neon-test/runner-ssl.mjs operator/scripts/db-migrate-lib.mjs
           cp -R scripts/neon-test operator/scripts/neon-test
           cp -R migration-370/prisma/migrations/20261104140000_tower_team_membership_policy operator/prisma/migrations/
           test ! -d operator/prisma/migrations/20261105120000_tower_launch_channels_appeals_matchmaking
