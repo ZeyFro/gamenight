@@ -68,5 +68,5 @@ jobs:
 
       - run: npm run lint
 
-      # `npm run build` lancerait `prisma migrate deploy` : on compile seulement.
+      # `npm run build` appelle scripts/build.mjs (prisma generate + next build); aucune migration n'est lancée.
       - run: npx next build
