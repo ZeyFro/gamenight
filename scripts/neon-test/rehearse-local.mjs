@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { readState, checkSnapshot } from './state.mjs';
+import { readState, checkSnapshot, schemaForServer } from './state.mjs';
 import { checkHistory } from './apply-policy.mjs';
 
 const require = createRequire(import.meta.url);
@@ -32,7 +32,7 @@ async function main() {
   try {
     let state = await readState(db,role,verifyLocal);
     checkHistory(state.history,expected);
-    checkSnapshot(state,118,schemas[118]);
+    checkSnapshot(state,118,schemaForServer(state.identity.version,118,schemas));
     const before = state.data;
     const migrations = [
       ['20261104140000_tower_team_membership_policy','4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb'],
@@ -48,8 +48,22 @@ async function main() {
       for (const execute of [false,true]) execFileSync(process.execPath,['scripts/db-migrate.mjs',`--expect=${name}`,'--allow-local',...(execute?['--execute',`--confirm-database=${database}`]:[])],{cwd:operator,env,stdio:'pipe'});
       state = await readState(db,role,verifyLocal);
       checkHistory(state.history,expected);
-      checkSnapshot(state,119+i,schemas[119+i],before);
+      checkSnapshot(state,119+i,schemaForServer(state.identity.version,119+i,schemas),before);
       console.log(`Répétition fictive locale : phase${119+i}, historique/checksums/schéma/données/backfill/DML vérifiés.`);
+    }
+    if (Math.floor(state.identity.version / 10000) === 18) {
+      // Contre-exemple réel PG18 : ne jamais normaliser away conenforced.
+      try {
+        await db.$executeRawUnsafe('ALTER TABLE "Membership" ALTER CONSTRAINT "Membership_communityId_fkey" NOT ENFORCED');
+        const drift = await readState(db,role,verifyLocal);
+        let refused = false;
+        try { checkSnapshot(drift,120,schemaForServer(drift.identity.version,120,schemas),before); }
+        catch (error) { refused = error.message === 'NEON_TEST_SCHEMA_MISMATCH'; }
+        if (!refused) throw Error('LOCAL_REHEARSAL_ENFORCEMENT_NOT_CHECKED');
+        console.log('Répétition fictive locale : contrainte NOT ENFORCED refusée.');
+      } finally {
+        await db.$executeRawUnsafe('ALTER TABLE "Membership" ALTER CONSTRAINT "Membership_communityId_fkey" ENFORCED');
+      }
     }
   } finally { await db.$disconnect(); }
 }

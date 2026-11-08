@@ -3,8 +3,11 @@
 Préparation uniquement. Aucune exécution distante ni fusion autorisée ici.
 Le dry-run #418 a réellement réussi : run42291255308 sur main b603dd0 ; preuve
 et sauvegarde indépendante revérifiée dans #400 commentaire6696087598.
-La sauvegarde br-purple-mud-b1nt0tfi est ready au point0/2A355C30 ; **la
-restauration n'a pas été éprouvée**. Ne pas toucher à Production ni à #325.
+La sauvegarde br-purple-mud-b1nt0tfi est ready au point0/2A355C30. Work a ensuite
+éprouvé une **copie isolée de cette branche** : preuve
+[#400, commentaire6711821666](https://github.com/ZeyFro/gamenight/issues/400#issuecomment-6711821666).
+Cela ne démontre ni Reset from parent ni restore_snapshot Production.
+Ne pas toucher à Production ni à #325.
 
 ## Fermeture par défaut
 
@@ -54,8 +57,13 @@ l'opération avant l'écriture. Aucun allow-shared-role/local, resolve, reset ou
    puis execute406 et contrôle120.
 
 Les empreintes de schéma public couvrent colonnes/defaults/nullabilité,
-contraintes validées, index et enums. Elles ont été générées sur PostgreSQL16
-fictif à partir de118 puis des deux SQL immuables. **Faire valider le nouveau
+contraintes validées, index et enums. Les manifests sont séparés explicitement
+pour PostgreSQL16 et18, seuls majeurs admis, puis pour chacune des phases118,
+119 et120. Aucun catalogue inconnu n'est accepté. PostgreSQL18 conserve dans
+pg_constraint les NOT NULL et leur conenforced : ils restent tous dans son
+empreinte, sans filtrage ni normalisation susceptible de masquer une dérive.
+Les six empreintes proviennent uniquement de bases fictives locales et des SQL
+immutables. **Faire valider le nouveau
 mode validate sur Neon avant activation d'apply** : une différence de catalogue
 ou de version doit être analysée, jamais ignorée ou corrigée par des droits plus
 larges. Les données historiques sont comparées par compteurs/empreintes calculés
@@ -64,20 +72,143 @@ leurs valeurs attendues sont vérifiées séparément. Nouvelles tables vides,
 backfill capitaine correct, colonnes nouvelles NULL, histoire/checksums exacts.
 Les empreintes restent en mémoire du processus, pas dans un artifact métier.
 
+## Corrections locales des blocages observés par Work
+
+La preuve Work [6711749800](https://github.com/ZeyFro/gamenight/issues/400#issuecomment-6711749800)
+constate TLS1.3 avec certificat vérifié vers l'endpoint, alors que pg_stat_ssl
+du backend vaut false. Celui-ci décrit la liaison derrière le proxy, pas la
+connexion TLS du client à Neon. Il reste relevé mais ne sert plus de preuve
+d'authenticité de l'endpoint. L'opérateur impose à la place **sur la même URL
+transmise au client SQL, au préflight et au runner/CLI épinglés**
+sslmode=require et sslaccept=strict. Les paramètres inconnus, doublons,
+host de substitution, certificats/identités alternatifs et accept_invalid_certs
+sont refusés. Aucun autre précontrôle, rôle ou contrôle d'identité n'est retiré.
+
+Ce choix suit le moteur natif Prisma6 réellement utilisé :
+[parseur URL6.19](https://github.com/prisma/prisma-engines/blob/6.19.0/quaint/src/connector/postgres/url.rs)
+(verify-full n'est pas un mode reconnu ; sslaccept omis accepte par défaut les
+certificats invalides) et
+[connecteur TLS6.19](https://github.com/prisma/prisma-engines/blob/6.19.0/quaint/src/connector/postgres/native/mod.rs)
+(strict conserve la validation native du certificat et du nom d'hôte).
+Voir aussi [sécurité Neon](https://neon.com/docs/connect/connect-securely).
+Un proxy TLS fictif local a vérifié le vrai PrismaClient et le vrai CLI :
+certificat de confiance avec bon hôte accepté alors que backend_ssl=false ;
+certificat non fiable, mauvais hôte et serveur sans TLS tous refusés.
+
+La comparaison locale des118 SQL sur PostgreSQL16 et18 retrouve les mêmes754
+colonnes,247 index et141 valeurs enum ; PostgreSQL18 ajoute574 NOT NULL aux303
+contraintes communes. Work en rapporte576 sur Neon : **l'écart résiduel n'est
+pas expliqué et la cible Neon n'est pas validée**. Le nouveau manifeste18
+n'est pas copié depuis cette cible et ne la rend pas acceptable par décret.
+Un relevé READ ONLY expurgé des différences de catalogue par Work, puis un
+nouveau mode validate après revue et fusion manuelle, restent nécessaires.
+Les deux migrations distantes restent interdites sans leur accord distinct.
+
 ## Exercice de restauration à préparer séparément
 
-Avant accord d'application : faire vérifier dans Neon la sauvegarde exacte,
-filiation, LSN et rétention ; conserver intacte la sauvegarde. Dix branches sont
-occupées : ne pas créer/supprimer de branche ou activer un compute sans accord.
-Faire confirmer par l'opérateur une destination isolée et un mécanisme supporté
-sans toucher à Production. Aucun appel restore supposé ni restauration en place
-automatique. Si une opération sensible est nécessaire, demander son accord
-précis avant exécution. Documenter source/destination/point, durée, historique,
-contraintes et agrégats après restauration réelle.
+Vérification documentaire du 2026-11-07, sans connexion Neon : les pages
+[Instant restore](https://neon.com/docs/postgres/backup-restore/branch-restore),
+[Reset from parent](https://neon.com/docs/guides/reset-from-parent),
+[CLI branches](https://neon.com/docs/cli/branches),
+[History window](https://neon.com/docs/postgres/backup-restore/history-window)
+[Manage roles](https://neon.com/docs/manage/roles),
+[Protected branches](https://neon.com/docs/guides/protected-branches)
+et le [contrat OpenAPI officiel v2](https://neon.com/api_spec/release/v2.json)
+ont été lus. Aucun outil Neon authentifié n'est disponible dans cette session.
+L'état réel provient des preuves Work6696087598 et6711821666 ; il n'a pas été
+réinterrogé depuis Cloud.
 
-La sauvegarde précède la création du rôle dédié : examiner aussi la restauration
-des rôles/ACL et l'effet sur la connexion sécurisée avant toute opération.
-Ne pas recréer le rôle/secret ou élargir ses droits comme contournement.
+La distinction des mécanismes est essentielle :
+
+- Le PITR avec timestamp/LSN est documenté pour des branches racines, source
+  comprise. La sauvegarde connue est une branche enfant de Test : ne pas
+  supposer qu'un restore horodaté depuis cette sauvegarde est supporté.
+  Son parent_lsn0/2A355C30 désigne le point dans le parent, pas un LSN à
+  recopier automatiquement comme source_lsn de la sauvegarde.
+- Reset from parent remplace toutes les bases du seul enfant par le HEAD de
+  son parent, sans préserver l'état précédent. Il ne démontre pas un PITR.
+  La destination doit être jetable, non protégée, sans enfants ; vérifier aussi
+  les restrictions d'opération réelles avant de poursuivre.
+- Une branche sans compute conserve sa place dans le quota. Elle n'a pas
+  d'endpoint PostgreSQL utilisable ; démarrer un compute sur la sauvegarde
+  n'est pas nécessaire pour créer son enfant et n'est pas autorisé ici.
+  La CLI crée un compute par défaut et publie des credentials par défaut :
+  tout futur usage doit choisir explicitement compute et sortie sans secrets.
+  L'API ne crée aucun compute si endpoints est omis.
+- Le PITR peut créer une branche de secours et interrompre les connexions.
+  Le reset interrompt les connexions de sa destination. Aucun de ces appels
+  ne doit viser la sauvegarde, Test ou Production pendant cet exercice.
+  La fenêtre historique est une propriété du projet à relever, sans la changer ;
+  elle ne garantit pas à elle seule qu'un point historique reste restaurable.
+
+**Preuve opérateur acquise : copie isolée, pas reset/PITR.** Work a reçu un accord
+distinct pour remplacer l'ancien Preview par tower-restore-rehearsal-20261107,
+ID br-fancy-art-b1eqwipa, enfant de la sauvegarde au point0/2A355C30.
+Sa preuve rapporte118 migrations, aucune inachevée ni370/406, schéma/historique
+équivalents et agrégats identiques sur les cinq tables contrôlées. Les autres
+tables métier ne sont pas couvertes par ces agrégats. Le migrateur est absent
+de la copie et les cinq tables appartiennent à neondb_owner : ne pas supposer
+que le secret migrateur actuel peut l'ouvrir. La sauvegarde d'origine et le
+snapshot Production sont conservés. Le projet reste à dix branches.
+Cloud n'a créé ni supprimé de ressource. Aucun nouvel accord de suppression,
+de création, de compute ou de facturation ne découle de ce document.
+
+Protocole alternatif Reset from parent conservé pour référence,
+**non exécuté, à autoriser séparément si nécessaire** :
+
+1. Relever en lecture seule projet, IDs, filiation, état ready, absence de compute
+   et de changement sur la sauvegarde, point parent0/2A355C30, fenêtre historique,
+   quotas et restrictions. Vérifier l'origine des données : aucune donnée
+   Production ne doit servir à l'exercice. Conserver ces métadonnées expurgées.
+2. Faire confirmer explicitement une destination isolée admissible.
+   Vérifier son ID, son parent br-purple-mud-b1nt0tfi, son absence d'enfants et
+   de protection, et son compute propre avant toute SQL. La source du reset
+   serait le HEAD inchangé de la sauvegarde, jamais le HEAD actuel de Test.
+   Aucune nouvelle branche/compute n'est autorisée par ce document.
+3. Faire vérifier par l'opérateur un plan d'accès propre à cet enfant, **avant
+   et après reset**, sans secret Production ni réemploi supposé de credentials
+   historiques. Manage roles documente la copie des rôles existants au point de
+   branchement. Protected branches précise que, lors d'une création depuis un
+   parent non protégé, les mots de passe sont normalement identiques à ceux du
+   parent ; depuis un parent protégé, ils sont régénérés. Lors d'un reset depuis
+   un parent protégé, les mots de passe des rôles correspondants de l'enfant
+   sont préservés. Cela ne garantit ni la survie d'un rôle spécifique créé
+   seulement dans l'enfant, ni ses ACL, ni les credentials du cas présent.
+   La documentation consultée ne tranche pas ce cycle complet pour notre
+   sauvegarde et sa protection effective non relevée : faire vérifier le
+   mécanisme opérateur et le résultat réel, sans inventer de persistance ou de
+   disparition du migrateur. Aucune création de rôle, rotation de mot de passe,
+   copie du secret migrateur ou changement de protection n'est autorisé ici.
+   Sans plan d'accès clone vérifié aux deux étapes, rester bloqué avant SQL.
+   Après autorisation distincte de lectures et d'une sentinelle fictive sur le
+   seul enfant, relever118 historiques, checksums, absence des deux migrations
+   et d'inachevées, schéma, contraintes et agrégats ; créer la sentinelle dédiée
+   sans données métier. Relever séparément rôles/ACL effectivement présents.
+4. Après accord portant sur l'ID enfant exact, demander Reset from parent sur
+   cet enfant uniquement. Le contrat officiel est POST
+   /projects/{project_id}/branches/{child_id}/restore avec uniquement
+   source_branch_id=br-purple-mud-b1nt0tfi ; aucun source_lsn,
+   source_timestamp ni preserve_under_name. Il s'agit du mécanisme documenté
+   de reset HEAD depuis le parent, pas d'un appel PITR supposé.
+5. Attendre la fin réussie de toutes les opérations, relever durée et identité
+   finale, reconnecter uniquement au compute de l'enfant puis vérifier disparition
+   de la sentinelle et égalité des preuves118/schéma/contraintes/agrégats.
+   Vérifier les rôles/ACL et l'accès selon le plan opérateur approuvé ; aucune
+   absence ou persistance du migrateur n'est présumée.
+   Recontrôler les métadonnées sauvegarde/Test sans activer leur compute.
+   Si Neon demande une capacité supplémentaire ou propose de toucher un autre
+   ID, arrêter ; le coût/quota transitoire ne peut être garanti par la doc seule.
+6. Publier les seules preuves expurgées après succès réel et conserver la
+   destination pour revue, sans suppression autorisée.
+   Le propriétaire doit décider si cette preuve de restauration du HEAD de la
+   sauvegarde satisfait son exigence. Ne pas attester PITR validé : un PITR
+   véritable exigerait un protocole distinct, des branches racines adaptées,
+   un point encore retenu et sa propre autorisation.
+
+Ce protocole de reset est préparé, **non exécuté**. Les lectures et la création
+de copie rapportées plus haut ont été réalisées par Work avec son accord
+distinct, pas par Cloud. Aucune attestation de reset/PITR ne peut en découler ;
+le propriétaire doit valider explicitement la portée de la preuve de copie.
 
 Après erreur : arrêter, conserver diagnostics expurgés et état Prisma, ne pas
 relancer ni appliquer406 si370/postcontrôle échoue. Une restauration nécessite
@@ -95,8 +226,19 @@ Depuis le checkout de cette préparation, avec dépendances Node22 installées :
 TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_apply_rehearsal_proof node scripts/neon-test/rehearse-local.mjs
 ```
 
-Cet outil refuse tout autre hôte/nom, toute redirection et toute identité Neon.
-Il applique réellement les deux SQL **sur cette seule base fictive**, via le
+Pour reproduire la vérification du vrai TLS client/CLI sans aucune écriture SQL,
+sur la même base locale fictive et avec openssl installé :
+
+```sh
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55439/gamenight_apply_rehearsal_proof node scripts/neon-test/rehearse-native-tls.mjs
+```
+
+Ce second outil génère des certificats fictifs éphémères, ouvre uniquement des
+ports127.0.0.1 et ne transmet leur CA qu'aux processus de test. Il ne modifie
+ni le magasin de confiance de l'opérateur ni son environnement parent.
+
+`rehearse-local.mjs` refuse tout autre hôte/nom, toute redirection et toute identité Neon.
+Cet outil de répétition des migrations applique réellement les deux SQL **sur cette seule base fictive**, via le
 runner épinglé : dry-run/exécution370, contrôle119, dry-run/exécution406,
 contrôle120, mêmes empreintes de schéma et données conservées. Le rôle local
 est propriétaire, sans comparaison runtime du runner (avertissement local) ;

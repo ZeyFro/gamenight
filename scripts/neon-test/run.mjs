@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { authorize, checkHistory, sequence } from './apply-policy.mjs';
-import { readState, checkSnapshot } from './state.mjs';
+import { readState, checkSnapshot, schemaForServer } from './state.mjs';
+import { strictNativeConnection } from './native-tls.mjs';
 import { validateConnectionRoles, validateTestIdentity } from '../neon-test-preflight.mjs';
 import { assertTarget, assertSingleUrlSource } from '../db-migrate-lib.mjs';
 
@@ -26,7 +27,7 @@ export function verifyFiles(expected) {
 }
 
 async function main() {
-  const env = process.env;
+  const env = { ...process.env };
   authorize({operation:env.OPERATION,ref:env.GITHUB_REF,activation:env.APPLY_AUTHORIZATION,confirmation:env.CONFIRMATION,evidence:env.RESTORATION_EVIDENCE});
   // La preuve GitHub est vérifiée de nouveau juste avant l'accès base.
   await (await import('./proof.mjs')).verifyProof(env);
@@ -34,6 +35,9 @@ async function main() {
   const roles = validateConnectionRoles(env.MIGRATION_DATABASE_URL,env.GAMENIGHT_RUNTIME_ROLE,env.GAMENIGHT_MIGRATION_ROLE);
   if (roles.migrationRole !== 'gamenight_test_migrator') throw new Error('NEON_TEST_WRONG_MIGRATOR');
   assertTarget({migrationUrl:env.MIGRATION_DATABASE_URL,runtimeRole:roles.runtimeRole,expectedTarget:env.GAMENIGHT_EXPECTED_TARGET,execute:env.OPERATION==='apply'});
+  // Un seul canal natif strict, transmis aussi au préflight/runner/CLI Prisma.
+  // pg_stat_ssl décrit le backend derrière le proxy Neon, pas ce canal client.
+  env.MIGRATION_DATABASE_URL = strictNativeConnection(env.MIGRATION_DATABASE_URL);
   const {PrismaClient} = await import('@prisma/client');
   const db = new PrismaClient({datasourceUrl:env.MIGRATION_DATABASE_URL});
   let secondAdded = false;
@@ -49,11 +53,10 @@ async function main() {
         invoke(['scripts/neon-test-preflight.mjs']);
         const state = await readState(db,roles.runtimeRole,identity => {
           validateTestIdentity(identity,roles);
-          if (identity.ssl !== true) throw new Error('NEON_TEST_TLS_REQUIRED');
         });
         const expectedHistory = {...baseline,...(phase>=119?{[first]:sqlHashes[first]}:{}),...(phase>=120?{[second]:sqlHashes[second]}:{})};
         checkHistory(state.history,expectedHistory);
-        checkSnapshot(state,phase,schemas[phase],originalData);
+        checkSnapshot(state,phase,schemaForServer(state.identity.version,phase,schemas),originalData);
         originalData ??= state.data;
         console.log(`Phase ${phase} : identité/TLS, historique/checksums, schéma, données et droits runtime vérifiés.`);
       },
