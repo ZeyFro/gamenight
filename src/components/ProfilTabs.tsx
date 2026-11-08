@@ -7,6 +7,7 @@ const TABS = [
   { href: "/profil", label: "Aperçu" },
   { href: "/ascension", label: "Ascension" },
   { href: "/tower", label: "The Tower" },
+  { href: "/tower/palmares", label: "Palmarès Tower" },
   { href: "/profil/historique", label: "Historique soirées" },
   { href: "/profil/superlatifs", label: "Récompenses gagnées" },
   { href: "/profil/lore", label: "Lore du groupe" },
