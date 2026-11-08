@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { authorize, checkHistory, sequence } from './apply-policy.mjs';
-import { readState, checkSnapshot, schemaForServer } from './state.mjs';
+import { readState, checkSnapshot, schemaForServer, loadForeignTables, checkForeignTables } from './state.mjs';
 import { strictNativeConnection } from './native-tls.mjs';
 import { validateConnectionRoles, validateTestIdentity } from '../neon-test-preflight.mjs';
 import { assertTarget, assertSingleUrlSource } from '../db-migrate-lib.mjs';
@@ -17,6 +17,7 @@ const sqlHashes = {
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const baseline = JSON.parse(readFileSync(new URL('./baseline.json', import.meta.url), 'utf8'));
 const schemas = JSON.parse(readFileSync(new URL('./schemas.json', import.meta.url), 'utf8'));
+const foreignTables = loadForeignTables();
 
 export function verifyFiles(expected) {
   const approved = JSON.parse(readFileSync(new URL('./approved-sources.json',import.meta.url),'utf8'));
@@ -53,12 +54,13 @@ async function main() {
         invoke(['scripts/neon-test-preflight.mjs']);
         const state = await readState(db,roles.runtimeRole,identity => {
           validateTestIdentity(identity,roles);
-        });
+        },foreignTables);
         const expectedHistory = {...baseline,...(phase>=119?{[first]:sqlHashes[first]}:{}),...(phase>=120?{[second]:sqlHashes[second]}:{})};
         checkHistory(state.history,expectedHistory);
-        checkSnapshot(state,phase,schemaForServer(state.identity.version,phase,schemas),originalData);
+        checkSnapshot(state,phase,schemaForServer(state.identity.version,phase,schemas),originalData,foreignTables);
         originalData ??= state.data;
         console.log(`Phase ${phase} : identité/TLS, historique/checksums, schéma, données et droits runtime vérifiés.`);
+        for (const known of checkForeignTables(state,foreignTables)) console.log(`Table étrangère déclarée et conforme (non gérée par les migrations, jamais modifiée) : ${known.table} ${known.digest}`);
       },
       run: async (phase,execute) => invoke(['scripts/db-migrate.mjs',`--expect=${phase===119?first:second}`,...(execute?['--execute','--confirm-database=neondb']:[])]),
       addSecond: async () => {
