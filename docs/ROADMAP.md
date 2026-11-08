@@ -134,7 +134,7 @@ Créneaux habituels · Vote de jeu (+ veto #227) · Veto roulette asynchrone, fi
 
 Cette section complète la feuille de route GameNight ci-dessus. Le cahier produit de référence est [docs/CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md). La version enrichie [docs/TOWER_CAHIER_DES_CHARGES_GLOBAL.md](TOWER_CAHIER_DES_CHARGES_GLOBAL.md) apporte une navigation et des consignes opérationnelles ; elle ne remplace pas le texte canonique. Le plan d'exécution transversal reste l'issue [#400](https://github.com/ZeyFro/gamenight/issues/400).
 
-Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne doivent pas être recréés. #370, #395 et #396 sont également des PR de suivi existantes. Les étapes terminées dans le dépôt ne sont pas requalifiées comme essais réels Discord ou Production.
+Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne doivent pas être recréés. #370 et #396 sont des PR de suivi existantes. La PR #395 a été abandonnée et clôturée sans fusion le 5 novembre 2026 : aucune dépendance fonctionnelle de #370/#396, seul chevauchement documentaire dans `.env.example`. Les étapes terminées dans le dépôt ne sont pas requalifiées comme essais réels Discord ou Production.
 
 ### Phase 1 — Fondation communautaire
 
@@ -198,13 +198,12 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 
 ### Phase 3 — Nouvelle Ascension
 
-### P3-01 — Exclusion des comptes de test des votes de Production
+### P3-01 — Exclusion des comptes de test des votes de Production (abandonnée)
 
-- **Objectif :** Empêcher les comptes explicitement réservés aux tests de fausser les votes et récompenses réelles.
-- **Critères d'acceptation :** Les comptes de test sont refusés uniquement sur les voies de vote Production prévues; les autres comptes et environnements restent inchangés.
-- **Tests attendus :** Tests unitaires et PostgreSQL des votes de preuve et de saison, plus contrôle des environnements.
-- **Dépendances / suivi :** PR existante #395; avant fusion, résoudre sa coordination documentaire avec #370.
-- **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+- **Décision :** Maxime continue de tester avec son propre compte Discord; aucune exclusion des comptes de test n'est souhaitée.
+- **Livraison :** PR #395 clôturée sans fusion le 5 novembre 2026. Aucun contrôle Production ni identifiant de test ne doit être configuré.
+- **Dépendances :** audit de #370 et #396 : aucune dépendance fonctionnelle à #395; seul `.env.example` se chevauchait.
+- **Suivi :** décision consignée dans l'issue #400 et le document de décisions; le cahier canonique n'est pas modifié.
 
 ### P3-02 — Attribution quotidienne du défi d'équipe
 
@@ -217,10 +216,10 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 ### P3-03 — Preuves, votes, quorum et contestations
 
 - **Objectif :** Terminer le cycle de preuve avec auditabilité et protections anti-abus.
-- **Critères d'acceptation :** Preuve liée à l'attribution, vote 24 h, quorum de 3, majorité stricte, absence d'auto-vote, contestation motivée et aucune double récompense.
+- **Critères d'acceptation :** Preuve liée à l'attribution, vote 24 h, quorum de 3, majorité stricte, absence d'auto-vote, contestation motivée dans les 24 heures suivant l'annonce du résultat et aucune double récompense.
 - **Tests attendus :** Tests de concurrence et PostgreSQL sur quorum, égalité, rejouabilité, contestation et attribution unique.
 - **Dépendances / suivi :** PR existante #407, schéma #406, compatibilité avec #396.
-- **BLOQUÉ-DÉCISION — le délai de contestation de 7 jours reste à confirmer avant de l'implémenter.**
+- **Décision prise :** le délai de contestation est de 24 heures après l'annonce du résultat du vote (issue #400). Le délai historique de 7 jours est remplacé; le cahier canonique reste intact.**
 
 ### P3-04 — Quotas et progression d'Ascension
 
@@ -284,4 +283,4 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 
 ### Ordre de reprise
 
-Les PR existantes #406–#408 restent brouillon et gardent leurs dépendances documentées. Parmi les tâches de code ouvertes, commencer par la revue/validation de #395 (sans migration) ; les tâches qui requièrent #370/#406 ou une écriture Production restent en attente de ces dépendances. Après chaque PR ouverte, reprendre la première tâche de code non bloquée et empiler sa branche sur la précédente si elle n'est pas fusionnée.
+Les PR existantes #406–#408 restent brouillon et gardent leurs dépendances documentées. La PR #395 est abandonnée et clôturée sans fusion; ne pas la reprendre. Parmi les tâches de code ouvertes,  les tâches qui requièrent #370/#406 ou une écriture Production restent en attente de ces dépendances. Après chaque PR ouverte, reprendre la première tâche de code non bloquée et empiler sa branche sur la précédente si elle n'est pas fusionnée.
