@@ -22,6 +22,17 @@ const DB = "gamenight_test";
 const DATA_DIR = "/var/lib/postgresql/gamenight-test-data";
 const LOG_FILE = "/var/lib/postgresql/gamenight-test.log";
 const TEST_DATABASE_URL = `postgresql://postgres:test@${HOST}:${PORT}/${DB}`;
+// Base JETABLE de test uniquement (127.0.0.1, recréée par `prisma migrate deploy`) : sans durabilité,
+// les TRUNCATE ... CASCADE des ~100 tables ne prennent plus 7 à 23 s (hooks de test à 10 s en échec
+// intermittent) et la suite complète passe de 930-1222 s à ~283 s (voir CLAUDE.md). Jamais sur Neon,
+// Production ni une base à conserver ; un arrêt brutal peut corrompre ce cluster, ce qui est acceptable.
+const PG_FAST_SETTINGS = [
+  "fsync=off",
+  "synchronous_commit=off",
+  "full_page_writes=off",
+  "checkpoint_timeout=1h",
+  "max_wal_size=8GB",
+];
 
 const fail = (msg) => {
   console.error(`[session-start] ${msg}`);
@@ -61,7 +72,7 @@ if (!existsSync(join(DATA_DIR, "PG_VERSION"))) {
 if (run(`${PG_BIN}/pg_isready`, ["-h", HOST, "-p", PORT]).status !== 0) {
   must(
     `${PG_BIN}/pg_ctl`,
-    ["-D", DATA_DIR, "-l", LOG_FILE, "-w", "-o", `-p ${PORT} -c listen_addresses=${HOST} -k ${DATA_DIR}`, "start"],
+    ["-D", DATA_DIR, "-l", LOG_FILE, "-w", "-o", `-p ${PORT} -c listen_addresses=${HOST} -k ${DATA_DIR} ${PG_FAST_SETTINGS.map((setting) => `-c ${setting}`).join(" ")}`, "start"],
     { asPostgres: true }
   );
 }
