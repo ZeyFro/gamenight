@@ -44,7 +44,9 @@ const prisma = new PrismaClient();
 const REQUEST_DELAY_MS = 1500;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const COOP_CATEGORY_IDS = new Set([9, 24, 27, 38, 39, 48]);
+// 9 Co-op, 24 Shared/Split Screen, 38 Online Co-op, 39 Shared/Split Screen Co-op, 48 LAN Co-op.
+// Id 27 = Cross-Platform Multiplayer (vérifié le 2026-11-09 sur SteamDB) : PAS du coop, retiré.
+const COOP_CATEGORY_IDS = new Set([9, 24, 38, 39, 48]);
 const COOP_KEYWORDS = ["coop", "co-op", "coopératif", "écran partagé", "partagé"];
 
 function deriveIsCoopFromCategories(categories) {
