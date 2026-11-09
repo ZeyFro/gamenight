@@ -46,7 +46,7 @@ L’administration du catalogue reste possible pendant que le drapeau global des
 
 ## Classement saisonnier (préparé)
 
-- `/tower classement` et le bouton **Classement** affichent le top 10 des étages remportés pendant la période Tower courante en heure de Paris. La convention commune est septembre–décembre, janvier–mars et avril–juin ; en juillet–août, le dernier classement reste consultable.
+- `/tower classement` et le bouton **Classement** affichent le top 10 des étages remportés pendant la période Tower courante en heure de Paris. Le calendrier (`src/lib/tower-challenge-seasons.ts`, fin exclusive) est : S1 du 4 janvier au 28 mars, S2 d'avril à juin, **Été en juillet–août (saison active, avec classement et scrutin)**, S4 de septembre à décembre ; seuls les 1er–3 janvier et 29–31 mars sont des intersaisons sans score, pendant lesquelles le dernier classement reste consultable.
 - Le classement est calculé depuis les défis validés et leurs récompenses dans la période : aucun compteur ou modèle supplémentaire n'est créé. Il repart naturellement à zéro à la prochaine fenêtre ; les étages cumulés du profil restent permanents (aucun retrait, remise à zéro générale, changement d'XP ou attribution de rôle).
 - Seuls les membres actifs apparaissent. Le top 10 additionne les récompenses des défis solo et des récompenses individuelles d'équipe ; une récompense n'est comptée qu'une fois et aucun étage collectif n'est créé. Chaque réussite compte dans le même plafond de deux par jour de Paris.
 - Les défis absurdes restent soumis aux règles de légalité et à la modération. Toute distinction de saison soumise à un vote communautaire doit rester distincte du vote qui valide une preuve.
