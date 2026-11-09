@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareTowerStandings, findExactTies, rankTowerStandings, type TowerStandingInput } from "./tower-standings";
+import { compareTowerStandings, findExactTies, groupCoWinners, rankTowerStandings, selectTopThree, type TowerStandingInput } from "./tower-standings";
 
 const at = (iso: string) => new Date(iso);
 const e = (userId: string, floors: bigint | number, hardWins: number, reachedAt = "2026-11-01T10:00:00Z"): TowerStandingInput =>
@@ -149,5 +149,85 @@ describe("findExactTies", () => {
     const base = [e("a", 6, 2), e("b", 6, 2), e("c", 6, 2), e("d", 1, 0), e("e", 1, 0)];
     const expected = [["a", "b", "c"], ["d", "e"]];
     for (const perm of permutations(base)) expect(findExactTies(perm).map(ids)).toEqual(expected);
+  });
+});
+
+describe("groupCoWinners", () => {
+  it("groupes consécutifs avec startRank de l'ordre total", () => {
+    const groups = groupCoWinners([e("c", 6, 2), e("a", 9, 0), e("b", 6, 2), e("d", 6, 1), e("z", 1, 0)]);
+    expect(groups.map(g => [g.startRank, ids(g.members)])).toEqual([[1, ["a"]], [2, ["b", "c"]], [4, ["d"]], [5, ["z"]]]);
+  });
+  it("les membres portent leur rang de l'ordre total (pas de rang dense)", () => {
+    const [first] = groupCoWinners([e("b", 5, 0), e("a", 5, 0)]);
+    expect(first.members.map(m => m.rank)).toEqual([1, 2]);
+  });
+  it("une différence à chaque niveau sépare les groupes", () => {
+    expect(groupCoWinners([e("a", 6, 2), e("b", 7, 2)])).toHaveLength(2);
+    expect(groupCoWinners([e("a", 6, 2), e("b", 6, 3)])).toHaveLength(2);
+    expect(groupCoWinners([e("a", 6, 2, "2026-11-01T00:00:00Z"), e("b", 6, 2, "2026-11-01T00:00:01Z")])).toHaveLength(2);
+  });
+  it("bigint et number égaux sont regroupés ; liste vide", () => {
+    expect(groupCoWinners([e("a", BigInt(4), 1), e("b", 4, 1)])).toHaveLength(1);
+    expect(groupCoWinners([])).toEqual([]);
+  });
+  it("identique pour toutes les permutations, sans muter l'entrée", () => {
+    const base = [e("a", 6, 2), e("b", 6, 2), e("c", 6, 2), e("d", 1, 0), e("e", 1, 0)];
+    for (const perm of permutations(base)) {
+      const copy = [...perm];
+      expect(groupCoWinners(perm).map(g => [g.startRank, ids(g.members)])).toEqual([[1, ["a", "b", "c"]], [4, ["d", "e"]]]);
+      expect(perm).toEqual(copy);
+    }
+  });
+  it("entrée invalide : RangeError", () => {
+    expect(() => groupCoWinners([e("a", -1, 0)])).toThrow(RangeError);
+  });
+});
+
+describe("selectTopThree", () => {
+  it("trois premiers de l'ordre total, sans égalité", () => {
+    const r = selectTopThree([e("d", 1, 0), e("a", 9, 0), e("c", 3, 0), e("b", 5, 0)]);
+    expect(ids(r.top)).toEqual(["a", "b", "c"]);
+    expect(r.top.map(x => x.rank)).toEqual([1, 2, 3]);
+    expect(r.coWinnerGroups).toEqual([]);
+    expect(r.boundaryTie).toBe(false);
+  });
+  it("moins de trois entrées, ou aucune", () => {
+    expect(ids(selectTopThree([e("a", 1, 0)]).top)).toEqual(["a"]);
+    expect(selectTopThree([])).toEqual({ top: [], coWinnerGroups: [], boundaryTie: false });
+    expect(selectTopThree([e("a", 1, 0), e("b", 1, 0), e("c", 1, 0)]).boundaryTie).toBe(false);
+  });
+  it("co-lauréats candidats en tête", () => {
+    const r = selectTopThree([e("b", 9, 1), e("a", 9, 1), e("c", 5, 0), e("d", 4, 0)]);
+    expect(r.coWinnerGroups.map(g => [g.startRank, ids(g.members)])).toEqual([[1, ["a", "b"]]]);
+    expect(r.boundaryTie).toBe(false);
+  });
+  it("égalité en 2e et 3e place", () => {
+    const r = selectTopThree([e("a", 9, 0), e("c", 5, 0), e("b", 5, 0), e("d", 1, 0)]);
+    expect(r.coWinnerGroups.map(g => [g.startRank, ids(g.members)])).toEqual([[2, ["b", "c"]]]);
+    expect(r.boundaryTie).toBe(false);
+  });
+  it("égalité 3e/4e : boundaryTie vrai, groupe visible avec le 4e membre, top inchangé (userId)", () => {
+    const r = selectTopThree([e("a", 9, 0), e("b", 7, 0), e("d", 5, 0), e("c", 5, 0), e("z", 1, 0)]);
+    expect(r.boundaryTie).toBe(true);
+    expect(ids(r.top)).toEqual(["a", "b", "c"]);
+    expect(r.coWinnerGroups.map(g => [g.startRank, ids(g.members)])).toEqual([[3, ["c", "d"]]]);
+  });
+  it("égalité 4e/5e seulement : pas de boundaryTie, pas de groupe", () => {
+    const r = selectTopThree([e("a", 9, 0), e("b", 7, 0), e("c", 5, 0), e("d", 2, 0), e("e", 2, 0)]);
+    expect(r.boundaryTie).toBe(false);
+    expect(r.coWinnerGroups).toEqual([]);
+  });
+  it("égalité à trois niveaux 1re à 4e : boundaryTie vrai", () => {
+    const r = selectTopThree([e("a", 3, 0), e("b", 3, 0), e("c", 3, 0), e("d", 3, 0)]);
+    expect(r.boundaryTie).toBe(true);
+    expect(r.coWinnerGroups.map(g => ids(g.members))).toEqual([["a", "b", "c", "d"]]);
+  });
+  it("identique pour toutes les permutations", () => {
+    const base = [e("a", 9, 0), e("b", 7, 0), e("d", 5, 0), e("c", 5, 0), e("z", 1, 0)];
+    const expected = selectTopThree(base);
+    for (const perm of permutations(base)) expect(selectTopThree(perm)).toEqual(expected);
+  });
+  it("entrée invalide : RangeError", () => {
+    expect(() => selectTopThree([e("a", 1.5, 0)])).toThrow(RangeError);
   });
 });

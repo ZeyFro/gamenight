@@ -90,3 +90,59 @@ export function findExactTies(entries: readonly TowerStandingInput[]): TowerStan
   }
   return [...groups.values()].filter(group => group.length > 1);
 }
+
+export type TowerCoWinnerGroup = {
+  /** Rang 1-based, dans l'ordre total, du premier membre du groupe. */
+  startRank: number;
+  /** Membres strictement égaux sur (floors, hardWins, reachedAt), dans l'ordre total (userId ASC). */
+  members: TowerStanding[];
+};
+
+function sameStanding(a: TowerStandingInput, b: TowerStandingInput): boolean {
+  return (
+    toFloors(a.floors) === toFloors(b.floors) &&
+    a.hardWins === b.hardWins &&
+    a.reachedAt.getTime() === b.reachedAt.getTime()
+  );
+}
+
+/**
+ * Groupes CONSÉCUTIFS, dans l'ordre du classement, d'entrées strictement égales sur
+ * (floors, hardWins, reachedAt). Tous les groupes sont renvoyés, y compris ceux d'un seul membre ;
+ * `startRank` est le rang de l'ordre total (userId inclus), donc deux groupes successifs de tailles
+ * 2 et 1 ont pour startRank 1 et 3 : ce n'est ni un rang « dense » ni un rang « ex æquo ».
+ * Un groupe de plus d'un membre est un candidat co-lauréat (Q7 : « peuvent être enregistrés »,
+ * le Hall of Fame n'est pas codé ici).
+ */
+export function groupCoWinners(entries: readonly TowerStandingInput[]): TowerCoWinnerGroup[] {
+  const groups: TowerCoWinnerGroup[] = [];
+  for (const entry of rankTowerStandings(entries)) {
+    const last = groups[groups.length - 1];
+    if (last && sameStanding(last.members[0], entry)) last.members.push(entry);
+    else groups.push({ startRank: entry.rank, members: [entry] });
+  }
+  return groups;
+}
+
+export type TowerTopThree = {
+  /** Les 3 premières entrées de l'ordre total (moins si moins de 3 entrées). */
+  top: TowerStanding[];
+  /** Groupes de 2 membres ou plus dont le premier rang est <= 3 ; leurs membres peuvent dépasser le rang 3. */
+  coWinnerGroups: TowerCoWinnerGroup[];
+  /**
+   * Vrai si la 3e et la 4e entrée sont strictement égales sur (floors, hardWins, reachedAt).
+   * Cas NON TRANCHÉ : l'ordre total (userId) désignerait arbitrairement l'une des deux. À résoudre par
+   * validation admin ; aucune convention (rang dense, co-lauréat étendu au 4e) n'est choisie ici.
+   */
+  boundaryTie: boolean;
+};
+
+/** Les 3 premiers de l'ordre total + groupes de co-lauréats candidats + drapeau d'égalité à la frontière. */
+export function selectTopThree(entries: readonly TowerStandingInput[]): TowerTopThree {
+  const ranked = rankTowerStandings(entries);
+  return {
+    top: ranked.slice(0, 3),
+    coWinnerGroups: groupCoWinners(entries).filter(group => group.startRank <= 3 && group.members.length > 1),
+    boundaryTie: ranked.length >= 4 && sameStanding(ranked[2], ranked[3]),
+  };
+}
