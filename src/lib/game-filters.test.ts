@@ -184,3 +184,32 @@ describe("matchesGameFilters", () => {
     expect(matchesGameFilters(game(), 1, f)).toBe(false);
   });
 });
+
+describe("parseGameFilters : paramètres d'année invalides", () => {
+  // Valeur non entière, vide ou non numérique : le filtre est ignoré (défaut),
+  // jamais interprété comme 0 ni arrondi ("" → Number("") === 0 → borne 1990).
+  it.each(["", "  ", "abc", "NaN", "Infinity", "-Infinity", "1e9", "2020.5", "0x7e4"])(
+    "ignore yearMin/yearMax = %j",
+    (raw) => {
+      const parsed = parseGameFilters({ yearMin: raw, yearMax: raw });
+      expect(parsed.yearMin).toBe(1990);
+      expect(parsed.yearMax).toBe(2026);
+    }
+  );
+
+  it.each(["0", "-1"])("borne l'entier hors plage %j (comportement existant)", (raw) => {
+    const parsed = parseGameFilters({ yearMin: raw, yearMax: raw });
+    expect(parsed.yearMin).toBe(1990);
+    expect(parsed.yearMax).toBe(1990);
+  });
+
+  it("ne change pas les années valides", () => {
+    const parsed = parseGameFilters({ yearMin: "2000", yearMax: " 2010 " });
+    expect(parsed.yearMin).toBe(2000);
+    expect(parsed.yearMax).toBe(2010);
+    expect(parseGameFilters({ yearMin: "3000", yearMax: "1900" })).toMatchObject({
+      yearMin: 2026,
+      yearMax: 1990,
+    });
+  });
+});

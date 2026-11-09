@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchSteamStoreDetails, SteamStoreHttpError } from "./steam-store";
+import { deriveIsCoopFromCategories, fetchSteamStoreDetails, SteamStoreHttpError } from "./steam-store";
 afterEach(() => vi.unstubAllGlobals());
 function respond(data: Record<string, unknown>) { const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ "620": { success: true, data } }) }); vi.stubGlobal("fetch",fetcher); return fetcher; }
 describe("prix Steam explicitement typé", () => {
@@ -37,5 +37,52 @@ describe("prix Steam explicitement typé", () => {
   it("distingue fiche absente et erreur HTTP", async () => {
     vi.stubGlobal("fetch",vi.fn().mockResolvedValue({ ok: true, json: async () => ({ "620": { success: false } }) })); expect(await fetchSteamStoreDetails(620)).toBeNull();
     vi.stubGlobal("fetch",vi.fn().mockResolvedValue({ ok: false, status: 429 })); await expect(fetchSteamStoreDetails(620)).rejects.toBeInstanceOf(SteamStoreHttpError);
+  });
+});
+
+describe("deriveIsCoopFromCategories", () => {
+  const cat = (id: number, description: string) => ({ id, description });
+
+  it("reconnaît les ids coop connus quelle que soit la description", () => {
+    for (const id of [9, 24, 27, 38, 39, 48]) {
+      expect(deriveIsCoopFromCategories([cat(id, "Libellé inconnu")])).toBe(true);
+    }
+  });
+
+  it("reconnaît coop en ligne, local, coopératif et écran partagé par mot-clé", () => {
+    expect(deriveIsCoopFromCategories([cat(0, "Coop en ligne")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "Online Co-op")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "Coop local")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "Mode coopératif")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "Coop en écran partagé/divisé")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "Écran partagé")])).toBe(true);
+  });
+
+  it("ignore la casse", () => {
+    expect(deriveIsCoopFromCategories([cat(0, "CO-OP")])).toBe(true);
+    expect(deriveIsCoopFromCategories([cat(0, "ÉCRAN PARTAGÉ")])).toBe(true);
+  });
+
+  it("ne confond pas multijoueur seul avec coop", () => {
+    expect(deriveIsCoopFromCategories([cat(1, "Multijoueur"), cat(36, "JcJ en ligne")])).toBe(false);
+    expect(deriveIsCoopFromCategories([cat(1, "Multi-player")])).toBe(false);
+  });
+
+  it("renvoie false pour catégories vides ou inconnues", () => {
+    expect(deriveIsCoopFromCategories([])).toBe(false);
+    expect(deriveIsCoopFromCategories([cat(2, "Solo"), cat(22, "Succès Steam")])).toBe(false);
+    expect(deriveIsCoopFromCategories([cat(0, "")])).toBe(false);
+  });
+
+  it("ne prend pas le partage familial pour du coop", () => {
+    expect(deriveIsCoopFromCategories([cat(62, "Family Sharing")])).toBe(false);
+    expect(deriveIsCoopFromCategories([cat(62, "Partage familial")])).toBe(false);
+  });
+
+  // Caractérisation (règle métier NON décidée) : le mot-clé « partagé » seul est dans COOP_KEYWORDS,
+  // donc une catégorie hypothétique « Partagé en famille » vaudrait coop. Faux positif non prouvé
+  // (libellé réel de Steam non vérifié) : à trancher par le propriétaire avant tout changement.
+  it("caractérise le mot-clé « partagé » seul (comportement actuel, non décidé)", () => {
+    expect(deriveIsCoopFromCategories([cat(0, "Partagé en famille")])).toBe(true);
   });
 });
