@@ -11,7 +11,7 @@ export default async function AdminHealthPage() {
   const admin = await requireAdmin();
   if (!admin) redirect("/");
   const report = await getTowerAdminHealth();
-  return <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
+  return <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
     <h1 className="text-2xl font-semibold">Santé de GameNight et The Tower</h1>
     <p className="text-sm text-muted">Lecture seule : aucun secret, destinataire ou contenu Discord affiché.</p>
     <section>
@@ -33,5 +33,5 @@ export default async function AdminHealthPage() {
       <p className="text-sm text-muted">{report.cronLastRuns}</p>
     </section>
     <Link href="/admin" className="text-accent underline">Retour à l&apos;administration</Link>
-  </main>;
+  </div>;
 }

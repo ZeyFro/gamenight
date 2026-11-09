@@ -31,11 +31,11 @@ export default async function TonightPage({
   const communityId = await getPlayerClassifiedCommunityId(user.id);
   if (!communityId) {
     return (
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8 sm:px-6 sm:py-12">
         <h1 className="text-xl font-semibold text-foreground">🌙 Qui joue ce soir ?</h1>
         <Card className="text-sm text-muted">{ERRORS.unavailable}</Card>
         <Link href="/jouer-maintenant" className="text-sm font-medium text-accent">Jouer maintenant →</Link>
-      </main>
+      </div>
     );
   }
 
@@ -46,7 +46,7 @@ export default async function TonightPage({
   ]);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🌙 Qui joue ce soir ?</h1>
         <p className="mt-1 text-sm text-muted">
@@ -142,6 +142,6 @@ export default async function TonightPage({
           </ul>
         )}
       </section>
-    </main>
+    </div>
   );
 }

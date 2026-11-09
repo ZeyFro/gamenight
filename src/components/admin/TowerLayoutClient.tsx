@@ -30,7 +30,7 @@ export default function TowerLayoutAdmin() {
     return () => { active = false; };
   }, [retryKey]);
 
-  return <main style={{ maxWidth: 860, margin: "2rem auto", padding: 24 }}>
+  return <div style={{ maxWidth: 860, margin: "2rem auto", padding: 24 }}>
     <h1>🏰 The Tower — État des salons Discord</h1>
     <p><strong>Mode lecture seule.</strong> La réorganisation automatique est suspendue pour éviter de recréer les salons d’accueil, de tickets, de sanctions et de modération déjà existants. Aucune action de cette page ne modifie Discord.</p>
     <button type="button" onClick={() => { setBusy(true); setRetryKey(x => x + 1); }} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser l’inventaire"}</button>
@@ -44,5 +44,5 @@ export default function TowerLayoutAdmin() {
     <h2>Archives historiques en attente</h2>
     <p><a href="/admin/tower-archive">📦 Consulter la prévisualisation et sauvegarder l’état actuel</a>. L’archivage n’est pas disponible tant que l’audit n’est pas validé.</p>
     <ul>{(state?.archivesDeferred || []).map((x, i) => <li key={i}>{x}</li>)}</ul>
-  </main>;
+  </div>;
 }

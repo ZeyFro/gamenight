@@ -18,7 +18,7 @@ export default async function FreeGamesPage() {
     : [];
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎁 Jeux gratuits</h1>
@@ -50,6 +50,6 @@ export default async function FreeGamesPage() {
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

@@ -14,7 +14,7 @@ export default async function TowerSeasonPodiumPage() {
   const communityId = await resolveActiveCommunityId(user.id);
   const result = communityId ? await getTowerSeasonPodium({ userId: user.id, communityId }) : null;
   const date = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
-  return <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+  return <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
     <Link href="/tower" className="text-sm text-accent underline-offset-4 hover:underline">← The Tower</Link>
     <header>
       <h1 className="text-3xl font-bold text-foreground">Palmarès de la dernière saison</h1>
@@ -35,5 +35,5 @@ export default async function TowerSeasonPodiumPage() {
         </li>)}
       </ol> : <Card><p className="text-muted">Aucune récompense créditée aux membres actifs pendant cette saison.</p></Card>}
     </> : <Card><p className="text-muted">Le palmarès n’est pas disponible pour la communauté sélectionnée.</p></Card>}
-  </main>;
+  </div>;
 }

@@ -21,7 +21,7 @@ export default async function FairPlayCharterPage() {
   const canEdit = membership.role === "OWNER" || membership.role === "ADMIN";
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-12">
       <header>
         <h1 className="text-2xl font-semibold text-foreground">Charte de fair-play</h1>
         <p className="mt-1 text-sm text-muted">{community.name}</p>
@@ -49,6 +49,6 @@ export default async function FairPlayCharterPage() {
           </form>
         )}
       </Card>
-    </main>
+    </div>
   );
 }

@@ -31,7 +31,7 @@ export default async function AscensionPage() {
   const rank = rankForLevel(progress.level);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header>
         <p className="text-sm font-medium text-accent">The Tower · Ta progression</p>
         <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">Étage {progress.floor}</h1>
@@ -73,6 +73,6 @@ export default async function AscensionPage() {
           </Link>
         ))}
       </section>
-    </main>
+    </div>
   );
 }

@@ -27,10 +27,10 @@ export default async function NewAvailabilityPollPage({ searchParams }: { search
     searchParams,
   ]);
   const participants: NotifyRecipientCandidate[] = rows.map(row => ({ ...row, tagIds: [] }));
-  return <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6">
+  return <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6">
     <header><h1 className="text-2xl font-bold">Nouveau sondage de créneaux</h1><p className="text-sm text-muted">Choisissez des personnes et des horaires possibles. Aucune soirée n’existe avant votre décision finale.</p></header>
     {params.error && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{errors[params.error] ?? errors.invalid}</p>}
     <Card><AvailabilityPollForm participants={participants} minDate={toDateInputValue(todayDateOnly())} /></Card>
     <Link href="/sessions/sondages" className="text-sm text-accent hover:underline">← Tous les sondages</Link>
-  </main>;
+  </div>;
 }

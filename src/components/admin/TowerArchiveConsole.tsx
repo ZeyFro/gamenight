@@ -43,7 +43,7 @@ export default function TowerArchiveConsole() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return <main style={{ maxWidth: 880, margin: "2rem auto", padding: 24 }}>
+  return <div style={{ maxWidth: 880, margin: "2rem auto", padding: 24 }}>
     <h1>📦 Archives historiques — The Tower</h1>
     <p><strong>Consultation et sauvegarde uniquement.</strong> L’archivage est suspendu pendant l’audit des salons, tickets, sanctions et bots déjà présents. Aucune permission ou catégorie ne sera modifiée ici.</p>
     <button type="button" onClick={() => { setBusy(true); setRetryKey(x => x + 1); }} disabled={busy}>{busy ? "Vérification en cours…" : "↻ Actualiser"}</button>
@@ -56,5 +56,5 @@ export default function TowerArchiveConsole() {
     <p>Cette sauvegarde contient les métadonnées et permissions originales des salons candidats. Conserve-la en lieu sûr : elle peut contenir des informations sur les salons privés.</p>
     <h2>Avant toute réorganisation</h2>
     <p><a href="/admin/tower-content-audit">🔎 Auditer les salons et les systèmes existants</a>. Les anciennes catégories ne seront ni supprimées ni déplacées automatiquement.</p>
-  </main>;
+  </div>;
 }

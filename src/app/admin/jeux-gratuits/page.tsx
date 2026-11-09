@@ -42,7 +42,7 @@ export default async function AdminFreeGamesPage({
     : [];
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Jeux gratuits</h1>
@@ -120,6 +120,6 @@ export default async function AdminFreeGamesPage({
           </section>
         </>
       )}
-    </main>
+    </div>
   );
 }
