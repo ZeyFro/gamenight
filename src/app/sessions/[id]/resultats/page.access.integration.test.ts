@@ -77,4 +77,11 @@ describe.skipIf(!TEST_DATABASE_URL)("/sessions/[id]/resultats — créateur sans
     const session = await fixture("REMOVED");
     await expect(Page({ params: Promise.resolve({ id: session.id }) })).rejects.toThrow("NOT_FOUND");
   });
+
+  it("un créateur membre actif d'une AUTRE communauté seulement n'accède pas à la page (404)", async () => {
+    const session = await fixture("REMOVED");
+    const other = await db.community.create({ data: { slug: "serveur-b", name: "Serveur B", status: "ACTIVE" } });
+    await db.membership.create({ data: { communityId: other.id, userId: session.createdById, status: "ACTIVE" } });
+    await expect(Page({ params: Promise.resolve({ id: session.id }) })).rejects.toThrow("NOT_FOUND");
+  });
 });

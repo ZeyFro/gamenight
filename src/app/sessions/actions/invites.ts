@@ -16,10 +16,11 @@ import {
 /**
  * Gestion des invités d'une soirée — réservée au CRÉATEUR (jamais un
  * invité, même actif, ne peut inviter/retirer quelqu'un d'autre : "seul
- * le créateur gère les invitations", règle produit explicite). Les deux
- * actions ci-dessous vérifient `session.createdById === user.id`
- * elles-mêmes, jamais déléguée à `canAccessSession` (qui autoriserait
- * aussi un simple invité).
+ * le créateur gère les invitations", règle produit explicite). Toutes les
+ * actions ci-dessous passent par `assertOwnsSession` : elle exige d'abord
+ * un accès actif à la communauté de la soirée (`canAccessSession`), puis
+ * vérifie `session.createdById === user.id` elle-même, car
+ * `canAccessSession` seul autoriserait aussi un simple invité.
  */
 
 async function assertOwnsSession(sessionId: string, userId: string) {

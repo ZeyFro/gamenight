@@ -97,4 +97,12 @@ describe.skipIf(!TEST_DATABASE_URL)("invites — créateur sans Membership ACTIV
       expect(await db.sessionInvite.count({ where: { sessionId: session.id, status: "ACTIVE" } })).toBe(1);
     });
   }
+
+  it("un créateur membre actif d'une AUTRE communauté seulement ne peut pas inviter sur cette soirée", async () => {
+    const { creator, session, guest } = await fixture("REMOVED");
+    const other = await db.community.create({ data: { slug: "serveur-b", name: "Serveur B", status: "ACTIVE" } });
+    await db.membership.create({ data: { communityId: other.id, userId: creator.id, status: "ACTIVE" } });
+    await actions.addSessionInviteAction(form(session.id, guest.id));
+    expect(await db.sessionInvite.count({ where: { sessionId: session.id } })).toBe(0);
+  });
 });
