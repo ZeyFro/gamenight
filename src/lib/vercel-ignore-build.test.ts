@@ -98,6 +98,25 @@ describe("script réel sur un dépôt git jetable", () => {
     expect(run.stdout).toContain("build EXÉCUTÉ");
   });
 
+  it("code 1 quand un fichier applicatif est DÉPLACÉ vers docs/ ou la racine (renommage vu comme suppression + ajout)", () => {
+    put("src/lib/moved.ts", "export const moved = 1;\n");
+    const before = commit("ajoute moved");
+    git("mv", "src/lib/moved.ts", "docs/moved.ts");
+    const after = commit("déplace moved vers docs");
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feat/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("src/lib/moved.ts");
+  });
+
+  it("code 0 quand un fichier de docs est simplement renommé dans docs/", () => {
+    put("docs/old-name.md", "texte assez long pour que git détecte le renommage correctement\n".repeat(5));
+    const before = commit("ajoute docs/old-name.md");
+    git("mv", "docs/old-name.md", "docs/new-name.md");
+    const after = commit("renomme dans docs");
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "docs/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
+    expect(run.status).toBe(0);
+  });
+
   it("code 1 si le SHA précédent n'existe pas dans le clone (clone superficiel) : fail-safe", () => {
     const head = git("rev-parse", "HEAD");
     const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "docs/x", VERCEL_GIT_PREVIOUS_SHA: "0".repeat(40), VERCEL_GIT_COMMIT_SHA: head });

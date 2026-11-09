@@ -40,7 +40,7 @@ export function decide({ env, changedFiles }) {
 
 function changedFilesBetween(previous, current) {
   try {
-    const output = execFileSync("git", ["diff", "--name-only", "-z", previous, current], {
+    const output = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", previous, current], {
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
