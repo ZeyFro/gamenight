@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { inviteToSession, revokeSessionInvite } from "@/lib/session-access";
+import { canAccessSession, inviteToSession, revokeSessionInvite } from "@/lib/session-access";
 import { changeSessionSeat } from "@/lib/session-seats";
 import {
   enqueueSessionInviteSync,
@@ -23,6 +23,9 @@ import {
  */
 
 async function assertOwnsSession(sessionId: string, userId: string) {
+  // « Créateur » ne suffit pas : la soirée doit aussi relever d'une communauté
+  // où l'appelant a une Membership ACTIVE (un créateur REMOVED/LEFT perd la main).
+  if (!(await canAccessSession(userId, sessionId))) return null;
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { createdById: true, announceViaBot: true, attendanceCapacity: true },
