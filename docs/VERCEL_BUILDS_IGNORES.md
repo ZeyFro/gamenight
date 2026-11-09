@@ -21,6 +21,13 @@ Dans le journal du build Vercel, la ligne `[ignore-build] build IGNORÉ : …` o
 ## Désactiver
 Supprimer la ligne `ignoreCommand` de `vercel.json` : tous les pushes redéviennent construits.
 
+## Preuve sur Vercel réel (9 novembre 2026, PR #423)
+- Commit de code (`36fb715`, `scripts/` + `src/`) : déploiement **construit** (READY).
+- Commit `1320f3e` qui ne touche que `docs/` : déploiement **ignoré** (« Ignored », « 1 Skipped Deployment »).
+- Statut GitHub publié par Vercel pour le build ignoré : contexte `Vercel`, état **success**, description « Canceled by Ignored Build Step ». Un check « Vercel » **requis** reste donc satisfait : une PR docs seule n'est pas bloquée.
+- La CI GitHub (`verify`) tourne normalement sur ces commits.
+
 ## Limites
-- Un build ignoré est annulé par Vercel. Si le check « Vercel » est **requis** dans la protection de `main`, une PR « docs seulement » peut rester en attente de ce check : vérifier la règle avant de s'y fier.
 - Le premier push d'une branche est toujours construit : le gain porte sur les pushes suivants.
+- Si Vercel changeait un jour l'état publié pour un build ignoré, une PR docs seule pourrait rester en attente du check « Vercel » : revérifier alors sur une PR de docs.
+- La liste ignorable ne contient volontairement que des chemins que ni le build ni l'exécution ne lisent (vérifié par recherche dans `src/`, `prisma/`, `public/`, `scripts/`, `next.config`).
