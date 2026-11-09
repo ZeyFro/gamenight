@@ -60,6 +60,7 @@ export function findViolations(baseEntries, headEntries) {
 export function describeViolation(v) {
   if (v.kind === "renamed") return `${v.path} : déplacé ou renommé vers ${v.to}`;
   if (v.kind === "deleted") return `${v.path} : supprimé`;
+  if (v.kind === "removed") return `${v.path} : présent dans la base et dans l'historique de la PR, mais absent de la PR (supprimé ou déplacé)`;
   if (v.kind === "diverged") return `${v.path} : diffère de la branche de base (migration déjà intégrée à la base, modifiée ou ajoutée en double)`;
   return `${v.path} : modifié`;
 }
@@ -87,6 +88,25 @@ export function findDivergences(baseTipEntries, headEntries, alreadyFlagged = ne
   return divergences.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
+/**
+ * Chemins présents dans la TÊTE de la base, absents de la tête de la PR, mais présents dans l'HISTORIQUE
+ * de la PR (elle les a eus puis retirés). Couvre une suppression/un déplacement après un parent fusionné en
+ * squash, que ni le merge-base ni la comparaison de tête ne voient. Une PR simplement en retard (la
+ * migration n'a jamais existé dans son historique) n'est pas concernée.
+ */
+export function findHistoricalRemovals(baseTipEntries, headEntries, historyPaths, alreadyFlagged = new Set()) {
+  const removed = [];
+  for (const path of baseTipEntries.keys()) {
+    if (!headEntries.has(path) && historyPaths.has(path) && !alreadyFlagged.has(path)) removed.push({ kind: "removed", path });
+  }
+  return removed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+function historyPathsOf(rev) {
+  const output = git(["log", "--format=", "--name-only", "-z", rev, "--", MIGRATIONS_DIR]);
+  return new Set(output.split("\0").filter(Boolean));
+}
+
 /** Exécution complète pour deux révisions. Retourne { code, lines }. */
 export function check(baseRev, headRev = "HEAD") {
   const lines = [];
@@ -111,6 +131,13 @@ export function check(baseRev, headRev = "HEAD") {
   }
   const violations = findViolations(baseEntries, headEntries);
   violations.push(...findDivergences(baseTipEntries, headEntries, new Set(violations.map((v) => v.path))));
+  if ([...baseTipEntries.keys()].some((path) => !headEntries.has(path))) {
+    try {
+      violations.push(...findHistoricalRemovals(baseTipEntries, headEntries, historyPathsOf(headRev), new Set(violations.map((v) => v.path))));
+    } catch (error) {
+      return { code: 2, lines: [`ERREUR : lecture de l'historique git impossible (${String(error.message).split("\n")[0]}).`] };
+    }
+  }
   const added = [...headEntries.keys()].filter((path) => !baseEntries.has(path));
   if (violations.length > 0) {
     lines.push(`REFUS : ${violations.length} fichier(s) de ${MIGRATIONS_DIR}/ déjà intégré(s) à la base ${mergeBase.slice(0, 12)} ont été touchés.`);

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { devNull, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeViolation, findDivergences, findViolations, parseLsTree } from "../../scripts/check-migrations-immutable.mjs";
+import { describeViolation, findDivergences, findHistoricalRemovals, findViolations, parseLsTree } from "../../scripts/check-migrations-immutable.mjs";
 
 /**
  * Garde « migrations Prisma immuables » (scripts/check-migrations-immutable.mjs).
@@ -270,6 +270,41 @@ describe("garde migrations immuables — dépôts git réels", () => {
     expect(out).toContain(`${N} : diffère de la branche de base`);
   });
 
+  it("refuse la SUPPRESSION d'une migration de main après un parent fusionné en squash (absente du merge-base et de la tête)", () => {
+    const repo = baseRepo();
+    const N = "prisma/migrations/20260301000000_parent/migration.sql";
+    git(repo, "checkout", "-q", "-b", "pr1");
+    put(repo, N, SQL_NEW);
+    commit(repo, "pr1 ajoute N");
+    git(repo, "checkout", "-q", "-b", "pr2");
+    rmSync(join(repo, "prisma/migrations/20260301000000_parent"), { recursive: true });
+    commit(repo, "pr2 supprime N");
+    git(repo, "checkout", "-q", "main");
+    put(repo, N, SQL_NEW);
+    commit(repo, "squash de pr1");
+    const { code, out } = run(repo, "main", "pr2");
+    expect(code).toBe(1);
+    expect(out).toContain(`${N} : présent dans la base et dans l'historique de la PR, mais absent de la PR`);
+  });
+
+  it("PR de pile : comparée au parent en retard elle passe ; comparée à main (seconde base du workflow) elle est refusée", () => {
+    const repo = baseRepo();
+    const C = "prisma/migrations/20260115000000_main_later/migration.sql";
+    git(repo, "checkout", "-q", "-b", "pr1");
+    put(repo, "prisma/migrations/20260301000000_parent/migration.sql", SQL_NEW);
+    commit(repo, "pr1");
+    git(repo, "checkout", "-q", "-b", "pr2");
+    put(repo, C, `${SQL_NEW}-- réécrite par l'enfant\n`);
+    commit(repo, "pr2 ajoute C autrement");
+    git(repo, "checkout", "-q", "main");
+    put(repo, C, SQL_NEW);
+    commit(repo, "main ajoute C");
+    expect(run(repo, "pr1", "pr2").code).toBe(0); // limite d'une base unique
+    const { code, out } = run(repo, "main", "pr2");
+    expect(code).toBe(1);
+    expect(out).toContain(`${C} : diffère de la branche de base`);
+  });
+
   it("accepte la même PR enfant quand elle ne modifie pas la migration du parent (contrôle négatif du cas précédent)", () => {
     const repo = baseRepo();
     const N = "prisma/migrations/20260301000000_parent/migration.sql";
@@ -381,6 +416,20 @@ describe("garde migrations immuables — logique pure", () => {
     ]);
   });
 
+  it("findHistoricalRemovals : absent de la PR mais présent dans son historique = refusé ; jamais vu = PR en retard", () => {
+    const tip = new Map([
+      ["prisma/migrations/a/migration.sql", "100644:aaa"],
+      ["prisma/migrations/b/migration.sql", "100644:bbb"],
+    ]);
+    const head = new Map<string, string>();
+    const history = new Set(["prisma/migrations/a/migration.sql"]);
+    expect(findHistoricalRemovals(tip, head, history).map(describeViolation)).toEqual([
+      "prisma/migrations/a/migration.sql : présent dans la base et dans l'historique de la PR, mais absent de la PR (supprimé ou déplacé)",
+    ]);
+    expect(findHistoricalRemovals(tip, head, new Set())).toEqual([]);
+    expect(findHistoricalRemovals(tip, head, history, new Set(["prisma/migrations/a/migration.sql"]))).toEqual([]);
+  });
+
   it("findDivergences : même chemin avec contenu différent seulement ; absent de la PR ou identique = rien", () => {
     const tip = new Map([
       ["prisma/migrations/a/migration.sql", "100644:aaa"],
@@ -440,7 +489,10 @@ describe("workflow CI « Migrations immutables »", () => {
     expect(workflow).toContain('git show "$BASE_SHA:scripts/check-migrations-immutable.mjs"');
     expect(workflow).toContain("BASE_SHA: ${{ github.event.pull_request.base.sha }}");
     expect(workflow).toContain("HEAD_SHA: ${{ github.event.pull_request.head.sha }}");
-    expect(workflow).toContain('--base "$BASE_SHA" --head "$HEAD_SHA"');
+    expect(workflow).toContain('for base in "$BASE_SHA" "origin/$DEFAULT_BRANCH"');
+    expect(workflow).toContain('--base "$base" --head "$HEAD_SHA"');
+    expect(workflow).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
+    expect(workflow).toMatch(/types: \[opened, synchronize, reopened, edited\]/);
     expect(workflow).not.toMatch(/run:[^\n]*\$\{\{/);
   });
 });

@@ -15,6 +15,8 @@ name: Migrations immutables
 
 on:
   pull_request:
+    # edited : un changement de base (retarget) relance la garde.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -37,6 +39,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           guard="$RUNNER_TEMP/check-migrations-immutable.mjs"
@@ -47,4 +50,9 @@ jobs:
           else
             cp scripts/check-migrations-immutable.mjs "$guard"
           fi
-          node "$guard" --base "$BASE_SHA" --head "$HEAD_SHA"
+          # Deux bases : celle de la PR (pile : son parent) ET la branche par défaut, pour qu'une PR de pile
+          # ne puisse pas réécrire une migration déjà présente sur la branche par défaut.
+          for base in "$BASE_SHA" "origin/$DEFAULT_BRANCH"; do
+            echo "== base : $base"
+            node "$guard" --base "$base" --head "$HEAD_SHA"
+          done
