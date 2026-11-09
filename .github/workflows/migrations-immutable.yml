@@ -6,6 +6,11 @@
 # Workflow séparé de ci.yml : ci.yml et le check requis « verify » restent inchangés.
 # Ajouter le check « immutable » aux protections de branche est une décision du propriétaire.
 # Aucun secret, aucune base, aucune dépendance npm : git et Node seulement.
+#
+# Limite connue : pour un événement pull_request, GitHub exécute le workflow tel qu'il est dans la PR.
+# Une PR qui modifie ou supprime CE fichier peut donc affaiblir le contrôle. Parades : marquer
+# `immutable` comme check REQUIS (une PR qui supprimerait le workflow resterait bloquée, le check
+# n'étant jamais rapporté) et relire toute modification de .github/ et de scripts/check-migrations-immutable.mjs.
 name: Migrations immutables
 
 on:

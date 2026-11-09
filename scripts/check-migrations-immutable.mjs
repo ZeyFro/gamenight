@@ -60,6 +60,7 @@ export function findViolations(baseEntries, headEntries) {
 export function describeViolation(v) {
   if (v.kind === "renamed") return `${v.path} : déplacé ou renommé vers ${v.to}`;
   if (v.kind === "deleted") return `${v.path} : supprimé`;
+  if (v.kind === "diverged") return `${v.path} : diffère de la branche de base (migration déjà intégrée à la base, modifiée ou ajoutée en double)`;
   return `${v.path} : modifié`;
 }
 
@@ -69,6 +70,21 @@ function git(args, options = {}) {
 
 function treeOf(rev) {
   return parseLsTree(git(["ls-tree", "-r", "-z", rev, "--", MIGRATIONS_DIR]));
+}
+
+/**
+ * Chemins présents à la fois dans la TÊTE de la base et dans la tête de la PR avec un contenu
+ * différent. Complète la comparaison au merge-base, qui peut être trop ancien (parent d'une PR
+ * de pile fusionné en squash puis PR retargetée sur la base ; historiques croisés) et prendre
+ * pour « nouvelle » une migration déjà intégrée. Une PR en retard (migration arrivée dans la
+ * base mais absente de la PR) n'est PAS concernée : le chemin est absent de la tête de la PR.
+ */
+export function findDivergences(baseTipEntries, headEntries, alreadyFlagged = new Set()) {
+  const divergences = [];
+  for (const [path, id] of baseTipEntries) {
+    if (headEntries.has(path) && headEntries.get(path) !== id && !alreadyFlagged.has(path)) divergences.push({ kind: "diverged", path });
+  }
+  return divergences.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /** Exécution complète pour deux révisions. Retourne { code, lines }. */
@@ -81,9 +97,11 @@ export function check(baseRev, headRev = "HEAD") {
     return { code: 2, lines: [`ERREUR : aucun point de départ commun entre ${baseRev} et ${headRev} (historique tronqué ? utiliser fetch-depth: 0).`] };
   }
   let baseEntries;
+  let baseTipEntries;
   let headEntries;
   try {
     baseEntries = treeOf(mergeBase);
+    baseTipEntries = treeOf(baseRev);
     headEntries = treeOf(headRev);
   } catch (error) {
     return { code: 2, lines: [`ERREUR : lecture de l'arbre git impossible (${String(error.message).split("\n")[0]}).`] };
@@ -92,6 +110,7 @@ export function check(baseRev, headRev = "HEAD") {
     return { code: 2, lines: [`ERREUR : aucune migration à la base ${mergeBase.slice(0, 12)} : garde mal configurée, refus de passer à vide.`] };
   }
   const violations = findViolations(baseEntries, headEntries);
+  violations.push(...findDivergences(baseTipEntries, headEntries, new Set(violations.map((v) => v.path))));
   const added = [...headEntries.keys()].filter((path) => !baseEntries.has(path));
   if (violations.length > 0) {
     lines.push(`REFUS : ${violations.length} fichier(s) de ${MIGRATIONS_DIR}/ déjà intégré(s) à la base ${mergeBase.slice(0, 12)} ont été touchés.`);

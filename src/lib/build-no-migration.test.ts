@@ -33,6 +33,16 @@ function buildStepProblems(source: string): string[] {
   return problems;
 }
 
+/** Retire commentaires // et /* *​/ (les commentaires de build.mjs parlent de migrations). */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+/** Le code de build ne mentionne aucune commande de migration, où que ce soit (pas seulement dans `steps`). */
+function buildSourceProblems(source: string): string[] {
+  return /\bmigrate\b|\bdeploy\b|\bdb["'\s,]+(push|execute)\b|db-migrate/i.test(stripComments(source)) ? ["le code de build mentionne une commande de migration"] : [];
+}
+
 /** Problèmes de package.json (vide = conforme). */
 function packageProblems(pkg: { scripts?: Record<string, string> }): string[] {
   const scripts = pkg.scripts ?? {};
@@ -58,6 +68,19 @@ function vercelProblems(config: Record<string, unknown>): string[] {
 describe("Vercel build safety", () => {
   it("never applies database migrations during preview or production builds", () => {
     expect(buildStepProblems(read("scripts/build.mjs"))).toEqual([]);
+  });
+
+  it("scripts/build.mjs : aucune commande de migration dans tout le code (commentaires exclus)", () => {
+    expect(buildSourceProblems(read("scripts/build.mjs"))).toEqual([]);
+  });
+
+  it("migration cachée hors du tableau steps (variable, spawnSync direct) : détectée par l'analyse du code entier", () => {
+    const real = read("scripts/build.mjs");
+    const viaVariable = real + '\nconst extra = "migrate";\nspawnSync(process.execPath, ["node_modules/prisma/build/index.js", extra, "deploy"]);\n';
+    expect(buildStepProblems(viaVariable)).toEqual([]); // le tableau steps seul ne voit rien
+    expect(buildSourceProblems(viaVariable)).toEqual(["le code de build mentionne une commande de migration"]);
+    expect(buildSourceProblems(real + '\nspawnSync("npx", ["prisma", "db", "push"]);\n')).toEqual(["le code de build mentionne une commande de migration"]);
+    expect(buildSourceProblems(real + '\nspawnSync("node", ["scripts/db-migrate.mjs"]);\n')).toEqual(["le code de build mentionne une commande de migration"]);
   });
 
   it("package.json : build, postinstall et scripts npm ne migrent pas", () => {

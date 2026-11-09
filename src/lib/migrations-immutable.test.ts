@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeViolation, findViolations, parseLsTree } from "../../scripts/check-migrations-immutable.mjs";
+import { describeViolation, findDivergences, findViolations, parseLsTree } from "../../scripts/check-migrations-immutable.mjs";
 
 /**
  * Garde « migrations Prisma immuables » (scripts/check-migrations-immutable.mjs).
@@ -250,6 +250,74 @@ describe("garde migrations immuables — dépôts git réels", () => {
     expect(out).toContain("20260115000000_main_later/migration.sql : supprimé");
   });
 
+  it("refuse une PR de pile dont le parent a été fusionné en squash puis retargetée sur main (merge-base trompeur)", () => {
+    const repo = baseRepo();
+    const N = "prisma/migrations/20260301000000_parent/migration.sql";
+    // PR 1 (parent) ajoute N ; PR 2 (enfant) empilée dessus la modifie.
+    git(repo, "checkout", "-q", "-b", "pr1");
+    put(repo, N, SQL_NEW);
+    commit(repo, "pr1 ajoute N");
+    git(repo, "checkout", "-q", "-b", "pr2");
+    put(repo, N, `${SQL_NEW}-- modifiée par l'enfant\n`);
+    commit(repo, "pr2 modifie N");
+    // Le parent est fusionné en SQUASH : nouveau commit sur main, sans les commits de pr1.
+    git(repo, "checkout", "-q", "main");
+    put(repo, N, SQL_NEW);
+    commit(repo, "squash de pr1");
+    // Le merge-base de main et pr2 est le commit racine : N y est absent, donc « nouvelle ».
+    const { code, out } = run(repo, "main", "pr2");
+    expect(code).toBe(1);
+    expect(out).toContain(`${N} : diffère de la branche de base`);
+  });
+
+  it("accepte la même PR enfant quand elle ne modifie pas la migration du parent (contrôle négatif du cas précédent)", () => {
+    const repo = baseRepo();
+    const N = "prisma/migrations/20260301000000_parent/migration.sql";
+    git(repo, "checkout", "-q", "-b", "pr1");
+    put(repo, N, SQL_NEW);
+    commit(repo, "pr1 ajoute N");
+    git(repo, "checkout", "-q", "-b", "pr2");
+    put(repo, "prisma/migrations/20260401000000_enfant/migration.sql", SQL_NEW);
+    commit(repo, "pr2 ajoute sa migration");
+    git(repo, "checkout", "-q", "main");
+    put(repo, N, SQL_NEW);
+    commit(repo, "squash de pr1");
+    expect(run(repo, "main", "pr2").code).toBe(0);
+  });
+
+  it("refuse un ajout en double au même chemin qu'une migration arrivée dans main avec un contenu différent", () => {
+    const repo = baseRepo();
+    const N = "prisma/migrations/20260301000000_double/migration.sql";
+    git(repo, "checkout", "-q", "-b", "pr");
+    put(repo, N, SQL_NEW);
+    commit(repo, "pr ajoute N");
+    git(repo, "checkout", "-q", "main");
+    put(repo, N, `${SQL_NEW}-- version de main\n`);
+    commit(repo, "main ajoute N autrement");
+    const { code, out } = run(repo, "main", "pr");
+    expect(code).toBe(1);
+    expect(out).toContain("diffère de la branche de base");
+  });
+
+  it("refuse le remplacement d'un fichier de migration par un lien symbolique", () => {
+    const repo = baseRepo();
+    git(repo, "checkout", "-q", "-b", "pr");
+    const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, env: GIT_ENV, input: "../../README.md", encoding: "utf8" }).trim();
+    git(repo, "update-index", "--cacheinfo", `120000,${blob},${M_A}`);
+    git(repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "lien symbolique");
+    expect(git(repo, "ls-tree", "pr", M_A)).toContain("120000");
+    expect(run(repo, "main", "pr").code).toBe(1);
+  });
+
+  it("refuse le remplacement d'un fichier de migration par un sous-module", () => {
+    const repo = baseRepo();
+    git(repo, "checkout", "-q", "-b", "pr");
+    git(repo, "update-index", "--cacheinfo", `160000,${"a".repeat(40)},${M_B}`);
+    git(repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "sous-module");
+    expect(git(repo, "ls-tree", "pr", M_B)).toContain("160000");
+    expect(run(repo, "main", "pr").code).toBe(1);
+  });
+
   it("erreur (2) sans point de départ commun : jamais un succès à vide", () => {
     const repo = baseRepo();
     git(repo, "checkout", "-q", "--orphan", "autre");
@@ -313,11 +381,44 @@ describe("garde migrations immuables — logique pure", () => {
     ]);
   });
 
+  it("findDivergences : même chemin avec contenu différent seulement ; absent de la PR ou identique = rien", () => {
+    const tip = new Map([
+      ["prisma/migrations/a/migration.sql", "100644:aaa"],
+      ["prisma/migrations/b/migration.sql", "100644:bbb"],
+      ["prisma/migrations/c/migration.sql", "100644:ccc"],
+    ]);
+    const head = new Map([
+      ["prisma/migrations/a/migration.sql", "100644:aaa"], // identique
+      ["prisma/migrations/b/migration.sql", "100644:zzz"], // diffère
+      // c absent : PR en retard, pas une divergence
+    ]);
+    expect(findDivergences(tip, head).map(describeViolation)).toEqual([
+      "prisma/migrations/b/migration.sql : diffère de la branche de base (migration déjà intégrée à la base, modifiée ou ajoutée en double)",
+    ]);
+    expect(findDivergences(tip, head, new Set(["prisma/migrations/b/migration.sql"]))).toEqual([]);
+  });
+
   it("parseLsTree : chemins avec espaces, modes conservés, sortie illisible refusée", () => {
     const parsed = parseLsTree("100644 blob abc\tprisma/migrations/x y/migration.sql\u0000100755 blob def\tprisma/migrations/z/run.sh\u0000");
     expect(parsed.get("prisma/migrations/x y/migration.sql")).toBe("100644:abc");
     expect(parsed.get("prisma/migrations/z/run.sh")).toBe("100755:def");
     expect(() => parseLsTree("n'importe quoi\u0000")).toThrow();
+  });
+});
+
+describe("configuration Prisma : le dossier surveillé reste celui que Prisma utilise", () => {
+  it("aucun prisma.config.* ne redirige le dossier des migrations, et package.json ne redéfinit pas le schéma", () => {
+    for (const name of ["prisma.config.ts", "prisma.config.js", "prisma.config.mjs", "prisma.config.cjs", "prisma.config.mts", "prisma.config.cts"]) {
+      expect(existsSync(resolve(name)), name).toBe(false);
+    }
+    const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as { prisma?: Record<string, unknown> };
+    expect(pkg.prisma?.schema, "package.json prisma.schema").toBeUndefined();
+    expect(pkg.prisma?.migrations, "package.json prisma.migrations").toBeUndefined();
+  });
+
+  it("le schéma et le verrou sont à leur emplacement par défaut", () => {
+    expect(existsSync(resolve("prisma/schema.prisma"))).toBe(true);
+    expect(existsSync(resolve("prisma/migrations/migration_lock.toml"))).toBe(true);
   });
 });
 
