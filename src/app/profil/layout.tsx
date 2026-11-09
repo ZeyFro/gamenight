@@ -93,7 +93,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
         />
         <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
           <CopyProfileLinkButton userId={user.id} />
-          <ButtonLink href="/profil/parametres" variant="secondary" size="sm">
+          <ButtonLink href="/profil/parametres" variant="secondary" size="sm" className="gn-touch-target relative">
             ⚙️ Modifier
           </ButtonLink>
         </div>
@@ -120,7 +120,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
         <p className="text-xs text-muted">
           Membre depuis {formatMemberSince(user.createdAt)} ·{" "}
-          <Link href="/classement" className="text-accent hover:underline">
+          <Link href="/classement" className="gn-touch-target relative text-accent hover:underline">
             Rang global #{globalRank.position} sur {globalRank.total}
           </Link>
         </p>
