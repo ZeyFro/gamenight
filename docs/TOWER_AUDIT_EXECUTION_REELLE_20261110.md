@@ -92,3 +92,16 @@ URL de l'alias public `https://gamenight-zeyfro.vercel.app`, le 10/11 :
 
 - `git fetch` de `docs/audit-cdc-tower-20261110` dans le Sandbox, `git show FETCH_HEAD:scripts/audit-discord-readonly.mjs` vers un fichier **temporaire hors checkout**, `node --check` : **SUCCÈS**.
 - Aucun jeton Discord n'a été récupéré : variable Vercel sensitive masquée, Sandbox sans secrets Production. **Aucune interrogation directe des rôles ou des salons du vrai serveur**.
+
+
+## 10. Recette navigateur ANONYME réelle (Playwright / Chromium), desktop et mobile
+
+Exécutée dans le Sandbox contre l'alias public `https://gamenight-zeyfro.vercel.app`, **sans session utilisateur et sans identifiants Discord** :
+
+- **10 navigations** : `/`, `/joueurs`, `/equipes`, `/tower`, `/sessions` à **360 × 800** et **1 366 × 800**.
+- La page d'accueil se charge en HTTP 200, aucun débordement horizontal détecté et **0 erreur JavaScript de page** pendant ces navigations.
+- Les quatre chemins privés (`/joueurs`, `/equipes`, `/tower`, `/sessions`) renvoient initialement HTTP 200, **mais le navigateur redirige ensuite le visiteur non authentifié vers `/`**. Les 200 HTTP seuls ne prouvent donc **pas** que ces pages sont consultables sans compte GameNight. Cela n'est pas nécessairement un défaut puisque l'accueil public Discord doit rester accessible sans connexion GameNight, mais les parcours GameNight restent authentifiés.
+- Sur la page d'accueil, le bouton **« Se connecter avec Discord »** a été cliqué **sans saisir de compte ni mot de passe** : navigation observée vers **`https://discord.com/oauth2/authorize`**. Cela vérifie le début du parcours OAuth, **pas le callback, la création du profil ni les permissions après connexion**.
+- Les liens visibles sur la page invitée sont limités, ce qui correspond à un affichage de connexion, pas à la navigation de la communauté Discord.
+
+**Statut UX :** contrôle invité réel sur mobile/desktop **réalisé**, mais **recette d'utilisateurs authentifiés, équipes, modérateurs, preuves et votes non réalisée**. Aucun test sur la véritable interface Discord ; aucun envoi de message, création de salon ou défi.
