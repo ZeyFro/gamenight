@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { drawSessionGame } from "@/lib/sessions";
+import { canAccessSession } from "@/lib/session-access";
 import type { DrawSessionGameActionState, DrawSessionGameCandidate } from "./draw-types";
 
 /**
@@ -35,6 +36,10 @@ export async function drawSessionGameAction(
 
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) return { status: "error" };
+
+  // « Créateur » ne suffit pas : la soirée doit relever d'une communauté où l'appelant a une
+  // Membership ACTIVE (un créateur REMOVED/LEFT perd la main). drawSessionGame ne le vérifie pas.
+  if (!(await canAccessSession(user.id, sessionId))) return { status: "error" };
 
   const outcome = await drawSessionGame(sessionId, user.id);
 

@@ -1,12 +1,12 @@
 import { isVercelPreview } from "@/lib/preview-safety";
+import { isTowerOwner, towerGuildId } from "@/lib/tower-config";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireAdmin } from "@/lib/admin";
 import plan from "@/lib/tower-discord-layout.json";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const GUILD="553922938101825536";
-const OWNER="699223334046531636";
+const GUILD=towerGuildId();
 const headers={"Cache-Control":"private, no-store","X-Robots-Tag":"noindex"};
 type Channel={id:string;name:string;type:number;parent_id:string|null;topic?:string|null;nsfw?:boolean;last_message_id?:string|null;permission_overwrites?:Array<{id:string;type:number;allow:string;deny:string}>};
 type DiscordMessage={id:string;content:string;timestamp:string;author?:{bot?:boolean;username?:string};webhook_id?:string;embeds?:Array<{title?:string;description?:string}>;pinned?:boolean;attachments?:Array<{content_type?:string}>};
@@ -25,7 +25,7 @@ async function api(route:string):Promise<{status:number;data:unknown}>{
 async function guard(){
  const u=await getCurrentUser({allowPlatformAdminWithoutMembership:true});
  const admin=u?await requireAdmin():null;
- return !!admin&&admin.discordId===OWNER;
+ return !!admin&&isTowerOwner(admin.discordId);
 }
 function keywords(text:string){
  const tokens=text.toLocaleLowerCase("fr").replace(/https?:\/\/\S+/g," ").match(/[a-zà-ÿ0-9]{4,}/g)||[];
