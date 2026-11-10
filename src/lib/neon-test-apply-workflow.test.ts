@@ -6,6 +6,8 @@ const workflow = require("js-yaml").load(readFileSync(".github/workflows/neon-te
 it("reste manuel, protégé et désactivé pour apply par défaut", () => {
   expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
   expect(workflow.on.workflow_dispatch.inputs.operation.default).toBe("validate");
+  expect(workflow.on.workflow_dispatch.inputs.dry_run_id.required).toBe(true);
+  expect(workflow.on.workflow_dispatch.inputs.dry_run_id.default).toBeUndefined();
   expect(workflow.jobs["migration-test"].environment).toBe("neon-migration-test");
   expect(workflow.jobs["migration-test"].if).toContain("refs/heads/main");
   expect(workflow.concurrency.group).toBe("neon-test-migrations-370-406");
@@ -14,7 +16,7 @@ it("reste manuel, protégé et désactivé pour apply par défaut", () => {
 it("scelle le baseline et n'assemble que la première migration avant les contrôles", () => {
   const steps = workflow.jobs["migration-test"].steps;
   const baseline = steps.find((s: { name?: string }) => s.name?.includes("118-migration"));
-  expect(baseline.with.ref).toBe("b603dd03d398588f3a70086997f313af6e5dbbb1");
+  expect(baseline.with.ref).toBe("6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7");
   const assemble = steps.find((s: { name?: string }) => s.name?.includes("Assemble"));
   expect(assemble.run).toContain("cp -R migration-370/");
   expect(assemble.run).not.toContain("cp -R migration-406/");

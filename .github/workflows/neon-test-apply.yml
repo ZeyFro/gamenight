@@ -10,9 +10,8 @@ on:
         default: validate
         required: true
       dry_run_id:
-        description: "Run dry-run SUCCESS de moins de 24 h, workflow approuvé inchangé."
+        description: "ID d’un nouveau dry-run SUCCESS (moins de 24 h) après alignement des sources approuvées."
         type: string
-        default: "42291255308"
         required: true
       confirmation:
         description: "Pour apply seulement : APPLY-370-406-ON-TEST"
@@ -45,7 +44,7 @@ jobs:
       - name: Checkout the sealed 118-migration operator baseline
         uses: actions/checkout@v4
         with:
-          ref: b603dd03d398588f3a70086997f313af6e5dbbb1
+          ref: 6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7
           path: operator
           persist-credentials: false
       - name: Checkout the chronological runner and first SQL

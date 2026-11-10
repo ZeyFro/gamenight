@@ -27,13 +27,13 @@ La procédure reproductible utilise un PostgreSQL 16 local, lié uniquement à 1
 
 Voir [Développement local](docs/DEVELOPPEMENT_LOCAL.md) pour les prérequis, la configuration .env, les migrations locales et la base séparée pour les tests PostgreSQL.
 
-Démarrage rapide après configuration :
+Démarrage local après configuration (PostgreSQL local uniquement) :
 
     npm ci
     npx prisma migrate deploy
     npm run dev
 
-npm run build applique aussi les migrations à DATABASE_URL hors Preview. En local, vérifie que cette URL vise bien ta base locale avant de l’utiliser.
+La commande `npx prisma migrate deploy` ci-dessus agit sur `DATABASE_URL` : vérifie qu’elle désigne ta base locale avant de l’exécuter. `npm run build` appelle `scripts/build.mjs`, qui lance seulement `prisma generate` puis `next build`; il n’applique aucune migration, en Preview comme en Production. Les builds Vercel et les fusions de PR ne migrent pas la base. Une migration de Production est une opération d’exploitation séparée, avec contrôle de cible, sauvegarde vérifiée et autorisation explicite.
 
 ## Intégrations et activation
 

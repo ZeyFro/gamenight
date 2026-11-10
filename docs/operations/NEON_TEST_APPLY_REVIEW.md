@@ -1,13 +1,16 @@
 # Revue du workflow d'application Neon Test
 
 Préparation uniquement. Aucune exécution distante ni fusion autorisée ici.
-Le dry-run #418 a réellement réussi : run42291255308 sur main b603dd0 ; preuve
-et sauvegarde indépendante revérifiée dans #400 commentaire6696087598.
+Le dry-run #418 historique (run42291255308 sur main b603dd0) n’est plus une preuve utilisable : il précède l’alignement de l’opérateur et ses sources approuvées. Le workflow ne propose aucun ID par défaut ; un nouveau dry-run devra réussir sur `main` avec les empreintes actuelles avant toute validation distante. La sauvegarde indépendante reste documentée dans #400 commentaire6696087598.
 La sauvegarde br-purple-mud-b1nt0tfi est ready au point0/2A355C30. Work a ensuite
 éprouvé une **copie isolée de cette branche** : preuve
 [#400, commentaire6711821666](https://github.com/ZeyFro/gamenight/issues/400#issuecomment-6711821666).
-Cela ne démontre ni Reset from parent ni restore_snapshot Production.
+Cela ne constitue pas un exercice de restauration réelle de la branche Test (restore snapshot, Reset from parent ou PITR).
 Ne pas toucher à Production ni à #325.
+
+### Preuve de restauration encore requise
+
+La copie isolée de branche documentée ci-dessus n’est ni un `restore_snapshot`, ni un Reset/PITR, et ne satisfait pas `RESTORATION_TEST_VALIDATED=true`. Avant toute future application, il faudra une preuve d’un exercice de restauration réellement effectué sur une destination Test isolée, après autorisation distincte, ou une nouvelle décision propriétaire et une modification revue de la politique si la portée de la copie doit être acceptée. Aucun exercice distant n’est autorisé par cette préparation.
 
 ## Fermeture par défaut
 
@@ -42,8 +45,9 @@ workflow est possible sans changer ses contrôles ; une CI applicative ne suffit
 
 ## Ordre et validations
 
-Le checkout opérateur est scellé à b603dd0 (118 migrations). Le runner
-chronologique est copié du SHA4a18b74 de #370, sans modification. Les SQL #370
+Le checkout opérateur est scellé au `main` vérifié `6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7` (118 migrations). Les 118 noms et SHA-256 SQL correspondent exactement à `baseline.json`; aucune migration publiée n’est modifiée. `package.json` et `package-lock.json` correspondent à ce même commit (Next.js et eslint-config-next 16.4.5).
+
+Le runner chronologique est copié du SHA4a18b74 de #370, sans modification. Les SQL #370
 et #406 gardent leurs SHA-256 du dry-run. Aucun fichier de migration n'est ajouté
 à cette PR. Toute histoire ou fichier supplémentaire, checksum divergent,
 migration inachevée/annulée/dupliquée, cible/branche/rôle/TLS incorrect refuse
@@ -95,14 +99,7 @@ Un proxy TLS fictif local a vérifié le vrai PrismaClient et le vrai CLI :
 certificat de confiance avec bon hôte accepté alors que backend_ssl=false ;
 certificat non fiable, mauvais hôte et serveur sans TLS tous refusés.
 
-La comparaison locale des118 SQL sur PostgreSQL16 et18 retrouve les mêmes754
-colonnes,247 index et141 valeurs enum ; PostgreSQL18 ajoute574 NOT NULL aux303
-contraintes communes. Work en rapporte576 sur Neon : **l'écart résiduel n'est
-pas expliqué et la cible Neon n'est pas validée**. Le nouveau manifeste18
-n'est pas copié depuis cette cible et ne la rend pas acceptable par décret.
-Un relevé READ ONLY expurgé des différences de catalogue par Work, puis un
-nouveau mode validate après revue et fusion manuelle, restent nécessaires.
-Les deux migrations distantes restent interdites sans leur accord distinct.
+La reconstruction locale des 118 migrations sur PostgreSQL16/18 donne 574 contraintes NOT NULL gérées. Le relevé Neon Test en lecture seule en donne 576 au total : les deux supplémentaires sont `public.playing_with_neon.id` et `.name`, sur la table d’exemple Neon. Cette table étrangère est désormais déclarée dans `foreign-tables.json`, avec empreinte distincte PostgreSQL18 ; ses métadonnées sont contrôlées, elle n’est pas ignorée silencieusement et ses lignes ne sont pas lues. L’écart 574/576 est donc expliqué par le périmètre de comptage, non par une divergence du schéma géré. La validation complète du catalogue géré 18/118 n’a toutefois pas été exécutée sur Neon ; le nouveau mode `validate` reste nécessaire après revue et intégration. Les deux migrations distantes restent interdites sans leur accord distinct.
 
 ## Exercice de restauration à préparer séparément
 
@@ -219,7 +216,7 @@ fusions370/406 ET leurs migrations Production, pas ce workflow de test.
 
 Préparer une base FICTIVE jetable déjà au baseline118, nommée
 `gamenight_apply_rehearsal_<suffixe>`, à 127.0.0.1. Ne jamais utiliser de copie de
-données Production. Les objets Git b603dd0,4a18b74,1a495ede doivent être présents.
+données Production. Les objets Git 6d6e30e,4a18b74,1a495ede doivent être présents.
 Depuis le checkout de cette préparation, avec dépendances Node22 installées :
 
 ```sh

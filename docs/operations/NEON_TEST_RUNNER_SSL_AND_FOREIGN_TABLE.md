@@ -17,15 +17,13 @@ Complète #419 (`docs/operations/NEON_TEST_APPLY_REVIEW.md`). Aucune connexion �
 
 Si #370 modifie un jour ce fichier, l'empreinte épinglée ne correspond plus et l'assemblage s'arrête : le workflow épingle déjà le commit `4a18b74`.
 
-## 2. `playing_with_neon` : `validate` refuse-t-il Neon Test ?
+## 2. `playing_with_neon` : origine et résolution du comptage 574/576
 
-**Oui, d'après le code et une reproduction locale.**
+Le comptage initial incluait toutes les tables ordinaires de `public` dans le condensé géré. Sur Neon Test, deux colonnes NOT NULL supplémentaires venaient de la table d’exemple `public.playing_with_neon` : `id` et `name`. Elles expliquent 576 contraintes NOT NULL au total, contre 574 dans la reconstruction des migrations applicatives. Ce n’est pas un écart inexpliqué du schéma géré.
 
-- `scripts/neon-test/state.mjs` (`readState`) calcule `schema = digest({columns, constraints, indexes, enums})` sur **toutes** les tables ordinaires du schéma `public` ; `checkSnapshot` lève `NEON_TEST_SCHEMA_MISMATCH` si ce condensé diffère de `schemas.json` pour la version et la phase.
-- Reproduction locale (PostgreSQL 16.15, 118 migrations de `main`, `readState` de #419 exécuté tel quel) : condensé **identique** au manifeste `16/118` ; après ajout d'une table `playing_with_neon (id serial primary key, name text not null, value real)` : condensé **différent**.
-- Neon Test porte 576 colonnes NOT NULL contre 574 en reconstruction ; l'écart est exactement `playing_with_neon.id` et `playing_with_neon.name` (diagnostic en lecture seule du 8 novembre). La table a aussi une clé primaire et un index, donc le condensé des contraintes et des index diffère aussi.
+La reproduction PostgreSQL16 décrite lors du diagnostic initial montrait que l’ancien calcul du condensé changeait si cette table était ajoutée. Le code actuel déclare cependant cette table étrangère avec son empreinte PostgreSQL18, l’exclut du condensé géré tout en contrôlant séparément son identité structurelle, et refuse toute autre table inconnue. Voir le mécanisme et les tests en section 3. Aucune ligne de `playing_with_neon` n’est lue, modifiée ou supprimée.
 
-Limites : la forme complète de la table (colonnes nullables, noms de contrainte et d'index) n'a pas été lue sur Neon (seules les colonnes NOT NULL l'ont été) ; la reproduction est faite sur PostgreSQL 16 alors que Neon Test est en 18.6 (le manifeste `18/118` n'a pas pu être rejoué ici).
+**Limite restante :** les métadonnées de cette table ont été relevées en lecture seule sur Neon Test (PostgreSQL18.6), mais la validation complète du condensé géré `18/118` n’a pas été exécutée sur Neon. Le mode `validate` exact reste nécessaire après revue et intégration ; aucune différence supplémentaire ne devra être normalisée ou ignorée sans diagnostic.
 
 ## 3. Table étrangère connue : implémentée
 
