@@ -70,3 +70,35 @@ La [documentation officielle des Webhook Events Discord](https://github.com/disc
 `package.json` référence notamment Next.js `16.4.5`, React `19.2.8`, Prisma `^6.19.3`, `next-auth` `^5.0.0-beta.32`, `@vercel/blob`, `web-push`. La CI inspectée lance installation, tests, typage, ESLint et build, mais ne comporte **pas de contrôle explicite des avis de sécurité des dépendances** (`npm audit --audit-level=high` ou outil équivalent dans le workflow). Cela **ne prouve aucune CVE réelle** ; un examen de `package-lock.json` exact et des alertes GitHub Dependabot est nécessaire, sur les versions résolues et non les plages de `package.json`.
 
 **Action :** lancer audit de dépendances en lecture seule sur un clone approuvé, classer vulnérabilités de production distinctement des dépendances de développement, préparer corrections par PR et CI complète. Ne pas mettre à jour aveuglément Next/Prisma/Auth à une nouvelle majeure ; aucune mise à jour automatique de packages n'a été faite ici.
+
+## I. P1 — Recherche IGDB : quota et cache applicatif absents du chemin API
+
+**Preuves :** `src/app/api/igdb/search/route.ts`, `src/lib/igdb.ts`, `src/app/api/igdb/search/route.test.ts`, lus sur `main` `6d6e30e`.
+
+- La route `GET /api/igdb/search` exige une session valide et borne la longueur de la recherche à 100 caractères. **Points positifs confirmés** : 401 si non connecté, requêtes de moins de deux caractères sans appel IGDB et retour 502 sur échec.
+- Pour chaque recherche admissible (deux caractères ou plus), le handler appelle directement `searchIgdbGames(query)`. **Aucun plafond de fréquence, cache de résultats ni déduplication concurrente n'apparaît dans ce chemin**. Le commentaire précise que la route est appelée à chaque frappe ; les tests contrôlent l'authentification et la troncature mais pas les appels successifs, la saturation ni les erreurs 429 d'IGDB.
+- `src/lib/igdb.ts` conserve uniquement le **jeton d'accès Twitch** en mémoire ; ce cache n'évite pas les requêtes de recherche IGDB répétées.
+- Risque **préventif** : dépenses de quotas ou ralentissements en cas de recherche concurrente, surtout à 500–10 000 membres. Ce n'est pas une preuve de panne actuelle.
+
+**Correctif à concevoir :** débounce côté interface (amélioration UX seulement), garde d'appels mutualisé entre instances pour le serveur, cache de résultats avec durée d'expiration, limitation des recherches identiques simultanées, gestion des réponses IGDB 429 avec backoff borné. Prévoir un refus propre sans déclencher d'appels externes et ne pas polluer le cache d'une communauté par des données privées.
+
+**Tests exigés :** appels rapprochés d'un seul utilisateur, plusieurs utilisateurs/instances, recherches identiques, expiration, échecs/429, indisponibilité Twitch/IGDB et conservation du filtre d'authentification.
+
+## J. P2 — Point d'entrée public CSP, protection locale uniquement
+
+**Preuves :** `src/app/api/csp-report/route.ts` et `src/app/api/csp-report/route.test.ts`.
+
+La route CSP publique est désactivée par défaut et borne le corps à 16 Ko ; elle assainit les URI et écrit seulement un résumé dans les journaux. **C'est positif**. Quand activée, son unique limitation est `checkRateLimit("global","csp-report", `60/minute`)`, qui dépend de la `Map` par instance (cf. constat A) ; 60/min n'est **pas une borne globale entre instances**. Les tests mockent le limiteur et ne démontrent pas un blocage inter-instance.
+
+**Action :** traiter avec la correction du limiteur distribué et vérifier la résistance du pipeline de logs à un trafic anonyme important, sans demander d'accès au serveur Discord ni rendre l'endpoint public par défaut.
+
+## K. Revue supplémentaire de 13 routes API — observations de sécurité (pas un scan complet)
+
+Sur le même SHA, lecture des routes backfill, calendrier, CSP, health, IGDB, push, média et Steam :
+- Les **quatre routes backfill** consultées appellent `verifyCronRequest` ; `/api/health` également : protection cron et Preview héritée.
+- `/api/calendrier/export` exige un utilisateur ; `/api/calendrier/feed/[token]` utilise un jeton opaque. Dans `calendar-feed.ts`, le jeton est généré aléatoirement (32 octets), stocké sous SHA-256, et la lecture revérifie communauté ACTIVE et membre ACTIVE avant de retourner les séances accessibles. **Barrières présentes**.
+- `/api/push/subscription` exige une session valide et évite qu'un endpoint push existant soit rattaché à un autre utilisateur ; la limite de cinq endpoints est contrôlée avant création, avec gestion de conflit unique (P2002). **Barrières présentes** ; stress de création concurrente à vérifier sur Postgres.
+- `/api/steam/callback` vérifie l'état du cookie, supprime le cookie d'état et valide la réponse OpenID auprès de Steam ; **protection contre la liaison CSRF présente**.
+- `/api/igdb/search` : authentification présente, **garde de consommation d'API manquant dans le chemin**, détaillé au point I.
+
+Les routes non relues ne sont pas réputées sûres par omission. Aucun test d'intrusion ni audit des dépendances n'a été exécuté dans cette session.
