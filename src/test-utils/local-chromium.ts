@@ -11,21 +11,41 @@ export class LocalChromium {
   private socket!: WebSocket;
   private session?: string;
   private sequence = 0;
+  private diagnostics = "";
   private pending = new Map<number, { resolve: (result: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
   private constructor(executable: string) {
     this.directory = mkdtempSync(join(tmpdir(), "gamenight-header-browser-"));
-    this.process = spawn(executable, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${this.directory}`, "about:blank"], { stdio: "ignore" });
+    this.process = spawn(executable, ["--headless", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${this.directory}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+    this.process.stderr?.on("data", data => { this.diagnostics = (this.diagnostics + String(data)).slice(-4000); });
+    this.process.on("error", error => { this.diagnostics = error.message; });
   }
 
   static async open() {
-    const executable = ["/usr/bin/chromium", "/usr/bin/google-chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(path => existsSync(path));
+    // Le runner Ubuntu fournit Chrome stable ; son Chromium séparé est un
+    // snapshot. Préférer le navigateur stable, puis le Chromium système local.
+    const executable = ["/usr/bin/google-chrome", "/usr/bin/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(path => existsSync(path));
     if (!executable) throw new Error("Chrome/Chromium local requis pour le test tactile, à un emplacement standard.");
     const browser = new LocalChromium(executable);
     try {
       const portFile = join(browser.directory, "DevToolsActivePort");
-      for (let attempt = 0; !existsSync(portFile) && attempt < 100; attempt++) await delay(50);
-      const [port, path] = readFileSync(portFile, "utf8").trim().split("\n");
+      let endpoint: string[] | undefined;
+      for (let attempt = 0; attempt < 300; attempt++) {
+        if (existsSync(portFile)) {
+          const parts = readFileSync(portFile, "utf8").trim().split("\n");
+          if (/^\d+$/.test(parts[0]) && parts[1]?.startsWith("/devtools/browser/")) { endpoint = parts; break; }
+        }
+        if (browser.process.exitCode !== null || browser.process.signalCode !== null) break;
+        await delay(50);
+      }
+      if (!endpoint) {
+        const safe = browser.diagnostics.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>]+/gi, raw => {
+          try { const url = new URL(raw); return url.origin + url.pathname; } catch { return "[URL masquée]"; }
+        });
+        throw new Error(`Chromium non prêt (${executable}, sortie=${browser.process.exitCode}, signal=${browser.process.signalCode}) : ${safe || "aucun diagnostic reçu"}`);
+      }
+      const [port, path] = endpoint;
+      console.info(`Navigateur tactile : ${executable}`);
       browser.socket = new WebSocket(`ws://127.0.0.1:${port}${path}`);
       browser.socket.addEventListener("message", event => {
         const message = JSON.parse(String(event.data));
