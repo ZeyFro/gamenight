@@ -87,3 +87,12 @@ Journal du job GitHub `129788374141` (run CI 42803989254) :
 - Job `verify` conclu **SUCCESS**, entre 11:01:20 et 11:19:23 UTC (18 min 03 s). Étapes typegen, TypeScript, ESLint, build ont toutes conclu SUCCESS.
 
 **Interprétation stricte :** la tête de #419 dispose d'une preuve automatisée importante et récente, **non transférable automatiquement à `main` ni aux neuf autres têtes Draft**. Aucune recette Discord réelle ni preuve de bascule migratoire Production. Les 3 771 tests restent une mesure de quantité, pas une garantie d'exhaustivité fonctionnelle.
+
+
+## 8. Inventaire Vercel des noms de variables (valeurs NON déchiffrées)
+
+Lecture directe du projet Vercel `gamenight`, `filter_project_envs(decrypt=false)` : **43 entrées** (certaines clés répétées par environnement) ; les noms suivants apparaissent sur la cible `production` : `TOWER_DISCORD_GUILD_ID`, `TOWER_DISCORD_CHANNEL_ID`, `TOWER_DISCORD_GENERAL_CHANNEL_ID`. Présence n'implique pas valeur correcte.
+
+Les **quatre clés suivantes sont absentes de la liste retournée** : `TOWER_CHALLENGES_ENABLED`, `TOWER_ONBOARDING_PANEL_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED`, `TOWER_TEAM_DAILY_ENABLED`. Dans les modules examinés, certaines de ces fonctionnalités exigent explicitement la valeur `"true"` pour s'activer ; elles ne sont **pas démontrées actives par cette configuration Vercel**. Certaines fonctionnalités ont aussi des flags communautaires distincts en base. Ne pas créer de nouvelles variables par défaut, même pour un audit : les portes d'activation et autorisations explicites restent impératives.
+
+La liste Vercel signale également `DATABASE_URL` Preview uniquement sur une branche ciblée `preview-tower`; vérifier le binding réel des déploiements Preview nécessaires avant toute recette. Les valeurs, jetons et secrets n'ont pas été consultés ni copiés. **Cela constitue un contrôle de configuration réel, pas une exécution de fonctionnalité.**
