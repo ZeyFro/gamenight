@@ -43,3 +43,13 @@
 ## Archives
 
 Les anciens journaux et états de reprise sont dans [l’archive documentaire](archive/README.md). Ils préservent leur contexte historique ; pour l’état de reprise courant, utiliser uniquement [docs/REPRISE_AUTONOME.md](REPRISE_AUTONOME.md).
+
+## Audit transversal proposé — novembre 2026 (branche documentaire non fusionnée)
+
+- [Verdict d'audit, sécurité et blocages opérationnels](TOWER_AUDIT_CONCLUSIONS_20261110.md) — ce qui est effectivement prouvé et ce qui manque encore avant certification.
+- [Cahier des charges évolutif proposé](TOWER_AUDIT_CDC_PROPOSITION_20261110.md) — accueil guidé, recherche par jeu, équipes persistantes et vocaux privés temporaires ; **non approuvé pour implémentation**.
+- [Matrice de conformité par section](TOWER_AUDIT_CODE_CIBLE_20261110.md) — inventaire du dépôt, 26 sections du cahier et état des PR.
+- [Grille des 17 critères de livraison](TOWER_RECETTE_17_CRITERES_AUDIT_20261110.md) — contrôles code/configuration/recette requis.
+- [Preuves CI, Vercel/Neon et documentation Discord](TOWER_PREUVES_CI_RECHERCHE_20261110.md) — résultats horodatés et limites explicites.
+
+Ces documents ne remplacent pas [le cahier canonique](CAHIER_DES_CHARGES.md) ni [les décisions validées](TOWER_DECISIONS_26_20261104.md). La coordination reste dans [#400](https://github.com/ZeyFro/gamenight/issues/400) et la relecture documentaire dans [#432](https://github.com/ZeyFro/gamenight/issues/432).
