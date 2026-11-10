@@ -19,7 +19,7 @@
 | Retest ciblé, port 55439 | 2 fichiers pass / 1 fail ; **15 tests pass / 1 fail** | Deux échecs initiaux disparaissent après alignement du port ; reste test `community-teams.integration.test.ts` |
 | Build | `npm run build` : exit 0 | **Réussi** |
 | Dépendances de production | `npm audit --omit=dev --json` : **5 packages marqués high**, 0 critical | **Écarts à corriger** et CVE/advisories à qualifier ; ne pas exécuter auto-fix |
-| Tests Postgres deuxième passe | **En cours au moment de cette rédaction** sur 127.0.0.1:55439 | Le résultat définitif sera annexé après exécution |
+| Tests Postgres deuxième passe | **405 fichiers pass, 2 fail (407) ; 3 702 tests pass, 3 fail (3 705)** ; PostgreSQL 18, port exact 55439 ; durée 272,87 s | **NON VERT** : 1 assertion d'erreur Prisma et 2 scénarios de tournoi intermittents |
 
 ## 2. Échec isolé : PostgreSQL 18 vs CI PostgreSQL 16
 
@@ -69,3 +69,26 @@ URL de l'alias public `https://gamenight-zeyfro.vercel.app`, le 10/11 :
 - lancement Production et migrations.
 
 **Aucun code applicatif, secret Production, migration Neon ou rôle Discord n'a été modifié.** Les fichiers de compilation et tables de test ont été créés **uniquement dans le sandbox jetable**, pas dans le dépôt ou en Production.
+
+
+## 7. Exécution PostgreSQL : bilan consolidé des deux passages et retests
+
+- **Première suite complète** avec PostgreSQL 18 sur le port 5432 : 404 fichiers réussis, 3 échecs ; 3 698 tests réussis, 3 échoués, 4 ignorés, un fichier entier en erreur de préparation car il impose précisément `127.0.0.1:55439/gamenight_test`. Ne pas comparer le total du premier passage à celui du second sans compter la suite non exécutée.
+- **Après alignement du port à 55439**, retest ciblé des trois fichiers `superlative-voting.integration.test.ts`, `community-teams.integration.test.ts` et `force-relogin.surfaces.integration.test.ts` : **15 réussis / 1 échoué** (2 fichiers réussis, 1 échoué).
+- **Deuxième suite complète** au port correct : **405 fichiers réussis / 2 échoués (407)** ; **3 702 réussis / 3 échoués (3 705)**, durée **272,87 secondes**. Les échecs sont :
+  - `community-teams.integration.test.ts` (« prevents deleting a game from cascading into its community teams ») : violation de contrainte réellement rejetée, mais **SQLSTATE 23001** PostgreSQL 18 devient `PrismaClientUnknownRequestError` et ne satisfait pas l'assertion `P2003`.
+  - `tournament-team-bracket.integration.test.ts` : 2 scénarios « fige les duos » et « résout le bye », résultats intermittents dans la suite.
+- **Retest isolé** de `tournament-team-bracket.integration.test.ts` immédiatement après : **2/2 tests réussis**, en **839 ms**. Cela prouve que les échecs ne sont pas systématiques, pas leur cause. Investiguer dépendance à l'ordre des tests, dates, transactions, état global et PostgreSQL 18 ; ne pas qualifier une correction sans reproduction fiable.
+- **Aucun échec de TypeScript/ESLint/build** ; ESLint produit **11 warnings**.
+- **Comparaison CI de référence** : GitHub Actions du candidat #419 sur PostgreSQL **16** avec Node **22** : 3 771/3 771 tests réussis, mais c'est **un autre SHA**. Le présent checkout `main` sur Node **24** / PostgreSQL **18** n'a pas obtenu 100 %.
+
+## 8. Patches disponibles au registre au moment de la vérification
+
+- npm registry : `zod` dernière `4.6.7` (avis pour les versions antérieures à `4.6.6`) ; `undici` ligne 6 dernière `6.29.1` (avis jusqu'à `6.29.0`).
+- `@vercel/blob` dernière `2.9.0`, mais sa dépendance déclarée `@vercel/oidc: ^3.6.1` **ne garantit pas à elle seule** un passage à une lignée corrigée ; `@vercel/oidc` dernière `4.0.8`, `@vercel/cli-config` dernière `0.3.8`.
+- Évaluer une combinaison compatible **sur une branche séparée**, avec `npm audit --omit=dev`, tests et build, après revue du verrou npm ; ne pas lancer `npm audit fix` ou modifier `package-lock.json` sur `main` sans autorisation.
+
+## 9. Preuve du script d'inventaire Discord
+
+- `git fetch` de `docs/audit-cdc-tower-20261110` dans le Sandbox, `git show FETCH_HEAD:scripts/audit-discord-readonly.mjs` vers un fichier **temporaire hors checkout**, `node --check` : **SUCCÈS**.
+- Aucun jeton Discord n'a été récupéré : variable Vercel sensitive masquée, Sandbox sans secrets Production. **Aucune interrogation directe des rôles ou des salons du vrai serveur**.
