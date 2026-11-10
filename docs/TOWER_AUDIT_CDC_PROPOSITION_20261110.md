@@ -144,3 +144,12 @@ Ce document est une **proposition de branche documentaire** : ne pas le présent
 Sources Discord : [limites](https://support.discord.com/hc/en-us/articles/33694251638295-Discord-Account-Caps-Server-Caps-and-More), [onboarding](https://support.discord.com/hc/fr/articles/11074987197975-FAQ-sur-l-int%C3%A9gration-%C3%A0-la-communaut%C3%A9), [Server Guide](https://support.discord.com/hc/en-us/articles/13497665141655-Server-Guide-FAQ), [rate limits](https://support-dev.discord.com/hc/fr/articles/6223003921559-Mon-bot-est-soumis-%C3%A0-un-nombre-d-actions-limit%C3%A9), [anti-raid](https://support.discord.com/hc/fr/articles/10989121220631-Comment-prot%C3%A9ger-votre-serveur-contre-les-Raids).
 
 **Non-modification des décisions validées :** l'annexe enrichit les options de conception, mais n'autorise aucune migration, aucune modification de permissions/rôles, ni une fusion ou une activation.
+
+
+## Annexe — limite officielle des tags de forums
+
+L'API Discord limite `available_tags` à **20 tags par forum** et `applied_tags` à **5 tags par publication**. Source première : [Discord API, Channel Resource](https://github.com/discord/discord-api-docs/blob/main/developers/resources/channel.mdx), paramètres des salons Forum/Media et fils.
+
+**Conséquence pour le besoin « Minecraft, Hypixel, CS, tous les jeux » :** ne pas affecter un tag Discord à chaque jeu du catalogue. Conserver les **trois forums** en les utilisant pour les **types de demandes** ; enregistrer un **ID de jeu durable** côté GameNight pour les filtres riches et, éventuellement, utiliser quelques tags Discord réservés à des familles de jeux ou types de partie. Le lien concret et le mode de création/publication bot nécessitent une conception et une validation distinctes (pas de scraping Discord non autorisé).
+
+À valider par le propriétaire après démonstration du parcours d'un joueur ordinaire.
