@@ -62,3 +62,17 @@ Ne jamais créer **un rôle par jeu ou un couple de salons permanents par équip
 6. Seule une validation écrite de toutes les portes du plan de lancement autorise la qualification de « prêt ».
 
 **Aucune migration, merge, publication Discord, modification Vercel/Neon ni ouverture de PR.**
+
+
+## 5. Vérification directe des services connectés (lecture seule, 10/11/2026)
+
+- **Vercel** : le déploiement Preview de la tête #419 `6887ef7` est `READY` (déploiement `dpl_57smgrMxrdfWMD6jSTvgPaftar5Z`). Ce résultat concerne le build/déploiement, pas le fonctionnement sur Discord.
+- Les nouveaux déploiements Preview associés aux mises à jour documentaires sur `docs/audit-cdc-tower-20261110` montrent plusieurs états `CANCELED` et un premier `READY`. **Ne pas les interpréter comme une panne de Production, ni comme validation de ce cahier** ; vérifier causes/quota si nécessaire.
+- **Neon** : branche primaire `production` présente (`ready`), branche `tower-migration-test-20261105` présente (`ready`), sauvegarde `backup-tower-migration-test-20261106` présente (`ready`), branche `tower-restore-rehearsal-20261107` présente (`ready`). La présence d'une branche de répétition **ne certifie pas** la réussite d'un exercice de restauration : exiger journaux de recette, checksum, données et requêtes de vérification.
+- Aucun secret ni chaîne de connexion affiché ou modifié. Aucune écriture Neon ou variable Vercel.
+
+## 6. Documentation Prisma relue via Context7
+
+La documentation Prisma décrit les conflits transactionnels et l'erreur `P2034` (write conflict/deadlock) : les transactions sensibles aux écritures concurrentes doivent disposer d'une stratégie de retry bornée et de contraintes d'unicité, en complément des verrous adaptés. **La référence retournée peut couvrir une version Prisma différente** : vérifier exactement l'API de Prisma 6.19.3 avant d'introduire une modification. Ne pas changer les garanties de transactions existantes sans tests PostgreSQL.
+
+Lien : https://www.prisma.io/docs/orm/prisma-client/queries/transactions
