@@ -112,3 +112,20 @@ La totalité des **11 fichiers** `src/app/api/cron/**/route.ts` a été lue sur 
 Pour les actions les plus sensibles, les flags supplémentaires restent nécessaires : `retention-cleanup` exige `RETENTION_CLEANUP_ENABLED=true` et `RETENTION_CLEANUP_MODE=execute` pour la purge ; `discord-thread-cleanup` exige `DISCORD_THREAD_CLEANUP_ENABLED=true` et `DISCORD_THREAD_CLEANUP_MODE=execute`. Leurs modes dry-run par défaut sont documentés dans le code.
 
 **Limites :** contrôle des *points d'entrée* seulement ; il ne démontre ni la correction de chaque tâche, ni le paramétrage réel d'un ordonnanceur externe, ni la sécurité de chaque requête SQL ou de la rétention, ni la bonne configuration du secret dans chaque environnement. Aucun cron n'a été déclenché.
+
+## M. PR #370 — règles d'équipes vérifiées, visibilité des équipes non privée
+
+Revue de la diff exacte de [PR #370](https://github.com/ZeyFro/gamenight/pull/370) (Draft, non fusionnée), fichiers `src/lib/community-teams-rules.ts`, `src/lib/community-teams.ts`, migration `20261104140000_tower_team_membership_policy`, `community-team-handover.ts`, cron de passation.
+
+**Présent et utile :**
+- Règle maxMembers de **2 à 8** (contre 2 à 20 sur main).
+- Index unique `CommunityTeamMember(communityId,userId)` préparant **une équipe par membre et par communauté** ; script de détection de doublons avant migration.
+- Délai de **7 jours après départ** stocké dans `Membership.lastTeamLeftAt`.
+- `captainId` distinct de `createdById`, passation et cron de réaffectation après inactivité, désactivé/dry-run par défaut.
+- Contrôle transactionnel `Serializable` et traitement de certains conflits `P2034/P2002` dans les opérations d'équipe.
+
+**Attention à la nouvelle demande « Paped privé » :** la requête de `listCommunityTeams` dans la PR remplace `where: { communityId }` par `where: { communityId, OR: [{ isRecruiting: true }, { members: { some: {} } }] }`. Le second terme `members: { some: {} }` signifie **au moins un membre de l'équipe**, pas **l'utilisateur connecté est membre**. Les équipes fermées qui ont au moins un membre restent donc dans la liste de la communauté. De plus, la sélection ramène les membres et leurs noms/XP. **Ce n'est pas une implémentation de confidentialité des groupes privés**. Le modèle actuel d'équipe publique peut rester cohérent avec ses exigences historiques ; le nouveau mode privé devra posséder une propriété explicite et des tests d'autorisation, plutôt que considérer `isRecruiting=false` comme « privé ».
+
+**Critères de revue avant mode privé :** compte extérieur à l'équipe et membre d'une autre équipe ; liste vs détail ; visibilité des noms/membres/sessions et permissions Discord ; équipe ouverte/fermée/privée ; cloisonnement entre communautés ; changement de capitaine ; invite/révocation et audit de groupe. **Ne pas ajouter silencieusement cette nouvelle sémantique dans #370** ni concurrencer sa réservation.
+
+**Statut :** constat statique de la PR, sans exécution de ses migrations ni exploitation réelle démontrée.
