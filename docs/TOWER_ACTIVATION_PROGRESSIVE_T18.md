@@ -1,3 +1,5 @@
+> ⚠️ **Précision audit du 10/11/2026 :** l'instruction ancienne « comptes test exclus » est remplacée par la décision du propriétaire du 06/11 supprimant l'exclusion spécifique. Toute référence à un serveur Discord de recette séparé est obsolète, celui-ci ayant été supprimé ; ne pas le recréer. Les étapes d'activation ci-dessous restent soumises à autorisation propriétaire distincte et aux têtes/prérequis relus dans [#400](https://github.com/ZeyFro/gamenight/issues/400). Voir [décisions mises à jour](TOWER_DECISIONS_26_20261104.md).
+
 # T18 — Activation progressive The Tower
 
 Statut : plan à approuver, aucune activation. Suivi : issue #400. Décisions : TOWER_DECISIONS_26_20261104.md et instructions récentes de Maxime. Ouverture 4 janvier 2027, repli 1er février.
