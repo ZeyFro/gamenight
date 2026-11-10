@@ -153,3 +153,7 @@ L'API Discord limite `available_tags` à **20 tags par forum** et `applied_tags`
 **Conséquence pour le besoin « Minecraft, Hypixel, CS, tous les jeux » :** ne pas affecter un tag Discord à chaque jeu du catalogue. Conserver les **trois forums** en les utilisant pour les **types de demandes** ; enregistrer un **ID de jeu durable** côté GameNight pour les filtres riches et, éventuellement, utiliser quelques tags Discord réservés à des familles de jeux ou types de partie. Le lien concret et le mode de création/publication bot nécessitent une conception et une validation distinctes (pas de scraping Discord non autorisé).
 
 À valider par le propriétaire après démonstration du parcours d'un joueur ordinaire.
+
+## Annexe — expérience serveur de plus de 2 500 membres
+
+La [documentation officielle Discord sur les plafonds](https://support.discord.com/hc/en-us/articles/33694251638295-Discord-Account-Caps-Server-Caps-and-More) précise qu'au-delà de **2 500 membres**, les notifications push mobiles « tous les messages » ne sont plus disponibles ; et que la liste des membres hors ligne n'est plus affichée à partir de 1 000 membres (retour après redescente sous 800). **Conséquence produit :** les flux d'engagement à grande échelle ne doivent pas dépendre des notifications push globales ni de la liste latérale complète. Privilégier notifications ciblées, préférences opt-in, recherche de joueurs et annonces événementielles modérées, et vérifier les quotas et le consentement avant tout envoi.
