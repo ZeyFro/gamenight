@@ -28,7 +28,7 @@ export function OnboardingPrompt({ userId, progress }: { userId: string; progres
   }
   if (!incomplete || workingOnSetup) return null;
   return <>
-    <Button size="sm" onClick={() => setOpen(true)} className="fixed bottom-20 left-4 z-40 shadow-lg lg:bottom-5 lg:left-[17rem]">{needsSteam || !progress.planningReady ? "Compléter mon profil" : "Découvrir GameNight"}</Button>
+    <Button size="sm" onClick={() => setOpen(true)} className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-4 z-40 min-h-11 max-w-[calc(100%-6rem)] shadow-lg lg:bottom-5 lg:left-[17rem] lg:min-h-0 lg:max-w-none">{needsSteam || !progress.planningReady ? "Compléter mon profil" : "Découvrir GameNight"}</Button>
     <Dialog.Root open={open} onOpenChange={value => value ? setOpen(true) : close()}>
       <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm" />
         <Dialog.Content className="fixed top-1/2 left-1/2 z-[111] max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border-2 border-accent/40 bg-surface p-6 shadow-2xl">
