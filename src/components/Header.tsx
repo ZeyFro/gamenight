@@ -67,7 +67,7 @@ async function renderHeader() {
           {user && !pickerEnabled && <span className="gn-eyebrow hidden lg:block">Ton prochain bon moment</span>}
         </div>
         {user && (
-          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1 max-sm:pointer-coarse:gap-2 sm:gap-3">
             <Link href="/profil" className="gn-header-xp hidden xl:flex">✦ Niveau {levelForXp(user.xpTotal)} <span className="text-muted">· {user.xpTotal.toLocaleString("fr-FR")} XP</span></Link>
             {currentUser && (
               <ChatPanel
