@@ -60,3 +60,7 @@
 Les connecteurs GitHub permettent de lire du code mais pas une exécution locale indépendante (le conteneur n'arrive pas à résoudre `github.com`). Aucun connecteur d'administration Discord direct n'est actuellement disponible ; les permissions, rôles et parcours actuels du serveur réel ne peuvent pas être certifiés. Ne pas signaler l'audit global comme « terminé » avant ces preuves.
 
 **Aucune migration, permission, valeur de secret, variable Vercel, issue supplémentaire ou PR n'a été créée par cette revue.**
+
+## G. Précision après consultation des sources Discord (10/11)
+
+La [documentation officielle des Webhook Events Discord](https://github.com/discord/discord-api-docs/blob/main/developers/events/webhook-events.mdx) indique explicitement des **retries pendant jusqu'à 10 minutes** en cas d'échec. Le durcissement anti-replay ne doit donc **pas copier sans réflexion la fenêtre 300 secondes des interactions** : choisir et tester une fenêtre couvrant les retries légitimes, ou combiner déduplication durable par identifiant d'événement et fraîcheur raisonnable. La documentation officielle exige la signature Ed25519, mais n'impose pas ici de fenêtre anti-replay précise. Conserver l'événement initial valide malgré les retries ; rejeter la répétition après traitement avec un mécanisme idempotent.
