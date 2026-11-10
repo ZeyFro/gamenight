@@ -102,3 +102,13 @@ Sur le même SHA, lecture des routes backfill, calendrier, CSP, health, IGDB, pu
 - `/api/igdb/search` : authentification présente, **garde de consommation d'API manquant dans le chemin**, détaillé au point I.
 
 Les routes non relues ne sont pas réputées sûres par omission. Aucun test d'intrusion ni audit des dépendances n'a été exécuté dans cette session.
+
+## L. Couverture des 11 routes cron — contrôle du point d'entrée
+
+La totalité des **11 fichiers** `src/app/api/cron/**/route.ts` a été lue sur le SHA `6d6e30e` : `close-sessions`, `community-guild-sync`, `discord-thread-cleanup`, `free-game-discord`, `monthly-tasks`, `notification-executor`, `refresh-discord-profiles`, `reminders`, `retention-cleanup`, `steam-library-full-sync`, `steam-library-sync`.
+
+**Résultat 11/11 :** chaque route appelle `verifyCronRequest(request)` et refuse les requêtes dont `auth.ok` est faux. Cette fonction, définie dans `src/lib/cron-auth.ts`, refuse les requêtes Preview, l'absence de `CRON_SECRET` et les credentials invalides. **Il n'y a pas de cron dépourvu de cette barrière d'entrée dans ces onze fichiers.**
+
+Pour les actions les plus sensibles, les flags supplémentaires restent nécessaires : `retention-cleanup` exige `RETENTION_CLEANUP_ENABLED=true` et `RETENTION_CLEANUP_MODE=execute` pour la purge ; `discord-thread-cleanup` exige `DISCORD_THREAD_CLEANUP_ENABLED=true` et `DISCORD_THREAD_CLEANUP_MODE=execute`. Leurs modes dry-run par défaut sont documentés dans le code.
+
+**Limites :** contrôle des *points d'entrée* seulement ; il ne démontre ni la correction de chaque tâche, ni le paramétrage réel d'un ordonnanceur externe, ni la sécurité de chaque requête SQL ou de la rétention, ni la bonne configuration du secret dans chaque environnement. Aucun cron n'a été déclenché.
