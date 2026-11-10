@@ -130,3 +130,17 @@ Les seuils, dates, barèmes et arbitrages du 04/11 et décisions ultérieures de
 ## 10. Règle de publication de cette proposition
 
 Ce document est une **proposition de branche documentaire** : ne pas le présenter comme une décision approuvée, une intégration dans `main`, une activation ou une validation finale. Une fois le plafond de PR redescendu et les réservations contrôlées, sa relecture peut faire l'objet d'une PR documentaire dédiée, selon #400. **Aucune autre branche, PR, migration, variable, rôle, commande Discord ou Production n'est touchée.**
+
+
+## Annexe — choix à l'échelle étayés par l'audit et les sources officielles (10/11/2026)
+
+- Le dernier inventaire Discord documenté du 26/10/2026 comptait **197 rôles**, dont **134 rôles historiques d'étages** selon le cahier. Avec le plafond officiel de **250 rôles**, la marge théorique à cet instant n'était que **53 rôles** : **création automatique d'un rôle par jeu ou équipe interdite par défaut**, même pour 500 membres. L'inventaire est historique et doit être refait avant toute décision.
+- Plafond officiel de **500 salons** et **50 catégories** : conserver un budget public/administration incompressible ; les vocaux à la demande doivent être bornés, réconciliés après panne et supprimés sans effacer les équipes persistantes. La capacité exacte en vocaux concurrents reste à déterminer par une analyse de configuration actuelle.
+- L'API Discord possède des limites globales et spécifiques par route ; le bot doit exploiter les en-têtes et le délai `retry_after`, sans hypothèse de débit garanti pour les créations de salon.
+- **Onboarding natif Discord** et **Server Guide** sont des options réelles documentées, mais **non retenues actuellement** par décision propriétaire. Les soumettre à un choix explicite après comparaison avec YAGPDB + panneau existant ; aucune activation silencieuse.
+- AutoMod anti-raid et protections de mentions sont à auditer en priorité, sans développer un second mécanisme lorsqu'une fonction native suffit.
+- **Preuve tests** : les journaux du run #419/CI `42803989254` prouvent 3 771 tests sur 3 771 réussis dans `npm run test:postgres` (415 fichiers) sur sa tête `6887ef7`; aucun test n'a été exécuté localement par cet audit, et cela ne valide ni Discord réel ni Production. Voir [journal détaillé](TOWER_PREUVES_CI_RECHERCHE_20261110.md).
+
+Sources Discord : [limites](https://support.discord.com/hc/en-us/articles/33694251638295-Discord-Account-Caps-Server-Caps-and-More), [onboarding](https://support.discord.com/hc/fr/articles/11074987197975-FAQ-sur-l-int%C3%A9gration-%C3%A0-la-communaut%C3%A9), [Server Guide](https://support.discord.com/hc/en-us/articles/13497665141655-Server-Guide-FAQ), [rate limits](https://support-dev.discord.com/hc/fr/articles/6223003921559-Mon-bot-est-soumis-%C3%A0-un-nombre-d-actions-limit%C3%A9), [anti-raid](https://support.discord.com/hc/fr/articles/10989121220631-Comment-prot%C3%A9ger-votre-serveur-contre-les-Raids).
+
+**Non-modification des décisions validées :** l'annexe enrichit les options de conception, mais n'autorise aucune migration, aucune modification de permissions/rôles, ni une fusion ou une activation.
