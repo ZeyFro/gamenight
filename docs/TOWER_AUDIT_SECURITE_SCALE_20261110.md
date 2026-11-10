@@ -64,3 +64,9 @@ Les connecteurs GitHub permettent de lire du code mais pas une exécution locale
 ## G. Précision après consultation des sources Discord (10/11)
 
 La [documentation officielle des Webhook Events Discord](https://github.com/discord/discord-api-docs/blob/main/developers/events/webhook-events.mdx) indique explicitement des **retries pendant jusqu'à 10 minutes** en cas d'échec. Le durcissement anti-replay ne doit donc **pas copier sans réflexion la fenêtre 300 secondes des interactions** : choisir et tester une fenêtre couvrant les retries légitimes, ou combiner déduplication durable par identifiant d'événement et fraîcheur raisonnable. La documentation officielle exige la signature Ed25519, mais n'impose pas ici de fenêtre anti-replay précise. Conserver l'événement initial valide malgré les retries ; rejeter la répétition après traitement avec un mécanisme idempotent.
+
+## H. P2 — Dépendances : aucune attestation de vulnérabilités
+
+`package.json` référence notamment Next.js `16.4.5`, React `19.2.8`, Prisma `^6.19.3`, `next-auth` `^5.0.0-beta.32`, `@vercel/blob`, `web-push`. La CI inspectée lance installation, tests, typage, ESLint et build, mais ne comporte **pas de contrôle explicite des avis de sécurité des dépendances** (`npm audit --audit-level=high` ou outil équivalent dans le workflow). Cela **ne prouve aucune CVE réelle** ; un examen de `package-lock.json` exact et des alertes GitHub Dependabot est nécessaire, sur les versions résolues et non les plages de `package.json`.
+
+**Action :** lancer audit de dépendances en lecture seule sur un clone approuvé, classer vulnérabilités de production distinctement des dépendances de développement, préparer corrections par PR et CI complète. Ne pas mettre à jour aveuglément Next/Prisma/Auth à une nouvelle majeure ; aucune mise à jour automatique de packages n'a été faite ici.
