@@ -55,3 +55,5 @@ Les anciens journaux et états de reprise sont dans [l’archive documentaire](a
 Ces documents ne remplacent pas [le cahier canonique](CAHIER_DES_CHARGES.md) ni [les décisions validées](TOWER_DECISIONS_26_20261104.md). La coordination reste dans [#400](https://github.com/ZeyFro/gamenight/issues/400) et la relecture documentaire dans [#432](https://github.com/ZeyFro/gamenight/issues/432).
 
 - [Audit sécurité et montée en charge (revue ciblée du 10/11)](TOWER_AUDIT_SECURITE_SCALE_20261110.md) — preuves dans le code : limiteur de requêtes uniquement en mémoire, webhook Discord sans contrôle d'âge du timestamp, listing des équipes non paginé ; recommandations et tests de non-régression.
+
+- [Exécution indépendante du checkout main en Vercel Sandbox](TOWER_AUDIT_EXECUTION_REELLE_20261110.md) — npm ci, TS, lint, build, tests PostgreSQL locaux, audit npm et contrôles HTTP publics réels. Ce rapport **remplace les mentions historiques « clone impossible »**.
