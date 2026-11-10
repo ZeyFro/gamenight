@@ -1,3 +1,5 @@
+> ⚠️ **Document historique — scénarios à adapter avant toute exécution (audit du 10/11/2026).** Les étapes qui exigent un serveur Discord sandbox séparé sont **obsolètes** : le propriétaire a supprimé « The Tower — Recette » et interdit sa recréation. Les tests web/DB continuent uniquement sur ressources jetables isolées, avec **aucune écriture Discord en Preview**. La règle ancienne d'exclusion automatique de comptes de test au vote a été retirée par décision du 06/11 ; ne pas déduire qu'un compte particulier doit être exclu. Se référer aux dernières décisions de [#400](https://github.com/ZeyFro/gamenight/issues/400) et au [cahier consolidé](TOWER_CAHIER_DES_CHARGES_GLOBAL.md). Ne pas utiliser ce guide comme autorisation d'action réelle.
+
 # Recette web et OAuth — scénarios à exécuter sur des données fictives
 
 **Préconditions (à valider séparément) :**
