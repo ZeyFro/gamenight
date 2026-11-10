@@ -129,3 +129,15 @@ Revue de la diff exacte de [PR #370](https://github.com/ZeyFro/gamenight/pull/37
 **Critères de revue avant mode privé :** compte extérieur à l'équipe et membre d'une autre équipe ; liste vs détail ; visibilité des noms/membres/sessions et permissions Discord ; équipe ouverte/fermée/privée ; cloisonnement entre communautés ; changement de capitaine ; invite/révocation et audit de groupe. **Ne pas ajouter silencieusement cette nouvelle sémantique dans #370** ni concurrencer sa réservation.
 
 **Statut :** constat statique de la PR, sans exécution de ses migrations ni exploitation réelle démontrée.
+
+## N. PR #408 — rechercher par jeu : une base existe déjà, mais pas dans les 3 forums Discord
+
+Diff ciblée lue sur [PR #408](https://github.com/ZeyFro/gamenight/pull/408) : `src/lib/player-classified-filters.ts`, `src/lib/player-classified-filters.test.ts`, `src/lib/discord-team-command.ts`, `src/testsrecette/discord-team.e2e.integration.test.ts`.
+
+- **Déjà développé en Draft** : `playerClassifiedFiltersSchema` accepte `gameId`, plateforme, microphone, type de partie, dates/heures ; `playerClassifiedFilterWhere` traduit ces paramètres en conditions Prisma. Ce moteur est directement réutilisable pour « je cherche une partie Minecraft Vanilla » côté **annonces GameNight**.
+- **Non démontré** : rattachement de ces filtres aux publications réelles des **trois forums Discord** existants ; l'API Discord limite leurs tags et GameNight doit conserver sa propre indexation par jeu. Ne pas confondre « les annonces GameNight sont filtrables » et « tous les posts des forums Discord sont découvrables par jeu ».
+- La commande `/equipe` en Draft prévoit `liste`, `moi`, `rejoindre`, avec vérification du serveur et de l'utilisateur connu dans GameNight. **Pas un mécanisme de création de vocal privé**, ni une preuve d'enregistrement de la commande sur le serveur réel.
+- Une recette automatisée avec **PostgreSQL local et appels Discord simulés** est jointe à la PR. Elle vérifie liste/rejoindre, déduplication et refus d'une équipe d'une autre communauté. Elle n'est pas une recette Discord réelle et ne certifie pas le routage des commandes déployées.
+- La commande affiche les équipes en recrutement et retourne un nombre borné (12) ; elle appelle toutefois `listCommunityTeams` qui récupère **toutes les équipes et leurs relations** avant filtrage en mémoire. Ce point renforce le constat C (pagination et requêtes DB réellement bornées).
+
+**Conséquence cahier :** conserver les modules de filtrage et la commande existante de #408 ; ajouter seulement la passerelle « forums Discord → jeux/annonces GameNight » après vérification des permissions et du choix propriétaire, sans recréer une seconde recherche.
