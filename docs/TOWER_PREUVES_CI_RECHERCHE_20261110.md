@@ -76,3 +76,14 @@ Ne jamais créer **un rôle par jeu ou un couple de salons permanents par équip
 La documentation Prisma décrit les conflits transactionnels et l'erreur `P2034` (write conflict/deadlock) : les transactions sensibles aux écritures concurrentes doivent disposer d'une stratégie de retry bornée et de contraintes d'unicité, en complément des verrous adaptés. **La référence retournée peut couvrir une version Prisma différente** : vérifier exactement l'API de Prisma 6.19.3 avant d'introduire une modification. Ne pas changer les garanties de transactions existantes sans tests PostgreSQL.
 
 Lien : https://www.prisma.io/docs/orm/prisma-client/queries/transactions
+
+
+## 7. Résultats exacts extraits du journal `verify` #419
+
+Journal du job GitHub `129788374141` (run CI 42803989254) :
+
+- Étape **`npm run test:postgres`** : **415 fichiers réussis sur 415, 3 771 tests réussis sur 3 771**, durée Vitest `855.57s`. PostgreSQL de service GitHub Actions, pas Neon/Production. Tests qui simulent les appels Discord via HTTP : **aucune preuve d'une interaction réelle avec le bot**.
+- Étape suivante **`npm test`** : **321 fichiers réussis et 94 ignorés (415 total)** ; **2 553 tests réussis et 1 215 ignorés (3 771 total)**, durée `51.96s`. Les tests PostgreSQL sont ignorés dans cette seconde étape car `TEST_DATABASE_URL` n'y est pas configurée ; ils sont couverts par l'étape précédente.
+- Job `verify` conclu **SUCCESS**, entre 11:01:20 et 11:19:23 UTC (18 min 03 s). Étapes typegen, TypeScript, ESLint, build ont toutes conclu SUCCESS.
+
+**Interprétation stricte :** la tête de #419 dispose d'une preuve automatisée importante et récente, **non transférable automatiquement à `main` ni aux neuf autres têtes Draft**. Aucune recette Discord réelle ni preuve de bascule migratoire Production. Les 3 771 tests restent une mesure de quantité, pas une garantie d'exhaustivité fonctionnelle.
