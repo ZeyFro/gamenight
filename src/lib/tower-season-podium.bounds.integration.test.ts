@@ -230,17 +230,46 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
     });
   });
 
-  describe("départage : étages, puis défis à 3 étages, puis arrivée au total final, puis identifiant", () => {
+  describe("départage : étages, puis défis à 3 étages, puis arrivée au total final ; égalité stricte = co-lauréats (Q7)", () => {
     const current = "2027-07-05T12:00:00Z";
 
-    it("égalité exacte : l'identifiant utilisateur tranche, indépendamment de l'ordre d'insertion", async () => {
+    it("égalité exacte : tous co-lauréats à la même place, aucun écarté, affichage stable quel que soit l'ordre d'insertion", async () => {
       await player("reader");
       // Création et crédit dans l'ordre inverse de l'ordre alphabétique des identifiants.
       for (const name of ["d", "c", "b", "a"]) await player(name);
       for (const name of ["d", "c", "b", "a"]) await solo(name, 3, "2027-05-10T10:00:00.000Z");
       const result = await read(current);
-      expect(result.entries.map(entry => [entry.rank, entry.displayName, entry.rewardFloors, entry.difficultWins])).toEqual([
-        [1, "a", "3", "1"], [2, "b", "3", "1"], [3, "c", "3", "1"],
+      expect(result.entries.map(entry => [entry.rank, entry.exAequo, entry.displayName, entry.rewardFloors, entry.difficultWins])).toEqual([
+        [1, true, "a", "3", "1"], [1, true, "b", "3", "1"], [1, true, "c", "3", "1"], [1, true, "d", "3", "1"],
+      ]);
+    });
+
+    it("deux premiers ex æquo : le suivant prend la 3e place et le podium s'arrête là", async () => {
+      await player("reader");
+      for (const name of ["a", "b", "c", "d"]) await player(name);
+      await solo("b", 3, "2027-05-10T10:00:00.000Z");
+      await solo("a", 3, "2027-05-10T10:00:00.000Z");
+      await solo("c", 2, "2027-05-11T10:00:00.000Z");
+      await solo("d", 1, "2027-05-12T10:00:00.000Z");
+      const result = await read(current);
+      expect(result.entries.map(entry => [entry.rank, entry.exAequo, entry.displayName])).toEqual([
+        [1, true, "a"], [1, true, "b"], [3, false, "c"],
+      ]);
+    });
+
+    it("égalité stricte entre la 3e et la 4e place : les deux restent au podium, le suivant n'y entre pas", async () => {
+      await player("reader");
+      for (const name of ["p1", "p2", "p3", "p4", "p5"]) await player(name);
+      await solo("p1", 3, "2027-05-01T10:00:00.000Z");
+      await solo("p1", 2, "2027-05-02T10:00:00.000Z");
+      await solo("p2", 3, "2027-05-03T10:00:00.000Z");
+      await solo("p2", 1, "2027-05-04T10:00:00.000Z");
+      await solo("p4", 3, "2027-05-05T10:00:00.000Z");
+      await solo("p3", 3, "2027-05-05T10:00:00.000Z");
+      await solo("p5", 2, "2027-05-06T10:00:00.000Z");
+      const result = await read(current);
+      expect(result.entries.map(entry => [entry.rank, entry.exAequo, entry.displayName, entry.rewardFloors])).toEqual([
+        [1, false, "p1", "5"], [2, false, "p2", "4"], [3, true, "p3", "3"], [3, true, "p4", "3"],
       ]);
     });
 
@@ -285,7 +314,7 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
       expect(result.entries[1]?.reachedAt).toEqual(iso("2027-06-10T10:00:00.000Z"));
     });
 
-    it("arrivée à la milliseconde : deux crédits espacés d'1 ms se départagent, identique à la ms retombe sur l'identifiant", async () => {
+    it("arrivée à la milliseconde : deux crédits espacés d'1 ms se départagent, identiques à la ms ils sont ex æquo", async () => {
       await player("reader");
       for (const name of ["x", "y", "z"]) await player(name);
       await solo("z", 1, "2027-05-10T10:00:00.000Z");
@@ -293,6 +322,7 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
       await solo("x", 1, "2027-05-10T10:00:00.001Z");
       const result = await read(current);
       expect(names(result)).toEqual(["z", "x", "y"]);
+      expect(result.entries.map(entry => [entry.rank, entry.exAequo])).toEqual([[1, false], [2, true], [2, true]]);
     });
   });
 });
