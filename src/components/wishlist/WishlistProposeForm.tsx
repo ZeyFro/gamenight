@@ -23,22 +23,27 @@ export function WishlistProposeForm() {
   const [results, setResults] = useState<IgdbGameCandidate[]>([]);
   const [selected, setSelected] = useState<IgdbGameCandidate | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generationRef = useRef(0);
 
   async function search(term: string) {
     if (term.trim().length < 2) {
       setResults([]);
       return;
     }
+    const currentGeneration = generationRef.current;
     setSearching(true);
     setSearchError(null);
     try {
       const res = await fetch(`/api/igdb/search?q=${encodeURIComponent(term.trim())}`);
       if (!res.ok) throw new Error();
       const data = (await res.json()) as { results: IgdbGameCandidate[] };
+      if (generationRef.current !== currentGeneration) return;
       setResults(data.results);
     } catch {
+      if (generationRef.current !== currentGeneration) return;
       setSearchError("La recherche IGDB a échoué.");
     } finally {
+      if (generationRef.current !== currentGeneration) return;
       setSearching(false);
     }
   }
@@ -47,12 +52,18 @@ export function WishlistProposeForm() {
     setQuery(value);
     setSelected(null);
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    generationRef.current += 1;
+    setResults([]);
+    setSearchError(null);
+    setSearching(false);
+    if (value.trim().length < 2) return;
     debounceTimer.current = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
   }
 
   useEffect(() => {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      generationRef.current += 1;
     };
   }, []);
 
