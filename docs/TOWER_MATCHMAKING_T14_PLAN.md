@@ -90,3 +90,22 @@ ont réussi avec strict-ssl actif, sans désactivation TLS ni saut du postinstal
 Le résultat du build et de la CI est consigné dans #400 avant clôture de tâche.
 La migration arbitre additionnelle reste uniquement locale ; aucun déploiement,
 flag, commande Discord, migration distante ou essai authentifié réel effectué.
+
+## Synchronisation locale du 12 novembre 2026
+
+Depuis la tête publiée #408 `6259331`, intégration sans conflit de #407
+`059419f` (dont #406 `e1a890e`) et de `main` `50e8246`. Les corrections
+de défaut SQL et de nom d'index Prisma, les fixtures VAPID valides et les
+protections de confidentialité roulette sont conservées. Aucun fichier de
+migration SQL modifié ; aucun écart de schéma par rapport à #407 intégrée.
+
+Validation locale sur le candidat `87a596a` : Node 22.23.4, `npm ci` complet
+(605 paquets, postinstall Prisma 6.19.3), 57 tests unitaires sur 11 fichiers ;
+PostgreSQL 16 local jetable : 25 tests ciblés sur 4 fichiers, puis 3 tests de
+commande Discord reliée à Prisma avec transport HTTP simulé. Zéro test ignoré.
+Typegen Next, TypeScript, ESLint ciblé et diff-check réussis. Une première
+invocation de recette utilisait un chemin inexistant ; le fichier correct
+`src/testsrecette/discord-team.e2e.integration.test.ts` a ensuite réussi 3/3.
+Ces preuves ne certifient ni Discord réel ni un parcours connecté en Preview.
+Aucun build supplémentaire, CI distante, push, migration distante, activation,
+merge ou passage Ready effectué dans cette préparation locale.
