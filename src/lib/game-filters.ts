@@ -168,9 +168,15 @@ function parseListParam(value: string | string[] | undefined): string[] {
 function clampNumber(
   raw: string | string[] | undefined,
   fallback: number,
-  range: { min: number; max: number }
+  range: { min: number; max: number },
+  options: { integerOnly?: boolean } = {}
 ): number {
-  const n = Number(firstValue(raw));
+  const text = firstValue(raw)?.trim();
+  // Number("") === 0 : une valeur vide ne doit pas devenir une borne.
+  if (!text) return fallback;
+  // Années : entier décimal strict (ni 2020.5, ni 1e9, ni 0x7e4) ; sinon filtre ignoré.
+  if (options.integerOnly && !/^[+-]?\d+$/.test(text)) return fallback;
+  const n = Number(text);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(range.max, Math.max(range.min, Math.round(n)));
 }
@@ -196,8 +202,8 @@ export function parseGameFilters(
     sources,
     ownedMin: clampNumber(searchParams.ownedMin, 1, { min: 1, max: 999 }),
     genres: parseListParam(searchParams.genres),
-    yearMin: clampNumber(searchParams.yearMin, RELEASE_YEAR_RANGE.min, RELEASE_YEAR_RANGE),
-    yearMax: clampNumber(searchParams.yearMax, RELEASE_YEAR_RANGE.max, RELEASE_YEAR_RANGE),
+    yearMin: clampNumber(searchParams.yearMin, RELEASE_YEAR_RANGE.min, RELEASE_YEAR_RANGE, { integerOnly: true }),
+    yearMax: clampNumber(searchParams.yearMax, RELEASE_YEAR_RANGE.max, RELEASE_YEAR_RANGE, { integerOnly: true }),
     ownership,
   };
 }
