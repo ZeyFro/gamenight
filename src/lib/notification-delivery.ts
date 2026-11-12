@@ -345,6 +345,13 @@ export interface ClaimOptions {
 // ne jamais boucler indéfiniment.
 const CLAIM_CANDIDATE_SCAN_LIMIT = 20;
 
+/**
+ * Plafond de tentatives appliqué aux réservations dont le bail expire. Même valeur que
+ * `MAX_DELIVERY_ATTEMPTS` de l'executor (importé par l'executor : pas d'import inverse) ; l'égalité
+ * est verrouillée par notification-executor.integration.test.ts.
+ */
+export const LEASE_EXPIRY_MAX_ATTEMPTS = 8;
+
 interface ClaimCandidateRow {
   id: string;
   targetSlot: string;
@@ -528,7 +535,9 @@ export async function claimNextDelivery(
             select: { status: true, discordMessageId: true },
           });
           if (sends.length > 0 && sends.every((send) =>
-            send.status === "FAILED" || send.status === "SKIPPED")) {
+            send.status === "FAILED" || send.status === "SKIPPED" ||
+            // SENT sans identifiant de message (ex. webhook de récompense) : jamais éditable, donc terminal.
+            (send.status === "SENT" && !send.discordMessageId))) {
             await tx.notificationDelivery.update({
               where: { id: candidate.id },
               data: { status: "SKIPPED", errorClass: "dependency:send_terminal_without_message" },
@@ -705,12 +714,28 @@ export async function finalizeDeliveryFailure(
  * SKIP LOCKED` : aucune décision n'est prise à partir d'une lecture
  * préalable, la condition du `WHERE` est directement celle de l'écriture).
  */
-export async function recoverExpiredReservations(now: Date = new Date()): Promise<number> {
+export async function recoverExpiredReservations(
+  now: Date = new Date(),
+  maxAttempts: number = LEASE_EXPIRY_MAX_ATTEMPTS
+): Promise<number> {
+  // Une livraison dont le bail expire à chaque tentative (crash, délai plateforme dépassé) ne doit pas
+  // être réessayée sans fin : au plafond de tentatives, comme pour un échec explicite, elle devient
+  // FAILED (terminale) au lieu de repasser en PENDING.
+  const exhausted = await prisma.notificationDelivery.updateMany({
+    where: { status: "RESERVED", reservedUntil: { lt: now }, attempts: { gte: maxAttempts } },
+    data: {
+      status: "FAILED",
+      reservedBy: null,
+      reservationToken: null,
+      reservedUntil: null,
+      errorClass: "lease_expired:max_attempts_exceeded",
+    },
+  });
   const result = await prisma.notificationDelivery.updateMany({
     where: { status: "RESERVED", reservedUntil: { lt: now } },
     data: { status: "PENDING", reservedBy: null, reservationToken: null, reservedUntil: null },
   });
-  return result.count;
+  return result.count + exhausted.count;
 }
 
 /**
