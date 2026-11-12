@@ -12,7 +12,7 @@ function updateMedia() { act(() => { for (const listener of listeners) listener(
 
 beforeEach(() => {
   reduced = false; desktop = true; hidden = false;
-  const store = {}; vi.stubGlobal("localStorage", { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v.toString(); }, clear: () => { for (let key in store) delete store[key]; } }); listeners.clear();
+  const store: Record<string, string> = {}; vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] || null, setItem: (k: string, v: string) => { store[k] = v.toString(); }, clear: () => { for (const key in store) delete store[key]; } }); listeners.clear();
   vi.stubGlobal("matchMedia", (query: string) => ({
     get matches() { return query.includes("reduced-motion") ? reduced : desktop; },
     addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
