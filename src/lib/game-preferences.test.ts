@@ -41,3 +41,11 @@ describe("préférences, refus et classement", () => {
     expect(rankGameSuggestions([game("unknown", { minPlayers: null })], []).suggestions).toEqual([]);
   });
 });
+
+it("considère une ancienne clé héritée comme inconnue", () => {
+  const entry = game("ancien");
+  expect(matchesGameCategory(entry, "constructor")).toBeNull();
+  expect(matchesGameCategory(entry, "__proto__")).toBeNull();
+  expect(rankGameSuggestions([entry], [taste([], ["constructor"])]))
+    .toEqual({ suggestions: [], unknownMetadataCount: 1 });
+});

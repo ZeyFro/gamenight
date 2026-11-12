@@ -36,7 +36,8 @@ export function matchesGameCategory(game: SuggestibleGame, category: string): bo
   const values = stringList(category === "HORROR" ? details.themes : details.genres);
   if (values === null) return null;
   const expected = category === "HORROR" ? ["horror"] : GENRES[category as Category];
-  return expected ? expected.some(value => values.includes(value)) : null;
+  if (!Array.isArray(expected)) return null;
+  return expected.some(value => values.includes(value));
 }
 /** Les refus de jeux nommés sont filtrés en SQL avant ce classement. */
 export function rankGameSuggestions(games: SuggestibleGame[], tastes: GameTaste[]) {
