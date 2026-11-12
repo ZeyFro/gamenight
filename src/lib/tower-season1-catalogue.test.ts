@@ -5,15 +5,25 @@ import { TOWER_TEAM_STARTER_CHALLENGES } from "./tower-team-challenge-starter-ca
 const combined = [...TOWER_STARTER_CHALLENGES, ...TOWER_TEAM_STARTER_CHALLENGES];
 
 describe("catalogue de la saison 1 — /tower-admin importer et importer-equipe", () => {
-  it("contient 30 défis dont au moins 8 défis d'équipe", () => {
-    expect(TOWER_STARTER_CHALLENGES).toHaveLength(22);
-    expect(TOWER_TEAM_STARTER_CHALLENGES).toHaveLength(8);
-    expect(combined).toHaveLength(30);
+  it("contient 36 défis dont 10 défis d'équipe", () => {
+    expect(TOWER_STARTER_CHALLENGES).toHaveLength(26);
+    expect(TOWER_TEAM_STARTER_CHALLENGES).toHaveLength(10);
+    expect(combined).toHaveLength(36);
   });
-  it("répartit strictement 10 défis faciles, 10 moyens et 10 difficiles", () => {
-    for (const floors of [1, 2, 3]) {
-      expect(combined.filter((challenge) => challenge.rewardFloors === floors)).toHaveLength(10);
-    }
+  it("conserve un socle conséquent dans chaque difficulté", () => {
+    expect(combined.filter((challenge) => challenge.rewardFloors === 1)).toHaveLength(13);
+    expect(combined.filter((challenge) => challenge.rewardFloors === 2)).toHaveLength(13);
+    expect(combined.filter((challenge) => challenge.rewardFloors === 3)).toHaveLength(10);
+  });
+  it("ajoute au moins quatre défis sociaux et deux défis d'équipe faciles", () => {
+    const socialTitles = ["Premier contact GameNight", "Le passeur de jeu", "La soirée surprise", "Le duo de l’inconnu"];
+    expect(TOWER_STARTER_CHALLENGES.filter(challenge => socialTitles.includes(challenge.title))).toHaveLength(4);
+    expect(TOWER_TEAM_STARTER_CHALLENGES.filter(challenge =>
+      ["Le salut de l’escouade", "Le mini-objectif collectif"].includes(challenge.title) && challenge.rewardFloors === 1
+    )).toHaveLength(2);
+  });
+  it("ne classe plus l'enquête des cinq détails comme difficile", () => {
+    expect(TOWER_STARTER_CHALLENGES.find((challenge) => challenge.title === "L'enquête des cinq détails")?.rewardFloors).toBe(2);
   });
   it("ne crée ni doublons ni titres trop longs pour la base", () => {
     const titles = combined.map((challenge) => challenge.title.trim().toLocaleLowerCase("fr-FR"));

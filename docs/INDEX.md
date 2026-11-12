@@ -26,9 +26,12 @@
 - [Routes cron et backfill](CRONS.md) — routes, méthodes et garde d’authentification ; les cadences sont hors dépôt.
 - [Réconciliation sécurité du travail de Claude](SECURITE_CLAUDE.md) — constats, preuves, correctifs et limites restant à vérifier.
 - [Déploiement multi-communautés](COMMUNITY_ROLLOUT.md) — ordre de configuration et limites opérationnelles.
-- [Feuille de route](ROADMAP.md) — suivi vivant des lots.
+- [Feuille de route GameNight et The Tower 2.0](ROADMAP.md) — suivi vivant et découpage en PR.
 
 ## Recettes et documents de référence
+
+- [Cahier des charges canonique — The Tower 2.0 × GameNight](CAHIER_DES_CHARGES.md) — texte de référence fourni par Maxime, conservé mot pour mot.
+- [Édition de navigation et décisions d'exploitation](TOWER_CAHIER_DES_CHARGES_GLOBAL.md) — complément enrichi ; en cas de divergence initiale, le cahier canonique prévaut.
 
 - [Recette finale](RECETTE_FINALE.md) — photographie datée des parcours et validations locales ; ne vaut pas validation de configuration distante.
 - [Recette locale authentifiée](RECETTE_LOCALE_AUTHENTIFIEE.md) — protocole et preuves d’une session locale datée.
