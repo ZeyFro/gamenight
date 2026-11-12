@@ -84,4 +84,16 @@ describe("GET /api/igdb/search", () => {
 
     expect(response.status).toBe(502);
   });
+
+  it("limite les recherches utiles par compte sans compter les requêtes trop courtes", async () => {
+    const search = (q: string) => GET(new NextRequest('http://localhost/api/igdb/search?q=' + q));
+    getValidSession.mockResolvedValue({ user: { discordId: "quota-premier-compte" } });
+    searchIgdbGames.mockResolvedValue([]);
+    for (let i = 0; i < 31; i++) expect((await search("a")).status).toBe(200);
+    for (let i = 0; i < 30; i++) expect((await search("zelda")).status).toBe(200);
+    expect((await search("zelda")).status).toBe(429);
+    getValidSession.mockResolvedValue({ user: { discordId: "quota-second-compte" } });
+    expect((await search("zelda")).status).toBe(200);
+    expect(searchIgdbGames).toHaveBeenCalledTimes(31);
+  });
 });

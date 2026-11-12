@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getValidSession } from "@/lib/valid-session";
 import { searchIgdbGames } from "@/lib/igdb";
 import { logger } from "@/lib/logger";
+import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 /**
  * Longueur maximale relayée à IGDB : aucun nom de jeu n'approche cette taille,
@@ -19,6 +20,10 @@ export async function GET(request: NextRequest) {
   const query = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY_LENGTH);
   if (query.length < 2) {
     return NextResponse.json({ results: [] });
+  }
+
+  if (!checkRateLimit(session.user.discordId, "searchIgdbGames", { limit: 30, windowMs: 10_000 })) {
+    return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 
   try {
