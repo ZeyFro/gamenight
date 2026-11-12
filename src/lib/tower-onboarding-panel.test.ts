@@ -12,4 +12,10 @@ describe("panneau accueil Tower", () => {
     expect(towerWelcomePanel().allowedMentions.parse).toEqual([]);
     expect(JSON.stringify(towerWelcomePanel())).not.toContain("@everyone");
   });
+
+  it("annonce les activités publiques sans compte et présente l’Ascension comme facultative", () => {
+    const { content } = towerWelcomePanel();
+    expect(content).toMatch(/salons publics sans compte GameNight/i);
+    expect(content).toMatch(/Ascension est facultative/i);
+  });
 });

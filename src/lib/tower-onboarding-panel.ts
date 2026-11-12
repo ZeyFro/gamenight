@@ -16,7 +16,7 @@ export function towerWelcomePanel() {
       .map(([key, value]) => ({ type: 2 as const, style: 1 as const, label: value.label, custom_id: `gn:welcome:${key}` })),
   }];
   return {
-    content: "🏰 **Bienvenue dans The Tower**\nChoisis comment commencer. GameNight est le compagnon du serveur, les permissions restent gérées par Discord.",
+    content: "🏰 **Bienvenue dans The Tower**\nChoisis comment commencer. GameNight est le compagnon du serveur, les permissions restent gérées par Discord.\nTu peux discuter et jouer avec tes amis dans les salons publics sans compte GameNight. L’Ascension est facultative.",
     components, allowedMentions: { parse: [] as [] },
   };
 }
