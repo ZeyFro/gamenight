@@ -36,10 +36,28 @@ export function filterLocalGames<T extends { name: string }>(games: T[], query: 
  * doit de toute façon résoudre vers la même ligne `Game`, cf.
  * `resolveIgdbGameAction`, mais les lister deux fois prêterait à
  * confusion).
+ *
+ * Dédoublonne également les candidats entre eux : un même `igdbId` ne peut
+ * apparaître qu'une seule fois dans le résultat (la première occurrence est
+ * conservée).
  */
 export function excludeLocalIgdbIds<T extends { igdbId: number }>(
   candidates: T[],
   localIgdbIds: ReadonlySet<number>
 ): T[] {
-  return candidates.filter((c) => !localIgdbIds.has(c.igdbId));
+  // Copie mutable du Set local pour suivre les identifiants vus (locaux + candidats conservés)
+  const seenIds = new Set<number>(localIgdbIds);
+
+  const result: T[] = [];
+  for (const candidate of candidates) {
+    // Si l'identifiant a déjà été vu (soit dans le catalogue local, soit dans un candidat précédent), on exclut
+    if (seenIds.has(candidate.igdbId)) {
+      continue;
+    }
+    // Sinon, on enregistre l'identifiant comme vu et on conserve le candidat
+    seenIds.add(candidate.igdbId);
+    result.push(candidate);
+  }
+
+  return result;
 }
