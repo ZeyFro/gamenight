@@ -84,3 +84,34 @@ Référence officielle vérifiée : [Create Guild Application Command](https://d
 Les tests remplacent `fetch` par une erreur et limitent l'environnement du
 sous-processus à `NODE_ENV=test`. Les options `--execute`, `--check` et `--token` sont refusées.
 L'enregistrement réel demeure une opération distincte exigeant un accord.
+
+## Revalidation de la pile — 12 novembre 2026
+
+La branche reprend #408 `533e185`, dont #407 `059419f`, #406 `e1a890e`
+et main `50e8246`, sans changer les SQL publiés. Le filtre `paths` du workflow
+dédié inclut désormais `scripts/plan-team-guild-commands.mjs` : une modification
+isolée de ce script déclenchera aussi les tests qui l'exercent.
+
+Sur Node 22.23.4, `npm ci` complet et génération Prisma 6.19.3 réussis.
+La commande exacte du workflow, complétée par la recette
+`src/testsrecette/discord-team.e2e.integration.test.ts`, passe : **10 fichiers,
+106 tests réussis, zéro ignoré**, PostgreSQL 16 jetable et Discord simulé.
+Next typegen, TypeScript et ESLint complet passent (zéro erreur, 12 warnings).
+Le contrôle local Prisma relève **121 migrations terminées, zéro inachevée,
+zéro écart de checksum** avec les fichiers SQL du candidat. Ce contrôle ne
+concerne aucune base Neon et ne prouve aucune migration distante.
+
+Le build Next.js complet réussit également. Le contrôle supplémentaire
+`prisma migrate diff` entre la base locale et le schéma n'est toutefois pas
+vide : il propose le retrait de l'index
+`CommunityGameEpitaph_communityId_createdAt_idx` et le renommage de l'index
+tronqué de `TowerChallengeAttemptParticipant` sur communauté/utilisateur/date
+de récompense. Les modèles concernés et leurs SQL sont hérités de main,
+antérieurs aux trois migrations de la pile ; ce ne sont pas les deux écarts
+R1/R2 corrigés dans #406. **Aucun SQL proposé par diff n'a été exécuté** et
+aucune correction de ces modèles partagés n'est incluse dans #416. Un contrôle
+de checksum réussi ne doit pas être présenté comme une absence de dérive.
+
+L'intégration reste dépendante de #408 ; pas de commande Discord enregistrée,
+pas d'activation, de Ready ou de fusion. Les résultats CI du commit publié et
+le build sont consignés dans la PR et #400, sans les présumer ici.
