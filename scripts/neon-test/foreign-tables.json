@@ -1,0 +1,9 @@
+{
+  "playing_with_neon": {
+    "origin": "Table d exemple créée par la console Neon (id serial clé primaire, name text NOT NULL, value real). Absente de nos migrations et de schema.prisma, aucune clé étrangère, aucun déclencheur, aucune vue dépendante. Jamais modifiée ni supprimée.",
+    "observed": "Lecture seule des métadonnées sur la branche de test (PostgreSQL 18.6, 118 migrations), le 8 novembre 2026.",
+    "digests": {
+      "18": "15817f16a36f58a72f6a5363307213377ecb52e989534c657889d8eec5d33af4"
+    }
+  }
+}

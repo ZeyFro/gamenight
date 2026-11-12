@@ -2536,7 +2536,7 @@ model UserNotificationChannelPreference {
   category  UserNotificationCategory
   channel   UserNotificationChannel
   enabled   Boolean                  @default(true)
-  updatedAt DateTime                 @updatedAt
+  updatedAt DateTime                 @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -3260,7 +3260,7 @@ model TowerChallengeAttempt {
   @@index([communityId, teamId, status])
   @@index([communityId, status, submittedAt])
   @@unique([communityId, proofCode])
-  @@index([communityId, status, submittedAt, staffReportedAt, archivedAt])
+  @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
 }
 
 enum TowerChallengeAppealStatus {
