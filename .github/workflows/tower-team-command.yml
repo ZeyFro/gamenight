@@ -7,6 +7,7 @@ on:
     branches: [main, 'codex/tower-pr-equipes-20261105']
     paths:
       - 'scripts/discord-commands.json'
+      - 'scripts/plan-team-guild-commands.mjs'
       - 'src/lib/discord-team-command*.ts'
       - 'src/lib/discord-interactions*.ts'
       - 'src/lib/community-team*.ts'

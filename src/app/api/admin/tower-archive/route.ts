@@ -1,4 +1,5 @@
 import { isVercelPreview } from "@/lib/preview-safety";
+import { isTowerOwner, towerGuildId } from "@/lib/tower-config";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { getCurrentUser } from "@/lib/current-user";
@@ -8,8 +9,7 @@ import plan from "@/lib/tower-discord-layout.json";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const GUILD = "553922938101825536";
-const OWNER = "699223334046531636";
+const GUILD = towerGuildId();
 const ARCHIVE_NAME = "📦・ARCHIVES PRIVÉES";
 const DENY_VIEW = BigInt(1024);
 const HEADERS = { "Cache-Control": "private, no-store" };
@@ -20,7 +20,7 @@ function error(message: string, status: number) { return NextResponse.json({ err
 async function authorized() {
   const user = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   const admin = user ? await requireAdmin() : null;
-  return !!admin && admin.discordId === OWNER;
+  return !!admin && isTowerOwner(admin.discordId);
 }
 async function discord(method: string, url: string, data?: object): Promise<unknown> {
   const token = process.env.DISCORD_BOT_TOKEN;
