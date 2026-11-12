@@ -1,0 +1,58 @@
+# Garde « migrations Prisma immuables » : une PR ne peut ni modifier, ni supprimer, ni
+# renommer, ni déplacer une migration déjà présente au point de départ de la PR (merge-base
+# avec sa base). Les NOUVELLES migrations restent autorisées. Voir
+# scripts/check-migrations-immutable.mjs (logique) et src/lib/migrations-immutable.test.ts.
+#
+# Workflow séparé de ci.yml : ci.yml et le check requis « verify » restent inchangés.
+# Ajouter le check « immutable » aux protections de branche est une décision du propriétaire.
+# Aucun secret, aucune base, aucune dépendance npm : git et Node seulement.
+#
+# Limite connue : pour un événement pull_request, GitHub exécute le workflow tel qu'il est dans la PR.
+# Une PR qui modifie ou supprime CE fichier peut donc affaiblir le contrôle. Parades : marquer
+# `immutable` comme check REQUIS (une PR qui supprimerait le workflow resterait bloquée, le check
+# n'étant jamais rapporté) et relire toute modification de .github/ et de scripts/check-migrations-immutable.mjs.
+name: Migrations immutables
+
+on:
+  pull_request:
+    # edited : un changement de base (retarget) relance la garde.
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-immutable-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  immutable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Migrations existantes intactes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          guard="$RUNNER_TEMP/check-migrations-immutable.mjs"
+          # La garde de la branche de base fait foi : une PR ne peut pas l'affaiblir pour se faire passer.
+          # Seule la PR qui l'introduit utilise sa propre copie.
+          if git cat-file -e "$BASE_SHA:scripts/check-migrations-immutable.mjs" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/check-migrations-immutable.mjs" > "$guard"
+          else
+            cp scripts/check-migrations-immutable.mjs "$guard"
+          fi
+          # Deux bases : celle de la PR (pile : son parent) ET la branche par défaut, pour qu'une PR de pile
+          # ne puisse pas réécrire une migration déjà présente sur la branche par défaut.
+          for base in "$BASE_SHA" "origin/$DEFAULT_BRANCH"; do
+            echo "== base : $base"
+            node "$guard" --base "$base" --head "$HEAD_SHA"
+          done
