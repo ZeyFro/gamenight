@@ -43,13 +43,13 @@ export function towerChallengePanel(): { content: string; components: DiscordAct
   };
 }
 function proofModal(attemptId: string) {
-  const field = (custom_id: string, label: string, max_length: number) => ({
-    type: 1, components: [{ type: 4, custom_id, label, style: 1, required: true, max_length }],
+  const field = (custom_id: string, label: string, max_length: number, placeholder?: string) => ({
+    type: 1, components: [{ type: 4, custom_id, label, style: 1, required: true, max_length, ...(placeholder ? { placeholder } : {}) }],
   });
   return { type: 9, data: { custom_id: `gn:tower:proof:${attemptId}`, title: "Preuve visible au vote",
     components: [
-      field("proof_link", "Lien de ton message dans le salon Défis", 200),
-      field("proof_text", "Décris ta réalisation", 800),
+      field("proof_link", "Lien vers ta capture ou composition", 200),
+      field("proof_text", "Code TWR + description", 800, "Dans le jeu, ou dans la composition si impossible."),
       field("publication", "Partager au général si réussite ? OUI/NON", 3),
     ],
   } };
@@ -68,7 +68,10 @@ type State = Extract<Awaited<ReturnType<typeof getTowerChallengeState>>, { statu
 function renderState(state: State) {
   const latest = state.attempts[0];
   const history = state.attempts.map(attempt => `**${attempt.title}** — ${attempt.status === "ASSIGNED" ? "à réaliser" : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé"}`).join("\n");
-  const details = latest ? `\n\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}\nGain : +${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.` : "\nAucun défi attribué pour le moment.";
+  const proofCode = latest?.proofCode
+    ? `\nCode de preuve : **${latest.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il associe les éléments, mais ne prouve pas la date de capture.` : "";
+  const details = latest ? `\n\n${proofCode}\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}\nGain : +${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.`
+    : "\nAucun défi attribué pour le moment.";
   const buttons = [button("Actualiser", "gn:tower:mine")];
   if (latest?.status === "ASSIGNED") buttons.push(button("Déposer ma preuve", `gn:tower:proof:${latest.id}`, 1));
   if (latest?.status === "SUBMITTED") buttons.push(button("Voir le résultat", `gn:tower:settle:${latest.id}`, 1));
@@ -91,7 +94,9 @@ function renderTeamState(state: TeamState) {
       : " Tes étages personnels sont crédités."
     : state.joined ? " Tu participes à ce défi."
       : " Rejoins le défi pour participer à sa récompense.";
-  const details = `🏰 **Défi quotidien · ${team.name}**\n**${attempt.title}** — ${phase}\n${attempt.instructions}\n\n${team.memberCount} membre(s) actif(s) · ${state.participantCount} participant(s) confirmé(s) · +${attempt.rewardFloors} étage(s) personnel(s) chacun après validation.${reward}\nDeux réussites récompensées par jour, solo et équipe confondus. Défi attribué jusqu’au <t:${Math.floor(attempt.expiresAt.getTime() / 1000)}:f>.`;
+  const proofCode = attempt.proofCode
+    ? `\nCode de preuve : **${attempt.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il ne prouve pas la date de capture.` : "";
+  const details = `🏰 **Défi quotidien · ${team.name}**\n**${attempt.title}** — ${phase}\n${proofCode}\n${attempt.instructions}\n${team.memberCount} membre(s) actif(s) · ${state.participantCount} participant(s) confirmé(s) · +${attempt.rewardFloors} étage(s) personnel(s) chacun après validation.${reward}\nDeux réussites récompensées par jour, solo et équipe confondus. Défi attribué jusqu’au <t:${Math.floor(attempt.expiresAt.getTime() / 1000)}:f>.`;
   return { content: details.slice(0, 1900), components: [{ type: 1 as const, components: buttons.slice(0, 5) }] };
 }
 function renderSeasonVote(result: Awaited<ReturnType<typeof getTowerSeasonVote>>, userId: string) {
@@ -142,6 +147,9 @@ const feedback: Record<string, string> = {
   EXPIRED: "Le délai de 48 heures pour déposer cette preuve est terminé.",
   CONFLICT: "Une autre preuve est déjà enregistrée pour ce défi.",
   CLOSED: "Cette action est fermée pour ce défi.",
+  PROOF_CODE_UNAVAILABLE: "Le code de preuve n’est pas disponible. Actualise ta fiche avant de déposer la preuve.",
+  PROOF_CODE_REQUIRED: "Ajoute le code TWR dans la description de ta preuve. Si le jeu ne peut pas l’afficher, écris-le dans la composition GameNight avec la capture.",
+  ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 
 /** Exclusivement appelé après la vérification Ed25519 du corps brut dans discord-interactions. */
