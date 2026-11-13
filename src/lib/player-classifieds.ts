@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+import { playerClassifiedFiltersSchema, playerClassifiedFilterWhere, type PlayerClassifiedFilters } from "./player-classified-filters";
 import { findActiveMembership } from "@/lib/community-access";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
@@ -10,22 +12,31 @@ export async function getPlayerClassifiedCommunityId(userId: string): Promise<st
   return membership?.community.playerClassifiedsEnabled ? communityId : null;
 }
 
-export async function listPlayerClassifieds(userId: string, communityId: string, now: Date) {
+export async function listPlayerClassifieds(userId: string, communityId: string, now: Date, filters: PlayerClassifiedFilters = {}) {
+  const filterWhere = playerClassifiedFilterWhere(playerClassifiedFiltersSchema.parse(filters));
   const scopedDb = await getScopedPrisma(userId);
-  return scopedDb.playerClassified.findMany({
-    where: {
-      communityId,
-      expiresAt: { gt: now },
-      createdBy: { memberships: { some: { communityId, status: "ACTIVE" } } },
-    },
+  const where: Prisma.PlayerClassifiedWhereInput = {
+    ...filterWhere,
+    communityId,
+    expiresAt: { gt: now },
+    createdBy: { ...filterWhere.createdBy, memberships: { some: { communityId, status: "ACTIVE" } } },
+  };
+  const listings = await scopedDb.playerClassified.findMany({
+    where,
     select: {
       id: true,
       message: true,
       createdAt: true,
       expiresAt: true,
-      game: { select: { name: true } },
+      platform: true,
+      microphoneRequirement: true,
+      partyType: true,
+      startsAt: true,
+      durationMinutes: true,
+      game: { select: { id: true, name: true } },
       createdBy: { select: { id: true, discordName: true, discordAvatar: true, color: true } },
     },
     orderBy: { createdAt: "desc" },
   });
+  return listings;
 }

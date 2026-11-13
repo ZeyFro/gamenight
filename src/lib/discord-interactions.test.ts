@@ -9,13 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * défaut) et permission `MANAGE_GUILD` revérifiée côté serveur.
  */
 
-const { verify, setup, edit, sessionRsvp, instantRsvp, tournamentRsvp } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn(), edit: vi.fn(), sessionRsvp: vi.fn(), instantRsvp: vi.fn(), tournamentRsvp: vi.fn() }));
+const { verify, setup, edit, sessionRsvp, instantRsvp, tournamentRsvp, teamCommand } = vi.hoisted(() => ({ verify: vi.fn(), setup: vi.fn(), edit: vi.fn(), sessionRsvp: vi.fn(), instantRsvp: vi.fn(), tournamentRsvp: vi.fn(), teamCommand: vi.fn() }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: verify }));
 vi.mock("@/lib/community-setup", () => ({ setupCommunityFromGuild: setup }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: edit }));
 vi.mock("@/lib/discord-session-rsvp", () => ({ respondToSessionRsvp: sessionRsvp }));
 vi.mock("@/lib/discord-instant-session-rsvp", () => ({ respondToInstantSessionRsvp: instantRsvp }));
 vi.mock("@/lib/discord-tournament-rsvp", () => ({ respondToTournamentRsvp: tournamentRsvp }));
+vi.mock("@/lib/discord-team-command", () => ({ handleSignedTeamCommand: teamCommand }));
 
 import { handleDiscordInteraction } from "./discord-interactions";
 
@@ -61,6 +62,7 @@ describe("handleDiscordInteraction", () => {
     sessionRsvp.mockReset().mockResolvedValue("session RSVP");
     instantRsvp.mockReset().mockResolvedValue("instant RSVP");
     tournamentRsvp.mockReset().mockResolvedValue("tournament RSVP");
+    teamCommand.mockReset().mockReturnValue({ status: 200, body: { type: 5, data: { flags: 64 } }, runTeam: vi.fn() });
     vi.stubEnv("DISCORD_APP_PUBLIC_KEY", "ab".repeat(32));
     vi.stubEnv("DISCORD_CLIENT_ID", "555");
     vi.stubEnv("COMMUNITY_SETUP_COMMAND_ENABLED", "true");
@@ -110,6 +112,13 @@ describe("handleDiscordInteraction", () => {
 
   it("type d'interaction non géré (composant) : 400", async () => {
     await expect(handle(JSON.stringify({ type: 3 }))).resolves.toEqual({ status: 400 });
+  });
+
+  it("route /equipe après signature et contrôle anti-rejeu, sans exiger son enregistrement", async () => {
+    const raw = command({ data: { name: "equipe", options: [{ name: "liste", type: 1 }] } });
+    const out = await handle(raw);
+    expect(teamCommand).toHaveBeenCalledWith(JSON.parse(raw));
+    expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
   });
 
   it.each([

@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterUsersByNotificationChannelPreference } from "@/lib/notification-channel-preferences";
 import { isInstantSessionInviteViaBotEnabled } from "@/lib/discord-bot-config";
 import { createNotificationEvent, enqueueDelivery, notificationEventMatchesSource } from "@/lib/notification-delivery";
 import type { DeliveryResolver, Resolution, ResolvedAction, ResolveInput } from "@/lib/notification-executor";
@@ -148,7 +148,7 @@ export async function enqueueInstantSessionInvites(
   // Lecture du parent non committé et notification dans la transaction de
   // création : lien et provenance viennent de cette session, pas de default.
   const recipients = await db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, silenceReminders: true } });
-  const allowed = await filterUsersByNotificationPreference(recipients, "INSTANT_SESSION", db);
+  const allowed = await filterUsersByNotificationChannelPreference(recipients, "INSTANT_SESSION", "IN_APP", db);
   const session = await db.instantSession.findUniqueOrThrow({ where: { id: instantSessionId }, select: { communityId: true, game: { select: { name: true } } } });
   const scopedDb = scopedTransactionPrisma(db as Prisma.TransactionClient, null);
   await scopedDb.notification.createMany({ data: allowed.map((user) => ({
@@ -281,8 +281,10 @@ export const instantSessionInviteResolver: DeliveryResolver = {
       // empêche donc bien l'envoi. Ne bloque JAMAIS l'EDIT ci-dessous : un
       // MP déjà envoyé reste mis à jour même si la préférence change
       // ensuite — seule une NOUVELLE invitation est concernée.
-      const [allowed] = await filterUsersByNotificationPreference([recipient], "INSTANT_SESSION");
-      if (!allowed) return { eligible: false, reason: "preference_declined" };
+      if (delivery.operation === "SEND" &&
+        (await filterUsersByNotificationChannelPreference([recipient], "INSTANT_SESSION", "DISCORD_DM")).length === 0) {
+        return { eligible: false, reason: "preference_declined" };
+      }
 
       const message = await buildInviteMessage(session);
       const action: ResolvedAction = {

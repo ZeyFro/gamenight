@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
@@ -20,6 +21,12 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
   const input = playerClassifiedSchema.safeParse({
     gameId: formData.get("gameId"),
     message: formData.get("message"),
+    platform: formData.get("platform") ?? undefined,
+    microphoneRequirement: formData.get("microphoneRequirement") ?? undefined,
+    partyType: formData.get("partyType") ?? undefined,
+    startsDate: formData.get("startsDate") ?? undefined,
+    startsTime: formData.get("startsTime") ?? undefined,
+    durationMinutes: formData.get("durationMinutes"),
   });
   if (!input.success) redirect("/joueurs?error=invalid");
   const scopedDb = await getScopedPrisma(user.id);
@@ -27,15 +34,22 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
   if (!game) redirect("/joueurs?error=invalid");
 
   const createdAt = wallClockNow();
+  if (input.data.startsAt && input.data.startsAt <= createdAt) redirect("/joueurs?error=invalid");
+  const data: Prisma.PlayerClassifiedUncheckedCreateInput = {
+    communityId,
+    gameId: game.id,
+    createdById: user.id,
+    message: input.data.message,
+    createdAt,
+    expiresAt: playerClassifiedExpiresAt(createdAt),
+    platform: input.data.platform,
+    microphoneRequirement: input.data.microphoneRequirement,
+    partyType: input.data.partyType,
+    startsAt: input.data.startsAt,
+    durationMinutes: input.data.durationMinutes,
+  };
   await scopedDb.playerClassified.create({
-    data: {
-      communityId,
-      gameId: game.id,
-      createdById: user.id,
-      message: input.data.message,
-      createdAt,
-      expiresAt: playerClassifiedExpiresAt(createdAt),
-    },
+    data,
   });
   revalidatePath("/joueurs");
   redirect("/joueurs");
