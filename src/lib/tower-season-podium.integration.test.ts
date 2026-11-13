@@ -21,6 +21,7 @@ describe.skipIf(!url)("podium saisonnier, crédits réels et accès communautair
   const communityId = scope + "-community";
   const otherId = scope + "-other";
   const players = ["reader", "first", "second", "third", "fourth", "removed", "outsider"];
+  const bulkPlayers: string[] = [];
   const id = (name: string) => scope + "-" + name;
   const current = new Date("2027-07-01T12:00:00Z");
   let sequence = 0;
@@ -32,7 +33,7 @@ describe.skipIf(!url)("podium saisonnier, crédits réels et accès communautair
     if (db) {
       await db.community.deleteMany({ where: { id: { in: [communityId, otherId] } } });
       await db.game.deleteMany({ where: { id: id("game") } });
-      await db.user.deleteMany({ where: { id: { in: players.map(id) } } });
+      await db.user.deleteMany({ where: { id: { in: [...players, ...bulkPlayers].map(id) } } });
       await db.$disconnect();
     }
     vi.unstubAllEnvs();
@@ -41,7 +42,8 @@ describe.skipIf(!url)("podium saisonnier, crédits réels et accès communautair
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     await db.community.deleteMany({ where: { id: { in: [communityId, otherId] } } });
     await db.game.deleteMany({ where: { id: id("game") } });
-    await db.user.deleteMany({ where: { id: { in: players.map(id) } } });
+    await db.user.deleteMany({ where: { id: { in: [...players, ...bulkPlayers].map(id) } } });
+    bulkPlayers.length = 0;
     await db.user.createMany({ data: players.map((name, index) => ({ id: id(name), discordId: scope + index, discordName: name })) });
     await db.community.createMany({ data: [communityId, otherId].map((id, index) => ({ id, name: id, slug: id, status: "ACTIVE" as const, discordGuildId: scope + index, towerChallengesEnabled: true })) });
     await db.membership.createMany({ data: players.map(name => ({ communityId: name === "outsider" ? otherId : communityId, userId: id(name), status: name === "removed" ? "REMOVED" as const : "ACTIVE" as const })) });
@@ -52,6 +54,41 @@ describe.skipIf(!url)("podium saisonnier, crédits réels et accès communautair
     return db.towerChallengeAttempt.create({ data: { communityId: target, userId: id(name), definitionId: target + "-def", requestKey: "credit-" + sequence++, title: "Défi", instructions: "Consigne", rewardFloors: floors, status, assignedAt: new Date("2027-04-01T10:00:00Z"), expiresAt: new Date("2027-04-03T10:00:00Z"), rewardedAt: status === "APPROVED" ? new Date(when) : null } });
   }
   const read = () => podium.getTowerSeasonPodium({ communityId, userId: id("reader") }, current);
+
+  async function creditCoWinners(count: number) {
+    bulkPlayers.push(...Array.from({ length: count }, (_, index) => `co-winner-${String(index).padStart(3, "0")}`));
+    await db.user.createMany({ data: bulkPlayers.map(name => ({ id: id(name), discordId: id(name), discordName: name })) });
+    await db.membership.createMany({ data: bulkPlayers.map(name => ({ communityId, userId: id(name), status: "ACTIVE" as const })) });
+    await db.towerChallengeAttempt.createMany({ data: bulkPlayers.map(name => ({
+      communityId, userId: id(name), definitionId: communityId + "-def", requestKey: "credit-" + sequence++,
+      title: "Défi", instructions: "Consigne", rewardFloors: 3, status: "APPROVED" as const,
+      assignedAt: new Date("2027-04-01T10:00:00Z"), expiresAt: new Date("2027-04-03T10:00:00Z"),
+      rewardedAt: new Date("2027-04-02T10:00:00Z"),
+    })) });
+  }
+
+  it("conserve les 201 co-lauréats strictement ex æquo à la première place", async () => {
+    await creditCoWinners(201);
+    const result = await read();
+    if (result.status !== "PODIUM") throw new Error("Podium attendu");
+    expect(result.entries).toHaveLength(201);
+    expect(result.entries.map(row => row.displayName)).toEqual(bulkPlayers);
+    expect(result.entries.every(row => row.rank === 1 && row.exAequo)).toBe(true);
+  });
+
+  it("conserve tout le groupe de troisième place après deux premiers ex æquo", async () => {
+    await credit("first", 3, "2027-04-01T10:00:00Z");
+    await credit("second", 3, "2027-04-01T10:00:00Z");
+    await credit("fourth", 2, "2027-04-01T10:00:00Z");
+    await creditCoWinners(201);
+    const result = await read();
+    if (result.status !== "PODIUM") throw new Error("Podium attendu");
+    expect(result.entries).toHaveLength(203);
+    expect(result.entries.slice(0, 2).map(row => [row.displayName, row.rank])).toEqual([["first", 1], ["second", 1]]);
+    expect(result.entries.slice(2).map(row => row.displayName)).toEqual(bulkPlayers);
+    expect(result.entries.slice(2).every(row => row.rank === 3 && row.exAequo)).toBe(true);
+    expect(result.entries.some(row => row.displayName === "fourth")).toBe(false);
+  });
 
   it("départage les crédits solo et équipe, limite à trois et ne compte pas une participation non créditée", async () => {
     await credit("first", 3, "2027-04-02T10:00:00Z");
