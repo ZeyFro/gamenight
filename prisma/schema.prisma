@@ -43,6 +43,7 @@ enum FreeGameStore {
 }
 
 model User {
+  captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
@@ -2876,17 +2877,20 @@ model CommunityTeam {
   communityId String
   gameId      String
   createdById String
+  captainId String?
   name        String   @db.VarChar(80)
   description String   @db.VarChar(1000)
   platform    String   @db.VarChar(40)
   maxMembers  Int
   isRecruiting Boolean @default(true)
+  captainLastActivityAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Restrict)
   createdBy User      @relation("CommunityTeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  captain User? @relation("CommunityTeamCaptain", fields: [captainId], references: [id], onDelete: SetNull)
   members   CommunityTeamMember[]
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
@@ -2908,6 +2912,7 @@ model CommunityTeamMember {
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
+  @@unique([communityId, userId])
   @@index([communityId, userId])
 }
 
@@ -3119,6 +3124,8 @@ model Membership {
   // Dernière vérification d'appartenance au serveur Discord (cron rotatif,
   // PR suivante).
   lastVerifiedAt DateTime?
+  // Dernier départ volontaire d’une équipe (délai d’attente de 7 jours).
+  lastTeamLeftAt DateTime?
 
   @@unique([communityId, userId])
   @@index([userId])
