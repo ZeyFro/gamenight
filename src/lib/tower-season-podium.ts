@@ -6,8 +6,6 @@ import { groupCoWinners } from "@/lib/tower-standings";
 
 const actorSchema = z.object({ userId: z.string().min(1).max(191), communityId: z.string().min(1).max(191) });
 
-/** Garde-fou de lecture : bien au-delà d'un podium, même avec de nombreux ex æquo. */
-const PODIUM_SCAN_LIMIT = 200;
 const PODIUM_PLACES = 3;
 
 /**
@@ -49,15 +47,21 @@ export async function getTowerSeasonPodium(input: unknown, current = new Date())
         JOIN "TowerChallengeAttempt" a ON a.id = p."attemptId" AND a."communityId" = p."communityId"
         WHERE p."communityId" = ${communityId} AND a."teamId" IS NOT NULL AND a.status = 'APPROVED'
           AND p."rewardedAt" >= ${season.startAt} AND p."rewardedAt" < ${season.endAt}
+      ), totals AS (
+        SELECT e."userId", u."discordName" AS "displayName", SUM(e."rewardFloors")::bigint AS "rewardFloors",
+          COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins", MAX(e."earnedAt") AS "reachedAt"
+        FROM earned e
+        JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
+        JOIN "User" u ON u.id = e."userId"
+        GROUP BY e."userId", u."discordName"
+      ), ranked AS (
+        SELECT *, RANK() OVER (ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC) AS "podiumRank"
+        FROM totals
       )
-      SELECT e."userId", u."discordName" AS "displayName", SUM(e."rewardFloors")::bigint AS "rewardFloors",
-        COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins", MAX(e."earnedAt") AS "reachedAt"
-      FROM earned e
-      JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
-      JOIN "User" u ON u.id = e."userId"
-      GROUP BY e."userId", u."discordName"
-      ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC, e."userId" ASC
-      LIMIT ${PODIUM_SCAN_LIMIT}
+      SELECT "userId", "displayName", "rewardFloors", "difficultWins", "reachedAt"
+      FROM ranked
+      WHERE "podiumRank" <= ${PODIUM_PLACES}
+      ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC, "userId" ASC
     `;
     const names = new Map(rows.map(row => [row.userId, row.displayName]));
     const groups = groupCoWinners(rows.map(row => ({
