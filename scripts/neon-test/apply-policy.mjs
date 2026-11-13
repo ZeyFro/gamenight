@@ -18,6 +18,36 @@ export function checkHistory(rows, expected) {
   }
 }
 
+// Diagnostic de métadonnées seulement : aucune valeur brute de ligne ou erreur SQL.
+// Le garde historique reste inchangé et son erreur est toujours relancée.
+export function checkHistoryWithDiagnostics(rows, expected, report) {
+  try { return checkHistory(rows, expected); }
+  catch (error) {
+    if (!['NEON_TEST_HISTORY_COUNT', 'NEON_TEST_HISTORY_MISMATCH'].includes(error?.message)) throw error;
+    const details = [];
+    const seen = new Set();
+    let truncated = false;
+    const label = name => Object.hasOwn(expected, name) && /^\d{14}_[a-z0-9_]{1,120}$/.test(name) ? name : '[unapproved]';
+    const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value) ? value : '[invalid]';
+    const add = detail => { if (details.length < 8) details.push(detail); else truncated = true; };
+    for (const row of rows) {
+      const name = row.migration_name;
+      if (!Object.hasOwn(expected, name)) { add({ migration: '[unapproved]', reasons: ['unexpected'] }); continue; }
+      const reasons = [];
+      if (seen.has(name)) reasons.push('duplicate');
+      if (row.checksum !== expected[name]) reasons.push('checksum');
+      if (!row.finished_at) reasons.push('unfinished');
+      if (row.rolled_back_at) reasons.push('rolled_back');
+      seen.add(name);
+      if (reasons.length) add({ migration: label(name), reasons, ...(reasons.includes('checksum') ? { expectedChecksum: hash(expected[name]), actualChecksum: hash(row.checksum) } : {}) });
+    }
+    for (const name of Object.keys(expected)) if (!seen.has(name)) add({ migration: label(name), reasons: ['missing'] });
+    try { report({ expectedCount: Object.keys(expected).length, actualCount: rows.length, details, truncated }); }
+    catch { throw error; } // Une panne du logger ne remplace jamais l'erreur bloquante.
+    throw error;
+  }
+}
+
 // Le runner applique tous les dossiers présents. Le callback addSecond ne doit
 // donc jamais précéder le contrôle réussi après la première migration.
 export async function sequence(operation, { check, run, addSecond }) {

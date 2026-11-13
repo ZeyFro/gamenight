@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { authorize, checkHistory, sequence } from './apply-policy.mjs';
+import { authorize, checkHistoryWithDiagnostics, sequence } from './apply-policy.mjs';
 import { readState, checkSnapshot, schemaForServer, loadForeignTables, checkForeignTables } from './state.mjs';
 import { strictNativeConnection } from './native-tls.mjs';
 import { validateConnectionRoles, validateTestIdentity } from '../neon-test-preflight.mjs';
@@ -56,7 +56,7 @@ async function main() {
           validateTestIdentity(identity,roles);
         },foreignTables);
         const expectedHistory = {...baseline,...(phase>=119?{[first]:sqlHashes[first]}:{}),...(phase>=120?{[second]:sqlHashes[second]}:{})};
-        checkHistory(state.history,expectedHistory);
+        checkHistoryWithDiagnostics(state.history,expectedHistory, diagnostic => console.error(`NEON_TEST_HISTORY_DIAGNOSTICS ${JSON.stringify(diagnostic)}`));
         checkSnapshot(state,phase,schemaForServer(state.identity.version,phase,schemas),originalData,foreignTables);
         originalData ??= state.data;
         console.log(`Phase ${phase} : identité/TLS, historique/checksums, schéma, données et droits runtime vérifiés.`);

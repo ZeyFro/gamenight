@@ -243,3 +243,36 @@ la séparation réelle est contrôlée sur Neon par le préflight et le premier
 mode validate. Aucun privilège supplémentaire n'est accordé par l'outil.
 Les manifests contiennent seulement noms/checksums SQL et empreintes de schéma,
 aucune ligne métier ni empreinte de données réelle persistée.
+# Diagnostic d'un refus d'historique — 13 novembre 2026
+
+Le dry-run `43320658340` est réussi sur main `50e8246`. La validation renforcée
+`43388116969` a ensuite refusé l'historique avec
+`NEON_TEST_HISTORY_MISMATCH`, après préflight identité/rôles/DDL réussi et avant
+tout appel d'application. Les 118 empreintes attendues correspondent aux SQL
+du dépôt ; le journal initial ne précise pas la ligne distante divergente.
+Cela ne prouve pas encore un checksum erroné : doublon, nom inattendu, statut
+inachevé ou rollback peuvent aussi produire ce refus. Aucun SQL ni historique
+distant n'a été modifié pour ce diagnostic.
+
+Le contrôle renforcé peut désormais émettre `NEON_TEST_HISTORY_DIAGNOSTICS`
+avant de relancer **la même erreur bloquante**. Le rapport est limité à huit
+détails, avec compte attendu/réel et indicateur de troncature. Seuls les noms
+de migrations approuvés et les empreintes de 64 caractères hexadécimaux sont
+affichés ; les noms inattendus et valeurs malformées sont remplacés par des
+marqueurs fixes. Aucune ligne métier, URL de connexion, valeur de secret ou
+horodatage brut n'est journalisé. Même une erreur du logger ne permet pas de
+poursuivre la séquence.
+
+Après revue/fusion manuelle de ce seul correctif de diagnostic, relancer le
+workflow en **operation=validate**, avec la preuve dry-run toujours valide
+(moins de 24 h et sources approuvées inchangées), puis faire approuver
+l'environnement protégé. Si la preuve a expiré, renouveler d'abord le dry-run.
+Ne jamais utiliser `apply` pour diagnostiquer. Le prochain refus doit permettre
+d'identifier la migration et le type d'écart sans les accepter automatiquement.
+
+Comparer ensuite les seuls SQL et métadonnées historiques nécessaires, avec
+le rôle dédié et une transaction de lecture seule sur la branche de test.
+Une différence de fins de ligne est une hypothèse à prouver, pas une raison
+d'ignorer les checksums. Ne pas réécrire `_prisma_migrations`, recalculer la
+baseline depuis la base, lancer `resolve`/`reset`, modifier les SQL immuables ou
+réduire les contrôles pour obtenir un résultat vert.
