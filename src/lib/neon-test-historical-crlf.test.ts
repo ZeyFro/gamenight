@@ -13,7 +13,8 @@ const names = [
   "20261029061000_tower_team_challenges",
 ];
 const baseline = JSON.parse(readFileSync(new URL("../../scripts/neon-test/baseline.json", import.meta.url), "utf8")) as Record<string, string>;
-const sql = (name: string) => readFileSync(new URL(`../../prisma/migrations/${name}/migration.sql`, import.meta.url), "utf8");
+// Fixtures canoniques en mémoire, même si Git fournit un checkout Windows CRLF.
+const sql = (name: string) => readFileSync(new URL(`../../prisma/migrations/${name}/migration.sql`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 const crlf = (text: string) => text.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
 const entry = (name: string, checksum = digest(crlf(sql(name)))) => ({ migration_name: name, checksum, finished_at: "done", rolled_back_at: null as string | null });

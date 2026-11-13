@@ -316,6 +316,10 @@ TypeScript, typegen et ESLint ciblé réussis. Les tests recalculent les emprein
 depuis les SQL, couvrent les 118 lignes, les 111 refus hors liste, une vraie
 modification SQL, une référence altérée, un échange d'empreintes et les statuts
 invalides. Ils vérifient aussi l'absence de mutation des lignes ou de la baseline.
+Un chargement de fixtures simulant un checkout CRLF a également été exécuté :
+sept cas échouaient avec les fixtures dépendantes du checkout, puis les 22 cas
+passent après canonicalisation des seules fixtures en mémoire. Aucun fichier
+SQL ni garde de production n'est normalisé ; aucun poste Windows réel testé.
 
 Après revue/fusion manuelle de cette compatibilité bornée, relancer seulement
 `operation=validate`, avec une preuve dry-run toujours valide et approbation de
