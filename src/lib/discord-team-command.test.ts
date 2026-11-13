@@ -15,7 +15,8 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn() } }));
 import { handleSignedTeamCommand } from "./discord-team-command";
 
 const guildId = "123456789012345678";
-const discordId = "234567890123456789";
+let discordId = "234567890123456789";
+let seq = 0;
 const teamId = "team-1";
 const team = (overrides: Record<string, unknown> = {}) => ({
   id: teamId, name: "Valheim", platform: "PC", maxMembers: 6, isRecruiting: true,
@@ -41,6 +42,7 @@ async function finish(output: ReturnType<typeof handleSignedTeamCommand>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  discordId = `23456789012${String(++seq).padStart(7, "0")}`; // id unique par test : le compteur de débit est global au process
   mocks.user.mockResolvedValue({ id: "user-1" });
   mocks.communityId.mockResolvedValue("community-1");
   mocks.community.mockResolvedValue({ discordGuildId: guildId, status: "ACTIVE", communityTeamsEnabled: true });
@@ -102,5 +104,15 @@ describe("/equipe", () => {
     const forged = handleSignedTeamCommand(input("liste", [{ type: 3, name: "equipe_id", value: teamId }]));
     expect(forged.body).toMatchObject({ data: { flags: 64, content: "Commande invalide." } });
     expect(mocks.user).not.toHaveBeenCalled();
+  });
+  it("limite le débit par discordId : la 6e commande est éphémère, sans DB ni runTeam", () => {
+    for (let i = 0; i < 5; i++) expect(handleSignedTeamCommand(input("liste")).runTeam).toBeDefined();
+    const blocked = handleSignedTeamCommand(input("liste"));
+    expect(blocked.body).toMatchObject({ data: { flags: 64, content: "Trop de requêtes, réessaie dans une minute." } });
+    expect(blocked.runTeam).toBeUndefined();
+    expect(mocks.user).not.toHaveBeenCalled();
+    expect(mocks.edit).not.toHaveBeenCalled();
+    discordId = "345678901234567890";
+    expect(handleSignedTeamCommand(input("liste")).runTeam).toBeDefined();
   });
 });
