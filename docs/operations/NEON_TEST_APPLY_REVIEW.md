@@ -276,3 +276,48 @@ Une différence de fins de ligne est une hypothèse à prouver, pas une raison
 d'ignorer les checksums. Ne pas réécrire `_prisma_migrations`, recalculer la
 baseline depuis la base, lancer `resolve`/`reset`, modifier les SQL immuables ou
 réduire les contrôles pour obtenir un résultat vert.
+
+## Cause prouvée : sept empreintes historiques Windows
+
+Le `validate` [43391940334](https://github.com/ZeyFro/gamenight/actions/runs/43391940334)
+confirme 118 lignes et exactement sept divergences de checksum, sans autre motif
+ni troncature. Pour chacune, l'empreinte stockée correspond **exactement** au
+SHA-256 du fichier SQL scellé avec fins de ligne CRLF, tandis que la référence
+canonique correspond au même fichier en LF :
+
+- `20261026180000_community_teams`
+- `20261026190000_session_community_team`
+- `20261026210000_tower_levels_per_floor`
+- `20261026220000_community_team_game_restrict`
+- `20261028140000_tower_challenges`
+- `20261028230000_tower_season_vote`
+- `20261029061000_tower_team_challenges`
+
+Cette reconnaissance LF/CRLF existe dans le [comparateur officiel Prisma 6.19.3](https://github.com/prisma/prisma-engines/blob/6.19.3/schema-engine/connectors/schema-connector/src/checksum.rs).
+L'opérateur reste volontairement plus restreint : `historical-checksums.mjs`
+contient uniquement les sept couples recalculés depuis les SQL scellés et
+confrontés au diagnostic. Une variante est reconnue seulement si le nom,
+l'empreinte canonique attendue **et** l'empreinte CRLF observée correspondent
+exactement. Les 111 autres migrations, les nouvelles #370/#406/#407 et toute
+autre référence demeurent strictes. Aucun calcul permissif ni normalisation
+générale n'est effectué à partir du contenu de la base.
+
+Ni les SQL ni `baseline.json` ni `_prisma_migrations` ne sont réécrits. Le garde
+des fichiers conserve le contrôle byte pour byte des SQL canoniques. Comptage,
+doublons, noms inconnus, migrations absentes, inachevées ou annulées restent
+bloquants. La vérification identité/TLS/rôles précède toujours l'historique ;
+les vérifications de schéma, données, droits, séquence et autorisations restent
+inchangées. Après validation complète de l'historique, chaque variante reconnue
+est auditée par son nom approuvé, sans valeur sensible ni ligne métier.
+
+Tests locaux Node 22 : neuf échecs et treize réussites sur les nouveaux cas
+avant correction, puis 73/73 tests sur huit fichiers, sans test ignoré ;
+TypeScript, typegen et ESLint ciblé réussis. Les tests recalculent les empreintes
+depuis les SQL, couvrent les 118 lignes, les 111 refus hors liste, une vraie
+modification SQL, une référence altérée, un échange d'empreintes et les statuts
+invalides. Ils vérifient aussi l'absence de mutation des lignes ou de la baseline.
+
+Après revue/fusion manuelle de cette compatibilité bornée, relancer seulement
+`operation=validate`, avec une preuve dry-run toujours valide et approbation de
+l'environnement protégé. Ce correctif ne certifie pas encore les contrôles
+suivants sur la branche réelle et n'autorise aucune application de migration.

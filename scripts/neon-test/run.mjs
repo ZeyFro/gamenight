@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { authorize, checkHistoryWithDiagnostics, sequence } from './apply-policy.mjs';
+import { matchesMigrationChecksum } from './historical-checksums.mjs';
 import { readState, checkSnapshot, schemaForServer, loadForeignTables, checkForeignTables } from './state.mjs';
 import { strictNativeConnection } from './native-tls.mjs';
 import { validateConnectionRoles, validateTestIdentity } from '../neon-test-preflight.mjs';
@@ -57,6 +58,7 @@ async function main() {
         },foreignTables);
         const expectedHistory = {...baseline,...(phase>=119?{[first]:sqlHashes[first]}:{}),...(phase>=120?{[second]:sqlHashes[second]}:{})};
         checkHistoryWithDiagnostics(state.history,expectedHistory, diagnostic => console.error(`NEON_TEST_HISTORY_DIAGNOSTICS ${JSON.stringify(diagnostic)}`));
+        for (const row of state.history) if (row.checksum !== expectedHistory[row.migration_name] && matchesMigrationChecksum(row.migration_name,row.checksum,expectedHistory[row.migration_name])) console.log(`Historique CRLF reconnu, SQL scellé inchangé : ${row.migration_name}`);
         checkSnapshot(state,phase,schemaForServer(state.identity.version,phase,schemas),originalData,foreignTables);
         originalData ??= state.data;
         console.log(`Phase ${phase} : identité/TLS, historique/checksums, schéma, données et droits runtime vérifiés.`);
