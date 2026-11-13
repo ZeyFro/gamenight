@@ -3,6 +3,7 @@ import { getCommunityTeamsCommunityId, joinCommunityTeam, listCommunityTeams } f
 import { editSetupResponse } from "@/lib/discord-rest";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
@@ -93,6 +94,11 @@ export function handleSignedTeamCommand(input: unknown): InteractionOutput {
   const guildId = interaction.guild_id;
   const discordId = interaction.member.user.id;
   const action = subcommand.name;
+  // Compteur en mémoire par instance : ne garantit PAS une limite distribuée
+  // (remis à zéro à chaque cold start, un compteur par instance serverless).
+  if (!checkRateLimit(discordId, `discord-equipe:${action}`, { limit: 5, windowMs: 60_000 })) {
+    return ephemeral("Trop de requêtes, réessaie dans une minute.");
+  }
   return {
     status: 200,
     body: { type: 5, data: { flags: 64 } },
