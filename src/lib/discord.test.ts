@@ -41,6 +41,12 @@ describe("postToDiscord — allowed_mentions explicite", () => {
     expect(body.allowed_mentions.parse).toEqual([]);
   });
 
+  it("ne contacte pas le webhook configuré depuis une Preview", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await postToDiscord(embed, "Annonce communautaire");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("renvoie le Retry-After en millisecondes sans deuxième envoi", async () => {
     fetchMock.mockResolvedValue(new Response('{"retry_after":9}', {
       status: 429, headers: { "Retry-After": "1.25" },

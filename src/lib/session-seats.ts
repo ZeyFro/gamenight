@@ -6,6 +6,7 @@ import { lockCreationMembers } from "@/lib/creation-intent";
 import { enqueueSessionAnnounceUpdate } from "@/lib/session-announce";
 import { wallClockNow } from "@/lib/wallclock";
 import { planSessionSeats, type SeatStatus } from "@/lib/session-seat-plan";
+import { getEligibleUserIdsForNotificationChannel } from "@/lib/notification-channel-preferences";
 
 export type SeatCommand = { kind: "join" | "leave" | "refresh" } | { kind: "capacity"; capacity: number };
 export type SeatResult = { ok: true; status?: SeatStatus; replayed?: boolean } | { ok: false; error: "access" | "closed" | "disabled" | "capacity" };
@@ -111,14 +112,22 @@ export async function changeSessionSeat(userId: string, sessionId: string, comma
     const rows = await scopedDb.sessionSeat.findMany({ where: { sessionId } });
     const plan = planSessionSeats(rows, eligible, capacity);
     let changed = command.kind === "capacity" || command.kind === "leave" && !!before && before.status !== "DECLINED" || command.kind === "join" && (!before || before.status === "DECLINED");
+    const newlyConfirmedUserIds: string[] = [];
     for (const row of rows) {
       const status = plan.get(row.userId)!;
       if (status === row.status) continue;
       changed = true;
       await scopedDb.sessionSeat.update({ where: { id: row.id }, data: { status } });
       if (status === "CONFIRMED") {
-        await scopedDb.notification.create({ data: { communityId: session.communityId, userId: row.userId, type: "REMINDER", title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId } });
+        newlyConfirmedUserIds.push(row.userId);
       }
+    }
+    const allowedNotificationIds = await getEligibleUserIdsForNotificationChannel(newlyConfirmedUserIds, "SESSION", "IN_APP", tx);
+    if (allowedNotificationIds.size > 0) {
+      await scopedDb.notification.createMany({ data: [...allowedNotificationIds].map(userId => ({
+        communityId: session.communityId, userId, type: "REMINDER" as const,
+        title: "🎮 Ta place est confirmée", message: "Une place est disponible : tu participes à la soirée.", relatedSessionId: sessionId,
+      })) });
     }
     if (changed && session.announceViaBot) await enqueueSessionAnnounceUpdate(sessionId, scopedDb);
     if (receiptWhere) await scopedDb.notificationEvent.create({ data: { ...receiptWhere.category_eventType_sourceId_occurrence, communityId: session.communityId, payload: { userId, kind: command.kind, status: plan.get(userId) ?? "DECLINED" } } });
