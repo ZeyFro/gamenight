@@ -230,6 +230,24 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
     });
   });
 
+  describe("accès à la proposition de palmarès", () => {
+    it("signale un administrateur ou un propriétaire de la communauté, jamais un simple membre ni un rôle tenu ailleurs", async () => {
+      await player("reader");
+      await player("boss");
+      await player("chief");
+      await player("elsewhere", "ACTIVE", [otherId]);
+      await db.membership.update({ where: { communityId_userId: { communityId, userId: id("boss") } }, data: { role: "OWNER" } });
+      await db.membership.update({ where: { communityId_userId: { communityId, userId: id("chief") } }, data: { role: "ADMIN" } });
+      await db.membership.update({ where: { communityId_userId: { communityId: otherId, userId: id("elsewhere") } }, data: { role: "OWNER" } });
+      const current = "2027-07-05T12:00:00Z";
+      expect((await read(current, "reader")).canReview).toBe(false);
+      expect((await read(current, "boss")).canReview).toBe(true);
+      expect((await read(current, "chief")).canReview).toBe(true);
+      expect((await read(current, "elsewhere")).canReview).toBe(false);
+      expect((await read(current, "elsewhere", otherId)).canReview).toBe(true);
+    });
+  });
+
   describe("départage : étages, puis défis à 3 étages, puis arrivée au total final ; égalité stricte = co-lauréats (Q7)", () => {
     const current = "2027-07-05T12:00:00Z";
 

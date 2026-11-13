@@ -77,6 +77,14 @@ it.each([
   render(await Page());
   expect(screen.getByText(text)).toBeTruthy();
 });
+it("ne propose la page d'administration du palmarès qu'aux administrateurs de la communauté", async () => {
+  render(await Page());
+  expect(screen.queryByRole("link", { name: /Proposition de palmarès/ })).toBeNull();
+  cleanup();
+  mocks.podium.mockResolvedValueOnce({ status: "PODIUM", season, canReview: true, entries: [] });
+  render(await Page());
+  expect(screen.getByRole("link", { name: "Proposition de palmarès (administration)" }).getAttribute("href")).toBe("/admin/tower-palmares");
+});
 it("n'affiche aucune progression quand la Tour est éteinte ou indisponible", async () => {
   for (const status of ["DISABLED", "UNAVAILABLE", "INVALID"]) {
     mocks.progress.mockResolvedValueOnce({ status });
