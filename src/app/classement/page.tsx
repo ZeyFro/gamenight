@@ -67,7 +67,7 @@ function ScoreboardRow({
 }) {
   return (
     <Card className="flex flex-col gap-2">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <span className="flex w-6 shrink-0 flex-col items-center gap-0.5 text-center text-sm font-semibold tabular-nums text-muted">
           {position}
           <PositionDelta delta={entry.weekDeltaPosition} />
@@ -80,17 +80,19 @@ function ScoreboardRow({
           size={44}
         />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 truncate font-medium text-foreground">
-            <span className="truncate">{entry.discordName}</span>
+          <p className="flex min-w-0 items-center gap-2 font-medium text-foreground">
+            <span className="min-w-0 truncate" title={entry.discordName}>{entry.discordName}</span>
             <ColorDot color={entry.color} />
+          </p>
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
             {isMe && (
               <Badge tone="accent" className="shrink-0">
                 Toi
               </Badge>
             )}
-          </p>
-          <p className="truncate text-xs text-muted">
-            Niveau {entry.level} · {entry.title} · {entry.rank.name}
+            <span className="truncate">
+              Niveau {entry.level} · {entry.title} · {entry.rank.name}
+            </span>
           </p>
         </div>
         <div className="shrink-0 text-right">
