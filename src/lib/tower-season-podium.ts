@@ -26,8 +26,8 @@ export async function getTowerSeasonPodium(input: unknown, current = new Date())
   const { userId, communityId } = parsed.data;
   const season = getLastCompletedTowerSeason(current);
   return prisma.$transaction(async tx => {
-    const access = await tx.$queryRaw<{ userId: string }[]>`
-      SELECT m."userId" FROM "Membership" m
+    const access = await tx.$queryRaw<{ role: string }[]>`
+      SELECT m.role FROM "Membership" m
       JOIN "Community" c ON c.id = m."communityId"
       WHERE m."userId" = ${userId} AND m."communityId" = ${communityId}
         AND m.status = 'ACTIVE' AND c.status = 'ACTIVE' AND c."towerChallengesEnabled" = true
@@ -66,6 +66,8 @@ export async function getTowerSeasonPodium(input: unknown, current = new Date())
     return {
       status: "PODIUM",
       season,
+      /** Administrateur de la communauté : peut consulter la proposition de palmarès (/admin/tower-palmares). */
+      canReview: access[0].role === "ADMIN" || access[0].role === "OWNER",
       entries: groups.flatMap(group => group.members.map(member => ({
         rank: group.startRank, exAequo: group.members.length > 1, displayName: names.get(member.userId) ?? "",
         rewardFloors: member.floors.toString(), difficultWins: String(member.hardWins), reachedAt: member.reachedAt,
