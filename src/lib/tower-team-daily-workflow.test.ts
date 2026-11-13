@@ -27,7 +27,15 @@ function run(enabled: string | undefined, configured = false, responseEnabled = 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-describe("cron équipe : activation explicite avant tout accès distant", () => {
+it("déclare le contrat Ubuntu/Bash et la variable d'activation Actions", () => {
+  expect(workflow.jobs["assign-daily-challenges"]["runs-on"]).toBe("ubuntu-latest");
+  expect(step.shell).toBe("bash");
+  expect(step.env.TOWER_TEAM_DAILY_ENABLED).toBe("${{ vars.TOWER_TEAM_DAILY_ENABLED }}");
+});
+
+// Exécution native du workflow Ubuntu, pas une émulation de Bash sous Windows.
+// Sur Linux, tout outil manquant doit faire échouer les tests, pas les ignorer.
+describe.skipIf(process.platform !== "linux")("cron équipe Ubuntu : activation explicite avant tout accès distant", () => {
   it.each([undefined, "", "false", "TRUE", "1"])("reste inactif pour %s, sans secret ni appel HTTP", enabled => {
     const result = run(enabled);
     expect(result.status).toBe(0);

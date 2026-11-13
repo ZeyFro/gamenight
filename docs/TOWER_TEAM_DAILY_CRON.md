@@ -6,6 +6,8 @@ La PR prépare le workflow `.github/workflows/tower-team-daily.yml`. GitHub Acti
 
 Aucune URL d'hôte de production ni valeur de secret n'est stockée dans le dépôt ou dans cette documentation.
 
+Les tests du contrat YAML sont multiplateformes. Les tests qui exécutent réellement le script Bash avec HTTP simulé tournent sous Linux, comme le runner Ubuntu du workflow ; ils sont explicitement ignorés sur les autres systèmes, sans être présentés comme réussis. Aucun outil manquant sur Linux ne provoque une désactivation silencieuse du test.
+
 ## Fonctionnement préparé
 
 - Route appelée : `GET /api/cron/tower-team-daily`.
