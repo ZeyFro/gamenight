@@ -14,7 +14,7 @@ export const metadata = pageMetadata("Équipes et aventures");
 
 const RESULTS: Record<string, string> = {
   created: "Ton équipe est créée.", joined: "Tu as rejoint l’équipe.", already: "Tu fais déjà partie de cette équipe.",
-  left: "Tu as quitté l’équipe.", leader: "Le responsable reste dans son équipe; ferme le recrutement si nécessaire.",
+  left: "Tu as quitté l’équipe.", leader: "Tu es seul dans l’équipe : tu ne peux la quitter qu’avec un successeur, ou en la dissolvant.",
   closed: "Le recrutement est fermé.", full: "Cette équipe est complète.", missing: "Équipe introuvable.",
   limit: "Limite atteinte : trois équipes créées par période de 24 heures.",
   already_team: "Tu es déjà membre d’une équipe de cette communauté.",
@@ -95,10 +95,12 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
                 {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(session.date)} · {session.decidedGame?.name ?? "Vote en cours"}
               </Link>)}
             </div>}
-            {isLeader ? <form action={setCommunityTeamRecruitmentAction}>
+            {isLeader ? <div className="flex flex-wrap gap-2"><form action={setCommunityTeamRecruitmentAction}>
               <input type="hidden" name="teamId" value={team.id} /><input type="hidden" name="open" value={String(!team.isRecruiting)} />
               <Button type="submit" size="sm">{team.isRecruiting ? "Fermer le recrutement" : "Rouvrir le recrutement"}</Button>
-            </form> : isMember ? <form action={leaveCommunityTeamAction}>
+            </form><form action={leaveCommunityTeamAction}>
+              <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm">Quitter l’équipe</Button>
+            </form></div> : isMember ? <form action={leaveCommunityTeamAction}>
               <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm">Quitter l’équipe</Button>
             </form> : team.isRecruiting && team._count.members < team.maxMembers ? <form action={joinCommunityTeamAction}>
               <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm" variant="primary">Rejoindre l’équipe</Button>
