@@ -1,4 +1,5 @@
 // Politique pure : aucun accès réseau, secret ou écriture SQL.
+import { matchesMigrationChecksum } from './historical-checksums.mjs';
 /** @param {{operation: string, ref: string, activation?: string, confirmation?: string, evidence?: string}} config */
 export function authorize({ operation, ref, activation, confirmation, evidence }) {
   if (ref !== 'refs/heads/main') throw new Error('NEON_TEST_MAIN_REQUIRED');
@@ -13,7 +14,7 @@ export function checkHistory(rows, expected) {
   const seen = new Set();
   for (const row of rows) {
     if (seen.has(row.migration_name) || !Object.hasOwn(expected, row.migration_name)
-      || expected[row.migration_name] !== row.checksum || !row.finished_at || row.rolled_back_at) throw new Error('NEON_TEST_HISTORY_MISMATCH');
+      || !matchesMigrationChecksum(row.migration_name,row.checksum,expected[row.migration_name]) || !row.finished_at || row.rolled_back_at) throw new Error('NEON_TEST_HISTORY_MISMATCH');
     seen.add(row.migration_name);
   }
 }
@@ -35,7 +36,7 @@ export function checkHistoryWithDiagnostics(rows, expected, report) {
       if (!Object.hasOwn(expected, name)) { add({ migration: '[unapproved]', reasons: ['unexpected'] }); continue; }
       const reasons = [];
       if (seen.has(name)) reasons.push('duplicate');
-      if (row.checksum !== expected[name]) reasons.push('checksum');
+      if (!matchesMigrationChecksum(name,row.checksum,expected[name])) reasons.push('checksum');
       if (!row.finished_at) reasons.push('unfinished');
       if (row.rolled_back_at) reasons.push('rolled_back');
       seen.add(name);
