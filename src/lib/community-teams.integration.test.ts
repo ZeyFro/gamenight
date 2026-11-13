@@ -165,6 +165,75 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await teams.createCommunityTeam({ ...input, userId: ids.member, name: "Nouvelle équipe libre" })).toBe("created");
   });
 
+  describe("départ volontaire du capitaine", () => {
+    const input = () => ({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Passation", description: "Projet avec passation du capitaine.", platform: "PC", maxMembers: 5 });
+    const setup = async () => {
+      await teams.createCommunityTeam(input());
+      return db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, createdById: ids.leader } });
+    };
+    const join = (userId: string, teamId: string, joinedAt: Date) =>
+      db.communityTeamMember.create({ data: { communityId: ids.community, teamId, userId, joinedAt } });
+    const expectLeft = async (userId: string, teamId: string) => {
+      expect(await db.communityTeamMember.count({ where: { teamId, userId } })).toBe(0);
+      const m = await db.membership.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.community, userId } }, select: { lastTeamLeftAt: true } });
+      expect(m.lastTeamLeftAt).toBeInstanceOf(Date);
+    };
+
+    it("passe la main au plus ancien membre actif puis sort avec le délai de 7 jours", async () => {
+      const team = await setup();
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      await join(ids.member, team.id, new Date("2030-01-03"));
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("left");
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.racer);
+      await expectLeft(ids.leader, team.id);
+      expect(await teams.createCommunityTeam({ ...input(), name: "Trop tôt" })).toBe("cooldown");
+    });
+
+    it("départage une égalité de joinedAt par userId", async () => {
+      const team = await setup();
+      const same = new Date("2030-01-02");
+      await join(ids.racer, team.id, same);
+      await join(ids.member, team.id, same);
+      const [first] = [ids.racer, ids.member].sort();
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("left");
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(first);
+    });
+
+    it("ignore les membres non actifs", async () => {
+      const team = await setup();
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      await join(ids.member, team.id, new Date("2030-01-03"));
+      await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.racer } }, data: { status: "LEFT" } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("left");
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.member);
+    });
+
+    it("renvoie « leader » si le capitaine est seul (ou si les autres ne sont pas actifs)", async () => {
+      const team = await setup();
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("leader");
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.racer } }, data: { status: "LEFT" } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("leader");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id, userId: ids.leader } })).toBe(1);
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.leader);
+    });
+
+    it("est atomique : un échec en fin de transaction annule la passation", async () => {
+      const team = await setup();
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      await db.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION test_fail_membership() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'échec simulé'; END; $$ LANGUAGE plpgsql`);
+      await db.$executeRawUnsafe(`CREATE TRIGGER test_fail_membership BEFORE UPDATE ON "Membership" FOR EACH ROW EXECUTE FUNCTION test_fail_membership()`);
+      try {
+        await expect(teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).rejects.toThrow();
+      } finally {
+        await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS test_fail_membership ON "Membership"`);
+        await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS test_fail_membership()`);
+      }
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.leader);
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id, userId: ids.leader } })).toBe(1);
+    });
+  });
+
   it("prevents deleting a game from cascading into its community teams", async () => {
     await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Explorateurs", description: "Projet durable.", platform: "PC", maxMembers: 4 });
 
