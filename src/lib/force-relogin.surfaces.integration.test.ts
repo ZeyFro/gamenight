@@ -75,6 +75,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
     beforeEach(async () => {
       vi.clearAllMocks();
       await db.$executeRawUnsafe(`TRUNCATE "User" CASCADE`);
+      // La base est partagée entre fichiers et seul « User » est vidé ici : un fichier précédent
+      // (default-community.integration.test.ts) laisse la communauté par défaut SUSPENDED, ce qui
+      // fait refuser toute session (adhésion sans communauté ACTIVE) avant même le test de
+      // reconnexion forcée. Précondition du test : une communauté par défaut ACTIVE.
+      const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
+      await db.community.update({ where: { id: communityId }, data: { status: "ACTIVE" } });
     });
 
     let counter = 0;
