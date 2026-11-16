@@ -20,6 +20,13 @@ export function canClaimSoloChallenge(lastAssignedAt: Date | null, now: Date): b
   return lastAssignedAt === null || current - timestamp(lastAssignedAt) >= 12 * HOUR_MS;
 }
 
+export function msUntilSoloChallengeAvailable(lastAssignedAt: Date | null, now: Date): number {
+  const current = timestamp(now);
+  if (lastAssignedAt === null) return 0;
+  const elapsed = current - timestamp(lastAssignedAt);
+  return elapsed >= 12 * HOUR_MS ? 0 : 12 * HOUR_MS - elapsed;
+}
+
 export function canSubmitChallengeProof(assignedAt: Date, now: Date): boolean {
   const elapsed = timestamp(now) - timestamp(assignedAt);
   return elapsed >= 0 && elapsed < 48 * HOUR_MS;
