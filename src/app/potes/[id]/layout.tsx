@@ -14,6 +14,8 @@ import { PlayerEquipment } from "@/components/PlayerEquipment";
 import { GamingIdentifiers } from "@/components/GamingIdentifiers";
 import { getEquippedShopItems } from "@/lib/xp-shop";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { getTowerProgressForProfile } from "@/lib/tower-personal-progress";
+import { TowerRankBadge } from "@/components/TowerRankBadge";
 
 /**
  * En-tête + onglets partagés par les 5 sous-routes de `/potes/[id]`
@@ -59,6 +61,8 @@ export default async function PoteLayout({
 
   const level = levelForXp(pote.xpTotal);
   const rank = rankForLevel(level);
+  // Rang The Tower : étages gagnés avec les défis (jamais l'XP) ; `null` tant que la Tour est éteinte.
+  const tower = await getTowerProgressForProfile(user.id, id);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -82,6 +86,7 @@ export default async function PoteLayout({
               >
                 {rank.name}
               </span>
+              {tower && <TowerRankBadge rank={tower.rank} />}
               <Badge tone={pote.steamId64 ? "accent" : "neutral"}>
                 {pote.steamId64 ? "Steam lié" : "Steam non lié"}
               </Badge>

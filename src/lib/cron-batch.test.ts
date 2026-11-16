@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { processInBatches } from "@/lib/cron-batch";
+import * as m_p02 from "./cron-batch";
 
 /**
  * Fix "cron Steam surdimensionné" — `processInBatches` doit garantir une
@@ -92,5 +93,29 @@ describe("processInBatches", () => {
     const { results, processedCount } = await processInBatches([], 3, async (item) => item);
     expect(results).toEqual([]);
     expect(processedCount).toBe(0);
+  });
+});
+
+// Tâche Qwen qwen-p02-cron-batch-taille — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("cron-batch · p02-cron-batch-taille", () => {
+  for (const size of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    it(`une taille de lot invalide (${size}) leve une RangeError`, async () => {
+      let calls = 0;
+      await expect(
+        (async () => m_p02.processInBatches([1, 2, 3], size, async (x) => x, { shouldContinue: () => ++calls < 4 }))(),
+      ).rejects.toThrow(RangeError);
+    });
+  }
+  it('le traitement valide reste inchange : lots, ordre et compteur', async () => {
+    const order: number[] = [];
+    const out = await m_p02.processInBatches([1, 2, 3, 4, 5], 2, async (x) => { order.push(x); if (x === 3) throw new Error('x'); return x * 10; });
+    expect(out.processedCount).toBe(5);
+    expect(out.results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled', 'rejected', 'fulfilled', 'fulfilled']);
+    expect(order).toEqual([1, 2, 3, 4, 5]);
+  });
+  it('shouldContinue arrete avant le lot suivant', async () => {
+    let checks = 0;
+    const out = await m_p02.processInBatches([1, 2, 3, 4], 2, async (x) => x, { shouldContinue: () => ++checks <= 1 });
+    expect(out.processedCount).toBe(2);
   });
 });
