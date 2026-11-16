@@ -161,6 +161,7 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 - **Tests attendus :** Vérification des liens, navigation mobile et revue des libellés.
 - **Dépendances / suivi :** #400; tâches d'audit P1-02.
 - **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+- **État au 16/11/2026 :** partie GameNight travaillée en local seulement (branche `agent/preflight-20261116`, non poussée) — accueil dans la barre basse mobile, icônes distinctes, état actif visible, gardes de tests ; la partie Discord (salons et liens) reste à faire. Voir [la note de transmission](obsidian/P1-03-navigation.md).
 
 ### Phase 2 — Fonctionnalités sociales
 

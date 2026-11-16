@@ -67,6 +67,25 @@ export function UsersIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+// Ajoutés pour la navigation (P1-03) : la maison désigne l'accueil et la lune
+// une soirée, pour ne plus partager le dé unique entre Accueil, Roulette
+// et Soirées, ni le calendrier entre Soirées et Calendrier.
+export function HomeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 10.6 12 4l8 6.6V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1v-9.4Z" />
+    </Icon>
+  );
+}
+
+export function MoonIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M20 14.5A8.2 8.2 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+    </Icon>
+  );
+}
+
 export function TrophyIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
