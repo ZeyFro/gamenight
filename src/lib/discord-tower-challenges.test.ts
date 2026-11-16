@@ -215,7 +215,7 @@ describe("parcours Discord The Tower signé", () => {
     expect(mocks.claim).toHaveBeenCalledTimes(name === "defi" ? 1 : 0);
     expect(mocks.state).toHaveBeenCalledTimes(1);
     expect(commands.find(command => command.name === "gamenight")?.default_member_permissions).toBe("32");
-    expect(commands.find(command => command.name === "tower")?.options.map(option => option.name)).toEqual(["defi", "progression", "classement", "vote", "equipe"]);
+    expect(commands.find(command => command.name === "tower")?.options?.map(option => option.name)).toEqual(["defi", "progression", "classement", "vote", "equipe"]);
   });
   it("affiche le classement saisonnier sur plusieurs lignes", async () => {
     const out = await run(payload("", { type: 2, message: undefined,

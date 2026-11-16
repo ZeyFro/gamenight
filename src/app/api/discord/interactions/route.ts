@@ -10,7 +10,7 @@ export const maxDuration = 120;
  * signature porte sur les octets exacts reçus.
  */
 export async function POST(request: Request) {
-  const { status, body, runSetup, runRsvp, runTower, runRole } = await handleDiscordInteraction({
+  const { status, body, runSetup, runRsvp, runTower, runRole, runCommunity } = await handleDiscordInteraction({
     rawBody: await request.text(),
     signature: request.headers.get("x-signature-ed25519"),
     timestamp: request.headers.get("x-signature-timestamp"),
@@ -19,5 +19,6 @@ export async function POST(request: Request) {
   if (runRsvp) after(runRsvp);
   if (runTower) after(runTower);
   if (runRole) after(runRole);
+  if (runCommunity) after(runCommunity);
   return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
 }

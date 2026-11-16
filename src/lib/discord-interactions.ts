@@ -66,6 +66,7 @@ export interface InteractionOutput {
   runRsvp?: () => Promise<void>;
   runTower?: () => Promise<void>;
   runRole?: () => Promise<void>;
+  runCommunity?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -110,6 +111,11 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
     return handleSignedTowerAdminInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && (interaction.data?.name === "aide" || interaction.data?.name === "profil")) {
+    // /aide et /profil : lecture seule, aucune ressource Discord créée.
+    const { handleSignedCommunityInteraction } = await import("@/lib/discord-community-commands");
+    return handleSignedCommunityInteraction(json, input.timestamp);
   }
   if (interaction.type === 2 && interaction.data?.name === "role") {
     // /role : attribution libre-service des rôles de jeu + synchro du profil.

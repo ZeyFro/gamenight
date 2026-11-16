@@ -215,5 +215,29 @@
         ]
       }
     ]
+  },
+  {
+    "name": "aide",
+    "type": 1,
+    "description": "Liste les commandes GameNight et leur état",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
+  },
+  {
+    "name": "profil",
+    "type": 1,
+    "description": "Ton étage, ton niveau, tes badges et tes équipes",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
   }
 ]
