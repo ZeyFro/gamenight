@@ -7,7 +7,10 @@ export type AttendanceXpSettings = {
 export const MAX_ATTENDANCE_XP = 20;
 
 export function attendanceRatePercent(present: number, total: number): number | null {
-  return total > 0 ? Math.round((present / total) * 100) : null;
+  if (total === 0) return null;
+  if (!Number.isInteger(present) || !Number.isInteger(total)) return null;
+  if (present < 0 || present > total) return null;
+  return Math.round((present / total) * 100);
 }
 
 export function attendanceXpAmount(settings: AttendanceXpSettings, present: boolean): number {

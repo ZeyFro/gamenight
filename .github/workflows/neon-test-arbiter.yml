@@ -1,0 +1,80 @@
+name: Neon Test dry-run arbitre #407
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-test-migrations-370-406
+  cancel-in-progress: false
+
+jobs:
+  migration-test:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: neon-migration-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout the sealed 118-migration operator baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7
+          path: operator
+          persist-credentials: false
+      - name: Checkout the chronological runner and first SQL
+        uses: actions/checkout@v4
+        with:
+          ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
+          path: migration-370
+          persist-credentials: false
+      - name: Checkout only the pinned second SQL source
+        uses: actions/checkout@v4
+        with:
+          ref: 1a495ede501784167b597c43438c1527b2d58082
+          path: migration-406
+          sparse-checkout: prisma/migrations
+          persist-credentials: false
+      - name: Checkout only the pinned arbiter SQL source
+        uses: actions/checkout@v4
+        with:
+          ref: 5c3e722c83f7898aaa5516e75d7b1b41ee86f3e8
+          path: migration-407
+          sparse-checkout: prisma/migrations
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: operator/package-lock.json
+      - name: Assemble exactly baseline and three sealed migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp migration-370/scripts/db-migrate.mjs operator/scripts/db-migrate.mjs
+          cp migration-370/scripts/db-migrate-lib.mjs operator/scripts/db-migrate-lib.mjs
+          # Garde d'URL du runner épinglé : n'admet que la forme exacte sslaccept=strict (empreintes vérifiées avant et après).
+          node scripts/neon-test/runner-ssl.mjs operator/scripts/db-migrate-lib.mjs
+          cp -R scripts/neon-test operator/scripts/neon-test
+          cp -R migration-370/prisma/migrations/20261104140000_tower_team_membership_policy operator/prisma/migrations/
+          cp -R migration-406/prisma/migrations/20261105120000_tower_launch_channels_appeals_matchmaking operator/prisma/migrations/
+          cp -R migration-407/prisma/migrations/20261106150000_tower_fixed_arbiter operator/prisma/migrations/
+          cp -R scripts/neon-test-arbiter operator/scripts/neon-test-arbiter
+      - name: Install without any remote database secret
+        working-directory: operator
+        run: npm ci
+      - working-directory: operator
+        run: npx prisma generate
+      - name: Validate phase 120 and dry-run only the arbiter migration
+        working-directory: operator
+        run: node scripts/neon-test-arbiter/run.mjs
+        env:
+          OPERATION: validate
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          GAMENIGHT_EXPECTED_TARGET: ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech/neondb
+          GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
+          GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}
