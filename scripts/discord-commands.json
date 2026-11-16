@@ -141,5 +141,79 @@
         "description": "Importe une fois le pack de départ des défis d'équipe"
       }
     ]
+  },
+  {
+    "name": "role",
+    "type": 1,
+    "description": "Rôles de jeu Discord et centres d’intérêt GameNight",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "chercher",
+        "description": "Cherche un rôle de jeu existant",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "attribuer",
+        "description": "Reçois le rôle de jeu (créé si absent et autorisé)",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "creer",
+        "description": "Crée le rôle de jeu puis te l’attribue",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "retirer",
+        "description": "Retire un de tes rôles de jeu",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      }
+    ]
   }
 ]
