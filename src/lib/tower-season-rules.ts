@@ -89,6 +89,15 @@ export function evaluateSeasonVoteQuorum(input: { distinctEligibleVoters: number
 }
 
 /**
+ * Q9 : nombre de votants encore manquants pour atteindre le quorum minimal, minimum 0.
+ */
+export function missingSeasonVoters(distinctEligibleVoters: number | readonly string[]): number {
+  evaluateSeasonVoteQuorum({ distinctEligibleVoters });
+  const count = typeof distinctEligibleVoters === "number" ? distinctEligibleVoters : new Set(distinctEligibleVoters).size;
+  return Math.max(0, TOWER_SEASON_VOTE_MIN_VOTERS - count);
+}
+
+/**
  * Q5 : titre de champion actif de la publication du palmarès de la saison gagnée (incluse) jusqu'à la
  * publication du palmarès de la saison SUIVANTE (exclue). Pas de publication suivante : actif. Palmarès
  * gagné jamais publié (null/undefined) ou pas encore atteint : inactif. Le badge permanent n'est pas codé.

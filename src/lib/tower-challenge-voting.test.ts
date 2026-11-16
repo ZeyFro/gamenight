@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateChallengeVote, type ChallengeVote } from "./tower-challenge-voting";
+import * as m_p14 from "./tower-challenge-voting";
+import * as m_p15 from "./tower-challenge-voting";
 
 const openedAt = new Date("2026-10-28T12:00:00Z");
 const closedAt = new Date("2026-10-29T12:00:00Z");
@@ -45,5 +47,31 @@ describe("vote communautaire des défis", () => {
   it("compte 24 heures réelles au changement d'heure", () => {
     const start = new Date("2026-10-24T12:00:00Z");
     expect(evaluateChallengeVote({ authorId: "author", openedAt: start, votes: [], now: new Date("2026-10-25T11:00:00Z") })).toMatchObject({ status: "OPEN" });
+  });
+});
+
+// Tâche Qwen qwen-p14-vote-echeance — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-voting · p14-vote-echeance", () => {
+  it('echeance du vote a 24 h', () => {
+    const o = new Date('2026-03-10T08:00:00Z');
+    const d = m_p14.challengeVoteDeadline(o);
+    expect(d.toISOString()).toBe('2026-03-11T08:00:00.000Z');
+    expect(o.toISOString()).toBe('2026-03-10T08:00:00.000Z');
+    expect(d !== o).toBeTruthy();
+    expect(() => m_p14.challengeVoteDeadline(new Date(NaN))).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p15-vote-votants-manquants — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-voting · p15-vote-votants-manquants", () => {
+  it('votants manquants pour le quorum de 3', () => {
+    expect(m_p15.missingChallengeVoters(0)).toBe(3);
+    expect(m_p15.missingChallengeVoters(1)).toBe(2);
+    expect(m_p15.missingChallengeVoters(2)).toBe(1);
+    expect(m_p15.missingChallengeVoters(3)).toBe(0);
+    expect(m_p15.missingChallengeVoters(10)).toBe(0);
+    expect(() => m_p15.missingChallengeVoters(-1)).toThrow(RangeError);
+    expect(() => m_p15.missingChallengeVoters(1.5)).toThrow(RangeError);
+    expect(() => m_p15.missingChallengeVoters(NaN)).toThrow(RangeError);
   });
 });
