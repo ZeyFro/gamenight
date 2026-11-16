@@ -1,8 +1,14 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NAV_LINKS } from "./nav-links";
 import { SIDEBAR_GROUPS } from "./app/Sidebar";
 
 const sidebarLinks = SIDEBAR_GROUPS.flatMap((group) => [...group.links]);
+
+function pageFile(href: string) {
+  return join(process.cwd(), href === "/" ? "src/app/page.tsx" : `src/app${href.replace(/\/$/, "")}/page.tsx`);
+}
 
 describe("cohérence de la navigation", () => {
   it("ne propose chaque destination qu'une fois dans la barre basse", () => {
@@ -17,6 +23,15 @@ describe("cohérence de la navigation", () => {
     const sidebarHrefs = new Set(sidebarLinks.map(({ href }) => href));
     for (const { href } of NAV_LINKS) expect(sidebarHrefs.has(href)).toBe(true);
     expect(sidebarHrefs.has("/classement")).toBe(true);
+  });
+
+  // Aucune entrée de nav ne doit mener à une page inexistante : la barre
+  // basse comme le tiroir sont vérifiés, y compris « Classement » qui n'est
+  // plus dans la barre.
+  it("pointe uniquement vers des pages qui existent", () => {
+    for (const { href } of [...NAV_LINKS, ...sidebarLinks]) {
+      expect(existsSync(pageFile(href)), `page absente pour ${href}`).toBe(true);
+    }
   });
 
   // Deux destinations voisines avec la même icône prêtaient à confusion

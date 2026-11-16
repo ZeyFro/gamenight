@@ -24,4 +24,14 @@ describe("navigation complète desktop/mobile", () => {
     await userEvent.click(within(dialog).getByRole("link", { name: "Tournois" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+  // « Classement » n'est plus dans la barre basse : son accès mobile validé
+  // est le tiroir, à un tap depuis le bouton de menu.
+  it("garde « Classement » joignable en un tap depuis le menu mobile", async () => {
+    render(<Sidebar user={{ name: "Joueur", avatar: null, level: 4, xp: 650 }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Ouvrir le menu" }));
+    const dialog = screen.getByRole("dialog");
+    const link = within(dialog).getByRole("link", { name: "Classement" });
+    expect(link.getAttribute("href")).toBe("/classement");
+    expect(within(dialog).getByRole("navigation", { name: "Navigation mobile" })).toBeTruthy();
+  });
 });

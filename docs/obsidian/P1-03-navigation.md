@@ -32,13 +32,29 @@ composant :
   Soirées, donc plus d'icône partagée entre deux destinations du groupe
   « Jouer ensemble ».
 
+## Emplacement de Classement — validé (16/11/2026)
+
+Le propriétaire valide la barre basse à six entrées, « Classement » conservé
+dans le tiroir. Trois chemins existent et pointent vers la vraie page
+`src/app/classement/page.tsx` :
+
+1. **tiroir** — bouton menu, puis « Classement » (un tap) ;
+2. **accueil** — carte « Classement rapide », lien « Voir tout » ;
+3. **profil** — lien « Rang global #n sur N » dans l'en-tête.
+
+Garde ajoutée : `nav-links.test.ts` vérifie que **chaque** destination de la
+barre basse et du tiroir a un `page.tsx` ; aucune entrée ne peut plus mener à
+une page inexistante. `Sidebar.test.tsx` vérifie « Classement » à un tap dans
+le menu mobile.
+
 ## Vérifications
 
 - `npx tsc --noEmit` : 0 erreur.
 - `npx eslint` sur les 7 fichiers touchés : 0 erreur.
 - `npx vitest run BottomNav.test.tsx nav-links.test.ts
   BottomNav.browser.test.tsx Sidebar.test.tsx Header.test.tsx
-  Header.touch.browser.test.tsx` : 6 fichiers, **20/20**.
+  Header.touch.browser.test.tsx` : 6 fichiers, **22/22** (deux gardes
+  ajoutées après validation : pages existantes, Classement dans le menu).
 - Recette navigateur réelle : 320 / 360 / 390 / 414 px — aucun dépassement
   horizontal, aucun chevauchement de libellés, cibles ≥ 44 × 56 px atteintes
   au centre, barre masquée à 1280 px.
@@ -50,5 +66,6 @@ composant :
   possible localement (pas de base ni de secret). Les pages authentifiées ne
   sont donc pas recettées ici.
 - Aucun test PostgreSQL, aucune action Discord, aucun déploiement Vercel.
-- La barre basse reste à six entrées : `Roulette` et `Tournois` ne sont
-  accessibles que par le tiroir.
+- La barre basse reste à six entrées (validé) : `Roulette`, `Tournois` et
+  `Classement` passent par le tiroir, ce dernier restant aussi accessible
+  depuis l'accueil et le profil.
