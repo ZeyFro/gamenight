@@ -14,6 +14,10 @@ export function getTowerParisDayKey(date: Date): string {
   return parisDayFormatter.format(date);
 }
 
+export function challengeProofDeadline(assignedAt: Date): Date {
+  return new Date(timestamp(assignedAt) + 48 * HOUR_MS);
+}
+
 // Les délais sont des durées réelles, distinctes de l'horloge murale des soirées.
 export function canClaimSoloChallenge(lastAssignedAt: Date | null, now: Date): boolean {
   const current = timestamp(now);
