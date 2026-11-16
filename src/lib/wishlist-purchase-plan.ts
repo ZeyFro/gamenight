@@ -23,7 +23,7 @@ export function parseWishlistPurchasePlanInput(
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   if (targetDate.getTime() < today) return null;
 
-  const note = noteValue.trim();
+  const note = noteValue.replace(/[\p{Cc}\s]+/gu, " ").trim();
   if (note.length > WISHLIST_PURCHASE_PLAN_NOTE_MAX_LENGTH) return null;
   return { targetDate, note: note || null };
 }
