@@ -33,3 +33,8 @@ export function getTowerSchoolSeason(now = new Date()): TowerSchoolSeason {
   if (month <= 8) return season(`Été · ${year}`, [year, 7, 1], [year, 9, 1], true);
   return season(`S4 · ${year}`, [year, 9, 1], [year + 1, 1, 1], true);
 }
+
+export function daysLeftInTowerSeason(now = new Date()): number {
+  const { endAt } = getTowerSchoolSeason(now);
+  return Math.max(0, Math.ceil((endAt.getTime() - now.getTime()) / 86400000));
+}
