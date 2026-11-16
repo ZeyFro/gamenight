@@ -36,6 +36,10 @@ export function canSubmitChallengeProof(assignedAt: Date, now: Date): boolean {
   return elapsed >= 0 && elapsed < 48 * HOUR_MS;
 }
 
+export function isChallengeProofExpired(assignedAt: Date, now: Date): boolean {
+  return timestamp(now) - timestamp(assignedAt) >= 48 * HOUR_MS;
+}
+
 // À appeler sous verrou transactionnel avec les réussites solo ET équipe du membre.
 export function canReceiveChallengeReward(completedAt: readonly Date[], now: Date): boolean {
   const current = timestamp(now);
