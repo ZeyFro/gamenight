@@ -12,7 +12,7 @@ describe("accueil The Tower", () => {
     render(<TowerWelcomePanel />);
     const links = screen.getAllByRole("link");
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
-      ["Trouver des joueurs", "/joueurs"],
+      ["Trouver des joueurs", "/tower/forums"],
       ["Rejoindre une soirée", "/sessions"],
       ["Commencer l'Ascension", "/tower"],
     ]);
