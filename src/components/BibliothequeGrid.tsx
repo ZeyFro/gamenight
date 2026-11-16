@@ -115,9 +115,12 @@ function GameCard({ game }: { game: BibliothequeGame }) {
           toggle au clic. */}
       <form action={toggleGameCoop} className="px-3 pb-2">
         <input type="hidden" name="gameId" value={game.id} />
+        {/* Phase 2 mobile : le libellé en 11 px souligné était illisible et
+            peu identifiable comme action. Pastille bordée en 12 px, même
+            cible tactile de 44 px (gn-touch-target). */}
         <button
           type="submit"
-          className="gn-touch-target gn-touch-target-end relative text-[11px] text-muted underline decoration-dotted hover:text-foreground"
+          className="gn-touch-target gn-touch-target-end relative inline-flex min-h-8 items-center rounded-md border border-border px-2 text-xs text-muted transition-colors hover:border-accent hover:text-foreground"
         >
           {game.isCoop ? "Retirer coop" : "Marquer comme coop"}
         </button>

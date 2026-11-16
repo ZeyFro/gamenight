@@ -30,6 +30,10 @@ h1,h2,h3,.gn-sidebar-brand { font-family:var(--font-display),var(--font-sans),sa
 .gn-sidebar-help { border-top:1px solid var(--border); padding-top:12px; }
 .gn-sidebar-profile { display:flex; align-items:center; gap:11px; padding:17px 10px 0; border-top:1px solid var(--border); font-size:13px; }
 .gn-menu-button { height:40px; width:40px; border:1px solid var(--border); border-radius:8px; flex-shrink:0; font-size:22px; }
+/* Onglets défilants sur mobile (phase 2) : le contenu reste atteignable au
+doigt, sans la barre de défilement native qui mangeait une ligne. */
+.gn-scroll-x { overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
+.gn-scroll-x::-webkit-scrollbar { display:none; }
 .gn-mobile-sidebar { display:flex; z-index:60; width:min(310px,88vw); }
 .gn-drawer-close { position:absolute; top:14px; right:12px; width:32px; height:32px; font-size:26px; border-radius:6px; }
 .gn-card { box-shadow:var(--gn-shadow); }

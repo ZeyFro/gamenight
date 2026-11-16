@@ -48,7 +48,9 @@ describe("cibles tactiles marquées gn-touch-target + relative", () => {
   });
 
   it("le bouton « Marquer comme coop » reste dans la carte à overflow masqué", () => {
-    expect(read("components/BibliothequeGrid.tsx")).toMatch(/gn-touch-target-end[^"]*text-\[11px\]/);
+    // Phase 2 : pastille bordée de 32 px de haut en 12 px de texte (au lieu de
+    // 11 px souligné, illisible au doigt), toujours étendue à 44 px au tactile.
+    expect(read("components/BibliothequeGrid.tsx")).toMatch(/gn-touch-target-end[^"]*min-h-8[^"]*text-xs/);
   });
 
   it("l'espace entre éditer/retirer passe à 8 px au tactile (pas de zones qui se chevauchent)", () => {

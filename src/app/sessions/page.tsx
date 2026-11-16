@@ -3,7 +3,6 @@ import { CreationForm } from "@/components/CreationForm";
 import { GameWarnings } from "@/components/GameWarnings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { Game, Session } from "@prisma/client";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
@@ -15,24 +14,21 @@ import {
   finalizeSuperlativeVotingIfDue,
   getPendingSuperlativeVoteSessionIds,
 } from "@/lib/superlative-voting";
-import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import {
-  formatDateTimeFr,
   todayDateOnly,
   toDateInputValue,
   wallClockNow,
 } from "@/lib/wallclock";
 import { createSession } from "./actions/session-lifecycle";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { Avatar } from "@/components/ui/Avatar";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 import { SessionPlanningFields } from "@/components/sessions/SessionPlanningFields";
+import { SessionRow } from "@/components/sessions/SessionRow";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
@@ -44,19 +40,6 @@ import { getDefaultCommunityId } from "@/lib/default-community";
 
 export const metadata = pageMetadata("Soirées");
 
-type SessionParticipant = {
-  discordName: string;
-  discordAvatar: string | null;
-  color: string;
-};
-
-type SessionRowData = Session & {
-  decidedGame: Game | null;
-  communityTeam: { name: string } | null;
-  _count: { proposals: number };
-  proposals: { gameId: string; votes: { userId: string; user: SessionParticipant }[] }[];
-};
-
 const CREATE_ERROR_MESSAGES: Record<string, string> = {
   deadline_apres_session:
     "La deadline de vote doit être strictement avant l'heure de la session. Choisis une deadline plus tôt.",
@@ -65,86 +48,6 @@ const CREATE_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
-
-// Même logique que la home ("joueurs inscrits") : voteurs de la
-// proposition gagnante une fois le jeu décidé, sinon l'ensemble des
-// voteurs toutes propositions confondues (VOTING).
-function getParticipants(session: SessionRowData) {
-  const relevantProposals = session.decidedGameId
-    ? session.proposals.filter((p) => p.gameId === session.decidedGameId)
-    : session.proposals;
-  const byUser = new Map<string, SessionParticipant>();
-  for (const p of relevantProposals) {
-    for (const v of p.votes) {
-      if (!byUser.has(v.userId)) byUser.set(v.userId, v.user);
-    }
-  }
-  return [...byUser.entries()].map(([userId, user]) => ({ userId, ...user }));
-}
-
-function SessionRow({
-  session,
-  needsSuperlativeVote,
-}: {
-  session: SessionRowData;
-  needsSuperlativeVote: boolean;
-}) {
-  const status = SESSION_STATUS_LABELS[session.status];
-  const participants = getParticipants(session);
-  return (
-    <Link href={`/sessions/${session.id}`}>
-      <div className="card-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 transition-all duration-200">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground capitalize">
-              {formatDateTimeFr(session.date)}
-            </p>
-            <p className="truncate text-sm text-muted">
-              {session.decidedGame
-                ? session.decidedGame.name
-                : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
-            </p>
-            {session.communityTeam && <p className="truncate text-xs text-accent">Équipe · {session.communityTeam.name}</p>}
-          </div>
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
-          >
-            {status.label}
-          </span>
-        </div>
-        {participants.length > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="flex -space-x-2">
-              {participants.slice(0, 5).map((p) => (
-                <Avatar
-                  key={p.userId}
-                  src={p.discordAvatar}
-                  alt={p.discordName}
-                  size={22}
-                  className="ring-2 ring-surface"
-                />
-              ))}
-              {participants.length > 5 && (
-                <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-surface-hover text-[10px] font-semibold text-muted ring-2 ring-surface">
-                  +{participants.length - 5}
-                </div>
-              )}
-            </div>
-            <span className="text-xs text-muted">
-              {participants.length} joueur{participants.length === 1 ? "" : "s"} inscrit
-              {participants.length === 1 ? "" : "s"}
-            </span>
-          </div>
-        )}
-        {needsSuperlativeVote && (
-          <Badge tone="accent" glow animate className="w-fit">
-            🏆 Vote les récompenses !
-          </Badge>
-        )}
-      </div>
-    </Link>
-  );
-}
 
 export default async function SessionsPage({
   searchParams,
