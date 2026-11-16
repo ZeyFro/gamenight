@@ -285,3 +285,15 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 ### Ordre de reprise
 
 Les PR existantes #406–#408 restent brouillon et gardent leurs dépendances documentées. La PR #395 est abandonnée et clôturée sans fusion; ne pas la reprendre. Parmi les tâches de code ouvertes,  les tâches qui requièrent #370/#406 ou une écriture Production restent en attente de ces dépendances. Après chaque PR ouverte, reprendre la première tâche de code non bloquée et empiler sa branche sur la précédente si elle n'est pas fusionnée.
+
+## Backlog Booster Discord — ajout du 16 novembre 2026
+
+Décisions fonctionnelles : `docs/DECISIONS_BOOSTER_20261116.md`.
+
+### P6-01 — `/boost` et avantages Booster (v1 logique livrée)
+
+- **Objectif :** reconnaître les boosters depuis le statut Discord (`premium_since`) et leur offrir des avantages esthétiques ou d'accès, sans créer de second système.
+- **Critères d'acceptation :** statut lu à la source (aucune table « booster »); avantages limités à bannière, distinction, présentation, personnalisation d'équipe encadrée et salons réservés; aucun droit d'administration/modération, aucun poids de vote, aucun multiplicateur d'étages, aucun avantage de classement; révocation automatique des avantages exclusifs, données et historique conservés.
+- **Tests attendus :** `src/lib/boost-perks.test.ts` (règles et interdits), `src/lib/discord-community-commands.test.ts` (`/boost` actif/inactif/indisponible), garde d'enregistrement de la commande.
+- **Dépendances / suivi :** #400 (accord d'enregistrement), #370/#408 pour l'application effective de la personnalisation d'équipe.
+- **Bloqué :** historique persistant Booster (badge permanent, périodes) — migration, accord explicite requis; application UI web et espaces d'équipe — lots dédiés.

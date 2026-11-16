@@ -239,5 +239,17 @@
     "contexts": [
       0
     ]
+  },
+  {
+    "name": "boost",
+    "type": 1,
+    "description": "Tes avantages Booster Discord",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
   }
 ]

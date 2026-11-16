@@ -35,6 +35,8 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_CLIENT_ID", APP);
   vi.stubEnv("DISCORD_ROLE_COMMAND_ENABLED", "");
   vi.stubEnv("DISCORD_PROFILE_COMMAND_ENABLED", "");
+  vi.stubEnv("DISCORD_BOOSTER_ENABLED", "");
+  vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("TOWER_CHALLENGES_ENABLED", "");
   vi.stubEnv("COMMUNITY_SETUP_COMMAND_ENABLED", "");
   vi.stubEnv("VERCEL_ENV", "");
@@ -66,6 +68,7 @@ describe("/aide", () => {
       TOWER_CHALLENGES_ENABLED: "true",
       DISCORD_PROFILE_COMMAND_ENABLED: "true",
       COMMUNITY_SETUP_COMMAND_ENABLED: "true",
+      DISCORD_BOOSTER_ENABLED: "true",
     } as unknown as NodeJS.ProcessEnv);
     expect(on).toContain("actif");
     expect(on).not.toContain("en attente d’activation");
@@ -186,5 +189,75 @@ describe("chargement du profil communautaire", () => {
     expect(content).not.toContain(USER);
     expect(content).not.toContain("token");
     expect(content).toContain("Équipes : aucune pour le moment.");
+  });
+});
+
+describe("/boost", () => {
+  const body = {
+    type: 2,
+    id: "100000000000000032",
+    application_id: APP,
+    token: "token-boost",
+    guild_id: GUILD,
+    member: { user: { id: USER, username: "maxime", bot: false } },
+    data: { name: "boost" },
+  };
+  const now = () => String(Math.floor(Date.now() / 1000));
+  const reply = (payload: unknown) =>
+    new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+
+  it("reste fermée par défaut, sans aucun appel Discord", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const output = handleSignedCommunityInteraction(body, now());
+    expect(JSON.stringify(output.body)).toContain("pas encore ouverts");
+    expect(output.runCommunity).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lit le statut Booster à la source Discord et le publie en privé", async () => {
+    vi.stubEnv("DISCORD_BOOSTER_ENABLED", "true");
+    const fetchMock = vi.fn(async (input: unknown, init?: { method?: string }) => {
+      if ((init?.method ?? "GET").toUpperCase() === "PATCH") return reply({ id: "1", channel_id: "2" });
+      return reply({ roles: [], premium_since: "2026-11-01T10:00:00.000+00:00" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const output = handleSignedCommunityInteraction(body, now());
+    expect(output.body).toMatchObject({ type: 5 });
+    await output.runCommunity?.();
+    const patched = fetchMock.mock.calls.find((call) => (call[1]?.method ?? "").toUpperCase() === "PATCH");
+    expect(patched).toBeDefined();
+    const content = JSON.parse(String((patched![1] as { body: string }).body)).content as string;
+    expect(content).toContain("Avantages Booster actifs");
+    expect(content).toMatch(/<t:\d+:D>/);
+  });
+
+  it("signale un membre qui ne booste pas, sans supprimer de données", async () => {
+    vi.stubEnv("DISCORD_BOOSTER_ENABLED", "true");
+    const fetchMock = vi.fn(async (_input: unknown, init?: { method?: string }) =>
+      (init?.method ?? "GET").toUpperCase() === "PATCH" ? reply({ id: "1", channel_id: "2" }) : reply({ roles: [], premium_since: null })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const output = handleSignedCommunityInteraction(body, now());
+    await output.runCommunity?.();
+    const patched = fetchMock.mock.calls.find((call) => (call[1]?.method ?? "").toUpperCase() === "PATCH");
+    const content = JSON.parse(String((patched![1] as { body: string }).body)).content as string;
+    expect(content).toContain("ne boosts pas");
+    expect(content).toContain("restent intactes");
+  });
+
+  it("n'affirme jamais qu'un membre ne booste pas quand Discord échoue", async () => {
+    vi.stubEnv("DISCORD_BOOSTER_ENABLED", "true");
+    const fetchMock = vi.fn(async (_input: unknown, init?: { method?: string }) => {
+      if ((init?.method ?? "GET").toUpperCase() === "PATCH") return reply({ id: "1", channel_id: "2" });
+      return new Response(JSON.stringify({ message: "Unknown Member", code: 10007 }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const output = handleSignedCommunityInteraction(body, now());
+    await output.runCommunity?.();
+    const patched = fetchMock.mock.calls.find((call) => (call[1]?.method ?? "").toUpperCase() === "PATCH");
+    const content = JSON.parse(String((patched![1] as { body: string }).body)).content as string;
+    expect(content).toContain("Impossible de vérifier");
+    expect(content).not.toContain("ne boosts pas");
   });
 });

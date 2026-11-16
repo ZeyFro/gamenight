@@ -16,10 +16,13 @@ describe("déclaration Discord de /aide et /profil", () => {
   it("expose les deux commandes sans option", () => {
     const help = commands.find((command) => command.name === "aide");
     const profile = commands.find((command) => command.name === "profil");
+    const boost = commands.find((command) => command.name === "boost");
     expect(help, "/aide déclarée").toBeDefined();
     expect(profile, "/profil déclarée").toBeDefined();
+    expect(boost, "/boost déclarée").toBeDefined();
     expect(help!.options).toBeUndefined();
     expect(profile!.options).toBeUndefined();
+    expect(boost!.options).toBeUndefined();
   });
 
   it("ne réintroduit pas de commande en double", () => {
@@ -34,6 +37,7 @@ describe("branchement de /aide et /profil", () => {
   it("route les deux noms vers le handler signé", () => {
     expect(interactions).toContain('interaction.data?.name === "aide"');
     expect(interactions).toContain('interaction.data?.name === "profil"');
+    expect(interactions).toContain('interaction.data?.name === "boost"');
     expect(interactions).toContain("handleSignedCommunityInteraction");
     expect(interactions).toContain("runCommunity?: () => Promise<void>");
   });
@@ -44,5 +48,6 @@ describe("branchement de /aide et /profil", () => {
 
   it("documente l'interrupteur de /profil", () => {
     expect(read(".env.example")).toContain("DISCORD_PROFILE_COMMAND_ENABLED");
+    expect(read(".env.example")).toContain("DISCORD_BOOSTER_ENABLED");
   });
 });

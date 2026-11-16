@@ -112,8 +112,11 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
     return handleSignedTowerAdminInteraction(json, input.timestamp);
   }
-  if (interaction.type === 2 && (interaction.data?.name === "aide" || interaction.data?.name === "profil")) {
-    // /aide et /profil : lecture seule, aucune ressource Discord créée.
+  if (
+    interaction.type === 2 &&
+    (interaction.data?.name === "aide" || interaction.data?.name === "profil" || interaction.data?.name === "boost")
+  ) {
+    // /aide, /profil et /boost : lecture seule, aucune ressource Discord créée.
     const { handleSignedCommunityInteraction } = await import("@/lib/discord-community-commands");
     return handleSignedCommunityInteraction(json, input.timestamp);
   }

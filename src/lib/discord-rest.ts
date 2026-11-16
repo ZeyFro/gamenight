@@ -1451,3 +1451,46 @@ export async function removeGuildMemberRole(input: {
     parse: () => ({ removed: true as const }),
   });
 }
+
+/**
+ * Fiche de membre Discord en LECTURE SEULE — utilisée pour le statut Booster
+ * (`premium_since`, fourni par Discord : aucune source concurrente).
+ * Aucune écriture, aucune permission.
+ */
+const guildMemberProfileSchema = z.object({
+  roles: z.array(z.string()).default([]),
+  premium_since: z.string().nullable().optional(),
+});
+
+export interface GuildMemberProfile {
+  roles: string[];
+  /** ISO 8601 fourni par Discord, `null` si le membre ne booste pas. */
+  premiumSince: string | null;
+}
+
+export async function getGuildMemberProfile(input: {
+  guildId: string;
+  userId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<GuildMemberProfile>> {
+  if (![input.guildId, input.userId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de serveur ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "GET",
+    path: `/guilds/${input.guildId}/members/${input.userId}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = guildMemberProfileSchema.safeParse(json);
+      if (!result.success) return null;
+      const since = result.data.premium_since ?? null;
+      // Un horodatage non ISO est traité comme inconnu, jamais comme « actif ».
+      return {
+        roles: result.data.roles,
+        premiumSince: since && Number.isFinite(Date.parse(since)) ? since : null,
+      };
+    },
+  });
+}

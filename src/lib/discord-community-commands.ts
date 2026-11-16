@@ -3,6 +3,8 @@ import { logger } from "@/lib/logger";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 import { editSetupResponse } from "@/lib/discord-rest";
 import { loadCommunityProfile, type CommunityProfileView } from "@/lib/discord-community-profile";
+import { renderBoosterAdvantages } from "@/lib/boost-perks";
+import { readBoosterStatus } from "@/lib/discord-boost";
 
 /**
  * Commandes Discord de découverte et d'identité, en LECTURE SEULE :
@@ -33,7 +35,7 @@ const inputSchema = z.object({
     .optional(),
   user: z.object({ id: snowflake }).optional(),
   data: z.object({
-    name: z.enum(["aide", "profil"]),
+    name: z.enum(["aide", "profil", "boost"]),
     options: z.array(z.object({ name: z.string(), type: z.number().optional() })).max(5).optional(),
   }),
 });
@@ -50,6 +52,7 @@ export function commandStates(env: NodeJS.ProcessEnv = process.env) {
     tower: env.TOWER_CHALLENGES_ENABLED === "true",
     setup: env.COMMUNITY_SETUP_COMMAND_ENABLED === "true",
     profile: env.DISCORD_PROFILE_COMMAND_ENABLED === "true",
+    boost: env.DISCORD_BOOSTER_ENABLED === "true",
   };
 }
 
@@ -64,6 +67,7 @@ export function buildHelpContent(env: NodeJS.ProcessEnv = process.env): string {
     `• \`/aide\` — cette liste.`,
     `• \`/profil\` — ton étage, ton niveau, tes badges et tes équipes (${state(flags.profile)}).`,
     `• \`/role\` — chercher, obtenir ou retirer un rôle de jeu, sans passer par un modérateur (${state(flags.role)}).`,
+    `• \`/boost\` — tes avantages Booster Discord (${state(flags.boost)}).`,
     `• \`/tower\` — \`defi\`, \`progression\`, \`classement\`, \`vote\`, \`equipe\` (${state(flags.tower)}).`,
     "**Réservé à la modération**",
     `• \`/gamenight setup\` — activer GameNight sur le serveur (${state(flags.setup)}).`,
@@ -120,6 +124,45 @@ export function handleSignedCommunityInteraction(body: unknown, timestamp: strin
   if (!interaction.guild_id) return quiet("Utilise cette commande dans le serveur de la communauté.");
 
   if (interaction.data.name === "aide") return quiet(buildHelpContent());
+
+  if (interaction.data.name === "boost") {
+    if (process.env.DISCORD_BOOSTER_ENABLED !== "true") {
+      return quiet(renderBoosterAdvantages({ active: false, since: null, enabled: false }));
+    }
+    const boostDiscordId = interaction.member?.user?.id ?? interaction.user?.id;
+    if (!boostDiscordId) return { status: 400 };
+    const boostGuildId = interaction.guild_id;
+    return {
+      status: 200,
+      body: { type: 5, data: { flags: EPHEMERAL } },
+      runCommunity: async () => {
+        let content: string;
+        try {
+          const boost = await readBoosterStatus({ guildId: boostGuildId, discordId: boostDiscordId });
+          content =
+            boost.status === "UNAVAILABLE"
+              ? "Impossible de vérifier ton statut Booster pour le moment. Réessaie dans un instant."
+              : renderBoosterAdvantages({
+                  enabled: true,
+                  active: boost.status === "ACTIVE",
+                  since: boost.status === "ACTIVE" ? boost.since : null,
+                });
+        } catch (error) {
+          logger.warn("discord-community", "Échec de la lecture du statut Booster.", {
+            errorType: error instanceof Error ? error.name : "unknown",
+          });
+          content = "Impossible de vérifier ton statut Booster pour le moment. Réessaie dans un instant.";
+        }
+        const sent = await editSetupResponse({
+          applicationId: interaction.application_id,
+          token: interaction.token,
+          content: content.slice(0, 1900),
+          deadline: new Date(Date.now() + REPLY_BUDGET_MS),
+        });
+        if (!sent.ok) logger.error("discord-community", "Réponse privée Boost non livrée.", { kind: sent.kind });
+      },
+    };
+  }
 
   if (process.env.DISCORD_PROFILE_COMMAND_ENABLED !== "true") {
     return quiet("La commande /profil n’est pas encore ouverte sur ce serveur.");
