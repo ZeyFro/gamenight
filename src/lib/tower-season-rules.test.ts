@@ -3,6 +3,7 @@ import {
   evaluateSeasonVoteQuorum, isChampionTitleActive, isTowerSeasonCompleted,
   shouldDelayPalmaresPublication, towerSeasonContaining,
 } from "./tower-season-rules";
+import * as m_p17 from "./tower-season-rules";
 
 const d = (iso: string) => new Date(iso);
 
@@ -124,5 +125,20 @@ describe("isChampionTitleActive (Q5)", () => {
     expect(() => isChampionTitleActive({ earnedSeasonPalmaresPublishedAt: earned, nextSeasonPalmaresPublishedAt: new Date("x"), now: next })).toThrow(RangeError);
     expect(() => isChampionTitleActive({ earnedSeasonPalmaresPublishedAt: earned, nextSeasonPalmaresPublishedAt: d("2026-07-01T00:00:00Z"), now: next })).toThrow(RangeError);
     expect(() => isChampionTitleActive({ earnedSeasonPalmaresPublishedAt: null, nextSeasonPalmaresPublishedAt: next, now: next })).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p17-saison-votants-manquants — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-season-rules · p17-saison-votants-manquants", () => {
+  it('votants manquants pour le quorum de saison', () => {
+    expect(m_p17.missingSeasonVoters(0)).toBe(2);
+    expect(m_p17.missingSeasonVoters(1)).toBe(1);
+    expect(m_p17.missingSeasonVoters(2)).toBe(0);
+    expect(m_p17.missingSeasonVoters(5)).toBe(0);
+    expect(m_p17.missingSeasonVoters([])).toBe(2);
+    expect(m_p17.missingSeasonVoters(['a', 'a'])).toBe(1);
+    expect(m_p17.missingSeasonVoters(['a', 'b', 'c'])).toBe(0);
+    expect(() => m_p17.missingSeasonVoters(-1)).toThrow(RangeError);
+    expect(() => m_p17.missingSeasonVoters(['a', ''])).toThrow(RangeError);
   });
 });
