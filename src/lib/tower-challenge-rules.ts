@@ -47,3 +47,14 @@ export function canReceiveChallengeReward(completedAt: readonly Date[], now: Dat
   }
   return count < 2;
 }
+
+export function remainingChallengeRewardsToday(completedAt: readonly Date[], now: Date): number {
+  const current = timestamp(now);
+  const today = parisDayFormatter.format(now);
+  let count = 0;
+  for (const completed of completedAt) {
+    if (timestamp(completed) > current) throw new RangeError("Réussite dans le futur");
+    if (parisDayFormatter.format(completed) === today) count += 1;
+  }
+  return Math.max(0, 2 - count);
+}
