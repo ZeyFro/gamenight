@@ -49,3 +49,10 @@ export function evaluateChallengeVote(input: {
   if (approvals === rejections) return { status: "REJECTED", ...tally };
   return { status: approvals > rejections ? "APPROVED" : "REJECTED", ...tally };
 }
+
+export function missingChallengeVoters(distinctVoters: number): number {
+  if (typeof distinctVoters !== "number" || !Number.isFinite(distinctVoters) || !Number.isInteger(distinctVoters) || distinctVoters < 0) {
+    throw new RangeError("Nombre de votants distincts invalide");
+  }
+  return Math.max(0, 3 - distinctVoters);
+}
