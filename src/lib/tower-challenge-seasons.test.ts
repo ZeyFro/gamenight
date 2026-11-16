@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getTowerSchoolSeason } from "./tower-challenge-seasons";
+import * as m_p18 from "./tower-challenge-seasons";
 
 describe("calendrier The Tower — fuseau Europe/Paris", () => {
   it.each([
@@ -23,5 +24,16 @@ describe("calendrier The Tower — fuseau Europe/Paris", () => {
   });
   it("rejette les dates invalides", () => {
     expect(() => getTowerSchoolSeason(new Date(NaN))).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p18-saison-jours-restants — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-seasons · p18-saison-jours-restants", () => {
+  it('jours restants dans la saison', () => {
+    expect(m_p18.daysLeftInTowerSeason(new Date('2026-06-29T22:00:00Z'))).toBe(1);
+    expect(m_p18.daysLeftInTowerSeason(new Date('2026-06-30T10:00:00Z'))).toBe(1);
+    expect(m_p18.daysLeftInTowerSeason(new Date('2026-06-15T22:00:00Z'))).toBe(15);
+    expect(m_p18.daysLeftInTowerSeason(new Date('2027-01-02T12:00:00Z'))).toBe(0);
+    expect(() => m_p18.daysLeftInTowerSeason(new Date(NaN))).toThrow(RangeError);
   });
 });
