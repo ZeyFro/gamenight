@@ -8,6 +8,14 @@ type VoteResult =
   | { status: "OPEN"; approvals: number; rejections: number }
   | { status: "APPROVED" | "REJECTED"; approvals: number; rejections: number };
 
+export function challengeVoteDeadline(openedAt: Date): Date {
+  const opened = openedAt.getTime();
+  if (!Number.isFinite(opened)) {
+    throw new RangeError("Ouverture de vote invalide");
+  }
+  return new Date(opened + 24 * 60 * 60 * 1000);
+}
+
 // Cette règle ne remplace ni le contrôle d'appartenance ni le verrou de clôture en base.
 export function evaluateChallengeVote(input: {
   authorId: string;
