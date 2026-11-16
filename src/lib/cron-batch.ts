@@ -35,6 +35,10 @@ export async function processInBatches<T, R>(
   worker: (item: T) => Promise<R>,
   options?: ProcessInBatchesOptions
 ): Promise<ProcessInBatchesResult<R>> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new RangeError('batchSize doit être un entier supérieur ou égal à 1');
+  }
+
   const results: PromiseSettledResult<R>[] = [];
   let processedCount = 0;
 
