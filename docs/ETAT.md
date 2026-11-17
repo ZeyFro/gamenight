@@ -1,5 +1,7 @@
 # État de reprise — 6 novembre 2026
 
+> **Remplacé le 17 novembre 2026 :** « Neon Test puis Production avec accords séparés » et « un flag par jour » ne sont plus la règle. Voir [MIGRATIONS.md](MIGRATIONS.md) (migrations appliquées automatiquement après fusion) et [ACTIVATION_TOUR.md](ACTIVATION_TOUR.md) (Tour activée en une soirée). Les passages ci-dessous qui les décrivent sont historiques.
+
 Source de vérité : [issue #400](https://github.com/ZeyFro/gamenight/issues/400).
 Les états CI sont des relevés ; relire les têtes et commentaires avant reprise.
 
