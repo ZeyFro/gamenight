@@ -6,7 +6,14 @@ import { editSetupResponse } from "@/lib/discord-rest";
 import { parseSessionRsvpId } from "@/lib/session-rsvp-components";
 import { respondToSessionRsvp } from "@/lib/discord-session-rsvp";
 import { parseInstantSessionRsvpId } from "@/lib/instant-session-rsvp-components";
-import { respondToInstantSessionRsvp } from "@/lib/discord-instant-session-rsvp";
+ import { respondToInstantSessionRsvp } from "@/lib/discord-instant-session-rsvp";
+ import {
+   handleEquipeCommand,
+   handleAideCommand,
+   handleProfilCommand,
+   handleBoostCommand,
+   EQUIPE_SUB_COMMANDS,
+ } from "@/lib/discord-team-commands";
 import { parseTournamentRsvpId } from "@/lib/tournament-rsvp-components";
 import { respondToTournamentRsvp } from "@/lib/discord-tournament-rsvp";
 
@@ -48,7 +55,14 @@ const interactionSchema = z.object({
       name: z.string().optional(),
       custom_id: z.string().optional(),
       component_type: z.number().optional(),
-      options: z.array(z.object({ name: z.string(), type: z.number().optional() })).optional(),
+      options: z
+        .array(
+          z.object({
+            name: z.string(),
+            type: z.number().optional(),
+          })
+        )
+        .optional(),
     })
     .optional(),
 });
@@ -139,13 +153,13 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const messageId = interaction.message?.id;
     // La signature seule n'expire pas : un corps signé ancien n'est jamais rejoué.
     const timestamp = Number(input.timestamp);
-    if ((!resolvedRsvp && !tournamentRsvp) || interaction.data?.component_type !== 2 || !applicationId || applicationId !== process.env.DISCORD_CLIENT_ID || !token || !id || !discordId || !channelId || !messageId || ![applicationId, id, discordId, channelId, messageId].every(value => /^\d+$/.test(value)) || (interaction.guild_id !== undefined && !/^\d+$/.test(interaction.guild_id)) || !Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return { status: 400 };
+    if ((!resolvedRsvp && !tournamentRsvp) || interaction.data?.component_type !== 2 || !applicationId || applicationId !== process.env.DISCORD_CLIENT_ID || !token || !id || !discordId || !channelId || !messageId || ![applicationId, id, discordId, channelId, messageId].every(value => /^\d+$/.test(String(value))) || (interaction.guild_id !== undefined && !/^\d+$/.test(interaction.guild_id)) || !Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return { status: 400 };
     if ((isInstantRsvp || tournamentRsvp) && !interaction.guild_id) return { status: 400 };
     // Aucun accès SQL/Discord avant l'ACK : réponse privée en < 3 s.
     return { status: 200, body: { type: 5, data: { flags: EPHEMERAL } }, runRsvp: async () => {
       let content: string;
       try {
-        const origin = { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId };
+        const origin = { interactionId: id, discordId: discordId ?? "", guildId: interaction.guild_id ?? "", channelId: channelId ?? "", messageId: messageId ?? "" };
         content = tournamentRsvp
           ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin)
           : isInstantRsvp
@@ -163,6 +177,70 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   // Même règle que pour les boutons RSVP : la signature seule n'expire pas, un corps signé ancien n'est jamais rejoué.
   const commandTimestamp = Number(input.timestamp);
   if (!Number.isFinite(commandTimestamp) || Math.abs(Date.now() / 1000 - commandTimestamp) > 300) return { status: 400 };
+
+  // Freebuff canonical commands — route vers les handlers réels
+  // Ces commandes ne s'appliquent qu'aux interactions de type 2 avec un nom de commande reconnu
+  if (interaction.type === 2 && interaction.data?.name && EQUIPE_SUB_COMMANDS.includes(interaction.data.name as string)) {
+    try {
+      // interaction.data is guaranteed defined here because of the .name check above
+      const data = interaction.data!;
+      const options = data.options ?? [];
+      const option0 = options[0];
+      let teamName: string = "";
+      if (option0?.name === "equipe") teamName = (option0 as any)?.value as string;
+      if (option0?.name === "equipe_id") teamName = (option0 as any)?.value as string;
+      const parsed = handleEquipeCommand(
+        data.name as string,
+        teamName
+      );
+      return reply(parsed);
+    } catch (error) {
+      logger.error("discord-interactions", error, { name: interaction.data.name });
+      return reply("Erreur lors du traitement de la commande d'équipe.");
+    }
+  }
+
+  if (
+    interaction.type === 2 &&
+    interaction.data?.name &&
+    ["aide", "profil", "boost"].includes(interaction.data.name as string)
+  ) {
+    // interaction.data is guaranteed defined here because of the .name check above
+    const data = interaction.data!;
+    const cmd = data.name as string;
+    let content: string;
+    try {
+      switch (cmd) {
+        case "aide": {
+          const aideOption = data.options?.[0];
+          // Use type assertion for value property (Discord option value)
+          const aideValeur = (aideOption as any)?.value as { cible?: string };
+          content = handleAideCommand(aideValeur?.cible);
+          break;
+        }
+        case "profil": {
+          const profilOption = data.options?.[0];
+          // Use type assertion for value property
+          const profilValeur = (profilOption as any)?.value as { nom?: string };
+          content = handleProfilCommand(profilValeur?.nom);
+          break;
+        }
+        case "boost": {
+          const boostOption = data.options?.[0];
+          // Use type assertion for value property
+          const boostValeur = (boostOption as any)?.value as { nom?: string };
+          content = handleBoostCommand(boostValeur?.nom);
+          break;
+        }
+        default:
+          content = "Commande inconnue.";
+      }
+    } catch (error) {
+      logger.error("discord-interactions", error, { name: cmd });
+      content = "Erreur lors du traitement de la commande.";
+    }
+    return reply(content);
+  }
 
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {
     return reply("Commande inconnue.");
