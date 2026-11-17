@@ -1,7 +1,8 @@
 # Patch isolé — capitainerie sur `/equipes` (#370 et #408)
 
 **Fichier de patch** : `docs/patches/20261117-equipes-capitaine-370-408.patch`
-**Fichier cible** : `src/app/equipes/page.tsx` (une seule ligne de code métier + un import)
+**Fichiers cibles** : `src/app/equipes/page.tsx` (affichage) et `src/lib/community-teams.ts`
+(gating du recrutement) — deux fichiers, deux hunks métier + un import.
 **PR propriétaires** : #370 (`feat/tower-team-rules-20261104`, tête relevée `e4778a6`) et
 #408 (`codex/tower-pr-equipes-20261105`, tête relevée `3465c39`).
 **Dépendance** : commit `171e779` de `agent/preflight-20261116`.
@@ -32,6 +33,30 @@ boutons de gestion à ce membre arbitraire.
 
 Le patch conserve la priorité à `team.captainId` apportée par #370 : il ne remplace que
 le repli positionnel.
+
+## Second fichier — `src/lib/community-teams.ts`
+
+Le même défaut existe dans `setCommunityTeamRecruitment` : quand le capitaine
+n'est plus membre actif, `leaderId` retombe sur le premier membre, qui obtient
+ainsi le droit d'ouvrir ou fermer le recrutement.
+
+Avant :
+
+```ts
+const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
+if (leaderId !== userId) return "missing";
+```
+
+Après : sans capitaine actif, personne ne gère ; l'identité du capitaine ne
+vient jamais d'une position dans la liste.
+
+```ts
+if (!activeCaptain) return "missing";
+if (configuredCaptainId !== userId) return "missing";
+```
+
+Aucune règle d'adhésion, aucune permission Discord, aucune migration n'est
+touchée : seul le repli positionnel disparaît.
 
 ## Prérequis Git
 
@@ -66,9 +91,11 @@ Le dry-run y échoue volontairement (hunk 2), ce qui est le comportement attendu
 ## Preuves de non-régression
 
 - Dry-run `patch -p1 -F0 --dry-run` : **succès sans tolérance de contexte** sur les deux
-  têtes `e4778a6` (#370) et `3465c39` (#408) — les deux versions du fichier sont
-  identiques, vérifié par `cmp`.
-- Sortie patchée : **0 occurrence** de `members[0]`.
+  têtes `e4778a6` (#370) et `3465c39` (#408), pour les deux fichiers — chaque paire de
+  versions est identique, vérifié par `cmp`.
+- Application réelle du patch sur une copie de #370 : **0 occurrence** de
+  `members[0]` dans `community-teams.ts`, `teamCaptainId` bien importé et utilisé
+  dans la page.
 - Règle couverte par `src/lib/community-team-captain.test.ts` (10 cas : capitaine en
   dernière/troisième position, réordonnancement, capitaine non renseigné, membre
   ordinaire jamais capitaine, absence de permission dérivée).
@@ -79,6 +106,7 @@ Le dry-run y échoue volontairement (hunk 2), ce qui est le comportement attendu
 
 - Aucune permission, aucun rôle, aucune règle d'adhésion.
 - Aucune action serveur (`./actions`), aucun formulaire, aucune migration Prisma.
+- Aucune règle d'adhésion : `joinCommunityTeam` / `leaveCommunityTeam` sont intacts.
 - Aucune autre ligne du rendu : noms, scores, boutons et textes inchangés.
 - Il n'est **pas** appliqué automatiquement sur les branches #370/#408 : c'est à leur
   agent propriétaire de l'intégrer.

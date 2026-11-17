@@ -29,3 +29,17 @@
            return <Card key={team.id} className="grid gap-3">
              <div className="flex flex-wrap items-start justify-between gap-2">
                <div><p className="font-semibold text-foreground">{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
+--- a/src/lib/community-teams.ts
++++ b/src/lib/community-teams.ts
+@@ -256,8 +256,9 @@
+     const activeCaptain = team.captainId
+       ? Boolean(team.captain?.memberships.length)
+       : team.createdBy.memberships.length > 0;
+-    const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
+-    if (leaderId !== userId) return "missing";
++    // Aucun repli positionnel : sans capitaine actif, personne ne gère l’équipe.
++    if (!activeCaptain) return "missing";
++    if (configuredCaptainId !== userId) return "missing";
+     if (open && team._count.members >= team.maxMembers) return "full";
+     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
+     return updated.count ? "saved" : "missing";
