@@ -43,3 +43,26 @@ Les boutons RSVP restent couverts par `discord-rsvp-interactions.test.ts` et
 Limite maintenue : le chemin **web** d'écriture ne rejoint le service qu'après
 application du patch #408 ; d'ici là les tests prouvent la logique du service, pas
 la bascule effective de l'action web.
+
+## Publication GitHub (17/11)
+
+Le travail Freebuff n'existe plus uniquement en local : GitHub est la source de
+vérité.
+
+- **PR #444**, branche `agent/preflight-20261116`, **Draft**. HEAD code vérifié
+distant : `5d2377d6753a2e31223421fc1826838c9f7a06e6` (41 commits d'avance sur
+`main`, 159 fichiers modifiés).
+- **CI rouge, cause unique** : `CommunityTeam.captainId` et `DiscordTeamSpace`
+sont dans le schéma mais leurs migrations sont hors `prisma/migrations`
+(`#370` + `docs/migrations/pending/`). `prisma migrate deploy` en CI ne les
+applique donc pas. Aucune migration n'est ajoutée ici : ce serait une migration
+capitaine concurrente de #370. La CI ne peut pas verdir avant la fusion de #370.
+- **Branches de sauvegarde** (aucune PR, aucun merge) :
+`rescue/freebuff-local-20261117` (`28d1fcc`, logique Tower locale + ancienne
+surface canonique, supplantée sauf son test repris ici) et
+`rescue/integ-tower-stack-20261117` (`1ba3ad9`, 4 commits de fusion Tower qui
+n'existaient sur aucune branche distante).
+- **Rien d'autre n'est local uniquement**, à deux exceptions volontairement non
+touchées car hors périmètre : `claude/qwen-correctifs-lib-20261115` (6 commits,
+branche de Claude Code) et `fix/log-erreurs-tower` (`a8cd1e0`, correctif Tower
+de Claude dont la branche distante a été supprimée).
