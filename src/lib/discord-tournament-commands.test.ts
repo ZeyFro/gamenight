@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   membership: vi.fn(),
   tournamentFindMany: vi.fn(),
   tournamentFindFirst: vi.fn(),
+  register: vi.fn(),
+  unregister: vi.fn(),
   edit: vi.fn(),
 }));
 
@@ -17,6 +19,8 @@ vi.mock("@/lib/prisma", () => ({
     tournament: { findMany: mocks.tournamentFindMany, findFirst: mocks.tournamentFindFirst },
   },
 }));
+vi.mock("@/lib/tournament-registration", () => ({ registerTournamentParticipant: mocks.register }));
+vi.mock("@/lib/tournament-unregistration", () => ({ unregisterTournamentParticipant: mocks.unregister }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -68,6 +72,7 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_CLIENT_ID", APP);
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_TOURNAMENT_COMMAND_ENABLED", "true");
+  vi.stubEnv("DISCORD_TOURNAMENT_WRITE_ENABLED", "");
   mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower" });
   mocks.user.mockResolvedValue({ id: "user-1" });
   mocks.membership.mockResolvedValue({ status: "ACTIVE" });
@@ -183,5 +188,115 @@ describe("/tournoi — lecture seule", () => {
     expect(mocks.tournamentFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: TOURNOI, communityId: "community-1" } })
     );
+  });
+});
+
+/** Ligne lue par checkEligibility / applyUnregistration. */
+const eligibilityRow = (over: Record<string, unknown> = {}) => ({
+  communityId: "community-1",
+  status: "REGISTRATION",
+  maxPlayers: 8,
+  _count: { participants: 3 },
+  participants: [],
+  ...over,
+});
+
+describe("/tournoi — inscriptions", () => {
+  beforeEach(() => {
+    vi.stubEnv("DISCORD_TOURNAMENT_WRITE_ENABLED", "true");
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow());
+    mocks.register.mockResolvedValue("registered");
+    mocks.unregister.mockResolvedValue(true);
+  });
+
+  const inscription = (id?: string) =>
+    handleSignedTournamentInteraction(
+      interaction("inscription", id ? [{ name: "tournoi", value: id }] : []),
+      now()
+    );
+
+  it("reste fermée par défaut sans appeler le service d’inscription", () => {
+    vi.stubEnv("DISCORD_TOURNAMENT_WRITE_ENABLED", "");
+    const output = handleSignedTournamentInteraction(
+      interaction("inscription", [{ name: "tournoi", value: TOURNOI }]),
+      now()
+    );
+    expect(JSON.stringify(output.body)).toContain("n’est pas encore ouvert");
+    expect(output.runTournament).toBeUndefined();
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it("inscrit via le service du site et le dit clairement", async () => {
+    const content = await deferredContent(inscription(TOURNOI));
+    expect(content).toContain("Inscription enregistrée");
+    expect(mocks.register).toHaveBeenCalledWith("user-1", TOURNOI);
+  });
+
+  it("ne réinscrit pas un joueur déjà inscrit", async () => {
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ participants: [{ userId: "user-1" }] }));
+    const content = await deferredContent(inscription(TOURNOI));
+    expect(content).toContain("déjà inscrit");
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it("explique complet, fermé, inexistant et autre communauté", async () => {
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ _count: { participants: 8 } }));
+    expect(await deferredContent(inscription(TOURNOI))).toContain("complet");
+
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ status: "IN_PROGRESS" }));
+    expect(await deferredContent(inscription(TOURNOI))).toContain("inscriptions sont fermées");
+
+    mocks.tournamentFindFirst.mockResolvedValue(null);
+    expect(await deferredContent(inscription(TOURNOI))).toContain("inexistant");
+
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ communityId: "community-9" }));
+    const other = await deferredContent(inscription(TOURNOI));
+    expect(other).toContain("autre communauté");
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it("traduit un refus du service sans rien inventer", async () => {
+    mocks.register.mockResolvedValue("unavailable");
+    const content = await deferredContent(inscription(TOURNOI));
+    expect(content).toContain("n’a pas pu aboutir");
+    expect(content).toContain("Rien n’a été modifié");
+  });
+
+  it("ne désigne jamais un autre joueur : pas d’option pour cela", async () => {
+    const content = await deferredContent(inscription(TOURNOI));
+    expect(mocks.register).toHaveBeenCalledWith("user-1", TOURNOI);
+    expect(content).not.toContain(DISCORD);
+  });
+
+  it("désinscrit via le service partagé", async () => {
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ participants: [{ userId: "user-1" }] }));
+    const content = await deferredContent(
+      handleSignedTournamentInteraction(interaction("desinscription", [{ name: "tournoi", value: TOURNOI }]), now())
+    );
+    expect(content).toContain("Désinscription enregistrée");
+    expect(mocks.unregister).toHaveBeenCalledWith("user-1", TOURNOI);
+  });
+
+  it("refuse une désinscription impossible", async () => {
+    mocks.tournamentFindFirst.mockResolvedValue(eligibilityRow({ participants: [] }));
+    expect(await deferredContent(
+      handleSignedTournamentInteraction(interaction("desinscription", [{ name: "tournoi", value: TOURNOI }]), now())
+    )).toContain("Tu n’es pas inscrit");
+
+    mocks.tournamentFindFirst.mockResolvedValue(
+      eligibilityRow({ status: "IN_PROGRESS", participants: [{ userId: "user-1" }] })
+    );
+    expect(await deferredContent(
+      handleSignedTournamentInteraction(interaction("desinscription", [{ name: "tournoi", value: TOURNOI }]), now())
+    )).toContain("tournoi a démarré");
+    expect(mocks.unregister).not.toHaveBeenCalled();
+  });
+
+  it("liste mes inscriptions", async () => {
+    const content = await deferredContent(
+      handleSignedTournamentInteraction(interaction("mes-inscriptions"), now())
+    );
+    expect(content).toContain("Tes inscriptions");
+    expect(content).toContain("Coupe d’hiver");
   });
 });

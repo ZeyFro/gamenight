@@ -72,3 +72,52 @@ lecture base, MP/horodatage/app refusés, non-membre sans requête, filtre par
 communauté du serveur, liste par défaut (à venir + en cours), traduction des
 filtres de statut, vainqueur affiché, tournoi d'une autre communauté introuvable,
 états vides et absence de donnée privée.
+
+## Inscriptions (17/11/2026)
+
+`/tournoi inscription`, `/tournoi desinscription`, `/tournoi mes-inscriptions`,
+derrière `DISCORD_TOURNAMENT_WRITE_ENABLED` (fermé par défaut, distinct de la
+lecture).
+
+- **Une seule logique** : `registerTournamentParticipant` (existant) et
+  `unregisterTournamentParticipant` (extrait de `unregisterFromTournamentAction`
+  et désormais partagé par le site et Discord — l'action web appelle le service,
+  plus aucune copie).
+- **Identité** : toujours celle du contexte Discord (`guild_id` + `discordId`
+  relus en base). Aucune option ne permet de désigner un autre joueur.
+- **Réponses distinctes** : inscrit, déjà inscrit, complet, inscriptions
+  fermées, tournoi inexistant, autre communauté, désinscription impossible
+  (pas inscrit / tournoi démarré). L'éligibilité est lue avant l'écriture pour
+  formuler la réponse ; le service reste l'autorité.
+- **Désinscription** : refusée dès que le statut n'est plus `REGISTRATION`,
+  verrou `FOR UPDATE` conservé, compteur `tournamentsParticipatedCount`
+  décrémenté seulement si une ligne a été retirée.
+- **Intégration** : les lignes écrites sont exactement celles du site
+  (`TournamentParticipant`), donc l'inscription Discord apparaît immédiatement
+  dans `/tournois/[id]` et inversement.
+
+### Autocomplétion
+
+`src/lib/discord-tournament-autocomplete.ts` est **complet et testé** mais non
+routé : `src/lib/discord-interactions.ts` est réservé par #408. Le patch
+`docs/patches/20261117-autocomplete-routage.patch` ajoute les 6 lignes à insérer
+après le `PONG` (vérifié en dry-run sur la tête #408 `3465c39`).
+
+Choix proposés : `inscription` → tournois `REGISTRATION` de la communauté où le
+joueur n'est pas inscrit et où il reste de la place ; `desinscription` → ceux où
+il est inscrit. Maximum 25, recherche sans accent, valeur = identifiant (le
+handler relit l'état avant tout écriture).
+
+### Déclaration Discord mise à jour (propriétaire #416)
+
+Ajouter aux `options` de `tournoi` :
+
+```json
+{ "type": 1, "name": "inscription", "description": "S’inscrire à un tournoi ouvert", "options": [
+  { "type": 3, "name": "tournoi", "description": "Tournoi (autocomplétion)", "required": true,
+    "autocomplete": true, "min_length": 1, "max_length": 40 } ]},
+{ "type": 1, "name": "desinscription", "description": "Se retirer d’un tournoi", "options": [
+  { "type": 3, "name": "tournoi", "description": "Tournoi (autocomplétion)", "required": true,
+    "autocomplete": true, "min_length": 1, "max_length": 40 } ]},
+{ "type": 1, "name": "mes-inscriptions", "description": "Tes inscriptions aux tournois" }
+```
