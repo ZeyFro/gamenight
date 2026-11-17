@@ -4,12 +4,13 @@ Toutes les routes de cette liste sont présentes dans le code. Les méthodes son
 
 Les routes `/api/cron/*` et `/api/backfill/*` exigent `CRON_SECRET` et répondent 503 lorsque ce secret n’est pas configuré. Envoyer l’en-tête `Authorization: Bearer <CRON_SECRET>`. Les interrupteurs fonctionnels des jobs restent indépendants de cette authentification.
 
-Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et leurs cadences sont configurées par l’opérateur dans un service externe ; leur état réel n’est pas vérifiable depuis le code seul. Ne déduire aucun horaire des anciens comptes rendus.
+Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’équipe Tower est préparé dans le workflow GitHub Actions `.github/workflows/tower-team-daily.yml` de #396; le schedule n’est pris en compte qu’après fusion dans la branche par défaut. Les autres tâches sont configurées par l’opérateur selon leur procédure propre; leur état réel n’est pas vérifiable depuis le code seul. Ne déduire aucun horaire des anciens comptes rendus.
 
 ## Routes cron et backfill
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
+| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 07:00/08:00 avec garde 09:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
