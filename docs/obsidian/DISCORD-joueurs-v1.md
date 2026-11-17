@@ -74,3 +74,18 @@ Nouveautés de parcours : `mes-annonces` distingue les annonces **expirées**,
   suppression qui n'a pas eu lieu.
 - Helpers inutilisés retirés (`isSameListingMessage`, alias `PlayerListingView`) ;
   les issues mortes `unavailable` ont disparu des types du service.
+
+## Boutons réellement affichés (17/11)
+
+`/joueurs annonces`, `/joueurs chercher` et la confirmation de `publier` joignent
+désormais des composants au payload (`editSetupResponse({ components })`) :
+
+- une rangée par annonce **active**, au maximum 4 (Discord plafonne à 5) ;
+- boutons « Je suis intéressé », « Contacter l'auteur » et, si l'origine Vercel
+  est résolvable, « Ouvrir GameNight » ;
+- aucune rangée pour une annonce expirée ;
+- `retirer` n'envoie aucun composant.
+
+Chaque clic est revérifié côté serveur (annonce existante, non expirée, même
+serveur, membre actif) : un bouton ne peut pas agir sur l'annonce d'une autre
+communauté. L'intérêt reste **non persisté** et le message le dit.

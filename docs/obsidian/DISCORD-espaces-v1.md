@@ -1,40 +1,37 @@
-# Espaces Discord des équipes et projets (planificateur)
+# Espaces Discord des équipes et projets — planificateur vérifié
 
 Code : `src/lib/discord-team-spaces.ts` · flag `DISCORD_TEAM_SPACES_ENABLED`
 (fermé par défaut) · **aucune ressource réelle créée sur The Tower**.
 
-## Ce qui est décidé
+## Correctif du 17/11 — l'archivage cible le bon salon
 
-Le module ne fait pas d'appel Discord dans les commandes : il produit un **plan**
-(`planTeamSpace`) puis l'exécute seulement si le flag est ouvert, avec un client
-injecté (`applyTeamSpacePlan`). Les tests utilisent un faux client : zéro appel
-réseau.
+L'archivage utilisait la clé de l'espace (`gn-team-<id>`) comme identifiant de
+salon. C'était une confusion entre identifiant d'équipe et identifiant Discord.
 
-## Règles tenues
+Désormais :
 
-- **Nom** : salon normalisé (minuscules, sans accent, `-`), 100 caractères max,
-  refusé s'il devient vide ; rôle `GN · <nom>` borné à 100.
-- **Clé déterministe** : `gn-team-<id>` → rejouer la planification **réutilise**
-  le rôle et le salon existants au lieu d'en créer d'autres (idempotence).
-- **Permissions** : rôle toujours `permissions: "0"`, `mentionable: false`,
-  `hoist: false` — aucun droit administratif possible. Salon privé :
-  `@everyone` refuse `Voir les salons` (1024), le rôle d'équipe l'autorise.
-- **Quota** : 5 espaces gérés par communauté par défaut ; un espace déjà existant
-  ne consomme pas de place supplémentaire.
-- **Membres** : identifiants Discord validés (neige), dédupliqués, 50 max.
-- **Départ / équipe vide** : plan d'**archivage** (renommage `archive-…`), jamais
-  une suppression ; une équipe désactivée est refusée (`team_disabled`).
-- **Échec partiel** : si le rôle échoue, le salon n'est pas créé (pas de salon
-  orphelin) et le résultat est `partial` avec le détail par étape.
+- un identifiant de salon n'est **résolu** que par le lien persisté
+  (`managedSpaces: [{ teamId, channelId, roleId? }]`) ou par un salon dont le nom
+  est le nom **exact** dérivé de l'équipe (`<slug>-<teamId>`, donc unique) ;
+- l'archivage n'est planifié que si cet identifiant est connu et présent dans le
+  serveur ; sinon le plan est refusé (`unmanaged`) — **aucune action** ;
+- une ressemblance de nom, un salon historique ou un salon d'une autre équipe ne
+  sont jamais ciblés ;
+- aucune suppression : uniquement un renommage `archive-…` (ou `restore-…` pour
+  revenir) ;
+- `applyTeamSpacePlan` refuse toute étape `archive`/`restore` sans `targetId`.
 
-## Ce qui reste à faire (bloqué volontairement)
+## Capitaine et membres
 
-1. Brancher le plan sur une vraie création après accord explicite (le flag reste
-   `false`, aucun salon/role créé sur le serveur réel).
-2. Persister les identifiants créés (`channelId`, `roleId`) → **migration Prisma
-   requise**, donc accord explicite.
-3. Retirer la permission d'un membre parti : dépend du point 2 (sans stockage,
-   le plan ne connaît pas le salon à modifier).
-4. Archivage automatique sur dissolution d'équipe : même dépendance.
+- Capitaine = `createdById` s'il est membre actif (`teamCaptainId`), **jamais** le
+  premier de la liste. Sans capitaine valide, le plan n'en invente pas.
+- `previousMemberDiscordIds` sert à calculer les **départs** ; ce sont les seules
+  permissions à retirer, dans le seul salon de cette équipe.
+- Réactivation : `previousArchived` + lien vérifié → étape `restore` (renommage
+  vers le nom actuel), pas de nouvelle ressource.
 
-Aucun de ces points n'est simulé : le code s'arrête proprement au plan.
+## Reste bloqué (identique et assumé)
+
+Persistance de `channelId`/`roleId` (migration Prisma) → sans elle, les liens
+doivent être fournis par l'appelant, et aucun retrait de permission automatique
+n'est planifié en production. Le code ne simule aucun stockage.

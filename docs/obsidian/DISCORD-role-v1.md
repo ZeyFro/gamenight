@@ -36,3 +36,22 @@ Fichiers : `src/lib/discord-guild-roles.ts` (décisions pures), `src/lib/discord
 - **Aucune vérification sur le serveur Discord réel** : la commande n'est pas active, donc pas de preuve d'exécution réelle (conforme à la règle « ne jamais promettre une fonctionnalité active dans Discord »).
 - **Quota de création persistant absent** : limite par exécution + plafond de rôles, mais pas de compteur journalier par joueur — cela demande une table dédiée, donc une migration (opération bloquante à autoriser).
 - Les étages de la Tour ne créent toujours aucun rôle Discord.
+
+## Autocomplétion `/role` (17/11)
+
+`src/lib/discord-role-autocomplete.ts`, routé par `src/lib/discord-autocomplete.ts` :
+le joueur tape `/role chercher jeu:<début>` et choisit dans la liste, sans
+recopier un nom exact.
+
+- suggestions issues des rôles **existants** du serveur (`listGuildRoles`), sans
+  accent, dédupliquées, préfixes exacts en tête, 25 maximum ;
+- rôles sensibles exclus (administration, modération, intégrations `managed`,
+  `@everyone`, permissions élevées), via les règles de `discord-guild-roles` ;
+- `jeu` reste une option texte : aucune création, aucune attribution pendant
+  l'autocomplétion — `runRoleCommand` garde le monopole des écritures et des
+  refus (nom réservé, limite de rôles, création autorisée) ;
+- si Discord refuse la lecture, la liste est vide plutôt qu'une erreur bloquante ;
+- commande fermée (`DISCORD_ROLE_COMMAND_ENABLED=false`) → aucune suggestion.
+
+Déclaration à ajouter par le propriétaire de #416 (`autocomplete: true` sur
+l'option `jeu`) : voir `DISCORD-tournoi-v1.md` pour le format.
