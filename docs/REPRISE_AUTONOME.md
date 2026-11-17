@@ -1,3 +1,5 @@
+> **Remplacé le 17 novembre 2026 :** « Neon Test puis Production avec accords séparés » et « un flag par jour » ne sont plus la règle. Voir [MIGRATIONS.md](MIGRATIONS.md) (migrations appliquées automatiquement après fusion) et [ACTIVATION_TOUR.md](ACTIVATION_TOUR.md) (Tour activée en une soirée). Les passages ci-dessous qui les décrivent sont historiques.
+
 > **Reprise actuelle — 6 novembre 2026 :** lire d’abord [ETAT.md](ETAT.md) et l’issue #400.
 > Les relevés ci-dessous sont historiques ; leurs anciennes têtes, autorisations et
 > conditions d’arrêt ne remplacent pas les instructions actuelles du propriétaire.
