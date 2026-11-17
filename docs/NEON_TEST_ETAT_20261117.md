@@ -103,6 +103,35 @@ Critère de réussite : la copie est lisible, son schéma et son historique sont
 fonctionne et la Production n'a pas été touchée. Échec : arrêt immédiat, aucune suppression, aucun
 contournement par une nouvelle branche créée d'autorité.
 
+### Tentative du 17 novembre — bloquée par le quota de branches
+
+Préflight vérifié **en direct** via l'API Neon (CLI officiel, profil `DEFAULT`) :
+
+| Contrôle | Résultat |
+| --- | --- |
+| Projet | `misty-tooth-45335023` (`gamenight`), PostgreSQL 18, région `aws-eu-central-1` |
+| Branche cible de test | `br-snowy-snow-b1cggq2w` = `tower-migration-test-20261105`, `ready`, non primaire, non par défaut |
+| Sauvegarde | `br-purple-mud-b1nt0tfi` = `backup-tower-migration-test-20261106`, **`ready`**, non primaire |
+| Parent de la sauvegarde | `br-snowy-snow-b1cggq2w` — correspond à la cible annoncée |
+| Point de restauration | `parent_lsn 0/2A355C30`, `parent_timestamp 2026-11-06T12:26:10Z` |
+| Création de `restore-check-20261117` | **refusée par l'API : `branches limit exceeded`** |
+
+Inventaire du projet : **10 branches, limite atteinte**. Quatre actives (`production`,
+`tower-migration-test-20261105`, `tower-restore-rehearsal-20261107`,
+`backup-tower-migration-test-20261106`) et six archivées (`backup-avant-tower-migrations-20261030`,
+`tower329-isolated-snapshot-20261020`, `xp291-restored-proof-20261020`, `xp291-endpoint-repair-20261020`,
+`portable1-recette-20261019`, `backup-avant-multiserveur`).
+
+Aucune branche n'a été créée, supprimée, réinitialisée ou modifiée. Aucun apply. Aucun jeton affiché.
+
+**Déblocage possible, sur décision explicite :** supprimer une branche archivée (irréversible), ou
+relever la limite du projet. Une suppression n'a pas été tentée.
+
+**Précision sur la répétition du 14/11 :** le projet voisin `winter-scene-14323342`
+(`gamenight-restore-rehearsal-20261114`) contient six branches créées le même jour depuis sa propre
+timeline (`parent_lsn 0/19DBC68`). C'est une répétition synthétique sur un projet séparé, **pas** une
+restauration de `br-purple-mud-b1nt0tfi` ; elle ne constitue donc pas la preuve demandée.
+
 ## 4. Garde-fous GitHub constatés
 
 - Environnement `neon-migration-test` : `required_reviewers` **et** `branch_policy` → chaque exécution
