@@ -6,6 +6,8 @@ import { spawnSync } from "node:child_process";
 // This applies equally to Vercel preview and production deployments.
 const steps = [
   ["node_modules/prisma/build/index.js", "generate"],
+  // Garde de lecture seule : en Production, refuse le build si le code attend un schéma que la base n'a pas encore.
+  ["scripts/assert-migrations-applied.mjs"],
   ["node_modules/next/dist/bin/next", "build"],
 ];
 

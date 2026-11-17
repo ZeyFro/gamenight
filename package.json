@@ -47,11 +47,14 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "@prisma/config": {
       "deepmerge-ts": "8.0.2"
+    },
+    "@vercel/cli-config": {
+      "zod": "$zod"
     }
   }
 }
