@@ -1,0 +1,119 @@
+--- a/src/app/joueurs/actions.ts
++++ b/src/app/joueurs/actions.ts
+@@ -1,56 +1,52 @@
+ "use server";
+ 
+-import { Prisma } from "@prisma/client";
+ import { redirect } from "next/navigation";
+ import { revalidatePath } from "next/cache";
+ import { getCurrentUser } from "@/lib/current-user";
+-import { getScopedPrisma } from "@/lib/community-scoped-client";
+-import { checkRateLimit } from "@/lib/rate-limit";
++import { getPlayerClassifiedCommunityId } from "@/lib/player-classifieds";
++import { createPlayerListing, deletePlayerListing } from "@/lib/player-listings";
+ import { idSchema } from "@/lib/validations";
+-import { getPlayerClassifiedCommunityId, playerClassifiedExpiresAt, playerClassifiedSchema } from "@/lib/player-classifieds";
+-import { wallClockNow } from "@/lib/wallclock";
+ import { requireAdmin } from "@/lib/admin";
+ 
++/**
++ * Actions web des annonces de joueurs.
++ *
++ * Toute la logique métier vit dans `src/lib/player-listings.ts`, utilisée aussi
++ * par Discord (`/joueurs publier`, `/joueurs retirer`) : une seule validation,
++ * une seule expiration (24 h), un seul contrôle d'auteur, un seul anti-doublon.
++ */
++
++const optionalText = (formData: FormData, name: string): string | undefined => {
++  const value = formData.get(name);
++  return typeof value === "string" && value.trim() ? value : undefined;
++};
++
+ export async function createPlayerClassifiedAction(formData: FormData): Promise<void> {
+   const user = await getCurrentUser();
+   if (!user) redirect("/");
+   const communityId = await getPlayerClassifiedCommunityId(user.id);
+   if (!communityId) redirect("/joueurs?error=unavailable");
+-  if (!checkRateLimit(user.id, "createPlayerClassified")) redirect("/joueurs?error=rate_limited");
+ 
+-  const input = playerClassifiedSchema.safeParse({
+-    gameId: formData.get("gameId"),
+-    message: formData.get("message"),
+-    platform: formData.get("platform") ?? undefined,
+-    microphoneRequirement: formData.get("microphoneRequirement") ?? undefined,
+-    partyType: formData.get("partyType") ?? undefined,
+-    startsDate: formData.get("startsDate") ?? undefined,
+-    startsTime: formData.get("startsTime") ?? undefined,
+-    durationMinutes: formData.get("durationMinutes"),
+-  });
+-  if (!input.success) redirect("/joueurs?error=invalid");
+-  const scopedDb = await getScopedPrisma(user.id);
+-  const game = await scopedDb.game.findUnique({ where: { id: input.data.gameId }, select: { id: true } });
+-  if (!game) redirect("/joueurs?error=invalid");
+-
+-  const createdAt = wallClockNow();
+-  if (input.data.startsAt && input.data.startsAt <= createdAt) redirect("/joueurs?error=invalid");
+-  const data: Prisma.PlayerClassifiedUncheckedCreateInput = {
++  const durationRaw = formData.get("durationMinutes");
++  const result = await createPlayerListing({
++    userId: user.id,
+     communityId,
+-    gameId: game.id,
+-    createdById: user.id,
+-    message: input.data.message,
+-    createdAt,
+-    expiresAt: playerClassifiedExpiresAt(createdAt),
+-    platform: input.data.platform,
+-    microphoneRequirement: input.data.microphoneRequirement,
+-    partyType: input.data.partyType,
+-    startsAt: input.data.startsAt,
+-    durationMinutes: input.data.durationMinutes,
+-  };
+-  await scopedDb.playerClassified.create({
+-    data,
++    gameId: String(formData.get("gameId") ?? ""),
++    message: String(formData.get("message") ?? ""),
++    extras: {
++      platform: optionalText(formData, "platform"),
++      microphoneRequirement: optionalText(formData, "microphoneRequirement"),
++      partyType: optionalText(formData, "partyType"),
++      startsDate: optionalText(formData, "startsDate"),
++      startsTime: optionalText(formData, "startsTime"),
++      durationMinutes: typeof durationRaw === "string" && durationRaw ? Number(durationRaw) : undefined,
++    },
+   });
++
++  if (result.status === "rate_limited") redirect("/joueurs?error=rate_limited");
++  if (result.status === "duplicate") redirect("/joueurs?error=duplicate");
++  if (result.status !== "created") redirect("/joueurs?error=invalid");
++
+   revalidatePath("/joueurs");
+   redirect("/joueurs");
+ }
+@@ -60,18 +56,17 @@
+   if (!user) redirect("/");
+   const communityId = await getPlayerClassifiedCommunityId(user.id);
+   if (!communityId) redirect("/joueurs?error=unavailable");
+-  if (!checkRateLimit(user.id, "deletePlayerClassified")) redirect("/joueurs?error=rate_limited");
+   const parsed = idSchema.safeParse(formData.get("id"));
+   if (!parsed.success) redirect("/joueurs?error=invalid");
+ 
+-  const scopedDb = await getScopedPrisma(user.id);
+-  const listing = await scopedDb.playerClassified.findFirst({
+-    where: { id: parsed.data, communityId },
+-    select: { id: true, createdById: true },
++  const result = await deletePlayerListing({
++    userId: user.id,
++    communityId,
++    listingId: parsed.data,
++    isAdmin: await requireAdmin(),
+   });
+-  if (!listing || (listing.createdById !== user.id && !(await requireAdmin()))) {
+-    redirect("/joueurs?error=forbidden");
+-  }
+-  await scopedDb.playerClassified.deleteMany({ where: { id: listing.id, communityId } });
++  if (result === "rate_limited") redirect("/joueurs?error=rate_limited");
++  if (result !== "deleted") redirect("/joueurs?error=forbidden");
++
+   revalidatePath("/joueurs");
+ }

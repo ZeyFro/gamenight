@@ -42,3 +42,10 @@ vers `src/lib/discord-autocomplete.ts` (dispatch `/tournoi` + `/soiree`). Le pat
 reste fourni pour #408 : la fusion des deux branches donnera un seul et même bloc.
 Le test `src/lib/discord-autocomplete.test.ts` couvre le dispatch, les adaptateurs
 sont testés séparément.
+
+## Remplacement
+
+Ce patch est désormais inclus dans
+`docs/patches/20261117-routage-commandes-complet.patch`, qui couvre aussi les
+commandes `/tournoi`, `/soiree`, `/joueurs`, `/projet`, leurs runners dans
+`route.ts` et le bouton de désinscription. Utiliser le patch complet sur #408.

@@ -102,3 +102,9 @@ par `createVotingSessionInTransaction` sans annonce Discord et sans
   privée et idempotence (`joinSession` → `already`, `leaveSession` → `not_invited`).
 - Les erreurs (complète, terminée, introuvable, non invité) restent des messages
   distincts ; aucune soirée parallèle n'est créée.
+
+## Lien GameNight
+
+`renderSessionDetail` ajoute `Ouvre GameNight : <origine>/sessions` quand
+`VERCEL_URL`/`VERCEL_PROJECT_PRODUCTION_URL` est disponible ; sinon aucune URL
+n'est affichée (jamais de domaine inventé).

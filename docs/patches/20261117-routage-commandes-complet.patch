@@ -1,0 +1,83 @@
+--- a/src/lib/discord-interactions.ts
++++ b/src/lib/discord-interactions.ts
+@@ -66,6 +66,10 @@
+   runRsvp?: () => Promise<void>;
+   runTower?: () => Promise<void>;
+   runTeam?: () => Promise<void>;
++  runSession?: () => Promise<void>;
++  runTournament?: () => Promise<void>;
++  runPlayers?: () => Promise<void>;
++  runProject?: () => Promise<void>;
+ }
+ 
+ const reply = (content: string): InteractionOutput => ({
+@@ -107,6 +111,12 @@
+   const interaction = parsed.data;
+ 
+   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
++
++  if (interaction.type === 4) {
++    // Autocomplétion (/tournoi, /soiree) : adaptateur isolé, aucune écriture.
++    const { handleSignedAutocomplete } = await import("@/lib/discord-autocomplete");
++    return handleSignedAutocomplete(json, input.timestamp);
++  }
+   if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
+     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
+     return handleSignedTowerAdminInteraction(json, input.timestamp);
+@@ -148,7 +158,7 @@
+       try {
+         const origin = { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId };
+         content = tournamentRsvp
+-          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin)
++          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin, tournamentRsvp.kind)
+           : isInstantRsvp
+             ? await respondToInstantSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin)
+             : await respondToSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin);
+@@ -165,6 +175,26 @@
+   const commandTimestamp = Number(input.timestamp);
+   if (!Number.isFinite(commandTimestamp) || Math.abs(Date.now() / 1000 - commandTimestamp) > 300) return { status: 400 };
+ 
++  if (interaction.type === 2 && interaction.data?.name === "tournoi") {
++    // /tournoi : tournois de la communauté, inscriptions via services partagés.
++    const { handleSignedTournamentInteraction } = await import("@/lib/discord-tournament-commands");
++    return handleSignedTournamentInteraction(json, input.timestamp);
++  }
++  if (interaction.type === 2 && interaction.data?.name === "soiree") {
++    // /soiree : Session/SessionInvite existants, aucun second système.
++    const { handleSignedSessionInteraction } = await import("@/lib/discord-session-commands");
++    return handleSignedSessionInteraction(json, input.timestamp);
++  }
++  if (interaction.type === 2 && interaction.data?.name === "joueurs") {
++    // /joueurs : annonces de la page /joueurs, service d'écriture partagé.
++    const { handleSignedPlayerInteraction } = await import("@/lib/discord-player-commands");
++    return handleSignedPlayerInteraction(json, input.timestamp);
++  }
++  if (interaction.type === 2 && interaction.data?.name === "projet") {
++    // /projet : façade sur les équipes existantes (mêmes services que /equipe).
++    const { handleSignedProjectInteraction } = await import("@/lib/discord-project-commands");
++    return handleSignedProjectInteraction(json, input.timestamp);
++  }
+   if (interaction.data?.name === "equipe") {
+     const { handleSignedTeamCommand } = await import("@/lib/discord-team-command");
+     return handleSignedTeamCommand(json);
+--- a/src/app/api/discord/interactions/route.ts
++++ b/src/app/api/discord/interactions/route.ts
+@@ -10,7 +10,7 @@
+  * signature porte sur les octets exacts reçus.
+  */
+ export async function POST(request: Request) {
+-  const { status, body, runSetup, runRsvp, runTower, runTeam } = await handleDiscordInteraction({
++  const { status, body, runSetup, runRsvp, runTower, runTeam, runSession, runTournament, runPlayers, runProject } = await handleDiscordInteraction({
+     rawBody: await request.text(),
+     signature: request.headers.get("x-signature-ed25519"),
+     timestamp: request.headers.get("x-signature-timestamp"),
+@@ -19,5 +19,9 @@
+   if (runRsvp) after(runRsvp);
+   if (runTower) after(runTower);
+   if (runTeam) after(runTeam);
++  if (runSession) after(runSession);
++  if (runTournament) after(runTournament);
++  if (runPlayers) after(runPlayers);
++  if (runProject) after(runProject);
+   return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+ }

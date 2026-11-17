@@ -36,3 +36,24 @@ rester qu'une seule copie de la règle.
 - `retirer` refuse toute annonce dont `createdById` n'est pas l'appelant ;
 - limite de 5 publications par fenêtre de rate-limit ;
 - réponse privée, aucune mention, aucun identifiant Discord.
+
+## Correctif du 17/11 — une seule logique d'écriture
+
+`src/lib/player-listings.ts` est désormais **le** service d'écriture des annonces :
+`createPlayerListing`, `deletePlayerListing`, `listCommunityListings`,
+`listOwnListings`, `filterListings`. Il porte la validation du schéma partagé,
+l'expiration 24 h, la limite de débit, l'anti-doublon (même auteur + jeu + message
+encore actif) et le contrôle d'auteur.
+
+- Discord : `/joueurs publier|retirer|annonces|mes-annonces|chercher` n'a plus
+  aucune requête d'écriture propre.
+- Web : l'action `src/app/joueurs/actions.ts` appartient à #408. Le patch
+  `docs/patches/20261117-joueurs-service-partage.patch` la fait déléguer au même
+  service ; il s'applique strictement sur la tête `3465c39`.
+- **Tant que ce patch n'est pas appliqué par le propriétaire de #408, la
+  synchronisation d'écriture n'est pas terminée** : le web garde sa logique
+  locale. C'est un état transitoire assumé, pas une revendication de fin.
+
+Nouveautés de parcours : `mes-annonces` distingue les annonces **expirées**,
+`chercher` filtre jeu/message/auteur sans accent, et les réponses portent un lien
+`/joueurs` **uniquement** quand l'origine Vercel est résolvable.

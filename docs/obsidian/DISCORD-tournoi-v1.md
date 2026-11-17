@@ -138,3 +138,11 @@ Ajouter aux `options` de `tournoi` :
   `unregisterTournamentParticipant`, avec vérification du message d'annonce, du
   serveur, du salon et de l'appartenance. Un clic rejoué est idempotent.
 - Tournoi complet, fermé, commencé ou supprimé : réponses distinctes, aucune écriture.
+
+## Liens GameNight et erreurs
+
+`renderTournamentDetail` ajoute un lien `/tournois/<id>` quand l'origine Vercel
+est résolvable (`src/lib/discord-links.ts`), et rappelle que la commande
+n'inscrit personne d'elle-même. Les messages d'erreur restent distincts :
+inexistant, autre communauté, complet, inscriptions fermées, déjà inscrit,
+désinscription impossible.
