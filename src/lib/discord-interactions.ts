@@ -60,6 +60,7 @@ const interactionSchema = z.object({
           z.object({
             name: z.string(),
             type: z.number().optional(),
+            value: z.union([z.string(), z.number(), z.boolean()]).optional(),
           })
         )
         .optional(),
@@ -187,8 +188,8 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
       const options = data.options ?? [];
       const option0 = options[0];
       let teamName: string = "";
-      if (option0?.name === "equipe") teamName = (option0 as any)?.value as string;
-      if (option0?.name === "equipe_id") teamName = (option0 as any)?.value as string;
+      if (option0?.name === "equipe") teamName = option0?.value as string;
+      if (option0?.name === "equipe_id") teamName = option0?.value as string;
       const parsed = handleEquipeCommand(
         data.name as string,
         teamName
@@ -214,21 +215,21 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
         case "aide": {
           const aideOption = data.options?.[0];
           // Use type assertion for value property (Discord option value)
-          const aideValeur = (aideOption as any)?.value as { cible?: string };
+          const aideValeur = aideOption?.value as { cible?: string };
           content = handleAideCommand(aideValeur?.cible);
           break;
         }
         case "profil": {
           const profilOption = data.options?.[0];
           // Use type assertion for value property
-          const profilValeur = (profilOption as any)?.value as { nom?: string };
+          const profilValeur = profilOption?.value as { nom?: string };
           content = handleProfilCommand(profilValeur?.nom);
           break;
         }
         case "boost": {
           const boostOption = data.options?.[0];
           // Use type assertion for value property
-          const boostValeur = (boostOption as any)?.value as { nom?: string };
+          const boostValeur = boostOption?.value as { nom?: string };
           content = handleBoostCommand(boostValeur?.nom);
           break;
         }
