@@ -77,7 +77,7 @@ export async function withdrawTeamApplication(userId: string, communityId: strin
   return updated.count ? "withdrawn" : "missing";
 }
 
-export type DecideResult = "accepted" | "declined" | "closed" | "full" | "missing" | "forbidden" | "unavailable";
+export type DecideResult = "accepted" | "declined" | "closed" | "full" | "already_team" | "cooldown" | "missing" | "forbidden" | "unavailable";
 
 /**
  * Le responsable accepte ou refuse une candidature en attente. L'acceptation passe par `joinCommunityTeam`
@@ -92,22 +92,24 @@ export async function decideTeamApplication(userId: string, communityId: string,
     select: {
       teamId: true, applicantId: true,
       team: { select: {
-        createdById: true,
+        createdById: true, captainId: true,
         createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
         members: { where: activeMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
       } },
     },
   });
   if (!application) return "missing";
   const leaderId = resolveTeamLeaderId({
+    captainId: application.team.captainId,
     createdById: application.team.createdById,
-    creatorIsActive: application.team.createdBy.memberships.length > 0,
+    leaderIsActive: application.team.captainId ? Boolean(application.team.captain?.memberships.length) : application.team.createdBy.memberships.length > 0,
     oldestActiveMemberId: application.team.members[0]?.userId ?? null,
   });
   if (leaderId !== userId) return "forbidden";
   if (accept) {
     const joined = await joinCommunityTeam(application.applicantId, communityId, application.teamId);
-    if (joined === "closed" || joined === "full") return joined;
+    if (joined === "closed" || joined === "full" || joined === "already_team" || joined === "cooldown") return joined;
     if (joined === "missing" || joined === "unavailable") return "unavailable";
   }
   const updated = await scopedDb.teamApplication.updateMany({
@@ -125,14 +127,17 @@ export async function listPendingApplicationsForLeader(userId: string, community
   const teams = await scopedDb.communityTeam.findMany({
     where: { communityId },
     select: {
-      id: true, createdById: true,
+      id: true, createdById: true, captainId: true,
       createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+      captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
       members: { where: activeMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
     },
   });
   const teamIds = teams
     .filter(team => resolveTeamLeaderId({
-      createdById: team.createdById, creatorIsActive: team.createdBy.memberships.length > 0, oldestActiveMemberId: team.members[0]?.userId ?? null,
+      captainId: team.captainId, createdById: team.createdById,
+      leaderIsActive: team.captainId ? Boolean(team.captain?.memberships.length) : team.createdBy.memberships.length > 0,
+      oldestActiveMemberId: team.members[0]?.userId ?? null,
     }) === userId)
     .map(team => team.id);
   if (!teamIds.length) return [];

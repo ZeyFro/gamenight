@@ -15,9 +15,11 @@ export const metadata = pageMetadata("Équipes et aventures");
 
 const RESULTS: Record<string, string> = {
   created: "Ton équipe est créée.", joined: "Tu as rejoint l’équipe.", already: "Tu fais déjà partie de cette équipe.",
-  left: "Tu as quitté l’équipe.", leader: "Le responsable reste dans son équipe; ferme le recrutement si nécessaire.",
+  left: "Tu as quitté l’équipe.", leader: "Tu es seul dans l’équipe : tu ne peux la quitter qu’avec un successeur, ou en la dissolvant.",
   closed: "Le recrutement est fermé.", full: "Cette équipe est complète.", missing: "Équipe introuvable.",
-  limit: "Limite atteinte : trois équipes créées par période de 24 heures.", invalid: "Vérifie les informations saisies.",
+  limit: "Limite atteinte : trois équipes créées par période de 24 heures.",
+  already_team: "Tu es déjà membre d’une équipe de cette communauté.",
+  cooldown: "Après un départ, tu dois attendre 7 jours avant de rejoindre une autre équipe.", invalid: "Vérifie les informations saisies.",
   invalid_game: "Choisis un jeu disponible.", rate: "Trop de demandes, réessaie dans une minute.",
   unavailable: "Les équipes ne sont pas activées ou tu n’es pas membre actif de cette communauté.",
 };
@@ -34,6 +36,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
     prisma.game.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     listCommunityTeams(user.id, communityId),
   ]);
+  const hasCaptainedTeam = teams.some((team) => (team.captainId ?? team.createdById) === user.id);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -42,6 +45,9 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
         <p className="mt-2 text-sm text-muted">Monte un projet durable, recrute des compagnons et jouez à votre rythme. Aucun ping ni message Discord n’est envoyé.</p>
         {isTeamApplicationsEnabled() && <p className="mt-2 text-sm"><Link href="/equipes/candidatures" className="text-accent underline-offset-4 hover:underline">Candidatures d’équipe →</Link></p>}
       </header>
+      {hasCaptainedTeam && <Link href="/equipes/gestion" className="text-sm font-medium text-accent hover:underline">
+        Gérer mes équipes →
+      </Link>}
       {result && RESULTS[result] && <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{RESULTS[result]}</p>}
 
       <Card>
@@ -52,7 +58,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
           <label className="grid gap-1 text-sm text-foreground">Votre objectif<textarea name="description" required minLength={10} maxLength={1000} rows={3} placeholder="Construire une base et explorer ensemble pendant plusieurs semaines…" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm text-foreground">Plateforme<input name="platform" required maxLength={40} placeholder="PC, PS5, cross-play…" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
-            <label className="grid gap-1 text-sm text-foreground">Taille totale de l’équipe (toi compris)<input name="maxMembers" type="number" required min={2} max={20} defaultValue={6} className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
+            <label className="grid gap-1 text-sm text-foreground">Taille totale de l’équipe (toi compris)<input name="maxMembers" type="number" required min={2} max={8} defaultValue={6} className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>
           </div>
           <Button type="submit" variant="primary">Créer l’équipe</Button>
         </form>
@@ -62,8 +68,8 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
         <h2 id="teams-title" className="font-semibold text-foreground">Aventures de la communauté ({teams.length})</h2>
         {teams.length === 0 ? <EmptyState icon="🧭" title="Aucune aventure en cours." /> : teams.map((team) => {
           const isMember = team.members.some((member) => member.userId === user.id);
-          const leaderId = team.createdBy.memberships.length ? team.createdById : team.members[0]?.userId;
-          const leaderName = team.createdBy.memberships.length ? team.createdBy.discordName : team.members[0]?.user.discordName ?? "aucun membre actif";
+          const leaderId = team.captainId ?? (team.createdBy.memberships.length ? team.createdById : team.members[0]?.userId);
+          const leaderName = team.captain?.discordName ?? (team.createdBy.memberships.length ? team.createdBy.discordName : team.members[0]?.user.discordName ?? "aucun membre actif");
           const isLeader = leaderId === user.id;
           return <Card key={team.id} className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -91,10 +97,12 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
                 {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(session.date)} · {session.decidedGame?.name ?? "Vote en cours"}
               </Link>)}
             </div>}
-            {isLeader ? <form action={setCommunityTeamRecruitmentAction}>
+            {isLeader ? <div className="flex flex-wrap gap-2"><form action={setCommunityTeamRecruitmentAction}>
               <input type="hidden" name="teamId" value={team.id} /><input type="hidden" name="open" value={String(!team.isRecruiting)} />
               <Button type="submit" size="sm">{team.isRecruiting ? "Fermer le recrutement" : "Rouvrir le recrutement"}</Button>
-            </form> : isMember ? <form action={leaveCommunityTeamAction}>
+            </form><form action={leaveCommunityTeamAction}>
+              <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm">Quitter l’équipe</Button>
+            </form></div> : isMember ? <form action={leaveCommunityTeamAction}>
               <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm">Quitter l’équipe</Button>
             </form> : team.isRecruiting && team._count.members < team.maxMembers ? <form action={joinCommunityTeamAction}>
               <input type="hidden" name="teamId" value={team.id} /><Button type="submit" size="sm" variant="primary">Rejoindre l’équipe</Button>

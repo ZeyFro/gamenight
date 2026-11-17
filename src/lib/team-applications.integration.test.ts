@@ -81,6 +81,16 @@ describe.skipIf(!TEST_DATABASE_URL)("candidatures d'équipe : PostgreSQL isolé"
     expect(await db.teamApplication.count({ where: { status: "PENDING" } })).toBe(1);
   });
 
+  it("l'acceptation hérite de la règle une équipe par joueur : la candidature reste en attente", async () => {
+    await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Salut" });
+    await teams.createCommunityTeam({ userId: ids.bob, communityId: ids.community, gameId: ids.game, name: "Autre équipe", description: "Une autre aventure ensemble.", platform: "PC", maxMembers: 4 });
+    const other = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, createdById: ids.bob } });
+    expect(await teams.joinCommunityTeam(ids.ana, ids.community, other.id)).toBe("joined");
+    const [pending] = await apps.listPendingApplicationsForLeader(ids.leader, ids.community);
+    expect(await apps.decideTeamApplication(ids.leader, ids.community, pending.id, true)).toBe("already_team");
+    expect(await db.teamApplication.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: "PENDING" });
+  });
+
   it("refuse de postuler quand le recrutement est fermé ou l'équipe complète", async () => {
     await db.communityTeam.update({ where: { id: ids.team }, data: { isRecruiting: false } });
     expect(await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Salut" })).toBe("closed");

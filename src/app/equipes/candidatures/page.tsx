@@ -15,6 +15,7 @@ export const metadata = pageMetadata("Candidatures d’équipe");
 const RESULTS: Record<string, string> = {
   applied: "Ta candidature est envoyée au responsable.", accepted: "Candidature acceptée : le joueur a rejoint l’équipe.",
   declined: "Candidature refusée.", withdrawn: "Candidature retirée.", already_member: "Tu fais déjà partie de cette équipe.",
+  already_team: "Ce joueur fait déjà partie d’une autre équipe : une seule équipe par joueur.", cooldown: "Ce joueur a quitté une équipe il y a moins de 7 jours : il doit attendre avant d’en rejoindre une autre.",
   pending: "Tu as déjà une candidature en attente pour cette équipe.", closed: "Le recrutement est fermé.", full: "Cette équipe est complète.",
   missing: "Candidature ou équipe introuvable.", forbidden: "Seul le responsable de l’équipe peut décider.",
   invalid: "Écris un message de 1 à 500 caractères.", rate: "Trop de demandes, réessaie dans une minute.",

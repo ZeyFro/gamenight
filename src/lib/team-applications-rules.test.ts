@@ -24,12 +24,13 @@ describe("message de candidature", () => {
 });
 
 describe("responsable d'équipe", () => {
-  it("le créateur actif reste responsable", () => {
-    expect(resolveTeamLeaderId({ createdById: "a", creatorIsActive: true, oldestActiveMemberId: "b" })).toBe("a");
+  it("le capitaine actif est responsable, à défaut le créateur", () => {
+    expect(resolveTeamLeaderId({ captainId: "c", createdById: "a", leaderIsActive: true, oldestActiveMemberId: "b" })).toBe("c");
+    expect(resolveTeamLeaderId({ captainId: null, createdById: "a", leaderIsActive: true, oldestActiveMemberId: "b" })).toBe("a");
   });
   it("sinon le membre actif le plus ancien, ou personne", () => {
-    expect(resolveTeamLeaderId({ createdById: "a", creatorIsActive: false, oldestActiveMemberId: "b" })).toBe("b");
-    expect(resolveTeamLeaderId({ createdById: "a", creatorIsActive: false, oldestActiveMemberId: null })).toBeNull();
+    expect(resolveTeamLeaderId({ captainId: "c", createdById: "a", leaderIsActive: false, oldestActiveMemberId: "b" })).toBe("b");
+    expect(resolveTeamLeaderId({ captainId: null, createdById: "a", leaderIsActive: false, oldestActiveMemberId: null })).toBeNull();
   });
 });
 

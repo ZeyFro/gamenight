@@ -13,15 +13,17 @@ export const teamApplicationSchema = z.object({
 });
 
 /**
- * Responsable d'une équipe : le créateur tant qu'il est membre actif de la communauté, sinon le membre actif
- * le plus ancien (même règle que `setCommunityTeamRecruitment`, `src/lib/community-teams.ts`).
+ * Responsable d'une équipe : le capitaine (`captainId`, à défaut le créateur) tant qu'il est membre actif de la
+ * communauté, sinon le membre actif le plus ancien (même règle que `setCommunityTeamRecruitment`,
+ * `src/lib/community-teams.ts`).
  */
 export function resolveTeamLeaderId(team: {
+  captainId: string | null;
   createdById: string;
-  creatorIsActive: boolean;
+  leaderIsActive: boolean;
   oldestActiveMemberId: string | null;
 }): string | null {
-  return team.creatorIsActive ? team.createdById : team.oldestActiveMemberId;
+  return team.leaderIsActive ? (team.captainId ?? team.createdById) : team.oldestActiveMemberId;
 }
 
 export type ApplyBlock = "already_member" | "pending" | "closed" | "full";
