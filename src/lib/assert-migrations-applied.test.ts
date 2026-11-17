@@ -158,3 +158,15 @@ describe.skipIf(!testUrl)("garde de build contre une vraie base PostgreSQL de te
     }
   });
 });
+
+describe("source de connexion journalisée (nom de variable, jamais la valeur)", () => {
+  it("indique le rôle dédié quand il est défini, sinon DATABASE_URL", async () => {
+    const dedicated = collect();
+    await run({ VERCEL_ENV: "production", MIGRATION_GATE_DATABASE_URL: "postgresql://127.0.0.1:1/x", DATABASE_URL: "postgresql://127.0.0.1:1/y" }, dedicated);
+    expect(dedicated.out.join("\n")).toContain("source de connexion : MIGRATION_GATE_DATABASE_URL (rôle dédié)");
+    const fallback = collect();
+    await run({ VERCEL_ENV: "production", DATABASE_URL: "postgresql://127.0.0.1:1/y" }, fallback);
+    expect(fallback.out.join("\n")).toContain("source de connexion : DATABASE_URL.");
+    expect([...dedicated.out, ...dedicated.err, ...fallback.out, ...fallback.err].join("\n")).not.toContain("postgresql://");
+  });
+});
