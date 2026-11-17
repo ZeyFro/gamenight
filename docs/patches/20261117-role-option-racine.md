@@ -13,3 +13,8 @@ Bloc à ajouter au tableau `options` de la commande `role` :
 Et sur chaque option `jeu` des sous-commandes : `"autocomplete": true`.
 Après application, `/role jeu:Valorant` est proposé par Discord ; sans elle,
 `/role attribuer jeu:Valorant` reste fonctionnel.
+
+> **Correction (17/11)** : Discord refuse de mélanger sous-commandes et option
+> racine. Tant que `chercher/attribuer/creer/retirer` existent, la déclaration
+> racine n'est pas enregistrable. Utiliser le patch consolidé
+> `20261117-declarations-discord-416.patch` (autocomplétion sur `jeu`).

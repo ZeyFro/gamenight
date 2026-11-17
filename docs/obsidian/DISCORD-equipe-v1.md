@@ -115,3 +115,16 @@ préparation. Aucune création d'équipe, de salon ou de rôle.
   silencieusement le créateur historique. Aucun code parallèle n'est créé ici.
 - Déclaration JSON des nouvelles sous-commandes : voir
   `docs/patches/20261117-equipe-nouvelles-sous-commandes.md` (fichier #416).
+
+## Correction capitainerie (17/11)
+
+- `createdById` = créateur historique, **jamais réécrit** (l'ancien transfert le
+  remplaçait : corrigé).
+- `captainId` = capitaine responsable, lu via `community-team-captain-store`.
+- Sans colonne `captainId` : capitaine effectif = créateur actif (transition),
+  et `transferTeamCaptain` renvoie `captain_source_unavailable` ; `/equipe
+  transferer` explique que la passation n'est pas encore disponible.
+- Si `captainId` désigne un non-membre : **aucun** capitaine, pas de repli
+  silencieux sur le créateur.
+- Migration isolée : `docs/migrations/pending/20261117_team_captain/`.
+- Recette SQL réelle : voir `DISCORD-recette-postgres.md`.

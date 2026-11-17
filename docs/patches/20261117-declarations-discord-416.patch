@@ -1,0 +1,648 @@
+diff --git a/scripts/discord-commands.json b/scripts/discord-commands.json
+index 484fda8..cfaf738 100644
+--- a/scripts/discord-commands.json
++++ b/scripts/discord-commands.json
+@@ -145,7 +145,7 @@
+   {
+     "name": "equipe",
+     "type": 1,
+-    "description": "Retrouve et rejoins les équipes de ce serveur",
++    "description": "Créer, rejoindre et gérer une équipe GameNight",
+     "default_member_permissions": null,
+     "integration_types": [
+       0
+@@ -157,27 +157,627 @@
+       {
+         "type": 1,
+         "name": "liste",
+-        "description": "Liste les équipes qui recrutent dans ce serveur"
++        "description": "Lister les équipes",
++        "options": []
+       },
+       {
+         "type": 1,
+         "name": "moi",
+-        "description": "Retrouve ton équipe dans ce serveur"
++        "description": "Afficher mes équipes",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "voir",
++        "description": "Détail d’une équipe",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "creer",
++        "description": "Créer une équipe",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Jeu de l’équipe",
++            "required": true,
++            "autocomplete": true
++          },
++          {
++            "type": 3,
++            "name": "nom",
++            "description": "Nom de l’équipe",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "objectif",
++            "description": "Objectif de l’équipe",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "plateforme",
++            "description": "Plateforme",
++            "required": true
++          },
++          {
++            "type": 4,
++            "name": "places",
++            "description": "Nombre de places (2–20)",
++            "required": false
++          }
++        ]
+       },
+       {
+         "type": 1,
+         "name": "rejoindre",
+-        "description": "Rejoins une équipe qui recrute",
++        "description": "Rejoindre une équipe",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "quitter",
++        "description": "Quitter une équipe",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "recrutement",
++        "description": "Ouvrir ou fermer le recrutement (capitaine)",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          },
++          {
++            "type": 5,
++            "name": "ouvert",
++            "description": "Recrutement ouvert",
++            "required": false
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "capitaine",
++        "description": "Afficher le capitaine effectif",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "membres",
++        "description": "Lister les membres",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "transferer",
++        "description": "Transférer la capitainerie (capitaine)",
+         "options": [
+           {
+             "type": 3,
+-            "name": "equipe_id",
+-            "description": "Identifiant affiché par /equipe liste",
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "membre",
++            "description": "Nom Discord ou mention du successeur",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "exclure",
++        "description": "Exclure un membre (capitaine)",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "membre",
++            "description": "Nom Discord ou mention",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "invitations",
++        "description": "État du recrutement",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "espace",
++        "description": "État ou création de l’espace Discord",
++        "options": [
++          {
++            "type": 3,
++            "name": "equipe",
++            "description": "Nom de l’équipe",
++            "required": true
++          },
++          {
++            "type": 5,
++            "name": "creer",
++            "description": "Créer l’espace s’il n’existe pas (capitaine)",
++            "required": false
++          },
++          {
++            "type": 5,
++            "name": "reactiver",
++            "description": "Réactiver un espace archivé (capitaine)",
++            "required": false
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "role",
++    "type": 1,
++    "description": "Obtenir le rôle Discord de ton jeu et suivre ce jeu sur GameNight",
++    "default_member_permissions": null,
++    "integration_types": [
++      0
++    ],
++    "contexts": [
++      0
++    ],
++    "options": [
++      {
++        "type": 1,
++        "name": "chercher",
++        "description": "Chercher un rôle de jeu existant",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
+             "required": true,
+-            "min_length": 1,
+-            "max_length": 191
++            "autocomplete": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "attribuer",
++        "description": "Obtenir le rôle d’un jeu",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
++            "required": true,
++            "autocomplete": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "creer",
++        "description": "Créer puis obtenir un rôle de jeu absent",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
++            "required": true,
++            "autocomplete": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "retirer",
++        "description": "Ne plus suivre un jeu",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
++            "required": true,
++            "autocomplete": true
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "joueurs",
++    "type": 1,
++    "description": "Annonces de joueurs et recherche de partenaires",
++    "default_member_permissions": null,
++    "integration_types": [
++      0
++    ],
++    "contexts": [
++      0
++    ],
++    "options": [
++      {
++        "type": 1,
++        "name": "annonces",
++        "description": "Voir les annonces actives",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "chercher",
++        "description": "Chercher des annonces par jeu",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
++            "required": false,
++            "autocomplete": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "mes-annonces",
++        "description": "Voir mes annonces",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "publier",
++        "description": "Publier une annonce 24 h",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Nom du jeu",
++            "required": true,
++            "autocomplete": true
++          },
++          {
++            "type": 3,
++            "name": "description",
++            "description": "Ce que tu cherches (240 caractères)",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "retirer",
++        "description": "Retirer une de mes annonces",
++        "options": [
++          {
++            "type": 3,
++            "name": "annonce",
++            "description": "Référence de l’annonce",
++            "required": true
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "projet",
++    "type": 1,
++    "description": "Projets et équipes de la communauté",
++    "default_member_permissions": null,
++    "integration_types": [
++      0
++    ],
++    "contexts": [
++      0
++    ],
++    "options": [
++      {
++        "type": 1,
++        "name": "liste",
++        "description": "Lister les projets",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "voir",
++        "description": "Détail d’un projet",
++        "options": [
++          {
++            "type": 3,
++            "name": "projet",
++            "description": "Nom du projet",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "creer",
++        "description": "Créer un projet",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Jeu",
++            "required": true,
++            "autocomplete": true
++          },
++          {
++            "type": 3,
++            "name": "nom",
++            "description": "Nom",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "objectif",
++            "description": "Objectif",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "plateforme",
++            "description": "Plateforme",
++            "required": true
++          },
++          {
++            "type": 4,
++            "name": "places",
++            "description": "Places (2–20)",
++            "required": false
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "rejoindre",
++        "description": "Rejoindre un projet",
++        "options": [
++          {
++            "type": 3,
++            "name": "projet",
++            "description": "Nom du projet",
++            "required": true
+           }
+         ]
++      },
++      {
++        "type": 1,
++        "name": "quitter",
++        "description": "Quitter un projet",
++        "options": [
++          {
++            "type": 3,
++            "name": "projet",
++            "description": "Nom du projet",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "recrutement",
++        "description": "Ouvrir/fermer le recrutement (capitaine)",
++        "options": [
++          {
++            "type": 3,
++            "name": "projet",
++            "description": "Nom du projet",
++            "required": true
++          },
++          {
++            "type": 5,
++            "name": "ouvert",
++            "description": "Recrutement ouvert",
++            "required": false
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "soiree",
++    "type": 1,
++    "description": "Soirées GameNight",
++    "default_member_permissions": null,
++    "integration_types": [
++      0
++    ],
++    "contexts": [
++      0
++    ],
++    "options": [
++      {
++        "type": 1,
++        "name": "liste",
++        "description": "Lister les soirées",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "voir",
++        "description": "Détail d’une soirée",
++        "options": [
++          {
++            "type": 3,
++            "name": "soiree",
++            "description": "Référence de la soirée",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "creer",
++        "description": "Créer une soirée",
++        "options": [
++          {
++            "type": 3,
++            "name": "jeu",
++            "description": "Jeu",
++            "required": true,
++            "autocomplete": true
++          },
++          {
++            "type": 3,
++            "name": "date",
++            "description": "Date (AAAA-MM-JJ)",
++            "required": true
++          },
++          {
++            "type": 3,
++            "name": "heure",
++            "description": "Heure (HH:mm)",
++            "required": true
++          },
++          {
++            "type": 4,
++            "name": "places",
++            "description": "Places",
++            "required": false
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "rejoindre",
++        "description": "Rejoindre une soirée",
++        "options": [
++          {
++            "type": 3,
++            "name": "soiree",
++            "description": "Référence de la soirée",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "quitter",
++        "description": "Quitter une soirée",
++        "options": [
++          {
++            "type": 3,
++            "name": "soiree",
++            "description": "Référence de la soirée",
++            "required": true
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "tournoi",
++    "type": 1,
++    "description": "Tournois GameNight",
++    "default_member_permissions": null,
++    "integration_types": [
++      0
++    ],
++    "contexts": [
++      0
++    ],
++    "options": [
++      {
++        "type": 1,
++        "name": "liste",
++        "description": "Lister les tournois",
++        "options": []
++      },
++      {
++        "type": 1,
++        "name": "voir",
++        "description": "Détail d’un tournoi",
++        "options": [
++          {
++            "type": 3,
++            "name": "tournoi",
++            "description": "Référence du tournoi",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "inscription",
++        "description": "S’inscrire à un tournoi",
++        "options": [
++          {
++            "type": 3,
++            "name": "tournoi",
++            "description": "Référence du tournoi",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "desinscription",
++        "description": "Se désinscrire",
++        "options": [
++          {
++            "type": 3,
++            "name": "tournoi",
++            "description": "Référence du tournoi",
++            "required": true
++          }
++        ]
++      },
++      {
++        "type": 1,
++        "name": "mes-inscriptions",
++        "description": "Mes tournois",
++        "options": []
+       }
+     ]
+   }

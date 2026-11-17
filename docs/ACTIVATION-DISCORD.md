@@ -9,7 +9,8 @@ pas appliquées en Production.
 | `/role` (attribuer/chercher/creer/retirer + option racine) | complet | option racine à ajouter (#416) | non | — | oui, avec `DISCORD_ROLE_COMMAND_ENABLED=true` |
 | `/equipe liste/moi/voir/creer/rejoindre/quitter/recrutement` | complet | existant | non | — | oui |
 | `/equipe capitaine/membres/invitations` | complet | à ajouter (#416) | non | — | oui |
-| `/equipe transferer/exclure` | complet | à ajouter (#416) | non | — | oui |
+| `/equipe exclure` | complet | patch consolidé #416 | non | — | oui |
+| `/equipe transferer` | codé, **fermé** | patch consolidé #416 | **oui** (`captainId`) | #370/#408 | non : refuse sans source durable |
 | `/equipe espace` (état) | complet | à ajouter (#416) | **oui** pour un espace géré | — | après migration test |
 | `/equipe espace creer:true` | complet | à ajouter (#416) | **oui** | — | après migration test |
 | Espaces automatiques (création/adhésion/départ/archivage) | complet | n/a | **oui** | — | après migration test |
@@ -19,8 +20,9 @@ pas appliquées en Production.
 ## Variables à ouvrir, dans cet ordre
 1. `DISCORD_ROLE_COMMAND_ENABLED=true` (rôles de jeu, aucun salon).
 2. `DISCORD_TEAM_COMMAND_ENABLED=true` puis `DISCORD_TEAM_WRITE_ENABLED=true`.
-3. Migration `DiscordTeamSpace` sur la base cible (jamais Neon sans accord),
-   puis `DISCORD_TEAM_SPACES_ENABLED=true`.
+3. Migrations isolées : `DiscordTeamSpace` puis `CommunityTeam.captainId` sur la
+   base cible (jamais Neon sans accord), puis `DISCORD_TEAM_SPACES_ENABLED=true`.
+   Sans `captainId`, `/equipe transferer` reste volontairement indisponible.
 4. `DISCORD_PLAYER_COMMAND_ENABLED=true` (+ `DISCORD_PLAYER_WRITE_ENABLED`).
 
 ## Ce qui reste bloqué
@@ -28,5 +30,6 @@ pas appliquées en Production.
   `migration_required`.
 - Invitations directes : modèle dédié absent (aucune interface fictive).
 - Passation avec acceptation : modèle d'invitation absent.
-- Déclaration JSON : fichier `scripts/discord-commands.json` réservé #416.
+- Déclaration JSON : patch consolidé vérifié sur #416 (`docs/patches/20261117-declarations-discord-416.patch`), à appliquer par son propriétaire.
+- `/equipe transferer` : attend la colonne `captainId` (migration isolée) ; aucune écriture de `createdById`.
 - Recette sur le vrai serveur : autorisation explicite (#400) requise.
