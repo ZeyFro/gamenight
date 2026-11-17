@@ -69,6 +69,7 @@ export interface InteractionOutput {
   runCommunity?: () => Promise<void>;
   runTeams?: () => Promise<void>;
   runSession?: () => Promise<void>;
+  runTournament?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -121,6 +122,11 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     // /aide, /profil et /boost : lecture seule, aucune ressource Discord créée.
     const { handleSignedCommunityInteraction } = await import("@/lib/discord-community-commands");
     return handleSignedCommunityInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "tournoi") {
+    // /tournoi : lecture seule sur les tournois de la communauté.
+    const { handleSignedTournamentInteraction } = await import("@/lib/discord-tournament-commands");
+    return handleSignedTournamentInteraction(json, input.timestamp);
   }
   if (interaction.type === 2 && interaction.data?.name === "soiree") {
     // /soiree : soirées GameNight existantes (Session/SessionInvite), aucun second système.
