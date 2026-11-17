@@ -21,8 +21,10 @@ git switch -c agent/preflight-20261116 --track origin/agent/preflight-20261116
 
 État vérifié le 17/11/2026 : `npx tsc --noEmit` sans erreur, tests Discord
 ciblés verts (interactions, équipes, commandes communautaires, manifeste),
-ESLint ciblé propre, `npx next build` réussi. Aucune CI de la PR n'est validée à
-ce stade : le build local n'est pas une preuve de déploiement.
+ESLint ciblé propre, `npx next build` réussi. Côté CI, sur le SHA `dbf8bce` :
+`storage`, `rules` et `immutable` verts (les échecs `captainId`/espace sont
+corrigés) ; `verify` à suivre sur la tête courante. Un build local n'est pas
+une preuve de déploiement.
 
 ## 1. Navigation mobile et PWA — indépendant
 Commits : `02764b2`, `9d80e8c`, `495a7a4`, `a7536fb`.
@@ -70,6 +72,23 @@ La migration capitaine préparée est **annulée** (colonne déjà fournie).
 3. #416 + patch de déclarations (commande par commande).
 4. Équipes complètes via `EQUIPES-416.md`.
 5. Migration espace sur guilde de test, puis activation progressive.
+
+### Depuis la fusion de #445 : la fusion vaut accord
+
+`main` applique désormais les migrations automatiquement
+(`migrate-production.yml`, cf. `docs/MIGRATIONS.md`). L'ordre ci-dessus garde
+son sens, avec deux règles en plus :
+
+- **une seule PR à migration par fusion**, attendre le job vert avant la
+  suivante ; ne pas lancer de `workflow_dispatch` manuel pendant une fusion ;
+- les migrations de #370/#406/#408/#416 doivent être dans `main` **avant** de
+  fusionner #444, sinon la migration espace s'applique seule (sans risque ici :
+  aucune FK, aucune dépendance de colonne) et brouille la lecture de
+  `_prisma_migrations`.
+
+La checklist de fusion de #444, la cible, les sauvegardes à confirmer et le
+retour arrière sont dans `docs/operations/PRE-MERGE-444-PRODUCTION.md`.
+Rien de tout cela n'est exécuté par cette branche.
 
 ## Réservations
 Vérifier l'issue #400 et le plafond de PR avant toute ouverture. Ici : aucun
