@@ -32,8 +32,8 @@ describe("script de précontrôle des équipes", () => {
   it("refuse une URL absente, non PostgreSQL ou poolée", () => {
     expect(() => assertDirectUrl(undefined)).toThrow();
     expect(() => assertDirectUrl("mysql://x")).toThrow();
-    expect(() => assertDirectUrl("postgresql://u:p@ep-x-pooler.eu.example/db")).toThrow(/pooler/);
-    expect(() => assertDirectUrl("postgresql://u:p@ep-x.eu.example/db")).not.toThrow();
+    expect(() => assertDirectUrl("postgresql://ep-x-pooler.eu.example/db")).toThrow(/pooler/);
+    expect(() => assertDirectUrl("postgresql://ep-x.eu.example/db")).not.toThrow();
   });
 
   it("est en lecture seule dans le script", () => {
