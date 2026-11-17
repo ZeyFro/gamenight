@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assignableByBot,
+  botCanManageRoles,
   canonicalRoleName,
+  listObsoleteGameRoles,
   exactRoleMatches,
   isSensitiveRole,
   isSensitiveRoleName,
@@ -159,5 +161,30 @@ describe("hiérarchie et noms normalisés", () => {
     expect(canonicalRoleName("  Deep   Rock  Galactic  ")).toBe("Deep Rock Galactic");
     expect(canonicalRoleName("x".repeat(140)).length).toBe(100);
     expect(profileTagName("y".repeat(140)).length).toBe(40);
+  });
+});
+
+describe("permissions du bot et rôles obsolètes", () => {
+  const role = (id: string, name: string, position = 2, permissions = "0") => ({
+    id,
+    name,
+    position,
+    permissions,
+    managed: false,
+  });
+
+  it("exige que la permission « Gérer les rôles » vienne du bot, pas du joueur", () => {
+    expect(botCanManageRoles([role("r1", "GameNight", 5, String(BigInt(1) << BigInt(28)))], ["r1"])).toBe(true);
+    expect(botCanManageRoles([role("r1", "GameNight", 5, "0")], ["r1"])).toBe(false);
+    // Un rôle non porté par le bot ne compte jamais.
+    expect(botCanManageRoles([role("r2", "Admin", 9, "8")], ["r1"])).toBe(false);
+  });
+
+  it("liste les rôles de jeu obsolètes sans jamais en supprimer", () => {
+    const obsolete = listObsoleteGameRoles(
+      [role("r1", "Valheim"), role("r2", "Jeu oublié"), role("r3", "Admin", 20, "8"), role("r4", "Hades II")],
+      ["Valheim", "Hades II"]
+    );
+    expect(obsolete.map((entry) => entry.name)).toEqual(["Jeu oublié"]);
   });
 });

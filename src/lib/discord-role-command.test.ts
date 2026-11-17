@@ -4,14 +4,19 @@ const prismaMocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   communityFindFirst: vi.fn(),
   tagUpsert: vi.fn(),
+  tagFindUnique: vi.fn(),
   userTagUpsert: vi.fn(),
+  userTagDeleteMany: vi.fn(),
+  cronUpsert: vi.fn(),
+  cronUpdateMany: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: prismaMocks.findUnique },
     community: { findFirst: prismaMocks.communityFindFirst },
-    tag: { upsert: prismaMocks.tagUpsert },
-    userTag: { upsert: prismaMocks.userTagUpsert },
+    tag: { upsert: prismaMocks.tagUpsert, findUnique: prismaMocks.tagFindUnique },
+    userTag: { upsert: prismaMocks.userTagUpsert, deleteMany: prismaMocks.userTagDeleteMany },
+    cronLock: { upsert: prismaMocks.cronUpsert, updateMany: prismaMocks.cronUpdateMany },
   },
 }));
 
@@ -49,7 +54,7 @@ beforeEach(() => {
   calls = [];
   override = {};
   guildRoles = [
-    rolePayload(BOT_ROLE, "GameNight", 10),
+    rolePayload(BOT_ROLE, "GameNight", 10, { permissions: MANAGE_ROLES }),
     rolePayload("100000000000000011", "Deep Rock Galactic", 3),
     rolePayload("100000000000000012", "Admin", 20, { permissions: "8" }),
   ];
@@ -57,7 +62,11 @@ beforeEach(() => {
   prismaMocks.findUnique.mockResolvedValue({ id: "user-1", memberships: [{ id: "membership-1" }] });
   prismaMocks.communityFindFirst.mockResolvedValue({ id: "community-1" });
   prismaMocks.tagUpsert.mockResolvedValue({ id: "tag-1" });
+  prismaMocks.tagFindUnique.mockResolvedValue({ id: "tag-1" });
   prismaMocks.userTagUpsert.mockResolvedValue({});
+  prismaMocks.userTagDeleteMany.mockResolvedValue({ count: 1 });
+  prismaMocks.cronUpsert.mockResolvedValue({});
+  prismaMocks.cronUpdateMany.mockResolvedValue({ count: 1 });
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_CLIENT_ID", APP);
   vi.stubEnv("DISCORD_ROLE_COMMAND_ENABLED", "true");
@@ -144,7 +153,15 @@ describe("/role attribuer", () => {
     expect(count("POST")).toBe(0);
   });
 
-  it("refuse la création sans droit de gestion", async () => {
+  it("laisse un membre ordinaire créer un rôle quand le BOT a la permission", async () => {
+    const message = await command("attribuer", "Hades II");
+    expect(message).toContain("Hades II");
+    expect(count("POST")).toBe(1);
+    expect(count("PUT")).toBe(1);
+  });
+
+  it("refuse la création quand le bot n’a pas « Gérer les rôles »", async () => {
+    guildRoles = guildRoles.map((role) => (role.id === BOT_ROLE ? { ...role, permissions: "0" } : role));
     const message = await command("attribuer", "Hades II");
     expect(message).toContain("Gérer les rôles");
     expect(count("POST")).toBe(0);
@@ -210,7 +227,8 @@ describe("/role chercher et retirer", () => {
   it("retire un rôle porté, une seule fois", async () => {
     memberRoles = ["100000000000000011"];
     const removed = await command("retirer", "Deep Rock Galactic");
-    expect(removed).toContain("retiré");
+    expect(removed).toContain("profil GameNight ne suit plus");
+    expect(prismaMocks.userTagDeleteMany).toHaveBeenCalledWith({ where: { userId: "user-1", tagId: "tag-1" } });
     expect(count("DELETE")).toBe(1);
     const again = await command("retirer", "Deep Rock Galactic");
     expect(again).toContain("Tu n’as pas le rôle");

@@ -19,6 +19,34 @@ export type RoleProfileSync =
   | { status: "not_linked" }
   | { status: "failed" };
 
+/**
+ * Le joueur ne suit plus ce jeu : on retire l'association `UserTag` (pas le
+ * `Tag`, partagé par d'autres joueurs). Aucune autre préférence n'est modifiée.
+ */
+export async function unsyncGameRoleFromProfile(input: {
+  discordId: string;
+  gameName: string;
+}): Promise<RoleProfileSync> {
+  const tagName = profileTagName(input.gameName);
+  if (!tagName) return { status: "failed" };
+  try {
+    const user = await prisma.user.findUnique({
+      where: { discordId: input.discordId },
+      select: { id: true },
+    });
+    if (!user) return { status: "not_linked" };
+    const tag = await prisma.tag.findUnique({ where: { name: tagName }, select: { id: true } });
+    if (!tag) return { status: "synced", tagName };
+    await prisma.userTag.deleteMany({ where: { userId: user.id, tagId: tag.id } });
+    return { status: "synced", tagName };
+  } catch (error) {
+    logger.warn("discord-role", "Retrait du centre d’intérêt impossible.", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    return { status: "failed" };
+  }
+}
+
 export async function syncGameRoleToProfile(input: {
   discordId: string;
   gameName: string;

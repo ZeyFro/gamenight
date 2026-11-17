@@ -26,6 +26,9 @@ export interface GuildRoleSummary {
   managed: boolean;
 }
 
+const MANAGE_ROLES = BigInt(1) << BigInt(28);
+const ADMINISTRATOR = BigInt(1) << BigInt(3);
+
 /** Bits de permissions qui rendent un rôle non attribuable librement. */
 const SENSITIVE_PERMISSION_BITS: ReadonlyArray<readonly [bigint, string]> = [
   [BigInt(1) << BigInt(1), "Expulser des membres"],
@@ -185,4 +188,32 @@ export function planRoleGrant(input: RoleGrantPlanInput): RoleGrantPlan {
 export function topRolePosition(roles: GuildRoleSummary[], roleIds: string[]): number {
   const owned = new Set(roleIds);
   return roles.reduce((top, role) => (owned.has(role.id) ? Math.max(top, role.position) : top), 0);
+}
+
+/**
+ * Le bot peut-il gérer les rôles ? La permission appartient au BOT, jamais au
+ * joueur qui utilise `/role` : un membre ordinaire n'a pas à être modérateur.
+ * Les permissions effectives sont l'OR des permissions de ses rôles.
+ */
+export function botCanManageRoles(roles: GuildRoleSummary[], botRoleIds: readonly string[]): boolean {
+  const owned = new Set(botRoleIds);
+  let permissions = BigInt(0);
+  for (const role of roles) {
+    if (!owned.has(role.id) || !/^\d+$/.test(role.permissions)) continue;
+    permissions |= BigInt(role.permissions);
+  }
+  return (permissions & (MANAGE_ROLES | ADMINISTRATOR)) !== BigInt(0);
+}
+
+/**
+ * Rôles de jeu devenus obsolètes : présents sur Discord, absents de la liste de
+ * jeux GameNight. **Constat uniquement** : cette fonction ne supprime rien. La
+ * suppression d'un rôle reste une décision humaine hors commande.
+ */
+export function listObsoleteGameRoles(roles: GuildRoleSummary[], knownGameNames: readonly string[]): GuildRoleSummary[] {
+  const known = new Set(knownGameNames.map((name) => comparableKey(name)));
+  return roles
+    .filter((role) => !isSensitiveRole(role) && role.name.trim().length > 0)
+    .filter((role) => !known.has(comparableKey(role.name)))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 }

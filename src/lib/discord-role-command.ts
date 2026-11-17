@@ -14,6 +14,7 @@ import {
   type DiscordRestFailure,
 } from "@/lib/discord-rest";
 import {
+  botCanManageRoles,
   DEFAULT_MAX_GUILD_ROLES,
   MAX_ROLE_QUERY_LENGTH,
   canonicalRoleName,
@@ -26,7 +27,8 @@ import {
   type GuildRoleSummary,
   type RoleRefusalReason,
 } from "@/lib/discord-guild-roles";
-import { syncGameRoleToProfile, type RoleProfileSync } from "@/lib/discord-role-sync";
+import { syncGameRoleToProfile, unsyncGameRoleFromProfile, type RoleProfileSync } from "@/lib/discord-role-sync";
+import { withRoleCreationLock } from "@/lib/discord-role-lock";
 
 /**
  * Commande `/role` — attribution libre-service des rôles de JEU Discord et
@@ -115,11 +117,6 @@ function deadline() {
   return new Date(Date.now() + REQUEST_BUDGET_MS);
 }
 
-function hasManageRoles(permissions: string): boolean {
-  if (!/^\d+$/.test(permissions)) return false;
-  return (BigInt(permissions) & (MANAGE_ROLES | ADMINISTRATOR)) !== BigInt(0);
-}
-
 /** Trois créations de rôle par heure et par joueur (quota horaire glissant). */
 const ROLE_CREATION_QUOTA = { limit: 3, windowMs: 60 * 60 * 1000 };
 
@@ -164,7 +161,7 @@ function describeRefusal(reason: RoleRefusalReason, candidates: GuildRoleSummary
     case "not_assignable":
       return "Ce rôle est au-dessus du rôle le plus haut du bot : un administrateur doit descendre le rôle GameNight dans la hiérarchie.";
     case "creation_forbidden":
-      return "Ce rôle n’existe pas encore. Sa création demande la permission « Gérer les rôles » (ou l’ouverture de la création libre par un administrateur).";
+      return "Ce rôle n’existe pas encore et le bot ne peut pas le créer : il lui manque la permission « Gérer les rôles », ou la création est désactivée sur ce serveur. Un administrateur doit corriger la permission du bot.";
     case "guild_full":
       return "Ce serveur a atteint le nombre de rôles autorisé par GameNight. Un administrateur peut relever la limite ou créer le rôle manuellement.";
     default:
@@ -299,13 +296,23 @@ export async function runRoleCommand(
       roleId: role.id,
       deadline: deadline(),
     });
-    return removed.ok ? `✅ Rôle **${role.name}** retiré. Il reste dans tes centres d’intérêt GameNight.` : describeFailure(removed);
+    if (!removed.ok) return describeFailure(removed);
+    // Suivre un jeu = rôle Discord + centre d'intérêt : le retrait est cohérent
+    // dans les deux sens. Le `Tag` partagé n'est jamais supprimé.
+    const sync = await unsyncGameRoleFromProfile({ discordId: input.invokerId, gameName: role.name });
+    return sync.status === "synced"
+      ? `✅ Rôle **${role.name}** retiré et ton profil GameNight ne suit plus ce jeu.`
+      : `✅ Rôle **${role.name}** retiré.`;
   }
 
   const bot = await getSetupBot({ guildId: input.guildId, deadline: deadline() });
   if (!bot.ok) return describeFailure(bot);
   const botTopPosition = topRolePosition(roles, bot.data.roles);
-  const canCreate = hasManageRoles(input.invokerPermissions) || process.env.DISCORD_ROLE_SELF_CREATION_ENABLED === "true";
+  // La permission « Gérer les rôles » est celle du BOT (et sa position dans la
+  // hiérarchie), jamais celle du joueur : un membre ordinaire peut utiliser une
+  // création autorisée. Le flag ne sert qu'à fermer la création d'un serveur.
+  const canCreate =
+    botCanManageRoles(roles, bot.data.roles) && process.env.DISCORD_ROLE_SELF_CREATION_ENABLED !== "false";
   const plan = planRoleGrant({
     roles,
     query: input.query,
@@ -320,13 +327,23 @@ export async function runRoleCommand(
       return describeRefusal(plan.reason, plan.candidates);
     case "already":
       return `Tu as déjà le rôle **${plan.role.name}**.`;
-    case "create":
-      // Création bornée : permission, quota horaire par joueur, plafond de rôles
-      // de la guilde (vérifié dans planRoleGrant).
+    case "create": {
+      // Création bornée : permission du bot, quota horaire par joueur, plafond de
+      // rôles de la guilde (vérifié dans planRoleGrant), et verrou partagé.
       if (!checkRateLimit(input.invokerId, "discord-role-create", ROLE_CREATION_QUOTA)) {
         return `${RATE_LIMIT_MESSAGE} Trois créations de rôle par heure maximum.`;
       }
-      return createThenAssign({ guildId: input.guildId, invokerId: input.invokerId, name: plan.name, botTopPosition });
+      const locked = await withRoleCreationLock({
+        guildId: input.guildId,
+        key: queryKey(plan.name) || plan.name.toLowerCase(),
+        run: () =>
+          createThenAssign({ guildId: input.guildId, invokerId: input.invokerId, name: plan.name, botTopPosition }),
+      });
+      if (locked.status === "busy") {
+        return "Une autre création de rôle est déjà en cours pour ce jeu. Réessaie dans quelques secondes : le rôle existant sera réutilisé, jamais dupliqué.";
+      }
+      return locked.value;
+    }
     case "assign":
       return assignRole({ guildId: input.guildId, invokerId: input.invokerId, role: plan.role, alreadyPresent: false });
   }
