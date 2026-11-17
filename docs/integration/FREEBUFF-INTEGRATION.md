@@ -3,6 +3,27 @@
 Branche `agent/preflight-20261116`, dernier commit de référence `16b8610`.
 Chaque ensemble est indépendant des autres, sauf mention contraire.
 
+## Où récupérer le travail (source de vérité : GitHub)
+
+| Objet | Référence distante |
+| --- | --- |
+| PR #444 (Draft) | `ZeyFro:agent/preflight-20261116`, base `main` |
+| Branche d'intégration Discord complémentaire | `origin/integ/freebuff-discord-commands` (`3e35e74`) — **ne pas fusionner telle quelle** : elle porte un second handler `/equipe` (voir § Commandes communautaires) |
+| Déclarations prêtes pour #416 | `docs/patches/20261117-declarations-discord-416.patch` — fournies, **non appliquées** |
+
+Le SHA exact publié de la PR est celui de la description de #444 et de l'issue
+#400 : ne jamais se fier à un SHA recopié dans une note. Pour récupérer :
+
+```bash
+git fetch origin agent/preflight-20261116
+git switch -c agent/preflight-20261116 --track origin/agent/preflight-20261116
+```
+
+État vérifié le 17/11/2026 : `npx tsc --noEmit` sans erreur, tests Discord
+ciblés verts (interactions, équipes, commandes communautaires, manifeste),
+ESLint ciblé propre, `npx next build` réussi. Aucune CI de la PR n'est validée à
+ce stade : le build local n'est pas une preuve de déploiement.
+
 ## 1. Navigation mobile et PWA — indépendant
 Commits : `02764b2`, `9d80e8c`, `495a7a4`, `a7536fb`.
 Fichiers : barre de navigation basse, layout applicatif, `public/manifest.json`,
