@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeVapidFixture } from "@/test-utils/vapid";
+import { createECDH } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { findMany, deleteMany, sendNotification } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { webPushSubscription: { findMany, deleteMany } } }));
@@ -11,10 +13,17 @@ describe("livraison Web Push", () => {
     vi.clearAllMocks();
     vi.stubEnv("WEB_PUSH_ENABLED", "true");
     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.test");
-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", "public");
-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", "private");
+    const vapid = createECDH("prime256v1");
+    vapid.generateKeys();
+    const keys = encodeVapidFixture(vapid);
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", keys.publicKey);
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", keys.privateKey);
     findMany.mockResolvedValue([{ id: "sub-1", endpoint: "https://fcm.googleapis.com/send/x", p256dh: "public-key", auth: "auth-key" }]);
     sendNotification.mockResolvedValue({ statusCode: 201 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("ne contacte aucun service si la configuration est absente ou désactivée", async () => {
@@ -30,5 +39,12 @@ describe("livraison Web Push", () => {
     expect(findMany).toHaveBeenCalledWith({ where: { userId: "user-1" }, select: { id: true, endpoint: true, p256dh: true, auth: true } });
     expect(sendNotification).toHaveBeenCalledOnce();
     expect(deleteMany).toHaveBeenCalledWith({ where: { id: "sub-1", userId: "user-1" } });
+  });
+
+  it("ne contacte aucun service externe en Preview même si Web Push est configuré", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await sendUserWebPush("user-1", { title: "Test", body: "Texte", url: "/profil" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(sendNotification).not.toHaveBeenCalled();
   });
 });

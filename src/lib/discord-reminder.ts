@@ -4,7 +4,6 @@ import { formatReminderTimingShort } from "@/lib/reminder-timings";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { createNotifications } from "@/lib/notifications";
 import type { Game, Session } from "@prisma/client";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { logger } from "@/lib/logger";
 import { getWinningProposalParticipants } from "@/lib/superlative-voting";
@@ -45,8 +44,7 @@ export async function sendSessionReminder(
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const selectedPlayers = (session.attendanceCapacity != null ? await getWinningProposalParticipants(session.id, session.decidedGame.id) : (proposal?.votes ?? []).map(v => v.user))
     .filter((u) => !notifiedUserIds || notifiedUserIds.includes(u.id));
-  const eligibleByPreference = await filterUsersByNotificationPreference(selectedPlayers, "SESSION");
-  const players = await filterByActiveSessionInvite(session.id, session.createdById, eligibleByPreference);
+  const players = await filterByActiveSessionInvite(session.id, session.createdById, selectedPlayers);
 
   // Notifications in-app (Sprint 2 PR-C, U3) — mêmes destinataires que
   // les mentions qu'aurait portées l'ancien message Discord, EN PLUS
@@ -59,6 +57,7 @@ export async function sendSessionReminder(
       title: `⏰ Rappel — dans ${formatReminderTimingShort(actualMinutesRemaining)} !`,
       message: session.decidedGame!.name,
       relatedSessionId: session.id,
+      personalCategory: "SESSION" as const,
     }))
   );
 

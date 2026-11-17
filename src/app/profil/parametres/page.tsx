@@ -33,6 +33,7 @@ import { saveGameStyleProfile } from "@/app/profil/game-style-actions";
 import { WebPushSettings } from "@/components/WebPushSettings";
 import { webPushConfig } from "@/lib/web-push-config";
 import { leadingGameStyles } from "@/lib/game-style-quiz";
+import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -127,10 +128,11 @@ export default async function ProfilParametresPage({
 
   // Sprint 3 (FEATURE 6) — tous les tags existants + ceux déjà attribués à
   // ce user, pour afficher les chips "actif"/"inactif".
-  const [allTags, ownUserTags, storedNotificationPreferences, preferenceGames, gameRefusals, communityId] = await Promise.all([
+  const [allTags, ownUserTags, storedNotificationPreferences, storedChannelPreferences, preferenceGames, gameRefusals, communityId] = await Promise.all([
     prisma.tag.findMany({ orderBy: { name: "asc" } }),
     prisma.userTag.findMany({ where: { userId: user.id }, select: { tagId: true } }),
     prisma.userNotificationPreference.findMany({ where: { userId: user.id } }),
+    prisma.userNotificationChannelPreference.findMany({ where: { userId: user.id }, select: { category: true, channel: true, enabled: true } }),
     visiblePreferenceGames(user.id),
     prisma.userGameRefusal.findMany({ where: { userId: user.id }, select: { gameId: true, game: { select: { name: true } } }, orderBy: [{ createdAt: "desc" }, { gameId: "asc" }] }),
     resolveActiveCommunityId(user.id),
@@ -424,8 +426,9 @@ export default async function ProfilParametresPage({
               );
             })}
           </div>
+          <NotificationChannelPreferences preferences={storedChannelPreferences} />
           <p className="text-xs text-faint">
-            D’autres catégories (récompenses et récapitulatifs) seront ajoutées lorsque
+            D’autres notifications de récompense (comme les superlatifs) et récapitulatifs seront ajoutées lorsque
             tous leurs chemins d’envoi appliqueront réellement ces préférences.
           </p>
           <ButtonLink href="/admin?tab=messages" variant="ghost" size="sm">

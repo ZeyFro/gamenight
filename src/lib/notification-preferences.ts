@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { UserNotificationCategory } from "@prisma/client";
 
 /** Réglages proposés uniquement parce que tous leurs chemins actuels les respectent. */
-export const AVAILABLE_NOTIFICATION_CATEGORIES = ["SESSION", "ROULETTE", "TOURNAMENT", "INSTANT_SESSION"] as const satisfies readonly UserNotificationCategory[];
+export const AVAILABLE_NOTIFICATION_CATEGORIES = ["SESSION", "ROULETTE", "TOURNAMENT", "INSTANT_SESSION", "REWARD"] as const satisfies readonly UserNotificationCategory[];
 
 export type AvailableNotificationCategory = (typeof AVAILABLE_NOTIFICATION_CATEGORIES)[number];
 
@@ -26,6 +26,10 @@ export const NOTIFICATION_CATEGORY_DETAILS: Record<
     label: "Jouer maintenant",
     description: "Invitation rapide (MP Discord + notification) quand un pote démarre une session instantanée.",
   },
+  REWARD: {
+    label: "Récompenses de pari",
+    description: "Notification personnelle lorsqu'une récompense de pronostic ou de pari XP t'est attribuée.",
+  },
 };
 
 export function isAvailableNotificationCategory(value: string): value is AvailableNotificationCategory {
@@ -47,8 +51,9 @@ export function isPersonalNotificationEnabled(
   user: PreferenceSubject,
   category: AvailableNotificationCategory
 ): boolean {
-  return user.notificationPreferences?.find((preference) => preference.category === category)?.enabled
-    ?? !user.silenceReminders;
+  const explicit = user.notificationPreferences?.find((preference) => preference.category === category)?.enabled;
+  if (explicit !== undefined) return explicit;
+  return category === "REWARD" || !user.silenceReminders;
 }
 
 /** Filtre central partagé par les webhooks actuels et les futurs résolveurs de l'exécuteur. */
@@ -63,7 +68,7 @@ export async function filterUsersByNotificationPreference<T extends { id: string
     select: { userId: true, enabled: true },
   });
   const enabledByUser = new Map(preferences.map((preference) => [preference.userId, preference.enabled]));
-  return users.filter((user) => enabledByUser.get(user.id) ?? !user.silenceReminders);
+  return users.filter((user) => enabledByUser.get(user.id) ?? (category === "REWARD" || !user.silenceReminders));
 }
 
 export async function getUserNotificationPreferences(user: PreferenceSubject) {

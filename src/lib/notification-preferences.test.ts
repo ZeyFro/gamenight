@@ -62,6 +62,13 @@ describe("notification-preferences", () => {
     expect(isAvailableNotificationCategory("__proto__")).toBe(false);
   });
 
+  it("conserve les récompenses personnelles par défaut même si les rappels legacy sont silencieux", () => {
+    const rewardCategory = "REWARD" as Parameters<typeof isPersonalNotificationEnabled>[1];
+    expect(isPersonalNotificationEnabled({ silenceReminders: true }, rewardCategory)).toBe(true);
+    expect(isPersonalNotificationEnabled({ silenceReminders: false, notificationPreferences: [{ category: rewardCategory, enabled: false }] }, rewardCategory)).toBe(false);
+    expect(isAvailableNotificationCategory("REWARD")).toBe(true);
+  });
+
   it("filtre les destinataires sélectionnés sans pouvoir en réintroduire un autre", async () => {
     findMany.mockResolvedValue([
       { userId: "refuse", enabled: false },

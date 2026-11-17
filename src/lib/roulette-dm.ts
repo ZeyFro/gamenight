@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterUsersByNotificationChannelPreference } from "@/lib/notification-channel-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { isRouletteDirectMessageEnabled } from "@/lib/discord-bot-config";
 import { enqueueDirectMessageEdits, enqueueDirectMessages, parseDmRole } from "@/lib/discord-dm";
@@ -65,7 +65,7 @@ export async function enqueueRouletteDirectMessages(
     where: { id: { in: [...new Set(userIds)] } },
     select: { id: true, discordId: true, silenceReminders: true },
   });
-  const allowed = await filterUsersByNotificationPreference(users, "ROULETTE");
+  const allowed = await filterUsersByNotificationChannelPreference(users, "ROULETTE", "DISCORD_DM", db);
   await enqueueDirectMessages({
     category: "ROULETTE",
     sourceId: rouletteId,
@@ -127,7 +127,8 @@ export const rouletteDmResolver: DeliveryResolver = {
     const participantIds = resolveNotifiedUserIds(roulette.notifiedUserIds) ?? [];
     const isMember = recipient.id === roulette.createdById || participantIds.includes(recipient.id);
     if (!isMember) return { eligible: false, reason: "preference_declined" };
-    if ((await filterUsersByNotificationPreference([recipient], "ROULETTE")).length === 0) {
+    if (delivery.operation === "SEND" &&
+      (await filterUsersByNotificationChannelPreference([recipient], "ROULETTE", "DISCORD_DM")).length === 0) {
       return { eligible: false, reason: "preference_declined" };
     }
 
