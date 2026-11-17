@@ -46,6 +46,25 @@ export function resolveTeamCaptain(team: TeamCaptainSource): TeamCaptain {
   return team.activeMemberIds.includes(creator) ? { kind: "CAPTAIN", userId: creator } : { kind: "NONE" };
 }
 
+/**
+ * Capitaine EFFECTIF : `captainId` s'il désigne un membre actif, sinon — source
+ * transitoire tant que #370/#408 ne sont pas fusionnées — `createdById` actif.
+ * Si `captainId` désigne quelqu'un qui n'est plus membre, on ne retombe **pas**
+ * silencieusement sur le créateur : aucun capitaine n'est établi.
+ */
+export function resolveEffectiveCaptain(input: {
+  createdById: string | null | undefined;
+  captainId?: string | null;
+  activeMemberIds: readonly string[];
+}): TeamCaptain {
+  if (input.captainId) {
+    return input.activeMemberIds.includes(input.captainId)
+      ? { kind: "CAPTAIN", userId: input.captainId }
+      : { kind: "NONE" };
+  }
+  return resolveTeamCaptain({ createdById: input.createdById, activeMemberIds: input.activeMemberIds });
+}
+
 /** Vrai seulement pour le créateur encore membre actif. */
 export function isTeamCaptain(team: TeamCaptainSource, userId: string): boolean {
   const captain = resolveTeamCaptain(team);

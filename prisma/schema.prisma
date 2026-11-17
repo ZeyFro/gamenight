@@ -2875,7 +2875,11 @@ model CommunityTeam {
   id          String   @id @default(cuid())
   communityId String
   gameId      String
+  // Créateur historique : JAMAIS réécrit par une passation.
   createdById String
+  // Capitaine responsable (PR #370/#408). Null = transition : le créateur actif
+  // fait office de capitaine. La colonne est ajoutée par une migration isolée.
+  captainId   String?
   name        String   @db.VarChar(80)
   description String   @db.VarChar(1000)
   platform    String   @db.VarChar(40)

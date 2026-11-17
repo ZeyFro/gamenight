@@ -16,7 +16,8 @@ import { teamSpacesEnabled } from "@/lib/discord-team-spaces";
 import { excludeCommunityTeamMember } from "@/lib/community-teams";
 import { describeCaptainTransfer, transferTeamCaptain } from "@/lib/community-team-captain-service";
 import { filterTeamGameOptions, uniqueTeamGameOptions, type TeamGameOption } from "@/app/equipes/game-picker-rules";
-import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
+import { CAPTAIN_UNSET_LABEL, resolveEffectiveCaptain, teamCaptainId } from "@/lib/community-team-captain";
+import { createPrismaCaptainStore, type CaptainStore } from "@/lib/community-team-captain-store";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
 /**
@@ -237,29 +238,67 @@ export async function loadCommunityTeams(input: {
     communityId: community.id,
     userId: user.id,
     communityName: community.name,
-    teams: teams.map((team) => {
-      const memberIds = team.members.map((member) => member.userId);
-      // Capitaine = `createdById`, jamais l'ordre de la liste des membres.
-      const captainId = teamCaptainId({ createdById: team.createdById, activeMemberIds: memberIds });
-      return {
-        id: team.id,
-        name: team.name,
-        game: team.game.name,
-        platform: team.platform,
-        description: team.description,
-        isRecruiting: team.isRecruiting,
-        maxMembers: team.maxMembers,
-        membersCount: team.members.length,
-        captainId,
-        captainName: captainId
-          ? team.members.find((member) => member.userId === captainId)?.user.discordName ?? null
-          : null,
-        memberNames: team.members.map((member) => member.user.discordName),
-        memberIds,
-        members: team.members.map((member) => ({ userId: member.userId, name: member.user.discordName })),
-      };
-    }),
+    teams: await enrichCaptains(
+      community.id,
+      teams.map((team) => {
+        const memberIds = team.members.map((member) => member.userId);
+        return {
+          id: team.id,
+          createdById: team.createdById,
+          memberIds,
+          view: {
+            id: team.id,
+            name: team.name,
+            game: team.game.name,
+            platform: team.platform,
+            description: team.description,
+            isRecruiting: team.isRecruiting,
+            maxMembers: team.maxMembers,
+            membersCount: team.members.length,
+            captainId: null as string | null,
+            captainName: null as string | null,
+            memberNames: team.members.map((member) => member.user.discordName),
+            memberIds,
+            members: team.members.map((member) => ({ userId: member.userId, name: member.user.discordName })),
+          },
+        };
+      })
+    ),
   };
+}
+
+/**
+ * Capitaine effectif : `captainId` quand la source officielle est disponible,
+ * sinon `createdById` (transition). Jamais l'ordre des membres, jamais un repli
+ * silencieux si le capitaine désigné n'est plus actif.
+ */
+async function enrichCaptains(
+  communityId: string,
+  rows: Array<{ id: string; createdById: string; memberIds: string[]; view: CommunityTeamView }>
+): Promise<CommunityTeamView[]> {
+  let captains: Awaited<ReturnType<CaptainStore["load"]>> | null = null;
+  try {
+    captains = await (await createPrismaCaptainStore()).load(
+      communityId,
+      rows.map((row) => row.id)
+    );
+  } catch (error) {
+    logger.warn("discord-team", "Capitaine officiel illisible : repli transitoire sur le créateur.", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+  }
+  return rows.map(({ id, createdById, memberIds, view }) => {
+    const row = captains?.get(id);
+    const effective = row
+      ? resolveEffectiveCaptain({ createdById: row.createdById, captainId: row.captainId, activeMemberIds: memberIds })
+      : { kind: "CAPTAIN" as const, userId: teamCaptainId({ createdById, activeMemberIds: memberIds }) ?? "" };
+    const captainId = effective.kind === "CAPTAIN" && effective.userId ? effective.userId : null;
+    return {
+      ...view,
+      captainId,
+      captainName: captainId ? view.members.find((member) => member.userId === captainId)?.name ?? null : null,
+    };
+  });
 }
 
 const short = (line: string, max = MAX_CONTENT) => (line.length > max ? `${line.slice(0, max - 1)}…` : line);

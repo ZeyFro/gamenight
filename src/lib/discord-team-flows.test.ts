@@ -2,20 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   teamFindFirst: vi.fn(),
-  memberFindUnique: vi.fn(),
-  updateMany: vi.fn(),
+  membersFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    communityTeam: { findFirst: mocks.teamFindFirst, updateMany: mocks.updateMany },
-    communityTeamMember: { findUnique: mocks.memberFindUnique },
+    communityTeam: { findFirst: mocks.teamFindFirst },
+    communityTeamMember: { findMany: mocks.membersFindMany },
     // Aucun modèle XP/étages n'existe dans ce faux client : si un parcours
     // touchait la progression, le test échouerait au lieu de passer inaperçu.
   },
 }));
 
 import { transferTeamCaptain, getTeamCaptain } from "./community-team-captain-service";
+import { createMemoryCaptainStore } from "./community-team-captain-store";
 import {
   createMemorySpaceLinkStore,
   provisionTeamSpace,
@@ -76,8 +76,10 @@ function fakeApi() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.teamFindFirst.mockResolvedValue(teamRow());
-  mocks.memberFindUnique.mockResolvedValue(active);
-  mocks.updateMany.mockResolvedValue({ count: 1 });
+  mocks.membersFindMany.mockResolvedValue([
+    { userId: "captain", user: { discordName: "Maxime", memberships: [{ id: "m" }] } },
+    { userId: "member", user: { discordName: "Sarah", memberships: [{ id: "m" }] } },
+  ]);
 });
 
 describe("recette des parcours d'équipe", () => {
@@ -132,36 +134,47 @@ describe("recette des parcours d'équipe", () => {
     expect(remove).toHaveBeenCalledWith(GUILD, MEMBER_DISCORD, "role-1");
   });
 
-  it("D — le capitaine transfère à un membre actif, sans promotion arbitraire", async () => {
-    mocks.teamFindFirst.mockResolvedValue({ createdById: "captain", createdBy: { discordName: "Maxime" }, maxMembers: 8 });
-    mocks.memberFindUnique.mockImplementation(async ({ where }: { where: { teamId_userId: { userId: string } } }) =>
-      where.teamId_userId.userId === "outsider" ? null : active
-    );
-    expect(await transferTeamCaptain({ teamId: TEAM, communityId: "community-1", actorId: "captain", newCaptainUserId: "outsider" })).toBe(
-      "not_member"
-    );
-    expect(await transferTeamCaptain({ teamId: TEAM, communityId: "community-1", actorId: "member", newCaptainUserId: "captain" })).toBe(
-      "not_captain"
-    );
-    expect(await transferTeamCaptain({ teamId: TEAM, communityId: "community-1", actorId: "captain", newCaptainUserId: "member" })).toBe(
-      "transferred"
-    );
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: TEAM, communityId: "community-1", createdById: "captain" },
-      data: { createdById: "member" },
-    });
-    mocks.teamFindFirst.mockResolvedValue({ createdById: "member", createdBy: { discordName: "Sarah" } });
-    expect(await getTeamCaptain({ teamId: TEAM, communityId: "community-1" })).toEqual({
+  it("D — le capitaine transfère à un membre actif, le créateur reste historique", async () => {
+    mocks.membersFindMany.mockResolvedValue([
+      { userId: "captain", user: { discordName: "Maxime", memberships: [{ id: "m" }] } },
+      { userId: "member", user: { discordName: "Sarah", memberships: [{ id: "m" }] } },
+    ]);
+    const store = createMemoryCaptainStore([{ teamId: TEAM, createdById: "captain" }]);
+    const args = { teamId: TEAM, communityId: "community-1" };
+    expect(await transferTeamCaptain({ ...args, actorId: "captain", newCaptainUserId: "member" }, store)).toBe("transferred");
+    // `createdById` reste le créateur ; seul `captainId` change.
+    expect(store.rows.get(TEAM)).toEqual({ teamId: TEAM, createdById: "captain", captainId: "member" });
+    expect(await getTeamCaptain(args, store)).toEqual({
       status: "found",
       captainId: "member",
       captainName: "Sarah",
+      source: "captainId",
     });
+    // L'ancien capitaine n'a plus le droit de gérer.
+    expect(await transferTeamCaptain({ ...args, actorId: "captain", newCaptainUserId: "member" }, store)).toBe("not_captain");
   });
 
-  it("D bis — un capitaine sorti de l'équipe ne désigne personne", async () => {
-    mocks.teamFindFirst.mockResolvedValue({ createdById: "parti", createdBy: { discordName: "Parti" } });
-    mocks.memberFindUnique.mockResolvedValue({ communityId: "community-1", user: { memberships: [] } });
-    expect(await getTeamCaptain({ teamId: TEAM, communityId: "community-1" })).toEqual({ status: "none" });
+  it("D bis — sans source officielle migrée, la passation est refusée sans écriture" , async () => {
+    const store = createMemoryCaptainStore([{ teamId: TEAM, createdById: "captain" }], { supported: false });
+    expect(
+      await transferTeamCaptain(
+        { teamId: TEAM, communityId: "community-1", actorId: "captain", newCaptainUserId: "member" },
+        store
+      )
+    ).toBe("captain_source_unavailable");
+    expect(store.rows.get(TEAM)).toEqual({ teamId: TEAM, createdById: "captain", captainId: null });
+  });
+
+  it("D ter — un capitaine sorti de l'équipe ne désigne personne", async () => {
+    mocks.membersFindMany.mockResolvedValue([
+      { userId: "parti", user: { discordName: "Parti", memberships: [] } },
+      { userId: "member", user: { discordName: "Sarah", memberships: [{ id: "m" }] } },
+    ]);
+    const store = createMemoryCaptainStore([{ teamId: TEAM, createdById: "parti" }]);
+    expect(await getTeamCaptain({ teamId: TEAM, communityId: "community-1" }, store)).toEqual({
+      status: "none",
+      reason: "no_captain",
+    });
   });
 
   it("E — un joueur extérieur n'obtient aucun accès à l'espace privé", async () => {

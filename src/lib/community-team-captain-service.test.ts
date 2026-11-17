@@ -1,91 +1,123 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  teamFindFirst: vi.fn(),
-  memberFindUnique: vi.fn(),
-  updateMany: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ teamFindFirst: vi.fn(), membersFindMany: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    communityTeam: { findFirst: mocks.teamFindFirst, updateMany: mocks.updateMany },
-    communityTeamMember: { findUnique: mocks.memberFindUnique },
+    communityTeam: { findFirst: mocks.teamFindFirst },
+    communityTeamMember: { findMany: mocks.membersFindMany },
   },
 }));
 
 import { canManageTeam, getTeamCaptain, transferTeamCaptain } from "./community-team-captain-service";
+import { createMemoryCaptainStore } from "./community-team-captain-store";
 
-const active = { communityId: "community-1", user: { memberships: [{ id: "m" }] } };
-const inactive = { communityId: "community-1", user: { memberships: [] } };
+const activeMember = (userId: string, name = userId) => ({
+  userId,
+  user: { discordName: name, memberships: [{ id: "m" }] },
+});
+const inactiveMember = (userId: string) => ({ userId, user: { discordName: userId, memberships: [] } });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.teamFindFirst.mockResolvedValue({ createdById: "captain", createdBy: { discordName: "Maxime" }, maxMembers: 6 });
-  mocks.memberFindUnique.mockResolvedValue(active);
-  mocks.updateMany.mockResolvedValue({ count: 1 });
+  mocks.teamFindFirst.mockResolvedValue({ id: "t1" });
+  mocks.membersFindMany.mockResolvedValue([activeMember("creator", "Maxime"), activeMember("member", "Sarah")]);
 });
 
-describe("capitainerie", () => {
-  it("lit le capitaine officiel (créateur actif) et refuse un membre ordinaire", async () => {
-    expect(await getTeamCaptain({ teamId: "t1", communityId: "community-1" })).toEqual({
+describe("capitaine effectif", () => {
+  it("utilise le créateur historique tant que captainId est absent", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
+    expect(await getTeamCaptain({ teamId: "t1", communityId: "c1" }, store)).toEqual({
       status: "found",
-      captainId: "captain",
+      captainId: "creator",
       captainName: "Maxime",
+      source: "createdById",
     });
-    expect(await canManageTeam({ teamId: "t1", communityId: "community-1", userId: "captain" })).toBe(true);
-    expect(await canManageTeam({ teamId: "t1", communityId: "community-1", userId: "member" })).toBe(false);
+    expect(await canManageTeam({ teamId: "t1", communityId: "c1", userId: "member" }, store)).toBe(false);
   });
 
-  it("ne désigne personne quand le créateur n’est plus membre actif (jamais le premier membre)", async () => {
-    mocks.memberFindUnique.mockResolvedValue(inactive);
-    expect(await getTeamCaptain({ teamId: "t1", communityId: "community-1" })).toEqual({ status: "none" });
-    expect(await transferTeamCaptain({ teamId: "t1", communityId: "community-1", actorId: "member", newCaptainUserId: "other" })).toBe(
-      "unavailable"
-    );
-  });
-
-  it("transfère au capitaine désigné, de façon idempotente", async () => {
-    mocks.teamFindFirst.mockResolvedValueOnce({ createdById: "captain" }).mockResolvedValueOnce({ createdById: "captain" });
-    expect(
-      await transferTeamCaptain({ teamId: "t1", communityId: "community-1", actorId: "captain", newCaptainUserId: "captain" })
-    ).toBe("same");
-
-    const result = await transferTeamCaptain({
-      teamId: "t1",
-      communityId: "community-1",
-      actorId: "captain",
-      newCaptainUserId: "member",
+  it("suit captainId quand il désigne un membre actif", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator", captainId: "member" }]);
+    expect(await getTeamCaptain({ teamId: "t1", communityId: "c1" }, store)).toMatchObject({
+      status: "found",
+      captainId: "member",
+      source: "captainId",
     });
-    expect(result).toBe("transferred");
-    expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: "t1", communityId: "community-1", createdById: "captain" },
-      data: { createdById: "member" },
+    expect(await canManageTeam({ teamId: "t1", communityId: "c1", userId: "member" }, store)).toBe(true);
+    expect(await canManageTeam({ teamId: "t1", communityId: "c1", userId: "creator" }, store)).toBe(false);
+  });
+
+  it("ne retombe pas silencieusement sur le créateur si le capitaine est sorti", async () => {
+    mocks.membersFindMany.mockResolvedValue([activeMember("creator"), inactiveMember("parti")]);
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator", captainId: "parti" }]);
+    expect(await getTeamCaptain({ teamId: "t1", communityId: "c1" }, store)).toEqual({
+      status: "none",
+      reason: "captain_not_member",
     });
-
-    // Rejeu : l'acteur n'est plus capitaine, aucune écriture supplémentaire.
-    mocks.teamFindFirst.mockResolvedValue({ createdById: "member" });
-    expect(
-      await transferTeamCaptain({ teamId: "t1", communityId: "community-1", actorId: "captain", newCaptainUserId: "captain" })
-    ).toBe("not_captain");
-    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
   });
 
-  it("refuse un capitaine qui n’appartient pas à l’équipe", async () => {
-    mocks.memberFindUnique.mockImplementation(async ({ where }: { where: { teamId_userId: { userId: string } } }) =>
-      where.teamId_userId.userId === "captain" ? active : null
-    );
-    expect(
-      await transferTeamCaptain({ teamId: "t1", communityId: "community-1", actorId: "captain", newCaptainUserId: "inconnu" })
-    ).toBe("not_member");
-    expect(mocks.updateMany).not.toHaveBeenCalled();
+  it("ne désigne jamais le premier membre quand le créateur n'est plus actif", async () => {
+    mocks.membersFindMany.mockResolvedValue([activeMember("member", "Sarah")]);
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
+    expect(await getTeamCaptain({ teamId: "t1", communityId: "c1" }, store)).toEqual({ status: "none", reason: "no_captain" });
   });
 
-  it("refuse une équipe absente ou un acteur non capitaine", async () => {
+  it("refuse une équipe absente", async () => {
     mocks.teamFindFirst.mockResolvedValue(null);
-    expect(await getTeamCaptain({ teamId: "t1", communityId: "community-1" })).toEqual({ status: "missing" });
-    mocks.teamFindFirst.mockResolvedValue({ createdById: "captain", createdBy: { discordName: null }, maxMembers: 6 });
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
+    expect(await getTeamCaptain({ teamId: "t1", communityId: "c1" }, store)).toEqual({ status: "missing" });
+    expect(await transferTeamCaptain({ teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "member" }, store)).toBe(
+      "missing"
+    );
+  });
+});
+
+describe("passation", () => {
+  it("est refusée sans source officielle, sans écrire createdById", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }], { supported: false });
+    const result = await transferTeamCaptain(
+      { teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "member" },
+      store
+    );
+    expect(result).toBe("captain_source_unavailable");
+    expect(store.rows.get("t1")).toEqual({ teamId: "t1", createdById: "creator", captainId: null });
+  });
+
+  it("écrit captainId uniquement et laisse le créateur historique intact", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
+    const result = await transferTeamCaptain(
+      { teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "member" },
+      store
+    );
+    expect(result).toBe("transferred");
+    expect(store.rows.get("t1")).toEqual({ teamId: "t1", createdById: "creator", captainId: "member" });
+  });
+
+  it("refuse un acteur non capitaine, un successeur non membre et une passation à soi-même", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
     expect(
-      await transferTeamCaptain({ teamId: "t1", communityId: "community-1", actorId: "member", newCaptainUserId: "other" })
+      await transferTeamCaptain({ teamId: "t1", communityId: "c1", actorId: "member", newCaptainUserId: "creator" }, store)
     ).toBe("not_captain");
+    expect(
+      await transferTeamCaptain({ teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "inconnu" }, store)
+    ).toBe("not_member");
+    expect(
+      await transferTeamCaptain({ teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "creator" }, store)
+    ).toBe("same");
+  });
+
+  it("est idempotente : une seconde passation concurrente échoue sans écraser", async () => {
+    const store = createMemoryCaptainStore([{ teamId: "t1", createdById: "creator" }]);
+    const first = await transferTeamCaptain(
+      { teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "member" },
+      store
+    );
+    const second = await transferTeamCaptain(
+      { teamId: "t1", communityId: "c1", actorId: "creator", newCaptainUserId: "creator" },
+      store
+    );
+    expect(first).toBe("transferred");
+    expect(second).toBe("not_captain");
+    expect(store.rows.get("t1")).toMatchObject({ createdById: "creator", captainId: "member" });
   });
 });
