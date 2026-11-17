@@ -46,6 +46,22 @@ export function nextTowerRankStep(floor: number | bigint, completedSeasons: numb
   };
 }
 
+const TOWER_RANK_ORDER: Record<TowerPersonalRank, number> = {
+  Irregular: 0,
+  Ranker: 1,
+  "High Ranker": 2,
+};
+
+function assertTowerRank(rank: string): asserts rank is TowerPersonalRank {
+  if (rank !== "Irregular" && rank !== "Ranker" && rank !== "High Ranker") throw new RangeError("Rang inconnu");
+}
+
+export function compareTowerRanks(a: TowerPersonalRank, b: TowerPersonalRank): number {
+  assertTowerRank(a);
+  assertTowerRank(b);
+  return TOWER_RANK_ORDER[a] - TOWER_RANK_ORDER[b];
+}
+
 export const TOWER_RANK_PRESENTATION = {
   "Irregular": { colorName: "bleu" },
   "Ranker": { colorName: "violet", hex: "#8b5cf6" },

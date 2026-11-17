@@ -35,6 +35,14 @@ export function normalizeGameAnswer(value: string): string {
   return value.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase("fr").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
+function stripLeadingArticle(normalized: string): string {
+  const words = normalized.split(" ");
+  if (words.length >= 2 && ["the", "le", "la", "les", "l", "un", "une"].includes(words[0])) {
+    return words.slice(1).join(" ");
+  }
+  return normalized;
+}
+
 export function isCorrectGameAnswer(guess: string, answer: string): boolean {
-  return normalizeGameAnswer(guess) === normalizeGameAnswer(answer);
+  return stripLeadingArticle(normalizeGameAnswer(guess)) === stripLeadingArticle(normalizeGameAnswer(answer));
 }

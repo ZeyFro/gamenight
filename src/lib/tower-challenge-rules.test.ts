@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "./tower-challenge-rules";
+import * as m_p10 from "./tower-challenge-rules";
+import * as m_p11 from "./tower-challenge-rules";
+import * as m_p12 from "./tower-challenge-rules";
+import * as m_p13 from "./tower-challenge-rules";
 
 const date = (value: string) => new Date(value);
 const assigned = date("2026-10-24T12:00:00Z");
@@ -71,5 +75,56 @@ describe("jour Tower en Europe/Paris", () => {
     expect(getTowerParisDayKey(date("2026-10-28T23:00:00Z"))).toBe("2026-10-29");
     expect(getTowerParisDayKey(date("2026-10-25T00:30:00Z"))).toBe("2026-10-25");
     expect(getTowerParisDayKey(date("2026-10-25T01:30:00Z"))).toBe("2026-10-25");
+  });
+});
+
+// Tâche Qwen qwen-p10-solo-attente — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-rules · p10-solo-attente", () => {
+  it('attente avant nouvelle attribution solo', () => {
+    expect(m_p10.msUntilSoloChallengeAvailable(null, new Date('2026-03-10T10:00:00Z'))).toBe(0);
+    const last = new Date('2026-03-10T08:00:00Z');
+    expect(m_p10.msUntilSoloChallengeAvailable(last, new Date('2026-03-10T13:00:00Z'))).toBe(7 * 3600000);
+    expect(m_p10.msUntilSoloChallengeAvailable(last, new Date('2026-03-10T20:00:00Z'))).toBe(0);
+    expect(m_p10.msUntilSoloChallengeAvailable(last, new Date('2026-03-11T08:00:00Z'))).toBe(0);
+    expect(() => m_p10.msUntilSoloChallengeAvailable(new Date(NaN), last)).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p11-preuve-echeance — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-rules · p11-preuve-echeance", () => {
+  it('echeance de preuve a 48 h', () => {
+    const a = new Date('2026-03-10T08:00:00Z');
+    const d = m_p11.challengeProofDeadline(a);
+    expect(d instanceof Date).toBeTruthy();
+    expect(d.toISOString()).toBe('2026-03-12T08:00:00.000Z');
+    expect(a.toISOString()).toBe('2026-03-10T08:00:00.000Z');
+    expect(d !== a).toBeTruthy();
+    expect(() => m_p11.challengeProofDeadline(new Date(NaN))).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p12-recompenses-restantes — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-rules · p12-recompenses-restantes", () => {
+  it('recompenses restantes aujourd hui (jour Paris)', () => {
+    const now = new Date('2026-03-10T22:30:00Z');
+    expect(m_p12.remainingChallengeRewardsToday([], now)).toBe(2);
+    expect(m_p12.remainingChallengeRewardsToday([new Date('2026-03-10T09:00:00Z')], now)).toBe(1);
+    expect(m_p12.remainingChallengeRewardsToday([new Date('2026-03-10T09:00:00Z'), new Date('2026-03-10T10:00:00Z')], now)).toBe(0);
+    expect(m_p12.remainingChallengeRewardsToday([new Date('2026-03-10T09:00:00Z'), new Date('2026-03-10T10:00:00Z'), new Date('2026-03-10T11:00:00Z')], now)).toBe(0);
+    expect(m_p12.remainingChallengeRewardsToday([new Date('2026-03-09T22:30:00Z')], now)).toBe(2);
+    expect(m_p12.remainingChallengeRewardsToday([new Date('2026-03-09T23:30:00Z')], now)).toBe(1);
+    expect(() => m_p12.remainingChallengeRewardsToday([new Date('2026-03-11T09:00:00Z')], now)).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p13-preuve-expiree — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-challenge-rules · p13-preuve-expiree", () => {
+  it('expiration de la preuve a 48 h', () => {
+    const a = new Date('2026-03-10T08:00:00Z');
+    expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-12T07:59:59Z'))).toBe(false);
+    expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-12T08:00:00Z'))).toBe(true);
+    expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-15T08:00:00Z'))).toBe(true);
+    expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-10T07:00:00Z'))).toBe(false);
+    expect(() => m_p13.isChallengeProofExpired(a, new Date(NaN))).toThrow(RangeError);
   });
 });

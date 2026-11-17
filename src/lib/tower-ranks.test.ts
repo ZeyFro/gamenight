@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getTowerPersonalRank, nextTowerRankStep, TOWER_HIGH_RANKER_FLOORS, TOWER_RANKER_FLOORS, TOWER_RANK_PRESENTATION } from "./tower-ranks";
+import * as m_p16 from "./tower-ranks";
 describe("rangs personnels Tower", () => {
   it.each([
     [0, 0, "Irregular"], [1, 0, "Irregular"], [29, 10, "Irregular"], [30, 0, "Ranker"],
@@ -33,5 +34,19 @@ describe("rangs personnels Tower", () => {
   });
   it("réserve la couleur officielle du Ranker", () => {
     expect(TOWER_RANK_PRESENTATION.Ranker.hex).toBe("#8b5cf6");
+  });
+});
+
+// Tâche Qwen qwen-p16-rangs-comparaison — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-ranks · p16-rangs-comparaison", () => {
+  it('comparaison des rangs Tower', () => {
+    expect(m_p16.compareTowerRanks('Irregular', 'Ranker') < 0).toBeTruthy();
+    expect(m_p16.compareTowerRanks('Ranker', 'High Ranker') < 0).toBeTruthy();
+    expect(m_p16.compareTowerRanks('Irregular', 'High Ranker') < 0).toBeTruthy();
+    expect(m_p16.compareTowerRanks('High Ranker', 'Ranker') > 0).toBeTruthy();
+    expect(m_p16.compareTowerRanks('Ranker', 'Irregular') > 0).toBeTruthy();
+    expect(m_p16.compareTowerRanks('Ranker', 'Ranker')).toBe(0);
+    expect(() => m_p16.compareTowerRanks('Boss' as never, 'Ranker')).toThrow(RangeError);
+    expect(() => m_p16.compareTowerRanks('Ranker', 'Boss' as never)).toThrow(RangeError);
   });
 });

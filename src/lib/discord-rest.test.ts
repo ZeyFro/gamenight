@@ -5,6 +5,10 @@ import {
   deleteChannelMessage,
   deleteThreadPermanently,
   editChannelMessage,
+  getDiscordForumMember,
+  listActiveDiscordThreads,
+  listArchivedDiscordForumThreads,
+  listDiscordForumChannels,
   listGuildChannels,
   verifyVoiceChannelDestination,
   NO_MENTIONS,
@@ -42,6 +46,43 @@ describe("discord-rest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  describe("lecture des forums", () => {
+    const guildId = "111111111111111111";
+    const channelId = "222222222222222222";
+    const userId = "333333333333333333";
+    const read = { deadline: FAR_FUTURE, now: NOW };
+
+    it("lit uniquement les métadonnées forum avec permissions et tags", async () => {
+      const forum = { id: channelId, guild_id: guildId, type: 15, name: "forum", permission_overwrites: [], available_tags: [] };
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, [{ type: 0 }, forum]));
+      expect(await listDiscordForumChannels({ guildId, ...read })).toMatchObject({ ok: true, data: [forum] });
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/guilds\/111111111111111111\/channels$/),
+        expect.objectContaining({ method: "GET", cache: "no-store", redirect: "error" }));
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, [{ ...forum, permission_overwrites: undefined }]));
+      expect((await listDiscordForumChannels({ guildId, ...read })).ok).toBe(false);
+    });
+
+    it("vérifie l'identité du membre et n'accepte que des identifiants Discord", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: { id: userId }, roles: [], pending: true }));
+      expect(await getDiscordForumMember({ guildId, userId, ...read })).toMatchObject({ ok: true, data: { roles: [], pending: true } });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: { id: channelId }, roles: [] }));
+      expect((await getDiscordForumMember({ guildId, userId, ...read })).ok).toBe(false);
+      fetchMock.mockClear();
+      expect((await getDiscordForumMember({ guildId: "../channels", userId, ...read })).ok).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("sélectionne les fils publics et limite les archives à une page", async () => {
+      const thread = { id: "444444444444444444", parent_id: channelId, guild_id: guildId, type: 11, name: "Hades II", applied_tags: [] };
+      const body = { threads: [{ ...thread, type: 12 }, thread], has_more: true };
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, body)).mockResolvedValueOnce(jsonResponse(200, body));
+      expect(await listActiveDiscordThreads({ guildId, ...read })).toMatchObject({ ok: true, data: [thread] });
+      expect(await listArchivedDiscordForumThreads({ channelId, ...read })).toMatchObject({ ok: true, data: [thread] });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringMatching(/\/threads\/archived\/public\?limit=25$/),
+        expect.objectContaining({ method: "GET", cache: "no-store", redirect: "error" }));
+    });
   });
 
   describe("webhook de récompense", () => {

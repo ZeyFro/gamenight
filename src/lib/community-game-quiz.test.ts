@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCommunityGameQuizRound, isCorrectGameAnswer, normalizeGameAnswer, type CommunityQuizGame } from "./community-game-quiz";
+import * as m_p04 from "./community-game-quiz";
 
 const game = (name: string, details: CommunityQuizGame["details"]): CommunityQuizGame => ({
   name,
@@ -35,5 +36,22 @@ describe("community game quiz", () => {
     expect(normalizeGameAnswer("Le Café! 2")).toBe(normalizeGameAnswer("le cafe-2"));
     expect(isCorrectGameAnswer("Le Café! 2", "le cafe-2")).toBe(true);
     expect(isCorrectGameAnswer("Autre jeu", "le cafe-2")).toBe(false);
+  });
+});
+
+// Tâche Qwen qwen-p04-quiz-article — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("community-game-quiz · p04-quiz-article", () => {
+  it('un article initial est tolere des deux cotes', () => {
+    expect(m_p04.isCorrectGameAnswer('witcher 3', 'The Witcher 3')).toBeTruthy();
+    expect(m_p04.isCorrectGameAnswer('The Witcher 3', 'Witcher 3')).toBeTruthy();
+    expect(m_p04.isCorrectGameAnswer("l'Odyssée", 'Odyssée')).toBeTruthy();
+    expect(m_p04.isCorrectGameAnswer('Seigneur des Anneaux', 'Le Seigneur des Anneaux')).toBeTruthy();
+  });
+  it('un article seul reste une reponse et le comportement existant est conserve', () => {
+    expect(m_p04.isCorrectGameAnswer('The', 'the')).toBeTruthy();
+    expect(!m_p04.isCorrectGameAnswer('the', 'witcher')).toBeTruthy();
+    expect(m_p04.isCorrectGameAnswer('ZELDA', 'zelda')).toBeTruthy();
+    expect(!m_p04.isCorrectGameAnswer('Zelda', 'Mario')).toBeTruthy();
+    expect(m_p04.normalizeGameAnswer('Pokémon: Rouge!')).toBe('pokemon rouge');
   });
 });

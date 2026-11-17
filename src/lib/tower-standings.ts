@@ -91,6 +91,17 @@ export function findExactTies(entries: readonly TowerStandingInput[]): TowerStan
   return [...groups.values()].filter(group => group.length > 1);
 }
 
+/** Vrai si les deux entrées sont strictement égales sur (floors, hardWins, reachedAt), sans tenir compte de userId. Valide ses deux entrées. */
+export function isExactTowerTie(a: TowerStandingInput, b: TowerStandingInput): boolean {
+  validate(a);
+  validate(b);
+  return (
+    toFloors(a.floors) === toFloors(b.floors) &&
+    a.hardWins === b.hardWins &&
+    a.reachedAt.getTime() === b.reachedAt.getTime()
+  );
+}
+
 export type TowerCoWinnerGroup = {
   /** Rang 1-based, dans l'ordre total, du premier membre du groupe. */
   startRank: number;
