@@ -190,6 +190,73 @@ describe("handleDiscordInteraction", () => {
   });
 });
 
+describe("commandes Freebuff (cours de déploiement, jamais de succès)", () => {
+  beforeEach(() => {
+    verify.mockReset().mockReturnValue(true);
+    vi.stubEnv("DISCORD_APP_PUBLIC_KEY", "ab".repeat(32));
+    vi.stubEnv("DISCORD_CLIENT_ID", "555");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ["role"], ["equipe"], ["joueurs"], ["projet"], ["soiree"], ["tournoi"], ["aide"], ["profil"], ["boost"],
+  ])("« %s » : réponse éphémère « cours de déploiement », aucune action réelle", async (name) => {
+    const body = JSON.stringify({
+      type: 2,
+      application_id: "555",
+      token: "simulated-interaction-token",
+      guild_id: "123456789012345678",
+      member: { permissions: MANAGE_GUILD, user: { id: "777" } },
+      data: { name, options: [] },
+    });
+    const out = await handleDiscordInteraction({
+      rawBody: body,
+      signature: "sig-f",
+      timestamp: String(Math.floor(Date.now() / 1000)),
+    });
+    expect(out.status).toBe(200);
+    expect(out.body).toEqual({ type: 4, data: { content: expect.any(String), flags: 64, allowed_mentions: { parse: [] } } });
+    expect(out.runSetup).toBeUndefined();
+    expect(out.runRsvp).toBeUndefined();
+    expect(content(out)).toContain("cours de déploiement");
+  });
+
+  it("ne dit jamais « activé », « réussi », « succès » ou « ✅ »", async () => {
+    const msg = "Cette commande Freebuff est en cours de déploiement. Elle sera disponible dans les prochains jours.";
+    for (const name of ["role", "equipe", "joueurs", "projet", "soiree", "tournoi", "aide", "profil", "boost"]) {
+      const body = JSON.stringify({
+        type: 2,
+        application_id: "555",
+        token: "t",
+        guild_id: "123",
+        member: { permissions: MANAGE_GUILD, user: { id: "777" } },
+        data: { name, options: [] },
+      });
+      const out = await handleDiscordInteraction({ rawBody: body, signature: "sig", timestamp: String(Math.floor(Date.now() / 1000)) });
+      const text = (out.body as { data: { content: string } }).data.content;
+      expect(text).toBe(msg);
+      expect(text).not.toContain("activé");
+      expect(text).not.toContain("réussi");
+      expect(text).not.toContain("succès");
+      expect(text).not.toContain("✅");
+    }
+  });
+
+  it("les sous-commandes Freebuff aussi (ex. /equipe créer)", async () => {
+    const out = await handleDiscordInteraction({
+      rawBody: JSON.stringify({
+        type: 2, application_id: "555", token: "t", guild_id: "123",
+        member: { permissions: MANAGE_GUILD, user: { id: "777" } },
+        data: { name: "equipe", options: [{ name: "créer", type: 1 }] },
+      }),
+      signature: "sig",
+      timestamp: String(Math.floor(Date.now() / 1000)),
+    });
+    expect(out.status).toBe(200);
+    expect(content(out)).toContain("cours de déploiement");
+  });
+});
+
 describe("scripts/discord-commands.json (commande enregistrée globalement)", () => {
   const [gamenight] = JSON.parse(
     readFileSync(new URL("../../scripts/discord-commands.json", import.meta.url), "utf8")
