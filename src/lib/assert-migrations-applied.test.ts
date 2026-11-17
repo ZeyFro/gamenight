@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { evaluateGate, listLocalMigrations, run } from "../../scripts/assert-migrations-applied.mjs";
+import { evaluateGate, gateDatabaseUrl, listLocalMigrations, run } from "../../scripts/assert-migrations-applied.mjs";
 
 const collect = () => {
   const out: string[] = [];
@@ -20,6 +20,21 @@ describe("décision de la garde de migration (pure)", () => {
   });
   it("refuse une migration inachevée même si tout est listé", () => {
     expect(evaluateGate({ local: ["a"], applied: ["a"], unfinished: 1 }).ok).toBe(false);
+  });
+});
+
+describe("choix de l'URL de lecture", () => {
+  it("préfère l'URL dédiée en lecture seule à DATABASE_URL, sinon se rabat dessus", () => {
+    expect(gateDatabaseUrl({ MIGRATION_GATE_DATABASE_URL: "dedie", DATABASE_URL: "appli" })).toBe("dedie");
+    expect(gateDatabaseUrl({ DATABASE_URL: "appli" })).toBe("appli");
+    expect(gateDatabaseUrl({})).toBeUndefined();
+  });
+  it("le code source n'envoie qu'une lecture : requêtes fixes, sans interpolation", () => {
+    const src = readFileSync("scripts/assert-migrations-applied.mjs", "utf8");
+    const queries = src.match(/\$(?:queryRaw|executeRaw)Unsafe\(\s*[`"][^`"]*[`"]/g) ?? [];
+    expect(queries.length).toBe(3);
+    for (const q of queries) expect(q).not.toContain("${");
+    expect(src).not.toMatch(/console\.(log|error)\([^)]*(url|URL)[^)]*\)/);
   });
 });
 
@@ -118,6 +133,9 @@ describe.skipIf(!testUrl)("garde de build contre une vraie base PostgreSQL de te
     expect(await run(env(dirWith([...appliedNames, pending]), true), c)).toBe(1);
     expect(c.err.join("\n")).toContain(`En attente : ${pending}`);
     expect(c.err.join("\n")).toContain("le déploiement précédent reste servi");
+    const everything = [...c.out, ...c.err].join("\n");
+    expect(everything).not.toContain("postgresql://");
+    expect(everything).not.toContain("postgres:test");
   });
 
   it("même cas en mode rapport : signalé mais jamais bloquant", async () => {

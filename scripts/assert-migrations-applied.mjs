@@ -15,6 +15,10 @@
 //   - MIGRATION_GATE_ENFORCE=true : le build échoue si une migration manque, est inachevée, ou si la
 //     base est illisible (échec fermé).
 //
+// Connexion : MIGRATION_GATE_DATABASE_URL (rôle dédié en SELECT sur _prisma_migrations seulement,
+// recommandé) ; à défaut DATABASE_URL du build. Variables à définir dans Vercel Production seulement :
+// en Preview la garde sort avant de lire quoi que ce soit.
+//
 // MIGRATION_GATE_DIR n'existe que pour les tests (dossier de migrations à comparer).
 import { readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -37,6 +41,9 @@ export function evaluateGate({ local, applied, unfinished }) {
   const pending = local.filter((name) => !appliedSet.has(name));
   return { ok: pending.length === 0 && unfinished === 0, pending, unfinished };
 }
+
+/** URL de lecture : l'URL dédiée en priorité, jamais affichée. */
+export const gateDatabaseUrl = (env) => env.MIGRATION_GATE_DATABASE_URL || env.DATABASE_URL;
 
 export function describeGate(result, local) {
   const lines = [`${local.length} migration(s) dans le commit, ${local.length - result.pending.length} appliquée(s) en base.`];
@@ -87,7 +94,8 @@ export async function run(env = process.env, { log = console.log, fail = console
     return enforce ? 1 : 0;
   };
 
-  if (!env.DATABASE_URL) return refuse("DATABASE_URL absent : état de la base indéterminable.");
+  const databaseUrl = gateDatabaseUrl(env);
+  if (!databaseUrl) return refuse("aucune URL de base (MIGRATION_GATE_DATABASE_URL ou DATABASE_URL) : état indéterminable.");
   let local;
   try {
     local = listLocalMigrations(env.MIGRATION_GATE_DIR || "prisma/migrations");
@@ -96,7 +104,7 @@ export async function run(env = process.env, { log = console.log, fail = console
   }
   let state;
   try {
-    state = await readDatabaseState(env.DATABASE_URL);
+    state = await readDatabaseState(databaseUrl);
   } catch (error) {
     // Le message Prisma peut citer l'hôte : on n'affiche que le code.
     return refuse(`base illisible (${error?.code ?? error?.name ?? "inconnu"}) : état des migrations indéterminable.`);
