@@ -1,0 +1,48 @@
+name: Précontrôle Production (lecture seule)
+
+# Lancement manuel uniquement, depuis main, avec l'approbation de l'environnement.
+# Aucune écriture : transaction READ ONLY, compteurs seulement dans le résumé du run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  precheck:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-migrations
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Contrôle des équipes (lecture seule)
+        shell: bash
+        run: |
+          set +e
+          output="$(node scripts/precheck-team-membership.mjs 2>&1)"
+          code=$?
+          set -e
+          {
+            echo "## Précontrôle Production (lecture seule)"
+            echo
+            echo '```'
+            echo "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$output"
+          exit "$code"
