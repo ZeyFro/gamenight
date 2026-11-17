@@ -283,6 +283,7 @@ export async function provisionTeamSpace(input: {
     if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required" };
     logger.warn("discord-team-space", "Provisionnement d’espace impossible.", {
       errorType: error instanceof Error ? error.name : "unknown",
+      errorMessage: error instanceof Error ? error.message : "unknown",
     });
     return { status: "failed" };
   }
