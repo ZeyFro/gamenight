@@ -8,6 +8,7 @@ import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, parseDateAndTime } from "@/lib/wallclock";
 import { resolveGameId } from "@/lib/discord-team-commands";
+import { gameNightLine } from "@/lib/discord-links";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
 /**
@@ -232,7 +233,11 @@ export function renderSessionDetail(session: SessionView): string {
     `Participants : ${participants.join(", ")}`,
     session.proposals > 0 ? `Jeux proposés : ${session.proposals} — le vote se fait sur GameNight.` : "Aucun jeu proposé pour l’instant.",
     session.isCreator ? "Tu peux gérer cette soirée sur GameNight." : session.isInvited ? "Tu es inscrit : `/soiree quitter` pour te désinscrire." : "`/soiree rejoindre` pour t’inscrire.",
-  ].join("\n").slice(0, MAX_CONTENT);
+    gameNightLine("/sessions"),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, MAX_CONTENT);
 }
 
 /** Inscription idempotente, dans la limite de `attendanceCapacity`. */

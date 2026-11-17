@@ -2,15 +2,17 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
-import { getScopedPrisma } from "@/lib/community-scoped-client";
-import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
-import { wallClockNow } from "@/lib/wallclock";
+import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { getPlayerClassifiedCommunityId } from "@/lib/player-classifieds";
 import {
-  getPlayerClassifiedCommunityId,
-  listPlayerClassifieds,
-  playerClassifiedExpiresAt,
-  playerClassifiedSchema,
-} from "@/lib/player-classifieds";
+  createPlayerListing,
+  deletePlayerListing,
+  filterListings,
+  listCommunityListings,
+  listOwnListings,
+  type PlayerListing,
+} from "@/lib/player-listings";
+import { withGameNightLink } from "@/lib/discord-links";
 import { resolveGameId } from "@/lib/discord-team-commands";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
@@ -113,109 +115,45 @@ export async function resolvePlayerContext(input: {
   return { status: "OK", userId: user.id, communityId: community.id, communityName: community.name };
 }
 
-export interface PlayerListingView {
-  id: string;
-  game: string;
-  message: string;
-  authorName: string;
-  authorId: string;
-  expiresAt: Date;
-}
+export type PlayerListingView = PlayerListing;
 
+/**
+ * Annonces lisibles ici : même lecture que la page `/joueurs`
+ * (`listPlayerClassifieds`), plus ses propres annonces expirées.
+ */
 export async function loadPlayerListings(input: {
   userId: string;
   communityId: string;
   onlyMine: boolean;
   gameQuery?: string;
-}): Promise<PlayerListingView[]> {
-  const rows = await listPlayerClassifieds(input.userId, input.communityId, wallClockNow());
-  const normalize = (value: string) =>
-    value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr-FR");
-  const needle = normalize(input.gameQuery ?? "");
-  return rows
-    .filter((row) => (input.onlyMine ? row.createdBy.id === input.userId : true))
-    .filter((row) => (needle ? normalize(`${row.game.name} ${row.message}`).includes(needle) : true))
-    .slice(0, MAX_LISTED)
-    .map((row) => ({
-      id: row.id,
-      game: row.game.name,
-      message: row.message,
-      authorName: row.createdBy.discordName,
-      authorId: row.createdBy.id,
-      expiresAt: row.expiresAt,
-    }));
+}): Promise<PlayerListing[]> {
+  const rows = input.onlyMine
+    ? await listOwnListings({ userId: input.userId, communityId: input.communityId })
+    : await listCommunityListings({ userId: input.userId, communityId: input.communityId });
+  return filterListings(rows, {
+    query: input.gameQuery,
+    includeExpired: input.onlyMine,
+  }).slice(0, MAX_LISTED);
 }
 
-export function renderListings(listings: PlayerListingView[], communityName: string, onlyMine: boolean): string {
+export function renderListings(listings: PlayerListing[], communityName: string, onlyMine: boolean): string {
   if (listings.length === 0) {
     return onlyMine
-      ? "Tu n’as aucune annonce active. `/joueurs publier` en crée une pour 24 h."
+      ? "Tu n’as aucune annonce. `/joueurs publier` en crée une pour 24 h."
       : `Aucune annonce active sur **${communityName}**. Sois le premier : \`/joueurs publier\`.`;
   }
   return [
     onlyMine ? "🔎 **Tes annonces**" : `🔎 **Joueurs recherchés — ${communityName}**`,
-    ...listings.map(
-      (listing) =>
-        `• **${listing.game}** — ${listing.message.slice(0, 140)} · ${listing.authorName} · expire le ${listing.expiresAt.toLocaleDateString("fr-FR")} · \`${listing.id}\``
-    ),
-    "Toutes ces annonces sont aussi visibles sur GameNight, `/joueurs`.",
+    ...listings.map((listing) => {
+      const when = listing.expired
+        ? "⏳ expirée"
+        : `expire le ${listing.expiresAt.toLocaleDateString("fr-FR")}`;
+      return `• **${listing.game}** — ${listing.message.slice(0, 140)} · ${listing.authorName} · ${when} · \`${listing.id}\``;
+    }),
+    onlyMine
+      ? "Retire une annonce avec `/joueurs retirer`."
+      : "Filtre par jeu avec `/joueurs chercher`; la page GameNight `/joueurs` donne le détail complet.",
   ].join("\n").slice(0, MAX_CONTENT);
-}
-
-export type PublishResult =
-  | { status: "PUBLISHED" }
-  | { status: "INVALID" }
-  | { status: "GAME_NOT_FOUND" }
-  | { status: "GAME_AMBIGUOUS"; names: string[] }
-  | { status: "RATE_LIMITED" }
-  | { status: "UNAVAILABLE" };
-
-/** Même règle que la page : schéma partagé, expiration 24 h, une annonce par appel. */
-export async function publishListing(input: {
-  userId: string;
-  communityId: string;
-  gameId: string;
-  message: string;
-  now?: Date;
-}): Promise<PublishResult> {
-  const parsed = playerClassifiedSchema.safeParse({ gameId: input.gameId, message: input.message });
-  if (!parsed.success) return { status: "INVALID" };
-  if (!checkRateLimit(input.userId, "discord-player-classified", { limit: 5 })) return { status: "RATE_LIMITED" };
-  const scopedDb = await getScopedPrisma(input.userId);
-  const game = await scopedDb.game.findUnique({ where: { id: parsed.data.gameId }, select: { id: true } });
-  if (!game) return { status: "GAME_NOT_FOUND" };
-  const createdAt = input.now ?? wallClockNow();
-  await scopedDb.playerClassified.create({
-    data: {
-      communityId: input.communityId,
-      gameId: game.id,
-      createdById: input.userId,
-      message: parsed.data.message,
-      createdAt,
-      expiresAt: playerClassifiedExpiresAt(createdAt),
-    },
-  });
-  return { status: "PUBLISHED" };
-}
-
-/** Retrait par le seul auteur de l'annonce, dans sa communauté. */
-export async function removeListing(input: {
-  userId: string;
-  communityId: string;
-  listingId: string;
-}): Promise<"removed" | "missing" | "not_owner"> {
-  if (!z.string().min(1).max(40).safeParse(input.listingId).success) return "missing";
-  const scopedDb = await getScopedPrisma(input.userId);
-  const listing = await scopedDb.playerClassified.findFirst({
-    where: { id: input.listingId, communityId: input.communityId },
-    select: { id: true, createdById: true },
-  });
-  if (!listing) return "missing";
-  if (listing.createdById !== input.userId) return "not_owner";
-  const removed = await scopedDb.playerClassified.deleteMany({
-    where: { id: listing.id, communityId: input.communityId, createdById: input.userId },
-  });
-  return removed.count ? "removed" : "missing";
 }
 
 export function handleSignedPlayerInteraction(body: unknown, timestamp: string | null): InteractionOutput {
@@ -264,43 +202,50 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
           else if (game.kind === "AMBIGUOUS")
             content = `Plusieurs jeux correspondent : ${game.names.join(", ")}. Précise le nom exact.`;
           else {
-            const published = await publishListing({
+            // Service partagé : même validation, même expiration, même anti-doublon
+            // que l’action web dès que le patch #408 est appliqué.
+            const published = await createPlayerListing({
               userId: context.userId,
               communityId: context.communityId,
               gameId: game.id,
               message: text("description"),
             });
             content =
-              published.status === "PUBLISHED"
+              published.status === "created"
                 ? "✅ Annonce publiée pour 24 h. Elle apparaît sur GameNight (`/joueurs`) et dans `/joueurs annonces`."
-                : published.status === "RATE_LIMITED"
-                  ? RATE_LIMIT_MESSAGE
-                  : published.status === "INVALID"
-                    ? "Décris ta recherche en 240 caractères maximum (jeu + envie)."
-                    : "L’annonce n’a pas pu être publiée. Réessaie dans un instant.";
+                : published.status === "duplicate"
+                  ? "Tu as déjà publié exactement la même annonce : elle reste active."
+                  : published.status === "rate_limited"
+                    ? RATE_LIMIT_MESSAGE
+                    : published.status === "invalid"
+                      ? "Décris ta recherche en 240 caractères maximum (jeu + envie)."
+                      : "L’annonce n’a pas pu être publiée. Réessaie dans un instant.";
           }
         } else if (subName === "retirer") {
-          const removed = await removeListing({
+          const removed = await deletePlayerListing({
             userId: context.userId,
             communityId: context.communityId,
             listingId: text("annonce"),
           });
           content =
-            removed === "removed"
-              ? "✅ Annonce retirée."
+            removed === "deleted"
+              ? "✅ Annonce retirée : elle disparaît aussi de GameNight (`/joueurs`)."
               : removed === "not_owner"
                 ? "Cette annonce n’est pas la tienne : seul son auteur peut la retirer."
                 : "Annonce introuvable ou déjà expirée.";
         } else {
-          content = renderListings(
-            await loadPlayerListings({
-              userId: context.userId,
-              communityId: context.communityId,
-              onlyMine: subName === "mes-annonces",
-              gameQuery: subName === "chercher" ? text("jeu") : "",
-            }),
-            context.communityName,
-            subName === "mes-annonces"
+          content = withGameNightLink(
+            renderListings(
+              await loadPlayerListings({
+                userId: context.userId,
+                communityId: context.communityId,
+                onlyMine: subName === "mes-annonces",
+                gameQuery: subName === "chercher" ? text("jeu") : "",
+              }),
+              context.communityName,
+              subName === "mes-annonces"
+            ),
+            "/joueurs"
           );
         }
       } catch (error) {

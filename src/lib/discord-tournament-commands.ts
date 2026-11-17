@@ -2,6 +2,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
+import { gameNightLine } from "@/lib/discord-links";
 import { registerTournamentParticipant } from "@/lib/tournament-registration";
 import { unregisterTournamentParticipant } from "@/lib/tournament-unregistration";
 import type { InteractionOutput } from "@/lib/discord-interactions";
@@ -232,7 +233,8 @@ export function renderTournamentDetail(tournament: TournamentView): string {
     `Participants : ${tournament.players}/${tournament.maxPlayers}`,
     `Organisateur : ${tournament.creatorName}`,
     tournament.status === "DONE" && champion ? `Vainqueur : ${champion}` : "",
-    "Lecture seule : cette commande n’inscrit personne et ne modifie aucun score.",
+    gameNightLine(`/tournois/${tournament.id}`),
+    "Cette commande n’inscrit personne par elle-même : utilise les boutons de l’annonce ou les sous-commandes d’inscription.",
   ]
     .filter(Boolean)
     .join("\n")
