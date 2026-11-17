@@ -61,6 +61,34 @@ jobs:
         run: npx prisma migrate deploy
       - name: État après migration
         run: npx prisma migrate status
+      - name: Reprise du déploiement Vercel après migration réussie
+        if: ${{ success() }}
+        shell: bash
+        env:
+          # Facultatif : secret de l'environnement production-migrations. Sans lui, redéployer à la main.
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
+            {
+              echo "## Déploiement Vercel"
+              echo
+              echo "Migration appliquée. Aucun Deploy Hook configuré : redéployer le dernier commit de main dans Vercel (Redeploy). Le build passera la garde de migration."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # -f : échec sur HTTP 4xx/5xx ; -S sans -v : l'URL du hook n'est jamais affichée ; réponse écartée.
+          if curl -fsS -X POST --max-time 30 -o /dev/null "$VERCEL_DEPLOY_HOOK_URL"; then
+            message="Migration appliquée, Deploy Hook appelé : un nouveau déploiement de main est lancé. Vérifier qu'il passe la garde de migration."
+          else
+            # La migration a réussi : un hook en échec ne doit pas passer pour un échec de migration.
+            echo "::warning::Deploy Hook Vercel en échec : redéployer à la main."
+            message="Migration appliquée, mais le Deploy Hook a échoué : redéployer le dernier commit de main dans Vercel (Redeploy)."
+          fi
+          {
+            echo "## Déploiement Vercel"
+            echo
+            echo "$message"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Consignes en cas d'échec
         if: ${{ failure() }}
         shell: bash
