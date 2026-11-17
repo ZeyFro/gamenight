@@ -3,12 +3,15 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
 import {
-  createCommunityTeam,
+  createCommunityTeamWithId,
   joinCommunityTeam,
   leaveCommunityTeam,
   listCommunityTeams,
   setCommunityTeamRecruitment,
 } from "@/lib/community-teams";
+import { provisionTeamSpace, syncTeamSpaceMember, type SpaceProvisionStatus } from "@/lib/discord-team-space-service";
+import { createDiscordTeamSpaceApi } from "@/lib/discord-team-space-api";
+import { teamSpacesEnabled } from "@/lib/discord-team-spaces";
 import { filterTeamGameOptions, uniqueTeamGameOptions, type TeamGameOption } from "@/app/equipes/game-picker-rules";
 import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
 import type { InteractionOutput } from "@/lib/discord-interactions";
@@ -36,6 +39,69 @@ const REPLY_BUDGET_MS = 10_000;
 const MAX_CONTENT = 1_900;
 const MAX_LISTED_TEAMS = 12;
 const MAX_LISTED_MEMBERS = 15;
+
+/**
+ * Traduction honnête du résultat d'espace : le message ne dit jamais qu'un
+ * salon ou un rôle a été créé si le service ne l'a pas fait.
+ */
+export function describeSpaceOutcome(status: SpaceProvisionStatus | "still_active"): string {
+  switch (status) {
+    case "created":
+      return " Espace Discord : rôle privé et salon créés.";
+    case "reused":
+      return " Espace Discord existant réutilisé.";
+    case "partial":
+      return " Espace Discord partiellement créé : vérifie la hiérarchie des rôles du bot.";
+    case "quota":
+      return " Espace Discord non créé : quota d’espaces de la communauté atteint.";
+    case "unmanaged":
+      return " Espace Discord non modifié : aucune ressource associée à cette équipe.";
+    case "community_not_linked":
+      return " Espace Discord non créé : cette communauté n’a pas de serveur relié.";
+    case "migration_required":
+      return " Espace Discord non créé : l’association persistante des ressources n’est pas encore migrée.";
+    case "failed":
+      return " Espace Discord non créé : Discord a refusé l’opération.";
+    default:
+      return "";
+  }
+}
+
+/** Provisionnement uniquement si le flag est ouvert : aucune écriture implicite. */
+async function provisionSpace(teamId: string, communityId: string): Promise<string> {
+  if (!teamSpacesEnabled()) return "";
+  try {
+    const result = await provisionTeamSpace({ teamId, communityId, api: createDiscordTeamSpaceApi() });
+    return describeSpaceOutcome(result.status);
+  } catch (error) {
+    logger.warn("discord-team", "Provisionnement d’espace impossible.", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    return " Espace Discord non créé : erreur inattendue, l’équipe reste intacte.";
+  }
+}
+
+async function syncSpaceMember(input: {
+  teamId: string;
+  communityId: string;
+  discordId: string;
+  action: "join" | "leave";
+}): Promise<string> {
+  if (!teamSpacesEnabled()) return "";
+  try {
+    const result = await syncTeamSpaceMember({ ...input, api: createDiscordTeamSpaceApi() });
+    if (result.status === "updated") return " Accès au salon d’équipe accordé.";
+    if (result.status === "removed") return " Accès Discord retiré (XP et étages conservés).";
+    if (result.status === "not_provisioned") return " Espace Discord pas encore créé : aucun accès à modifier.";
+    if (result.status === "failed") return " Discord n’a pas confirmé la mise à jour de tes accès : réessaie dans un instant.";
+    return "";
+  } catch (error) {
+    logger.warn("discord-team", "Synchronisation d’accès impossible.", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    return " Discord n’a pas confirmé la mise à jour de tes accès.";
+  }
+}
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
 const SUBCOMMANDS = ["liste", "moi", "voir", "rejoindre", "quitter", "creer", "recrutement"] as const;
@@ -354,6 +420,7 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
                       query,
                       userId: result.userId,
                       communityId: result.communityId,
+                      discordId,
                     });
         } else if (result.status === "TEAMS_DISABLED") {
           content = "Les équipes ne sont pas activées sur cette communauté.";
@@ -387,6 +454,7 @@ async function applyMembershipChange(input: {
   query: string;
   userId: string;
   communityId: string;
+  discordId: string;
 }): Promise<string> {
   if (input.lookup.kind === "AMBIGUOUS") {
     return short(
@@ -405,8 +473,15 @@ async function applyMembershipChange(input: {
   if (input.subName === "rejoindre") {
     const outcome = await joinCommunityTeam(input.userId, input.communityId, team.id);
     switch (outcome) {
-      case "joined":
-        return `✅ Tu as rejoint **${team.name}** (${team.game})${team.captainName ? ` — capitaine : ${team.captainName}` : ""}.`;
+      case "joined": {
+        const space = await syncSpaceMember({
+          teamId: team.id,
+          communityId: input.communityId,
+          discordId: input.discordId,
+          action: "join",
+        });
+        return `✅ Tu as rejoint **${team.name}** (${team.game})${team.captainName ? ` — capitaine : ${team.captainName}` : ""}.${space}`;
+      }
       case "already":
         return `Tu fais déjà partie de **${team.name}**.`;
       case "closed":
@@ -422,8 +497,15 @@ async function applyMembershipChange(input: {
 
   const outcome = await leaveCommunityTeam(input.userId, input.communityId, team.id);
   switch (outcome) {
-    case "left":
-      return `Tu as quitté **${team.name}**.`;
+    case "left": {
+      const space = await syncSpaceMember({
+        teamId: team.id,
+        communityId: input.communityId,
+        discordId: input.discordId,
+        action: "leave",
+      });
+      return `Tu as quitté **${team.name}**.${space}`;
+    }
     case "leader":
       return `Tu es capitaine de **${team.name}** : la capitainerie ne se transmet pas depuis Discord (passation en préparation). Ton équipe reste intacte.`;
     case "missing":
@@ -495,7 +577,7 @@ async function createTeamFromDiscord(input: {
   if (game.kind === "AMBIGUOUS") {
     return `Plusieurs jeux correspondent : ${game.names.join(", ")}. Précise le nom exact.`;
   }
-  const outcome = await createCommunityTeam({
+  const outcome = await createCommunityTeamWithId({
     userId: input.userId,
     communityId: input.communityId,
     gameId: game.id,
@@ -504,9 +586,11 @@ async function createTeamFromDiscord(input: {
     platform: input.platform,
     maxMembers: input.places,
   });
-  switch (outcome) {
-    case "created":
-      return `✅ Équipe **${input.name}** créée sur **${game.name}** (${input.places} places). Tu en es le capitaine : la capitainerie vient du créateur, jamais de l’ordre des membres.`;
+  switch (outcome.status) {
+    case "created": {
+      const space = outcome.teamId ? await provisionSpace(outcome.teamId, input.communityId) : "";
+      return `✅ Équipe **${input.name}** créée sur **${game.name}** (${input.places} places). Tu en es le capitaine : la capitainerie vient du créateur, jamais de l’ordre des membres.${space}`;
+    }
     case "limit":
       return "Limite atteinte : trois équipes créées par période de 24 heures.";
     case "invalid_game":

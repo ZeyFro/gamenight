@@ -35,3 +35,35 @@ Désormais :
 Persistance de `channelId`/`roleId` (migration Prisma) → sans elle, les liens
 doivent être fournis par l'appelant, et aucun retrait de permission automatique
 n'est planifié en production. Le code ne simule aucun stockage.
+
+## Service de gestion réelle (17/11, sprint automatisation)
+
+`src/lib/discord-team-space-service.ts` raccorde le planificateur à une API
+Discord injectable (`discord-team-space-api.ts` → `discord-rest`) et à une
+association persistée `DiscordTeamSpace`.
+
+| Opération | Fonction | Effet réel |
+|---|---|---|
+| Création d'équipe | `provisionTeamSpace` | rôle privé + salon privé + rôles des membres, lien persisté |
+| Rejeu | `provisionTeamSpace` | `reused` : aucune création (lien trouvé) |
+| Adhésion | `syncTeamSpaceMember(join)` | ajout du seul rôle de cette équipe |
+| Départ | `syncTeamSpaceMember(leave)` | retrait du rôle ; XP et étages non touchés |
+| Inactivité | `archiveInactiveTeamSpace` | renommage `archive-…` du salon lié uniquement |
+| Réactivation | `reactivateTeamSpace` | renommage retour, même salon vérifié |
+
+- Quota par communauté (5 espaces), `teamId`/`channelId` uniques en base.
+- Aucune fonction de suppression de salon ou de rôle n'existe dans le service.
+- `/equipe creer|rejoindre|quitter` ajoutent une ligne **seulement** si le flag
+  est ouvert, et cette ligne reflète le statut réel (`créés`, `non créé :
+  quota`, `partiellement créé`, `association non migrée`…).
+- **Prérequis d'activation** : appliquer
+  `docs/migrations/pending/20261117_discord_team_space/migration.sql` sur la base
+  cible, puis `DISCORD_TEAM_SPACES_ENABLED=true`. Sans table, le service répond
+  `migration_required` ; sans flag, aucune écriture Discord.
+
+## Captain (service)
+
+`src/lib/community-team-captain-service.ts` : `getTeamCaptain`, `canManageTeam`,
+`transferTeamCaptain` (capitaine actuel → membre actif, conditionnel et
+idempotent). Une passation **avec acceptation** du destinataire exige un modèle
+d'invitation (migration) : elle n'est pas simulée. Aucun premier membre promu.

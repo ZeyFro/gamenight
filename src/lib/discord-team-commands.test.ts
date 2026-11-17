@@ -26,7 +26,7 @@ vi.mock("@/lib/community-teams", () => ({
   listCommunityTeams: mocks.teams,
   joinCommunityTeam: mocks.join,
   leaveCommunityTeam: mocks.leave,
-  createCommunityTeam: mocks.create,
+  createCommunityTeamWithId: mocks.create,
   setCommunityTeamRecruitment: mocks.recruitment,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -400,7 +400,7 @@ describe("/equipe creer — création déléguée au service", () => {
   ];
 
   it("crée l’équipe via createCommunityTeam, sans copie de la règle métier", async () => {
-    mocks.create.mockResolvedValue("created");
+    mocks.create.mockResolvedValue({ status: "created", teamId: "team-1" });
     const content = await deferredContent(
       handleSignedTeamInteraction(withOptions("creer", createOptions), now())
     );
@@ -451,7 +451,7 @@ describe("/equipe creer — création déléguée au service", () => {
     expect(mocks.create).not.toHaveBeenCalled();
 
     vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
-    mocks.create.mockResolvedValue("limit");
+    mocks.create.mockResolvedValue({ status: "limit" });
     const content = await deferredContent(handleSignedTeamInteraction(withOptions("creer", createOptions), now()));
     expect(content).toContain("trois équipes");
   });

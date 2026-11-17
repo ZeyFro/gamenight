@@ -55,3 +55,25 @@ recopier un nom exact.
 
 Déclaration à ajouter par le propriétaire de #416 (`autocomplete: true` sur
 l'option `jeu`) : voir `DISCORD-tournoi-v1.md` pour le format.
+
+## Attribution réelle et garde-fous (17/11, sprint automatisation)
+
+`/role jeu:Valorant` (option directe) et `/role attribuer jeu:…` suivent le même
+chemin : contrôle d'adhésion GameNight, recherche du rôle, attribution, création
+si autorisée, synchronisation du centre d'intérêt.
+
+- **Adhésion** : `Community.discordGuildId` + `Membership` ACTIVE obligatoires.
+  Un compte Discord extérieur ne reçoit ni rôle ni sync.
+- **Création** : permission « Gérer les rôles » (ou flag d'auto-création) +
+  quota de 3 créations/heure/joueur + plafond de rôles de la guilde. Le rôle
+  créé a `permissions: "0"` (`createGuildRole`) : jamais administrateur,
+  jamais modérateur, jamais d'accès aux salons privés.
+- **Interdits** : rôles `managed`, `@everyone`, au-dessus du bot, noms réservés.
+- **Rejeu** : seconde lecture des rôles juste avant création ; un rôle créé
+  entre-temps est réutilisé au lieu d'être dupliqué.
+- **Sync GameNight** : `Tag`/`UserTag` (upsert idempotent), aucune table
+  nouvelle ; compte non relié signalé, jamais créé.
+
+Commande JSON : l'option `jeu` doit exister au niveau racine (`type: 3`,
+`autocomplete: true`) **et** dans les sous-commandes. Déclaration à faire par le
+propriétaire de #416 ; le code accepte les deux formes sans redéploiement.

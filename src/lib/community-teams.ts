@@ -124,22 +124,28 @@ export type TeamInput = {
   maxMembers: number;
 };
 
-export async function createCommunityTeam(input: TeamInput): Promise<"created" | "limit" | "invalid_game" | "unavailable"> {
-  if (await getCommunityTeamsCommunityId(input.userId) !== input.communityId) return "unavailable";
-  const attempt = () => prisma.$transaction(async (tx) => {
-    if (!await canUseTeams(tx, input.userId, input.communityId)) return "unavailable";
+export type CreateTeamOutcome = { status: "created" | "limit" | "invalid_game" | "unavailable"; teamId?: string };
+
+/**
+ * Variante qui expose l'identifiant créé (provisionnement de l'espace Discord),
+ * sans changer le contrat historique `createCommunityTeam`.
+ */
+export async function createCommunityTeamWithId(input: TeamInput): Promise<CreateTeamOutcome> {
+  if (await getCommunityTeamsCommunityId(input.userId) !== input.communityId) return { status: "unavailable" };
+  const attempt = () => prisma.$transaction(async (tx): Promise<CreateTeamOutcome> => {
+    if (!await canUseTeams(tx, input.userId, input.communityId)) return { status: "unavailable" };
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [input.communityId], includesDefault: false });
     const game = await scopedDb.game.findUnique({ where: { id: input.gameId }, select: { id: true } });
-    if (!game) return "invalid_game";
+    if (!game) return { status: "invalid_game" };
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    if (await scopedDb.communityTeam.count({ where: { communityId: input.communityId, createdById: input.userId, createdAt: { gte: since } } }) >= 3) return "limit";
+    if (await scopedDb.communityTeam.count({ where: { communityId: input.communityId, createdById: input.userId, createdAt: { gte: since } } }) >= 3) return { status: "limit" };
     const { userId, communityId, gameId, name, description, platform, maxMembers } = input;
     const team = await scopedDb.communityTeam.create({
       data: { communityId, gameId, createdById: userId, name, description, platform, maxMembers },
       select: { id: true },
     });
     await scopedDb.communityTeamMember.create({ data: { communityId: input.communityId, teamId: team.id, userId: input.userId } });
-    return "created";
+    return { status: "created", teamId: team.id };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   try {
     return await attempt();
@@ -147,6 +153,10 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return attempt();
     throw error;
   }
+}
+
+export async function createCommunityTeam(input: TeamInput): Promise<"created" | "limit" | "invalid_game" | "unavailable"> {
+  return (await createCommunityTeamWithId(input)).status;
 }
 
 export async function joinCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"joined" | "already" | "closed" | "full" | "missing" | "unavailable"> {

@@ -80,3 +80,14 @@ préparation. Aucune création d'équipe, de salon ou de rôle.
   (règle partagée) peut agir, puis `setCommunityTeamRecruitment` fait l'écriture.
 - Les deux restent derrière `DISCORD_TEAM_WRITE_ENABLED`, fermé par défaut.
 - Aucune ressource Discord créée, aucune permission accordée, aucune migration.
+
+## Espaces et capitaine (17/11)
+
+- `creer` provisionne l'espace Discord si `DISCORD_TEAM_SPACES_ENABLED=true` ;
+  message honnête selon `describeSpaceOutcome` (jamais de création inventée).
+- `rejoindre` / `quitter` synchronisent le rôle d'espace de la seule équipe
+  concernée ; le départ ne touche ni XP ni étages (aucune écriture XP).
+- `recrutement` reste réservé au capitaine officiel.
+- Passation : service `transferTeamCaptain` prêt, **pas encore exposé** en
+  sous-commande (JSON de commandes réservé #416). En attendant, `/equipe voir`
+  affiche le capitaine ou « Capitaine non renseigné ».
