@@ -55,3 +55,46 @@ describe("workflow Précontrôle Production", () => {
     expect(runs).toContain("exit \"$code\"");
   });
 });
+
+describe("workflow Précontrôle Production : simulation de la garde et empreinte", () => {
+  type Step = { name?: string; run?: string; if?: string; env?: Record<string, string> };
+  const steps = job.steps as Step[];
+  const gate = steps.find((s) => s.run?.includes("assert-migrations-applied.mjs"));
+  const fingerprint = steps.find((s) => s.run?.includes("restore-fingerprint.mjs"));
+
+  it("simule la garde en application stricte, avec le rôle dédié s'il existe", () => {
+    expect(gate?.env?.VERCEL_ENV).toBe("production");
+    expect(gate?.env?.MIGRATION_GATE_ENFORCE).toBe("true");
+    expect(gate?.env?.MIGRATION_GATE_DATABASE_URL).toBe("${{ secrets.MIGRATION_GATE_DATABASE_URL }}");
+    expect(gate?.run).toContain('exit "$code"');
+  });
+
+  it("l'empreinte et la garde s'exécutent même si le contrôle des équipes refuse, sans survivre à une annulation", () => {
+    for (const step of [gate, fingerprint]) expect(step?.if).toBe("${{ !cancelled() }}");
+    expect(fingerprint?.run).toContain('exit "$code"');
+  });
+
+  it("n'écrit aucun secret : pas de set -x, pas d'écho des variables de connexion", () => {
+    const all = steps.map((s) => s.run ?? "").join("\n");
+    expect(all).not.toMatch(/set -x|--verbose/);
+    expect(all).not.toMatch(/echo[^\n]*(DATABASE_URL|MIGRATION_GATE_DATABASE_URL)/);
+  });
+});
+
+describe("workflow Précontrôle Production : portée du secret", () => {
+  type Step = { name?: string; run?: string; env?: Record<string, string> };
+  const steps = job.steps as Step[];
+  const SECRET = "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}";
+
+  it("n'expose le secret Production qu'aux trois étapes de contrôle, jamais à npm ci ni à prisma generate", () => {
+    expect((job as { env?: Record<string, string> }).env).toBeUndefined();
+    const withSecret = steps.filter((s) => s.env?.DATABASE_URL === SECRET);
+    expect(withSecret).toHaveLength(3);
+    for (const step of withSecret) {
+      expect(step.run ?? "").toMatch(/precheck-team-membership|assert-migrations-applied|restore-fingerprint/);
+    }
+    for (const step of steps.filter((s) => !withSecret.includes(s))) {
+      expect(JSON.stringify(step.env ?? {})).not.toContain("PRODUCTION_MIGRATION_DATABASE_URL");
+    }
+  });
+});
