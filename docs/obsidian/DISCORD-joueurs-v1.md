@@ -57,3 +57,20 @@ encore actif) et le contrôle d'auteur.
 Nouveautés de parcours : `mes-annonces` distingue les annonces **expirées**,
 `chercher` filtre jeu/message/auteur sans accent, et les réponses portent un lien
 `/joueurs` **uniquement** quand l'origine Vercel est résolvable.
+
+## Annonces interactives et correctifs (17/11)
+
+- Boutons d'annonce : « Je suis intéressé » (`gn:listing:interest:<id>`),
+  « Contacter l'auteur » (`gn:listing:contact:<id>`) et lien GameNight (style 5)
+  **seulement** si l'origine Vercel est résolvable. Un identifiant invalide ne
+  produit aucun bouton.
+- `respondToListingInteraction` refuse : annonce retirée, expirée, autre serveur,
+  non-membre, compte Discord inconnu, limite de débit, auteur qui clique sur sa
+  propre annonce. **Aucune candidature n'est enregistrée** : aucun modèle
+  n'existe, le message renvoie vers l'auteur (`<@id>`) au lieu de simuler.
+- Correctif de messages : `deletePlayerListing` distingue `deleted`,
+  `not_owner`, `rate_limited`, `missing`. La limite de débit affiche désormais le
+  message de limite (et non « introuvable »), et aucun cas n'annonce une
+  suppression qui n'a pas eu lieu.
+- Helpers inutilisés retirés (`isSameListingMessage`, alias `PlayerListingView`) ;
+  les issues mortes `unavailable` ont disparu des types du service.

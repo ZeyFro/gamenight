@@ -33,3 +33,11 @@ Dépend de la branche `agent/preflight-20261116` (modules `discord-autocomplete`
 `discord-session-autocomplete`, `discord-player-commands`,
 `discord-project-commands`, `discord-session-commands`,
 `discord-tournament-commands`). À appliquer **après** récupération de ces modules.
+
+## Ajout du 17/11 — boutons d'annonce
+
+Le patch inclut désormais le bloc `gn:listing:` (avant le traitement RSVP
+générique) : validation application/horodatage/composant, ACK privé, puis
+`respondToListingInteraction`. Il dépend des modules
+`discord-player-listing-components` et `discord-player-listing-rsvp` de la
+branche `agent/preflight-20261116`.
