@@ -20,11 +20,17 @@ jobs:
     steps:
       - name: Call the daily challenge endpoint
         env:
+          TOWER_TEAM_DAILY_ENABLED: ${{ vars.TOWER_TEAM_DAILY_ENABLED }}
           GAMENIGHT_CRON_BASE_URL: ${{ vars.GAMENIGHT_CRON_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "${TOWER_TEAM_DAILY_ENABLED:-}" != "true" ]]; then
+            echo "Daily team challenge schedule is disabled."
+            exit 0
+          fi
 
           if [[ -z "$GAMENIGHT_CRON_BASE_URL" || -z "$CRON_SECRET" ]]; then
             echo "Required repository variable or secret is missing."

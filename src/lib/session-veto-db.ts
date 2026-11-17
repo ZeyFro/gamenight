@@ -7,10 +7,14 @@ import { isVoteVetoEnabled } from "@/lib/session-veto";
 export async function loadVetoedProposalIds(sessionId: string, communityId: string | null, tx?: Prisma.TransactionClient): Promise<Set<string>> {
   if (!isVoteVetoEnabled()) return new Set();
   const id = communityId ?? (await getDefaultCommunityId());
-  const scopedDb = tx
-    ? scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false })
-    : await scopedPrismaForCommunityId(id);
-  const rows = await scopedDb.sessionVeto.findMany({ where: { sessionId }, select: { proposalId: true } });
+  const query = { where: { sessionId }, select: { proposalId: true } } as const;
+  if (tx) {
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false });
+    const rows = await scopedDb.sessionVeto.findMany(query);
+    return new Set(rows.map((r) => r.proposalId));
+  }
+  const scopedDb = await scopedPrismaForCommunityId(id);
+  const rows = await scopedDb.sessionVeto.findMany(query);
   return new Set(rows.map((r) => r.proposalId));
 }
 
