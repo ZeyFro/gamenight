@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 import {
   addGuildMemberRole,
@@ -79,15 +81,18 @@ const inputSchema = z.object({
     options: z
       .array(
         z.object({
-          type: z.literal(1),
-          name: z.enum(["chercher", "attribuer", "creer", "retirer"]),
+          // 1 = sous-commande ; 3 = option texte (`/role jeu:Valorant`).
+          type: z.number().optional(),
+          name: z.string().min(1).max(32),
           options: z
             .array(z.object({ name: z.string().min(1).max(32), type: z.number().optional(), value: z.string().max(400).optional() }))
             .max(5)
             .optional(),
+          value: z.string().max(400).optional(),
         })
       )
-      .length(1),
+      .min(1)
+      .max(1),
   }),
 });
 
@@ -114,6 +119,9 @@ function hasManageRoles(permissions: string): boolean {
   if (!/^\d+$/.test(permissions)) return false;
   return (BigInt(permissions) & (MANAGE_ROLES | ADMINISTRATOR)) !== BigInt(0);
 }
+
+/** Trois créations de rôle par heure et par joueur (quota horaire glissant). */
+const ROLE_CREATION_QUOTA = { limit: 3, windowMs: 60 * 60 * 1000 };
 
 function maxGuildRoles(): number {
   const configured = Number(process.env.DISCORD_ROLE_MAX_GUILD_ROLES);
@@ -237,9 +245,33 @@ async function createThenAssign(input: {
   });
 }
 
+/**
+ * Le joueur doit appartenir à la communauté GameNight de ce serveur. Aucun rôle
+ * n'est attribué ni créé pour un compte Discord extérieur.
+ */
+async function isActiveCommunityMember(guildId: string, discordId: string): Promise<boolean> {
+  const community = await prisma.community.findFirst({
+    where: { discordGuildId: guildId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!community) return false;
+  const user = await prisma.user.findUnique({
+    where: { discordId },
+    select: { id: true, memberships: { where: { communityId: community.id, status: "ACTIVE" }, select: { id: true } } },
+  });
+  return Boolean(user?.memberships.length);
+}
+
 /** Cœur testable de la commande : renvoie le message privé à afficher au joueur. */
-export async function runRoleCommand(input: RoleCommandInput): Promise<string> {
+export async function runRoleCommand(
+  input: RoleCommandInput & { membershipCheck?: (guildId: string, discordId: string) => Promise<boolean> }
+): Promise<string> {
   if (!queryKey(input.query)) return describeRefusal("invalid_name", []);
+
+  const isMember = await (input.membershipCheck ?? isActiveCommunityMember)(input.guildId, input.invokerId);
+  if (!isMember) {
+    return "Ton compte Discord n’est pas encore membre actif de cette communauté GameNight : connecte-toi une fois sur le site, puis réessaie.";
+  }
 
   const listed = await listGuildRoles({ guildId: input.guildId, deadline: deadline() });
   if (!listed.ok) return describeFailure(listed);
@@ -289,6 +321,11 @@ export async function runRoleCommand(input: RoleCommandInput): Promise<string> {
     case "already":
       return `Tu as déjà le rôle **${plan.role.name}**.`;
     case "create":
+      // Création bornée : permission, quota horaire par joueur, plafond de rôles
+      // de la guilde (vérifié dans planRoleGrant).
+      if (!checkRateLimit(input.invokerId, "discord-role-create", ROLE_CREATION_QUOTA)) {
+        return `${RATE_LIMIT_MESSAGE} Trois créations de rôle par heure maximum.`;
+      }
       return createThenAssign({ guildId: input.guildId, invokerId: input.invokerId, name: plan.name, botTopPosition });
     case "assign":
       return assignRole({ guildId: input.guildId, invokerId: input.invokerId, role: plan.role, alreadyPresent: false });
@@ -312,8 +349,14 @@ export function handleSignedRoleInteraction(body: unknown, timestamp: string | n
   if (process.env.DISCORD_ROLE_COMMAND_ENABLED !== "true") {
     return quiet("La commande /role n’est pas encore ouverte sur ce serveur.");
   }
-  const sub = interaction.data.options[0];
-  const query = (sub.options?.find((option) => option.name === "jeu")?.value ?? "").trim();
+  const first = interaction.data.options[0];
+  const SUBS = new Set(["chercher", "attribuer", "creer", "retirer"]);
+  // `/role jeu:Valorant` (option directe, type 3) vaut `/role attribuer jeu:Valorant`.
+  const direct = first.type !== 1 && first.name === "jeu";
+  if (!direct && !SUBS.has(first.name)) return { status: 400 };
+  const sub = direct ? null : { name: first.name, options: first.options };
+  if (direct && !first.value?.trim()) return { status: 400 };
+  const query = direct ? (first.value ?? "").trim() : (sub?.options?.find((option) => option.name === "jeu")?.value ?? "").trim();
   // ACK immédiat (< 3 s) : aucune requête Discord ni SQL avant la réponse.
   return {
     status: 200,
@@ -322,7 +365,7 @@ export function handleSignedRoleInteraction(body: unknown, timestamp: string | n
       let content: string;
       try {
         content = await runRoleCommand({
-          sub: sub.name,
+          sub: (direct ? "attribuer" : sub!.name) as RoleCommandSub,
           query,
           guildId: interaction.guild_id,
           invokerId: interaction.member.user.id,

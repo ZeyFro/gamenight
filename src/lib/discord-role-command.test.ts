@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  communityFindFirst: vi.fn(),
   tagUpsert: vi.fn(),
   userTagUpsert: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: prismaMocks.findUnique },
+    community: { findFirst: prismaMocks.communityFindFirst },
     tag: { upsert: prismaMocks.tagUpsert },
     userTag: { upsert: prismaMocks.userTagUpsert },
   },
@@ -52,7 +54,8 @@ beforeEach(() => {
     rolePayload("100000000000000012", "Admin", 20, { permissions: "8" }),
   ];
   memberRoles = [];
-  prismaMocks.findUnique.mockResolvedValue({ id: "user-1" });
+  prismaMocks.findUnique.mockResolvedValue({ id: "user-1", memberships: [{ id: "membership-1" }] });
+  prismaMocks.communityFindFirst.mockResolvedValue({ id: "community-1" });
   prismaMocks.tagUpsert.mockResolvedValue({ id: "tag-1" });
   prismaMocks.userTagUpsert.mockResolvedValue({});
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
@@ -121,6 +124,19 @@ describe("/role attribuer", () => {
     expect(calls.length).toBeGreaterThan(before);
   });
 
+  it("refuse un compte qui n'est pas membre actif de la communauté, sans aucun appel d'écriture", async () => {
+    prismaMocks.communityFindFirst.mockResolvedValue(null);
+    const message = await command("attribuer", "Deep Rock Galactic");
+    expect(message).toContain("n’est pas encore membre actif");
+    expect(count("PUT")).toBe(0);
+    expect(count("POST")).toBe(0);
+
+    prismaMocks.communityFindFirst.mockResolvedValue({ id: "community-1" });
+    prismaMocks.findUnique.mockResolvedValue({ id: "user-1", memberships: [] });
+    expect(await command("creer", "Nouveau Jeu")).toContain("n’est pas encore membre actif");
+    expect(count("POST")).toBe(0);
+  });
+
   it("refuse un rôle technique sans jamais l'attribuer", async () => {
     const message = await command("attribuer", "Admin");
     expect(message).toContain("technique ou administratif");
@@ -143,7 +159,15 @@ describe("/role attribuer", () => {
 
   it("signale un compte Discord non relié sans créer de profil", async () => {
     prismaMocks.findUnique.mockResolvedValue(null);
-    const message = await command("attribuer", "Deep Rock Galactic");
+    // Adhésion vérifiée en amont (autre requête) : ici seul le lien de profil manque.
+    const message = await runRoleCommand({
+      sub: "attribuer",
+      query: "Deep Rock Galactic",
+      guildId: GUILD,
+      invokerId: USER,
+      invokerPermissions: "0",
+      membershipCheck: async () => true,
+    });
     expect(message).toContain("Connecte ton compte Discord");
     expect(prismaMocks.tagUpsert).not.toHaveBeenCalled();
   });
@@ -223,6 +247,23 @@ describe("réception de l'interaction", () => {
     route("PATCH", `/webhooks/${APP}/interaction-token/messages/@original`, () => [200, { id: "1", channel_id: "2" }]);
     await output.runRole?.();
     expect(calls.some((call) => call.method === "PATCH")).toBe(true);
+  });
+
+  it("accepte `/role jeu:…` sans sous-commande", async () => {
+    route("PATCH", `/webhooks/${APP}/interaction-token/messages/@original`, () => [200, { id: "1", channel_id: "2" }]);
+    const output = handleSignedRoleInteraction(
+      body({ data: { name: "role", options: [{ type: 3, name: "jeu", value: "Deep Rock Galactic" }] } }),
+      String(Math.floor(Date.now() / 1000))
+    );
+    expect(output.status).toBe(200);
+    await output.runRole?.();
+    expect(count("PUT")).toBe(1);
+
+    const invalid = handleSignedRoleInteraction(
+      body({ data: { name: "role", options: [{ type: 3, name: "autre", value: "x" }] } }),
+      String(Math.floor(Date.now() / 1000))
+    );
+    expect(invalid.status).toBe(400);
   });
 
   it("refuse une interaction trop ancienne ou d'une autre application", () => {
