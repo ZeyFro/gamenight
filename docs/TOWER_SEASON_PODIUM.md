@@ -19,6 +19,20 @@ Ce podium est calculé à la lecture : ce n'est pas une archive immuable ni une 
 
 Tests ajoutés : `src/lib/tower-personal-progress-rules.test.ts`, `src/lib/tower-personal-progress.test.ts`, `src/lib/tower-personal-progress.integration.test.ts`, `src/lib/tower-season-podium.bounds.integration.test.ts`, `src/components/TowerRankBadge.test.tsx`, `src/app/potes/[id]/tower-rank.test.tsx`.
 
+## Proposition de palmarès pour les administrateurs (décision Q4)
+
+`/admin/tower-palmares` calcule, pour une saison FINIE, la proposition de palmarès que l'administrateur relit avant toute annonce (`src/lib/tower-season-proposal.ts`). C'est la première moitié de la décision Q4 (« le système calcule et propose ») ; la seconde (publication validée, historique figé, titre et badge) exige une persistance et reste à faire.
+
+- **Accès.** Membre ACTIF de rôle `ADMIN` ou `OWNER` dans la communauté ACTIVE sélectionnée, défis Tower activés, drapeau `TOWER_CHALLENGES_ENABLED`. Un simple membre reçoit une page introuvable. Le lien n'apparaît sur `/tower/palmares` que pour ces rôles.
+- **Lecture seule.** Aucune écriture, aucune publication, aucune attribution, aucun appel Discord.
+- **Saisons.** Toutes les saisons finies depuis le premier étage crédité, douze au plus, la plus récente par défaut ; `?saison=<début ISO>` en ouvre une autre. Un étage compte pour la saison de son `rewardedAt` (fin exclusive, été compris).
+- **Saison sans activité (Q2).** Sans étage crédité, la saison ne compte pas comme terminée et n'a pas de palmarès.
+- **Classement.** Membres actifs seulement, dix premières places, même départage que le podium ; les joueurs strictement à égalité partagent la même place et aucun ex æquo n'est écarté (Q7).
+- **Anciens membres.** Les joueurs crédités pendant la saison mais qui ne sont plus membres actifs sont listés à part, sans être classés : leur présence au palmarès n'est pas tranchée et doit être décidée par l'administrateur.
+- **Limites.** Les contestations ouvertes ne sont pas encore signalées (elles n'existent pas sur `main`) ; le cas d'un classement de plus de mille joueurs crédités est affiché comme incomplet plutôt que tronqué en silence.
+
+Tests : `src/lib/tower-season-proposal.integration.test.ts` (PostgreSQL réel), `src/app/admin/tower-palmares/page.test.tsx`, `src/lib/tower-season-podium-rules.test.ts`.
+
 ## Validation locale
 
 Sur un PostgreSQL jetable lié à `127.0.0.1`, déjà migré selon `CLAUDE.md` :
