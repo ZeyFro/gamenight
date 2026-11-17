@@ -42,3 +42,10 @@ Réponse privée, aucune donnée sensible : ni `discordId`, ni jeton, ni e-mail,
 - **Plafond de PR** : 10 PR de code ouvertes (#325, #370, #384, #385, #387, #388, #394, #396, #397, #442) → pas de nouvelle PR ; livraison sur la branche existante.
 - `/defi`, `/ascension`, `/classement` restent servies par `/tower` (defi/progression/classement) : les renommer toucherait `tower-challenges.ts`, réservé par #396/#407 — coordination requise, aucun changement fait.
 - `/equipe`, `/projet`, `/joueurs`, `/soiree`, `/tournoi` : périmètre déjà réservé (#408, #416, #370, #406) → non dupliqué ici.
+
+## Sprint 17/11 — `/aide` à jour
+
+`/aide` liste désormais `/equipe`, `/projet`, `/soiree`, `/tournoi` et `/joueurs`
+avec l'état réel de leur flag, et rappelle qu'une commande « fermé » ne lit ni
+n'écrit rien. La mention « en préparation » pour ces commandes a été retirée :
+elle serait devenue fausse.

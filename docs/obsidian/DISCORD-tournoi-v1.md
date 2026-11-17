@@ -121,3 +121,20 @@ Ajouter aux `options` de `tournoi` :
     "autocomplete": true, "min_length": 1, "max_length": 40 } ]},
 { "type": 1, "name": "mes-inscriptions", "description": "Tes inscriptions aux tournois" }
 ```
+
+## Sprint 17/11 — autocomplétion active et boutons
+
+- Le routage des interactions **type 4** est en place sur la branche
+  `agent/preflight-20261116` : `src/lib/discord-autocomplete.ts` aiguille
+  `/tournoi` vers `buildAutocompleteResponse`. Le même bloc de 5 lignes est fourni
+  par `docs/patches/20261117-autocomplete-routage.patch` pour #408 (dry-run vérifié
+  sur `3465c39`), afin que les deux branches convergent à la fusion.
+- Sélection sans identifiant : `inscription`/`desinscription` proposent 25 choix au
+  plus, libellés « nom · jeu · places », recherche sans accent, valeur = identifiant
+  relu avant écriture.
+- Boutons : l'annonce d'un tournoi porte « Je viens » (`gn:tournament:join:<id>`) et
+  « Je me désinscris » (`gn:tournament:leave:<id>`). Les deux passent par
+  `respondToTournamentRsvp(..., kind)` → `registerTournamentParticipant` /
+  `unregisterTournamentParticipant`, avec vérification du message d'annonce, du
+  serveur, du salon et de l'appartenance. Un clic rejoué est idempotent.
+- Tournoi complet, fermé, commencé ou supprimé : réponses distinctes, aucune écriture.

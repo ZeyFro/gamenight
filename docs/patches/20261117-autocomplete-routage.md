@@ -34,3 +34,11 @@ npx tsc --noEmit
 ```
 
 Dry-run vérifié sans tolérance de contexte sur la tête #408 `3465c39`.
+
+## État au 17/11/2026 (sprint)
+
+Le même bloc est **déjà appliqué** sur `agent/preflight-20261116`, où il aiguille
+vers `src/lib/discord-autocomplete.ts` (dispatch `/tournoi` + `/soiree`). Le patch
+reste fourni pour #408 : la fusion des deux branches donnera un seul et même bloc.
+Le test `src/lib/discord-autocomplete.test.ts` couvre le dispatch, les adaptateurs
+sont testés séparément.

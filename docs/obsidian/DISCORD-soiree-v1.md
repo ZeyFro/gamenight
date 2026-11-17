@@ -89,3 +89,16 @@ refusés, liste et détail filtrés par l'accès réel, inscription idempotente 
 nom du créateur, capacité et créateur, désinscription via révocation, création
 par `createVotingSessionInTransaction` sans annonce Discord et sans
 `decidedGameId` forcé, refus d'une soirée trop proche, places et jeu invalides.
+
+## Sprint 17/11 — sélection et places
+
+- Autocomplétion `/soiree voir|rejoindre|quitter` (`src/lib/discord-session-autocomplete.ts`,
+  routée par `src/lib/discord-autocomplete.ts`) : même périmètre que `/soiree liste`
+  (`loadUpcomingSessions`), donc aucune soirée privée d'un autre joueur ne fuit.
+- Libellés : jeu · date Europe/Paris · places **réellement** libres (capacité −
+  organisateur − invités actifs). `rejoindre` ne propose pas les soirées où l'on est
+  déjà, `quitter` ne propose que les siennes.
+- Boutons déjà en place sur les annonces : `gn:seat:join|leave:<id>`, avec réponse
+  privée et idempotence (`joinSession` → `already`, `leaveSession` → `not_invited`).
+- Les erreurs (complète, terminée, introuvable, non invité) restent des messages
+  distincts ; aucune soirée parallèle n'est créée.

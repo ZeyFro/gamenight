@@ -1,46 +1,38 @@
-# /projet — état et premier incrément possible
+# /projet — état, décision et limites
 
-Demande : permettre à un joueur d'organiser une aventure multigaming ou de
-recruter des partenaires depuis Discord.
+Demande d'origine : permettre à un joueur d'organiser une aventure multigaming ou
+de recruter des partenaires depuis Discord.
 
-## Ce qui existe (vérifié dans le schéma)
+## Décision (17/11/2026, sprint)
 
-- `CommunityTeam` / `CommunityTeamMember` : nom, jeu, description (1000),
-  plateforme, `maxMembers`, `isRecruiting`, capitaine (`createdById`, passation
-  en cours dans #370). C'est **déjà** le service d'équipes/aventures, exposé par
-  `/equipe` (création, adhésion, recrutement) sur cette branche.
-- `PlayerClassified` : annonces de joueurs (recherche de partenaires), mais
-  `src/lib/player-classifieds*.ts` et `src/app/joueurs/**` sont **réservés par
-  #408**.
-- **Aucun modèle `Project`/`Projet`** : rien pour une aventure multigaming
-  distincte d'une équipe.
+`/projet` est livré comme **façade sur les équipes existantes** (`CommunityTeam` /
+`CommunityTeamMember`) : `creer`, `liste`, `voir`, `rejoindre`, `quitter`,
+`recrutement` appellent `createCommunityTeam`, `joinCommunityTeam`,
+`leaveCommunityTeam`, `setCommunityTeamRecruitment` — exactement les services de
+`/equipe` et de la page `/equipes`.
 
-## Décision
+Conséquences tenues :
 
-Aucun incrément `/projet` n'est codé ici, parce que les deux seules options
-seraient des implémentations parallèles :
+- un projet créé sur Discord apparaît dans `/equipes` et inversement ;
+- une seule règle de capacité (2–20), de recrutement, de quota (3 créations/24 h),
+  d'équipe unique par joueur et de capitainerie (`createdById`) ;
+- aucun modèle Prisma, aucune migration, aucune duplication de stockage ;
+- `/projet` n'ajoute qu'un vocabulaire (`objectif`, affichage « qui recrute ») ;
+- aucune création de salon, de rôle ou de permission Discord.
 
-1. Dupliquer `/equipe` sous un autre nom → interdit (« n'accumule pas des
-   implémentations parallèles »).
-2. Écrire dans `PlayerClassified` → fichier réservé par #408.
+Code : `src/lib/discord-project-commands.ts`, flags `DISCORD_PROJECT_COMMAND_ENABLED`
+et `DISCORD_PROJECT_WRITE_ENABLED` (fermés par défaut).
 
-## Premier incrément réel, dès déblocage
+## Ce qui reste bloqué
 
-- **Option A (recommandée, sans migration)** : `/projet` = alias explicite de la
-  gestion d'équipe existante, avec les options `plateforme` et `recrutement`
-  mises en avant, **une fois #370 fusionnée** (passation, 2–8 joueurs, équipe
-  unique). Aucun nouveau modèle, aucune duplication : le handler appellerait
-  `createCommunityTeam` / `setCommunityTeamRecruitment`, comme `/equipe`.
-- **Option B (migration)** : vrai modèle `Project` (titre, description courte,
-  multigaming, joueurs recherchés, visibilité) + service dédié. Nécessite une
-  migration Prisma → autorisation explicite requise.
-- **Option C (partenaires)** : `/projet` adossé aux annonces `PlayerClassified`,
-  à coordonner avec #408 (lecture seule possible dès que leurs fichiers sont
-  fusionnés).
+- **Vrai modèle `Project`** (multigaming, plusieurs jeux par projet, joueurs
+  recherchés, visibilité) : nécessite une migration Prisma → accord explicite.
+- **Annonces de partenaires** (`PlayerClassified`) : fichiers réservés par #408
+  (voir `DISCORD-joueurs-v1.md`).
+- **Salon Discord par projet** : dépend des quotas et de la PR salons ; non ouvert.
 
-## Ce qui est déjà livré pour « recruter »
+## Premier incrément suivant, sans migration
 
-`/equipe creer` (jeu, nom, objectif, plateforme, places) et
-`/equipe recrutement` couvrent aujourd'hui le recrutement d'une aventure autour
-d'un jeu, avec la capitainerie officielle. `/projet` doit apporter le
-multigaming, pas un second système d'équipes.
+Une fois #370 fusionnée : équipe unique par joueur confirmée et passation de
+capitaine exposée côté Discord (`/projet transfert`), puis rattachement de
+plusieurs jeux par projet seulement si un champ dédié est approuvé.
