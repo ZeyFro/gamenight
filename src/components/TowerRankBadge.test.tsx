@@ -5,7 +5,7 @@ import { TowerRankBadge } from "./TowerRankBadge";
 
 afterEach(cleanup);
 
-it.each(["Irregular", "Ranker", "High Ranker"] as const)("nomme le rang %s sans dépendre de la couleur", rank => {
+it.each(["Régulars", "Irregular", "Ranker", "High Ranker"] as const)("nomme le rang %s sans dépendre de la couleur", rank => {
   render(<TowerRankBadge rank={rank} />);
   const badge = screen.getByTitle(`Rang The Tower : ${rank}`);
   expect(badge.textContent).toBe(`Rang The Tower : ${rank}`);
@@ -13,8 +13,8 @@ it.each(["Irregular", "Ranker", "High Ranker"] as const)("nomme le rang %s sans 
   expect(badge.querySelector("[aria-hidden='true']")).toBeTruthy();
 });
 
-it("porte le violet décidé du Ranker sur la pastille", () => {
-  render(<TowerRankBadge rank="Ranker" />);
-  const dot = screen.getByTitle("Rang The Tower : Ranker").querySelector<HTMLElement>("[aria-hidden='true']");
-  expect(dot?.style.backgroundColor).toBe("rgb(139, 92, 246)");
+it.each([["Régulars", "rgb(107, 114, 128)"], ["Irregular", "rgb(139, 92, 246)"], ["Ranker", "rgb(245, 158, 11)"], ["High Ranker", "rgb(220, 38, 38)"]] as const)("porte la couleur décidée du grade %s sur la pastille", (rank, color) => {
+  render(<TowerRankBadge rank={rank} />);
+  const dot = screen.getByTitle(`Rang The Tower : ${rank}`).querySelector<HTMLElement>("[aria-hidden='true']");
+  expect(dot?.style.backgroundColor).toBe(color);
 });
