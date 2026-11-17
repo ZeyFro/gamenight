@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
 import { GamePicker } from "./GamePicker";
+import { isTeamApplicationsEnabled } from "@/lib/team-applications-rules";
 
 export const metadata = pageMetadata("Équipes et aventures");
 
@@ -39,6 +40,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
       <header>
         <h1 className="text-2xl font-semibold text-foreground">🧭 Équipes et aventures</h1>
         <p className="mt-2 text-sm text-muted">Monte un projet durable, recrute des compagnons et jouez à votre rythme. Aucun ping ni message Discord n’est envoyé.</p>
+        {isTeamApplicationsEnabled() && <p className="mt-2 text-sm"><Link href="/equipes/candidatures" className="text-accent underline-offset-4 hover:underline">Candidatures d’équipe →</Link></p>}
       </header>
       {result && RESULTS[result] && <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{RESULTS[result]}</p>}
 
