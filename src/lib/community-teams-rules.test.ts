@@ -18,9 +18,15 @@ describe("communityTeamSchema", () => {
     });
   });
 
-  it.each(["0", "1", "21", "abc"]) ("rejects unsafe roster size %s", (maxMembers) => {
+  it.each(["0", "1", "9", "21", "abc"]) ("rejects unsafe roster size %s", (maxMembers) => {
     expect(communityTeamSchema.safeParse({
-      gameId: "game-1", name: "Team", description: "Projet", platform: "PC", maxMembers,
+      gameId: "game-1", name: "Team", description: "Projet collectif valide", platform: "PC", maxMembers,
     }).success).toBe(false);
+  });
+
+  it.each([2, 8])("accepte la borne de capacité %s avec un projet valide", maxMembers => {
+    expect(communityTeamSchema.safeParse({
+      gameId: "game-1", name: "Team", description: "Projet collectif valide", platform: "PC", maxMembers,
+    }).success).toBe(true);
   });
 });

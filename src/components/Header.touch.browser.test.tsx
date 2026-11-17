@@ -27,7 +27,7 @@ beforeAll(async () => {
   const markup = renderToStaticMarkup(await Header());
   html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css.css}</style></head><body>${markup}</body></html>`;
   browser = await LocalChromium.open();
-}, 30000);
+}, 60_000);
 afterAll(async () => { await browser?.close(); });
 
 type Measurement = { coarse: boolean; gap: number; widths: number[]; misses: string[]; overflow: boolean };
