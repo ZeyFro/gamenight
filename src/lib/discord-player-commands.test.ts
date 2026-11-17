@@ -227,3 +227,71 @@ describe("/joueurs — issues de désinscription", () => {
     );
   });
 });
+
+describe("/joueurs — boutons réellement envoyés", () => {
+  const componentsOf = () => (mocks.edit.mock.calls.at(-1)?.[0].components ?? []) as Array<{
+    components: Array<{ custom_id?: string; style: number; url?: string }>;
+  }>;
+  const idsOf = () => componentsOf().flatMap((row) => row.components.map((button) => button.custom_id ?? button.url));
+
+  it("accompagne les annonces actives de leurs boutons", async () => {
+    vi.stubEnv("DISCORD_CLIENT_ID", APP);
+    vi.stubEnv("DISCORD_PLAYER_COMMAND_ENABLED", "true");
+    mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower" });
+    mocks.user.mockResolvedValue({ id: "user-1" });
+    mocks.membership.mockResolvedValue({ status: "ACTIVE" });
+    mocks.communityId.mockResolvedValue("community-1");
+    mocks.edit.mockResolvedValue({ ok: true });
+
+    await deferred(handleSignedPlayerInteraction(payload("annonces"), now()));
+    expect(idsOf()).toEqual(["gn:listing:interest:annonce-1", "gn:listing:contact:annonce-1"]);
+
+    mocks.edit.mockClear();
+    await deferred(handleSignedPlayerInteraction(payload("chercher", [{ name: "jeu", value: "valh" }]), now()));
+    expect(idsOf()).toContain("gn:listing:interest:annonce-1");
+  });
+
+  it("n’attache aucun bouton à une annonce expirée et plafonne à quatre rangées", async () => {
+    vi.stubEnv("DISCORD_CLIENT_ID", APP);
+    vi.stubEnv("DISCORD_PLAYER_COMMAND_ENABLED", "true");
+    mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower" });
+    mocks.user.mockResolvedValue({ id: "user-1" });
+    mocks.membership.mockResolvedValue({ status: "ACTIVE" });
+    mocks.communityId.mockResolvedValue("community-1");
+    mocks.edit.mockResolvedValue({ ok: true });
+    mocks.list.mockResolvedValue([
+      listing(),
+      listing({ id: "annonce-expiree", expired: true }),
+      ...[2, 3, 4, 5].map((n) => listing({ id: `annonce-${n}` })),
+    ]);
+
+    await deferred(handleSignedPlayerInteraction(payload("annonces"), now()));
+    expect(componentsOf()).toHaveLength(4);
+    expect(idsOf()).not.toContain("gn:listing:interest:annonce-expiree");
+  });
+
+  it("propose les actions sur la confirmation de publication, et aucune sur un retrait", async () => {
+    vi.stubEnv("DISCORD_CLIENT_ID", APP);
+    vi.stubEnv("DISCORD_PLAYER_COMMAND_ENABLED", "true");
+    vi.stubEnv("DISCORD_PLAYER_WRITE_ENABLED", "true");
+    mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower" });
+    mocks.user.mockResolvedValue({ id: "user-1" });
+    mocks.membership.mockResolvedValue({ status: "ACTIVE" });
+    mocks.communityId.mockResolvedValue("community-1");
+    mocks.create.mockResolvedValue({ status: "created", id: "annonce-3", expiresAt: new Date() });
+    mocks.edit.mockResolvedValue({ ok: true });
+
+    await deferred(
+      handleSignedPlayerInteraction(
+        payload("publier", [{ name: "jeu", value: "Valheim" }, { name: "description", value: "Cherche deux joueurs" }]),
+        now()
+      )
+    );
+    expect(idsOf()).toContain("gn:listing:interest:annonce-3");
+
+    mocks.edit.mockClear();
+    mocks.remove.mockResolvedValue("deleted");
+    await deferred(handleSignedPlayerInteraction(payload("retirer", [{ name: "annonce", value: "annonce-1" }]), now()));
+    expect(componentsOf()).toEqual([]);
+  });
+});

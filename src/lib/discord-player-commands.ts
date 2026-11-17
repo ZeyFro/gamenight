@@ -13,6 +13,8 @@ import {
   type PlayerListing,
 } from "@/lib/player-listings";
 import { withGameNightLink } from "@/lib/discord-links";
+import { playerListingComponents } from "@/lib/discord-player-listing-components";
+import type { DiscordActionRow } from "@/lib/discord-rest";
 import { resolveGameId } from "@/lib/discord-team-commands";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
@@ -187,6 +189,8 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
     body: { type: 5, data: { flags: EPHEMERAL } },
     runPlayers: async () => {
       let content: string;
+      // Boutons réellement envoyés dans le payload : une rangée par annonce active.
+      const components: DiscordActionRow[] = [];
       try {
         const context = await resolvePlayerContext({ guildId: interaction.guild_id!, discordId });
         if (context.status !== "OK") {
@@ -208,6 +212,9 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
               gameId: game.id,
               message: text("description"),
             });
+            if (published.status === "created" || published.status === "duplicate") {
+              components.push(...playerListingComponents({ listingId: published.id }));
+            }
             content =
               published.status === "created"
                 ? "✅ Annonce publiée pour 24 h. Elle apparaît sur GameNight (`/joueurs`) et dans `/joueurs annonces`."
@@ -236,19 +243,21 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
                   ? RATE_LIMIT_MESSAGE
                   : "Annonce introuvable ou déjà retirée : rien n’a été modifié.";
         } else {
+          const listings = await loadPlayerListings({
+            userId: context.userId,
+            communityId: context.communityId,
+            onlyMine: subName === "mes-annonces",
+            gameQuery: subName === "chercher" ? text("jeu") : "",
+          });
           content = withGameNightLink(
-            renderListings(
-              await loadPlayerListings({
-                userId: context.userId,
-                communityId: context.communityId,
-                onlyMine: subName === "mes-annonces",
-                gameQuery: subName === "chercher" ? text("jeu") : "",
-              }),
-              context.communityName,
-              subName === "mes-annonces"
-            ),
+            renderListings(listings, context.communityName, subName === "mes-annonces"),
             "/joueurs"
           );
+          // Discord plafonne à 5 rangées : 4 annonces au maximum, et jamais une
+          // annonce expirée (aucun bouton actif sur une annonce morte).
+          for (const listing of listings.filter((candidate) => !candidate.expired).slice(0, 4)) {
+            components.push(...playerListingComponents({ listingId: listing.id }));
+          }
         }
       } catch (error) {
         logger.warn("discord-joueurs", "Échec du traitement /joueurs.", {
@@ -260,6 +269,7 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
         applicationId: interaction.application_id,
         token: interaction.token,
         content: content.slice(0, MAX_CONTENT),
+        ...(components.length ? { components } : {}),
         deadline: new Date(Date.now() + REPLY_BUDGET_MS),
       });
       if (!sent.ok) logger.error("discord-joueurs", "Réponse privée /joueurs non livrée.", { kind: sent.kind });
