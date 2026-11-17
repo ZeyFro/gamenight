@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -5,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   user: vi.fn(),
   membership: vi.fn(),
   teams: vi.fn(),
+  join: vi.fn(),
+  leave: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -14,7 +18,11 @@ vi.mock("@/lib/prisma", () => ({
     membership: { findUnique: mocks.membership },
   },
 }));
-vi.mock("@/lib/community-teams", () => ({ listCommunityTeams: mocks.teams }));
+vi.mock("@/lib/community-teams", () => ({
+  listCommunityTeams: mocks.teams,
+  joinCommunityTeam: mocks.join,
+  leaveCommunityTeam: mocks.leave,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import {
@@ -41,6 +49,7 @@ const team = (over: Partial<CommunityTeamView> = {}): CommunityTeamView => ({
   isRecruiting: true,
   maxMembers: 8,
   membersCount: 2,
+  captainId: USER,
   captainName: "Maxime",
   memberNames: ["Maxime", "Sarah"],
   memberIds: [USER, "user-2"],
@@ -70,6 +79,7 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_CLIENT_ID", APP);
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_TEAM_COMMAND_ENABLED", "true");
+  vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "");
   mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower", communityTeamsEnabled: true });
   mocks.user.mockResolvedValue({ id: USER });
   mocks.membership.mockResolvedValue({ status: "ACTIVE" });
@@ -132,7 +142,7 @@ describe("/equipe — lecture seule", () => {
   it("liste les équipes existantes sans rien créer", async () => {
     const content = await deferredContent(handleSignedTeamInteraction(interaction({ name: "liste" }), now()));
     expect(content).toContain("Équipes de The Tower");
-    expect(content).toContain("**Paped** (Deep Rock Galactic) — 1/8 · recrute · chef : Maxime");
+    expect(content).toContain("**Paped** (Deep Rock Galactic) — 1/8 · recrute · capitaine : Maxime");
     expect(content).toContain("Lecture seule");
     expect(mocks.teams).toHaveBeenCalledWith(USER, "community-1");
   });
@@ -159,7 +169,7 @@ describe("/equipe — lecture seule", () => {
     );
     expect(content).toContain("**Paped**");
     expect(content).toContain("Deep Rock Galactic · PC");
-    expect(content).toContain("Chef d’équipe : Maxime");
+    expect(content).toContain("Capitaine : Maxime");
     expect(content).toContain("Membres : Maxime");
     expect(content).not.toContain(DISCORD);
     expect(content).not.toContain("user-2");
@@ -176,6 +186,36 @@ describe("/equipe — lecture seule", () => {
     mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower", communityTeamsEnabled: false });
     content = await deferredContent(handleSignedTeamInteraction(interaction({ name: "liste" }), now()));
     expect(content).toContain("ne sont pas activées");
+  });
+
+  it("identifie le capitaine en dernière position, sans dépendre de l’ordre des membres", async () => {
+    mocks.teams.mockResolvedValue([
+      serviceTeam({
+        members: [
+          { userId: "user-2", joinedAt: new Date(), user: { discordName: "Sarah", communityMemberStats: [] } },
+          { userId: USER, joinedAt: new Date(), user: { discordName: "Maxime", communityMemberStats: [] } },
+        ],
+      }),
+    ]);
+    const content = await deferredContent(handleSignedTeamInteraction(interaction({ name: "liste" }), now()));
+    expect(content).toContain("capitaine : Maxime");
+    expect(content).not.toContain("capitaine : Sarah");
+  });
+
+  it("affiche « Capitaine non renseigné » quand le créateur n’est plus membre actif", async () => {
+    mocks.teams.mockResolvedValue([
+      serviceTeam({
+        createdById: "user-parti",
+        createdBy: { discordName: "Parti", memberships: [] },
+        members: [
+          { userId: "user-2", joinedAt: new Date(), user: { discordName: "Sarah", communityMemberStats: [] } },
+        ],
+      }),
+    ]);
+    const content = await deferredContent(handleSignedTeamInteraction(interaction({ name: "voir", value: "paped" }), now()));
+    expect(content).toContain("Capitaine non renseigné");
+    // Le premier (et seul) membre n’est jamais promu à sa place.
+    expect(content).not.toContain("Capitaine : Sarah");
   });
 
   it("encaisse une panne de lecture sans exposer d’erreur interne", async () => {
@@ -207,6 +247,19 @@ describe("/equipe — rendu pur", () => {
     expect(text).toContain("Paped");
     expect(text).not.toContain(DISCORD);
   });
+
+  it("ne présente jamais un membre ordinaire comme capitaine dans `moi`", () => {
+    const other = team({
+      captainId: "user-9",
+      captainName: "Alex",
+      memberIds: [USER, "user-9"],
+      memberNames: ["Maxime", "Alex"],
+    });
+    const text = renderMyTeams([other], USER);
+    expect(text).toContain("capitaine : Alex");
+    expect(text).not.toContain("tu es capitaine");
+    expect(renderMyTeams([team()], USER)).toContain("tu es capitaine");
+  });
 });
 
 describe("chargement des équipes", () => {
@@ -215,11 +268,92 @@ describe("chargement des équipes", () => {
     expect(result.status).toBe("TEAMS");
     if (result.status !== "TEAMS") return;
     expect(result.teams[0]).toMatchObject({ name: "Paped", membersCount: 1, captainName: "Maxime" });
+    expect(result.userId).toBe(USER);
+    expect(result.communityId).toBe("community-1");
     expect(mocks.teams).toHaveBeenCalledWith(USER, "community-1");
   });
 
   it("refuse un serveur inconnu", async () => {
     mocks.community.mockResolvedValue(null);
     expect((await loadCommunityTeams({ guildId: GUILD, discordId: DISCORD })).status).toBe("NOT_MEMBER");
+  });
+});
+
+describe("/equipe rejoindre|quitter — même logique métier", () => {
+  beforeEach(() => vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true"));
+
+  it("reste fermée par défaut : aucune écriture tentée", () => {
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "");
+    const output = handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped" }), now());
+    expect(JSON.stringify(output.body)).toContain("n’est pas encore ouvert");
+    expect(output.runTeams).toBeUndefined();
+    expect(mocks.join).not.toHaveBeenCalled();
+    expect(mocks.leave).not.toHaveBeenCalled();
+  });
+
+  it("rejoint via le service métier et rappelle le capitaine officiel", async () => {
+    mocks.join.mockResolvedValue("joined");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped" }), now())
+    );
+    expect(content).toContain("Tu as rejoint **Paped**");
+    expect(content).toContain("capitaine : Maxime");
+    expect(mocks.join).toHaveBeenCalledWith(USER, "community-1", "team-1");
+  });
+
+  it("traduit les refus du service, sans requête écrite en parallèle", async () => {
+    for (const [outcome, expected] of [
+      ["already", "déjà partie"],
+      ["closed", "ne recrute pas"],
+      ["full", "est complète (1/8)"],
+      ["missing", "n’existe plus"],
+      ["unavailable", "ne sont pas disponibles"],
+    ] as const) {
+      mocks.join.mockResolvedValue(outcome);
+      const content = await deferredContent(
+        handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped" }), now())
+      );
+      expect(content, outcome).toContain(expected);
+    }
+  });
+
+  it("refuse de faire quitter le capitaine, sans transmettre la capitainerie", async () => {
+    mocks.leave.mockResolvedValue("leader");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(interaction({ name: "quitter", value: "paped" }), now())
+    );
+    expect(content).toContain("Tu es capitaine");
+    expect(content).toContain("passation en préparation");
+    expect(content).toContain("reste intacte");
+  });
+
+  it("fait quitter un membre ordinaire via le service", async () => {
+    mocks.leave.mockResolvedValue("left");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(interaction({ name: "quitter", value: "paped" }), now())
+    );
+    expect(content).toContain("Tu as quitté **Paped**");
+    expect(mocks.leave).toHaveBeenCalledWith(USER, "community-1", "team-1");
+  });
+
+  it("ne choisit jamais une équipe quand plusieurs correspondent", async () => {
+    mocks.teams.mockResolvedValue([
+      serviceTeam({ id: "team-1", name: "Tower" }),
+      serviceTeam({ id: "team-2", name: "Tower 2" }),
+    ]);
+    const content = await deferredContent(
+      handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "tow" }), now())
+    );
+    expect(content).toContain("Plusieurs équipes correspondent");
+    expect(mocks.join).not.toHaveBeenCalled();
+  });
+
+  it("ne crée aucune équipe, aucun salon et aucun rôle", async () => {
+    mocks.join.mockResolvedValue("joined");
+    await deferredContent(handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped" }), now()));
+    const handler = readFileSync(join(__dirname, "discord-team-commands.ts"), "utf8");
+    for (const forbidden of ["createCommunityTeam", "setCommunityTeamRecruitment", "discord-role-sync", "guildRole"]) {
+      expect(handler, forbidden).not.toContain(forbidden);
+    }
   });
 });

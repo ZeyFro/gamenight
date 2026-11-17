@@ -2,23 +2,27 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
-import { listCommunityTeams } from "@/lib/community-teams";
+import { joinCommunityTeam, leaveCommunityTeam, listCommunityTeams } from "@/lib/community-teams";
+import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
 /**
- * `/equipe` — LECTURE SEULE sur les équipes déjà gérées par GameNight
- * (`CommunityTeam` / `CommunityTeamMember`).
+ * `/equipe` — équipes déjà gérées par GameNight (`CommunityTeam` /
+ * `CommunityTeamMember`), avec UNE seule logique métier.
  *
- * Périmètre volontairement borné :
- * - aucune écriture, aucune création d'équipe, de salon ou de rôle ;
- * - aucune donnée privée : ni identifiant Discord, ni e-mail, ni jeton ;
- * - les équipes ne sont visibles qu'aux membres ACTIFS de la communauté, et
- *   seulement si `Community.communityTeamsEnabled` est actif — les mêmes règles
- *   que `/equipes` sur le site, via `listCommunityTeams`.
+ * - lecture : `liste`, `moi`, `voir` ;
+ * - adhésion : `rejoindre`, `quitter` — délèguent à `joinCommunityTeam` /
+ *   `leaveCommunityTeam`, jamais à une requête écrite à la main. Les règles
+ *   (recrutement, capacité, capitaine) restent donc celles du service, y
+ *   compris les évolutions des PR #370/#408 quand elles seront fusionnées.
  *
- * La création automatique d'équipes, de salons et de rôles reste l'objectif
- * final, mais rien ici ne la simule : `/aide` continue de l'annoncer en
- * préparation.
+ * Interdits tenus ici :
+ * - aucune création d'équipe, de salon ou de rôle depuis Discord ;
+ * - aucune permission accordée, aucun mécanisme de droits parallèle ;
+ * - aucune donnée privée : ni identifiant Discord, ni e-mail, ni jeton.
+ *
+ * La capitainerie vient de `@/lib/community-team-captain` (`createdById`),
+ * jamais de la position d'un membre dans une liste.
  */
 const EPHEMERAL = 64;
 const REPLY_BUDGET_MS = 10_000;
@@ -27,6 +31,8 @@ const MAX_LISTED_TEAMS = 12;
 const MAX_LISTED_MEMBERS = 15;
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
+const SUBCOMMANDS = ["liste", "moi", "voir", "rejoindre", "quitter"] as const;
+const WRITE_SUBCOMMANDS = new Set<string>(["rejoindre", "quitter"]);
 
 const inputSchema = z.object({
   type: z.literal(2),
@@ -45,7 +51,7 @@ const inputSchema = z.object({
     options: z
       .array(
         z.object({
-          name: z.enum(["liste", "moi", "voir"]),
+          name: z.enum(SUBCOMMANDS),
           type: z.literal(1).optional(),
           options: z
             .array(z.object({ name: z.literal("equipe"), type: z.literal(3), value: z.string().min(1).max(120) }))
@@ -67,6 +73,14 @@ export function teamsCommandEnabled(env: NodeJS.ProcessEnv = process.env): boole
   return env.DISCORD_TEAM_COMMAND_ENABLED === "true";
 }
 
+/**
+ * Adhérer ou quitter depuis Discord engage une écriture : interrupteur séparé,
+ * fermé par défaut, même quand la lecture est ouverte.
+ */
+export function teamsWriteEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.DISCORD_TEAM_WRITE_ENABLED === "true";
+}
+
 /** Vue compacte : ce qui est déjà public sur `/equipes`, rien de plus. */
 export interface CommunityTeamView {
   id: string;
@@ -77,13 +91,21 @@ export interface CommunityTeamView {
   isRecruiting: boolean;
   maxMembers: number;
   membersCount: number;
-  captainName: string;
+  /** `null` quand aucun capitaine ne peut être établi : jamais le premier membre. */
+  captainId: string | null;
+  captainName: string | null;
   memberNames: string[];
   memberIds: string[];
 }
 
 export type CommunityTeamsResult =
-  | { status: "TEAMS"; communityName: string; teams: CommunityTeamView[] }
+  | {
+      status: "TEAMS";
+      communityId: string;
+      userId: string;
+      communityName: string;
+      teams: CommunityTeamView[];
+    }
   | { status: "NOT_MEMBER" }
   | { status: "TEAMS_DISABLED" }
   | { status: "INVALID" };
@@ -115,20 +137,30 @@ export async function loadCommunityTeams(input: {
   const teams = await listCommunityTeams(user.id, community.id);
   return {
     status: "TEAMS",
+    communityId: community.id,
+    userId: user.id,
     communityName: community.name,
-    teams: teams.map((team) => ({
-      id: team.id,
-      name: team.name,
-      game: team.game.name,
-      platform: team.platform,
-      description: team.description,
-      isRecruiting: team.isRecruiting,
-      maxMembers: team.maxMembers,
-      membersCount: team.members.length,
-      captainName: team.createdBy.discordName,
-      memberNames: team.members.map((member) => member.user.discordName),
-      memberIds: team.members.map((member) => member.userId),
-    })),
+    teams: teams.map((team) => {
+      const memberIds = team.members.map((member) => member.userId);
+      // Capitaine = `createdById`, jamais l'ordre de la liste des membres.
+      const captainId = teamCaptainId({ createdById: team.createdById, activeMemberIds: memberIds });
+      return {
+        id: team.id,
+        name: team.name,
+        game: team.game.name,
+        platform: team.platform,
+        description: team.description,
+        isRecruiting: team.isRecruiting,
+        maxMembers: team.maxMembers,
+        membersCount: team.members.length,
+        captainId,
+        captainName: captainId
+          ? team.members.find((member) => member.userId === captainId)?.user.discordName ?? null
+          : null,
+        memberNames: team.members.map((member) => member.user.discordName),
+        memberIds,
+      };
+    }),
   };
 }
 
@@ -136,13 +168,14 @@ const short = (line: string, max = MAX_CONTENT) => (line.length > max ? `${line.
 
 function teamLine(team: CommunityTeamView): string {
   const status = team.isRecruiting ? " · recrute" : "";
-  return `• **${team.name}** (${team.game}) — ${team.membersCount}/${team.maxMembers}${status} · chef : ${team.captainName}`;
+  const captain = team.captainName ?? CAPTAIN_UNSET_LABEL;
+  return `• **${team.name}** (${team.game}) — ${team.membersCount}/${team.maxMembers}${status} · capitaine : ${captain}`;
 }
 
 /** Contenu de `/equipe liste` — pur. */
 export function renderTeamList(teams: CommunityTeamView[], communityName: string): string {
   if (teams.length === 0) {
-    return `Aucune équipe n’existe encore sur **${communityName}**. La création d’équipe reste en préparation : rien n’est simulé ici.`;
+    return `Aucune équipe n’existe encore sur **${communityName}**. La création d’équipe depuis Discord reste en préparation : rien n’est simulé ici.`;
   }
   const shown = teams.slice(0, MAX_LISTED_TEAMS);
   return short(
@@ -161,48 +194,72 @@ export function renderTeamList(teams: CommunityTeamView[], communityName: string
 export function renderMyTeams(teams: CommunityTeamView[], userId: string): string {
   const mine = teams.filter((team) => team.memberIds.includes(userId));
   if (mine.length === 0) {
-    return "Tu ne fais partie d’aucune équipe pour le moment. Rejoindre une équipe se fait sur le site, pas depuis Discord.";
+    return "Tu ne fais partie d’aucune équipe pour le moment. Tu peux en rejoindre une avec `/equipe rejoindre`.";
   }
   return short(
     [
       "🛡️ **Tes équipes**",
-      ...mine.map((team) => `${teamLine(team)}${team.memberIds[0] === userId ? " · capitaine" : ""}`),
-      "Lecture seule : rien n’est modifié par cette commande.",
+      ...mine.map((team) => `${teamLine(team)}${team.captainId === userId ? " · tu es capitaine" : ""}`),
+      "La capitainerie est portée par le créateur de l’équipe : elle ne dépend jamais de l’ordre des membres.",
     ].join("\n")
   );
 }
 
-/** Contenu de `/equipe voir` — pur ; `null` quand l’équipe est inconnue. */
-export function renderTeamDetail(teams: CommunityTeamView[], query: string): string | null {
-  const needle = query.trim().toLowerCase();
-  const exact = teams.find((team) => team.id === query.trim());
-  const byName = teams.filter((team) => team.name.toLowerCase() === needle);
+export type TeamLookup =
+  | { kind: "FOUND"; team: CommunityTeamView }
+  | { kind: "AMBIGUOUS"; teams: CommunityTeamView[] }
+  | { kind: "MISSING" };
+
+/**
+ * Résolution par identifiant, puis par nom exact, puis par nom partiel unique.
+ * Aucune ambiguïté n'est tranchée à la place de l'utilisateur — et surtout
+ * aucune position dans la liste n'est utilisée.
+ */
+export function findTeam(teams: CommunityTeamView[], query: string): TeamLookup {
+  const raw = query.trim();
+  if (!raw) return { kind: "MISSING" };
+  const needle = raw.toLowerCase();
+  const byId = teams.find((team) => team.id === raw);
+  if (byId) return { kind: "FOUND", team: byId };
+  const exact = teams.filter((team) => team.name.toLowerCase() === needle);
+  if (exact.length === 1) return { kind: "FOUND", team: exact[0] };
+  if (exact.length > 1) return { kind: "AMBIGUOUS", teams: exact };
   const partial = teams.filter((team) => team.name.toLowerCase().includes(needle));
-  const found = exact ?? (byName.length === 1 ? byName[0] : partial.length === 1 ? partial[0] : null);
-  if (!found) {
-    if (byName.length > 1 || partial.length > 1) {
-      return short(
-        [
-          "Plusieurs équipes correspondent à ce nom :",
-          ...(byName.length > 1 ? byName : partial).slice(0, MAX_LISTED_TEAMS).map(teamLine),
-          "Précise le nom exact.",
-        ].join("\n")
-      );
-    }
-    return "Aucune équipe ne porte ce nom sur cette communauté.";
+  if (partial.length === 1) return { kind: "FOUND", team: partial[0] };
+  if (partial.length > 1) return { kind: "AMBIGUOUS", teams: partial };
+  return { kind: "MISSING" };
+}
+
+/** Contenu de `/equipe voir` — pur. */
+export function renderTeamDetail(teams: CommunityTeamView[], query: string): string | null {
+  const lookup = findTeam(teams, query);
+  if (lookup.kind === "AMBIGUOUS") {
+    return short(
+      [
+        "Plusieurs équipes correspondent à ce nom :",
+        ...lookup.teams.slice(0, MAX_LISTED_TEAMS).map(teamLine),
+        "Précise le nom exact.",
+      ].join("\n")
+    );
   }
+  if (lookup.kind === "MISSING") return "Aucune équipe ne porte ce nom sur cette communauté.";
+  const found = lookup.team;
   const members = found.memberNames.slice(0, MAX_LISTED_MEMBERS);
   return short(
     [
       `🛡️ **${found.name}**`,
       `${found.game} · ${found.platform} · ${found.membersCount}/${found.maxMembers}${found.isRecruiting ? " · recrute" : " · complète"}`,
       found.description.trim() ? found.description.trim().slice(0, 400) : "_Pas de description._",
-      `Chef d’équipe : ${found.captainName}`,
+      found.captainId
+        ? `Capitaine : ${found.captainName}`
+        : `${CAPTAIN_UNSET_LABEL} — aucun responsable désigné : GameNight ne choisit jamais un membre à sa place.`,
       members.length > 0 ? `Membres : ${members.join(", ")}${found.memberNames.length > members.length ? "…" : ""}` : "Aucun membre actif.",
-      "Lecture seule : aucune donnée privée, aucun identifiant Discord.",
+      "Aucune donnée privée, aucun identifiant Discord.",
     ].join("\n")
   );
 }
+
+const TEAM_QUERY_HINT = "Indique le nom de l’équipe : `/equipe voir equipe:<nom>`.";
 
 /** Exclusivement appelé après la vérification Ed25519 du corps brut. */
 export function handleSignedTeamInteraction(body: unknown, timestamp: string | null): InteractionOutput {
@@ -227,6 +284,12 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
   const subName = sub?.name ?? "liste";
   const query = sub?.options?.[0]?.value ?? "";
 
+  if (WRITE_SUBCOMMANDS.has(subName) && !teamsWriteEnabled()) {
+    return quiet(
+      "Rejoindre ou quitter une équipe depuis Discord n’est pas encore ouvert. Tu peux le faire depuis le site ; la lecture reste disponible avec `/equipe liste`."
+    );
+  }
+
   const discordId = interaction.member?.user?.id ?? interaction.user?.id;
   if (!discordId) return { status: 400 };
   const guildId = interaction.guild_id;
@@ -239,15 +302,21 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
       try {
         const result = await loadCommunityTeams({ guildId, discordId });
         if (result.status === "TEAMS") {
-          const user = await prisma.user.findUnique({ where: { discordId }, select: { id: true } });
-          const userId = user?.id ?? "";
+          const lookup = findTeam(result.teams, query);
           content =
             subName === "liste"
               ? renderTeamList(result.teams, result.communityName)
               : subName === "moi"
-                ? renderMyTeams(result.teams, userId)
-                : renderTeamDetail(result.teams, query) ??
-                  "Indique le nom de l’équipe : `/equipe voir equipe:<nom>`.";
+                ? renderMyTeams(result.teams, result.userId)
+                : subName === "voir"
+                  ? renderTeamDetail(result.teams, query) ?? TEAM_QUERY_HINT
+                  : await applyMembershipChange({
+                      subName,
+                      lookup,
+                      query,
+                      userId: result.userId,
+                      communityId: result.communityId,
+                    });
         } else if (result.status === "TEAMS_DISABLED") {
           content = "Les équipes ne sont pas activées sur cette communauté.";
         } else if (result.status === "NOT_MEMBER") {
@@ -271,4 +340,57 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
       if (!sent.ok) logger.error("discord-team", "Réponse privée /equipe non livrée.", { kind: sent.kind });
     },
   };
+}
+
+/** `rejoindre` / `quitter` : délègue au service métier, traduit son code. */
+async function applyMembershipChange(input: {
+  subName: string;
+  lookup: TeamLookup;
+  query: string;
+  userId: string;
+  communityId: string;
+}): Promise<string> {
+  if (input.lookup.kind === "AMBIGUOUS") {
+    return short(
+      [
+        "Plusieurs équipes correspondent à ce nom :",
+        ...input.lookup.teams.slice(0, MAX_LISTED_TEAMS).map(teamLine),
+        "Précise le nom exact.",
+      ].join("\n")
+    );
+  }
+  if (input.lookup.kind === "MISSING") {
+    return `Aucune équipe ne porte ce nom. Utilise \`/equipe liste\` pour voir les équipes disponibles.`;
+  }
+  const team = input.lookup.team;
+
+  if (input.subName === "rejoindre") {
+    const outcome = await joinCommunityTeam(input.userId, input.communityId, team.id);
+    switch (outcome) {
+      case "joined":
+        return `✅ Tu as rejoint **${team.name}** (${team.game})${team.captainName ? ` — capitaine : ${team.captainName}` : ""}.`;
+      case "already":
+        return `Tu fais déjà partie de **${team.name}**.`;
+      case "closed":
+        return `**${team.name}** ne recrute pas en ce moment.`;
+      case "full":
+        return `**${team.name}** est complète (${team.membersCount}/${team.maxMembers}).`;
+      case "missing":
+        return "Cette équipe n’existe plus.";
+      default:
+        return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
+    }
+  }
+
+  const outcome = await leaveCommunityTeam(input.userId, input.communityId, team.id);
+  switch (outcome) {
+    case "left":
+      return `Tu as quitté **${team.name}**.`;
+    case "leader":
+      return `Tu es capitaine de **${team.name}** : la capitainerie ne se transmet pas depuis Discord (passation en préparation). Ton équipe reste intacte.`;
+    case "missing":
+      return `Tu ne fais pas partie de **${team.name}**.`;
+    default:
+      return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
+  }
 }

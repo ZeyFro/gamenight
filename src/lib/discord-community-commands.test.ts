@@ -170,7 +170,7 @@ describe("chargement du profil communautaire", () => {
   it("ajoute les étages gagnés et les équipes quand Tower est actif", async () => {
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     mocks.teams.mockResolvedValue([
-      { team: { name: "Paped", createdById: "user-1", maxMembers: 8, game: { name: "Deep Rock Galactic" }, _count: { members: 6 } } },
+      { team: { name: "Paped", createdById: "user-1", maxMembers: 8, game: { name: "Deep Rock Galactic" }, _count: { members: 6 }, members: [{ userId: "user-1" }] } },
     ]);
     const result = await loadCommunityProfile({ guildId: GUILD, discordId: USER });
     expect(result.status).toBe("PROFILE");

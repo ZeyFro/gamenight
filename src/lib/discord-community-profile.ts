@@ -4,6 +4,7 @@ import { getMemberStats } from "@/lib/member-stats";
 import { getTowerProgress } from "@/lib/tower-progression";
 import { getTowerPersonalProgress } from "@/lib/tower-personal-progress";
 import { rankForLevel, titleForLevel } from "@/lib/xp";
+import { isTeamCaptain } from "@/lib/community-team-captain";
 
 /**
  * Vue « profil communautaire » réutilisable par Discord (`/profil`) — même
@@ -84,6 +85,9 @@ export async function loadCommunityProfile(input: {
             maxMembers: true,
             game: { select: { name: true } },
             _count: { select: { members: true } },
+            // La capitainerie vient de `createdById` : on a besoin des membres
+            // actifs pour vérifier qu'il en fait toujours partie.
+            members: { select: { userId: true } },
           },
         },
       },
@@ -120,7 +124,10 @@ export async function loadCommunityProfile(input: {
       teams: teamMemberships.map((entry) => ({
         name: entry.team.name,
         game: entry.team.game.name,
-        captain: entry.team.createdById === user.id,
+        captain: isTeamCaptain(
+          { createdById: entry.team.createdById, activeMemberIds: entry.team.members.map((member) => member.userId) },
+          user.id
+        ),
         members: entry.team._count.members,
         maxMembers: entry.team.maxMembers,
       })),

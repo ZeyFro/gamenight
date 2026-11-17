@@ -44,3 +44,27 @@ La création réelle dépend de #370/#408 (règles et espaces d'équipe).
 un handler différé (`after(runTeams)`), interrupteur documenté dans `.env.example`.
 Tests : `src/lib/discord-team-commands.test.ts` (13 cas) +
 `src/lib/discord-community-registration.test.ts` (garde de déclaration).
+
+## Correctif capitainerie (17/11/2026)
+
+« Capitaine » n'est plus déduit de l'ordre des membres. Source unique :
+`CommunityTeam.createdById` (le créateur, déjà « Responsable » sur `/equipes`),
+et seulement s'il est encore membre actif — sinon « Capitaine non renseigné ».
+
+- Règle partagée : `src/lib/community-team-captain.ts` (utilisée par
+  `/equipe liste|moi|voir` et par `/profil`).
+- `moi` compare désormais `captainId === userId` (avant : premier membre).
+- Détail : `docs/DECISIONS_CAPITAINERIE_20261117.md`.
+
+**À corriger dans #370/#408** (fichier réservé, non modifié ici) :
+`src/app/equipes/page.tsx` promeut encore le premier membre actif quand le
+créateur a quitté. Remplacer ce repli par `resolveTeamCaptain` et afficher
+« Capitaine non renseigné ».
+
+## Adhésions depuis Discord
+
+`/equipe rejoindre equipe:<nom>` et `/equipe quitter equipe:<nom>` délèguent à
+`joinCommunityTeam` / `leaveCommunityTeam` : une seule logique métier, aucune
+règle recopiée. Interrupteur séparé `DISCORD_TEAM_WRITE_ENABLED` (fermé par
+défaut). Le capitaine ne peut pas quitter son équipe : la passation reste en
+préparation. Aucune création d'équipe, de salon ou de rôle.

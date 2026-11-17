@@ -58,7 +58,13 @@ describe("déclaration Discord de /equipe (lecture seule)", () => {
       | { options?: Array<{ name: string; type: number }> }
       | undefined;
     expect(command, "/equipe déclarée").toBeDefined();
-    expect((command!.options ?? []).map((option) => option.name)).toEqual(["liste", "moi", "voir"]);
+    expect((command!.options ?? []).map((option) => option.name)).toEqual([
+      "liste",
+      "moi",
+      "voir",
+      "rejoindre",
+      "quitter",
+    ]);
     expect((command!.options ?? []).every((option) => option.type === 1)).toBe(true);
   });
 
@@ -71,11 +77,16 @@ describe("déclaration Discord de /equipe (lecture seule)", () => {
     expect(read(".env.example")).toContain("DISCORD_TEAM_COMMAND_ENABLED");
   });
 
-  it("ne branche aucune écriture d’équipe dans Discord", () => {
+  it("délègue toute écriture au service métier, sans créer d’équipe ni de ressource Discord", () => {
     const handler = read("src/lib/discord-team-commands.ts");
-    for (const forbidden of ["createCommunityTeam", "joinCommunityTeam", "leaveCommunityTeam", "setCommunityTeamRecruitment"]) {
+    // Les adhésions passent par les services existants, jamais par une requête parallèle.
+    expect(handler).toContain("joinCommunityTeam");
+    expect(handler).toContain("leaveCommunityTeam");
+    expect(handler).toContain("listCommunityTeams");
+    // La création d’équipe, les salons et les rôles restent hors périmètre.
+    for (const forbidden of ["createCommunityTeam", "setCommunityTeamRecruitment", "guildRole", "discord-role-sync"]) {
       expect(handler, forbidden).not.toContain(forbidden);
     }
-    expect(handler).toContain("listCommunityTeams");
+    expect(read(".env.example")).toContain("DISCORD_TEAM_WRITE_ENABLED");
   });
 });
