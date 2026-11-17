@@ -115,8 +115,6 @@ export async function resolvePlayerContext(input: {
   return { status: "OK", userId: user.id, communityId: community.id, communityName: community.name };
 }
 
-export type PlayerListingView = PlayerListing;
-
 /**
  * Annonces lisibles ici : même lecture que la page `/joueurs`
  * (`listPlayerClassifieds`), plus ses propres annonces expirées.
@@ -139,8 +137,8 @@ export async function loadPlayerListings(input: {
 export function renderListings(listings: PlayerListing[], communityName: string, onlyMine: boolean): string {
   if (listings.length === 0) {
     return onlyMine
-      ? "Tu n’as aucune annonce. `/joueurs publier` en crée une pour 24 h."
-      : `Aucune annonce active sur **${communityName}**. Sois le premier : \`/joueurs publier\`.`;
+      ? "Tu n’as aucune annonce. `/joueurs publier` crée une annonce de 24 h (jeu + message, 240 caractères)."
+      : `Aucune annonce active sur **${communityName}**. Sois le premier : \`/joueurs publier\` (24 h, 5 publications par fenêtre).`;
   }
   return [
     onlyMine ? "🔎 **Tes annonces**" : `🔎 **Joueurs recherchés — ${communityName}**`,
@@ -227,12 +225,16 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
             communityId: context.communityId,
             listingId: text("annonce"),
           });
+          // Chaque issue du service a sa réponse : aucun cas ne prétend avoir
+          // supprimé quelque chose quand `deletePlayerListing` n’a rien écrit.
           content =
             removed === "deleted"
               ? "✅ Annonce retirée : elle disparaît aussi de GameNight (`/joueurs`)."
               : removed === "not_owner"
                 ? "Cette annonce n’est pas la tienne : seul son auteur peut la retirer."
-                : "Annonce introuvable ou déjà expirée.";
+                : removed === "rate_limited"
+                  ? RATE_LIMIT_MESSAGE
+                  : "Annonce introuvable ou déjà retirée : rien n’a été modifié.";
         } else {
           content = withGameNightLink(
             renderListings(

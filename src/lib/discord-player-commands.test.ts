@@ -195,3 +195,35 @@ describe("/joueurs", () => {
     expect(handleSignedPlayerInteraction({ type: 2 }, now()).status).toBe(400);
   });
 });
+
+describe("/joueurs — issues de désinscription", () => {
+  it("traduit chaque refus de deletePlayerListing sans annoncer de suppression", async () => {
+    const cases: Array<[string, string]> = [
+      ["not_owner", "pas la tienne"],
+      ["rate_limited", "Trop de tentatives"],
+      ["missing", "introuvable ou déjà retirée"],
+    ];
+    vi.stubEnv("DISCORD_CLIENT_ID", APP);
+    vi.stubEnv("DISCORD_PLAYER_COMMAND_ENABLED", "true");
+    vi.stubEnv("DISCORD_PLAYER_WRITE_ENABLED", "true");
+    mocks.community.mockResolvedValue({ id: "community-1", name: "The Tower" });
+    mocks.user.mockResolvedValue({ id: "user-1" });
+    mocks.membership.mockResolvedValue({ status: "ACTIVE" });
+    mocks.communityId.mockResolvedValue("community-1");
+    mocks.edit.mockResolvedValue({ ok: true });
+
+    for (const [outcome, expected] of cases) {
+      mocks.remove.mockResolvedValue(outcome);
+      mocks.edit.mockClear();
+      const content = await deferred(handleSignedPlayerInteraction(payload("retirer", [{ name: "annonce", value: "annonce-1" }]), now()));
+      expect(content).toContain(expected);
+      expect(content).not.toContain("Annonce retirée");
+    }
+
+    mocks.remove.mockResolvedValue("deleted");
+    mocks.edit.mockClear();
+    expect(await deferred(handleSignedPlayerInteraction(payload("retirer", [{ name: "annonce", value: "annonce-1" }]), now()))).toContain(
+      "Annonce retirée"
+    );
+  });
+});

@@ -153,7 +153,10 @@ export function handleSignedProjectInteraction(body: unknown, timestamp: string 
             places,
           });
           if (invalid) {
-            content = `Projet invalide : ${invalid}`;
+            content = [
+              `Projet invalide : ${invalid}`,
+              "Limites : 3 projets créés par 24 h, un seul projet par joueur, 2 à 20 places. Aucun rôle ni salon Discord n’est créé par cette commande.",
+            ].join("\n");
           } else {
             const game = await resolveGameId(text("jeu"));
             if (game.kind === "NONE") content = "Jeu introuvable : précise le nom exact.";

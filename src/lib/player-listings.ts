@@ -41,18 +41,9 @@ export type CreateListingOutcome =
   | { status: "invalid" }
   | { status: "game_not_found" }
   | { status: "starts_in_past" }
-  | { status: "rate_limited" }
-  | { status: "unavailable" };
+  | { status: "rate_limited" };
 
-export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited" | "unavailable";
-
-const normalizeMessage = (value: string) =>
-  value
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase("fr-FR");
+export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited";
 
 /** Création : schéma partagé, 24 h, anti-doublon, limite de débit. */
 export async function createPlayerListing(input: {
@@ -222,9 +213,4 @@ export function filterListings(
     if (!needle) return true;
     return normalize(`${listing.game} ${listing.message} ${listing.authorName}`).includes(needle);
   });
-}
-
-/** Deux annonces identiques (hors espaces/accents/casse) — utilisé par les tests et l'anti-doublon. */
-export function isSameListingMessage(a: string, b: string): boolean {
-  return normalizeMessage(a) === normalizeMessage(b);
 }

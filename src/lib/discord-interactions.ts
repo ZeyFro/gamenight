@@ -177,6 +177,53 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const url = welcomeActionUrl(interaction.data.custom_id.slice("gn:welcome:".length));
     return url ? reply("Ouvre GameNight : " + url) : { status: 400 };
   }
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith("gn:listing:")) {
+    // Boutons d'une annonce de joueur : réponse privée, aucune écriture.
+    const { parsePlayerListingComponent } = await import("@/lib/discord-player-listing-components");
+    const listingComponent = parsePlayerListingComponent(interaction.data.custom_id);
+    const listingStamp = Number(input.timestamp);
+    const applicationId = interaction.application_id;
+    const token = interaction.token;
+    const discordId = interaction.guild_id ? interaction.member?.user?.id : interaction.user?.id;
+    const { id, channel_id: channelId } = interaction;
+    if (
+      !listingComponent ||
+      interaction.data?.component_type !== 2 ||
+      !applicationId ||
+      applicationId !== process.env.DISCORD_CLIENT_ID ||
+      !token ||
+      !id ||
+      !discordId ||
+      !channelId ||
+      !interaction.guild_id ||
+      ![applicationId, id, discordId, channelId, interaction.guild_id].every((value) => /^\d+$/.test(value)) ||
+      !Number.isFinite(listingStamp) ||
+      Math.abs(Date.now() / 1000 - listingStamp) > 300
+    ) {
+      return { status: 400 };
+    }
+    return {
+      status: 200,
+      body: { type: 5, data: { flags: EPHEMERAL } },
+      runRsvp: async () => {
+        let content: string;
+        try {
+          const { respondToListingInteraction } = await import("@/lib/discord-player-listing-rsvp");
+          content = await respondToListingInteraction(listingComponent.kind, listingComponent.listingId, {
+            interactionId: id,
+            discordId,
+            guildId: interaction.guild_id!,
+            channelId,
+          });
+        } catch (error) {
+          logger.error("discord-listing", error, { customId: interaction.data?.custom_id });
+          content = "Ta demande n’a pas pu être traitée. Réessaie dans un instant.";
+        }
+        const sent = await editSetupResponse({ applicationId, token, content, deadline: new Date(Date.now() + 10_000) });
+        if (!sent.ok) logger.error("discord-listing", "Réponse privée non livrée.", { kind: sent.kind });
+      },
+    };
+  }
   if (interaction.type === 3) {
     const customId = interaction.data?.custom_id ?? "";
     const rsvp = parseSessionRsvpId(customId);

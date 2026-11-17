@@ -169,3 +169,20 @@ describe("synchronisation des annonces de joueurs", () => {
     expect(mocks.rows).toHaveLength(0);
   });
 });
+
+describe("retrait d’une annonce expirée", () => {
+  it("supprime bien la ligne expirée et ne la présente plus comme active", async () => {
+    const created = await createPlayerListing({ ...discordInput, now });
+    const id = created.status === "created" ? created.id : "";
+    const later = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+    expect(await listCommunityListings({ userId: "user-1", communityId: "community-1", now: later })).toEqual([]);
+    await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("deleted");
+    expect(await listOwnListings({ userId: "user-1", communityId: "community-1", now: later })).toEqual([]);
+  });
+
+  it("ne prétend jamais avoir supprimé une annonce inexistante", async () => {
+    await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: "annonce-404" })).resolves.toBe(
+      "missing"
+    );
+  });
+});
