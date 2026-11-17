@@ -58,8 +58,6 @@ import { withRoleCreationLock } from "@/lib/discord-role-lock";
  */
 
 const EPHEMERAL = 64;
-const ADMINISTRATOR = BigInt(1) << BigInt(3);
-const MANAGE_ROLES = BigInt(1) << BigInt(28);
 const REQUEST_BUDGET_MS = 8_000;
 const REPLY_BUDGET_MS = 10_000;
 
