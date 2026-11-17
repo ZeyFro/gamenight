@@ -40,6 +40,23 @@ describe("workflow Migrations Production", () => {
     expect(job.steps.some((s) => s.if?.includes("failure()"))).toBe(true);
   });
 
+  it("relance le déploiement Vercel seulement après la migration réussie, sans afficher le hook", () => {
+    const steps = job.steps as { name?: string; run?: string; if?: string; env?: Record<string, string> }[];
+    const finalStatus = steps.findIndex((s) => s.run === "npx prisma migrate status");
+    const hook = steps.findIndex((s) => s.env?.VERCEL_DEPLOY_HOOK_URL !== undefined);
+    expect(hook).toBeGreaterThan(finalStatus);
+    expect(steps[hook].if).toContain("success()");
+    expect(steps[hook].env?.VERCEL_DEPLOY_HOOK_URL).toBe("${{ secrets.VERCEL_DEPLOY_HOOK_URL }}");
+    const run = steps[hook].run ?? "";
+    expect(run).toContain("-z \"${VERCEL_DEPLOY_HOOK_URL:-}\"");
+    expect(run).not.toMatch(/echo[^\n]*VERCEL_DEPLOY_HOOK_URL/);
+    expect(run).not.toMatch(/curl[^\n]*\s-[a-zA-Z]*v|set -x|--verbose/);
+    // Un hook en échec ne se fait pas passer pour un échec de migration.
+    expect(run).toContain("::warning::");
+    // Le hook ne contourne pas l'approbation : même job, même environnement.
+    expect(job.environment).toBe("production-migrations");
+  });
+
   it("écrit l'heure UTC de restauration avant la migration", () => {
     const runs = job.steps.map((s) => s.run ?? "");
     const restore = runs.findIndex((r) => r.includes("GITHUB_STEP_SUMMARY") && r.includes("date -u"));

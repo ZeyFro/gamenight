@@ -67,7 +67,7 @@ Vercel déploie `main` dès la fusion ; la migration attend l'approbation. Entre
 | 2 | Le SQL de la migration est identique dans toutes les branches de la pile (même empreinte Git) | Claude | `git rev-parse <branche>:prisma/migrations/<nom>/migration.sql` |
 | 3 | Restauration éprouvée (voir ci-dessous) | Propriétaire | Branche de test ouverte et lisible, heure UTC notée |
 | 4 | Précontrôle Production en lecture seule : Actions → « Précontrôle Production (lecture seule) » → approuver | Propriétaire | Résumé du run : 0 inachevée, 0 doublon, 0 orphelin ; dernière migration attendue |
-| 5 | Mécanisme anti-fenêtre choisi et en place (voir ci-dessous) | Propriétaire | Décision écrite dans l'issue #400 |
+| 5 | Garde de build en application stricte : `MIGRATION_GATE_ENFORCE=true` dans Vercel Production, après lecture du rapport (voir « Garde de build ») | Propriétaire | Ligne `[migration-gate] … Schéma à jour` dans le journal d'un build Production |
 | 6 | Fusion, puis approbation immédiate du run « Migrations Production » | Propriétaire | Résumé : heure UTC de restauration, `migrate status` avant et après |
 | 7 | Vérifier que `migrate status` après indique « Database schema is up to date » et que la nouvelle migration figure parmi les appliquées | Propriétaire | Fin du résumé du run |
 | 8 | Seulement alors, vérifier le déploiement Vercel Production et tester une page d'équipe | Propriétaire | Déploiement READY, page sans erreur |
@@ -80,18 +80,61 @@ Le précontrôle (`scripts/precheck-team-membership.mjs`) ouvre une transaction 
 - **Éprouver** : créer une branche à l'instant voulu depuis `production`, s'y connecter en lecture, compter des lignes d'une table connue, puis noter l'heure et décider du sort de la branche. Ne jamais supprimer `backup-avant-tower-migrations-20261030`.
 - **Limite** : une restauration revient aussi sur les données écrites par les joueurs après l'heure notée. Elle est donc un dernier recours ; une migration additive qui échoue est annulée par PostgreSQL sans restauration.
 
-### Fenêtre « nouveau code, ancien schéma » : options proposées
+### Fenêtre « nouveau code, ancien schéma » : options étudiées (option A retenue le 17 novembre 2026)
+**Décision du propriétaire : option A.** Elle est décrite et implémentée dans la section « Garde de build » ci-dessous ; les options B et C sont conservées pour mémoire.
+
 Vercel déploie `main` dès la fusion, l'approbation peut tarder. Pour ne pas dépendre de la rapidité de l'approbation :
 
-**Option A (recommandée) : garde de build en Production.** Dans `scripts/build.mjs`, si `VERCEL_ENV=production`, comparer les dossiers de `prisma/migrations` du commit aux lignes terminées de `_prisma_migrations` (lecture seule, `DATABASE_URL` du build). S'il en manque une : le build échoue, **le déploiement précédent reste servi**. Après l'approbation, redéployer le même commit (bouton Redeploy ou hook). Pas de secret supplémentaire ; le build rouge pendant l'attente est attendu. Coûts : le build dépend de la base (échec fermé si elle est injoignable) et le rôle du build doit pouvoir lire `_prisma_migrations`. Les Preview ne sont pas concernées.
+**Option A (retenue) : garde de build en Production.** Dans `scripts/build.mjs`, si `VERCEL_ENV=production`, comparer les dossiers de `prisma/migrations` du commit aux lignes terminées de `_prisma_migrations` (lecture seule, `DATABASE_URL` du build). S'il en manque une : le build échoue, **le déploiement précédent reste servi**. Après l'approbation, redéployer le même commit (bouton Redeploy ou hook). Pas de secret supplémentaire ; le build rouge pendant l'attente est attendu. Coûts : le build dépend de la base (échec fermé si elle est injoignable) et le rôle du build doit pouvoir lire `_prisma_migrations`. Les Preview ne sont pas concernées.
 
 **Option B : étape « Ignored Build Step » + Deploy Hook.** Le script d'ignorance de #423 saute le build Production quand le commit touche `prisma/migrations/**` ou `schema.prisma` ; `migrate-production.yml` appelle ensuite un Deploy Hook Vercel après `migrate deploy` réussi. Ordre garanti par construction (migration, puis déploiement), mais exige un secret de hook (action du propriétaire) et une erreur dans le script d'ignorance bloquerait des déploiements légitimes.
 
 **Option C : code tolérant (expand/contract).** Le nouveau code n'utilise la colonne qu'après détection de son existence. Aucune dépendance d'ordre, mais coûteux et source d'erreurs : non retenu.
 
-Aucune de ces options n'est implémentée : décision du propriétaire requise. Tant qu'aucune n'est en place, la seule protection est d'approuver le run immédiatement après la fusion.
+L'option A est implémentée, livrée en mode rapport. Tant que `MIGRATION_GATE_ENFORCE=true` n'est pas défini dans Vercel Production, la seule protection reste d'approuver le run immédiatement après la fusion.
 
 ## État des piles après #370 (relevé du 17 novembre)
 - Le SQL de `20261104140000_tower_team_membership_policy` et celui de `20261105120000_tower_launch_channels_appeals_matchmaking` sont identiques (même empreinte Git) dans les branches de #370, #406, #407, #408 et #416.
 - Simulation de `main` + #370 fusionnée : #406, #407, #408 et #416 fusionnent sans conflit.
 - #444 entrerait en conflit sur `prisma/schema.prisma`, `src/lib/community-teams.ts` et `.env.example` : c'est à son propriétaire de le résoudre après la fusion de #370.
+
+## Garde de build « anti-fenêtre » (option A, décidée le 17 novembre 2026)
+
+**Objectif** : un déploiement Production dont le code attend une migration non encore appliquée ne doit jamais devenir accessible.
+
+### Fonctionnement
+1. `scripts/build.mjs` exécute, entre `prisma generate` et `next build`, `scripts/assert-migrations-applied.mjs`.
+2. En **Production** (`VERCEL_ENV=production`), la garde compare les dossiers de `prisma/migrations` du commit aux lignes **terminées** de `_prisma_migrations` (transaction `READ ONLY`, aucune écriture).
+3. S'il manque une migration, ou s'il en reste une inachevée, le build **échoue** : Vercel ne crée pas de nouveau déploiement Production et **le précédent reste servi**.
+4. Le workflow « Migrations Production » reste soumis à l'approbation de `production-migrations`. Après `migrate deploy` et `migrate status` réussis, il appelle un Deploy Hook Vercel (secret facultatif `VERCEL_DEPLOY_HOOK_URL` de l'environnement) : le nouveau build passe alors la garde. Sans hook : bouton **Redeploy** de Vercel sur le dernier commit de `main`. Un hook en échec n'est pas un échec de migration : avertissement et consigne de redéploiement manuel.
+5. Les Preview, le build local et la CI ne sont pas concernés (la garde se désactive hors Production).
+
+### Mise en service progressive (obligatoire)
+La garde est livrée en **mode rapport** : sans `MIGRATION_GATE_ENFORCE=true` elle journalise le résultat et ne bloque jamais.
+1. Fusionner la PR de la garde (aucune migration, ne déclenche pas le workflow de migration).
+2. Lire dans le journal du premier build Production la ligne `[migration-gate]` : elle doit indiquer « Schéma à jour ». Si elle signale une migration en attente ou une base illisible, **ne pas activer** : corriger d'abord (par exemple, une migration déjà fusionnée mais jamais appliquée).
+3. Dans Vercel, environnement **Production** seulement, définir `MIGRATION_GATE_ENFORCE=true`. Le flag ne doit pas exister en Preview.
+4. Éventuellement créer le Deploy Hook Vercel (branche `main`) et l'ajouter comme secret `VERCEL_DEPLOY_HOOK_URL` de l'environnement `production-migrations`.
+
+### Secrets et périmètre de lecture
+- La garde ne lit **rien** hors Production : `VERCEL_ENV !== production` la fait sortir avant tout accès à une variable de connexion. Les builds Preview (branches, PR) n'ouvrent donc aucune connexion, même si une variable de base est présente dans leur environnement.
+- **Recommandé : un rôle dédié en lecture seule.** Créer dans Neon un rôle `migration_gate` avec uniquement `CONNECT`, `USAGE` sur le schéma `public` et `SELECT` sur `public."_prisma_migrations"`, puis définir son URL dans la variable `MIGRATION_GATE_DATABASE_URL` de Vercel, **environnement Production seulement**. Sans elle, la garde utilise `DATABASE_URL` (rôle de l'application) : la transaction `READ ONLY` limite alors le risque mais le build tourne avec un rôle d'écriture. Ne jamais copier cette URL dans le dépôt, les journaux ou une PR.
+- Requêtes : trois instructions SQL fixes (`SET TRANSACTION READ ONLY`, deux `SELECT` sur `_prisma_migrations`), sans valeur interpolée ; délai de 20 s ; les messages ne contiennent que des noms de migration, des compteurs et un code d'erreur.
+- Contributions non fiables : une branche de fork ne reçoit pas les variables Vercel. Pour une branche du dépôt, le build Preview exécute le code de la branche (risque propre à Vercel, inchangé) ; seule la Production (`main`, code relu) exécute la lecture de la garde. Garder « Deployment Protection » et l'autorisation des builds de PR externes activées côté Vercel.
+
+### Comportement strict (flag à `true`)
+- Migration manquante ou inachevée : build refusé, noms des migrations manquantes dans le journal.
+- Base illisible, `DATABASE_URL` absent, délai de 20 s dépassé : build refusé (échec fermé). Les messages n'affichent jamais l'hôte ni l'URL.
+- Secours en cas d'urgence quand la base est injoignable : promouvoir un déploiement précédent depuis Vercel, ou retirer `MIGRATION_GATE_ENFORCE` (décision du propriétaire, tracée dans les réglages Vercel).
+
+### Séquence avec la garde en application stricte (complète les étapes 5 à 8 ci-dessus)
+1. CI verte sur le SHA exact ; garde en application stricte.
+2. Fusion de la PR : le build Production **échoue volontairement** (ligne `Build refusé`), l'ancien déploiement reste servi.
+3. Approuver le run « Migrations Production » ; vérifier l'heure UTC de restauration, `migrate status` avant et après.
+4. Le hook (ou Redeploy manuel) relance un build : la ligne `Schéma à jour` apparaît et le déploiement devient accessible.
+5. Contrôle de l'ancien code pendant l'attente : la page d'équipe d'avant la fusion fonctionne toujours.
+
+### Limites connues
+- Le comportement « le précédent déploiement reste servi après un build échoué » est celui de Vercel ; il n'est pas démontrable depuis le dépôt (voir la section de démonstration dans la PR).
+- La garde lit `_prisma_migrations` avec `DATABASE_URL` du build (URL poolée) ; si le pooler refuse la lecture, le mode rapport le révèle avant l'activation.
+- Elle ne vérifie que « toutes les migrations du commit sont appliquées », pas la forme du schéma : une migration appliquée manuellement et marquée terminée passe.
