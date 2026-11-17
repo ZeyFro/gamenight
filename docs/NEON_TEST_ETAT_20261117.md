@@ -1,5 +1,7 @@
 # État factuel — Neon Test et pile Tower — 17 novembre 2026
 
+> **Remplacé en partie le 17 novembre 2026 (soir) :** le circuit « Neon Test puis Production avec accords séparés » n'est plus la règle. Les migrations suivent [MIGRATIONS.md](MIGRATIONS.md) (CI, fusion, application automatique après approbation de l'environnement `production-migrations`, garde de build) et la Tour s'active en une soirée ([ACTIVATION_TOUR.md](ACTIVATION_TOUR.md)). Les passages ci-dessous sur Neon Test et sur « un flag par jour » sont **historiques**. Le précontrôle Production en lecture seule du 17 novembre (0 migration inachevée, 0 doublon, 0 créateur orphelin, 118/118 migrations) est consigné dans [MIGRATIONS.md](MIGRATIONS.md) et l'issue #400.
+
 > Constats datés, pas des preuves de production. Aucune migration, aucune restauration et aucune
 > action Discord n'a été exécutée pour produire ce document. Les valeurs sensibles ne sont pas
 > reproduites ici.
