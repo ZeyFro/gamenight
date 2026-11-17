@@ -4,12 +4,8 @@
     "type": 1,
     "description": "GameNight",
     "default_member_permissions": "32",
-    "integration_types": [
-      0
-    ],
-    "contexts": [
-      0
-    ],
+    "integration_types": [0],
+    "contexts": [0],
     "options": [
       {
         "type": 1,
@@ -19,16 +15,237 @@
     ]
   },
   {
+    "name": "tournoi",
+    "type": 1,
+    "description": "Tournoi.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le tournoi",
+        "options": [
+          {
+            "type": 3,
+            "name": "titre",
+            "description": "Titre du tournoi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "equipe",
+    "type": 1,
+    "description": "Règle d’équipe.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur l'équipe",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom de l'équipe",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "joueurs",
+    "type": 1,
+    "description": "Visibilité des joueurs.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le joueur",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom du joueur",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "projet",
+    "type": 1,
+    "description": "Projet.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le projet",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom du projet",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "soiree",
+    "type": 1,
+    "description": "Soirée.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur la soirée",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom de la soirée",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "role",
+    "type": 1,
+    "description": "Rôle de Freebuff.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le rôle Freebuff",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom du rôle",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "profil",
+    "type": 1,
+    "description": "Profil.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le profil",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom du profil",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "boost",
+    "type": 1,
+    "description": "Boost.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "info",
+        "description": "Infos sur le boost",
+        "options": [
+          {
+            "type": 3,
+            "name": "nom",
+            "description": "Nom du boost",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "aide",
+    "type": 1,
+    "description": "Aide.",
+    "default_member_permissions": null,
+    "integration_types": [0],
+    "contexts": [0],
+    "options": [
+      {
+        "type": 1,
+        "name": "afficher",
+        "description": "Affiche l'aide",
+        "options": [
+          {
+            "type": 3,
+            "name": "cible",
+            "description": "Cible d'aide",
+            "required": true,
+            "min_length": 1,
+            "max_length": 120
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "tower",
     "type": 1,
     "description": "Tes défis et ta progression The Tower",
     "default_member_permissions": null,
-    "integration_types": [
-      0
-    ],
-    "contexts": [
-      0
-    ],
+    "integration_types": [0],
+    "contexts": [0],
     "options": [
       {
         "type": 1,
@@ -62,12 +279,8 @@
     "type": 1,
     "description": "Gère le catalogue des défis The Tower",
     "default_member_permissions": "32",
-    "integration_types": [
-      0
-    ],
-    "contexts": [
-      0
-    ],
+    "integration_types": [0],
+    "contexts": [0],
     "options": [
       {
         "type": 1,
@@ -93,7 +306,7 @@
           {
             "type": 4,
             "name": "etages",
-            "description": "Nombre d’étages gagnés",
+            "description": "Nombre d'étages gagnés",
             "required": true,
             "min_value": 1,
             "max_value": 20
@@ -138,7 +351,7 @@
       {
         "type": 1,
         "name": "importer-equipe",
-        "description": "Importe une fois le pack de départ des défis d'équipe"
+        "description": "Importe une once le pack de départ des défis d'équipe"
       }
     ]
   }
