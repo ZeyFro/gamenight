@@ -32,6 +32,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { LoginLanding } from "@/components/app/LoginLanding";
 import { XpProgress } from "@/components/app/XpProgress";
 import { EmptySessionHero, HomePlanningLinks, HomeInstantLink } from "@/components/app/HomePlanning";
+import { TowerWelcomePanel } from "@/components/tower/TowerWelcomePanel";
 import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { RankAvatar } from "@/components/RankAvatar";
@@ -266,6 +267,7 @@ async function HomeContent({
         <div><p className="gn-eyebrow mb-3">Ensemble, c’est toujours mieux</p><h1><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Ce soir, on joue à quoi ?</AuroraText></h1><p>Un jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.</p></div>
         <ButtonLink href="/sessions" variant="primary" className="hidden sm:inline-flex">+ Créer une soirée</ButtonLink>
       </div>
+      <TowerWelcomePanel />
       <ParallaxHeader className="gn-home-greeting relative flex items-center gap-4">
         <FloatingParticles />
         <RankAvatar
