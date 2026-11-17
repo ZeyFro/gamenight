@@ -1,0 +1,31 @@
+--- a/src/app/equipes/page.tsx
++++ b/src/app/equipes/page.tsx
+@@ -3,6 +3,7 @@
+ import { getCurrentUser } from "@/lib/current-user";
+ import { prisma } from "@/lib/prisma";
+ import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
++import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
+ import { createCommunityTeamAction, joinCommunityTeamAction, leaveCommunityTeamAction, setCommunityTeamRecruitmentAction } from "./actions";
+ import { Button } from "@/components/ui/Button";
+ import { Card } from "@/components/ui/Card";
+@@ -66,9 +67,17 @@
+         <h2 id="teams-title" className="font-semibold text-foreground">Aventures de la communauté ({teams.length})</h2>
+         {teams.length === 0 ? <EmptyState icon="🧭" title="Aucune aventure en cours." /> : teams.map((team) => {
+           const isMember = team.members.some((member) => member.userId === user.id);
+-          const leaderId = team.captainId ?? (team.createdBy.memberships.length ? team.createdById : team.members[0]?.userId);
+-          const leaderName = team.captain?.discordName ?? (team.createdBy.memberships.length ? team.createdBy.discordName : team.members[0]?.user.discordName ?? "aucun membre actif");
+-          const isLeader = leaderId === user.id;
++          // Capitaine : responsabilité explicite (passation éventuelle de #370),
++          // validée contre les membres actifs — jamais le premier de la liste.
++          const captainId = teamCaptainId({
++            createdById: team.captainId ?? team.createdById,
++            activeMemberIds: team.members.map((member) => member.userId),
++          });
++          const leaderId = captainId;
++          const leaderName = captainId
++            ? team.members.find((member) => member.userId === captainId)?.user.discordName ?? team.captain?.discordName ?? CAPTAIN_UNSET_LABEL
++            : CAPTAIN_UNSET_LABEL;
++          const isLeader = captainId === user.id;
+           return <Card key={team.id} className="grid gap-3">
+             <div className="flex flex-wrap items-start justify-between gap-2">
+               <div><p className="font-semibold text-foreground">{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
