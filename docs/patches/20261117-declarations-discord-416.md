@@ -1,30 +1,39 @@
-# Déclarations Discord consolidées — patch unique pour #416
+# Déclarations Discord consolidées — patch pour #416
 
-- Fichier du patch : `docs/patches/20261117-declarations-discord-416.patch`
-- Branche cible : `refs/pull/416/head` = `d1b70ad10855c000c20ca2ac86f34f91cb870a37`
-- Vérification réelle : `git apply --check` **OK** sur cette tête, puis application
-  et validation locale du JSON (`JSON_VALID`).
-- Le fichier `scripts/discord-commands.json` n'est pas modifié sur notre branche.
+Deux livrables distincts, pour ne jamais enregistrer une commande sans handler.
 
-## Contenu
-Ajoute (ou remplace pour `equipe`) les commandes dont les handlers existent :
+## 1. Patch applicable maintenant
+`docs/patches/20261117-declarations-discord-416.patch`
 
-| Commande | Sous-commandes déclarées |
-|---|---|
-| `role` | chercher, attribuer, creer, retirer (option `jeu` autocomplétée) |
-| `equipe` | liste, moi, voir, creer, rejoindre, quitter, recrutement, capitaine, membres, transferer, exclure, invitations, espace |
-| `joueurs` | annonces, chercher, mes-annonces, publier, retirer |
-| `projet` | liste, voir, creer, rejoindre, quitter, recrutement |
-| `soiree` | liste, voir, creer, rejoindre, quitter |
-| `tournoi` | liste, voir, inscription, desinscription, mes-inscriptions |
+- Cible : `refs/pull/416/head` (`d1b70ad`), vérifié par `git apply --check`
+  **OK**, puis application réelle et validation du JSON.
+- Ajoute uniquement les commandes dont les handlers existent et qui manquent :
+  `role` (option `jeu` autocomplétée), `aide`, `profil`, `boost`, `joueurs`,
+  `projet`, `soiree`, `tournoi`.
+- **Laisse `/equipe` intacte** : #416 possède son handler `discord-team-command.ts`
+  (3 sous-commandes) et son test `discord-team-command-manifest.test.ts` exige
+  exactement `liste`, `moi`, `rejoindre` avec `equipe_id`. Remplacer ces
+  déclarations sans le handler casserait le test et produirait des commandes
+  fantômes.
+- `aide`, `profil` et `boost` **existent bien** dans le code
+  (`src/lib/discord-community-commands.ts`, routés dans `discord-interactions.ts`) :
+  le précédent rapport qui les disait absents était faux, corrigé ici et dans
+  `scripts/discord-commands.json` (déclaration locale déjà conforme).
+- `profil`, `boost`, `aide` n'ont aucune option ; ne pas en inventer.
 
-`profil`, `boost` et `aide` **ne sont pas déclarés** : aucun handler de commande
-slash n'existe dans ce dépôt (ils vivent sur le site ou dans #370/#416). Les
-déclarer créerait une commande fantôme.
+## 2. Déclaration complète des équipes — conditionnée
+`docs/patches/20261117-equipe-declaration.json`
 
-## Point important : `/role jeu:…`
-Discord interdit de mélanger sous-commandes et options au même niveau. Comme
-`/role` garde ses sous-commandes, l'option racine `jeu` **ne peut pas** être
-déclarée en même temps. Le code accepte la forme racine (utile si #416 choisit
-un jour de remplacer les sous-commandes), mais la déclaration proposée utilise
-les sous-commandes avec `autocomplete: true` sur `jeu`.
+Bloc `/equipe` à 13 sous-commandes (ajout de `capitaine`, `membres`,
+`transferer`, `exclure`, `invitations`, `espace`, plus les 7 existantes) pour le
+jour où le handler complet est adopté. **Ne pas l'appliquer seul** : le handler
+de #416 ne connaît que 3 sous-commandes. Procédure et fichiers requis :
+`docs/integration/EQUIPES-416.md`.
+
+Notre handler accepte désormais `equipe_id` comme alias de `equipe` : la
+déclaration actuelle de #416 fonctionne sans second handler.
+
+## `/role jeu:…` en racine
+Discord interdit de mélanger sous-commandes et option racine. La forme courte
+n'est donc pas déclarable tant que `chercher/attribuer/creer/retirer` existent ;
+l'autocomplétion est portée par `jeu` dans chaque sous-commande.

@@ -424,7 +424,9 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
     const value = subOptions.find((option) => option.name === optionName)?.value;
     return typeof value === "string" ? value.trim() : "";
   };
-  const query = textOption("equipe");
+  // `equipe` est notre nom ; `equipe_id` est la déclaration de #416. Les deux
+  // pointent vers le même identifiant, sans dupliquer de handler.
+  const query = textOption("equipe") || textOption("equipe_id");
 
   if (
     (WRITE_SUBCOMMANDS.has(subName) ||

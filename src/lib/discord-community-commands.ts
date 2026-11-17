@@ -77,7 +77,7 @@ export function buildHelpContent(env: NodeJS.ProcessEnv = process.env): string {
     "**Réservé à la modération**",
     `• \`/gamenight setup\` — activer GameNight sur le serveur (${state(flags.setup)}).`,
     "• \`/tower-admin\` — catalogue des défis The Tower.",
-    `• \`/equipe\` — équipes : \`liste\`, \`moi\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\`, \`recrutement\` (${state(flags.teams)}).`,
+    `• \`/equipe\` — \`liste\`, \`moi\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\`, \`recrutement\`, \`capitaine\`, \`membres\`, \`transferer\`, \`exclure\`, \`invitations\`, \`espace\` (${state(flags.teams)}).`,
     `• \`/projet\` — projets multigaming sur les mêmes équipes : \`liste\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\`, \`recrutement\` (${state(flags.projects)}).`,
     `• \`/soiree\` — soirées : \`liste\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\` (${state(flags.sessions)}).`,
     `• \`/tournoi\` — tournois : \`liste\`, \`voir\`, \`inscription\`, \`desinscription\`, \`mes-inscriptions\` (${state(flags.tournaments)}).`,

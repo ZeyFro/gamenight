@@ -121,7 +121,7 @@ afterEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
 });
 
-const interaction = (sub?: { name: string; value?: string }) => ({
+const interaction = (sub?: { name: string; value?: string; optionName?: string }) => ({
   type: 2,
   id: "100000000000000050",
   application_id: APP,
@@ -131,7 +131,7 @@ const interaction = (sub?: { name: string; value?: string }) => ({
   data: {
     name: "equipe",
     options: sub
-      ? [{ name: sub.name, type: 1, options: sub.value === undefined ? [] : [{ name: "equipe", type: 3, value: sub.value }] }]
+      ? [{ name: sub.name, type: 1, options: sub.value === undefined ? [] : [{ name: sub.optionName ?? "equipe", type: 3, value: sub.value }] }]
       : [],
   },
 });
@@ -327,6 +327,15 @@ describe("/equipe rejoindre|quitter — même logique métier", () => {
     );
     expect(content).toContain("Tu as rejoint **Paped**");
     expect(content).toContain("capitaine : Maxime");
+    expect(mocks.join).toHaveBeenCalledWith(USER, "community-1", "team-1");
+  });
+
+  it("accepte l’option `equipe_id` de la déclaration #416, sans second handler", async () => {
+    mocks.join.mockResolvedValue("joined");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped", optionName: "equipe_id" }), now())
+    );
+    expect(content).toContain("Tu as rejoint **Paped**");
     expect(mocks.join).toHaveBeenCalledWith(USER, "community-1", "team-1");
   });
 
