@@ -77,3 +77,21 @@ si autorisée, synchronisation du centre d'intérêt.
 Commande JSON : l'option `jeu` doit exister au niveau racine (`type: 3`,
 `autocomplete: true`) **et** dans les sous-commandes. Déclaration à faire par le
 propriétaire de #416 ; le code accepte les deux formes sans redéploiement.
+
+## Parcours complet et concurrence (17/11, sprint finalisation)
+
+- **Création concurrente** : la section critique est sérialisée par un verrou
+  `CronLock` (`discord-role-lock.ts`) — acquisition atomique `updateMany`
+  (verrou libre ou périmé > 30 s), libération ciblée par token. Une seconde
+  interaction attend, relit les rôles et réutilise le rôle créé ; si le verrou
+  reste pris, elle répond « création en cours » sans créer.
+- **Permission** : « Gérer les rôles » est calculée sur **les rôles du bot**
+  (`botCanManageRoles`), jamais sur les permissions du joueur. Un membre
+  ordinaire peut donc utiliser `/role` ; le flag
+  `DISCORD_ROLE_SELF_CREATION_ENABLED=false` ferme la création d'un serveur.
+- **Ne plus suivre un jeu** : `/role retirer` enlève le rôle Discord **et**
+  l'association `UserTag` (le `Tag` partagé reste).
+- **Rôles obsolètes** : `listObsoleteGameRoles` liste seulement les rôles de jeu
+  absents de la liste GameNight ; aucune suppression automatique.
+- **Quotas** : 3 créations/heure/joueur + plafond `DISCORD_ROLE_MAX_GUILD_ROLES`
+  + plafond Discord natif. Aucune création illimitée.

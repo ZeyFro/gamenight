@@ -11,7 +11,10 @@ import {
 } from "@/lib/community-teams";
 import { provisionTeamSpace, syncTeamSpaceMember, type SpaceProvisionStatus } from "@/lib/discord-team-space-service";
 import { createDiscordTeamSpaceApi } from "@/lib/discord-team-space-api";
+import { readTeamSpaceLink } from "@/lib/discord-team-space-service";
 import { teamSpacesEnabled } from "@/lib/discord-team-spaces";
+import { excludeCommunityTeamMember } from "@/lib/community-teams";
+import { describeCaptainTransfer, transferTeamCaptain } from "@/lib/community-team-captain-service";
 import { filterTeamGameOptions, uniqueTeamGameOptions, type TeamGameOption } from "@/app/equipes/game-picker-rules";
 import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
 import type { InteractionOutput } from "@/lib/discord-interactions";
@@ -104,8 +107,22 @@ async function syncSpaceMember(input: {
 }
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
-const SUBCOMMANDS = ["liste", "moi", "voir", "rejoindre", "quitter", "creer", "recrutement"] as const;
-const WRITE_SUBCOMMANDS = new Set<string>(["rejoindre", "quitter", "creer", "recrutement"]);
+const SUBCOMMANDS = [
+  "liste",
+  "moi",
+  "voir",
+  "rejoindre",
+  "quitter",
+  "creer",
+  "recrutement",
+  "capitaine",
+  "transferer",
+  "membres",
+  "exclure",
+  "invitations",
+  "espace",
+] as const;
+const WRITE_SUBCOMMANDS = new Set<string>(["rejoindre", "quitter", "creer", "recrutement", "transferer", "exclure"]);
 
 const inputSchema = z.object({
   type: z.literal(2),
@@ -175,6 +192,7 @@ export interface CommunityTeamView {
   captainName: string | null;
   memberNames: string[];
   memberIds: string[];
+  members: Array<{ userId: string; name: string }>;
 }
 
 export type CommunityTeamsResult =
@@ -238,6 +256,7 @@ export async function loadCommunityTeams(input: {
           : null,
         memberNames: team.members.map((member) => member.user.discordName),
         memberIds,
+        members: team.members.map((member) => ({ userId: member.userId, name: member.user.discordName })),
       };
     }),
   };
@@ -368,7 +387,11 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
   };
   const query = textOption("equipe");
 
-  if (WRITE_SUBCOMMANDS.has(subName) && !teamsWriteEnabled()) {
+  if (
+    (WRITE_SUBCOMMANDS.has(subName) ||
+      (subName === "espace" && subOptions.find((option) => option.name === "creer")?.value === true)) &&
+    !teamsWriteEnabled()
+  ) {
     return quiet(
       "Rejoindre ou quitter une équipe depuis Discord n’est pas encore ouvert. Tu peux le faire depuis le site ; la lecture reste disponible avec `/equipe liste`."
     );
@@ -414,14 +437,41 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
                           userId: result.userId,
                           communityId: result.communityId,
                         })
-                  : await applyMembershipChange({
-                      subName,
-                      lookup,
-                      query,
-                      userId: result.userId,
-                      communityId: result.communityId,
-                      discordId,
-                    });
+                  : subName === "capitaine"
+                    ? withTeam(lookup, renderCaptain)
+                    : subName === "membres"
+                      ? withTeam(lookup, renderMembers)
+                      : subName === "invitations"
+                        ? withTeam(lookup, renderInvitations)
+                        : subName === "transferer"
+                          ? await transferCaptainAction({
+                              lookup,
+                              query: textOption("membre"),
+                              actorId: result.userId,
+                              communityId: result.communityId,
+                            })
+                          : subName === "exclure"
+                            ? await excludeMemberAction({
+                                lookup,
+                                query: textOption("membre"),
+                                actorId: result.userId,
+                                communityId: result.communityId,
+                              })
+                            : subName === "espace"
+                              ? await spaceAction({
+                                  lookup,
+                                  actorId: result.userId,
+                                  communityId: result.communityId,
+                                  create: subOptions.find((option) => option.name === "creer")?.value === true,
+                                })
+                              : await applyMembershipChange({
+                                  subName,
+                                  lookup,
+                                  query,
+                                  userId: result.userId,
+                                  communityId: result.communityId,
+                                  discordId,
+                                });
         } else if (result.status === "TEAMS_DISABLED") {
           content = "Les équipes ne sont pas activées sur cette communauté.";
         } else if (result.status === "NOT_MEMBER") {
@@ -642,4 +692,147 @@ async function changeRecruitment(input: {
     default:
       return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
   }
+}
+
+/** Résolution d'un membre cité dans l'équipe (nom Discord exact ou identifiant). */
+export async function resolveTeamMember(
+  team: CommunityTeamView,
+  query: string
+): Promise<{ kind: "FOUND"; userId: string; name: string } | { kind: "NONE" } | { kind: "AMBIGUOUS"; names: string[] }> {
+  const trimmed = query.trim();
+  if (!trimmed) return { kind: "NONE" };
+  if (/^\d{16,20}$/.test(trimmed)) {
+    const user = await prisma.user.findUnique({ where: { discordId: trimmed }, select: { id: true } });
+    const member = user ? team.members.find((candidate) => candidate.userId === user.id) : undefined;
+    return member ? { kind: "FOUND", userId: member.userId, name: member.name } : { kind: "NONE" };
+  }
+  const key = trimmed.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const matches = team.members.filter(
+    (member) => member.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === key
+  );
+  if (matches.length === 1) return { kind: "FOUND", userId: matches[0].userId, name: matches[0].name };
+  if (matches.length > 1) return { kind: "AMBIGUOUS", names: matches.map((member) => member.name) };
+  return { kind: "NONE" };
+}
+
+function withTeam<T>(lookup: TeamLookup, render: (team: CommunityTeamView) => T): T | string {
+  const team = requireTeam(lookup);
+  return typeof team === "string" ? team : render(team);
+}
+
+function requireTeam(lookup: TeamLookup): CommunityTeamView | string {
+  if (lookup.kind === "AMBIGUOUS") {
+    return short([
+      "Plusieurs équipes correspondent à ce nom :",
+      ...lookup.teams.slice(0, MAX_LISTED_TEAMS).map(teamLine),
+      "Précise le nom exact.",
+    ].join("\n"));
+  }
+  if (lookup.kind === "MISSING") return "Aucune équipe ne porte ce nom. Utilise `/equipe liste`.";
+  return lookup.team;
+}
+
+export function renderCaptain(team: CommunityTeamView): string {
+  if (!team.captainId) {
+    return `**${team.name}** n’a pas de capitaine établi : le créateur n’est plus membre actif. Aucun autre membre n’est promu automatiquement ; une passation doit être décidée explicitement.`;
+  }
+  return `👑 Capitaine de **${team.name}** : **${team.captainName ?? team.captainId}**. Seul le capitaine peut transférer la capitainerie, exclure un membre ou modifier le recrutement.`;
+}
+
+export function renderMembers(team: CommunityTeamView): string {
+  const lines = team.members
+    .slice(0, MAX_LISTED_MEMBERS)
+    .map((member) => `• ${member.name}${member.userId === team.captainId ? " 👑" : ""}`);
+  const more = team.members.length > MAX_LISTED_MEMBERS ? `\n… et ${team.members.length - MAX_LISTED_MEMBERS} autre(s).` : "";
+  return short(
+    [`Membres de **${team.name}** — ${team.membersCount}/${team.maxMembers}`, ...lines].join("\n") + more
+  );
+}
+
+async function transferCaptainAction(input: {
+  lookup: TeamLookup;
+  query: string;
+  actorId: string;
+  communityId: string;
+}): Promise<string> {
+  const team = requireTeam(input.lookup);
+  if (typeof team === "string") return team;
+  const target = await resolveTeamMember(team, input.query);
+  if (target.kind === "AMBIGUOUS") return `Plusieurs membres correspondent : ${target.names.join(", ")}. Précise lequel.`;
+  if (target.kind === "NONE") return "Ce membre ne fait pas partie de l’équipe. Une capitainerie ne se transfère qu’à un membre actif.";
+  const result = await transferTeamCaptain({
+    teamId: team.id,
+    communityId: input.communityId,
+    actorId: input.actorId,
+    newCaptainUserId: target.userId,
+  });
+  return describeCaptainTransfer(result);
+}
+
+async function excludeMemberAction(input: {
+  lookup: TeamLookup;
+  query: string;
+  actorId: string;
+  communityId: string;
+}): Promise<string> {
+  const team = requireTeam(input.lookup);
+  if (typeof team === "string") return team;
+  const target = await resolveTeamMember(team, input.query);
+  if (target.kind === "AMBIGUOUS") return `Plusieurs membres correspondent : ${target.names.join(", ")}. Précise lequel.`;
+  if (target.kind === "NONE") return "Ce joueur ne fait pas partie de l’équipe.";
+  const result = await excludeCommunityTeamMember({
+    actorId: input.actorId,
+    communityId: input.communityId,
+    teamId: team.id,
+    targetUserId: target.userId,
+  });
+  if (result.status === "not_captain") return `Seul le capitaine de **${team.name}** peut exclure un membre.`;
+  if (result.status === "captain") return "Le capitaine ne peut pas s’exclure : transfère d’abord la capitainerie.";
+  if (result.status === "not_member") return "Ce joueur n’est plus membre de l’équipe.";
+  if (result.status === "missing") return "Cette équipe n’existe plus.";
+  if (result.status === "unavailable") return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
+  const space = result.discordId
+    ? await syncSpaceMember({
+        teamId: team.id,
+        communityId: input.communityId,
+        discordId: result.discordId,
+        action: "leave",
+      })
+    : "";
+  return `✅ **${target.name}** a été exclu de **${team.name}**. Son XP, ses étages et son historique personnel sont conservés.${space}`;
+}
+
+function renderInvitations(team: CommunityTeamView): string {
+  const status = team.isRecruiting ? "ouvert" : "fermé";
+  return short(
+    [
+      `**${team.name}** — recrutement ${status}.`,
+      team.isRecruiting
+        ? "Les joueurs peuvent rejoindre avec `/equipe rejoindre`. Aucune invitation directe n’existe encore : elle exige un modèle dédié non migré (voir la note Obsidian)."
+        : "Le recrutement est fermé : personne ne peut rejoindre sans que le capitaine l’ouvre avec `/equipe recrutement`.",
+      team.captainId ? "Seul le capitaine peut ouvrir le recrutement." : "Aucun capitaine établi : le recrutement ne peut pas être modifié.",
+    ].join("\n")
+  );
+}
+
+async function spaceAction(input: {
+  lookup: TeamLookup;
+  actorId: string;
+  communityId: string;
+  create: boolean;
+}): Promise<string> {
+  const team = requireTeam(input.lookup);
+  if (typeof team === "string") return team;
+  const state = await readTeamSpaceLink({ teamId: team.id });
+  if (state.status === "migration_required") {
+    return "L’association persistante des espaces n’est pas encore migrée : aucun salon n’est géré pour cette équipe.";
+  }
+  if (state.status === "unlinked") {
+    if (!input.create) return `**${team.name}** n’a pas d’espace Discord géré. Seul le capitaine peut en créer un avec \`/equipe espace creer:true\`.`;
+    if (team.captainId !== input.actorId) return `Seul le capitaine de **${team.name}** peut créer son espace Discord.`;
+    const outcome = await provisionSpace(team.id, input.communityId);
+    return `**${team.name}** —${outcome || " Espace Discord non modifié : fonctionnalité fermée sur ce serveur."}`;
+  }
+  const archived = state.archived ? "archivé" : "actif";
+  return `**${team.name}** — espace ${archived} (salon et rôle privés associés). Aucun identifiant technique n’est nécessaire pour le gérer.`;
 }

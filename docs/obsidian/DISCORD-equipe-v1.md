@@ -91,3 +91,27 @@ préparation. Aucune création d'équipe, de salon ou de rôle.
 - Passation : service `transferTeamCaptain` prêt, **pas encore exposé** en
   sous-commande (JSON de commandes réservé #416). En attendant, `/equipe voir`
   affiche le capitaine ou « Capitaine non renseigné ».
+
+## Nouvelles sous-commandes (17/11)
+
+| Commande | Droit | Effet |
+|---|---|---|
+| `/equipe capitaine` | tous | affiche le capitaine officiel ou « non renseigné » |
+| `/equipe membres` | tous | liste les membres, 👑 sur le capitaine |
+| `/equipe transferer membre:<nom>` | capitaine actuel | passation explicite vers un membre actif |
+| `/equipe exclure membre:<nom>` | capitaine actuel | retire l'adhésion + l'accès Discord ; XP/étages conservés |
+| `/equipe espace [creer:true]` | lecture tous / création capitaine | état de l'association, création contrôlée |
+| `/equipe invitations` | tous | état du recrutement ; **aucune invitation directe inventée** |
+| `/equipe recrutement ouvert:<bool>` | capitaine actuel | existant, inchangé |
+
+- Le membre est résolu par nom Discord exact ou mention (identifiant) ; un
+  homonyme exige une précision.
+- Un membre ordinaire ne peut ni exclure, ni transférer, ni ouvrir le recrutement,
+  ni créer l'espace : refus explicite, sans écriture.
+- **Coexistence `createdById` / `captainId`** : ce dépôt n'a pas encore de champ
+  `captainId` (PR #370/#408). Toute la capitainerie lit `createdById` via
+  `community-team-captain` ; quand #370 introduira `captainId`, le résolveur
+  devra le préférer **uniquement** s'il désigne un membre actif, sans remplacer
+  silencieusement le créateur historique. Aucun code parallèle n'est créé ici.
+- Déclaration JSON des nouvelles sous-commandes : voir
+  `docs/patches/20261117-equipe-nouvelles-sous-commandes.md` (fichier #416).

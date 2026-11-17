@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   recruitment: vi.fn(),
   games: vi.fn(),
+  exclude: vi.fn(),
+  transfer: vi.fn(),
+  link: vi.fn(),
+  provision: vi.fn(),
+  sync: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -28,7 +33,18 @@ vi.mock("@/lib/community-teams", () => ({
   leaveCommunityTeam: mocks.leave,
   createCommunityTeamWithId: mocks.create,
   setCommunityTeamRecruitment: mocks.recruitment,
+  excludeCommunityTeamMember: mocks.exclude,
 }));
+vi.mock("@/lib/community-team-captain-service", () => ({
+  transferTeamCaptain: mocks.transfer,
+  describeCaptainTransfer: (result: string) => `RESULT:${result}`,
+}));
+vi.mock("@/lib/discord-team-space-service", () => ({
+  provisionTeamSpace: mocks.provision,
+  syncTeamSpaceMember: mocks.sync,
+  readTeamSpaceLink: mocks.link,
+}));
+vi.mock("@/lib/discord-team-space-api", () => ({ createDiscordTeamSpaceApi: () => ({}) }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import {
@@ -59,6 +75,10 @@ const team = (over: Partial<CommunityTeamView> = {}): CommunityTeamView => ({
   captainName: "Maxime",
   memberNames: ["Maxime", "Sarah"],
   memberIds: [USER, "user-2"],
+  members: [
+    { userId: USER, name: "Maxime" },
+    { userId: "user-2", name: "Sarah" },
+  ],
   ...over,
 });
 
@@ -544,5 +564,127 @@ describe("/equipe recrutement — droit de gestion par capitainerie", () => {
     );
     expect(content).toContain("ouvert:true");
     expect(mocks.recruitment).not.toHaveBeenCalled();
+  });
+});
+
+describe("/equipe capitaine, membres, transfert, exclusion, espace", () => {
+  const twoMembers = () =>
+    serviceTeam({
+      members: [
+        { userId: USER, joinedAt: new Date(), user: { discordName: "Maxime", communityMemberStats: [{ xpTotal: 100 }] } },
+        { userId: "user-2", joinedAt: new Date(), user: { discordName: "Sarah", communityMemberStats: [{ xpTotal: 50 }] } },
+      ],
+      _count: { members: 2 },
+    });
+
+  beforeEach(() => {
+    mocks.teams.mockResolvedValue([twoMembers()]);
+    mocks.transfer.mockResolvedValue("transferred");
+    // `espace creer` et les mutations passent par l'interrupteur d'écriture.
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
+  });
+
+  const withSub = (name: string, options: Array<{ name: string; value: string | number | boolean }> = []) => ({
+    type: 2,
+    id: "100000000000000051",
+    application_id: APP,
+    token: "token-equipe",
+    guild_id: GUILD,
+    member: { user: { id: DISCORD, username: "maxime", bot: false } },
+    data: { name: "equipe", options: [{ name, type: 1, options }] },
+  });
+
+  it("affiche le capitaine officiel et la liste des membres sans promouvoir personne", async () => {
+    let content = await deferredContent(handleSignedTeamInteraction(withSub("capitaine", [{ name: "equipe", value: "Paped" }]), now()));
+    expect(content).toContain("Capitaine de **Paped**");
+    expect(content).toContain("Maxime");
+
+    content = await deferredContent(handleSignedTeamInteraction(withSub("membres", [{ name: "equipe", value: "Paped" }]), now()));
+    expect(content).toContain("Membres de **Paped**");
+    expect(content).toContain("Sarah");
+    expect(content).toContain("👑");
+  });
+
+  it("transfère la capitainerie uniquement à un membre, via le service métier", async () => {
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withSub("transferer", [{ name: "equipe", value: "Paped" }, { name: "membre", value: "Sarah" }]), now())
+    );
+    expect(content).toContain("RESULT:transferred");
+    expect(mocks.transfer).toHaveBeenCalledWith({
+      teamId: "team-1",
+      communityId: "community-1",
+      actorId: USER,
+      newCaptainUserId: "user-2",
+    });
+
+    const missing = await deferredContent(
+      handleSignedTeamInteraction(withSub("transferer", [{ name: "equipe", value: "Paped" }, { name: "membre", value: "Inconnu" }]), now())
+    );
+    expect(missing).toContain("ne fait pas partie de l’équipe");
+    expect(mocks.transfer).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuse l’exclusion par un membre ordinaire et ne synchronise rien", async () => {
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
+    mocks.exclude.mockResolvedValue({ status: "not_captain" });
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withSub("exclure", [{ name: "equipe", value: "Paped" }, { name: "membre", value: "Sarah" }]), now())
+    );
+    expect(content).toContain("Seul le capitaine");
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
+
+  it("exclut un membre côté service et retire ses accès Discord", async () => {
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
+    vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
+    mocks.exclude.mockResolvedValue({ status: "removed", discordId: "100000000000000099" });
+    mocks.sync.mockResolvedValue({ status: "removed" });
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withSub("exclure", [{ name: "equipe", value: "Paped" }, { name: "membre", value: "Sarah" }]), now())
+    );
+    expect(content).toContain("a été exclu");
+    expect(content).toContain("XP");
+    expect(mocks.sync).toHaveBeenCalledWith(
+      expect.objectContaining({ discordId: "100000000000000099", action: "leave", teamId: "team-1" })
+    );
+  });
+
+  it("explique l’espace géré et refuse la création à un non-capitaine", async () => {
+    mocks.link.mockResolvedValue({ status: "unlinked" });
+    let content = await deferredContent(handleSignedTeamInteraction(withSub("espace", [{ name: "equipe", value: "Paped" }]), now()));
+    expect(content).toContain("pas d’espace Discord géré");
+
+    mocks.teams.mockResolvedValue([
+      serviceTeam({
+        createdById: "autre",
+        createdBy: { discordName: "Autre", memberships: [{ id: "m1" }] },
+        members: [
+          { userId: "autre", joinedAt: new Date(), user: { discordName: "Autre", communityMemberStats: [{ xpTotal: 10 }] } },
+          { userId: USER, joinedAt: new Date(), user: { discordName: "Maxime", communityMemberStats: [{ xpTotal: 100 }] } },
+        ],
+        _count: { members: 2 },
+      }),
+    ]);
+    content = await deferredContent(
+      handleSignedTeamInteraction(withSub("espace", [{ name: "equipe", value: "Paped" }, { name: "creer", value: true }]), now())
+    );
+    expect(content).toContain("Seul le capitaine");
+    expect(mocks.provision).not.toHaveBeenCalled();
+  });
+
+  it("refuse la création d’espace quand l’association n’est pas migrée", async () => {
+    mocks.link.mockResolvedValue({ status: "migration_required" });
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withSub("espace", [{ name: "equipe", value: "Paped" }, { name: "creer", value: true }]), now())
+    );
+    expect(content).toContain("pas encore migrée");
+    expect(mocks.provision).not.toHaveBeenCalled();
+  });
+
+  it("n’invente pas d’invitation directe", async () => {
+    const content = await deferredContent(handleSignedTeamInteraction(withSub("invitations", [{ name: "equipe", value: "Paped" }]), now()));
+    expect(content).toContain("Aucune invitation directe");
+    expect(content).toContain("rejoindre");
   });
 });

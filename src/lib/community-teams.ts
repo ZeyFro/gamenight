@@ -220,3 +220,41 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     return updated.count ? "saved" : "missing";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
+
+export type ExcludeMemberResult =
+  | { status: "removed"; discordId: string | null }
+  | { status: "not_member" | "not_captain" | "captain" | "missing" | "unavailable"; discordId?: string };
+
+/**
+ * Exclusion d'un membre — réservée au capitaine officiel (`createdById` actif).
+ * Le capitaine ne peut jamais s'exclure lui-même : la passation est explicite.
+ * Aucune donnée de progression n'est touchée (XP, étages, historique).
+ */
+export async function excludeCommunityTeamMember(input: {
+  actorId: string;
+  communityId: string;
+  teamId: string;
+  targetUserId: string;
+}): Promise<ExcludeMemberResult> {
+  if (await getCommunityTeamsCommunityId(input.actorId) !== input.communityId) return { status: "unavailable" };
+  return prisma.$transaction(async (tx) => {
+    if (!await canUseTeams(tx, input.actorId, input.communityId)) return { status: "unavailable" };
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [input.communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({
+      where: { id: input.teamId, communityId: input.communityId },
+      select: { createdById: true },
+    });
+    if (!team) return { status: "missing" };
+    if (team.createdById !== input.actorId) return { status: "not_captain" };
+    if (input.targetUserId === team.createdById) return { status: "captain" };
+    const target = await scopedDb.communityTeamMember.findUnique({
+      where: { teamId_userId: { teamId: input.teamId, userId: input.targetUserId } },
+      select: { user: { select: { discordId: true } } },
+    });
+    if (!target) return { status: "not_member" };
+    const deleted = await scopedDb.communityTeamMember.deleteMany({
+      where: { teamId: input.teamId, communityId: input.communityId, userId: input.targetUserId },
+    });
+    return deleted.count ? { status: "removed", discordId: target.user.discordId } : { status: "not_member" };
+  });
+}
