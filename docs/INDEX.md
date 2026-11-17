@@ -4,6 +4,8 @@
 
 - [README](../README.md) — présentation, fonctions et stack.
 - [Développement local](DEVELOPPEMENT_LOCAL.md) — PostgreSQL local, migrations, OAuth et tests.
+- [Migrations Prisma](MIGRATIONS.md) — méthode standard : PR, CI, fusion, application automatique.
+- [Activation de la Tour](ACTIVATION_TOUR.md) — les 4 interrupteurs en une soirée.
 - [.env.example](../.env.example) — noms des variables et interrupteurs ; aucune valeur réelle.
 - [Brief initial](../SPEC-gamenight.md) — intention de départ, document historique qui ne décrit pas tout l’état actuel.
 
