@@ -67,3 +67,16 @@ association persistée `DiscordTeamSpace`.
 `transferTeamCaptain` (capitaine actuel → membre actif, conditionnel et
 idempotent). Une passation **avec acceptation** du destinataire exige un modèle
 d'invitation (migration) : elle n'est pas simulée. Aucun premier membre promu.
+
+## Réconciliation (17/11)
+
+`reconcileTeamSpace` :
+
+1. vérifie le lien persisté (sinon `unlinked`) ;
+2. vérifie que le rôle et le salon existent encore — **aucune recréation** s'ils
+   ont disparu (`partial` avec `role_missing`/`channel_missing`) ;
+3. réapplique le rôle aux membres actifs (PUT idempotent) ;
+4. aligne l'état archivé sur la présence de membres (`archived`/`restored`).
+
+Aucune suppression, aucun remplacement d'identifiant. Les tests couvrent
+l'archivage, la restauration, la ressource disparue et le flag fermé.

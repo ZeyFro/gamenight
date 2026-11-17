@@ -8,6 +8,7 @@ import {
   archiveInactiveTeamSpace,
   createMemorySpaceLinkStore,
   provisionTeamSpace,
+  reconcileTeamSpace,
   reactivateTeamSpace,
   syncTeamSpaceMember,
   type SpaceLinkStore,
@@ -258,5 +259,62 @@ describe("archivage contrôlé", () => {
     });
     expect(result.status).toBe("unmanaged");
     expect(calls).toEqual([]);
+  });
+});
+
+describe("réconciliation", () => {
+  const linked = () =>
+    createMemorySpaceLinkStore([{ teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", roleId: "role-1" }]);
+
+  it("réapplique les accès des membres sans rien créer", async () => {
+    const { api, calls } = fakeApi();
+    api.snapshot = async () => ({
+      channels: [{ id: "chan-1", name: "les-dragons-team_1", type: 0 }],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
+    const result = await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: linked(), env: enabled });
+    expect(result.status).toBe("consistent");
+    expect(result.steps).toContain("members_resynced");
+    expect(calls.filter((call) => call.op === "addMemberRole")).toHaveLength(2);
+    expect(calls.some((call) => call.op === "createChannel" || call.op === "createRole")).toBe(false);
+  });
+
+  it("archive ou restaure selon la présence de membres", async () => {
+    const { api, ops } = fakeApi();
+    api.snapshot = async () => ({
+      channels: [{ id: "chan-1", name: "les-dragons-team_1", type: 0 }],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
+    mocks.findTeam.mockResolvedValue(team({ members: [] }));
+    const store = linked();
+    let result = await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(result.status).toBe("repaired");
+    expect(result.steps).toContain("archived");
+    expect(ops("renameChannel").at(-1)?.args[1]).toContain("archive-");
+
+    mocks.findTeam.mockResolvedValue(team());
+    result = await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(result.steps).toContain("restored");
+    expect(ops("renameChannel").at(-1)?.args[1]).toBe(spaceChannelName({ id: TEAM, name: "Les Dragons" }));
+  });
+
+  it("signale une ressource disparue sans recréer ni supprimer", async () => {
+    const { api, calls } = fakeApi();
+    api.snapshot = async () => ({ channels: [], roles: [{ id: "role-1", name: "GN · Les Dragons" }] });
+    const result = await reconcileTeamSpace({
+      teamId: TEAM,
+      communityId: "community-1",
+      api,
+      store: linked(),
+      env: enabled,
+    });
+    expect(result).toEqual({ status: "partial", steps: ["channel_missing"] });
+    expect(calls.some((call) => call.op === "createChannel" || call.op === "renameChannel")).toBe(false);
+  });
+
+  it("refuse sans association et quand le flag est fermé", async () => {
+    const { api } = fakeApi();
+    expect((await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: createMemorySpaceLinkStore(), env: enabled })).status).toBe("unlinked");
+    expect((await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: linked(), env: {} as NodeJS.ProcessEnv })).status).toBe("disabled");
   });
 });

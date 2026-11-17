@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import {
   applyTeamSpacePlan,
   planTeamSpace,
+  spaceChannelName,
   teamSpacesEnabled,
   type GuildChannelSummary,
   type GuildRoleSummaryLite,
@@ -378,5 +379,92 @@ export async function reactivateTeamSpace(input: {
   } catch (error) {
     if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required" };
     return { status: "failed" };
+  }
+}
+
+export type SpaceLinkState =
+  | { status: "linked"; channelId: string; roleId: string; archived: boolean }
+  | { status: "unlinked" }
+  | { status: "migration_required" };
+
+/** Lecture seule de l'association persistée — aucun appel Discord. */
+export async function readTeamSpaceLink(input: { teamId: string; store?: SpaceLinkStore }): Promise<SpaceLinkState> {
+  const store = input.store ?? createPrismaSpaceLinkStore();
+  try {
+    const link = await store.find(input.teamId);
+    if (!link?.channelId || !link.roleId) return { status: "unlinked" };
+    return {
+      status: "linked",
+      channelId: link.channelId,
+      roleId: link.roleId,
+      archived: link.archived === true,
+    };
+  } catch (error) {
+    if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required" };
+    throw error;
+  }
+}
+
+export type SpaceReconcileResult = {
+  status: "consistent" | "repaired" | "partial" | "unlinked" | "disabled" | "migration_required" | "failed";
+  steps: string[];
+};
+
+/**
+ * Réconciliation : remet l'espace en cohérence **sans jamais recréer** un salon
+ * ou un rôle disparu (risque de doublon et de cible erronée). Les ressources
+ * manquantes sont signalées ; les accès des membres actuels sont réappliqués
+ * (PUT idempotent) ; l'état archivé suit la présence de membres.
+ */
+export async function reconcileTeamSpace(input: {
+  teamId: string;
+  communityId: string;
+  api: TeamSpaceDiscordApi;
+  store?: SpaceLinkStore;
+  env?: NodeJS.ProcessEnv;
+}): Promise<SpaceReconcileResult> {
+  const env = input.env ?? process.env;
+  if (!teamSpacesEnabled(env)) return { status: "disabled", steps: [] };
+  const store = input.store ?? createPrismaSpaceLinkStore();
+  try {
+    const team = await loadTeam(input.teamId, input.communityId);
+    if (!team?.guildId) return { status: "failed", steps: ["team_or_guild_missing"] };
+    const link = await store.find(team.id);
+    if (!link?.channelId || !link.roleId) return { status: "unlinked", steps: [] };
+    const snapshot = await input.api.snapshot(team.guildId);
+    const steps: string[] = [];
+    if (!snapshot.roles.some((role) => role.id === link.roleId)) steps.push("role_missing");
+    if (!snapshot.channels.some((channel) => channel.id === link.channelId)) steps.push("channel_missing");
+    if (steps.length > 0) {
+      // Aucune recréation automatique : on s'arrête avant toute écriture Discord.
+      return { status: "partial", steps };
+    }
+
+    for (const member of team.members) {
+      if (!member.discordId) continue;
+      await input.api.addMemberRole(team.guildId, member.discordId, link.roleId);
+    }
+    steps.push("members_resynced");
+
+    const shouldArchive = team.members.length === 0;
+    if (shouldArchive && !link.archived) {
+      await input.api.renameChannel(link.channelId, `archive-${spaceChannelName(team)}`.slice(0, 100));
+      await store.setArchived(team.id, true);
+      steps.push("archived");
+      return { status: "repaired", steps };
+    }
+    if (!shouldArchive && link.archived) {
+      await input.api.renameChannel(link.channelId, spaceChannelName(team));
+      await store.setArchived(team.id, false);
+      steps.push("restored");
+      return { status: "repaired", steps };
+    }
+    return { status: "consistent", steps };
+  } catch (error) {
+    if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required", steps: [] };
+    logger.warn("discord-team-space", "Réconciliation impossible.", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    return { status: "failed", steps: [] };
   }
 }
