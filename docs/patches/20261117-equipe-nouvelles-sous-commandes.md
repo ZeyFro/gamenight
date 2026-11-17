@@ -24,3 +24,9 @@ tableau `options` de la commande `equipe`.
 
 `membre` reste une option texte (nom exact ou identifiant) : elle acceptera
 `autocomplete` quand la liste des membres sera exposée par le routeur.
+
+Variante avec réactivation (espace archivé, capitaine) :
+
+```json
+{ "type": 5, "name": "reactiver", "description": "Réactiver l’espace archivé (capitaine)", "required": false }
+```

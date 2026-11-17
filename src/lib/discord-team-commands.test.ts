@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   transfer: vi.fn(),
   link: vi.fn(),
   provision: vi.fn(),
+  reactivate: vi.fn(),
   sync: vi.fn(),
 }));
 
@@ -43,6 +44,7 @@ vi.mock("@/lib/discord-team-space-service", () => ({
   provisionTeamSpace: mocks.provision,
   syncTeamSpaceMember: mocks.sync,
   readTeamSpaceLink: mocks.link,
+  reactivateTeamSpace: mocks.reactivate,
 }));
 vi.mock("@/lib/discord-team-space-api", () => ({ createDiscordTeamSpaceApi: () => ({}) }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -680,6 +682,29 @@ describe("/equipe capitaine, membres, transfert, exclusion, espace", () => {
     );
     expect(content).toContain("pas encore migrée");
     expect(mocks.provision).not.toHaveBeenCalled();
+  });
+
+  it("réactive un espace archivé, et seulement par le capitaine", async () => {
+    mocks.link.mockResolvedValue({ status: "linked", channelId: "chan-1", roleId: "role-1", archived: true });
+    mocks.reactivate.mockResolvedValue({ status: "reused" });
+    let content = await deferredContent(
+      handleSignedTeamInteraction(withSub("espace", [{ name: "equipe", value: "Paped" }, { name: "reactiver", value: true }]), now())
+    );
+    expect(content).toContain("Espace réactivé");
+    expect(mocks.reactivate).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-1", communityId: "community-1" }));
+
+    mocks.teams.mockResolvedValue([
+      serviceTeam({
+        createdById: "autre",
+        createdBy: { discordName: "Autre", memberships: [{ id: "m1" }] },
+        members: [{ userId: "autre", joinedAt: new Date(), user: { discordName: "Autre", communityMemberStats: [{ xpTotal: 10 }] } }],
+      }),
+    ]);
+    content = await deferredContent(
+      handleSignedTeamInteraction(withSub("espace", [{ name: "equipe", value: "Paped" }, { name: "reactiver", value: true }]), now())
+    );
+    expect(content).toContain("Seul le capitaine");
+    expect(mocks.reactivate).toHaveBeenCalledTimes(1);
   });
 
   it("n’invente pas d’invitation directe", async () => {

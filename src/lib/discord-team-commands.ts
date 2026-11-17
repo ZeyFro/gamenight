@@ -11,7 +11,7 @@ import {
 } from "@/lib/community-teams";
 import { provisionTeamSpace, syncTeamSpaceMember, type SpaceProvisionStatus } from "@/lib/discord-team-space-service";
 import { createDiscordTeamSpaceApi } from "@/lib/discord-team-space-api";
-import { readTeamSpaceLink } from "@/lib/discord-team-space-service";
+import { reactivateTeamSpace, readTeamSpaceLink } from "@/lib/discord-team-space-service";
 import { teamSpacesEnabled } from "@/lib/discord-team-spaces";
 import { excludeCommunityTeamMember } from "@/lib/community-teams";
 import { describeCaptainTransfer, transferTeamCaptain } from "@/lib/community-team-captain-service";
@@ -389,7 +389,10 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
 
   if (
     (WRITE_SUBCOMMANDS.has(subName) ||
-      (subName === "espace" && subOptions.find((option) => option.name === "creer")?.value === true)) &&
+      (subName === "espace" &&
+        subOptions.some(
+          (option) => (option.name === "creer" || option.name === "reactiver") && option.value === true
+        ))) &&
     !teamsWriteEnabled()
   ) {
     return quiet(
@@ -463,6 +466,7 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
                                   actorId: result.userId,
                                   communityId: result.communityId,
                                   create: subOptions.find((option) => option.name === "creer")?.value === true,
+                                  reactivate: subOptions.find((option) => option.name === "reactiver")?.value === true,
                                 })
                               : await applyMembershipChange({
                                   subName,
@@ -820,6 +824,7 @@ async function spaceAction(input: {
   actorId: string;
   communityId: string;
   create: boolean;
+  reactivate: boolean;
 }): Promise<string> {
   const team = requireTeam(input.lookup);
   if (typeof team === "string") return team;
@@ -832,6 +837,12 @@ async function spaceAction(input: {
     if (team.captainId !== input.actorId) return `Seul le capitaine de **${team.name}** peut créer son espace Discord.`;
     const outcome = await provisionSpace(team.id, input.communityId);
     return `**${team.name}** —${outcome || " Espace Discord non modifié : fonctionnalité fermée sur ce serveur."}`;
+  }
+  if (state.archived && input.reactivate) {
+    if (team.captainId !== input.actorId) return `Seul le capitaine de **${team.name}** peut réactiver son espace Discord.`;
+    const result = await reactivateTeamSpace({ teamId: team.id, communityId: input.communityId, api: createDiscordTeamSpaceApi() });
+    const suffix = result.status === "reused" ? " Espace réactivé : le salon associé a retrouvé son nom." : describeSpaceOutcome(result.status);
+    return `**${team.name}** —${suffix || " Espace non modifié."}`;
   }
   const archived = state.archived ? "archivé" : "actif";
   return `**${team.name}** — espace ${archived} (salon et rôle privés associés). Aucun identifiant technique n’est nécessaire pour le gérer.`;
