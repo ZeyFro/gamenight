@@ -70,6 +70,39 @@ Aucune restauration n'a été exécutée ni éprouvée à ce jour. La sauvegarde
 au 6/11, mais **son exploitabilité n'est pas démontrée**. Le workflow d'application refuse
 d'ailleurs de continuer sans champ `restoration_evidence` renseigné.
 
+**Existence non revérifiée le 17/11 :** sans client Neon ni clé API dans cet environnement, impossible
+de relire l'état de `backup-tower-migration-test-20261106` (`br-purple-mud-b1nt0tfi`). La vérification
+revient au propriétaire ou à un run disposant d'un accès lecture seule.
+
+### Procédure de restauration testable (préparée, non exécutée)
+
+Objectif : prouver que la sauvegarde est restaurable **sans toucher Production**, sur une branche
+jetable, avec nettoyage contrôlé.
+
+Prérequis bloquants :
+
+- Un emplacement de branche libre (10 branches utilisées au dernier relevé ; aucune création ni
+  suppression ne doit être improvisée pour faire de la place).
+- Un accès Neon du propriétaire, ou une clé API en lecture/écriture de branche fournie hors chat.
+- Aucune cible Vercel, aucun cron et aucun bot ne doit pointer vers la branche restaurée.
+
+Étapes :
+
+1. Relever en lecture seule l'état de la sauvegarde : parent, point de restauration, rétention, horodatage.
+2. Créer `restore-check-20261117` **depuis ce point uniquement** (jamais « Restore production »).
+3. Contrôles : identité projet/branche de la copie, nombre d'entrées `_prisma_migrations` et dernière
+   entrée terminée, présence des cinq tables et de l'enum exigés par le préflight, agrégats
+   doublons/orphelins à zéro.
+4. Test d'écriture isolé dans la copie (insertion suivie d'un `ROLLBACK`) pour vérifier que la branche
+   accepte des écritures sans effet durable.
+5. Rapport de preuve daté : heure UTC, identifiants de branche, résultats des contrôles, sans aucun secret.
+6. Nettoyage : supprimer **uniquement** la branche jetable, après accord séparé, et conserver la
+   sauvegarde et la branche cible intactes.
+
+Critère de réussite : la copie est lisible, son schéma et son historique sont cohérents, l'écriture
+fonctionne et la Production n'a pas été touchée. Échec : arrêt immédiat, aucune suppression, aucun
+contournement par une nouvelle branche créée d'autorité.
+
 ## 4. Garde-fous GitHub constatés
 
 - Environnement `neon-migration-test` : `required_reviewers` **et** `branch_policy` → chaque exécution
