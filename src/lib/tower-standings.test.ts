@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compareTowerStandings, findExactTies, groupCoWinners, rankTowerStandings, selectTopThree, type TowerStandingInput } from "./tower-standings";
+import * as m_p19 from "./tower-standings";
 
 const at = (iso: string) => new Date(iso);
 const e = (userId: string, floors: bigint | number, hardWins: number, reachedAt = "2026-11-01T10:00:00Z"): TowerStandingInput =>
@@ -229,5 +230,19 @@ describe("selectTopThree", () => {
   });
   it("entrée invalide : RangeError", () => {
     expect(() => selectTopThree([e("a", 1.5, 0)])).toThrow(RangeError);
+  });
+});
+
+// Tâche Qwen qwen-p19-classement-egalite-exacte — repris du test de preuve loop/checks (node:test) sous vitest.
+describe("tower-standings · p19-classement-egalite-exacte", () => {
+  const e = (o = {}) => ({ userId: 'u1', floors: 5, hardWins: 2, reachedAt: new Date('2026-03-10T08:00:00Z'), ...o });
+  it('egalite exacte de classement', () => {
+    expect(m_p19.isExactTowerTie(e(), e({ userId: 'u2' }))).toBe(true);
+    expect(m_p19.isExactTowerTie(e(), e({ floors: BigInt(5) }))).toBe(true);
+    expect(m_p19.isExactTowerTie(e(), e({ floors: 6 }))).toBe(false);
+    expect(m_p19.isExactTowerTie(e(), e({ hardWins: 3 }))).toBe(false);
+    expect(m_p19.isExactTowerTie(e(), e({ reachedAt: new Date('2026-03-10T08:00:00.001Z') }))).toBe(false);
+    expect(() => m_p19.isExactTowerTie(e(), e({ floors: -1 }))).toThrow(RangeError);
+    expect(() => m_p19.isExactTowerTie(e({ userId: '' }), e())).toThrow(RangeError);
   });
 });
