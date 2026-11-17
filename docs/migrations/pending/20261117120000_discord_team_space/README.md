@@ -1,20 +1,12 @@
-# DiscordTeamSpace — migration en attente
+# `DiscordTeamSpace` — migration en attente
 
-Table d'association fiable entre une équipe GameNight et ses ressources Discord
-gérées (`roleId`, `channelId`, guilde). Aucune table existante n'est modifiée.
+Table d'association fiable équipe ↔ salon/role Discord. Aucune autre PR ouverte
+ne la crée (vérifié sur #370, #408, #416).
 
-- Schéma Prisma : `model DiscordTeamSpace` (`prisma/schema.prisma`).
-- SQL : `migration.sql` (ce dossier).
-- **Non appliquée** sur Neon Production. Sur une base de test jetable :
-  `psql "$TEST_DATABASE_URL" -f docs/migrations/pending/20261117_discord_team_space/migration.sql`.
-
-Sans cette table, `discord-team-space-service` renvoie `migration_required` :
-aucun stockage de secours en mémoire n'est utilisé en production.
-
-## Recette locale (17/11)
-
-Aucun PostgreSQL local n'est disponible sur ce poste (`TEST_DATABASE_URL`
-absent, `psql` introuvable) : la migration **n'a pas été exécutée**. Les parcours
-sont couverts par des tests à faux client Prisma et API Discord simulée
-(`discord-team-flows.test.ts`) ; la recette SQL reste à faire sur une base
-jetable avant toute activation.
+- Nom d'intégration : `prisma/migrations/20261117120000_discord_team_space/`,
+  soit après `20261106150000_tower_launch_channels_appeals_matchmaking`.
+- Aucune clé étrangère : le schéma Prisma ne déclare pas de relation (nettoyage
+  applicatif), donc pas de contrainte à ajouter.
+- Recette réelle : 6 tests PostgreSQL verts (unicité, rejeu, concurrence,
+  persistance, archivage ciblé, capitainerie).
+- **Non appliquée** sur Neon/Production.

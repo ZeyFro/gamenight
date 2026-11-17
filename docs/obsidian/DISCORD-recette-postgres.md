@@ -17,3 +17,12 @@ associé, passation `captainId` avec `createdById` intact.
 Limites : pas de service Discord réel ; aucune migration appliquée à Neon ni en
 Production. Le conteneur peut être supprimé avec
 `docker rm -f gamenight-test-pg-20261117`.
+
+## Correction après inspection des PR (17/11)
+
+`captainId` **existe déjà** dans `20261104140000_tower_team_membership_policy`
+(#370/#408/#416), avec backfill `captainId = createdById` et FK `User`. Notre
+branche s'arrête à `20261029061000_tower_team_challenges`, d'où l'application
+manuelle pour la recette. Après fusion d'une de ces PR, ne **jamais** rejouer de
+migration capitaine : `docs/migrations/pending/20261117_team_captain/` est
+annulée. Seule la migration `20261117120000_discord_team_space` reste en attente.
