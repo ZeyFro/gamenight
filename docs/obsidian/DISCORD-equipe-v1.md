@@ -68,3 +68,15 @@ créateur a quitté. Remplacer ce repli par `resolveTeamCaptain` et afficher
 règle recopiée. Interrupteur séparé `DISCORD_TEAM_WRITE_ENABLED` (fermé par
 défaut). Le capitaine ne peut pas quitter son équipe : la passation reste en
 préparation. Aucune création d'équipe, de salon ou de rôle.
+
+## `/equipe creer` et `/equipe recrutement` (17/11/2026)
+
+- `/equipe creer jeu:<nom> nom:<…> objectif:<…> plateforme:<…> [places:2-20]`
+  délègue à `createCommunityTeam` : quota 3/24 h, validation du jeu et
+  capitainerie (`createdById`) restent dans le service. Le jeu est résolu avec
+  les règles du sélecteur du site (`uniqueTeamGameOptions`,
+  `filterTeamGameOptions`) ; une correspondance ambiguë n'est jamais tranchée.
+- `/equipe recrutement equipe:<nom> ouvert:<true|false>` : seul le capitaine
+  (règle partagée) peut agir, puis `setCommunityTeamRecruitment` fait l'écriture.
+- Les deux restent derrière `DISCORD_TEAM_WRITE_ENABLED`, fermé par défaut.
+- Aucune ressource Discord créée, aucune permission accordée, aucune migration.

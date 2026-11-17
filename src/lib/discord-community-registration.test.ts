@@ -64,6 +64,8 @@ describe("déclaration Discord de /equipe (lecture seule)", () => {
       "voir",
       "rejoindre",
       "quitter",
+      "creer",
+      "recrutement",
     ]);
     expect((command!.options ?? []).every((option) => option.type === 1)).toBe(true);
   });
@@ -83,8 +85,10 @@ describe("déclaration Discord de /equipe (lecture seule)", () => {
     expect(handler).toContain("joinCommunityTeam");
     expect(handler).toContain("leaveCommunityTeam");
     expect(handler).toContain("listCommunityTeams");
-    // La création d’équipe, les salons et les rôles restent hors périmètre.
-    for (const forbidden of ["createCommunityTeam", "setCommunityTeamRecruitment", "guildRole", "discord-role-sync"]) {
+    expect(handler).toContain("createCommunityTeam");
+    expect(handler).toContain("setCommunityTeamRecruitment");
+    // Aucune ressource Discord n’est créée et aucune permission accordée.
+    for (const forbidden of ["guildRole", "discord-role-sync", "MANAGE_GUILD", "discord-channel-create"]) {
       expect(handler, forbidden).not.toContain(forbidden);
     }
     expect(read(".env.example")).toContain("DISCORD_TEAM_WRITE_ENABLED");

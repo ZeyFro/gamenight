@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   teams: vi.fn(),
   join: vi.fn(),
   leave: vi.fn(),
+  create: vi.fn(),
+  recruitment: vi.fn(),
+  games: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -16,12 +19,15 @@ vi.mock("@/lib/prisma", () => ({
     community: { findFirst: mocks.community },
     user: { findUnique: mocks.user },
     membership: { findUnique: mocks.membership },
+    game: { findMany: mocks.games },
   },
 }));
 vi.mock("@/lib/community-teams", () => ({
   listCommunityTeams: mocks.teams,
   joinCommunityTeam: mocks.join,
   leaveCommunityTeam: mocks.leave,
+  createCommunityTeam: mocks.create,
+  setCommunityTeamRecruitment: mocks.recruitment,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -84,6 +90,7 @@ beforeEach(() => {
   mocks.user.mockResolvedValue({ id: USER });
   mocks.membership.mockResolvedValue({ status: "ACTIVE" });
   mocks.teams.mockResolvedValue([serviceTeam()]);
+  mocks.games.mockResolvedValue([{ id: "game-1", name: "Valheim" }]);
 });
 
 afterEach(() => {
@@ -348,12 +355,194 @@ describe("/equipe rejoindre|quitter — même logique métier", () => {
     expect(mocks.join).not.toHaveBeenCalled();
   });
 
-  it("ne crée aucune équipe, aucun salon et aucun rôle", async () => {
+  it("ne crée aucun salon et aucun rôle Discord", async () => {
     mocks.join.mockResolvedValue("joined");
     await deferredContent(handleSignedTeamInteraction(interaction({ name: "rejoindre", value: "paped" }), now()));
     const handler = readFileSync(join(__dirname, "discord-team-commands.ts"), "utf8");
-    for (const forbidden of ["createCommunityTeam", "setCommunityTeamRecruitment", "discord-role-sync", "guildRole"]) {
+    for (const forbidden of ["discord-role-sync", "guildRole", "MANAGE_GUILD"]) {
       expect(handler, forbidden).not.toContain(forbidden);
     }
+  });
+});
+
+describe("/equipe creer — création déléguée au service", () => {
+  beforeEach(() => vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true"));
+
+  const withOptions = (subName: string, options: Array<{ name: string; value: string | number | boolean }>) => ({
+    type: 2,
+    id: "100000000000000060",
+    application_id: APP,
+    token: "token-create",
+    guild_id: GUILD,
+    member: { user: { id: DISCORD, username: "maxime", bot: false } },
+    data: {
+      name: "equipe",
+      options: [
+        {
+          name: subName,
+          type: 1,
+          options: options.map((option) => ({
+            name: option.name,
+            type: typeof option.value === "number" ? 4 : typeof option.value === "boolean" ? 5 : 3,
+            value: option.value,
+          })),
+        },
+      ],
+    },
+  });
+
+  const createOptions = [
+    { name: "jeu", value: "valheim" },
+    { name: "nom", value: "Les Papes" },
+    { name: "objectif", value: "Explorer et construire ensemble" },
+    { name: "plateforme", value: "PC" },
+    { name: "places", value: 6 },
+  ];
+
+  it("crée l’équipe via createCommunityTeam, sans copie de la règle métier", async () => {
+    mocks.create.mockResolvedValue("created");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withOptions("creer", createOptions), now())
+    );
+    expect(content).toContain("Équipe **Les Papes** créée");
+    expect(content).toContain("Tu en es le capitaine");
+    expect(mocks.create).toHaveBeenCalledWith({
+      userId: USER,
+      communityId: "community-1",
+      gameId: "game-1",
+      name: "Les Papes",
+      description: "Explorer et construire ensemble",
+      platform: "PC",
+      maxMembers: 6,
+    });
+  });
+
+  it("refuse une saisie invalide sans toucher au service", async () => {
+    const content = await deferredContent(
+      handleSignedTeamInteraction(
+        withOptions("creer", [{ ...createOptions[0] }, { name: "nom", value: "ab" }, ...createOptions.slice(2)]),
+        now()
+      )
+    );
+    expect(content).toContain("3 et 80 caractères");
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("ne devine pas un jeu ambigu et n’en invente pas un inexistant", async () => {
+    const ambiguous = createOptions.map((option) => (option.name === "jeu" ? { name: "jeu", value: "val" } : option));
+    mocks.games.mockResolvedValue([
+      { id: "game-1", name: "Valheim" },
+      { id: "game-2", name: "Valheim 2" },
+    ]);
+    let content = await deferredContent(handleSignedTeamInteraction(withOptions("creer", ambiguous), now()));
+    expect(content).toContain("Plusieurs jeux correspondent");
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    mocks.games.mockResolvedValue([{ id: "game-3", name: "Minecraft" }]);
+    content = await deferredContent(handleSignedTeamInteraction(withOptions("creer", createOptions), now()));
+    expect(content).toContain("Jeu introuvable");
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("reste fermée par défaut et traduit le quota du service", async () => {
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "");
+    const output = handleSignedTeamInteraction(withOptions("creer", createOptions), now());
+    expect(JSON.stringify(output.body)).toContain("n’est pas encore ouvert");
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true");
+    mocks.create.mockResolvedValue("limit");
+    const content = await deferredContent(handleSignedTeamInteraction(withOptions("creer", createOptions), now()));
+    expect(content).toContain("trois équipes");
+  });
+});
+
+describe("/equipe recrutement — droit de gestion par capitainerie", () => {
+  beforeEach(() => vi.stubEnv("DISCORD_TEAM_WRITE_ENABLED", "true"));
+
+  const withOptions = (options: Array<{ name: string; value: string | number | boolean }>) => ({
+    type: 2,
+    id: "100000000000000061",
+    application_id: APP,
+    token: "token-recrutement",
+    guild_id: GUILD,
+    member: { user: { id: DISCORD, username: "maxime", bot: false } },
+    data: {
+      name: "equipe",
+      options: [
+        {
+          name: "recrutement",
+          type: 1,
+          options: options.map((option) => ({
+            name: option.name,
+            type: typeof option.value === "boolean" ? 5 : 3,
+            value: option.value,
+          })),
+        },
+      ],
+    },
+  });
+
+  it("refuse un membre ordinaire : aucun droit déduit de l’ordre", async () => {
+    mocks.teams.mockResolvedValue([
+      serviceTeam({
+        members: [
+          { userId: USER, joinedAt: new Date(), user: { discordName: "Maxime", communityMemberStats: [] } },
+          { userId: "user-2", joinedAt: new Date(), user: { discordName: "Sarah", communityMemberStats: [] } },
+        ],
+        createdById: "user-2",
+        captainId: "user-2",
+      }),
+    ]);
+    const content = await deferredContent(
+      handleSignedTeamInteraction(
+        withOptions([
+          { name: "equipe", value: "paped" },
+          { name: "ouvert", value: true },
+        ]),
+        now()
+      )
+    );
+    expect(content).toContain("Seul le capitaine");
+    expect(mocks.recruitment).not.toHaveBeenCalled();
+  });
+
+  it("laisse le capitaine ouvrir le recrutement via le service", async () => {
+    mocks.recruitment.mockResolvedValue("saved");
+    const content = await deferredContent(
+      handleSignedTeamInteraction(
+        withOptions([
+          { name: "equipe", value: "paped" },
+          { name: "ouvert", value: true },
+        ]),
+        now()
+      )
+    );
+    expect(content).toContain("Recrutement ouvert sur **Paped**");
+    expect(mocks.recruitment).toHaveBeenCalledWith(USER, "community-1", "team-1", true);
+  });
+
+  it("refuse quand aucun capitaine n’est désigné", async () => {
+    mocks.teams.mockResolvedValue([serviceTeam({ createdById: "user-parti", captainId: "user-parti" })]);
+    const content = await deferredContent(
+      handleSignedTeamInteraction(
+        withOptions([
+          { name: "equipe", value: "paped" },
+          { name: "ouvert", value: false },
+        ]),
+        now()
+      )
+    );
+    expect(content).toContain("Seul le capitaine");
+    expect(content).toContain("aucun capitaine");
+    expect(mocks.recruitment).not.toHaveBeenCalled();
+  });
+
+  it("exige explicitement ouvert:true ou ouvert:false", async () => {
+    const content = await deferredContent(
+      handleSignedTeamInteraction(withOptions([{ name: "equipe", value: "paped" }]), now())
+    );
+    expect(content).toContain("ouvert:true");
+    expect(mocks.recruitment).not.toHaveBeenCalled();
   });
 });

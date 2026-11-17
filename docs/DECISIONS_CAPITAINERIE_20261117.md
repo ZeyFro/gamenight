@@ -61,3 +61,11 @@ capitaine (`community-team-handover`) qui doit, à terme, rendre ce cas rare.
   lors d'un `quitter`.
 - `src/lib/discord-community-commands.test.ts` : `/profil` capture la
   capitainerie via la règle partagée.
+
+## Suite — gestion d'équipe depuis Discord
+
+`/equipe creer` et `/equipe recrutement` réutilisent `createCommunityTeam` et
+`setCommunityTeamRecruitment`. Le droit de gérer le recrutement est vérifié par
+`teamCaptainId` **avant** l'appel au service : un membre ordinaire ne peut donc
+jamais agir, même si le service réservé (#370/#408) conserve encore son repli
+positionnel — repli supprimé par le patch `docs/patches/20261117-equipes-capitaine.md`.

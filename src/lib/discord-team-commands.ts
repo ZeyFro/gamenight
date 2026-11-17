@@ -2,7 +2,14 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
-import { joinCommunityTeam, leaveCommunityTeam, listCommunityTeams } from "@/lib/community-teams";
+import {
+  createCommunityTeam,
+  joinCommunityTeam,
+  leaveCommunityTeam,
+  listCommunityTeams,
+  setCommunityTeamRecruitment,
+} from "@/lib/community-teams";
+import { filterTeamGameOptions, uniqueTeamGameOptions, type TeamGameOption } from "@/app/equipes/game-picker-rules";
 import { CAPTAIN_UNSET_LABEL, teamCaptainId } from "@/lib/community-team-captain";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
@@ -31,8 +38,8 @@ const MAX_LISTED_TEAMS = 12;
 const MAX_LISTED_MEMBERS = 15;
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
-const SUBCOMMANDS = ["liste", "moi", "voir", "rejoindre", "quitter"] as const;
-const WRITE_SUBCOMMANDS = new Set<string>(["rejoindre", "quitter"]);
+const SUBCOMMANDS = ["liste", "moi", "voir", "rejoindre", "quitter", "creer", "recrutement"] as const;
+const WRITE_SUBCOMMANDS = new Set<string>(["rejoindre", "quitter", "creer", "recrutement"]);
 
 const inputSchema = z.object({
   type: z.literal(2),
@@ -54,8 +61,14 @@ const inputSchema = z.object({
           name: z.enum(SUBCOMMANDS),
           type: z.literal(1).optional(),
           options: z
-            .array(z.object({ name: z.literal("equipe"), type: z.literal(3), value: z.string().min(1).max(120) }))
-            .max(1)
+            .array(
+              z.object({
+                name: z.string().min(1).max(40),
+                type: z.number().optional(),
+                value: z.union([z.string().max(1_000), z.number(), z.boolean()]).optional(),
+              })
+            )
+            .max(6)
             .optional(),
         })
       )
@@ -282,7 +295,12 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
 
   const sub = interaction.data.options?.[0];
   const subName = sub?.name ?? "liste";
-  const query = sub?.options?.[0]?.value ?? "";
+  const subOptions = sub?.options ?? [];
+  const textOption = (optionName: string): string => {
+    const value = subOptions.find((option) => option.name === optionName)?.value;
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const query = textOption("equipe");
 
   if (WRITE_SUBCOMMANDS.has(subName) && !teamsWriteEnabled()) {
     return quiet(
@@ -310,6 +328,26 @@ export function handleSignedTeamInteraction(body: unknown, timestamp: string | n
                 ? renderMyTeams(result.teams, result.userId)
                 : subName === "voir"
                   ? renderTeamDetail(result.teams, query) ?? TEAM_QUERY_HINT
+                  : subName === "creer"
+                    ? await createTeamFromDiscord({
+                        userId: result.userId,
+                        communityId: result.communityId,
+                        gameQuery: textOption("jeu"),
+                        name: textOption("nom"),
+                        description: textOption("objectif"),
+                        platform: textOption("plateforme"),
+                        places: (() => {
+                          const raw = subOptions.find((option) => option.name === "places")?.value;
+                          return typeof raw === "number" ? Math.trunc(raw) : 6;
+                        })(),
+                      })
+                    : subName === "recrutement"
+                      ? await changeRecruitment({
+                          lookup,
+                          ouvert: subOptions.find((option) => option.name === "ouvert")?.value,
+                          userId: result.userId,
+                          communityId: result.communityId,
+                        })
                   : await applyMembershipChange({
                       subName,
                       lookup,
@@ -390,6 +428,133 @@ async function applyMembershipChange(input: {
       return `Tu es capitaine de **${team.name}** : la capitainerie ne se transmet pas depuis Discord (passation en préparation). Ton équipe reste intacte.`;
     case "missing":
       return `Tu ne fais pas partie de **${team.name}**.`;
+    default:
+      return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
+  }
+}
+
+/** Bornes identiques au formulaire `/equipes` — validation d'affichage, pas une règle métier. */
+export function validateTeamCreationInput(input: {
+  name: string;
+  description: string;
+  platform: string;
+  places: number;
+}): string | null {
+  if (input.name.length < 3 || input.name.length > 80) return "Le nom doit faire entre 3 et 80 caractères.";
+  if (input.description.length < 10 || input.description.length > 1_000) {
+    return "L’objectif doit faire entre 10 et 1 000 caractères.";
+  }
+  if (input.platform.length < 1 || input.platform.length > 40) return "La plateforme doit faire entre 1 et 40 caractères.";
+  if (!Number.isInteger(input.places) || input.places < 2 || input.places > 20) {
+    return "Le nombre de places doit être un entier entre 2 et 20.";
+  }
+  return null;
+}
+
+export type GameLookup =
+  | { kind: "FOUND"; id: string; name: string }
+  | { kind: "NONE" }
+  | { kind: "AMBIGUOUS"; names: string[] };
+
+/** Réutilise les règles du sélecteur de jeu du site (dédup + recherche sans accent). */
+export async function resolveGameId(query: string): Promise<GameLookup> {
+  if (!query.trim()) return { kind: "NONE" };
+  const games = await prisma.game.findMany({
+    select: { id: true, name: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+  const choices: TeamGameOption[] = uniqueTeamGameOptions(games);
+  const needle = query.trim().toLocaleLowerCase("fr-FR");
+  const exact = choices.filter((game) => game.name.toLocaleLowerCase("fr-FR") === needle);
+  if (exact.length === 1) return { kind: "FOUND", id: exact[0].id, name: exact[0].name };
+  const matches = filterTeamGameOptions(choices, query);
+  if (matches.length === 1) return { kind: "FOUND", id: matches[0].id, name: matches[0].name };
+  if (matches.length === 0) return { kind: "NONE" };
+  return { kind: "AMBIGUOUS", names: matches.slice(0, 5).map((game) => game.name) };
+}
+
+/**
+ * Création déléguée à `createCommunityTeam` : quotas, validation du jeu et
+ * capitainerie (`createdById`) restent dans le service métier.
+ */
+async function createTeamFromDiscord(input: {
+  userId: string;
+  communityId: string;
+  gameQuery: string;
+  name: string;
+  description: string;
+  platform: string;
+  places: number;
+}): Promise<string> {
+  const invalid = validateTeamCreationInput(input);
+  if (invalid) return invalid;
+  const game = await resolveGameId(input.gameQuery);
+  if (game.kind === "NONE") {
+    return "Jeu introuvable : précise le nom exact du jeu (par exemple `jeu:Valheim`).";
+  }
+  if (game.kind === "AMBIGUOUS") {
+    return `Plusieurs jeux correspondent : ${game.names.join(", ")}. Précise le nom exact.`;
+  }
+  const outcome = await createCommunityTeam({
+    userId: input.userId,
+    communityId: input.communityId,
+    gameId: game.id,
+    name: input.name,
+    description: input.description,
+    platform: input.platform,
+    maxMembers: input.places,
+  });
+  switch (outcome) {
+    case "created":
+      return `✅ Équipe **${input.name}** créée sur **${game.name}** (${input.places} places). Tu en es le capitaine : la capitainerie vient du créateur, jamais de l’ordre des membres.`;
+    case "limit":
+      return "Limite atteinte : trois équipes créées par période de 24 heures.";
+    case "invalid_game":
+      return "Ce jeu n’est plus disponible. Choisis-en un autre.";
+    default:
+      return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
+  }
+}
+
+/**
+ * Ouverture/fermeture du recrutement. Le droit de gestion est décidé par la
+ * règle partagée (capitaine actif), jamais par la position d'un membre.
+ */
+async function changeRecruitment(input: {
+  lookup: TeamLookup;
+  ouvert: string | number | boolean | undefined;
+  userId: string;
+  communityId: string;
+}): Promise<string> {
+  if (typeof input.ouvert !== "boolean") {
+    return "Précise `ouvert:true` ou `ouvert:false`.";
+  }
+  if (input.lookup.kind === "AMBIGUOUS") {
+    return short(
+      [
+        "Plusieurs équipes correspondent à ce nom :",
+        ...input.lookup.teams.slice(0, MAX_LISTED_TEAMS).map(teamLine),
+        "Précise le nom exact.",
+      ].join("\n")
+    );
+  }
+  if (input.lookup.kind === "MISSING") {
+    return "Aucune équipe ne porte ce nom. Utilise `/equipe liste`.";
+  }
+  const team = input.lookup.team;
+  if (team.captainId !== input.userId) {
+    return `Seul le capitaine de **${team.name}** peut changer le recrutement${team.captainName ? ` (actuellement ${team.captainName})` : " — aucun capitaine n’est désigné"}.`;
+  }
+  const outcome = await setCommunityTeamRecruitment(input.userId, input.communityId, team.id, input.ouvert);
+  switch (outcome) {
+    case "saved":
+      return input.ouvert
+        ? `Recrutement ouvert sur **${team.name}**.`
+        : `Recrutement fermé sur **${team.name}**.`;
+    case "full":
+      return `**${team.name}** est complète (${team.membersCount}/${team.maxMembers}) : impossible d’ouvrir le recrutement.`;
+    case "missing":
+      return "Cette équipe est introuvable ou tu n’en es plus le capitaine.";
     default:
       return "Les équipes ne sont pas disponibles pour ton compte sur cette communauté.";
   }
