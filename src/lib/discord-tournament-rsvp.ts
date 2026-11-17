@@ -2,10 +2,15 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { registerTournamentParticipant } from "@/lib/tournament-registration";
+import { unregisterTournamentParticipant } from "@/lib/tournament-unregistration";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import type { DiscordSeatOrigin } from "@/lib/session-seats";
 
-export async function respondToTournamentRsvp(tournamentId: string, origin: DiscordSeatOrigin): Promise<string> {
+export async function respondToTournamentRsvp(
+  tournamentId: string,
+  origin: DiscordSeatOrigin,
+  kind: "join" | "leave" = "join"
+): Promise<string> {
   const user = await prisma.user.findUnique({ where: { discordId: origin.discordId }, select: { id: true } });
   if (!user) return "Connecte-toi d’abord à GameNight avec ce compte Discord, puis réessaie.";
   if (!checkRateLimit(user.id, "discord-tournament-rsvp", { limit: 12 })) return RATE_LIMIT_MESSAGE;
@@ -23,6 +28,20 @@ export async function respondToTournamentRsvp(tournamentId: string, origin: Disc
     event: { category: "TOURNAMENT", eventType: "TOURNAMENT_CREATED", sourceId: tournamentId, OR: community.slug === "default" ? [{ communityId: community.id }, { communityId: null }] : [{ communityId: community.id }] },
   }, select: { id: true } });
   if (!delivered) return "Cette annonce n’est plus accessible. Ouvre le tournoi dans GameNight pour vérifier.";
+
+  if (kind === "leave") {
+    const participant = await prisma.tournamentParticipant.findUnique({
+      where: { tournamentId_userId: { tournamentId, userId: user.id } },
+      select: { id: true },
+    });
+    if (!participant) return "Tu n’es pas inscrit à ce tournoi.";
+    // Même service que `/tournoi desinscription` et le bouton du site.
+    const removed = await unregisterTournamentParticipant(user.id, tournamentId);
+    if (!removed) return "La désinscription n’a pas pu aboutir. Vérifie ton inscription dans GameNight.";
+    revalidatePath(`/tournois/${tournamentId}`);
+    revalidatePath("/tournois");
+    return "✅ Désinscription confirmée : ta place est libérée.";
+  }
 
   const result = await registerTournamentParticipant(user.id, tournamentId);
   if (result === "unavailable") return "Ce tournoi n’accepte plus d’inscriptions ou il n’y a plus de place.";

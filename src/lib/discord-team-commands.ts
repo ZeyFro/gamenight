@@ -188,7 +188,7 @@ function teamLine(team: CommunityTeamView): string {
 /** Contenu de `/equipe liste` — pur. */
 export function renderTeamList(teams: CommunityTeamView[], communityName: string): string {
   if (teams.length === 0) {
-    return `Aucune équipe n’existe encore sur **${communityName}**. La création d’équipe depuis Discord reste en préparation : rien n’est simulé ici.`;
+    return `Aucune équipe n’existe encore sur **${communityName}**. Crée la tienne avec \`/equipe creer\`.`;
   }
   const shown = teams.slice(0, MAX_LISTED_TEAMS);
   return short(

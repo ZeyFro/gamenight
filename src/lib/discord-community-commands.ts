@@ -54,6 +54,10 @@ export function commandStates(env: NodeJS.ProcessEnv = process.env) {
     profile: env.DISCORD_PROFILE_COMMAND_ENABLED === "true",
     boost: env.DISCORD_BOOSTER_ENABLED === "true",
     teams: env.DISCORD_TEAM_COMMAND_ENABLED === "true",
+    sessions: env.DISCORD_SESSION_COMMAND_ENABLED === "true",
+    tournaments: env.DISCORD_TOURNAMENT_COMMAND_ENABLED === "true",
+    players: env.DISCORD_PLAYER_COMMAND_ENABLED === "true",
+    projects: env.DISCORD_PROJECT_COMMAND_ENABLED === "true",
   };
 }
 
@@ -73,8 +77,12 @@ export function buildHelpContent(env: NodeJS.ProcessEnv = process.env): string {
     "**Réservé à la modération**",
     `• \`/gamenight setup\` — activer GameNight sur le serveur (${state(flags.setup)}).`,
     "• \`/tower-admin\` — catalogue des défis The Tower.",
-    `• \`/equipe\` — les équipes de la communauté, en lecture seule (${state(flags.teams)}).`,
-    "**En préparation** : la création d’équipe, `/projet`, `/joueurs`, `/soiree`, `/tournoi`. Aucune de ces commandes n’est simulée.",
+    `• \`/equipe\` — équipes : \`liste\`, \`moi\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\`, \`recrutement\` (${state(flags.teams)}).`,
+    `• \`/projet\` — projets multigaming sur les mêmes équipes : \`liste\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\`, \`recrutement\` (${state(flags.projects)}).`,
+    `• \`/soiree\` — soirées : \`liste\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\` (${state(flags.sessions)}).`,
+    `• \`/tournoi\` — tournois : \`liste\`, \`voir\`, \`inscription\`, \`desinscription\`, \`mes-inscriptions\` (${state(flags.tournaments)}).`,
+    `• \`/joueurs\` — recherche de partenaires : \`chercher\`, \`annonces\`, \`mes-annonces\`, \`publier\`, \`retirer\` (${state(flags.players)}).`,
+    "Une commande marquée « fermé » ne lit ni n’écrit rien : elle explique où agir sur GameNight. Aucune de ces commandes n’est simulée.",
     "Aucune commande ne donne de permission administrative : les rôles créés par GameNight sont toujours sans permission Discord.",
   ].join("\n");
 }

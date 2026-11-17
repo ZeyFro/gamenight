@@ -71,6 +71,10 @@ describe("/aide", () => {
       COMMUNITY_SETUP_COMMAND_ENABLED: "true",
       DISCORD_BOOSTER_ENABLED: "true",
       DISCORD_TEAM_COMMAND_ENABLED: "true",
+      DISCORD_SESSION_COMMAND_ENABLED: "true",
+      DISCORD_TOURNAMENT_COMMAND_ENABLED: "true",
+      DISCORD_PLAYER_COMMAND_ENABLED: "true",
+      DISCORD_PROJECT_COMMAND_ENABLED: "true",
     } as unknown as NodeJS.ProcessEnv);
     expect(on).toContain("actif");
     expect(on).not.toContain("en attente d’activation");

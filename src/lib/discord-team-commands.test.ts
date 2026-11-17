@@ -236,7 +236,7 @@ describe("/equipe — rendu pur", () => {
   it("annonce l’absence d’équipe sans simuler une création", () => {
     const text = renderTeamList([], "The Tower");
     expect(text).toContain("Aucune équipe n’existe encore");
-    expect(text).toContain("reste en préparation");
+    expect(text).toContain("/equipe creer");
   });
 
   it("désambiguïse un nom partagé et signale un nom inconnu", () => {

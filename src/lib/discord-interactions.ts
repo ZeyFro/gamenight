@@ -70,6 +70,8 @@ export interface InteractionOutput {
   runTeams?: () => Promise<void>;
   runSession?: () => Promise<void>;
   runTournament?: () => Promise<void>;
+  runPlayers?: () => Promise<void>;
+  runProject?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -111,6 +113,12 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const interaction = parsed.data;
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
+
+  if (interaction.type === 4) {
+    // Autocomplétion (/tournoi, /soiree) : adaptateur isolé, aucune écriture.
+    const { handleSignedAutocomplete } = await import("@/lib/discord-autocomplete");
+    return handleSignedAutocomplete(json, input.timestamp);
+  }
   if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
     return handleSignedTowerAdminInteraction(json, input.timestamp);
@@ -143,6 +151,16 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     // Handler isolé (aucun accès Discord avant l'ACK, cf. discord-role-command).
     const { handleSignedRoleInteraction } = await import("@/lib/discord-role-command");
     return handleSignedRoleInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "joueurs") {
+    // /joueurs : annonces de la page /joueurs (PlayerClassified), aucun second modèle.
+    const { handleSignedPlayerInteraction } = await import("@/lib/discord-player-commands");
+    return handleSignedPlayerInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "projet") {
+    // /projet : façade sur les équipes existantes (mêmes services que /equipe).
+    const { handleSignedProjectInteraction } = await import("@/lib/discord-project-commands");
+    return handleSignedProjectInteraction(json, input.timestamp);
   }
   if (interaction.data?.custom_id?.startsWith("gn:tower:") || (interaction.type === 2 && interaction.data?.name === "tower")) {
     const { handleSignedTowerInteraction } = await import("@/lib/discord-tower-challenges");
@@ -181,7 +199,7 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
       try {
         const origin = { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId };
         content = tournamentRsvp
-          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin)
+          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin, tournamentRsvp.kind)
           : isInstantRsvp
             ? await respondToInstantSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin)
             : await respondToSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin);
