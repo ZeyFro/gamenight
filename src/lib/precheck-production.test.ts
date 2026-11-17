@@ -80,3 +80,21 @@ describe("workflow Précontrôle Production : simulation de la garde et empreint
     expect(all).not.toMatch(/echo[^\n]*(DATABASE_URL|MIGRATION_GATE_DATABASE_URL)/);
   });
 });
+
+describe("workflow Précontrôle Production : portée du secret", () => {
+  type Step = { name?: string; run?: string; env?: Record<string, string> };
+  const steps = job.steps as Step[];
+  const SECRET = "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}";
+
+  it("n'expose le secret Production qu'aux trois étapes de contrôle, jamais à npm ci ni à prisma generate", () => {
+    expect((job as { env?: Record<string, string> }).env).toBeUndefined();
+    const withSecret = steps.filter((s) => s.env?.DATABASE_URL === SECRET);
+    expect(withSecret).toHaveLength(3);
+    for (const step of withSecret) {
+      expect(step.run ?? "").toMatch(/precheck-team-membership|assert-migrations-applied|restore-fingerprint/);
+    }
+    for (const step of steps.filter((s) => !withSecret.includes(s))) {
+      expect(JSON.stringify(step.env ?? {})).not.toContain("PRODUCTION_MIGRATION_DATABASE_URL");
+    }
+  });
+});

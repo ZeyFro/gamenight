@@ -8,7 +8,7 @@ const job = workflow.jobs.migrate as {
   if?: string;
   environment?: string;
   env?: Record<string, string>;
-  steps: { name?: string; run?: string; if?: string }[];
+  steps: { name?: string; run?: string; if?: string; env?: Record<string, string> }[];
 };
 
 describe("workflow Migrations Production", () => {
@@ -25,9 +25,27 @@ describe("workflow Migrations Production", () => {
   });
 
   it("lit le secret dédié et refuse l'URL poolée", () => {
-    expect(job.env?.DATABASE_URL).toBe("${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}");
     const guard = job.steps.find((s) => s.run?.includes("-pooler"));
     expect(guard?.run).toContain("exit 1");
+    expect(guard?.env?.DATABASE_URL).toBe("${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}");
+  });
+
+  it("n'expose le secret Production qu'aux étapes qui parlent à la base, jamais à npm ci", () => {
+    const steps = job.steps as { name?: string; run?: string; uses?: string; env?: Record<string, string> }[];
+    expect(job.env?.DATABASE_URL).toBeUndefined();
+    const SECRET = "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}";
+    const withSecret = steps.filter((s) => s.env?.DATABASE_URL === SECRET);
+    // Garde d'URL, état avant, application, état après : exactement ces quatre étapes.
+    expect(withSecret).toHaveLength(4);
+    for (const step of withSecret) {
+      expect(step.run ?? "").toMatch(/-pooler|prisma migrate (status|deploy)/);
+    }
+    const install = steps.find((s) => s.run === "npm ci");
+    expect(install?.env).toBeUndefined();
+    // Aucune autre étape (checkout, setup-node, hook, consignes) n'a accès au secret de migration.
+    for (const step of steps.filter((s) => !withSecret.includes(s))) {
+      expect(JSON.stringify(step.env ?? {})).not.toContain("PRODUCTION_MIGRATION_DATABASE_URL");
+    }
   });
 
   it("applique deploy une seule fois, entouré de deux status, et explique l'échec", () => {

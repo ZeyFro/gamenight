@@ -18,8 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production-migrations
-    env:
-      DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+    # Le secret n'est exposé qu'aux étapes de contrôle : jamais à npm ci ni à ses scripts d'installation.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +31,8 @@ jobs:
       - run: npx prisma generate
       - name: Contrôle des équipes (lecture seule)
         shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
         run: |
           set +e
           output="$(node scripts/precheck-team-membership.mjs 2>&1)"
@@ -53,6 +54,7 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
           VERCEL_ENV: production
           MIGRATION_GATE_ENFORCE: "true"
           MIGRATION_GATE_DATABASE_URL: ${{ secrets.MIGRATION_GATE_DATABASE_URL }}
@@ -74,6 +76,8 @@ jobs:
       - name: Empreinte de restauration (lecture seule)
         if: ${{ !cancelled() }}
         shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
         run: |
           set +e
           output="$(node scripts/restore-fingerprint.mjs 2>&1)"
