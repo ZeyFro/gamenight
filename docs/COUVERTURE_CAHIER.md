@@ -1,6 +1,6 @@
 # Couverture du cahier des charges The Tower 2.0 (17/11/2026)
 
-Méthode : chaque section de `docs/CAHIER_DES_CHARGES.md` et chaque décision de `docs/DECISIONS_TOWER.md` comparées à `main` (23f58a8d) et aux branches des PR ouvertes #370, #406, #407, #408, #416, #444, #325 (lues, jamais modifiées). À cette date, aucune de ces PR n'est fusionnée.
+Méthode : chaque section de `docs/CAHIER_DES_CHARGES.md` et chaque décision de `docs/DECISIONS_TOWER.md` comparées à `main` (23f58a8d) et aux branches des PR ouvertes #370, #406, #407, #408, #416, #444, #325 (lues, jamais modifiées). Au moment de l'analyse aucune de ces PR n'était fusionnée ; #370 l'a été ensuite (be688d18) : les lignes « PR #370 » ci-dessous sont désormais sur main.
 
 Statuts : **Livré** (sur main, actif) · **Livré désactivé** (sur main ou dans une PR, derrière un flag OFF ou une migration non appliquée) · **Partiel** · **Manquant**. « PR » = présent seulement dans la branche d'une PR ouverte (donc pas sur main).
 
@@ -17,7 +17,7 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | Défi d'équipe attribué à 18:00 Europe/Paris | 09:00 (workflow + cron) | PR #407 : `.github/workflows/tower-team-daily.yml`, `docs/TOWER_TEAM_DAILY_CRON.md` |
 | Sans quorum à 24 h : prolongation unique de 24 h puis rejet sans pénalité, une resoumission | Preuve en attente sans re-vote ; signalement staff à 7 j, archivage à 30 j | main `src/lib/tower-challenge-voting.ts` (reste OPEN) ; PR #407/#408 `tower-challenge-aging-rules.ts` |
 | Contestation ouverte 48 h après la décision | 24 h | PR #407/#408 `tower-challenge-appeal-rules.ts` (`TOWER_CHALLENGE_APPEAL_WINDOW_MS`) |
-| Équipes 2 à 8 | 2 à 20 sur main ; 2 à 8 dans #370 | `src/lib/community-teams-rules.ts` |
+| Équipes 2 à 8 | Aligné depuis la fusion de #370 (`community-teams-rules.ts`) | résolu |
 | Récompenses cosmétiques uniquement | Le top 1 peut proposer un défi pour la saison suivante (décision du 04/11) | `src/lib/tower-season-proposal.ts` : à confirmer par le propriétaire |
 
 ## Par section du cahier
@@ -27,7 +27,7 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | 3 | Organisation du serveur (gabarit, permissions) | Livré désactivé | `src/lib/tower-discord-layout.json`, `scripts/provision-tower-layout.mjs` (dry-run), `docs/TOWER_COMMANDES_GUILD.md` ; aucune écriture Discord réelle autorisée |
 | 4 | Onboarding Discord d'abord, panneau 3 boutons | Livré désactivé | `src/lib/tower-onboarding-panel.ts`, `src/lib/tower-onboarding-actions.ts` (`TOWER_ONBOARDING_PANEL_ENABLED`), `docs/TOWER_ONBOARDING_PANEL_SETUP.md` ; publication par workflow dédié |
 | 5 | Identité visuelle | Partiel | thème existant ; harmonisation Discord hors dépôt |
-| 6.1 | Grades Régulars / Irregular / Ranker / High Ranker | Partiel | `tower-ranks.ts` (règles à aligner, voir écarts) ; Irregular manuel : **Manquant** (aucun champ staff) |
+| 6.1 | Grades Régulars / Irregular / Ranker / High Ranker | PR #456 | `tower-ranks.ts` aligné (30 / 100 + 5 défis, gris/violet/or/rouge) ; stockage de l'Irregular manuel : **Manquant** (migration) |
 | 6.2 | Aucun droit de modération par grade | Livré | rangs purement cosmétiques (`tower-ranks.ts`) ; les droits viennent de `Membership.role` |
 | 6.3 | Remplacement des 134 rôles Etage | Livré désactivé | inventaire en lecture seule `scripts/audit-tower-etage-roles.mjs`, `docs/TOWER_ROLE_REVIEW.md` ; aucune suppression (interdite) |
 | 7.1-7.4 | Ascension infinie, étages permanents, barème 1/2/3 | Livré désactivé | `src/lib/tower-progression.ts`, `tower-personal-progress.ts`, page `/ascension` (`TOWER_CHALLENGES_ENABLED` + drapeau communautaire) |
@@ -44,20 +44,20 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | 10 | Annonces de réussites (consentement) | Livré désactivé | `tower-challenge-announcements.ts` (`TOWER_DISCORD_ANNOUNCE_ENABLED`) |
 | 10.3 | Récapitulatifs hebdomadaires, mise en avant | Partiel | `/recap`, `/classement` ; pas de récap Tower dédié |
 | 11.1 | Découvrir, créer, rejoindre une équipe | Livré | `/equipes`, `src/lib/community-teams.ts` |
-| 11.1 | Présenter sa candidature, recruter | Manquant | aucun modèle ni écran de candidature (seul `isRecruiting` + adhésion directe) |
+| 11.1 | Présenter sa candidature, recruter | PR #457 (Livré désactivé après fusion) | `team-applications.ts`, `/equipes/candidatures`, `TEAM_APPLICATIONS_ENABLED`, migration `20261201100000_team_applications` (après #416) |
 | 11.2 | Nom, présentation, capitaine, membres, jeux, critères de recrutement | Partiel | `CommunityTeam` (nom, description, plateforme, jeu, `isRecruiting`) ; capitaine PR #370/#406/#444 ; objectifs/critères structurés : Manquant |
 | 11.3 | Forums, tags | Livré désactivé | `src/lib/tower-forums.ts`, `/tower/forums`, `docs/TOWER_FORUM_TAGS.md` |
-| 11.3 | « Projets et aventures » | Manquant | aucun modèle ni écran projets communautaires |
-| 11.4 | Équipes décidées : 2–8, équipe unique, délai 7 j, capitaine | PR | PR #370 (migration `20261104140000_tower_team_membership_policy`), reprise par #406/#407/#408 ; main : 2–20 |
+| 11.3 | « Projets et aventures » | Partiel | « Lancer une aventure » sur `/equipes` (équipe persistante avec objectif) ; pas de modèle de projet distinct, volontairement non dupliqué |
+| 11.4 | Équipes décidées : 2–8, équipe unique, délai 7 j, capitaine | Livré (#370 fusionnée) | `community-teams.ts`, `community-team-handover.ts`, migration `20261104140000_tower_team_membership_policy` |
 | 12.2-12.3 | Chercher un joueur par jeu | Livré désactivé | `/joueurs`, `src/lib/player-classifieds.ts` (`playerClassifiedsEnabled`) |
 | 12.2 | Filtres plateforme, disponibilité, mode (détente/compétitif), micro | PR | PR #408 : `player-classified-filters.ts`, migration `20261105120000_tower_launch_channels_appeals_matchmaking` |
 | 12.2 | Filtre niveau de jeu | Manquant | ni champ ni filtre, y compris dans #408 : à faire après #408 (migration) |
 | 12.3 | « Qui joue ce soir ? » | Livré désactivé | `/ce-soir` (`WHO_PLAYS_TONIGHT_ENABLED`) |
-| 12.3 | Respect de la visibilité du profil | Manquant | `/potes/[id]` visible à tout membre actif, aucun réglage de visibilité |
+| 12.3 | Respect de la visibilité du profil | PR #459 (Livré désactivé après fusion) | `profile-visibility.ts`, `canViewPote`, `PROFILE_VISIBILITY_ENABLED`, migration `20261201110000_profile_visibility` (après #416) ; ne couvre pas classements ni soirées |
 | 12.4 | Profil : jeux favoris, plateformes, niveaux, disponibilités | Partiel | plateformes/micro (`User.availablePlatforms`), tier list, préférences ; niveaux par jeu : Manquant |
 | 13 | Soirées, calendrier, tournois, roulette | Livré | `/sessions`, `/calendrier`, `/tournois`, `/roulette` |
 | 14.1-14.2 | Calendrier des saisons | Partiel | `tower-challenge-seasons.ts` aligné sur la décision du 04/11, pas celle du 17/11 (voir écarts) |
-| 14.3 | Classements individuel, saisonnier, permanent | Livré désactivé | `tower-standings.ts` (départage étages, défis difficiles, date d'atteinte), `towerSeasonTotals` ; palmarès `/tower/palmares` |
+| 14.3 | Classements individuel, saisonnier, permanent (départage déjà conforme à la décision) | Livré désactivé | `tower-standings.ts` (départage étages, défis difficiles, date d'atteinte), `towerSeasonTotals` ; palmarès `/tower/palmares` |
 | 14.3 | Classement d'équipes | Partiel | `/classement` ; pas de classement d'équipes Tower |
 | 14.4 | Réinitialisation saisonnière, étages conservés | Livré désactivé | totaux calculés par fenêtre de saison (`tower-season-rules.ts`) |
 | 15 | Récompenses cosmétiques, Hall of Fame | Partiel | `tower-season-podium.ts`, `docs/TOWER_S1_REWARDS_MANUAL.md` (remise manuelle) ; cadres/titres automatisés : Manquant |
@@ -69,14 +69,20 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | 21-22 | Idempotence, tests critiques | Livré désactivé | `docs/TOWER_IDEMPOTENCE_AUDIT.md`, tests `tower-*.test.ts` et intégration |
 | 23-25 | Phases, lancement, conditions de livraison | Partiel | `docs/TOWER_PHASE1_RECETTE_PUBLIQUE.md`, `TOWER_KIT_BETA_T19.md`, `PLAN-J14-20261201.md` ; vérifications réelles Discord à faire |
 
-## PR du lot « couverture »
+## PR ouvertes de ce lot
 
-Liens ajoutés en fin de lot (section « PR ouvertes »).
+- #450 : `docs/DECISIONS_TOWER.md`.
+- #452 : ce document.
+- #456 : grades et couleurs (sans migration).
+- #457 : candidatures d'équipe (migration, après #416).
+- #459 : visibilité du profil (migration, après #416).
 
 ## Manques restants (non traités dans ce lot)
 
 - Filtre « niveau de jeu » pour la recherche de joueurs : exige une migration et touche les mêmes fichiers que #408 ; à faire après #408.
-- Projets communautaires (§11.3) : nouveau modèle, migration.
+- Calendrier de saisons du 17/11 (S1 du 01/12/2026 au 31/03/2027, avril–juin, été, septembre–novembre) : non traité, car il réécrit `tower-challenge-seasons.ts` et une dizaine de tests (dont l'intégration) et la répétition annuelle du cycle décembre–mars n'est pas explicitée ; **bloquant pour la semaine du 1er décembre** (le code actuel place le 1er décembre dans « S4 », S1 démarrant le 4 janvier).
+- Stockage de l'attribution manuelle d'Irregular (migration).
+- Recherche de joueurs : le filtre « niveau » et la reprise des écarts de #408 (hors périmètre pour éviter des conflits sur les mêmes fichiers).
 - Remplacement d'un défi quand le jeu n'est pas possédé (§8.6), proposition de défis par grade (§8.7).
 - Écarts qui vivent dans les PR #407/#408 (18:00, quorum, contestation 48 h) : à corriger dans leurs branches, non touchées ici.
 - Classement d'équipes Tower, cadres/titres cosmétiques automatisés, récapitulatif hebdomadaire Tower.
