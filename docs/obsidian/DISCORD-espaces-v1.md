@@ -80,3 +80,18 @@ d'invitation (migration) : elle n'est pas simulée. Aucun premier membre promu.
 
 Aucune suppression, aucun remplacement d'identifiant. Les tests couvrent
 l'archivage, la restauration, la ressource disparue et le flag fermé.
+
+## Alignement CI et pré-fusion (17/11, après-midi)
+
+- `CommunityTeam.captainId` retiré du schéma : la colonne appartient à #370.
+  Lecture par nom + repli `captain_source_unavailable` ; aucune migration
+  capitaine dupliquée.
+- Migration de l'espace déplacée dans `prisma/migrations/` (jouée par la CI),
+  rendue **idempotente** (`IF NOT EXISTS`, aucune FK) et gardée par
+  `src/lib/discord-team-space-migration.test.ts`.
+- **#445 est fusionnée** : la fusion d'une PR à migration vaut accord et
+  `migrate-production.yml` applique sur Neon Production. La procédure de
+  validation avant fusion de #444 est dans
+  `docs/operations/PRE-MERGE-444-PRODUCTION.md` (rien n'a été exécuté).
+- Preuves : `storage` et `rules` verts sur le SHA poussé ; suites PostgreSQL
+  isolées (tower-challenges, community-teams, espaces) vertes localement.
