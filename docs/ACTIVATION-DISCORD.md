@@ -21,7 +21,7 @@ pas appliquées en Production.
 1. `DISCORD_ROLE_COMMAND_ENABLED=true` (rôles de jeu, aucun salon).
 2. `DISCORD_TEAM_COMMAND_ENABLED=true` puis `DISCORD_TEAM_WRITE_ENABLED=true`.
 3. Migration `DiscordTeamSpace` seule
-   (`docs/migrations/pending/20261117120000_discord_team_space/`). `captainId`
+   (`prisma/migrations/20261117120000_discord_team_space/`). `captainId`
    est déjà fourni par `20261104140000_tower_team_membership_policy`
    (#370/#408/#416) : ne pas rejouer de migration capitaine.
 4. `DISCORD_PLAYER_COMMAND_ENABLED=true` (+ `DISCORD_PLAYER_WRITE_ENABLED`).

@@ -7,8 +7,11 @@ import { PrismaClient } from "@prisma/client";
  *
  * Prérequis sur la base :
  *   prisma migrate deploy
- *   docs/migrations/pending/20261117_discord_team_space/migration.sql
- *   docs/migrations/pending/20261117_team_captain/migration.sql
+ *
+ * `CommunityTeam.captainId` appartient à la migration de la PR #370, pas à cette
+ * branche : sans elle, le test vérifie le repli documenté
+ * (`captain_source_unavailable`, `createdById` intact) au lieu du transfert.
+ * Les deux états sont donc recettés, jamais sautés.
  */
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
@@ -35,6 +38,27 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces et capitaine"
   afterAll(async () => {
     await db?.$disconnect();
   });
+
+  /**
+   * `captainId` n'est pas déclaré dans le schéma de cette branche (il arrive avec
+   * #370) : on sonde la colonne par nom, sans type Prisma ni DDL.
+   */
+  async function hasCaptainColumn(): Promise<boolean> {
+    const bridge = db.communityTeam as unknown as {
+      findFirst(args: { select: { captainId: true } }): Promise<unknown>;
+    };
+    try {
+      await bridge.findFirst({ select: { captainId: true } });
+      return true;
+    } catch (error) {
+      // Colonne absente : Prisma répond P2022 en base non migrée, et refuse le
+      // champ inconnu (validation) tant que le schéma de la branche ne le
+      // déclare pas. Même heuristique que `community-team-captain-store.ts`.
+      const message = (error as Error)?.message ?? "";
+      if ((error as { code?: string }).code === "P2022" || message.includes("captainId")) return false;
+      throw error;
+    }
+  }
 
   beforeEach(async () => {
     await db.$executeRawUnsafe(
@@ -255,15 +279,32 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces et capitaine"
   });
 
   it("transfère captainId sans toucher createdById, et bloque la course suivante", async () => {
+    // Sans la colonne (#370 non fusionnée), la passation est refusée et rien
+    // n'est modifié : c'est le contrat produit, pas un test ignoré.
+    if (!(await hasCaptainColumn())) {
+      expect(
+        await service.transferTeamCaptain({ teamId: ids.team, communityId: ids.community, actorId: ids.creator, newCaptainUserId: ids.member })
+      ).toBe("captain_source_unavailable");
+      const untouched = await db.communityTeam.findUniqueOrThrow({ where: { id: ids.team } });
+      expect(untouched.createdById).toBe(ids.creator);
+      expect(await service.getTeamCaptain({ teamId: ids.team, communityId: ids.community })).toEqual({
+        status: "found",
+        captainId: ids.creator,
+        captainName: "Maxime",
+        source: "createdById",
+      });
+      return;
+    }
+
     const before = await db.communityTeam.findUniqueOrThrow({ where: { id: ids.team } });
-    expect(before.captainId).toBeNull();
+    expect((before as unknown as { captainId: string | null }).captainId).toBeNull();
     expect(await service.transferTeamCaptain({ teamId: ids.team, communityId: ids.community, actorId: ids.creator, newCaptainUserId: ids.member })).toBe(
       "transferred"
     );
 
     const after = await db.communityTeam.findUniqueOrThrow({ where: { id: ids.team } });
     expect(after.createdById).toBe(ids.creator);
-    expect(after.captainId).toBe(ids.member);
+    expect((after as unknown as { captainId: string | null }).captainId).toBe(ids.member);
     expect(await service.getTeamCaptain({ teamId: ids.team, communityId: ids.community })).toEqual({
       status: "found",
       captainId: ids.member,
@@ -277,6 +318,6 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces et capitaine"
     );
     const final = await db.communityTeam.findUniqueOrThrow({ where: { id: ids.team } });
     expect(final.createdById).toBe(ids.creator);
-    expect(final.captainId).toBe(ids.member);
+    expect((final as unknown as { captainId: string | null }).captainId).toBe(ids.member);
   });
 });

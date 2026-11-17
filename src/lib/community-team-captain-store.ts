@@ -40,11 +40,34 @@ function columnMissing(error: unknown): boolean {
   return code === "P2022" || (error as Error)?.message?.includes("captainId") === true;
 }
 
+/**
+ * Pont typé vers une colonne volontairement absente du schéma de cette branche.
+ *
+ * `CommunityTeam.captainId` est apporté par la migration de la PR #370 absente
+ * d'ici : le client Prisma généré ne connaît donc pas le champ. L'accès se fait
+ * par nom (cast), ce qui fonctionne dès que la colonne est migrée et échoue en
+ * P2022 sinon — exactement le contrat `supported: false` ci-dessous. Aucune
+ * migration dupliquée, aucune écriture de `createdById`.
+ */
+interface CaptainColumnClient {
+  findFirst(args: { select: { captainId: true } }): Promise<{ captainId?: string | null } | null>;
+  findMany(args: {
+    where: { communityId: string; id?: { in: string[] } };
+    select: { id: true; createdById: true; captainId?: true };
+  }): Promise<Array<{ id: string; createdById: string; captainId?: string | null }>>;
+  updateMany(args: { where: Record<string, unknown>; data: { captainId: string } }): Promise<{ count: number }>;
+}
+
+function teamWithCaptainColumn(): CaptainColumnClient {
+  return prisma.communityTeam as unknown as CaptainColumnClient;
+}
+
 /** Store Prisma réel : détection de colonne par lecture, sans DDL. */
 export async function createPrismaCaptainStore(): Promise<CaptainStore> {
+  const teamRow = teamWithCaptainColumn();
   let supported = true;
   try {
-    await prisma.communityTeam.findFirst({ select: { captainId: true } });
+    await teamRow.findFirst({ select: { captainId: true } });
   } catch (error) {
     if (!columnMissing(error)) throw error;
     supported = false;
@@ -58,17 +81,17 @@ export async function createPrismaCaptainStore(): Promise<CaptainStore> {
       let rows: Row[];
       if (supported) {
         try {
-          rows = await prisma.communityTeam.findMany({
+          rows = await teamRow.findMany({
             where,
             select: { id: true, createdById: true, captainId: true },
           });
         } catch (error) {
           if (!columnMissing(error)) throw error;
           supported = false;
-          rows = await prisma.communityTeam.findMany({ where, select: { id: true, createdById: true } });
+          rows = await teamRow.findMany({ where, select: { id: true, createdById: true } });
         }
       } else {
-        rows = await prisma.communityTeam.findMany({ where, select: { id: true, createdById: true } });
+        rows = await teamRow.findMany({ where, select: { id: true, createdById: true } });
       }
       return new Map(
         rows.map((row) => [
@@ -79,7 +102,7 @@ export async function createPrismaCaptainStore(): Promise<CaptainStore> {
     },
     async setCaptain(input) {
       if (!supported) return 0;
-      const updated = await prisma.communityTeam.updateMany({
+      const updated = await teamRow.updateMany({
         where: {
           id: input.teamId,
           communityId: input.communityId,

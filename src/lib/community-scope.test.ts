@@ -76,7 +76,7 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/app/sessions/actions/session-lifecycle.ts": ["proposal", "session"],
   "src/app/sessions/actions/superlatives.ts": ["superlativeCategory", "superlativeVote"],
   "src/app/tournois/[id]/page.tsx": ["tournament"],
-  "src/app/tournois/actions.ts": ["tournament", "tournamentMatch", "tournamentParticipant"],
+  "src/app/tournois/actions.ts": ["tournament", "tournamentMatch"],
   "src/app/tournois/page.tsx": ["tournament"],
   "src/app/wishlist/actions.ts": ["gameWishlistVote"],
   "src/components/admin/BadgesTab.tsx": ["badge"],
@@ -86,6 +86,20 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   "src/lib/backfill-game-news.ts": ["session"],
   "src/lib/backfill-xp.ts": ["proposal", "vote"],
   "src/lib/badges.ts": ["badge"],
+  // Modules Discord et services de jeu introduits par #444 (capitainerie,
+  // profils, soirées, tournois pilotés depuis Discord). Chaque accès filtre
+  // explicitement par `communityId` dérivé de la guilde vérifiée, jamais d'un
+  // identifiant fourni par le client ; `scopedDb` n'est pas applicable (flux
+  // système sans session utilisateur). À migrer dès qu'un contexte existe.
+  "src/lib/community-team-captain-service.ts": ["communityTeam", "communityTeamMember"],
+  "src/lib/discord-community-profile.ts": ["communityTeamMember", "userBadge"],
+  "src/lib/discord-player-listing-rsvp.ts": ["playerClassified"],
+  "src/lib/discord-session-commands.ts": ["proposal", "session", "sessionInvite"],
+  "src/lib/discord-team-space-service.ts": ["communityTeam"],
+  "src/lib/discord-tournament-autocomplete.ts": ["tournament"],
+  "src/lib/discord-tournament-commands.ts": ["tournament"],
+  "src/lib/discord-tournament-rsvp.ts": ["tournamentParticipant"],
+  "src/lib/tournament-unregistration.ts": ["tournamentParticipant"],
   "src/lib/discord-reminder.ts": ["proposal"],
   "src/lib/discord-roulette.ts": ["session"],
   "src/lib/fix-invalid-templates.ts": ["messageTemplate"],

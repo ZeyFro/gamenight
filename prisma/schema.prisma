@@ -2877,9 +2877,11 @@ model CommunityTeam {
   gameId      String
   // Créateur historique : JAMAIS réécrit par une passation.
   createdById String
-  // Capitaine responsable (PR #370/#408). Null = transition : le créateur actif
-  // fait office de capitaine. La colonne est ajoutée par une migration isolée.
-  captainId   String?
+  // Capitaine responsable (`captainId`) : la colonne appartient à la migration
+  // `20261104140000_tower_team_membership_policy` de la PR #370, absente de cette
+  // branche. Elle n'est donc pas déclarée ici (schéma ↔ migrations identiques),
+  // et `community-team-captain-store.ts` la lit par nom, en repli explicite sur
+  // `createdById` tant qu'elle n'existe pas. À réintroduire avec #370.
   name        String   @db.VarChar(80)
   description String   @db.VarChar(1000)
   platform    String   @db.VarChar(40)

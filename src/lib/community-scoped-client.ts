@@ -48,6 +48,9 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "FreeGameOffer",
   "PlayerClassified",
   "CommunityTeam", "CommunityTeamMember",
+  // Espace Discord d'une équipe : aucune relation Prisma (migration isolée),
+  // mais un `communityId` requis : il reste donc scopé.
+  "DiscordTeamSpace",
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
@@ -69,6 +72,7 @@ export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "FreeGameOffer",
   "PlayerClassified",
   "CommunityTeam", "CommunityTeamMember",
+  "DiscordTeamSpace",
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
   "WeeklyChallenge", "MonthlyRecap", "Season",
   "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction", "SessionAttendance",

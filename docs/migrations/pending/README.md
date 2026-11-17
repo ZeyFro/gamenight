@@ -6,12 +6,17 @@ Ordre d'application après fusion, sur une base de test uniquement :
    `captainId`, backfill depuis `createdById`, FK `User`, `captainLastActivityAt`,
    `Membership.lastTeamLeftAt`.
 2. `20261106150000_tower_launch_channels_appeals_matchmaking` (#408/#416).
-3. `20261117120000_discord_team_space` (ce dossier) : table `DiscordTeamSpace`
-   et ses index uniques. Doit être copiée sous
-   `prisma/migrations/20261117120000_discord_team_space/migration.sql` au moment
-   de l'intégration, donc après les migrations ci-dessus.
+3. `20261117120000_discord_team_space` : **intégrée** dans
+   `prisma/migrations/20261117120000_discord_team_space/` (elle n'est plus en
+   attente ici). Elle doit rester appliquée après les migrations ci-dessus.
 
 Aucune migration capitaine séparée : `20261117_team_captain` est **annulée**
 (colonne déjà fournie par l'étape 1). Voir son README.
+
+Tant que l'étape 1 n'est pas fusionnée, `prisma/schema.prisma` ne déclare pas
+`CommunityTeam.captainId` : le schéma de cette branche reste identique à ses
+migrations (CI verte), et `community-team-captain-store.ts` lit la colonne par
+nom, en repli explicite sur `createdById` (`supported: false`,
+`captain_source_unavailable`).
 
 Aucune de ces migrations n'est appliquée à Neon Test ou Production.

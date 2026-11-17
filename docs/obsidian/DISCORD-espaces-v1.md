@@ -57,7 +57,7 @@ association persistée `DiscordTeamSpace`.
   est ouvert, et cette ligne reflète le statut réel (`créés`, `non créé :
   quota`, `partiellement créé`, `association non migrée`…).
 - **Prérequis d'activation** : appliquer
-  `docs/migrations/pending/20261117_discord_team_space/migration.sql` sur la base
+  `prisma/migrations/20261117120000_discord_team_space/migration.sql` sur la base
   cible, puis `DISCORD_TEAM_SPACES_ENABLED=true`. Sans table, le service répond
   `migration_required` ; sans flag, aucune écriture Discord.
 
