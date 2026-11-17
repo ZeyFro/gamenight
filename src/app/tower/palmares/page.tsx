@@ -44,6 +44,7 @@ export default async function TowerSeasonPodiumPage() {
         <h2 className="text-xl font-semibold text-foreground">{result.season.name}</h2>
         <p className="mt-2 text-sm text-muted">À partir du {date.format(result.season.startAt)}, jusqu’au {date.format(new Date(result.season.endAt.getTime() - 1))} inclus, heure de Paris.</p>
         <p className="mt-2 text-sm text-muted">Départage : étages remportés, puis défis difficiles réussis, puis premier joueur arrivé à ce total.</p>
+        {result.canReview ? <p className="mt-2 text-sm"><Link href="/admin/tower-palmares" className="text-accent underline-offset-4 hover:underline">Proposition de palmarès (administration)</Link></p> : null}
       </Card>
       {result.entries.length ? <ol className="flex flex-col gap-4" aria-label="Podium de la saison terminée">
         {result.entries.map((entry, index) => <li key={index}>
