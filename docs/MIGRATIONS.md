@@ -138,3 +138,26 @@ La garde est livrée en **mode rapport** : sans `MIGRATION_GATE_ENFORCE=true` el
 - Le comportement « le précédent déploiement reste servi après un build échoué » est celui de Vercel ; il n'est pas démontrable depuis le dépôt (voir la section de démonstration dans la PR).
 - La garde lit `_prisma_migrations` avec `DATABASE_URL` du build (URL poolée) ; si le pooler refuse la lecture, le mode rapport le révèle avant l'activation.
 - Elle ne vérifie que « toutes les migrations du commit sont appliquées », pas la forme du schéma : une migration appliquée manuellement et marquée terminée passe.
+
+## Activation stricte de la garde : preuves à réunir, dans l'ordre
+
+`MIGRATION_GATE_ENFORCE=true` ne se définit qu'après ces quatre preuves.
+
+1. **Le schéma Production est à jour.** Actions → « Précontrôle Production (lecture seule) » → approuver. Le résumé « Garde de build : simulation stricte » doit afficher « N migration(s) dans le commit, N appliquée(s) en base » puis « Schéma à jour ».
+2. **La connexion de lecture seule fonctionne.** Ajouter (facultatif mais recommandé) le secret `MIGRATION_GATE_DATABASE_URL` à l'environnement `production-migrations` : URL du rôle `migration_gate` (SELECT seul). Relancer le précontrôle : la ligne « source de connexion » doit indiquer `MIGRATION_GATE_DATABASE_URL (rôle dédié)` et la simulation doit réussir. Sans ce secret, la simulation teste l'URL de migration, qui n'est pas représentative du rôle du build.
+3. **Le build Vercel lit bien la base.** Définir la même URL dans `MIGRATION_GATE_DATABASE_URL` de Vercel (Production seulement), puis lire dans le journal du premier build Production en mode rapport : `source de connexion : MIGRATION_GATE_DATABASE_URL (rôle dédié)` et `Schéma à jour`. Ce build prouve le chemin réel de Vercel (pooler, réseau), que la simulation GitHub (connexion directe) ne prouve pas.
+4. **Activer** : `MIGRATION_GATE_ENFORCE=true` dans Vercel, environnement Production seulement.
+
+Si l'une des preuves échoue (migration en attente, base illisible, rôle refusé), ne pas activer : corriger d'abord.
+
+## Vérification de restauration Neon (lecture seule, sans toucher à Production)
+
+Objectif : prouver qu'une restauration à un instant donné fonctionne dans ce projet, avant la première migration.
+
+1. Lancer le précontrôle : le résumé « Empreinte de la base » donne l'empreinte **E1** (compteurs et dates, aucune donnée personnelle) et son heure UTC **T1**.
+2. Dans Neon, créer une **branche** depuis `production` à l'instant **T0** (par exemple T1 − 15 min). Ne jamais lancer une restauration de la branche `production`, ne jamais supprimer les branches de sauvegarde existantes.
+3. Dans la console SQL de cette branche, coller le contenu de `scripts/restore-fingerprint.sql` : empreinte **E0**.
+4. Comparer E0 et E1 : `migrations_terminees` et `derniere_migration` identiques ; les autres compteurs ≤ E1 ; les dates « la plus récente » ≤ T0. Un écart est normal s'il s'explique par l'activité entre T0 et T1.
+5. Consigner dans l'issue #400 : nom de la branche, T0, T1, E0, E1. Aucune URL.
+
+Ce que cela prouve : la restauration à un instant donné ouvre une base lisible qui contient les données et les migrations attendues. Ce que cela ne prouve pas : la durée maximale de conservation de l'historique (à lire dans les réglages Neon) ni le temps d'une vraie restauration de Production.

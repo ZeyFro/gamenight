@@ -96,6 +96,8 @@ export async function run(env = process.env, { log = console.log, fail = console
 
   const databaseUrl = gateDatabaseUrl(env);
   if (!databaseUrl) return refuse("aucune URL de base (MIGRATION_GATE_DATABASE_URL ou DATABASE_URL) : état indéterminable.");
+  // Nom de la variable seulement, jamais sa valeur : permet de vérifier que le rôle dédié est bien utilisé.
+  log(`[migration-gate] source de connexion : ${env.MIGRATION_GATE_DATABASE_URL ? "MIGRATION_GATE_DATABASE_URL (rôle dédié)" : "DATABASE_URL"}.`);
   let local;
   try {
     local = listLocalMigrations(env.MIGRATION_GATE_DIR || "prisma/migrations");

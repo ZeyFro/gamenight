@@ -46,3 +46,45 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "$output"
           exit "$code"
+      # Simulation de la garde de build en application stricte : prouve que le schéma est à jour et que la
+      # connexion de lecture fonctionne. Si le secret facultatif MIGRATION_GATE_DATABASE_URL (rôle dédié en
+      # SELECT seul) existe dans l'environnement, c'est lui qui est testé ; sinon l'URL de migration.
+      - name: Garde de build, simulation stricte (lecture seule)
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          VERCEL_ENV: production
+          MIGRATION_GATE_ENFORCE: "true"
+          MIGRATION_GATE_DATABASE_URL: ${{ secrets.MIGRATION_GATE_DATABASE_URL }}
+        run: |
+          set +e
+          output="$(node scripts/assert-migrations-applied.mjs 2>&1)"
+          code=$?
+          set -e
+          {
+            echo "## Garde de build : simulation stricte"
+            echo
+            echo '```'
+            echo "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$output"
+          exit "$code"
+      # Empreinte (compteurs et dates) à comparer avec la même requête exécutée sur une branche Neon restaurée.
+      - name: Empreinte de restauration (lecture seule)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set +e
+          output="$(node scripts/restore-fingerprint.mjs 2>&1)"
+          code=$?
+          set -e
+          {
+            echo "## Empreinte de la base (lecture seule)"
+            echo
+            echo '```'
+            echo "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$output"
+          exit "$code"
