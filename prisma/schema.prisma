@@ -43,6 +43,7 @@ enum FreeGameStore {
 }
 
 model User {
+  profileVisibility UserProfileVisibility?
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
@@ -2909,6 +2910,21 @@ model CommunityTeamMember {
 
   @@unique([teamId, userId])
   @@index([communityId, userId])
+}
+
+// Visibilité du profil (cahier §12.3 : respecter le choix de visibilité). Table séparée plutôt qu'une colonne de
+// User : aucune lecture de User ne dépend de la migration. Pas de ligne = COMMUNITY (comportement actuel).
+enum ProfileVisibility {
+  COMMUNITY
+  HIDDEN
+}
+
+model UserProfileVisibility {
+  userId     String            @id
+  visibility ProfileVisibility @default(COMMUNITY)
+  updatedAt  DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SessionGalleryMedia {

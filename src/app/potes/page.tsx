@@ -23,6 +23,9 @@ import { formatSteamActivityLabel } from "@/lib/steam";
 import { activeNowPlaying, isNowPlayingEnabled } from "@/lib/steam-now-playing";
 import { NowPlayingBadge } from "@/components/NowPlayingBadge";
 import { pageMetadata } from "@/lib/page-title";
+import { getProfileVisibility, isProfileVisibilityEnabled, profileVisibilityWhere } from "@/lib/profile-visibility";
+import { Button } from "@/components/ui/Button";
+import { setProfileVisibilityAction } from "./visibility-actions";
 
 export const metadata = pageMetadata("Potes");
 
@@ -43,7 +46,7 @@ export default async function PotesPage() {
   const rawPotes = await prisma.user.findMany({
     // Multi-communautés (PR4) : uniquement les membres de mes communautés
     // (aucun filtre si l'isolation est éteinte).
-    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id)] },
+    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere()] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,
@@ -99,6 +102,8 @@ export default async function PotesPage() {
   const now = nowMs();
   // « En jeu maintenant » : nouveau drapeau, éteint par défaut (alors rien ne change).
   const nowPlayingEnabled = isNowPlayingEnabled();
+  // Visibilité du profil : nouveau drapeau, éteint par défaut (alors rien ne change).
+  const visibility = isProfileVisibilityEnabled() ? await getProfileVisibility(user.id) : null;
 
   return (
     <PullToRefresh>
@@ -109,6 +114,20 @@ export default async function PotesPage() {
           {potes.length} membre{potes.length === 1 ? "" : "s"} dans le groupe.
         </p>
       </div>
+
+      {visibility && (
+        <Card>
+          <form action={setProfileVisibilityAction} className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-foreground">
+              {visibility === "HIDDEN"
+                ? "Ton profil est masqué : les autres membres ne le trouvent pas dans Potes et ne peuvent pas ouvrir ta fiche."
+                : "Ton profil est visible par les membres de ta communauté."}
+            </p>
+            <input type="hidden" name="visibility" value={visibility === "HIDDEN" ? "COMMUNITY" : "HIDDEN"} />
+            <Button type="submit" size="sm">{visibility === "HIDDEN" ? "Rendre mon profil visible" : "Masquer mon profil"}</Button>
+          </form>
+        </Card>
+      )}
 
       {potes.length === 0 ? (
         <Card>
