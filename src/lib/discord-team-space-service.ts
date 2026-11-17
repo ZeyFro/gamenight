@@ -139,19 +139,22 @@ export function createPrismaSpaceLinkStore(client = prisma): SpaceLinkStore {
 export interface TeamSpaceDiscordApi {
   snapshot(guildId: string): Promise<{ channels: GuildChannelSummary[]; roles: GuildRoleSummaryLite[] }>;
   createRole(guildId: string, name: string): Promise<string>;
-  createChannel(guildId: string, name: string, overwrites: OverwritePlan[]): Promise<string>;
+  createChannel(guildId: string, name: string, overwrites: OverwritePlan[], roleId: string | null): Promise<string>;
   renameChannel(channelId: string, name: string): Promise<void>;
   addMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
   removeMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
 }
 
 function clientFrom(api: TeamSpaceDiscordApi, guildId: string): TeamSpaceClient {
+  // Le rôle créé sert d'overwrite au salon : il doit exister avant sa création.
+  let roleId: string | null = null;
   return {
     async createRole(input) {
-      return { id: await api.createRole(guildId, input.name) };
+      roleId = await api.createRole(guildId, input.name);
+      return { id: roleId };
     },
     async createChannel(input) {
-      return { id: await api.createChannel(guildId, input.name, input.overwrites) };
+      return { id: await api.createChannel(guildId, input.name, input.overwrites, roleId) };
     },
     async editChannel(input) {
       await api.renameChannel(input.id, input.name);
