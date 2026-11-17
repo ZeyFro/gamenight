@@ -38,6 +38,32 @@ Deux runs antérieurs du même workflow sont en échec (`43388116969`, `43391940
 consultables s'arrêtent sur le nettoyage des checkouts et n'exposent pas la cause utile. À rejouer
 plutôt qu'à interpréter.
 
+### Dry-run exécuté le 17 novembre
+
+| Élément | Résultat |
+| --- | --- |
+| Run GitHub | `44077998286`, workflow `neon-test-migrations.yml`, `main` à `711e31d` |
+| Heure | déclenché 11:53:01 UTC, terminé en succès vers 11:55 UTC (~90 s de job) |
+| Approbation | environnement `neon-migration-test`, réviseur `ZeyFro`, approuvé pour ce run uniquement |
+| Opération | `dry-run` (seule option du workflow, zéro occurrence de `--execute`) |
+| Cible validée | `ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech:5432/neondb`, rôle `gamenight_test_migrator` |
+| Projet et branche | `misty-tooth-45335023`, branche `br-snowy-snow-b1cggq2w` |
+| Rôles | migration `gamenight_test_migrator`, runtime `neondb_owner`, distincts, TLS strict |
+| Migrations en attente | **2**, dans l'ordre, checksums conformes |
+| Divergence | **aucune** avec les contrôles du 6 et du 13 novembre |
+
+Le préflight a validé, dans une transaction `SET TRANSACTION READ ONLY` : identité de projet et de
+branche, rôle non superuser sans `CREATEDB`/`CREATEROLE`/`REPLICATION`/`BYPASSRLS`, aucune adhésion,
+propriété DDL des cinq tables de la migration et de l'enum `UserNotificationCategory`, les onze
+privilèges requis, et l'absence de doublon membre ou de créateur orphelin.
+
+**Nuance de lecture :** le préflight valide l'identité en dur mais n'imprime pas les identifiants ;
+« projet et branche » ci-dessus viennent des contrôles du script, pas d'une ligne de journal.
+
+**Écart avec le run du 13 novembre :** ce jour-là, seule `20261104140000` apparaissait, parce que le
+workflow d'application n'assemble que la première migration. Le workflow de dry-run assemble les deux :
+la liste à deux entrées est la normale, pas une régression.
+
 ## 3. Restauration
 
 Aucune restauration n'a été exécutée ni éprouvée à ce jour. La sauvegarde existe et était `ready`
