@@ -29,3 +29,10 @@ Une décision §26 déjà tranchée par une décision ultérieure approuvée n'e
 
 ## Poste de travail
 Maxime travaille sur trois PC : PC fixe, Portable 1 et Portable 2. Le nom du poste et ses chemins sont indiqués dans `~/.codex/AGENTS.md`, bloc « Machine actuelle ». Consulte ce bloc dans l'environnement local concerné ; ne mets jamais de chemin absolu en dur dans le code ou la documentation du dépôt.
+
+## Règles permanentes (Maxime, 2026-11-17)
+- Le poste de travail de référence est le PC fixe ; les autres machines ne servent pas aux missions GameNight.
+- Avant de développer, récupérer le contexte nécessaire seulement : `AGENTS.md`, `docs/CAHIER_DES_CHARGES.md`, les notes `docs/obsidian/` concernées et la base commune (hors dépôt). Pas de relecture intégrale de la documentation.
+- Après chaque fonctionnalité : mettre à jour les notes Obsidian concernées, puis pousser sur la branche d'agent autorisée. Jamais sur `main`.
+- Avant d'intégrer le travail d'un autre agent, vérifier son diff et ses modifications réelles ; ne jamais fusionner ou reprendre à l'aveugle.
+- GitHub porte le code versionné ; Obsidian et la base commune portent les décisions, le contexte et le suivi. Ne pas créer de système documentaire parallèle.
