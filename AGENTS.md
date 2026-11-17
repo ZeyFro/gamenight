@@ -14,7 +14,7 @@ Après chaque PR ouverte, passe immédiatement à la première tâche suivante n
 ## Seuls cas d'arrêt
 Arrête-toi et demande une décision uniquement si :
 1. la tâche dépend d'un point encore ouvert dans « Décisions encore ouvertes » (§26) du cahier ;
-2. elle implique une migration Prisma ou toute action sur la base de Production ;
+2. elle implique une action manuelle sur la base de Production (une migration dans une PR n'est plus un cas d'arrêt : elle est appliquée automatiquement après fusion, voir `docs/MIGRATIONS.md`) ;
 3. elle implique une modification de permissions ou la suppression d'un rôle Discord ;
 4. les tests restent en échec après deux tentatives de correction ;
 5. la demande contredit le cahier des charges.

@@ -4,6 +4,8 @@
 
 - [README](../README.md) — présentation, fonctions et stack.
 - [Développement local](DEVELOPPEMENT_LOCAL.md) — PostgreSQL local, migrations, OAuth et tests.
+- [Migrations Prisma](MIGRATIONS.md) — méthode standard : PR, CI, fusion, application automatique.
+- [Activation de la Tour](ACTIVATION_TOUR.md) — les 4 interrupteurs en une soirée.
 - [.env.example](../.env.example) — noms des variables et interrupteurs ; aucune valeur réelle.
 - [Brief initial](../SPEC-gamenight.md) — intention de départ, document historique qui ne décrit pas tout l’état actuel.
 
@@ -27,6 +29,8 @@
 - [Réconciliation sécurité du travail de Claude](SECURITE_CLAUDE.md) — constats, preuves, correctifs et limites restant à vérifier.
 - [Déploiement multi-communautés](COMMUNITY_ROLLOUT.md) — ordre de configuration et limites opérationnelles.
 - [Feuille de route GameNight et The Tower 2.0](ROADMAP.md) — suivi vivant et découpage en PR.
+- [État factuel Neon Test et pile Tower](NEON_TEST_ETAT_20261117.md) — constats du 17/11 et opérations soumises à autorisation.
+- [Plan J-14 vers le 1er décembre](PLAN-J14-20261201.md) — périmètre, calendrier et chemin critique du sprint.
 
 ## Recettes et documents de référence
 
