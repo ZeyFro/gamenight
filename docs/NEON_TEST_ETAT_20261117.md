@@ -132,6 +132,78 @@ relever la limite du projet. Une suppression n'a pas été tentée.
 timeline (`parent_lsn 0/19DBC68`). C'est une répétition synthétique sur un projet séparé, **pas** une
 restauration de `br-purple-mud-b1nt0tfi` ; elle ne constitue donc pas la preuve demandée.
 
+## 7. Contrôles non destructifs sur la sauvegarde — 17 novembre
+
+### Identité et disponibilité
+
+| Champ | Valeur |
+| --- | --- |
+| ID | `br-purple-mud-b1nt0tfi` |
+| Nom | `backup-tower-migration-test-20261106` |
+| État | `ready` |
+| Création | `2026-11-06T13:24:17Z` |
+| Parent | `br-snowy-snow-b1cggq2w`, `parent_lsn 0/2A355C30`, `parent_timestamp 2026-11-06T12:26:10Z` |
+| Taille logique | 42 876 928 octets |
+| Endpoints | **aucun** — `connection-string` répond « No endpoint found for the branch » |
+
+Conséquence : la branche de sauvegarde **n'est pas interrogeable en SQL** en l'état. Aucune connexion
+PostgreSQL n'a donc été ouverte et aucune requête n'a été exécutée.
+
+### Schéma vérifié sans compute
+
+La comparaison de schéma entre la cible de test et la sauvegarde ne montre que des différences de
+**propriétaire et de GRANT** : la cible a transféré les cinq tables (`Membership`, `CommunityTeam`,
+`CommunityTeamMember`, `TowerChallengeAttempt`, `PlayerClassified`) et l'enum `UserNotificationCategory`
+à `gamenight_test_migrator`, la sauvegarde les laisse à `neondb_owner`. **Aucune différence
+structurelle.**
+
+État « avant migration » confirmé dans la sauvegarde :
+
+- `TowerChallengeAppeal` absent ;
+- `'REWARD'` absent de l'enum `UserNotificationCategory` ;
+- aucune colonne `lastTeamLeftAt`, `captainId`, `captainLastActivityAt`, `proofCode`, `rejectedAt`,
+  `staffReportedAt`, `archivedAt`, `startsAt`, `durationMinutes`, `platform`, `microphoneRequirement` ;
+- index `CommunityTeamMember_communityId_userId_idx` présent mais **non unique** : l'unicité ajoutée par
+  #370 n'existe pas encore, ce qui est attendu.
+
+### Non exécuté faute d'endpoint
+
+Historique `_prisma_migrations` (nombre, inachevées, dernière terminée), agrégats de cohérence
+doublons/orphelins, comptages par table et transaction `READ ONLY` : tout cela exige un compute.
+
+### Procédure de preuve complète (après libération d'une place)
+
+1. `branches create --project-id misty-tooth-45335023 --name restore-check-20261117 --parent br-purple-mud-b1nt0tfi --no-secrets`
+   (la sauvegarde est elle-même le point `0/2A355C30` ; le LSN n'est pas rejouable, la fenêtre PITR est dépassée).
+2. Se connecter en `BEGIN TRANSACTION READ ONLY`, avec `default_transaction_read_only` vérifié, et exécuter
+   le contrôleur `.git/neon-readonly-check.mjs` : identité, `_prisma_migrations`, tables, enum, index,
+   doublons, orphelins, comptages.
+3. Comparer aux mêmes requêtes sur `br-purple-mud-b1nt0tfi` (une fois un accès disponible) et aux valeurs
+   documentées : les comptages doivent être identiques et les propriétaires doivent réapparaître en
+   `neondb_owner`, pas en `gamenight_test_migrator`.
+4. Consigner la preuve datée (heure UTC, IDs, sorties SQL brutes sans secret).
+5. Après accord séparé : `branches delete restore-check-20261117`. Ne jamais toucher la sauvegarde.
+
+**Point de vigilance opérationnel :** une copie de la sauvegarde rend les propriétaires à
+`neondb_owner`. Le préflight des migrations exige que `gamenight_test_migrator` possède les cinq tables
+et l'enum : sur une branche restaurée, il faudra donc rejouer l'attribution de propriété avant tout
+apply, sinon le préflight échouera — comportement correct, mais à prévoir.
+
+### Recommandation pour libérer une seule place
+
+Candidate unique proposée : **`portable1-recette-20261019`** (`br-snowy-forest-b1vagbak`, archivée,
+créée le 19/10, parent `br-super-cell-b1ukvk08`, LSN `0/1DA1BFD8`, 41 443 328 octets).
+
+Justification : c'est une branche de **recette**, pas une sauvegarde ; aucun document du dépôt ne la
+cite ; elle est antérieure aux branches de test actuelles et son contenu est reproductible depuis la
+Production. Les deux branches explicitement protégées par la documentation
+(`backup-avant-tower-migrations-20261030`, « ne jamais supprimer ») et `backup-avant-multiserveur`
+sont exclues.
+
+Conséquence : perte d'un instantané de recette du 19/10 et des éventuels écarts de schéma accumulés
+ce jour-là ; aucun impact sur la Production, la cible de test ni la sauvegarde du 6 novembre.
+Aucune suppression n'a été exécutée.
+
 ## 4. Garde-fous GitHub constatés
 
 - Environnement `neon-migration-test` : `required_reviewers` **et** `branch_policy` → chaque exécution
