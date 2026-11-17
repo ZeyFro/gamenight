@@ -3,8 +3,8 @@
 **Fichier de patch** : `docs/patches/20261117-equipes-capitaine-370-408.patch`
 **Fichiers cibles** : `src/app/equipes/page.tsx` (affichage) et `src/lib/community-teams.ts`
 (gating du recrutement) — deux fichiers, deux hunks métier + un import.
-**PR propriétaires** : #370 (`feat/tower-team-rules-20261104`, tête relevée `e4778a6`) et
-#408 (`codex/tower-pr-equipes-20261105`, tête relevée `3465c39`).
+**PR propriétaires** : #370 (`feat/tower-team-rules-20261104`, tête vérifiée `9373099` le 17/11/2026, précédemment `e4778a6`) et
+#408 (`codex/tower-pr-equipes-20261105`, tête vérifiée `3465c39` le 17/11/2026).
 **Dépendance** : commit `171e779` de `agent/preflight-20261116`.
 
 ## Comportement incorrect
@@ -90,8 +90,7 @@ Le dry-run y échoue volontairement (hunk 2), ce qui est le comportement attendu
 
 ## Preuves de non-régression
 
-- Dry-run `patch -p1 -F0 --dry-run` : **succès sans tolérance de contexte** sur les deux
-  têtes `e4778a6` (#370) et `3465c39` (#408), pour les deux fichiers — chaque paire de
+- Dry-run `patch -p1 -F0 --dry-run` : **succès sans tolérance de contexte** sur les têtes alors relevées, revérifié le 17/11/2026 sur `9373099` (#370) et `3465c39` (#408), pour les deux fichiers — chaque paire de
   versions est identique, vérifié par `cmp`.
 - Application réelle du patch sur une copie de #370 : **0 occurrence** de
   `members[0]` dans `community-teams.ts`, `teamCaptainId` bien importé et utilisé
