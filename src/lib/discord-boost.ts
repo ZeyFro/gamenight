@@ -17,14 +17,21 @@ export type BoosterStatus =
   | { status: "INACTIVE" }
   | { status: "UNAVAILABLE" };
 
-const REQUEST_BUDGET_MS = 6_000;
+/** Budget Discord de la commande `/boost` (réponse différée, place large). */
+export const BOOSTER_REQUEST_BUDGET_MS = 6_000;
 
 export async function readBoosterStatus(input: {
   guildId: string;
   discordId: string;
   now?: Date;
+  /**
+   * Budget réseau propre à l'appelant : le profil web ne peut pas attendre
+   * plusieurs secondes avant de peindre la page, `/boost` si.
+   */
+  budgetMs?: number;
 }): Promise<BoosterStatus> {
-  const deadline = new Date(Date.now() + REQUEST_BUDGET_MS);
+  const budget = Math.max(200, Math.min(input.budgetMs ?? BOOSTER_REQUEST_BUDGET_MS, BOOSTER_REQUEST_BUDGET_MS));
+  const deadline = new Date(Date.now() + budget);
   const member = await getGuildMemberProfile({
     guildId: input.guildId,
     userId: input.discordId,

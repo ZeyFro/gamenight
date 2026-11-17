@@ -51,3 +51,31 @@ describe("branchement de /aide et /profil", () => {
     expect(read(".env.example")).toContain("DISCORD_BOOSTER_ENABLED");
   });
 });
+
+describe("déclaration Discord de /equipe (lecture seule)", () => {
+  it("déclare trois sous-commandes explicites", () => {
+    const command = commands.find((entry) => entry.name === "equipe") as
+      | { options?: Array<{ name: string; type: number }> }
+      | undefined;
+    expect(command, "/equipe déclarée").toBeDefined();
+    expect((command!.options ?? []).map((option) => option.name)).toEqual(["liste", "moi", "voir"]);
+    expect((command!.options ?? []).every((option) => option.type === 1)).toBe(true);
+  });
+
+  it("route /equipe vers un handler différé après l’ACK", () => {
+    const interactions = read("src/lib/discord-interactions.ts");
+    expect(interactions).toContain('interaction.data?.name === "equipe"');
+    expect(interactions).toContain("handleSignedTeamInteraction");
+    expect(interactions).toContain("runTeams?: () => Promise<void>");
+    expect(read("src/app/api/discord/interactions/route.ts")).toContain("if (runTeams) after(runTeams);");
+    expect(read(".env.example")).toContain("DISCORD_TEAM_COMMAND_ENABLED");
+  });
+
+  it("ne branche aucune écriture d’équipe dans Discord", () => {
+    const handler = read("src/lib/discord-team-commands.ts");
+    for (const forbidden of ["createCommunityTeam", "joinCommunityTeam", "leaveCommunityTeam", "setCommunityTeamRecruitment"]) {
+      expect(handler, forbidden).not.toContain(forbidden);
+    }
+    expect(handler).toContain("listCommunityTeams");
+  });
+});

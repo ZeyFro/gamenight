@@ -53,6 +53,7 @@ export function commandStates(env: NodeJS.ProcessEnv = process.env) {
     setup: env.COMMUNITY_SETUP_COMMAND_ENABLED === "true",
     profile: env.DISCORD_PROFILE_COMMAND_ENABLED === "true",
     boost: env.DISCORD_BOOSTER_ENABLED === "true",
+    teams: env.DISCORD_TEAM_COMMAND_ENABLED === "true",
   };
 }
 
@@ -72,7 +73,8 @@ export function buildHelpContent(env: NodeJS.ProcessEnv = process.env): string {
     "**Réservé à la modération**",
     `• \`/gamenight setup\` — activer GameNight sur le serveur (${state(flags.setup)}).`,
     "• \`/tower-admin\` — catalogue des défis The Tower.",
-    "**En préparation** : `/equipe`, `/projet`, `/joueurs`, `/soiree`, `/tournoi`.",
+    `• \`/equipe\` — les équipes de la communauté, en lecture seule (${state(flags.teams)}).`,
+    "**En préparation** : la création d’équipe, `/projet`, `/joueurs`, `/soiree`, `/tournoi`. Aucune de ces commandes n’est simulée.",
     "Aucune commande ne donne de permission administrative : les rôles créés par GameNight sont toujours sans permission Discord.",
   ].join("\n");
 }

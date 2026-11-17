@@ -241,6 +241,45 @@
     ]
   },
   {
+    "name": "equipe",
+    "type": 1,
+    "description": "Les équipes de la communauté, en lecture seule",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "liste",
+        "description": "Les équipes de la communauté"
+      },
+      {
+        "type": 1,
+        "name": "moi",
+        "description": "Les équipes dont tu fais partie"
+      },
+      {
+        "type": 1,
+        "name": "voir",
+        "description": "Le détail d’une équipe",
+        "options": [
+          {
+            "type": 3,
+            "name": "equipe",
+            "description": "Nom (ou identifiant) de l’équipe",
+            "required": true,
+            "min_length": 1,
+            "max_length": 80
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "boost",
     "type": 1,
     "description": "Tes avantages Booster Discord",

@@ -36,6 +36,7 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_ROLE_COMMAND_ENABLED", "");
   vi.stubEnv("DISCORD_PROFILE_COMMAND_ENABLED", "");
   vi.stubEnv("DISCORD_BOOSTER_ENABLED", "");
+  vi.stubEnv("DISCORD_TEAM_COMMAND_ENABLED", "");
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("TOWER_CHALLENGES_ENABLED", "");
   vi.stubEnv("COMMUNITY_SETUP_COMMAND_ENABLED", "");
@@ -69,6 +70,7 @@ describe("/aide", () => {
       DISCORD_PROFILE_COMMAND_ENABLED: "true",
       COMMUNITY_SETUP_COMMAND_ENABLED: "true",
       DISCORD_BOOSTER_ENABLED: "true",
+      DISCORD_TEAM_COMMAND_ENABLED: "true",
     } as unknown as NodeJS.ProcessEnv);
     expect(on).toContain("actif");
     expect(on).not.toContain("en attente d’activation");
@@ -228,8 +230,9 @@ describe("/boost", () => {
     const patched = fetchMock.mock.calls.find((call) => (call[1]?.method ?? "").toUpperCase() === "PATCH");
     expect(patched).toBeDefined();
     const content = JSON.parse(String((patched![1] as { body: string }).body)).content as string;
-    expect(content).toContain("Avantages Booster actifs");
+    expect(content).toContain("Statut Booster vérifié");
     expect(content).toMatch(/<t:\d+:D>/);
+    expect(content).toContain("**Déjà appliqué dans GameNight**");
   });
 
   it("signale un membre qui ne booste pas, sans supprimer de données", async () => {
@@ -244,6 +247,8 @@ describe("/boost", () => {
     const content = JSON.parse(String((patched![1] as { body: string }).body)).content as string;
     expect(content).toContain("ne boosts pas");
     expect(content).toContain("restent intactes");
+    // Un non-booster voit les mêmes avantages en préparation : aucun n’est actif par défaut.
+    expect(content).toContain("_en préparation_");
   });
 
   it("n'affirme jamais qu'un membre ne booste pas quand Discord échoue", async () => {

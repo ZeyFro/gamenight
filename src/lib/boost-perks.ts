@@ -2,9 +2,15 @@
  * Avantages Booster Discord — règles PURES, sans base ni réseau.
  *
  * Décision produit : le statut Booster vient UNIQUEMENT de Discord
- * (`premium_since` sur le membre de serveur). Aucun second système concurrent
- * n'est créé, aucun avantage n'est calculé depuis un paiement ou un rôle
- * maison.
+ * (`premium_since` sur le membre de serveur), lu côté serveur. Aucun second
+ * système concurrent n'est créé, aucun avantage n'est calculé depuis un
+ * paiement ou un rôle maison.
+ *
+ * SOURCE UNIQUE : `BOOSTER_PERK_DEFINITIONS` est le seul endroit où un avantage
+ * est décrit. `/boost` (Discord) et le profil GameNight lisent cette même
+ * liste, et chaque entrée déclare son état RÉEL :
+ * - `APPLIED`   : codé et visible aujourd'hui, dans le produit ;
+ * - `PREPARING` : annoncé, mais pas encore actif — jamais présenté comme actif.
  *
  * Interdits tenus ici et vérifiés par test :
  * - aucun droit d'administration ou de modération ;
@@ -14,36 +20,80 @@
  * - aucune attribution automatique de rôle sensible ;
  * - aucune création illimitée de rôles ou de salons.
  *
- * Les avantages sont volontairement ESTHÉTIQUES ou d'accès : bannière, mise en
- * avant du profil, personnalisation encadrée d'un espace d'équipe, accès aux
- * salons réservés. Ils expirent avec le boost, mais les données personnelles
- * créées pendant le boost (équipes, historique) restent.
+ * Aucun historique de boost n'est conservé (pas de table, pas de migration) :
+ * rien n'est permanent, et aucun texte ne promet le contraire.
  */
 
-/** Ce qu'un Booster actif obtient — jamais une permission Discord. */
-export interface BoosterPerks {
-  /** Bannière de profil étendue (teinte/dégradé supplémentaires). */
-  extendedBanner: true;
-  /** Section de profil supplémentaire (présentation libre, plafonnée). */
-  extraProfileSection: true;
-  /** Distinction visible sur le profil et dans les listes de membres. */
-  badgeLabel: "Booster The Tower";
-  /** Personnalisation bornée de l'espace d'équipe (description + emoji). */
-  teamSpaceCustomization: { descriptionChars: number; emoji: true };
-  /** Accès aux salons communautaires réservés aux boosters. */
-  boosterChannels: true;
+/** État réel d'un avantage dans le produit, pas une intention marketing. */
+export type BoosterPerkAvailability = "APPLIED" | "PREPARING";
+
+/** Où l'avantage se voit une fois appliqué. */
+export type BoosterPerkSurface = "WEB" | "DISCORD" | "BOTH";
+
+export interface BoosterPerkDefinition {
+  key: string;
+  /** Libellé partagé par `/boost` et le profil : aucune divergence possible. */
+  label: string;
+  availability: BoosterPerkAvailability;
+  surface: BoosterPerkSurface;
 }
 
 /** Plafonds volontairement bas : une personnalisation, pas un pouvoir. */
 export const BOOSTER_TEAM_DESCRIPTION_CHARS = 300;
 
-export const BOOSTER_PERKS: BoosterPerks = {
-  extendedBanner: true,
-  extraProfileSection: true,
-  badgeLabel: "Booster The Tower",
-  teamSpaceCustomization: { descriptionChars: BOOSTER_TEAM_DESCRIPTION_CHARS, emoji: true },
-  boosterChannels: true,
-};
+/** Nom court de la distinction, réutilisé par le badge web et `/boost`. */
+export const BOOSTER_BADGE_LABEL = "Booster The Tower";
+
+export const BOOSTER_PERK_DEFINITIONS = [
+  {
+    key: "profileBadge",
+    label: `Distinction « ${BOOSTER_BADGE_LABEL} » sur ton profil GameNight`,
+    availability: "APPLIED",
+    surface: "WEB",
+  },
+  {
+    key: "profileRing",
+    label: "Halo lumineux autour de ton avatar, visible par la communauté",
+    availability: "APPLIED",
+    surface: "WEB",
+  },
+  {
+    key: "extendedBanner",
+    label: "Bannière de profil étendue",
+    availability: "PREPARING",
+    surface: "BOTH",
+  },
+  {
+    key: "extraProfileSection",
+    label: "Section de présentation supplémentaire sur ton profil",
+    availability: "PREPARING",
+    surface: "WEB",
+  },
+  {
+    key: "teamSpaceCustomization",
+    label: `Personnalisation de l’espace d’équipe : description (${BOOSTER_TEAM_DESCRIPTION_CHARS} caractères) et emoji`,
+    availability: "PREPARING",
+    surface: "BOTH",
+  },
+  {
+    key: "boosterChannels",
+    label: "Accès aux salons communautaires réservés aux boosters",
+    availability: "PREPARING",
+    surface: "DISCORD",
+  },
+] as const satisfies readonly BoosterPerkDefinition[];
+
+export type BoosterPerkKey = (typeof BOOSTER_PERK_DEFINITIONS)[number]["key"];
+
+/** Avantages réellement utilisables aujourd'hui. */
+export function appliedBoosterPerks(): readonly BoosterPerkDefinition[] {
+  return BOOSTER_PERK_DEFINITIONS.filter((perk) => perk.availability === "APPLIED");
+}
+
+/** Avantages annoncés mais volontairement pas encore actifs. */
+export function preparingBoosterPerks(): readonly BoosterPerkDefinition[] {
+  return BOOSTER_PERK_DEFINITIONS.filter((perk) => perk.availability === "PREPARING");
+}
 
 /**
  * Liste des capacités explicitement REFUSÉES aux boosters. Codée en dur pour
@@ -59,10 +109,6 @@ export const BOOSTER_FORBIDDEN = [
   "création illimitée de rôles ou de salons",
 ] as const;
 
-export function boosterPerks(active: boolean): BoosterPerks | null {
-  return active ? BOOSTER_PERKS : null;
-}
-
 export interface BoosterStatusInput {
   active: boolean;
   /** `premium_since` renvoyé par Discord (ISO 8601) ou `null`. */
@@ -75,8 +121,8 @@ export function describeBoosterStatus(input: BoosterStatusInput): string {
     return "Tu ne boosts pas le serveur en ce moment. Les avantages Booster sont inactifs ; tes données personnelles et tes équipes restent intactes.";
   }
   const since = input.since ? Date.parse(input.since) : Number.NaN;
-  if (!Number.isFinite(since)) return "Tu boosts le serveur. Avantages Booster actifs.";
-  return `Tu boosts le serveur depuis <t:${Math.floor(since / 1000)}:D>. Avantages Booster actifs.`;
+  if (!Number.isFinite(since)) return "Tu boosts le serveur. Statut Booster vérifié.";
+  return `Tu boosts le serveur depuis <t:${Math.floor(since / 1000)}:D>. Statut Booster vérifié.`;
 }
 
 /** Contenu de `/boost` (pur). `enabled` vient de `DISCORD_BOOSTER_ENABLED`. */
@@ -86,21 +132,29 @@ export function renderBoosterAdvantages(input: {
   enabled: boolean;
 }): string {
   if (!input.enabled) {
-    return "Les avantages Booster ne sont pas encore ouverts sur ce serveur.";
+    return [
+      "Les avantages Booster ne sont pas encore ouverts sur ce serveur.",
+      "Aucun avantage Booster n’est appliqué pour le moment, et rien n’est promis avant validation.",
+    ].join("\n");
   }
+  const applied = appliedBoosterPerks();
+  const preparing = preparingBoosterPerks();
   return [
     "💜 **Avantages Booster The Tower**",
     describeBoosterStatus({ active: input.active, since: input.since }),
+    "Statut lu à la source Discord, côté serveur — jamais depuis ton navigateur. Aucun historique de boost n’est conservé : rien n’est permanent.",
     "",
-    "**Ce que tu obtiens en boostant**",
-    "• Bannière de profil étendue et distinction « Booster The Tower ».",
-    "• Une section de présentation supplémentaire sur ton profil GameNight.",
-    `• Personnalisation de l’espace de ton équipe : description (${BOOSTER_TEAM_DESCRIPTION_CHARS} caractères) et emoji.`,
-    "• Accès aux salons communautaires réservés aux boosters.",
+    "**Déjà appliqué dans GameNight**",
+    ...applied.map((perk) => `• ${perk.label}`),
+    "",
+    input.active
+      ? "**En préparation — pas encore actif, même en boostant**"
+      : "**En préparation — pas encore actif**",
+    ...preparing.map((perk) => `• ${perk.label} — _en préparation_`),
     "",
     "**Ce que le boost ne donne jamais**",
     ...BOOSTER_FORBIDDEN.map((item) => `• ${item}.`),
     "",
-    "Tes récompenses déjà obtenues restent dans ton historique, même si tu arrêtes de booster. Seuls les avantages exclusifs s’éteignent.",
+    "Tes récompenses déjà obtenues restent dans ton historique. Seuls les avantages exclusifs s’éteignent quand tu arrêtes de booster.",
   ].join("\n");
 }

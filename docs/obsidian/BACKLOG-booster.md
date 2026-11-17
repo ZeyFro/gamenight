@@ -19,3 +19,14 @@ Trois décisions confirmées consignées dans `docs/DECISIONS_BOOSTER_20261116.m
 - Application des avantages dans l'UI web et les espaces d'équipe Discord : #370/#408 + lot UI dédié.
 - Enregistrement des commandes : accord #400.
 - Aucune modification du Discord réel ni de la Production.
+
+## Correctif 17/11/2026 — promesses alignées sur le réel
+
+- `/boost` ne présente plus rien comme actif sans application vérifiable :
+  sections « Déjà appliqué » / « En préparation » / « Jamais ».
+- Deux avantages réellement livrés, côté profil web : distinction « Booster The
+  Tower » et anneau d'avatar, calculés côté serveur depuis `premium_since`.
+- Bannière étendue, section de présentation, personnalisation d'équipe et salons
+  réservés : **en préparation** (migration ou #370/#408).
+- Aucun historique conservé → aucun avantage présenté comme permanent.
+- Suite : `/equipe liste|moi|voir` en lecture seule (voir `DISCORD-equipe-v1.md`).

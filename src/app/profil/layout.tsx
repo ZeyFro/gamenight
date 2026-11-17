@@ -9,6 +9,8 @@ import { getGlobalRank, getProfileStats } from "@/lib/profile-stats";
 import { nowMs } from "@/lib/wallclock";
 import { formatSteamActivityLabel } from "@/lib/steam";
 import { RankAvatar } from "@/components/RankAvatar";
+import { BoosterBadge, boosterRingClass } from "@/components/BoosterBadge";
+import { loadViewerBoosterState } from "@/lib/booster-profile";
 import { BannerImage } from "@/components/BannerImage";
 import { ColorDot } from "@/components/ColorDot";
 import { ProfilTabs } from "@/components/ProfilTabs";
@@ -77,9 +79,15 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
     nowMs()
   );
 
-  const [stats, globalRank] = await Promise.all([
+  // Distinction Booster : vérifiée côté serveur (session + `discordId` relus en
+  // base), jamais depuis une valeur du navigateur. Fonctionnalité fermée ou
+  // Discord muet → aucun badge, jamais un faux positif.
+  const [stats, globalRank, booster] = await Promise.all([
     getProfileStats(user.id, user.streakCount),
     getGlobalRank(user.xpTotal, user.id),
+    communityId
+      ? loadViewerBoosterState({ userId: user.id, communityId })
+      : Promise.resolve({ kind: "DISABLED" as const }),
   ]);
 
   return (
@@ -101,11 +109,14 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
       <div className="flex flex-col gap-4 px-4 sm:px-6">
         <ParallaxHeader className="-mt-16 flex items-end gap-4 sm:-mt-20">
-          <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={96} />
+          <div className={boosterRingClass(booster)}>
+            <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={96} />
+          </div>
           <div className="name-halo relative flex flex-1 flex-col gap-1 pb-1">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
               {user.discordName}
               <ColorDot color={color} title="Ta couleur équipée" />
+              <BoosterBadge state={booster} />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <span

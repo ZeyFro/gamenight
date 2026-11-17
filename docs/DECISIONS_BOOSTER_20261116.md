@@ -96,3 +96,55 @@ parallèle n'est créé.
    #370/#408 (équipes) et d'un lot UI dédié.
 3. Enregistrement des commandes Discord : accord explicite requis (#400).
 4. Aucune modification du serveur Discord réel ni de Production effectuée par ce document.
+
+## Correctif du 17/11/2026 — aucune promesse sans application réelle
+
+Constat de recette : `/boost` annonçait des avantages qu'aucune surface de
+GameNight n'appliquait. Le lot est corrigé ainsi, sans migration et sans
+toucher aux PR réservées.
+
+### Une seule définition, avec état réel
+
+`src/lib/boost-perks.ts` expose `BOOSTER_PERK_DEFINITIONS`, l'unique liste des
+avantages. Chaque entrée porte `availability` :
+
+- `APPLIED` — l'avantage est codé et visible aujourd'hui ;
+- `PREPARING` — l'avantage est annoncé, jamais présenté comme actif.
+
+État courant :
+
+| Avantage | État | Où |
+| --- | --- | --- |
+| Distinction « Booster The Tower » | `APPLIED` | profil web |
+| Halo lumineux autour de l'avatar | `APPLIED` | profil web |
+| Bannière de profil étendue | `PREPARING` | web + Discord |
+| Section de présentation supplémentaire | `PREPARING` | web |
+| Personnalisation d'espace d'équipe (300 caractères + emoji) | `PREPARING` | web + Discord |
+| Salons réservés aux boosters | `PREPARING` | Discord |
+
+`/boost` affiche trois blocs séparés : « Déjà appliqué », « En préparation »
+(Étiqueté « _en préparation_ », y compris pour un booster actif), et « Ce que le
+boost ne donne jamais ». Un booster actif ne voit donc jamais un avantage futur
+présenté comme actif.
+
+### Vérification côté serveur (profil)
+
+`src/lib/booster-profile.ts` (`loadViewerBoosterState`) relit l'identité en base
+à partir de la session serveur (`userId` → `User.discordId`, `Community.discordGuildId`)
+puis interroge Discord. Aucune valeur du navigateur n'est acceptée : le badge ne
+peut pas être auto-attribué. Quatre états : `DISABLED` (interrupteur ou jeton
+absent, aucun appel), `ACTIVE`, `INACTIVE`, `UNKNOWN` (Discord muet ou trop lent
+— budget de 1,2 s pour ne pas bloquer la page).
+
+Le rendu est purement cosmétique (`src/components/BoosterBadge.tsx`) : badge +
+anneau d'avatar, rien d'autre. Un `UNKNOWN` n'affiche rien plutôt que d'inventer.
+
+### Limites assumées
+
+- Aucun historique de boost : la distinction disparaît dès l'arrêt du boost.
+  Aucun texte ne promet un avantage permanent.
+- Bannière étendue, section de présentation, personnalisation d'équipe et salons
+  réservés restent `PREPARING` : ils exigent soit une migration, soit #370/#408.
+- `/boost` et `/profil` restent désactivés par défaut (`DISCORD_BOOSTER_ENABLED`,
+  `DISCORD_PROFILE_COMMAND_ENABLED`), et le badge ne s'affiche que si le même
+  interrupteur est actif avec `DISCORD_BOT_TOKEN`.
