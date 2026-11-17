@@ -24,12 +24,12 @@ describe("community teams access", () => {
     await expect(getCommunityTeamsCommunityId("user-1")).resolves.toBeNull();
   });
 
-  it("joinCommunityTeam : P2002 à la relance après P2034 → already (pas de 500)", async () => {
+  it("joinCommunityTeam : P2002 à la relance après P2034 → already_team (pas de 500)", async () => {
     mocks.resolveActiveCommunityId.mockResolvedValue("community-1");
     mocks.membershipFindUnique.mockResolvedValue({ status: "ACTIVE", community: { status: "ACTIVE", communityTeamsEnabled: true } });
     const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "test" });
     mocks.transaction.mockRejectedValueOnce(known("P2034")).mockRejectedValueOnce(known("P2002"));
-    await expect(joinCommunityTeam("user-1", "community-1", "team-1")).resolves.toBe("already");
+    await expect(joinCommunityTeam("user-1", "community-1", "team-1")).resolves.toBe("already_team");
     expect(mocks.transaction).toHaveBeenCalledTimes(2);
   });
 

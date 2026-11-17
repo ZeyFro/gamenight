@@ -21,6 +21,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Les tâches et 
 | `/api/cron/retention-cleanup` | GET | Nettoyage de rétention |
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
+| `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
 | `/api/backfill/game-news` | POST | Backfill des nouvelles de jeux |
 | `/api/backfill/igdb-coop` | GET, POST | Backfill des données coop IGDB |
 | `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed |
@@ -51,6 +52,7 @@ Laissées synchrones (travail court ou budget interne) :
 | `monthly-tasks` | no-op hors de la date d’échéance | défaut plateforme |
 | `close-sessions` | requêtes et écritures en base, les annonces sont mises en file ; budget de 45 s (#354), arrêt signalé par `budgetExhausted: true` | 60 |
 | `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit | 60 |
+| `team-captain-handover` | au plus 25 équipes préfiltrées ; dry-run sauf `TEAM_CAPTAIN_HANDOVER_MODE=execute` | 60 |
 
 Un budget atteint n’est pas une erreur : le travail restant est repris au passage suivant (étapes idempotentes). Au-delà de 30 s, cron-job.org coupe la connexion mais la fonction continue jusqu’à son budget.
 
