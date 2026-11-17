@@ -1,0 +1,61 @@
+name: Migrations Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-migrations
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Vérifier le secret et l'URL directe
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::Secret PRODUCTION_MIGRATION_DATABASE_URL absent."
+            exit 1
+          fi
+          case "$DATABASE_URL" in
+            *-pooler*)
+              echo "::error::L'URL contient -pooler : utiliser l'URL directe Neon."
+              exit 1
+              ;;
+          esac
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Point de restauration Neon
+        shell: bash
+        run: |
+          {
+            echo "## Point de restauration Neon"
+            echo
+            echo "Heure UTC avant migration : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: État avant migration
+        run: npx prisma migrate status || true
+      - name: Appliquer les migrations
+        run: npx prisma migrate deploy
+      - name: État après migration
+        run: npx prisma migrate status
