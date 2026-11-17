@@ -3086,6 +3086,25 @@ model CommunityChannelConfig {
   @@unique([communityId, category])
 }
 
+// Association fiable équipe ↔ ressources Discord gérées par GameNight.
+// Aucune relation Prisma vers CommunityTeam/Community : la migration est
+// volontairement isolée (voir docs/migrations/pending/…) et ne touche aucune
+// table existante. `teamId` et `channelId` sont uniques : un rejeu ne peut pas
+// créer un second espace pour la même équipe.
+model DiscordTeamSpace {
+  id          String   @id @default(cuid())
+  teamId      String   @unique
+  communityId String
+  guildId     String
+  channelId   String   @unique
+  roleId      String
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([communityId])
+}
+
 model CommunityDate {
   id String @id @default(cuid())
   communityId String

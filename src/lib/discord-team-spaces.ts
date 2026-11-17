@@ -238,11 +238,16 @@ export interface TeamSpaceClient {
   createRole(input: { name: string; permissions: "0"; mentionable: false; hoist: false }): Promise<{ id: string }>;
   createChannel(input: { name: string; type: 0; overwrites: OverwritePlan[]; reason: string }): Promise<{ id: string }>;
   editChannel?(input: { id: string; name: string; reason: string }): Promise<unknown>;
+  addMemberRole?(input: { userId: string; roleId: string }): Promise<unknown>;
+  removeMemberRole?(input: { userId: string; roleId: string }): Promise<unknown>;
 }
 
 export type TeamSpaceApplyResult = {
   status: "disabled" | "applied" | "partial" | "ineligible";
   steps: Array<{ key: string; kind: TeamSpaceStep["kind"]; status: "ok" | "skipped" | "failed"; detail?: string }>;
+  /** Identifiants réellement obtenus/créés — à persister par l'appelant. */
+  roleId?: string;
+  channelId?: string;
 };
 
 export function teamSpacesEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -260,19 +265,21 @@ export async function applyTeamSpacePlan(
   const steps: TeamSpaceApplyResult["steps"] = [];
   let roleFailed = false;
   let channelFailed = false;
+  let roleId: string | undefined;
+  let channelId: string | undefined;
 
   for (const step of plan.steps) {
-    if (step.kind === "members") {
-      steps.push({ key: plan.spaceKey, kind: step.kind, status: roleFailed || channelFailed ? "skipped" : "ok" });
-      continue;
-    }
+    // Les membres sont traités après la boucle (le rôle doit exister).
+    if (step.kind === "members") continue;
     if (step.kind === "role") {
+      roleId = step.targetId;
       if (step.action === "reuse") {
         steps.push({ key: step.key, kind: step.kind, status: "ok", detail: "existing" });
         continue;
       }
       try {
-        await client.createRole({ name: step.name, permissions: "0", mentionable: false, hoist: false });
+        const created = await client.createRole({ name: step.name, permissions: "0", mentionable: false, hoist: false });
+        roleId = created.id;
         steps.push({ key: step.key, kind: step.kind, status: "ok" });
       } catch (error) {
         roleFailed = true;
@@ -285,6 +292,7 @@ export async function applyTeamSpacePlan(
       continue;
     }
     if (step.action === "reuse") {
+      channelId = step.targetId;
       steps.push({ key: step.key, kind: step.kind, status: "ok", detail: "existing" });
       continue;
     }
@@ -302,7 +310,8 @@ export async function applyTeamSpacePlan(
         if (!client.editChannel) throw new Error("editChannel indisponible");
         await client.editChannel({ id: step.targetId!, name: step.name, reason: "gn-team-restore" });
       } else {
-        await client.createChannel({ name: step.name, type: 0, overwrites: plan.overwrites, reason: "gn-team-space" });
+        const created = await client.createChannel({ name: step.name, type: 0, overwrites: plan.overwrites, reason: "gn-team-space" });
+        channelId = created.id;
       }
       steps.push({ key: step.key, kind: step.kind, status: "ok" });
     } catch (error) {
@@ -311,6 +320,32 @@ export async function applyTeamSpacePlan(
     }
   }
 
+  // Membres : ajout du rôle aux membres actuels, retrait aux départs connus.
+  const memberStep = plan.steps.find((step) => step.kind === "members");
+  if (memberStep && memberStep.kind === "members") {
+    if (roleFailed || channelFailed || !roleId || !client.addMemberRole) {
+      steps.push({ key: plan.spaceKey, kind: "members", status: "skipped" });
+    } else {
+      let memberFailed = false;
+      for (const userId of memberStep.members) {
+        try {
+          await client.addMemberRole({ userId, roleId });
+        } catch {
+          memberFailed = true;
+        }
+      }
+      for (const userId of memberStep.departed) {
+        try {
+          await client.removeMemberRole?.({ userId, roleId });
+        } catch {
+          memberFailed = true;
+        }
+      }
+      steps.push({ key: plan.spaceKey, kind: "members", status: memberFailed ? "failed" : "ok" });
+      if (memberFailed) channelFailed = true;
+    }
+  }
+
   const failed = steps.some((step) => step.status === "failed");
-  return { status: failed ? "partial" : "applied", steps };
+  return { status: failed ? "partial" : "applied", steps, roleId, channelId };
 }

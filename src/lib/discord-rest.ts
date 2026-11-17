@@ -648,6 +648,19 @@ export async function createSetupChannel(input: { guildId: string; channel: Omit
     parse: (json) => { const r = setupChannelSchema.safeParse(json); return r.success && r.data.guild_id === input.guildId ? r.data : null; } });
 }
 
+export async function editGuildChannel(input: { channelId: string; name: string; deadline: Date }) {
+  return discordRequest({
+    method: "PATCH",
+    path: `/channels/${input.channelId}`,
+    body: { name: input.name },
+    deadline: input.deadline,
+    parse: (json) => {
+      const result = z.object({ id: z.string(), name: z.string() }).safeParse(json);
+      return result.success ? result.data : null;
+    },
+  });
+}
+
 export async function editSetupResponse(input: { applicationId: string; token: string; content: string; components?: DiscordActionRow[]; deadline: Date }) {
   return discordRequest({ interaction: input, method: "PATCH", path: "", deadline: input.deadline,
     body: { content: input.content, ...(input.components === undefined ? {} : { components: input.components }), allowed_mentions: { parse: [] } }, parse: parseMessage });
