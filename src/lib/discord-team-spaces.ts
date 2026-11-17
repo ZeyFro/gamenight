@@ -1,32 +1,32 @@
-/**
- * Espaces Discord des équipes et projets — **planificateur centralisé**.
- *
- * Ce module ne crée rien par lui-même : il calcule un plan idempotent (rôle +
- * salon + permissions), puis `applyTeamSpacePlan` l'exécute avec un client
- * injecté, et uniquement si `DISCORD_TEAM_SPACES_ENABLED === "true"`.
- *
- * Garanties tenues ici :
- * - un rôle créé par ce service est **toujours** sans permission
- *   (`permissions: "0"`, `mentionable: false`, `hoist: false`) : aucun droit
- *   administratif, aucun accès sensible ;
- * - le salon est privé : `@everyone` n'a pas `Voir les salons`, le rôle d'équipe
- *   l'a — les permissions sont limitées aux membres concernés ;
- * - clé déterministe `gn-team-<id>` : rejouer la planification réutilise la
- *   ressource existante au lieu d'en créer une seconde ;
- * - quota par communauté, nom validé et tronqué aux limites Discord ;
- * - équipe vide ou dissoute → plan d'archivage, jamais une suppression sauvage ;
- * - échec partiel modélisé pas à pas.
- *
- * Aucune ressource réelle n'est créée sans autorisation : le flag est fermé par
- * défaut et rien n'appelle ce service en production aujourd'hui.
- */
+import { teamCaptainId } from "@/lib/community-team-captain";
 
+/**
+ * Espaces Discord des équipes — planificateur centralisé, **sans création réelle**.
+ *
+ * Règle d'or de l'archivage : on ne cible **jamais** un identifiant d'équipe.
+ * Une action sur un salon n'est planifiée que si son identifiant Discord a été
+ * vérifié — via le lien persisté (`managedSpaces`) ou via le nom exact dérivé
+ * de l'identifiant d'équipe. Sinon le plan est refusé (`unmanaged`) : aucune
+ * ressource n'est touchée au hasard, et un salon historique n'est jamais modifié.
+ *
+ * Les ressources d'une autre équipe ne peuvent pas être ciblées : le lien est
+ * indexé par `teamId`, et le nom dérivé contient l'identifiant de l'équipe.
+ */
 export const SPACE_KEY_PREFIX = "gn-team-";
 export const DEFAULT_MAX_SPACES_PER_COMMUNITY = 5;
 export const MAX_MEMBERS_PER_SPACE = 50;
 export const VIEW_CHANNEL = "1024";
 const MAX_CHANNEL_NAME = 100;
 const MAX_ROLE_NAME = 100;
+const snowflake = /^[0-9]{16,20}$/;
+
+export type SpaceIneligibleReason =
+  | "invalid_name"
+  | "invalid_members"
+  | "invalid_captain"
+  | "quota"
+  | "team_disabled"
+  | "unmanaged";
 
 export interface GuildChannelSummary {
   id: string;
@@ -42,20 +42,57 @@ export interface GuildRoleSummaryLite {
   managed?: boolean;
 }
 
+/** Lien persisté équipe → ressources Discord (à terme : colonnes Prisma). */
+export interface ManagedSpaceLink {
+  teamId: string;
+  channelId: string;
+  roleId?: string;
+  archived?: boolean;
+}
+
+export interface TeamSpaceMember {
+  userId: string;
+  discordId: string;
+}
+
+export interface TeamSpaceInput {
+  team: {
+    id: string;
+    name: string;
+    communityId: string;
+    active?: boolean;
+    createdById: string;
+    members: TeamSpaceMember[];
+  };
+  existing: { channels: GuildChannelSummary[]; roles: GuildRoleSummaryLite[] };
+  managedSpaces?: ManagedSpaceLink[];
+  /** L'équipe était archivée : la réactivation renomme le salon vérifié. */
+  previousArchived?: boolean;
+  /** Membres connus avant ce plan : sert à calculer les départs. */
+  previousMemberDiscordIds?: string[];
+  limits?: { maxSpacesPerCommunity?: number };
+}
+
 export interface OverwritePlan {
-  /** `@everyone` est identifié par l'identifiant du serveur, fourni par l'appelant. */
   target: "everyone" | "team-role";
   allow?: string;
   deny?: string;
 }
 
 export type TeamSpaceStep =
-  | { kind: "role"; action: "create" | "reuse"; key: string; name: string }
-  | { kind: "channel"; action: "create" | "reuse" | "archive"; key: string; name: string }
-  | { kind: "members"; action: "sync"; members: string[] };
+  | { kind: "role"; action: "create" | "reuse"; key: string; name: string; targetId?: string }
+  | { kind: "channel"; action: "create" | "reuse" | "archive" | "restore"; key: string; name: string; targetId?: string }
+  | {
+      kind: "members";
+      action: "sync";
+      members: string[];
+      captainDiscordId: string | null;
+      /** Membres ayant quitté : leurs permissions doivent être retirées côté salon. */
+      departed: string[];
+    };
 
 export type TeamSpacePlan =
-  | { status: "ineligible"; reason: "invalid_name" | "empty_team" | "quota" | "invalid_members" | "team_disabled" }
+  | { status: "ineligible"; reason: SpaceIneligibleReason }
   | {
       status: "planned";
       spaceKey: string;
@@ -65,24 +102,9 @@ export type TeamSpacePlan =
       overwrites: OverwritePlan[];
       steps: TeamSpaceStep[];
       archived: boolean;
+      captainDiscordId: string | null;
     };
 
-export interface TeamSpaceInput {
-  team: {
-    id: string;
-    name: string;
-    communityId: string;
-    active?: boolean;
-    memberDiscordIds: string[];
-  };
-  existing: { channels: GuildChannelSummary[]; roles: GuildRoleSummaryLite[] };
-  managed: { communityId: string; channelIds: string[] };
-  limits?: { maxSpacesPerCommunity?: number };
-}
-
-const snowflake = /^[0-9]{16,20}$/;
-
-/** Nom de salon Discord : minuscules, sans accent, séparateurs unifiés. */
 export function sanitizeChannelName(name: string): string {
   return name
     .normalize("NFD")
@@ -93,7 +115,6 @@ export function sanitizeChannelName(name: string): string {
     .slice(0, MAX_CHANNEL_NAME);
 }
 
-/** Nom de rôle : lisible, borné, sans caractères de permission (aucun n'a d'effet). */
 export function sanitizeRoleName(name: string): string {
   return name.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_ROLE_NAME);
 }
@@ -102,65 +123,120 @@ export function spaceKey(teamId: string): string {
   return `${SPACE_KEY_PREFIX}${teamId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48)}`;
 }
 
+/**
+ * Nom **spécifique à l'équipe** : deux équipes homonymes n'obtiennent jamais le
+ * même nom, et une correspondance exacte de nom ne peut pas viser une autre
+ * équipe. C'est ce qui autorise la vérification par nom sans approximation.
+ */
+export function spaceChannelName(team: { id: string; name: string }): string {
+  const slug = sanitizeChannelName(team.name) || "espace";
+  const safeId = team.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24).toLowerCase();
+  return `${slug}-${safeId}`.slice(0, MAX_CHANNEL_NAME).replace(/-+$/g, "");
+}
+
+/** Capitaine = `createdById` s'il est membre actif (règle officielle), jamais le premier. */
+export function spaceCaptain(team: TeamSpaceInput["team"]): TeamSpaceMember | null {
+  const captainId = teamCaptainId({
+    createdById: team.createdById,
+    activeMemberIds: team.members.map((member) => member.userId),
+  });
+  return captainId ? team.members.find((member) => member.userId === captainId) ?? null : null;
+}
+
+function verifiedLink(input: TeamSpaceInput): ManagedSpaceLink | null {
+  return input.managedSpaces?.find((link) => link.teamId === input.team.id) ?? null;
+}
+
+/**
+ * Identifiant de salon Discord vérifié : uniquement le lien persisté de CETTE
+ * équipe, ou un salon dont le nom est le nom exact dérivé de l'équipe.
+ * Une ressemblance de nom ne suffit jamais.
+ */
+export function resolveSpaceChannelId(input: TeamSpaceInput): string | null {
+  const link = verifiedLink(input);
+  if (link) {
+    const channel = input.existing.channels.find((candidate) => candidate.id === link.channelId);
+    return channel ? channel.id : null;
+  }
+  const expected = spaceChannelName(input.team);
+  const exact = input.existing.channels.filter((candidate) => candidate.name === expected);
+  return exact.length === 1 ? exact[0].id : null;
+}
+
 export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
   const { team } = input;
   if (team.active === false) return { status: "ineligible", reason: "team_disabled" };
-  if (input.managed.communityId !== team.communityId) return { status: "ineligible", reason: "quota" };
 
   const roleName = sanitizeRoleName(`GN · ${team.name}`);
-  const channelName = sanitizeChannelName(team.name);
-  if (roleName.length < 3 || channelName.length < 2) return { status: "ineligible", reason: "invalid_name" };
+  const channelName = spaceChannelName(team);
+  if (roleName.length < 3 || channelName.length < 4) return { status: "ineligible", reason: "invalid_name" };
 
-  const members = [...new Set(team.memberDiscordIds)];
-  if (members.some((id) => !snowflake.test(id))) return { status: "ineligible", reason: "invalid_members" };
-  if (members.length > MAX_MEMBERS_PER_SPACE) return { status: "ineligible", reason: "invalid_members" };
+  const members = [...new Set(team.members.map((member) => member.discordId))];
+  if (members.some((id) => !snowflake.test(id)) || members.length > MAX_MEMBERS_PER_SPACE) {
+    return { status: "ineligible", reason: "invalid_members" };
+  }
+  const captain = spaceCaptain(team);
+  if (captain && !snowflake.test(captain.discordId)) return { status: "ineligible", reason: "invalid_captain" };
 
+  const link = verifiedLink(input);
+  const channelId = resolveSpaceChannelId(input);
+  const roleId = link?.roleId && input.existing.roles.some((role) => role.id === link.roleId) ? link.roleId : null;
   const maxSpaces = input.limits?.maxSpacesPerCommunity ?? DEFAULT_MAX_SPACES_PER_COMMUNITY;
-  const key = spaceKey(team.id);
-  const existingChannel = input.existing.channels.find((channel) => channel.name === channelName || channel.name === key);
-  if (!existingChannel && input.managed.channelIds.length >= maxSpaces) {
+  if (!link && !channelId && (input.managedSpaces?.length ?? 0) >= maxSpaces) {
     return { status: "ineligible", reason: "quota" };
   }
 
-  const existingRole = input.existing.roles.find((role) => role.name === roleName || role.name === key);
   const archived = members.length === 0;
+  // Archivage impossible sans identifiant vérifié : on refuse au lieu de deviner.
+  if (archived && !channelId) return { status: "ineligible", reason: "unmanaged" };
+
+  const channelStep: TeamSpaceStep = archived
+    ? { kind: "channel", action: "archive", key: spaceKey(team.id), name: channelName, targetId: channelId! }
+    : channelId
+      ? {
+          kind: "channel",
+          action: input.previousArchived ? "restore" : "reuse",
+          key: spaceKey(team.id),
+          name: channelName,
+          targetId: channelId,
+        }
+      : { kind: "channel", action: "create", key: spaceKey(team.id), name: channelName };
 
   const steps: TeamSpaceStep[] = [
-    existingRole
-      ? { kind: "role", action: "reuse", key, name: existingRole.name }
-      : { kind: "role", action: "create", key, name: roleName },
-    archived
-      ? { kind: "channel", action: "archive", key, name: existingChannel?.name ?? channelName }
-      : existingChannel
-        ? { kind: "channel", action: "reuse", key, name: existingChannel.name }
-        : { kind: "channel", action: "create", key, name: channelName },
-    { kind: "members", action: "sync", members },
+    roleId
+      ? { kind: "role", action: "reuse", key: spaceKey(team.id), name: roleName, targetId: roleId }
+      : { kind: "role", action: "create", key: spaceKey(team.id), name: roleName },
+    channelStep,
+    {
+      kind: "members",
+      action: "sync",
+      members,
+      captainDiscordId: captain?.discordId ?? null,
+      // Départs = membres connus avant, absents maintenant : ce sont eux dont les
+      // permissions de salon doivent être retirées (aucune autre équipe touchée).
+      departed: [...new Set(input.previousMemberDiscordIds ?? [])].filter((id) => !members.includes(id)),
+    },
   ];
 
   return {
     status: "planned",
-    spaceKey: key,
+    spaceKey: spaceKey(team.id),
     roleName,
     channelName,
     rolePermissions: "0",
     overwrites: [
-      // Salon privé : personne d'autre que les membres ne le voit.
       { target: "everyone", deny: VIEW_CHANNEL },
       { target: "team-role", allow: VIEW_CHANNEL },
     ],
     steps,
     archived,
+    captainDiscordId: captain?.discordId ?? null,
   };
 }
 
 export interface TeamSpaceClient {
   createRole(input: { name: string; permissions: "0"; mentionable: false; hoist: false }): Promise<{ id: string }>;
-  createChannel(input: {
-    name: string;
-    type: 0;
-    overwrites: OverwritePlan[];
-    reason: string;
-  }): Promise<{ id: string }>;
+  createChannel(input: { name: string; type: 0; overwrites: OverwritePlan[]; reason: string }): Promise<{ id: string }>;
   editChannel?(input: { id: string; name: string; reason: string }): Promise<unknown>;
 }
 
@@ -173,11 +249,6 @@ export function teamSpacesEnabled(env: NodeJS.ProcessEnv = process.env): boolean
   return env.DISCORD_TEAM_SPACES_ENABLED === "true";
 }
 
-/**
- * Exécute le plan, étape par étape. Un échec de rôle empêche la création du
- * salon (pas de salon orphelin) ; les autres échecs sont rapportés sans lancer
- * d'exception, pour que l'appelant puisse reprendre ou archiver.
- */
 export async function applyTeamSpacePlan(
   plan: TeamSpacePlan,
   client: TeamSpaceClient,
@@ -192,8 +263,6 @@ export async function applyTeamSpacePlan(
 
   for (const step of plan.steps) {
     if (step.kind === "members") {
-      // La synchronisation des permissions des membres se fait à la création du
-      // salon ; aucun appel réseau supplémentaire ici.
       steps.push({ key: plan.spaceKey, kind: step.kind, status: roleFailed || channelFailed ? "skipped" : "ok" });
       continue;
     }
@@ -219,10 +288,19 @@ export async function applyTeamSpacePlan(
       steps.push({ key: step.key, kind: step.kind, status: "ok", detail: "existing" });
       continue;
     }
+    // Toute modification d'un salon existant exige un identifiant vérifié.
+    if ((step.action === "archive" || step.action === "restore") && !step.targetId) {
+      steps.push({ key: step.key, kind: step.kind, status: "failed", detail: "unverified_target" });
+      channelFailed = true;
+      continue;
+    }
     try {
       if (step.action === "archive") {
         if (!client.editChannel) throw new Error("editChannel indisponible");
-        await client.editChannel({ id: step.key, name: `archive-${step.name}`.slice(0, MAX_CHANNEL_NAME), reason: "gn-team-archive" });
+        await client.editChannel({ id: step.targetId!, name: `archive-${step.name}`.slice(0, MAX_CHANNEL_NAME), reason: "gn-team-archive" });
+      } else if (step.action === "restore") {
+        if (!client.editChannel) throw new Error("editChannel indisponible");
+        await client.editChannel({ id: step.targetId!, name: step.name, reason: "gn-team-restore" });
       } else {
         await client.createChannel({ name: step.name, type: 0, overwrites: plan.overwrites, reason: "gn-team-space" });
       }
