@@ -93,5 +93,10 @@ l'archivage, la restauration, la ressource disparue et le flag fermé.
   `migrate-production.yml` applique sur Neon Production. La procédure de
   validation avant fusion de #444 est dans
   `docs/operations/PRE-MERGE-444-PRODUCTION.md` (rien n'a été exécuté).
-- Preuves : `storage` et `rules` verts sur le SHA poussé ; suites PostgreSQL
-  isolées (tower-challenges, community-teams, espaces) vertes localement.
+- Preuves : sur `ac78260` (tête de la branche), **tous les checks de #444 sont
+  verts** — `verify` 16m05, `storage`, `rules`, `immutable`, Vercel ; suites
+  PostgreSQL isolées (tower-challenges, community-teams, espaces) vertes
+  localement, deux applications du SQL de migration idempotentes.
+- `verify` échouait encore sur deux garde-fous de dérive : 15 drapeaux
+  `DISCORD_*` pré-réglés à `false` dans `.env.example` (remis à vide) et
+  quatre commandes absentes de CLAUDE.md (documentées).
