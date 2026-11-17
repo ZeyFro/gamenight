@@ -164,6 +164,10 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const commandTimestamp = Number(input.timestamp);
   if (!Number.isFinite(commandTimestamp) || Math.abs(Date.now() / 1000 - commandTimestamp) > 300) return { status: 400 };
 
+  // Freebuff canonical commands — reply "en cours de déploiement", jamais de succès.
+  if (["role", "equipe", "joueurs", "projet", "soiree", "tournoi", "aide", "profil", "boost"].includes(interaction.data?.name)) {
+    return reply("Cette commande Freebuff est en cours de déploiement. Elle sera disponible dans les prochains jours.");
+  }
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {
     return reply("Commande inconnue.");
   }
