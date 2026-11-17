@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   migrate:
+    # Un lancement manuel depuis une autre branche ne doit jamais atteindre le secret Production.
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production-migrations
@@ -59,3 +61,16 @@ jobs:
         run: npx prisma migrate deploy
       - name: État après migration
         run: npx prisma migrate status
+      - name: Consignes en cas d'échec
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          {
+            echo "## Échec de la migration Production"
+            echo
+            echo "- Ne pas relancer à l'aveugle : Prisma refuse toute nouvelle application (P3009) tant qu'une migration échouée n'est pas résolue."
+            echo "- Lire l'étape « État avant migration » et l'erreur de « Appliquer les migrations »."
+            echo "- Une migration SQL multi-instructions s'exécute dans une transaction PostgreSQL : un échec ne laisse pas de changement partiel."
+            echo "- Marquer la migration comme annulée (prisma migrate resolve --rolled-back <nom>) seulement après contrôle manuel, puis corriger par une nouvelle migration."
+            echo "- Restauration Neon à l'heure UTC du résumé « Point de restauration Neon » : seulement sur décision du propriétaire. Voir docs/MIGRATIONS.md."
+          } >> "$GITHUB_STEP_SUMMARY"
