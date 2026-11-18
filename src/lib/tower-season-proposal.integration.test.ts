@@ -31,9 +31,9 @@ describe.skipIf(!url)("proposition de palmarès de saison (requêtes SQL réelle
   let sequence = 0;
   const id = (name: string) => scope + "-" + name;
   const iso = (value: string) => new Date(value);
-  const now = iso("2027-10-10T12:00:00Z"); // S4 2027 en cours : S1, S2 et Été 2027 sont finies.
+  const now = iso("2027-10-10T12:00:00Z"); // S3 2027 en cours : S1, S2 et Été 2027 sont finies.
   const S2_START = "2027-03-31T22:00:00.000Z";
-  const S1_START = "2027-01-03T23:00:00.000Z";
+  const S1_START = "2026-11-30T23:00:00.000Z";
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as PrismaClient;
@@ -151,7 +151,7 @@ describe.skipIf(!url)("proposition de palmarès de saison (requêtes SQL réelle
       await player("a");
       await solo("a", 2, "2027-02-10T10:00:00Z");
       const result = await read();
-      expect(result.seasons.map(season => season.name)).toEqual(["Été · 2027", "S2 · 2027", "S1 · 2027"]);
+      expect(result.seasons.map(season => season.name)).toEqual(["Été · 2027", "S2 · 2027", "S1 · 2026-2027"]);
       expect(result.season.name).toBe("Été · 2027");
       expect(result.completed).toBe(false);
     });
@@ -160,13 +160,13 @@ describe.skipIf(!url)("proposition de palmarès de saison (requêtes SQL réelle
       await player("a");
       await solo("a", 2, "2027-02-10T10:00:00Z");
       const s1 = await read({ seasonStart: S1_START });
-      expect(s1.season.name).toBe("S1 · 2027");
+      expect(s1.season.name).toBe("S1 · 2026-2027");
       expect(s1).toMatchObject({ completed: true, creditedFloors: "2", creditedPlayers: 1 });
       expect(s1.candidates.map(entry => [entry.place, entry.displayName, entry.rewardFloors])).toEqual([[1, "a", "2"]]);
       const unknown = await lib.getTowerSeasonProposal({ userId: id("admin"), communityId, seasonStart: "2027-08-31T22:00:00.000Z" }, now);
-      expect(unknown.status).toBe("UNKNOWN_SEASON"); // S4 2027, en cours.
+      expect(unknown.status).toBe("UNKNOWN_SEASON"); // S3 2027, en cours.
       const before = await lib.getTowerSeasonProposal({ userId: id("admin"), communityId, seasonStart: "2026-08-31T22:00:00.000Z" }, now);
-      expect(before.status).toBe("UNKNOWN_SEASON"); // S4 2026, avant le premier crédit.
+      expect(before.status).toBe("UNKNOWN_SEASON"); // S3 2026, avant le premier crédit.
     });
   });
 
@@ -175,7 +175,7 @@ describe.skipIf(!url)("proposition de palmarès de saison (requêtes SQL réelle
 
     it("rattache chaque crédit à la saison de sa date, bornes de Paris à la milliseconde, équipe comprise", async () => {
       for (const name of ["a", "b"]) await player(name);
-      await solo("a", 1, "2027-03-31T21:59:59.999Z"); // Intersaison : aucune saison.
+      await solo("a", 1, "2027-03-31T21:59:59.999Z"); // Dernière milliseconde de S1 : hors S2.
       await solo("a", 2, "2027-03-31T22:00:00.000Z"); // Première milliseconde de S2.
       await solo("a", 3, "2027-06-30T21:59:59.999Z"); // Dernière milliseconde de S2.
       await solo("a", 3, "2027-06-30T22:00:00.000Z"); // Été.
