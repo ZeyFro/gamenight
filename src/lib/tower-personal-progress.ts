@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getTowerPersonalRank, nextTowerRankStep } from "@/lib/tower-ranks";
-import { countCompletedTowerSeasons } from "@/lib/tower-personal-progress-rules";
+import { countCompletedTowerSeasons, countValidatedChallengesInCurrentSeason } from "@/lib/tower-personal-progress-rules";
 
 const id = z.string().min(1).max(191);
 const inputSchema = z.object({ viewerId: id, memberId: id, communityId: id });
@@ -49,12 +49,14 @@ export async function getTowerPersonalProgress(input: unknown, current = new Dat
     `;
     const floorsClimbed = progress?.floorsClimbed ?? BigInt(0);
     const completedSeasons = countCompletedTowerSeasons(credits, current);
+    const seasonChallenges = countValidatedChallengesInCurrentSeason(credits, current);
     return {
       status: "PROGRESS",
       floorsClimbed: floorsClimbed.toString(),
       completedSeasons,
-      rank: getTowerPersonalRank(floorsClimbed, completedSeasons),
-      next: nextTowerRankStep(floorsClimbed, completedSeasons),
+      seasonChallenges,
+      rank: getTowerPersonalRank(floorsClimbed, seasonChallenges),
+      next: nextTowerRankStep(floorsClimbed, seasonChallenges),
     } as const;
   }, { isolationLevel: "RepeatableRead", timeout: 5000, maxWait: 1000 });
 }

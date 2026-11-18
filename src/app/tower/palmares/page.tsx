@@ -13,8 +13,8 @@ export const metadata = pageMetadata("Palmarès The Tower");
 
 function nextRankText(next: TowerRankStep): string {
   const floors = next.floorsMissing === "0" ? null : `${next.floorsMissing} étage(s) à gagner`;
-  const season = next.seasonMissing ? "une saison terminée" : null;
-  return `Prochain rang, ${next.rank} : encore ${[floors, season].filter(Boolean).join(" et ")}.`;
+  const challenges = next.challengesMissing > 0 ? `${next.challengesMissing} défi(s) validé(s) sur la saison en cours` : null;
+  return `Prochain rang, ${next.rank} : encore ${[floors, challenges].filter(Boolean).join(" et ")}.`;
 }
 
 export default async function TowerSeasonPodiumPage() {
@@ -35,9 +35,9 @@ export default async function TowerSeasonPodiumPage() {
         <h2 className="text-xl font-semibold text-foreground">Ta progression</h2>
         <TowerRankBadge rank={progress.rank} />
       </div>
-      <p className="mt-2 text-muted">{progress.floorsClimbed} étage(s) gagné(s) avec les défis · {progress.completedSeasons} saison(s) terminée(s)</p>
+      <p className="mt-2 text-muted">{progress.floorsClimbed} étage(s) gagné(s) avec les défis · {progress.seasonChallenges} défi(s) validé(s) cette saison</p>
       <p className="mt-2 text-sm text-muted">{progress.next ? nextRankText(progress.next) : "Tu as atteint le rang le plus élevé."}</p>
-      <p className="mt-2 text-sm text-muted">Le rang dépend uniquement des étages gagnés avec les défis, jamais de l’XP. Une saison compte comme terminée quand elle est finie et qu’au moins un étage t’y a été crédité.</p>
+      <p className="mt-2 text-sm text-muted">Le rang dépend uniquement des étages gagnés avec les défis, jamais de l’XP. Régulars dès l’inscription, Irregular attribué par le staff (prestige), Ranker dès 30 étages, High Ranker dès 100 étages et 5 défis validés sur la saison en cours. Aucun grade ne donne de droit de modération.</p>
     </Card> : null}
     {result?.status === "PODIUM" ? <>
       <Card>

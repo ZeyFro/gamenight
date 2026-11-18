@@ -4,6 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+/**
+ * Relance `launch` une fois si le démarrage échoue. Un Chrome lent ou bloqué sur un runner chargé ne doit pas
+ * faire échouer toute la CI : la seconde tentative repart d'un processus et d'un profil neufs.
+ */
+export async function withStartupRetry<T>(launch: () => Promise<T>, attempts = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return await launch(); } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await delay(500);
+    }
+  }
+  throw lastError;
+}
+
 /** Chromium local via CDP natif Node22 : aucune dépendance ni navigation distante. */
 export class LocalChromium {
   private process: ChildProcess;
@@ -26,6 +41,10 @@ export class LocalChromium {
     // snapshot. Préférer le navigateur stable, puis le Chromium système local.
     const executable = ["/usr/bin/google-chrome", "/usr/bin/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(path => existsSync(path));
     if (!executable) throw new Error("Chrome/Chromium local requis pour le test tactile, à un emplacement standard.");
+    return withStartupRetry(() => LocalChromium.launch(executable));
+  }
+
+  private static async launch(executable: string) {
     const browser = new LocalChromium(executable);
     try {
       const portFile = join(browser.directory, "DevToolsActivePort");
