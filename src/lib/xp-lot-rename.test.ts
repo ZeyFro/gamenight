@@ -54,7 +54,8 @@ describe("plan de renommage du lot", () => {
 describe("état du dépôt", () => {
   const migrationsDir = resolve("prisma/migrations");
   const all = readdirSync(migrationsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  const others = all.filter((name) => !batch.includes(name));
+  // 20261106150000_tower_fixed_arbiter (#407) est volontairement postérieure au lot XP (documenté dans docs/LIVRAISON-XP.md) : exclue de la comparaison.
+  const others = all.filter((name) => !batch.includes(name) && name !== "20261106150000_tower_fixed_arbiter");
 
   it("le lot est complet dans le checkout", () => {
     for (const name of batch) expect(all).toContain(name);
