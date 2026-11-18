@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countCompletedTowerSeasons } from "./tower-personal-progress-rules";
+import { countCompletedTowerSeasons, countValidatedChallengesInCurrentSeason } from "./tower-personal-progress-rules";
 
 const at = (value: string) => new Date(value);
 const credit = (value: string, floors = 1) => ({ rewardedAt: at(value), floors });
@@ -62,5 +62,26 @@ describe("saisons Tower terminées par un joueur (Q2)", () => {
     expect(() => countCompletedTowerSeasons([credit("2027-02-10T10:00:00Z", 1.5)], at("2027-06-01T10:00:00Z"))).toThrow(RangeError);
     expect(() => countCompletedTowerSeasons([{ rewardedAt: new Date(NaN), floors: 1 }], at("2027-06-01T10:00:00Z"))).toThrow(RangeError);
     expect(() => countCompletedTowerSeasons([credit("2027-02-10T10:00:00Z")], new Date(NaN))).toThrow(RangeError);
+  });
+});
+
+describe("défis validés sur la saison en cours (High Ranker, décision du 17/11/2026)", () => {
+  const now = at("2027-05-10T12:00:00Z"); // S2 2027 = [1er avr., 1er juil.[
+  it("ne compte que les crédits de la saison en cours, fin exclusive", () => {
+    const credits = [
+      credit("2027-03-31T21:59:59Z"), credit("2027-03-31T22:00:00Z"), credit("2027-05-01T10:00:00Z"),
+      credit("2027-06-30T21:59:59.999Z"), credit("2027-06-30T22:00:00Z"), credit("2027-07-05T10:00:00Z"),
+    ];
+    expect(countValidatedChallengesInCurrentSeason(credits, now)).toBe(3);
+  });
+  it("compte un défi par crédit, quel que soit son nombre d'étages", () => {
+    expect(countValidatedChallengesInCurrentSeason([credit("2027-04-02T10:00:00Z", 1), credit("2027-04-03T10:00:00Z", 3)], now)).toBe(2);
+  });
+  it("vaut 0 sans crédit et hors saison active (intersaison)", () => {
+    expect(countValidatedChallengesInCurrentSeason([], now)).toBe(0);
+    expect(countValidatedChallengesInCurrentSeason([credit("2027-03-30T10:00:00Z")], at("2027-03-30T10:00:00Z"))).toBe(0);
+  });
+  it("refuse une date invalide", () => {
+    expect(() => countValidatedChallengesInCurrentSeason([{ rewardedAt: new Date(NaN), floors: 1 }], now)).toThrow(RangeError);
   });
 });

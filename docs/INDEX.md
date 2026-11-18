@@ -5,7 +5,8 @@
 - [README](../README.md) — présentation, fonctions et stack.
 - [Développement local](DEVELOPPEMENT_LOCAL.md) — PostgreSQL local, migrations, OAuth et tests.
 - [Migrations Prisma](MIGRATIONS.md) — méthode standard : PR, CI, fusion, application automatique.
-- [Activation de la Tour](ACTIVATION_TOUR.md) — les 4 interrupteurs en une soirée.
+- [Activation de la Tour](ACTIVATION_TOUR.md) — les 4 interrupteurs en une soirée, plan de la soirée et retour arrière.
+- [Lancement : textes Discord](LANCEMENT_DISCORD.md), [conditions de réussite](CONDITIONS_REUSSITE_LANCEMENT.md) et [présentation de recrutement](PRESENTATION_RECRUTEMENT.md) — étiquetés disponible / après activation / prévue.
 - [.env.example](../.env.example) — noms des variables et interrupteurs ; aucune valeur réelle.
 - [Brief initial](../SPEC-gamenight.md) — intention de départ, document historique qui ne décrit pas tout l’état actuel.
 
@@ -16,11 +17,13 @@
 - [Annulation des séries](ANNULATION_SERIES.md) et [places de session](SESSION_PLACES.md).
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
+- [Commandes Discord The Tower (403, invitation, enregistrement)](DISCORD_COMMANDES.md).
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
 - [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.
 - [Revue des rôles The Tower](TOWER_ROLE_REVIEW.md) — constats sans publier les détails de permissions.
+- [Plan serveur Discord The Tower](PLAN_SERVEUR_DISCORD.md) — zones, grades, bots, dry-run et checklist manuelle (aucune écriture).
 - [Lacunes progression](TOWER_PROGRESSION_GAPS.md), [GameNight et équipes](TOWER_COMMUNITY_GAPS.md) et [fidélisation](TOWER_RETENTION_GAPS.md) — fonctions présentes et prochains incréments.
 
 ## Exploitation et sécurité

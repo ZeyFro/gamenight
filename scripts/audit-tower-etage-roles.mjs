@@ -4,6 +4,15 @@
  */
 import { inspectEtageRoles } from "./tower-etage-role-rules.mjs";
 const GUILD = "553922938101825536";
+const invIdx = process.argv.indexOf("--inventory");
+if (invIdx !== -1) {
+  const { readFileSync } = await import("node:fs");
+  const inv = JSON.parse(readFileSync(process.argv[invIdx + 1], "utf8"));
+  const found = inspectEtageRoles(inv.roles ?? [], inv.channels ?? []);
+  console.log("DRY-RUN hors ligne sur inventaire fourni : " + found.length + " rôle(s) Etage ; aucun appel Discord, aucune suppression.");
+  for (const r of found) console.log("? " + r.name + " — " + r.dependentChannels.length + " salon(s) dépendant(s), permissions serveur : " + (r.hasGuildPermissions ? "oui" : "non") + ", safeToDelete=false");
+  process.exit(0);
+}
 if (!process.argv.includes("--check")) {
   console.log("DRY-RUN hors ligne : aucune requête Discord. Utiliser --check pour inventaire GET uniquement.");
   process.exit(0);
