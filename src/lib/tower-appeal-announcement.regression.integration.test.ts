@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID, randomInt } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
+import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 const url = process.env.TEST_DATABASE_URL;
 if (url) {
@@ -42,7 +43,7 @@ describe.skipIf(!url)("#407 — début du délai après annonce effective", () =
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     vi.stubEnv("TOWER_DISCORD_ANNOUNCE_ENABLED", "false");
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
-    vi.spyOn(Date, "now").mockReturnValue(rejectedAt.getTime() + 25 * 3600_000);
+    vi.spyOn(Date, "now").mockReturnValue(rejectedAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS + 3600_000);
     await db.user.create({ data: { id: userId, discordId: userId, discordName: "Auteur local" } });
     await db.community.create({ data: { id: communityId, slug: communityId, name: "Recette annonce", status: "ACTIVE", towerChallengesEnabled: true, discordGuildId: guildId } });
     await db.membership.create({ data: { communityId, userId, status: "ACTIVE" } });
@@ -85,19 +86,19 @@ describe.skipIf(!url)("#407 — début du délai après annonce effective", () =
     expect(await list({ communityId, userId })).toMatchObject({ attempts: [{ id: attemptId, announcedAt: sentAt }] });
     expect(await submit(actor)).toMatchObject({ status: "APPEAL_SUBMITTED" });
     const [appeal] = await db.$queryRaw<{ dueAt: Date }[]>`SELECT "dueAt" FROM "TowerChallengeAppeal" WHERE "communityId" = ${communityId} AND "attemptId" = ${attemptId}`;
-    expect(appeal.dueAt).toEqual(new Date(sentAt.getTime() + 48 * 3600_000));
+    expect(appeal.dueAt).toEqual(new Date(sentAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS));
   });
   it("ferme à 48 heures exactes après la première livraison réussie", async () => {
     const delivery = await pendingNotice();
     const sentAt = new Date(Date.now());
     await db.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", sentAt, discordMessageId: "223456789012345678", discordChannelId: "123456789012345678" } });
-    vi.spyOn(Date, "now").mockReturnValue(sentAt.getTime() + 48 * 3600_000);
+    vi.spyOn(Date, "now").mockReturnValue(sentAt.getTime() + TOWER_CHALLENGE_APPEAL_WINDOW_MS);
     expect(await submit({ communityId, userId, attemptId, reason: "Limite exacte." })).toMatchObject({ status: "WINDOW_CLOSED" });
     expect(await list({ communityId, userId })).toMatchObject({ attempts: [] });
   });
   it("ne réinitialise pas la fenêtre lorsqu'une seconde livraison réussit", async () => {
     const delivery = await pendingNotice();
-    const firstSentAt = new Date(Date.now() - 48 * 3600_000);
+    const firstSentAt = new Date(Date.now() - TOWER_CHALLENGE_APPEAL_WINDOW_MS);
     await db.notificationDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", sentAt: firstSentAt, discordMessageId: "223456789012345678", discordChannelId: "123456789012345678" } });
     await db.notificationDelivery.create({ data: { eventId: delivery.eventId, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND", status: "SENT", sentAt: new Date(Date.now()), recipientKey: "323456789012345678", discordChannelId: "323456789012345678", discordMessageId: "423456789012345678", targetSlot: guildId + ":TOWER:" + attemptId + ":rejection" } });
     expect(await submit({ communityId, userId, attemptId, reason: "La relance ne crée pas de nouveau délai." })).toMatchObject({ status: "WINDOW_CLOSED" });
