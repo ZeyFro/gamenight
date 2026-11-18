@@ -93,6 +93,8 @@ suite("calendar feed integration", () => {
     expect(calendar).toContain("/sessions/visible");
     expect(calendar).toContain("/sessions/legacy");
     expect(calendar).toContain("/sessions/invited");
+    expect(calendar).not.toContain(token);
+    expect(calendar).not.toContain(createHash("sha256").update(token).digest("hex"));
     expect(calendar).not.toContain("other-server");
     expect(calendar).not.toContain("/sessions/private");
 

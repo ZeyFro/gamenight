@@ -10,8 +10,7 @@ import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "@/lib/tower-challenge-rules";
 import { evaluateChallengeVote } from "@/lib/tower-challenge-voting";
 import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
-import { TOWER_STARTER_CHALLENGES } from "@/lib/tower-challenge-starter-catalogue";
-import { TOWER_TEAM_STARTER_CHALLENGES } from "@/lib/tower-team-challenge-starter-catalogue";
+import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
 import { getPendingProofAgingAction } from "@/lib/tower-challenge-aging-rules";
@@ -935,12 +934,7 @@ export async function settleDueTowerChallenges(deadline: Date) {
 
 const towerGuildId = z.string().regex(/^[0-9]{16,20}$/);
 const towerDefinitionId = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
-const soloDefinitionInput = z.object({
-  guildId: towerGuildId,
-  title: z.string().trim().min(1).max(120),
-  instructions: z.string().trim().min(1).max(1500),
-  rewardFloors: z.number().int().min(1).max(20),
-});
+const soloDefinitionInput = z.object({ guildId: towerGuildId }).merge(towerChallengeDefinitionContentSchema);
 
 export async function addSoloTowerChallengeDefinition(input: unknown) {
   const parsed = soloDefinitionInput.safeParse(input);
@@ -1024,11 +1018,11 @@ export async function importSoloTowerChallengeStarterPack(input: unknown) {
       where: { communityId: community.id, mode: "SOLO" }, select: { title: true },
     });
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
-    const missing = TOWER_STARTER_CHALLENGES.filter(challenge => !titles.has(challenge.title.toLowerCase()));
+    const missing = TOWER_SOLO_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
       data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "SOLO" as const, active: true })),
     });
-    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_STARTER_CHALLENGES.length - missing.length } as const;
+    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_SOLO_IMPORT_PACK.length - missing.length } as const;
   });
 }
 
@@ -1046,11 +1040,11 @@ export async function importTeamTowerChallengeStarterPack(input: unknown) {
       where: { communityId: community.id, mode: "TEAM" }, select: { title: true },
     });
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
-    const missing = TOWER_TEAM_STARTER_CHALLENGES.filter(challenge => !titles.has(challenge.title.toLowerCase()));
+    const missing = TOWER_TEAM_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
       data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "TEAM" as const, active: true })),
     });
-    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_TEAM_STARTER_CHALLENGES.length - missing.length } as const;
+    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_TEAM_IMPORT_PACK.length - missing.length } as const;
   });
 }
 

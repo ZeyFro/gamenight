@@ -19,6 +19,7 @@ const STATUS_MESSAGES: Record<string, string> = {
   invalid: "Objet invalide.",
   unavailable: "Cette communauté n’est plus accessible.",
   no_community: "Choisis une communauté pour utiliser sa réserve d’XP.",
+  busy: "La boutique est occupée. Rien n’a été débité : réessaie dans un instant.",
 };
 
 export default async function XpShopPage({
@@ -39,7 +40,8 @@ export default async function XpShopPage({
     <section className="flex flex-col gap-5">
       <div>
         <h2 className="text-xl font-semibold text-foreground">Boutique XP</h2>
-        <p className="mt-1 text-sm text-muted">Solde de cette communauté : {balance} XP</p>
+        <p className="mt-1 text-sm text-muted">Solde dépensable de cette communauté : {balance} XP</p>
+        <p className="mt-1 text-sm text-muted">Les achats conservent ta progression, ton niveau et ton grade.</p>
       </div>
       {query.status && STATUS_MESSAGES[query.status] && (
         <p role="status" className="rounded-lg border border-border bg-surface p-3 text-sm text-foreground">

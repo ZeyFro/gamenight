@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assertExpectedPending, RefusalError } from "./db-migrate-lib.mjs";
 
-const migration325 = "20261019190000_separate_xp_balance";
+const migration325 = "20261019190000_ancienne_migration_fixture";
 const migration370 = "20261104140000_tower_team_membership_policy";
 const migration406 = "20261105120000_tower_launch_channels_appeals_matchmaking";
 

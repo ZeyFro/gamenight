@@ -86,12 +86,12 @@ Pour chaque fichier, dans l’ordre #370 puis #406 : checkout approprié, contr�
 
 | Ordre | Fichier | PR | Dépendance / raison |
 |---:|---|---:|---|
-| 1 | `20261019190000_separate_xp_balance/migration.sql` | #325 | Indépendante des tables vocales; conserve le total XP et crée un solde de dépense distinct. |
-| 2 | `20261020150000_session_voice_presence/migration.sql` | #325 | Crée la table d’intervalles utilisée par les migrations vocales suivantes. |
-| 3 | `20261022120000_voice_presence_consent_coordination/migration.sql` | #325 | Crée le contrôle/consentement et ajoute des colonnes à l’intervalle créé en 2. |
-| 4 | `20261022130000_voice_presence_retention_gap_bounds/migration.sql` | #325 | Ajoute `gapStartedAt` à `SessionVoicePresenceControl`, créée en 3. |
-| 5 | `20261022140000_voice_presence_gap_history/migration.sql` | #325 | Crée l’historique et le remplit depuis le contrôle et `gapStartedAt` de 4. |
-| 6 | `20261022142500_shop_balance_purchase_reason/migration.sql` | #325 | Ajout d’enum indépendant; placé à sa position chronologique dans l’historique Prisma. |
+| 1 | `20261105130000_separate_xp_balance/migration.sql` | #325 | Indépendante des tables vocales; conserve le total XP et crée un solde de dépense distinct. |
+| 2 | `20261105131000_session_voice_presence/migration.sql` | #325 | Crée la table d’intervalles utilisée par les migrations vocales suivantes. |
+| 3 | `20261105132000_voice_presence_consent_coordination/migration.sql` | #325 | Crée le contrôle/consentement et ajoute des colonnes à l’intervalle créé en 2. |
+| 4 | `20261105133000_voice_presence_retention_gap_bounds/migration.sql` | #325 | Ajoute `gapStartedAt` à `SessionVoicePresenceControl`, créée en 3. |
+| 5 | `20261105134000_voice_presence_gap_history/migration.sql` | #325 | Crée l’historique et le remplit depuis le contrôle et `gapStartedAt` de 4. |
+| 6 | `20261105135000_shop_balance_purchase_reason/migration.sql` | #325 | Ajout d’enum indépendant; placé à sa position chronologique dans l’historique Prisma. |
 | 7 | `20261104140000_tower_team_membership_policy/migration.sql` | #370 | Ordre opérationnel avant #325 ; index d’unicité et colonnes utilisées par les règles d’équipe. |
 | 8 | `20261105120000_tower_launch_channels_appeals_matchmaking/migration.sql` | #406 | Ordre chronologique après #370; schéma partagé requis par #407 et #408. |
 
@@ -109,7 +109,7 @@ Références : [runner proposé dans #370](https://github.com/ZeyFro/gamenight/b
 
 ## Détail par migration
 
-### 1. #325 — `20261019190000_separate_xp_balance`
+### 1. #325 — `20261105130000_separate_xp_balance`
 
 **DDL et données**
 - `CommunityMemberStats.xpBalance` : colonne `INTEGER NOT NULL DEFAULT 0).
@@ -141,7 +141,7 @@ COMMIT;
 - Avant : confirmer que la colonne et la contrainte sont absentes, compter les lignes, vérifier bornes/valeurs de `xpTotal`, estimer durée et verrouillage sur volume réel, répéter le backfill sur copie isolée.
 - Après : colonne présente/not-null/default 0, aucune valeur négative, nombre de lignes inchangé, `xpBalance = xpTotal` pour toutes les lignes au moment du backfill. Tout écart postérieur doit être attendu par le code de boutique.
 
-### 2. #325 — `20261020150000_session_voice_presence`
+### 2. #325 — `20261105131000_session_voice_presence`
 
 **DDL**
 - Crée `SessionVoicePresenceInterval` avec `id`, `sessionId`, `userId`, `channelId`, `startedAt`, `durationSeconds`, `partial`, `createdAt).
@@ -163,7 +163,7 @@ Cette suppression perd les données d’intervalles présentes au moment du roll
 - Avant : vérifier absence de la table/objets homonymes, cohérence des types de clés et comportement attendu des cascades; sauvegarde restaurée en isolation.
 - Après : table, deux index et deux FK présents; vérifier que les suppressions de parents en cascade correspondent à la politique de rétention approuvée, sans lancer de suppression de test en Production.
 
-### 3. #325 — `20261022120000_voice_presence_consent_coordination`
+### 3. #325 — `20261105132000_voice_presence_consent_coordination`
 
 **DDL et backfill**
 - Crée l’enum `SessionVoicePresenceControlStatus` (`ACTIVE`, `STOP_REQUESTED`, `PURGE_REQUESTED`, `FINALIZED`, `PURGED`).
@@ -194,7 +194,7 @@ COMMIT;
 - Avant : vérifier `durationSeconds` et les calculs de dates, absence de dépassement de capacité, et schéma exact de l’intervalle; mesurer l’impact de l’UPDATE et du `SET NOT NULL`.
 - Après : aucune colonne `endedAt`/`expiresAt` nulle; valeurs égales aux formules SQL; contraintes et relations présentes; contrôle d’échantillons sans données personnelles exposées.
 
-### 4. #325 — `20261022130000_voice_presence_retention_gap_bounds`
+### 4. #325 — `20261105133000_voice_presence_retention_gap_bounds`
 
 **DDL :** ajoute `SessionVoicePresenceControl.gapStartedAt TIMESTAMP(3)`, nullable. Aucune table ou autre colonne n’est modifiée.
 
@@ -211,7 +211,7 @@ Les dates de début de lacune collectées après application seraient perdues.
 - Avant : confirmer table/colonne absentes et compatibilité du binaire.
 - Après : colonne présente et nullable; le code qui suit doit enregistrer les transitions attendues.
 
-### 5. #325 — `20261022140000_voice_presence_gap_history`
+### 5. #325 — `20261105134000_voice_presence_gap_history`
 
 **DDL et backfill**
 - Crée `SessionVoicePresenceGap` : `id`, `sessionId`, `generation`, `startedAt`, `resumedAt`, `expiresAt`, `createdAt); index unique `(sessionId,generation,startedAt)), index `(sessionId,startedAt)), index `expiresAt), FK cascade vers `Session).
@@ -232,7 +232,7 @@ COMMIT;
 - Avant : compter les contrôles correspondant au filtre; calculer en lecture seule les identifiants déterministes et vérifier leur unicité; estimer le volume et valider la règle « dernière lacune seulement ».
 - Après : nombre de lignes égal au nombre d’enregistrements admissibles, clés uniques, chaque session existe, dates/copies conformes à la source; les contrôles `PURGED` et sessions `CANCELLED` sont exclus.
 
-### 6. #325 — `20261022142500_shop_balance_purchase_reason`
+### 6. #325 — `20261105135000_shop_balance_purchase_reason`
 
 **DDL :** ajoute la valeur `SHOP_BALANCE_PURCHASE` à l’enum `XpReason`. La colonne concernée dans le schéma est `XpEvent.reason). Aucun enregistrement n’est modifié par cette migration.
 
@@ -378,12 +378,12 @@ La migration ajoutant `REWARD` à un type existant, vérifier sur la cible qu’
 
 Pour chacune, la réponse doit nommer **le fichier exact**, **l’environnement/la base visés** et autoriser explicitement l’application après les précontrôles et la sauvegarde restaurée. Une autorisation générale ou l’accord sur une PR ne vaut pas autorisation de migration. Sans accord séparé, aucune application, connexion, snapshot ou changement Production n’est permis.
 
-- Autorises-tu, après les contrôles requis, `20261019190000_separate_xp_balance` de #325 sur la cible explicitement désignée?
-- Autorises-tu, après les contrôles requis, `20261020150000_session_voice_presence` de #325 sur cette cible?
-- Autorises-tu, après les contrôles requis, `20261022120000_voice_presence_consent_coordination` de #325 sur cette cible?
-- Autorises-tu, après les contrôles requis, `20261022130000_voice_presence_retention_gap_bounds` de #325 sur cette cible?
-- Autorises-tu, après les contrôles requis, `20261022140000_voice_presence_gap_history` de #325 sur cette cible?
-- Autorises-tu, après les contrôles requis, `20261022142500_shop_balance_purchase_reason` de #325 sur cette cible?
+- Autorises-tu, après les contrôles requis, `20261105130000_separate_xp_balance` de #325 sur la cible explicitement désignée?
+- Autorises-tu, après les contrôles requis, `20261105131000_session_voice_presence` de #325 sur cette cible?
+- Autorises-tu, après les contrôles requis, `20261105132000_voice_presence_consent_coordination` de #325 sur cette cible?
+- Autorises-tu, après les contrôles requis, `20261105133000_voice_presence_retention_gap_bounds` de #325 sur cette cible?
+- Autorises-tu, après les contrôles requis, `20261105134000_voice_presence_gap_history` de #325 sur cette cible?
+- Autorises-tu, après les contrôles requis, `20261105135000_shop_balance_purchase_reason` de #325 sur cette cible?
 - Autorises-tu, après les contrôles requis, `20261104140000_tower_team_membership_policy` de #370 sur cette cible?
 - Autorises-tu, après les contrôles requis, `20261105120000_tower_launch_channels_appeals_matchmaking` de #406 sur cette cible?
 

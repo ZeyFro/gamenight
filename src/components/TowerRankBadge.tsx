@@ -1,15 +1,7 @@
 import { TOWER_RANK_PRESENTATION, type TowerPersonalRank } from "@/lib/tower-ranks";
 
-/**
- * Pastille de couleur du rang. Seul le violet du Ranker a une valeur décidée (`TOWER_RANK_PRESENTATION`) ;
- * le bleu (Irregular) et l'or (High Ranker) sont décidés comme couleurs mais pas comme valeurs : les
- * deux teintes ci-dessous sont PROVISOIRES, à remplacer quand le propriétaire les aura fixées.
- */
-const PROVISIONAL_DOT = { bleu: "#3b82f6", or: "#f59e0b" } as const;
-
 function dotColor(rank: TowerPersonalRank): string {
-  const presentation = TOWER_RANK_PRESENTATION[rank];
-  return "hex" in presentation ? presentation.hex : PROVISIONAL_DOT[presentation.colorName];
+  return TOWER_RANK_PRESENTATION[rank].hex;
 }
 
 /**
