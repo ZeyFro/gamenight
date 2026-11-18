@@ -37,6 +37,7 @@ import {
   type DiscordRestResult,
 } from "@/lib/discord-rest";
 import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
+import { runRoleCreationAction } from "@/lib/discord-role-autocreate";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -228,6 +229,15 @@ export type ResolvedAction =
       teamId: string;
       communityId: string;
       discordId?: string;
+    }
+  | {
+      /** Rôle de jeu demandé par /role (DISCORD_ROLE_AUTOCREATE_ENABLED) : création SANS
+       * permission (ou réutilisation par nom normalisé) puis attribution au demandeur,
+       * par `runRoleCreationAction`. Réservée au résolveur `roleCreationResolver`
+       * (ADMIN / ROLE_AUTOCREATE). */
+      kind: "create_game_role";
+      requestId: string;
+      communityId: string;
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
@@ -634,6 +644,12 @@ export async function performDiscordAction(
           { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId },
           deadline
         ),
+        () => ({})
+      );
+    }
+    case "create_game_role": {
+      return mapDiscordResult(
+        await runRoleCreationAction({ requestId: action.requestId, communityId: action.communityId }, deadline, undefined, now),
         () => ({})
       );
     }
