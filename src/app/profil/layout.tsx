@@ -21,6 +21,9 @@ import { CountUp } from "@/components/ui/CountUp";
 import { XpProgress } from "@/components/app/XpProgress";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
+import { isProfileCustomizationEnabled } from "@/lib/profile-cosmetics";
+import { loadProfilePresentation } from "@/lib/profile-customization";
+import { BadgeShowcase, ProfileBanner, ProfileCosmeticsRoot, ProfileTitle, StyledName } from "@/components/ProfileCosmetics";
 
 function formatMemberSince(date: Date): string {
   return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(date);
@@ -71,7 +74,9 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
   const cosmetics = communityId
     ? await getEquippedShopItems(user.id, communityId)
     : { TITLE: null, FRAME: null, COLOR: null };
-  const title = cosmetics.TITLE?.value ?? titleForLevel(level);
+  // Personnalisation (PROFILE_CUSTOMIZATION_ENABLED) : `null` si éteinte. Le propriétaire voit toujours son propre profil.
+  const presentation = await loadProfilePresentation(user.id, user.id);
+  const title = presentation?.title?.name ?? cosmetics.TITLE?.value ?? titleForLevel(level);
   const color = cosmetics.COLOR?.value ?? user.color;
   const steamActivityLabel = formatSteamActivityLabel(
     user.lastPlayedGame,
@@ -94,11 +99,17 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
     <div className="mx-auto flex w-full gn-profile-shell max-w-6xl flex-col gap-6 pb-8 sm:pb-12">
       <div className="gn-profile-cover relative overflow-hidden mx-4 sm:mx-6">
         <ShineBorder shineColor={["#b99aff", "#d4ef80"]} aria-hidden="true" />
-        <BannerImage
-          url={user.bannerUrl}
-          color={color}
-          className="banner-ken-burns h-40 w-full sm:h-56 md:h-64"
-        />
+        {presentation?.bannerFx ? (
+          <ProfileCosmeticsRoot view={presentation}>
+            <ProfileBanner view={presentation} tall />
+          </ProfileCosmeticsRoot>
+        ) : (
+          <BannerImage
+            url={user.bannerUrl}
+            color={color}
+            className="banner-ken-burns h-40 w-full sm:h-56 md:h-64"
+          />
+        )}
         <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
           <CopyProfileLinkButton userId={user.id} />
           <ButtonLink href="/profil/parametres" variant="secondary" size="sm" className="gn-touch-target relative">
@@ -108,13 +119,14 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
       </div>
 
       <div className="flex flex-col gap-4 px-4 sm:px-6">
-        <ParallaxHeader className="-mt-16 flex items-end gap-4 sm:-mt-20">
+        <ProfileCosmeticsRoot view={presentation} className={presentation?.cardTheme ? "-mt-6" : "-mt-16 sm:-mt-20"}>
+        <ParallaxHeader className="flex items-end gap-4">
           <div className={boosterRingClass(booster)}>
-            <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={96} />
+            <RankAvatar src={user.discordAvatar} alt={user.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} frameFxId={presentation?.frameFx?.id} size={96} />
           </div>
           <div className="name-halo relative flex flex-1 flex-col gap-1 pb-1">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground drop-shadow sm:text-2xl">
-              {user.discordName}
+              <StyledName name={user.discordName} view={presentation} />
               <ColorDot color={color} title="Ta couleur équipée" />
               <BoosterBadge state={booster} />
             </h1>
@@ -124,10 +136,12 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
               >
                 {rank.name}
               </span>
-              <span className="text-xs text-muted">{title}</span>
+              {presentation?.title ? <ProfileTitle view={presentation} /> : <span className="text-xs text-muted">{title}</span>}
             </div>
           </div>
         </ParallaxHeader>
+        <BadgeShowcase view={presentation} />
+        </ProfileCosmeticsRoot>
 
         <p className="text-xs text-muted">
           Membre depuis {formatMemberSince(user.createdAt)} ·{" "}
@@ -151,7 +165,7 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
           <StreakStatCard value={stats.streakCount} />
         </div>
 
-        <ProfilTabs />
+        <ProfilTabs showCustomization={isProfileCustomizationEnabled()} />
 
         {children}
       </div>

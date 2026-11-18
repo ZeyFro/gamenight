@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { isProfileCustomizationEnabled, profileShopPrice } from "@/lib/profile-cosmetics";
 
 // Défaut Prisma : 5 s, puis erreur 500 à l'expiration ; même marge que les autres transactions interactives.
 const SHOP_TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
@@ -84,8 +85,20 @@ export async function getEquippedShopItemsForViewer(userId: string) {
     : { TITLE: null, FRAME: null, COLOR: null };
 }
 
+/**
+ * Élément achetable avec le solde XP : les 7 éléments historiques, plus ceux de la personnalisation du profil
+ * (PROFILE_CUSTOMIZATION_ENABLED) marqués « boutique ». Les éléments gagnés ou exclusifs boosters ne sont
+ * jamais achetables : `null`.
+ */
+export function getPurchasableItem(itemId: string): { id: string; price: number } | null {
+  const legacy = getShopItem(itemId);
+  if (legacy) return { id: legacy.id, price: legacy.price };
+  const price = isProfileCustomizationEnabled() ? profileShopPrice(itemId) : null;
+  return price === null ? null : { id: itemId, price };
+}
+
 export async function buyShopItem(userId: string, communityId: string, itemId: string) {
-  const item = getShopItem(itemId);
+  const item = getPurchasableItem(itemId);
   if (!item) return "invalid" as const;
 
   return shopTransaction(async (tx) => {

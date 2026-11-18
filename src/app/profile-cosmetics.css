@@ -1,0 +1,171 @@
+/*
+ * Personnalisation du profil (PROFILE_CUSTOMIZATION_ENABLED) : CSS seul, aucun JS, aucune dépendance.
+ * Données de présentation uniquement. Les classes `pc-<id>` correspondent aux identifiants de
+ * src/lib/profile-cosmetics.ts : jamais de valeur libre saisie par un membre.
+ *
+ * Règles communes :
+ * - uniquement `transform`, `opacity` et `background-position` sont animés (légers sur mobile) ;
+ * - `[data-pc-effects="off"]` (préférence du spectateur) et `prefers-reduced-motion: reduce` coupent
+ *   TOUTES les animations et masquent les couches décoratives (`.pc-layer`) ; les couleurs et dégradés
+ *   statiques restent affichés, le texte reste lisible (contraste ≥ 4,5:1 vérifié par test) ;
+ * - `forced-colors: active` revient aux couleurs système.
+ */
+
+.pc-root {
+  position: relative;
+  isolation: isolate;
+}
+
+/* ── Thèmes de carte (fond sombre + texte clair) ───────────────────────────── */
+.pc-card {
+  color: #f4f2f8;
+  border-radius: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--pc-card-border, var(--border));
+  background: var(--pc-card-bg, var(--surface));
+  overflow: hidden;
+}
+.pc-card-midnight { --pc-card-bg: linear-gradient(160deg, #12172b, #0d1020); --pc-card-border: #2c3566; }
+.pc-card-forest   { --pc-card-bg: linear-gradient(160deg, #10201a, #0b1612); --pc-card-border: #24523f; }
+.pc-card-ember    { --pc-card-bg: linear-gradient(160deg, #25140f, #190d0a); --pc-card-border: #6a3524; }
+.pc-card-tower    { --pc-card-bg: linear-gradient(160deg, #1d1a2b, #14121f); --pc-card-border: #4a3f7a; }
+
+/* ── Couleurs et dégradés du pseudo ────────────────────────────────────────── */
+.pc-name { color: var(--pc-a, inherit); }
+.pc-name-aurora  { --pc-a: #6ee7b7; --pc-b: #7dd3fc; }
+.pc-name-sunset  { --pc-a: #fda4af; --pc-b: #fcd34d; }
+.pc-name-orchid  { --pc-a: #c4b5fd; --pc-b: #f9a8d4; }
+.pc-name-gold    { --pc-a: #fbbf24; --pc-b: #fde68a; }
+.pc-name-crimson { --pc-a: #fca5a5; --pc-b: #f87171; }
+.pc-name-violet  { --pc-a: #d8b4fe; --pc-b: #c4b5fd; }
+.pc-name-nitro   { --pc-a: #f9a8d4; --pc-b: #fcd34d; }
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .pc-name[class*="pc-name-"] {
+    background-image: linear-gradient(90deg, var(--pc-a), var(--pc-b));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  /* Brillance : un reflet traverse le texte (avec ou sans dégradé). */
+  .pc-fx-shine .pc-name {
+    background-image:
+      linear-gradient(100deg, transparent 40%, rgb(255 255 255 / 0.95) 50%, transparent 60%),
+      linear-gradient(90deg, var(--pc-a, #f4f2f8), var(--pc-b, var(--pc-a, #f4f2f8)));
+    background-size: 250% 100%, 100% 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: pc-shine 4.5s ease-in-out infinite;
+  }
+}
+@keyframes pc-shine {
+  0% { background-position: 150% 0, 0 0; }
+  60%, 100% { background-position: -50% 0, 0 0; }
+}
+
+/* ── Titre sous le pseudo ─────────────────────────────────────────────────── */
+.pc-title { font-size: 0.75rem; color: var(--muted); }
+
+/* ── Vitrine de badges ────────────────────────────────────────────────────── */
+.pc-showcase { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.pc-showcase li {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid var(--border); border-radius: 9999px;
+  background: var(--surface); color: var(--foreground);
+  padding: 0.2rem 0.6rem; font-size: 0.75rem;
+}
+
+/* ── Cadres animés (anneau autour de l'avatar) ────────────────────────────── */
+.pc-frame {
+  position: absolute; inset: -0.5rem; border-radius: 9999px; pointer-events: none;
+}
+.pc-frame-pulse {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 85%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: pc-pulse 2.6s ease-in-out infinite;
+}
+.pc-frame-champion {
+  box-shadow: 0 0 0 3px #fbbf24, 0 0 14px color-mix(in srgb, #fbbf24 70%, transparent);
+  animation: pc-pulse 3s ease-in-out infinite;
+}
+.pc-frame-orbit, .pc-frame-nitro {
+  background: conic-gradient(from 0deg, var(--pc-ring-a), var(--pc-ring-b), var(--pc-ring-a));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: pc-spin 6s linear infinite;
+}
+.pc-frame-orbit { --pc-ring-a: #b99aff; --pc-ring-b: #6ee7b7; }
+.pc-frame-nitro { --pc-ring-a: #f9a8d4; --pc-ring-b: #fcd34d; }
+@keyframes pc-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes pc-spin { to { transform: rotate(360deg); } }
+
+/* ── Bannières animées (dégradés, jamais d'URL) ───────────────────────────── */
+.pc-banner {
+  height: 5rem; border-radius: 0.75rem; background-size: 200% 200%;
+  animation: pc-drift 12s ease-in-out infinite;
+}
+.pc-banner-tall { height: 10rem; }
+@media (min-width: 640px) { .pc-banner-tall { height: 14rem; } }
+.pc-banner-aurora { background-image: linear-gradient(120deg, #064e3b, #0e7490, #1e3a8a, #064e3b); }
+.pc-banner-nebula { background-image: linear-gradient(120deg, #3b0764, #831843, #1e1b4b, #3b0764); }
+.pc-banner-season { background-image: linear-gradient(120deg, #78350f, #b45309, #713f12, #78350f); }
+@keyframes pc-drift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* ── Effets décoratifs : flammes et particules (couches non interactives) ──── */
+.pc-layer { position: absolute; inset: 0; pointer-events: none; z-index: -1; border-radius: inherit; }
+.pc-fx-flames > .pc-layer,
+.pc-fx-flames-ranker > .pc-layer {
+  background:
+    radial-gradient(60% 45% at 20% 100%, rgb(251 113 60 / 0.35), transparent 70%),
+    radial-gradient(55% 40% at 70% 100%, rgb(251 191 36 / 0.3), transparent 70%);
+  animation: pc-flicker 2.2s ease-in-out infinite;
+}
+.pc-fx-flames-ranker > .pc-layer {
+  background:
+    radial-gradient(60% 45% at 25% 100%, rgb(251 191 36 / 0.4), transparent 70%),
+    radial-gradient(55% 40% at 75% 100%, rgb(253 230 138 / 0.3), transparent 70%);
+}
+.pc-fx-sparkles > .pc-layer {
+  background-image:
+    radial-gradient(circle, rgb(255 255 255 / 0.8) 0 1.5px, transparent 2px),
+    radial-gradient(circle, rgb(185 154 255 / 0.8) 0 1.5px, transparent 2px);
+  background-size: 90px 90px, 130px 130px;
+  background-position: 0 0, 40px 60px;
+  animation: pc-rise 9s linear infinite;
+  opacity: 0.7;
+}
+@keyframes pc-flicker { 0%, 100% { opacity: 0.55; transform: translateY(2px); } 50% { opacity: 1; transform: translateY(0); } }
+@keyframes pc-rise { to { background-position: 0 -90px, 40px -70px; } }
+
+/* ── Effets d'entrée (une seule fois à l'ouverture) ───────────────────────── */
+.pc-entrance-fade { animation: pc-in-fade 0.6s ease-out both; }
+.pc-entrance-rise { animation: pc-in-rise 0.6s ease-out both; }
+.pc-entrance-glow { animation: pc-in-glow 0.9s ease-out both; }
+@keyframes pc-in-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pc-in-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes pc-in-glow { from { opacity: 0; box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 24px 2px color-mix(in srgb, var(--accent) 60%, transparent); } to { opacity: 1; box-shadow: 0 0 0 0 transparent; } }
+
+/* ── Désactivation : préférence du spectateur et mouvement réduit ─────────── */
+.pc-root[data-pc-effects="off"] *,
+.pc-root[data-pc-effects="off"] *::before,
+.pc-root[data-pc-effects="off"] *::after,
+.pc-root[data-pc-effects="off"] { animation: none !important; }
+.pc-root[data-pc-effects="off"] .pc-layer { display: none; }
+.pc-root[data-pc-effects="off"] .pc-name[class*="pc-name-"],
+.pc-root[data-pc-effects="off"].pc-fx-shine .pc-name { background-image: linear-gradient(90deg, var(--pc-a, #f4f2f8), var(--pc-b, var(--pc-a, #f4f2f8))) !important; background-size: 100% 100%; }
+.pc-root[data-pc-effects="off"] .pc-frame-orbit,
+.pc-root[data-pc-effects="off"] .pc-frame-nitro { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-root *, .pc-root *::before, .pc-root *::after, .pc-root { animation: none !important; }
+  .pc-root .pc-layer { display: none; }
+  .pc-root .pc-name[class*="pc-name-"],
+  .pc-root.pc-fx-shine .pc-name { background-image: linear-gradient(90deg, var(--pc-a, #f4f2f8), var(--pc-b, var(--pc-a, #f4f2f8))) !important; background-size: 100% 100%; }
+}
+
+@media (forced-colors: active) {
+  .pc-name { background: none !important; -webkit-text-fill-color: currentColor; color: CanvasText; forced-color-adjust: auto; }
+  .pc-frame, .pc-layer { display: none; }
+}
