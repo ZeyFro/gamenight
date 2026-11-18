@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getCommunityTeamsCommunityId, joinCommunityTeam, listCommunityTeams } from "@/lib/community-teams";
 import { editSetupResponse } from "@/lib/discord-rest";
+import { requestTeamSpaceMemberSync } from "@/lib/discord-team-space-hooks";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -28,23 +29,41 @@ const ephemeral = (content: string): InteractionOutput => ({
   body: { type: 4, data: { content, flags: 64, allowed_mentions: { parse: [] } } },
 });
 
-async function commandResult(guildId: string, discordId: string, action: "liste" | "moi" | "rejoindre", teamId?: string) {
+/**
+ * Contexte commun aux commandes d'équipe (`/equipe`, `/projet`) : compte lié,
+ * communauté d'équipes active, serveur Discord correspondant. Un seul endroit
+ * pour ces vérifications, jamais dupliquées dans un second handler.
+ */
+export async function resolveTeamCommandContext(
+  guildId: string,
+  discordId: string
+): Promise<{ ok: true; userId: string; communityId: string } | { ok: false; message: string }> {
   const user = await prisma.user.findUnique({ where: { discordId }, select: { id: true } });
-  if (!user) return "Associe d’abord ton compte Discord à GameNight pour utiliser les équipes.";
+  if (!user) return { ok: false, message: "Associe d’abord ton compte Discord à GameNight pour utiliser les équipes." };
 
   const communityId = await getCommunityTeamsCommunityId(user.id);
-  if (!communityId) return "Les équipes ne sont pas disponibles pour ton compte GameNight.";
+  if (!communityId) return { ok: false, message: "Les équipes ne sont pas disponibles pour ton compte GameNight." };
   const community = await prisma.community.findUnique({
     where: { id: communityId },
     select: { discordGuildId: true, status: true, communityTeamsEnabled: true },
   });
   if (community?.discordGuildId !== guildId || community.status !== "ACTIVE" || !community.communityTeamsEnabled) {
-    return "Sélectionne ce serveur dans GameNight avant d’utiliser cette commande.";
+    return { ok: false, message: "Sélectionne ce serveur dans GameNight avant d’utiliser cette commande." };
   }
+  return { ok: true, userId: user.id, communityId };
+}
+
+async function commandResult(guildId: string, discordId: string, action: "liste" | "moi" | "rejoindre", teamId?: string) {
+  const context = await resolveTeamCommandContext(guildId, discordId);
+  if (!context.ok) return context.message;
+  const user = { id: context.userId };
+  const communityId = context.communityId;
 
   if (action === "rejoindre") {
     if (!teamId) return "Indique l’identifiant de l’équipe affiché par `/equipe liste`.";
     const result = await joinCommunityTeam(user.id, communityId, teamId);
+    // Accès au salon privé de l'équipe : file des espaces (aucun appel Discord direct, no-op sans le drapeau).
+    if (result === "joined") await requestTeamSpaceMemberSync({ communityId, teamId, discordId });
     return {
       joined: "Tu as rejoint l’équipe.",
       already: "Tu fais déjà partie de cette équipe.",
