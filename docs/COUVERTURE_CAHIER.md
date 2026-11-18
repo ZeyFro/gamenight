@@ -53,7 +53,7 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | 12.2 | Filtres plateforme, disponibilité, mode (détente/compétitif), micro | PR | PR #408 : `player-classified-filters.ts`, migration `20261105120000_tower_launch_channels_appeals_matchmaking` |
 | 12.2 | Filtre niveau de jeu | Manquant | ni champ ni filtre, y compris dans #408 : à faire après #408 (migration) |
 | 12.3 | « Qui joue ce soir ? » | Livré désactivé | `/ce-soir` (`WHO_PLAYS_TONIGHT_ENABLED`) |
-| 12.3 | Respect de la visibilité du profil | PR #459 (Livré désactivé après fusion) | `profile-visibility.ts`, `canViewPote`, `PROFILE_VISIBILITY_ENABLED`, migration `20261201110000_profile_visibility` (après #416) ; ne couvre pas classements ni soirées |
+| 12.3 | Respect de la visibilité du profil | PR #459 (Livré désactivé après fusion) | `profile-visibility.ts`, `canViewPote`, `PROFILE_VISIBILITY_ENABLED`, migration `20261118103100_profile_visibility` (après #416) ; ne couvre pas classements ni soirées |
 | 12.4 | Profil : jeux favoris, plateformes, niveaux, disponibilités | Partiel | plateformes/micro (`User.availablePlatforms`), tier list, préférences ; niveaux par jeu : Manquant |
 | 13 | Soirées, calendrier, tournois, roulette | Livré | `/sessions`, `/calendrier`, `/tournois`, `/roulette` |
 | 14.1-14.2 | Calendrier des saisons | Partiel | `tower-challenge-seasons.ts` aligné sur la décision du 04/11, pas celle du 17/11 (voir écarts) |

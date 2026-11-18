@@ -222,6 +222,25 @@ describe("community-isolation", () => {
       });
     });
 
+    it("profil masqué (PROFILE_VISIBILITY_ENABLED) : la requête exclut les profils HIDDEN, jamais soi-même", async () => {
+      vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "");
+      vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
+      membershipFindMany.mockResolvedValue([m("c-b", "serveur-b")]);
+      userFindFirst.mockResolvedValue(null);
+      await expect(canViewPote("u1", "p1")).resolves.toBe(false);
+      expect(userFindFirst).toHaveBeenCalledWith({
+        where: {
+          id: "p1",
+          memberships: { some: { communityId: { in: ["c-b"] }, status: "ACTIVE" } },
+          NOT: { profileVisibility: { is: { visibility: "HIDDEN" } } },
+        },
+        select: { id: true },
+      });
+      userFindFirst.mockClear();
+      await expect(canViewPote("u1", "u1")).resolves.toBe(true);
+      expect(userFindFirst).not.toHaveBeenCalled();
+    });
+
     it("soi-même : toujours visible", async () => {
       await expect(canViewPote("u1", "u1")).resolves.toBe(true);
       expect(userFindFirst).not.toHaveBeenCalled();

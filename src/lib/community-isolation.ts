@@ -1,4 +1,5 @@
 import { communityRead } from "@/lib/community-read-context";
+import { profileVisibilityWhere } from "@/lib/profile-visibility";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_COMMUNITY_SLUG, findExistingDefaultCommunityId } from "@/lib/default-community";
@@ -96,7 +97,8 @@ export async function canViewPote(viewerId: string, poteId: string): Promise<boo
   if (viewerId === poteId) return true;
   const scope = await getIsolationScope(viewerId);
   const where = memberUserWhere(scope);
-  return (await prisma.user.findFirst({ where: { id: poteId, ...where }, select: { id: true } })) !== null;
+  // Profil masqué par son propriétaire (PROFILE_VISIBILITY_ENABLED) : indistinct d'un pote inexistant.
+  return (await prisma.user.findFirst({ where: { id: poteId, ...where, ...profileVisibilityWhere() }, select: { id: true } })) !== null;
 }
 
 /**
