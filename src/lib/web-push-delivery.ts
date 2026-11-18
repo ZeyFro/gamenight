@@ -6,6 +6,7 @@ import { webPushConfig, webPushConfigIssue, webPushIssueMessage } from "@/lib/we
 export type WebPushPayload = { title: string; body: string; url: string };
 
 export async function sendUserWebPush(userId: string, payload: WebPushPayload): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
   const config = webPushConfig(process.env);
   if (!config) {
     const issue = webPushConfigIssue(process.env);

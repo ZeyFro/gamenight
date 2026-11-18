@@ -1,5 +1,6 @@
+import { encodeVapidFixture } from "@/test-utils/vapid";
 import { createECDH } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { findMany, deleteMany, sendNotification, warn } = vi.hoisted(() => ({ findMany: vi.fn(), deleteMany: vi.fn(), sendNotification: vi.fn(), warn: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { webPushSubscription: { findMany, deleteMany } } }));
@@ -10,8 +11,7 @@ import { sendUserWebPush } from "./web-push-delivery";
 
 const ecdh = createECDH("prime256v1");
 ecdh.generateKeys();
-const PUBLIC = ecdh.getPublicKey().toString("base64url");
-const PRIVATE = ecdh.getPrivateKey().toString("base64url");
+const { publicKey: PUBLIC, privateKey: PRIVATE } = encodeVapidFixture(ecdh);
 const payload = { title: "Test", body: "Texte", url: "/profil" };
 
 describe("livraison Web Push", () => {
@@ -23,6 +23,10 @@ describe("livraison Web Push", () => {
     vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", PRIVATE);
     findMany.mockResolvedValue([{ id: "sub-1", endpoint: "https://fcm.googleapis.com/send/x", p256dh: "public-key", auth: "auth-key" }]);
     sendNotification.mockResolvedValue({ statusCode: 201 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("ne contacte aucun service si la fonction est éteinte, sans bruit dans le journal", async () => {
@@ -72,5 +76,12 @@ describe("livraison Web Push", () => {
     sendNotification.mockRejectedValueOnce({ statusCode: 500 });
     await sendUserWebPush("user-1", payload);
     expect(sendNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it("ne contacte aucun service externe en Preview même si Web Push est configuré", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await sendUserWebPush("user-1", payload);
+    expect(findMany).not.toHaveBeenCalled();
+    expect(sendNotification).not.toHaveBeenCalled();
   });
 });

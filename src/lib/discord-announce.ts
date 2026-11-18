@@ -47,7 +47,7 @@ function resultPostSkippedByPrivacy(): PostToDiscordResult {
  * invités actifs uniquement) continuent d'être écrites.
  */
 export async function announceSessionResult(
-  session: Pick<Session, "id" | "createdById" | "date" | "notifiedUserIds" | "communityId">,
+  session: Pick<Session, "id" | "createdById" | "date" | "notifiedUserIds" | "communityId" | "createdViaRoulette">,
   winner: ProposalWithVotesAndGame | null,
   tie: boolean
 ): Promise<PostToDiscordResult> {
@@ -83,6 +83,7 @@ export async function announceSessionResult(
       title: `🎮 Soirée validée : ${winner.game.name}`,
       message: formatDateTimeFr(session.date),
       relatedSessionId: session.id,
+      personalCategory: session.createdViaRoulette ? "ROULETTE" as const : "SESSION" as const,
     }))
   );
 
