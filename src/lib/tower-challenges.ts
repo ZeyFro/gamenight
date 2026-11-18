@@ -9,7 +9,8 @@ import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "@/lib/tower-challenge-rules";
 import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, TOWER_CHALLENGE_VOTE_QUORUM } from "@/lib/tower-challenge-voting";
-import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
+import { enqueueTowerChallengeEvent, refreshTowerProofMessage, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
+import { isTowerDiscordVotesEnabled, towerVoterEligibility } from "@/lib/tower-vote-eligibility";
 import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
@@ -412,6 +413,14 @@ export async function voteTowerChallenge(input: unknown) {
       where: { attemptId_userId: { attemptId, userId } }, select: { userId: true },
     })) return { status: "SELF_VOTE" } as const;
     const createdAt = now();
+    const discordVotes = isTowerDiscordVotesEnabled();
+    if (discordVotes) {
+      // Votants : compte GameNight actif depuis au moins 7 jours (Membership.joinedAt de la communauté).
+      const voter = await scopedDb.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { status: true, joinedAt: true } });
+      const eligibility = towerVoterEligibility({ status: voter?.status, joinedAt: voter?.joinedAt, now: createdAt });
+      if (eligibility === "NOT_ACTIVE") return { status: "VOTER_NOT_ACTIVE" } as const;
+      if (eligibility === "TOO_RECENT") return { status: "VOTER_TOO_RECENT" } as const;
+    }
     if (attempt.status !== "SUBMITTED" || !attempt.submittedAt || createdAt < attempt.submittedAt) return { status: "CLOSED" } as const;
     let extended = attempt.voteExtendedAt !== null;
     const initialDeadline = challengeVoteDeadline(attempt.submittedAt);
@@ -426,13 +435,21 @@ export async function voteTowerChallenge(input: unknown) {
       if (qualifying < TOWER_CHALLENGE_VOTE_QUORUM) {
         await scopedDb.towerChallengeAttempt.update({ where: { id: attemptId }, data: { voteExtendedAt: initialDeadline } });
         extended = true;
+        await refreshTowerProofMessage(scopedDb, communityId, attemptId); // nouvelle échéance affichée
       }
     }
     if (createdAt >= challengeVoteDeadline(attempt.submittedAt, extended)) return { status: "CLOSED" } as const;
     const existing = await scopedDb.towerChallengeVote.findUnique({ where: { attemptId_userId: { attemptId, userId } } });
-    if (existing) return existing.approve === approve
-      ? { status: "VOTED", replayed: true } as const : { status: "ALREADY_VOTED" } as const;
+    if (existing && existing.approve === approve) return { status: "VOTED", replayed: true } as const;
+    if (existing) {
+      if (!discordVotes) return { status: "ALREADY_VOTED" } as const;
+      // Vote modifiable jusqu'à l'échéance : createdAt d'origine conservé (le décompte du quorum ne bouge pas), un seul vote par personne.
+      await scopedDb.towerChallengeVote.update({ where: { attemptId_userId: { attemptId, userId } }, data: { approve } });
+      await refreshTowerProofMessage(scopedDb, communityId, attemptId);
+      return { status: "VOTE_CHANGED" } as const;
+    }
     await scopedDb.towerChallengeVote.create({ data: { communityId, userId, attemptId, approve, createdAt } });
+    await refreshTowerProofMessage(scopedDb, communityId, attemptId);
     return { status: "VOTED", replayed: false } as const;
   });
 }
@@ -734,6 +751,7 @@ export async function settleTowerChallenge(input: unknown) {
       `;
       extended = true;
       result = evaluateChallengeVote({ authorId: attempt.userId, openedAt: attempt.submittedAt, now: current, votes: ballots, extended });
+      await refreshTowerProofMessage(scopedDb, communityId, attemptId); // nouvelle échéance affichée
     }
     if (result.status === "OPEN") return result;
     if (result.status === "EXTEND") throw new Error("Prolongation du vote incohérente");
@@ -750,6 +768,7 @@ export async function settleTowerChallenge(input: unknown) {
         `;
         if (!reset) return { status: "CLOSED" } as const;
         await loadChallengeMeta(scopedDb, communityId, attemptId); // nouveau code TWR dès la resoumission ouverte
+        await refreshTowerProofMessage(scopedDb, communityId, attemptId, attempt.quorumResubmissions); // ancien message : vote clos sans quorum
         return { status: "NO_QUORUM_RESUBMIT", resubmitUntil } as const;
       }
       await scopedDb.$executeRaw`
