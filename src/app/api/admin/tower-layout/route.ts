@@ -1,4 +1,5 @@
 import { isVercelPreview } from "@/lib/preview-safety";
+import { isTowerOwner, towerGuildId } from "@/lib/tower-config";
 import { NextRequest, NextResponse } from "next/server";
 import plan from "@/lib/tower-discord-layout.json";
 import { requireAdmin } from "@/lib/admin";
@@ -8,8 +9,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 type Channel = { id: string; name: string; type: number; position?: number; parent_id: string | null; permission_overwrites?: Array<{ id: string; type: number; allow: string; deny: string }> };
-const GUILD = "553922938101825536";
-const OWNER = "699223334046531636";
+const GUILD = towerGuildId();
 const API = "https://discord.com/api/v10";
 const headers = { "Cache-Control": "private, no-store" };
 async function discord(method: string, resource: string, data?: object): Promise<unknown> {
@@ -87,7 +87,7 @@ export async function GET() {
   if (isVercelPreview()) return NextResponse.json({ error: "preview_disabled" }, { status: 503 });
   const currentUser = await getCurrentUser({ allowPlatformAdminWithoutMembership: true });
   const admin = currentUser ? await requireAdmin() : null;
-  if (!admin || admin.discordId !== OWNER) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
+  if (!admin || !isTowerOwner(admin.discordId)) return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   try {
     const publicData = operations((await overview()).channels);
     return NextResponse.json({ ...publicData, mode: "read-only", writeEnabled: false, guildId: GUILD }, { headers });

@@ -1,0 +1,97 @@
+name: Neon Test application contrôlée #370 puis #406
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Validation seule par défaut ; apply exige l'accord distinct et la restauration éprouvée."
+        type: choice
+        options: [validate, apply]
+        default: validate
+        required: true
+      dry_run_id:
+        description: "ID d’un nouveau dry-run SUCCESS (moins de 24 h) après alignement des sources approuvées."
+        type: string
+        required: true
+      confirmation:
+        description: "Pour apply seulement : APPLY-370-406-ON-TEST"
+        type: string
+        required: false
+      restoration_evidence:
+        description: "Pour apply : commentaire #400 de ZeyFro, preuve restauration/sauvegarde et accord explicite."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+
+concurrency:
+  group: neon-test-migrations-370-406
+  cancel-in-progress: false
+
+jobs:
+  migration-test:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: neon-migration-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout the sealed 118-migration operator baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7
+          path: operator
+          persist-credentials: false
+      - name: Checkout the chronological runner and first SQL
+        uses: actions/checkout@v4
+        with:
+          ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
+          path: migration-370
+          persist-credentials: false
+      - name: Checkout only the pinned second SQL source
+        uses: actions/checkout@v4
+        with:
+          ref: 1a495ede501784167b597c43438c1527b2d58082
+          path: migration-406
+          sparse-checkout: prisma/migrations
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: operator/package-lock.json
+      - name: Assemble only baseline and first migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp migration-370/scripts/db-migrate.mjs operator/scripts/db-migrate.mjs
+          cp migration-370/scripts/db-migrate-lib.mjs operator/scripts/db-migrate-lib.mjs
+          # Garde d'URL du runner épinglé : n'admet que la forme exacte sslaccept=strict (empreintes vérifiées avant et après).
+          node scripts/neon-test/runner-ssl.mjs operator/scripts/db-migrate-lib.mjs
+          cp -R scripts/neon-test operator/scripts/neon-test
+          cp -R migration-370/prisma/migrations/20261104140000_tower_team_membership_policy operator/prisma/migrations/
+          test ! -d operator/prisma/migrations/20261105120000_tower_launch_channels_appeals_matchmaking
+      - name: Install without any remote database secret
+        working-directory: operator
+        run: npm ci
+      - working-directory: operator
+        run: npx prisma generate
+      - name: Validate or apply sequentially with fail-closed checks
+        working-directory: operator
+        run: node scripts/neon-test/run.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          DRY_RUN_ID: ${{ inputs.dry_run_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          RESTORATION_EVIDENCE: ${{ inputs.restoration_evidence }}
+          APPLY_AUTHORIZATION: ${{ vars.NEON_TEST_APPLY_AUTHORIZATION }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          GAMENIGHT_EXPECTED_TARGET: ep-morning-wave-b1o2tpej.c-5.eu-central-1.aws.neon.tech/neondb
+          GAMENIGHT_RUNTIME_ROLE: ${{ vars.GAMENIGHT_RUNTIME_ROLE }}
+          GAMENIGHT_MIGRATION_ROLE: ${{ vars.GAMENIGHT_MIGRATION_ROLE }}

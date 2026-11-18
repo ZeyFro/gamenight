@@ -427,6 +427,41 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-delivery (intégration Postgre
       expect(finalizeByB).toBe(true);
     });
 
+    it("au plafond de tentatives, une expiration de bail rend la livraison FAILED au lieu de la réessayer sans fin", async () => {
+      const event = await makeEvent();
+      const d = await makeDelivery(event.id);
+      let t = new Date("2026-11-09T10:00:00Z");
+      const attemptsSeen: number[] = [];
+      for (let i = 0; i < 12; i++) {
+        const claimed = await lib.claimNextDelivery("worker-crash", { leaseMs: 1_000, now: t });
+        if (!claimed) break;
+        attemptsSeen.push(claimed.attempts);
+        t = new Date(t.getTime() + 60_000); // le worker meurt sans finaliser ; le bail expire
+        await lib.recoverExpiredReservations(t);
+      }
+      expect(attemptsSeen).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: d.id } });
+      expect(row.status).toBe("FAILED");
+      expect(row.errorClass).toBe("lease_expired:max_attempts_exceeded");
+      expect(row.reservationToken).toBeNull();
+      expect(await lib.claimNextDelivery("worker-crash", { now: t })).toBeNull();
+    });
+
+    it("le plafond d'expiration de bail est celui de l'executor (une seule règle, deux modules)", async () => {
+      const executorLib = await import("./notification-executor");
+      expect(lib.LEASE_EXPIRY_MAX_ATTEMPTS).toBe(executorLib.MAX_DELIVERY_ATTEMPTS);
+    });
+
+    it("sous le plafond, l'expiration repasse toujours en PENDING (comportement historique conservé)", async () => {
+      const event = await makeEvent();
+      const d = await makeDelivery(event.id);
+      const claimedAt = new Date();
+      await lib.claimNextDelivery("worker-1", { leaseMs: 1_000, now: claimedAt }); // tentative 1
+      const recovered = await lib.recoverExpiredReservations(new Date(claimedAt.getTime() + 60_000));
+      expect(recovered).toBe(1);
+      expect((await db.notificationDelivery.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("PENDING");
+    });
+
     it("ne touche jamais une réservation encore dans son bail", async () => {
       const event = await makeEvent();
       await makeDelivery(event.id);
@@ -439,6 +474,52 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-delivery (intégration Postgre
 
       const row = await db.notificationDelivery.findFirst();
       expect(row?.status).toBe("RESERVED");
+    });
+  });
+
+  describe("file de livraison — pas de famine par des éditions sans message", () => {
+    it("des éditions dont le SEND est SENT sans identifiant de message sont ignorées et ne bloquent pas une livraison indépendante", async () => {
+      // 21 emplacements : un SEND SENT sans discordMessageId (ex. webhook de récompense), puis une EDIT
+      // qui ne pourra jamais être appliquée. Au-delà de CLAIM_CANDIDATE_SCAN_LIMIT (20) candidats
+      // différés, un claim ne regardait jamais la livraison indépendante.
+      for (let i = 0; i < 21; i += 1) {
+        const event = await makeEvent({ sourceId: `stuck-${i}` });
+        const slot = `default-guild:SESSION:stuck-${i}:announce`;
+        const sent = await makeDelivery(event.id, { targetSlot: slot, recipientKey: `k:${i}` });
+        await db.notificationDelivery.update({
+          where: { id: sent.id },
+          data: { status: "SENT", sentAt: new Date(), discordMessageId: null },
+        });
+        await makeDelivery(event.id, { targetSlot: slot, operation: "EDIT", recipientKey: `e:${i}` });
+      }
+      const freshEvent = await makeEvent({ sourceId: "fresh" });
+      const fresh = await makeDelivery(freshEvent.id, { targetSlot: "default-guild:SESSION:fresh:announce", recipientKey: "k:fresh" });
+
+      // Chaque claim examine au plus 20 candidats : les éditions inapplicables sont fermées (SKIPPED) au fil des
+      // appels, la livraison indépendante est atteinte en quelques claims (avant le correctif : jamais).
+      let claimed: Awaited<ReturnType<typeof lib.claimNextDelivery>> = null;
+      let calls = 0;
+      while (!claimed && calls < 4) {
+        calls += 1;
+        claimed = await lib.claimNextDelivery("worker-1");
+      }
+      expect(claimed?.id).toBe(fresh.id);
+      expect(calls).toBeLessThanOrEqual(3);
+
+      const skipped = await db.notificationDelivery.count({
+        where: { operation: "EDIT", status: "SKIPPED", errorClass: "dependency:send_terminal_without_message" },
+      });
+      expect(skipped).toBeGreaterThan(0);
+    });
+
+    it("une EDIT dont le SEND est encore PENDING reste différée (dépendance non remplie, pas terminale)", async () => {
+      const event = await makeEvent();
+      const slot = "default-guild:SESSION:session-1:announce";
+      const send = await makeDelivery(event.id, { targetSlot: slot });
+      const edit = await makeDelivery(event.id, { targetSlot: slot, operation: "EDIT", recipientKey: "edit" });
+      const first = await lib.claimNextDelivery("worker-1");
+      expect(first?.id).toBe(send.id); // le SEND passe d'abord ; l'EDIT n'est pas SKIPPED
+      expect((await db.notificationDelivery.findUniqueOrThrow({ where: { id: edit.id } })).status).toBe("PENDING");
     });
   });
 

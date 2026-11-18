@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 type Channel = {id:string;name:string;category:string|null;topic:string;sampledMessages:number;nonBotSamples:number;pinnedCount:number;recentContentPatterns:Array<{word:string;count:number}>;newestSampleAt:string|null;sampleSkipped?:boolean;skipReason?:string;botNames?:string[];serviceEvidence?:string[]};
 type InventoryItem = {id:string;name:string;type:number;category:string|null;protected:boolean;legacyCandidate:boolean;overwriteCount:number;hasMemberOverwrites:boolean};
-type Result = {page:number;pageCount:number;totalTextChannels:number;totalGuildChannels:number;inventory?:InventoryItem[];channels:Channel[];unreadableChannels?:Array<{id:string;messageReadStatus:number;pinsReadStatus:number}>;error?:string};
+type Result = {guildId?:string;page:number;pageCount:number;totalTextChannels:number;totalGuildChannels:number;inventory?:InventoryItem[];channels:Channel[];unreadableChannels?:Array<{id:string;messageReadStatus:number;pinsReadStatus:number}>;error?:string};
 export default function AuditClient(){
  const [summary,setSummary]=useState<Result|null>(null);
  const [busy,setBusy]=useState(false);
@@ -15,15 +15,16 @@ export default function AuditClient(){
   try {
    const pages=summary?.pageCount??0;const all:Channel[]=[];
    let inventory:InventoryItem[]=summary?.inventory||[];
+   let guildId=summary?.guildId||"";
    const unreadable:NonNullable<Result["unreadableChannels"]>=[];
    for(let p=0;p<pages;p++){
     const r=await fetch("/api/admin/tower-content-audit?page="+p,{cache:"no-store"});
     const j=await r.json() as Result;
     if(!r.ok||j.error)throw Error(j.error||"Erreur page "+p);
-    all.push(...j.channels);if(p===0)inventory=j.inventory||inventory;
+    all.push(...j.channels);if(p===0){inventory=j.inventory||inventory;guildId=j.guildId||guildId;}
     unreadable.push(...(j.unreadableChannels||[]));setDone(p+1);
    }
-   const document={guildId:"553922938101825536",generatedAt:new Date().toISOString(),scope:"read-only inventory and sampled thematic audit; no message bodies",totalGuildChannels:inventory.length,totalTextChannels:all.length,inventory,unreadableChannels:unreadable,channels:all};
+   const document={guildId,generatedAt:new Date().toISOString(),scope:"read-only inventory and sampled thematic audit; no message bodies",totalGuildChannels:inventory.length,totalTextChannels:all.length,inventory,unreadableChannels:unreadable,channels:all};
    const blob=new Blob([JSON.stringify(document,null,2)],{type:"application/json"});
    const url=URL.createObjectURL(blob);const a=window.document.createElement("a");a.href=url;a.download="the-tower-audit-contenu.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){setProblem(e instanceof Error?e.message:"Erreur d'export");}

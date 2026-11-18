@@ -7,12 +7,12 @@ export const PRECHECK_EXIT = { OK: 0, UNEXPECTED: 1, REFUSED: 2, GAP: 3 };
 
 /** Le lot de migrations de la mise en ligne XP + vocal (= scripts/xp-rollout-migration-gate.mjs, vérifié par test). */
 export const DEFAULT_LOT = [
-  "20261019190000_separate_xp_balance",
-  "20261020150000_session_voice_presence",
-  "20261022120000_voice_presence_consent_coordination",
-  "20261022130000_voice_presence_retention_gap_bounds",
-  "20261022140000_voice_presence_gap_history",
-  "20261022142500_shop_balance_purchase_reason",
+  "20261105130000_separate_xp_balance",
+  "20261105131000_session_voice_presence",
+  "20261105132000_voice_presence_consent_coordination",
+  "20261105133000_voice_presence_retention_gap_bounds",
+  "20261105134000_voice_presence_gap_history",
+  "20261105135000_shop_balance_purchase_reason",
 ];
 
 // Liste blanche EXACTE : une instruction est envoyée seulement si son texte est l'une de ces constantes (aucun paramètre,

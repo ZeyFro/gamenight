@@ -318,7 +318,7 @@ async function main() {
       created.a.push(NAMES.fail);
       c.restore(NAMES.fail, backupFile, { role: "gn_migrator" });
       check("clone restauré depuis la sauvegarde (empreinte identique)", compareFingerprints(fpBefore, c.fingerprint(NAMES.fail)).identical);
-      const broken = "20261022130000_voice_presence_retention_gap_bounds";
+      const broken = "20261105133000_voice_presence_retention_gap_bounds";
       check("migration sabotée présente dans le lot", pending.includes(broken));
       const dir = makeWorkdir(tmp, "wd-fail", { scripts: MIGRATE_SCRIPTS, breakMigration: broken });
       workdirs.push(dir);

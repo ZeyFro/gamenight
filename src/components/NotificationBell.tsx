@@ -110,7 +110,7 @@ export function NotificationBell({
         <button
           type="button"
           aria-label="Notifications"
-          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground transition-colors hover:bg-surface-hover"
+          className="gn-touch-target relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground transition-colors hover:bg-surface-hover"
         >
           🔔
           {unreadCount > 0 && (
@@ -136,7 +136,7 @@ export function NotificationBell({
               <button
                 type="button"
                 onClick={markAllRead}
-                className="text-xs font-medium text-accent hover:underline"
+                className="gn-touch-target relative text-xs font-medium text-accent hover:underline"
               >
                 Tout marquer comme lu
               </button>

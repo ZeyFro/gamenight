@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getCurrentUser, checkRateLimit, drawSessionGame, redirect, revalidatePath, gameFindMany } = vi.hoisted(
+const { getCurrentUser, checkRateLimit, drawSessionGame, canAccessSession, redirect, revalidatePath, gameFindMany } = vi.hoisted(
   () => ({
     getCurrentUser: vi.fn(),
     checkRateLimit: vi.fn(),
     drawSessionGame: vi.fn(),
+    canAccessSession: vi.fn(),
     redirect: vi.fn((location: string) => {
       throw new Error(`REDIRECT:${location}`);
     }),
@@ -18,6 +19,7 @@ vi.mock("@/lib/rate-limit", () => ({ checkRateLimit }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/sessions", () => ({ drawSessionGame }));
+vi.mock("@/lib/session-access", () => ({ canAccessSession }));
 vi.mock("@/lib/prisma", () => ({ prisma: { game: { findMany: gameFindMany } } }));
 
 import { drawSessionGameAction } from "./draw";
@@ -37,6 +39,7 @@ describe("drawSessionGameAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     checkRateLimit.mockReturnValue(true);
+    canAccessSession.mockResolvedValue(true);
   });
 
   function formData(sessionId: string): FormData {
@@ -59,6 +62,15 @@ describe("drawSessionGameAction", () => {
 
     const state = await drawSessionGameAction(INITIAL_DRAW_STATE, formData("session-1"));
     expect(state).toEqual({ status: "error" });
+    expect(drawSessionGame).not.toHaveBeenCalled();
+  });
+
+  it("accès à la communauté de la soirée refusé — jamais d'appel à drawSessionGame, état 'error'", async () => {
+    getCurrentUser.mockResolvedValue({ id: "createur-1" });
+    canAccessSession.mockResolvedValue(false);
+    const state = await drawSessionGameAction(INITIAL_DRAW_STATE, formData("session-1"));
+    expect(state).toEqual({ status: "error" });
+    expect(canAccessSession).toHaveBeenCalledWith("createur-1", "session-1");
     expect(drawSessionGame).not.toHaveBeenCalled();
   });
 

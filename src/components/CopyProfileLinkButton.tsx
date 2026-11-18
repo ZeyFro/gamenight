@@ -51,10 +51,10 @@ export function CopyProfileLinkButton({ userId }: { userId: string }) {
 
   return (
     <div className="flex gap-2">
-      <Button type="button" variant="secondary" size="sm" onClick={handleCopyLink}>
+      <Button type="button" variant="secondary" size="sm" className="gn-touch-target relative" onClick={handleCopyLink}>
         {copied ? "✓ Copié" : "🔗 Copier le lien"}
       </Button>
-      <Button type="button" variant="secondary" size="sm" onClick={handleCopyDiscordMessage}>
+      <Button type="button" variant="secondary" size="sm" className="gn-touch-target relative" onClick={handleCopyDiscordMessage}>
         {copiedMessage ? "✓ Copié" : "📋 Message Discord"}
       </Button>
     </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
-import { listAllInvites } from "@/lib/session-access";
+import { canAccessSession, listAllInvites } from "@/lib/session-access";
 import { getSessionInviteSyncStatuses, getSessionThreadReadiness, type SessionThreadReadiness } from "@/lib/session-announce";
 import { isSessionAnnounceViaBotEnabledFor } from "@/lib/community-channels";
 import { communityMemberUserWhere } from "@/lib/community-isolation";
@@ -92,6 +92,8 @@ export default async function SessionInvitesPage({
   // à savoir qui d'autre est invité, ni à modifier la liste (règle
   // produit explicite : "seul le créateur gère les invitations").
   if (!session || session.createdById !== user.id) notFound();
+  // Un créateur sans Membership ACTIVE dans la communauté de la soirée n'y gère plus rien.
+  if (!(await canAccessSession(user.id, sessionId))) notFound();
 
   const [invites, potes] = await Promise.all([
     listAllInvites(sessionId),

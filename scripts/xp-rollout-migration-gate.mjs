@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 // Ordre d'application. Production n'a ni l'une ni l'autre ; une base déjà
 // passée par la première n'attend plus que la seconde.
 export const EXPECTED_XP_MIGRATIONS = [
-  "20261019190000_separate_xp_balance",
-  "20261022142500_shop_balance_purchase_reason",
+  "20261105130000_separate_xp_balance",
+  "20261105135000_shop_balance_purchase_reason",
 ];
 export const EXPECTED_XP_MIGRATION = EXPECTED_XP_MIGRATIONS[0];
 
@@ -29,19 +29,19 @@ export function assertOnlyExpectedXpMigrationPending(availableMigrations, applie
 // Cette liste est vérifiable : `node scripts/check-xp-rollout-migration-gate.mjs` la compare à
 // « migrations du checkout absentes de origin/main » (deriveRolloutMigrations).
 export const EXPECTED_ROLLOUT_MIGRATIONS = [
-  "20261019190000_separate_xp_balance",
-  "20261020150000_session_voice_presence",
-  "20261022120000_voice_presence_consent_coordination",
-  "20261022130000_voice_presence_retention_gap_bounds",
-  "20261022140000_voice_presence_gap_history",
-  "20261022142500_shop_balance_purchase_reason",
+  "20261105130000_separate_xp_balance",
+  "20261105131000_session_voice_presence",
+  "20261105132000_voice_presence_consent_coordination",
+  "20261105133000_voice_presence_retention_gap_bounds",
+  "20261105134000_voice_presence_gap_history",
+  "20261105135000_shop_balance_purchase_reason",
 ];
 
 /**
  * Vrai une fois le lot renommé avec l'horodatage réel (phase 4, scripts/rename-xp-lot-migrations.mjs). Tant que c'est faux, le lot
  * est plus ancien que des migrations de main : la garde chronologique du runner le refuserait. À retirer avec cette porte après le merge.
  */
-export const XP_LOT_RENAMED = false;
+export const XP_LOT_RENAMED = true;
 
 /** Migrations du checkout absentes de la référence (ex. origin/main), triées : le lot à appliquer. */
 export function deriveRolloutMigrations(checkoutMigrations, refMigrations) {

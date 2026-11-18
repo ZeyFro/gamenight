@@ -21,6 +21,8 @@ syncBuiltinESMExports();`);
       const calls = JSON.parse(readFileSync(trace, "utf8")) as string[][];
       expect(calls).toEqual([
         ["node_modules/prisma/build/index.js", "generate"],
+        // Garde de lecture seule : s'exécute dans tous les environnements mais ne fait rien hors Production.
+        ["scripts/assert-migrations-applied.mjs"],
         ["node_modules/next/dist/bin/next", "build"],
       ]);
       expect(calls.flat()).not.toContain("migrate");

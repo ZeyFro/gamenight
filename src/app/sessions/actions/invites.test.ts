@@ -6,6 +6,7 @@ const {
   sessionFindUnique,
   inviteToSession,
   revokeSessionInvite,
+  canAccessSession,
   enqueueSessionInviteSync,
   sessionInviteFindUnique,
   redirect,
@@ -16,6 +17,7 @@ const {
   sessionFindUnique: vi.fn(),
   inviteToSession: vi.fn(),
   revokeSessionInvite: vi.fn(),
+  canAccessSession: vi.fn(),
   enqueueSessionInviteSync: vi.fn(),
   sessionInviteFindUnique: vi.fn(),
   redirect: vi.fn((location: string) => {
@@ -34,7 +36,7 @@ vi.mock("@/lib/prisma", () => ({
     sessionInvite: { findUnique: sessionInviteFindUnique },
   },
 }));
-vi.mock("@/lib/session-access", () => ({ inviteToSession, revokeSessionInvite }));
+vi.mock("@/lib/session-access", () => ({ canAccessSession, inviteToSession, revokeSessionInvite }));
 vi.mock("@/lib/session-announce", () => ({ enqueueSessionInviteSync }));
 
 import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSyncAction } from "./invites";
@@ -49,6 +51,7 @@ import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSy
 describe("addSessionInviteAction / revokeSessionInviteAction — réservées au créateur", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    canAccessSession.mockResolvedValue(true);
     checkRateLimit.mockReturnValue(true);
   });
 
@@ -141,6 +144,7 @@ describe("addSessionInviteAction / revokeSessionInviteAction — réservées au 
 describe("retrySessionInviteSyncAction — réessai manuel réservé au créateur", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    canAccessSession.mockResolvedValue(true);
     checkRateLimit.mockReturnValue(true);
   });
 

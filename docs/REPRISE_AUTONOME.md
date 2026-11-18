@@ -1,3 +1,10 @@
+> **Remplacé le 17 novembre 2026 :** « Neon Test puis Production avec accords séparés » et « un flag par jour » ne sont plus la règle. Voir [MIGRATIONS.md](MIGRATIONS.md) (migrations appliquées automatiquement après fusion) et [ACTIVATION_TOUR.md](ACTIVATION_TOUR.md) (Tour activée en une soirée). Les passages ci-dessous qui les décrivent sont historiques.
+
+> **Reprise actuelle — 6 novembre 2026 :** lire d’abord [ETAT.md](ETAT.md) et l’issue #400.
+> Les relevés ci-dessous sont historiques ; leurs anciennes têtes, autorisations et
+> conditions d’arrêt ne remplacent pas les instructions actuelles du propriétaire.
+> #325 est exclusivement réservée à Claude Code. Aucun secret dans les journaux.
+
 # Point de reprise unique — GameNight — 3 novembre 2026
 
 Ce document décrit les constats du 2 novembre 2026, complétés le 3 novembre (section ci-dessous). Les anciens bilans sont historiques. Préserver les changements locaux et travailler sur une branche dédiée ; aucun push direct sur `main`.
@@ -66,9 +73,25 @@ Ne rien exécuter dans cette section sans un « OUI » du propriétaire pour l'a
 
 Le propriétaire gère la connexion Codex, les invitations, les permissions/rôles Discord et les publications Discord. Aucun secret ne doit figurer dans un fichier, une PR ou un compte rendu.
 
+
+## Point de reprise — 5 novembre 2026, session Codex
+
+- **Terminé dans la branche de #370** `feat/tower-team-rules-20261104` : le runner bloque les migrations en attente plus anciennes que la dernière migration réussie; tests unitaires ajoutés dans `scripts/db-migrate-lib.test.mjs`; le précontrôle #370 vérifie maintenant aussi les créateurs d'équipe orphelins. Tête actuelle `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb` (inclut aussi Vitest dans le glob CI). #370 reste Draft.
+- **Vérifications GitHub** : Le test ciblé `Test migration runner guards` passe sur la tête `4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb`; Tower rules/storage run 210 passent. CI générale run 764 passe entièrement (test:postgres, npm test, typegen, tsc, lint, build); l'échec Vercel est uniquement la limite quotidienne de déploiements. Preview Vercel échoue sur la limite quotidienne de déploiements. Aucun test local n'a été exécuté faute de checkout.
+- **Branche Neon de test préparée** : `tower-migration-test-20261105`, ID `br-snowy-snow-b1cggq2w`, projet `misty-tooth-45335023`, parent explicite `production` (`br-super-cell-b1ukvk08`); état Ready, ni primaire ni par défaut. Précontrôles en lecture seule : 118 migrations terminées, dernière `20261029061000_tower_team_challenges`, zéro en cours; zéro groupe membre en doublon et zéro créateur orphelin; tables concernées par #370/#406 vides. Aucun SQL de migration exécuté.
+- **Blocage technique avant recette SQL** : le runner exige `MIGRATION_DATABASE_URL` dans le shell et les sources Node locales; ni checkout ni variable directe n'existent dans cette session. Ne jamais envoyer l'URL ou un secret dans le chat. Reprendre avec le dépôt disponible et la variable injectée localement; vérifier le dry-run exact #370, puis #406 après revue du diff, sans inclure #325 ni aucune autre migration.
+- **PR et dépendances** : #325 reste gelée; #406 et #370 restent Draft avec migrations non exécutées. #407 dépend de #406 et doit être revérifiée avec #396; #408 dépend de #370/#406. #413 reste Draft et contient les mises à jour README/plan de migrations; cette section est sur sa branche.
+- **Prochaine action exacte** : attendre les checks de #370; corriger les échecs éventuels. Ensuite, si le runner local est disponible, dry-runner sur la branche de test avec liste exacte et confirmer l'identité de cible avant toute exécution. Ne pas toucher à Production, configuration, variables ou Discord.
+
+## Mise à jour CI — 5 novembre 2026
+
+- **#370** : Vitest ignorait initialement le test `.mjs` selon son include; `vitest.config.mts` inclut désormais `scripts/**/*.test.mjs`. Le job ciblé passe. CI générale run 764 passe entièrement; l'échec Vercel est uniquement la limite quotidienne de déploiements. PR toujours Draft.
+- **#406** : parenthèse manquante corrigée, et fixture de préférence corrigé sur la tête actuelle `abeada1de5215fb2be1d16712b9574b65a92f784`. Le workflow ciblé run 212 passe : 9 fichiers / 85 tests; son job storage passe aussi (87 tests ciblés, typegen et tsc). CI générale run 766 a redémarré; `npm run test:postgres` est en cours. Preview Vercel passe.
+- **Base de test** : toujours aucune migration appliquée. Le runner Prisma ne peut pas être lancé depuis cette session sans checkout local et `MIGRATION_DATABASE_URL` injectée hors chat. Aucune URL, aucun secret, aucune opération Production.
+- **Prochaine action** : relever les runs 763/764, corriger les échecs concrets, puis retester; seulement ensuite vérifier si le runner exact peut être exécuté sur la branche Neon de test, avec migrations #370 puis #406 et aucune autre migration.
 ## #325 : lot de 6 migrations en attente (6 novembre 2026)
 
 - #325 (`integ/xp-vocal-20261023`, Draft) a été mise à jour avec `origin/main` le 6 novembre 2026 (phase 1 : fusion, sans rebase ni force-push). La PR s'adapte à `main` : le build de `main` (`scripts/build.mjs`) est conservé tel quel, il ne migre jamais.
 - Elle apporte un lot de six migrations XP et vocales, non appliquées en Production et distinctes des sept migrations Tower de `main`. Elles s'appliquent en une exécution explicite de `node scripts/db-migrate.mjs`, avant le déploiement du code, selon `docs/LIVRAISON-XP.md` (liste exacte à jour, dry-run, précontrôle, retour arrière). Aucune migration n'est appliquée par cette mise à jour.
-- Renommage : les noms actuels du lot (horodatages d'octobre) sont antérieurs à des migrations de `main` déjà terminées sur une base à jour ; le runner de #370 refuse une migration en attente plus ancienne qu'une migration terminée. Le renommage (horodatages postérieurs à toute migration de `main`, contenu SQL inchangé) est prévu en phase 4, après la fusion de #370 et #406.
+- Renommage effectué le 18 novembre 2026 : les six migrations du lot sont horodatées `20261105130000` à `20261105135000` (après `20261105120000_tower_launch_channels_appeals_matchmaking` de #406, avant `20261106150000` de #407), ordre relatif et SQL inchangés ; aucune migration de `main` n’est modifiée. Le runner de #370 refuse une migration en attente plus ancienne qu’une migration terminée.
 - Point d'entrée unique documenté : `node scripts/db-migrate.mjs` (le script npm `db:migrate` est retiré). Les préconditions Production de ce fichier restent à produire par le propriétaire ; aucun accord d'exécution n'est donné ici.

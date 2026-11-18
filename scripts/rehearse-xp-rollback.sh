@@ -7,7 +7,7 @@ export PGPORT="${PGPORT:-55439}" PGUSER="${PGUSER:-postgres}" PGHOST="${PGHOST:-
 [ "$PGHOST" = "127.0.0.1" ] || { echo "REFUS : seule la cible 127.0.0.1 est admise (PGHOST=$PGHOST)"; exit 2; }
 TEMPLATE="${1:?base modèle (baseline de main)}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MIGS=(20261019190000_separate_xp_balance 20261020150000_session_voice_presence 20261022120000_voice_presence_consent_coordination 20261022130000_voice_presence_retention_gap_bounds 20261022140000_voice_presence_gap_history 20261022142500_shop_balance_purchase_reason)
+MIGS=(20261105130000_separate_xp_balance 20261105131000_session_voice_presence 20261105132000_voice_presence_consent_coordination 20261105133000_voice_presence_retention_gap_bounds 20261105134000_voice_presence_gap_history 20261105135000_shop_balance_purchase_reason)
 DOWN=("$ROOT"/scripts/rollback-xp-lot/0{6_shop_balance_purchase_reason,5_voice_presence_gap_history,4_voice_presence_retention_gap_bounds,3_voice_presence_consent_coordination,2_session_voice_presence,1_separate_xp_balance}.down.sql)
 DB="xprb_$$"; TMP="$(mktemp -d)"
 trap 'psql -qAt -d postgres -c "drop database if exists $DB" >/dev/null; rm -rf "$TMP"' EXIT

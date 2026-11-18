@@ -14,15 +14,30 @@ export function getTowerParisDayKey(date: Date): string {
   return parisDayFormatter.format(date);
 }
 
+export function challengeProofDeadline(assignedAt: Date): Date {
+  return new Date(timestamp(assignedAt) + 48 * HOUR_MS);
+}
+
 // Les délais sont des durées réelles, distinctes de l'horloge murale des soirées.
 export function canClaimSoloChallenge(lastAssignedAt: Date | null, now: Date): boolean {
   const current = timestamp(now);
   return lastAssignedAt === null || current - timestamp(lastAssignedAt) >= 12 * HOUR_MS;
 }
 
+export function msUntilSoloChallengeAvailable(lastAssignedAt: Date | null, now: Date): number {
+  const current = timestamp(now);
+  if (lastAssignedAt === null) return 0;
+  const elapsed = current - timestamp(lastAssignedAt);
+  return elapsed >= 12 * HOUR_MS ? 0 : 12 * HOUR_MS - elapsed;
+}
+
 export function canSubmitChallengeProof(assignedAt: Date, now: Date): boolean {
   const elapsed = timestamp(now) - timestamp(assignedAt);
   return elapsed >= 0 && elapsed < 48 * HOUR_MS;
+}
+
+export function isChallengeProofExpired(assignedAt: Date, now: Date): boolean {
+  return timestamp(now) - timestamp(assignedAt) >= 48 * HOUR_MS;
 }
 
 // À appeler sous verrou transactionnel avec les réussites solo ET équipe du membre.
@@ -35,4 +50,15 @@ export function canReceiveChallengeReward(completedAt: readonly Date[], now: Dat
     if (parisDayFormatter.format(completed) === today) count += 1;
   }
   return count < 2;
+}
+
+export function remainingChallengeRewardsToday(completedAt: readonly Date[], now: Date): number {
+  const current = timestamp(now);
+  const today = parisDayFormatter.format(now);
+  let count = 0;
+  for (const completed of completedAt) {
+    if (timestamp(completed) > current) throw new RangeError("Réussite dans le futur");
+    if (parisDayFormatter.format(completed) === today) count += 1;
+  }
+  return Math.max(0, 2 - count);
 }

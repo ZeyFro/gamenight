@@ -3,13 +3,13 @@ import { randomInt } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-deadline";
 import { logger } from "@/lib/logger";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "@/lib/tower-challenge-rules";
 import { evaluateChallengeVote } from "@/lib/tower-challenge-voting";
 import { enqueueTowerChallengeEvent } from "@/lib/tower-challenge-announcements";
-import { TOWER_STARTER_CHALLENGES } from "@/lib/tower-challenge-starter-catalogue";
-import { TOWER_TEAM_STARTER_CHALLENGES } from "@/lib/tower-team-challenge-starter-catalogue";
+import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 
 const id = z.string().min(1).max(191).regex(/^[a-zA-Z0-9_-]+$/);
@@ -28,22 +28,25 @@ type Actor = z.infer<typeof actorSchema>;
 const now = () => new Date(Date.now());
 
 // Entrées internes : l'adaptateur Discord doit authentifier l'acteur et l'origine du bouton.
-async function withTower<T>(actor: Actor, work: (scopedDb: Prisma.TransactionClient) => Promise<T>) {
+async function withTower<T>(actor: Actor, work: (scopedDb: Prisma.TransactionClient, transaction: Prisma.TransactionClient) => Promise<T>, deadline?: Date) {
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return { status: "DISABLED" } as const;
+  const budget = towerTransactionBudget(deadline);
   return prisma.$transaction(async tx => {
+    await setTowerStatementDeadline(tx, deadline);
     const [community] = await tx.$queryRaw<{ status: string; towerChallengesEnabled: boolean }[]>`
       SELECT status, "towerChallengesEnabled" FROM "Community"
       WHERE id = ${actor.communityId} FOR SHARE
     `;
     if (community?.status !== "ACTIVE" || !community.towerChallengesEnabled) return { status: "UNAVAILABLE" } as const;
+    await setTowerStatementDeadline(tx, deadline);
     const [member] = await tx.$queryRaw<{ status: string }[]>`
       SELECT status FROM "Membership"
       WHERE "communityId" = ${actor.communityId} AND "userId" = ${actor.userId} FOR SHARE
     `;
     if (member?.status !== "ACTIVE") return { status: "UNAVAILABLE" } as const;
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [actor.communityId], includesDefault: false });
-    return work(scopedDb);
-  }, { timeout: 15000, maxWait: 10000 });
+    return work(scopedDb, tx);
+  }, budget);
 }
 
 async function lockProgress(scopedDb: Prisma.TransactionClient, actor: Actor) {
@@ -106,13 +109,14 @@ export async function claimSoloTowerChallenge(input: unknown) {
   });
 }
 
-export async function getTeamDailyTowerChallenge(input: unknown) {
+export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date) {
   const parsed = teamChallengeSchema.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, teamId } = parsed.data;
   const actor = { communityId, userId };
-  return withTower(actor, async scopedDb => {
+  return withTower(actor, async (scopedDb, transaction) => {
     const current = now();
+    await setTowerStatementDeadline(transaction, deadline);
     const team = await scopedDb.communityTeam.findFirst({
       where: {
         id: teamId, communityId, community: { status: "ACTIVE", communityTeamsEnabled: true },
@@ -125,11 +129,13 @@ export async function getTeamDailyTowerChallenge(input: unknown) {
     });
     if (!team) return { status: "UNAVAILABLE" } as const;
     const requestKey = "team-" + getTowerParisDayKey(current);
+    await setTowerStatementDeadline(transaction, deadline);
     let attempt = await scopedDb.towerChallengeAttempt.findFirst({
       where: { communityId, teamId, requestKey },
       select: { id: true, title: true, instructions: true, rewardFloors: true, status: true, assignedAt: true, expiresAt: true, submittedAt: true },
     });
     if (!attempt) {
+      await setTowerStatementDeadline(transaction, deadline);
       const candidates = await scopedDb.towerChallengeDefinition.findMany({
         where: { communityId, active: true, mode: "TEAM" },
         select: { id: true, title: true, instructions: true, rewardFloors: true },
@@ -137,6 +143,7 @@ export async function getTeamDailyTowerChallenge(input: unknown) {
       if (!candidates.length) return { status: "NO_CHALLENGE" } as const;
       const chosen = candidates[randomInt(candidates.length)];
       const assignedAt = current;
+      await setTowerStatementDeadline(transaction, deadline);
       const result = await scopedDb.towerChallengeAttempt.upsert({
         where: { communityId_teamId_requestKey: { communityId, teamId, requestKey } },
         create: {
@@ -149,18 +156,18 @@ export async function getTeamDailyTowerChallenge(input: unknown) {
       });
       attempt = result;
     }
-    const [participation, participants] = await Promise.all([
-      scopedDb.towerChallengeAttemptParticipant.findUnique({
+    await setTowerStatementDeadline(transaction, deadline);
+    const participation = await scopedDb.towerChallengeAttemptParticipant.findUnique({
         where: { attemptId_userId: { attemptId: attempt.id, userId } }, select: { rewardedAt: true },
-      }),
-      scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId: attempt.id } }),
-    ]);
+      });
+    await setTowerStatementDeadline(transaction, deadline);
+    const participants = await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId: attempt.id } });
     return {
       status: "TEAM_CHALLENGE" as const, team: { id: team.id, name: team.name, memberCount: team.members.length },
       attempt, participantCount: participants, joined: Boolean(participation),
       pendingReward: attempt.status === "APPROVED" && Boolean(participation && !participation.rewardedAt),
     };
-  });
+  }, deadline);
 }
 
 export async function listDiscordTowerTeams(input: unknown) {
@@ -547,12 +554,7 @@ export async function settleDueTowerChallenges(deadline: Date) {
 
 const towerGuildId = z.string().regex(/^[0-9]{16,20}$/);
 const towerDefinitionId = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
-const soloDefinitionInput = z.object({
-  guildId: towerGuildId,
-  title: z.string().trim().min(1).max(120),
-  instructions: z.string().trim().min(1).max(1500),
-  rewardFloors: z.number().int().min(1).max(20),
-});
+const soloDefinitionInput = z.object({ guildId: towerGuildId }).merge(towerChallengeDefinitionContentSchema);
 
 export async function addSoloTowerChallengeDefinition(input: unknown) {
   const parsed = soloDefinitionInput.safeParse(input);
@@ -636,11 +638,11 @@ export async function importSoloTowerChallengeStarterPack(input: unknown) {
       where: { communityId: community.id, mode: "SOLO" }, select: { title: true },
     });
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
-    const missing = TOWER_STARTER_CHALLENGES.filter(challenge => !titles.has(challenge.title.toLowerCase()));
+    const missing = TOWER_SOLO_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
       data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "SOLO" as const, active: true })),
     });
-    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_STARTER_CHALLENGES.length - missing.length } as const;
+    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_SOLO_IMPORT_PACK.length - missing.length } as const;
   });
 }
 
@@ -658,11 +660,11 @@ export async function importTeamTowerChallengeStarterPack(input: unknown) {
       where: { communityId: community.id, mode: "TEAM" }, select: { title: true },
     });
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
-    const missing = TOWER_TEAM_STARTER_CHALLENGES.filter(challenge => !titles.has(challenge.title.toLowerCase()));
+    const missing = TOWER_TEAM_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
       data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "TEAM" as const, active: true })),
     });
-    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_TEAM_STARTER_CHALLENGES.length - missing.length } as const;
+    return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_TEAM_IMPORT_PACK.length - missing.length } as const;
   });
 }
 

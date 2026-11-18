@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
+import { canAccessSession } from "@/lib/session-access";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -38,6 +39,9 @@ export default async function SessionResultsPage({
   if (!user) redirect("/");
 
   const { id } = await params;
+
+  // Créateur ou non, la soirée doit relever d'une communauté où l'on est membre ACTIF.
+  if (!(await canAccessSession(user.id, id))) notFound();
 
   const session = await prisma.session.findUnique({
     where: { id },

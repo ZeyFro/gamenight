@@ -93,7 +93,7 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
     before = fingerprint(ok.stdout);
     const ko = check("after");
     expect(ko.status).toBe(4);
-    expect(ko.stdout).toContain("ECHEC migration 20261019190000_separate_xp_balance : absente");
+    expect(ko.stdout).toContain("ECHEC migration 20261105130000_separate_xp_balance : absente");
   });
 
   it("refus (2) : sans URL, avec hôte distant, argument ou phase inconnus ; aucun secret affiché", () => {

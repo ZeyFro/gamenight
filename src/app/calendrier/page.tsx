@@ -127,7 +127,7 @@ async function CalendrierContent({
           <Button type="submit" size="sm">Enregistrer</Button>
         </form>}
         {canManageCommunityDates && <form action={createCommunityDateAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 basis-full sm:min-w-[14rem] sm:basis-0 sm:flex-1">
             <label className="text-xs text-muted" htmlFor="community-date-title">Date importante du serveur</label>
             <input id="community-date-title" name="title" maxLength={100} required placeholder="Anniversaire du serveur…" className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />
             <input name="date" aria-label="Date importante" type="date" required defaultValue={toDateInputValue(selectedDate)} className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground" />

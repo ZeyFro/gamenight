@@ -26,7 +26,7 @@
 import { PrismaClient } from "@prisma/client";
 import { EXIT, RefusalError, parseTarget, redact } from "./db-migrate-lib.mjs";
 
-export const BALANCE_MIGRATION = "20261019190000_separate_xp_balance";
+export const BALANCE_MIGRATION = "20261105130000_separate_xp_balance";
 const LOCK_TIMEOUT = "5s";
 const STATEMENT_TIMEOUT = "30s";
 const TX_OPTIONS = { timeout: 60_000, maxWait: 10_000 };

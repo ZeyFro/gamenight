@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { levelForXp, rankForLevel, titleForLevel } from "./xp";
 
 const url = process.env.TEST_DATABASE_URL;
-const statements = readFileSync("prisma/migrations/20261019190000_separate_xp_balance/migration.sql", "utf8").replace(/^--.*$/gm, "").split(";").filter((sql) => sql.trim());
+const statements = readFileSync("prisma/migrations/20261105130000_separate_xp_balance/migration.sql", "utf8").replace(/^--.*$/gm, "").split(";").filter((sql) => sql.trim());
 
 describe.skipIf(!url)("migration du solde XP : PostgreSQL local", () => {
   let db: PrismaClient;

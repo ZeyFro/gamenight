@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { tournamentEmptyTitle } from "./empty-state";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
@@ -89,7 +90,7 @@ export default async function TournoisPage({
         {tournaments.length === 0 ? (
           <EmptyState
             icon="🏆"
-            title="Lance le premier tournoi entre potes"
+            title={tournamentEmptyTitle(activeTab)}
             action={
               <ButtonLink href="/tournois/creer" variant="primary" size="sm">
                 + Créer un tournoi

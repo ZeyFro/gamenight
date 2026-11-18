@@ -117,12 +117,12 @@ function GameCard({ game }: { game: BibliothequeGame }) {
         <input type="hidden" name="gameId" value={game.id} />
         <button
           type="submit"
-          className="text-[11px] text-muted underline decoration-dotted hover:text-foreground"
+          className="gn-touch-target gn-touch-target-end relative text-[11px] text-muted underline decoration-dotted hover:text-foreground"
         >
           {game.isCoop ? "Retirer coop" : "Marquer comme coop"}
         </button>
       </form>
-      <div className="absolute top-1.5 right-1.5 flex gap-1.5">
+      <div className="absolute top-1.5 right-1.5 flex gap-1.5 pointer-coarse:gap-2">
         <EditGameDialog game={game} />
         <form action={removeUserGame}>
           <input type="hidden" name="gameId" value={game.id} />
@@ -130,7 +130,7 @@ function GameCard({ game }: { game: BibliothequeGame }) {
             type="submit"
             aria-label={`Retirer ${game.name} de ma bibliothèque`}
             title="Retirer de ma bibliothèque"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
+            className="gn-touch-target relative flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
           >
             <TrashIcon className="h-5 w-5" />
           </button>

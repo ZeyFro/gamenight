@@ -31,7 +31,7 @@ export function ChatPanel({
         <button
           type="button"
           aria-label="Chat"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground transition-colors hover:bg-surface-hover"
+          className="gn-touch-target relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground transition-colors hover:bg-surface-hover"
         >
           💬
         </button>
@@ -51,7 +51,7 @@ export function ChatPanel({
                 <button
                   type="button"
                   aria-label="Fermer"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-surface-hover"
+                  className="gn-touch-target relative flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-surface-hover"
                 >
                   ✕
                 </button>

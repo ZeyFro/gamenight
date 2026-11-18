@@ -5,7 +5,7 @@ Protocole, pas une autorisation : rien n'est prouvé pour Production. Contexte, 
 Le lot = 6 migrations, dans cet ordre, appliquées en UNE exécution, AVANT le déploiement du code :
 
 ```
-20261019190000_separate_xp_balance,20261020150000_session_voice_presence,20261022120000_voice_presence_consent_coordination,20261022130000_voice_presence_retention_gap_bounds,20261022140000_voice_presence_gap_history,20261022142500_shop_balance_purchase_reason
+20261105130000_separate_xp_balance,20261105131000_session_voice_presence,20261105132000_voice_presence_consent_coordination,20261105133000_voice_presence_retention_gap_bounds,20261105134000_voice_presence_gap_history,20261105135000_shop_balance_purchase_reason
 ```
 
 Dans les commandes, `$LOT` désigne cette liste, `$BASE` le nom de la base cible. Aucune URL ni mot de passe n'est affiché par les scripts ; ne jamais en coller dans un ticket.
@@ -133,3 +133,18 @@ Lecture : coût linéaire (~17 µs par ligne). `ADD COLUMN` + `UPDATE` + `ADD CO
 Décision D4 : à tout volume plausible (< 300 000 lignes), la migration n'a pas besoin d'être réécrite ; la barrière d'écriture est de toute façon posée pendant la fenêtre. Si le comptage Production dépasse ~300 000 lignes, refaire la mesure avant de décider (`CHECK … NOT VALID` + `VALIDATE` ou `UPDATE` par lots dans une NOUVELLE migration additive). Limites : machine de test, Neon (stockage, WAL, cache) plus lent possible ; mesure indicative, à confirmer sur la copie restaurée (D3) si elle est faite.
 
 Retours arrière : `scripts/rollback-xp-lot/` ; répétition `scripts/rehearse-xp-rollback.sh <base modèle>` (9 contrôles : schéma identique à la baseline après retour 6→1, données XP inchangées, lignes `_prisma_migrations` supprimées, lot rejouable, refus sur solde divergé / achat au solde / données vocales).
+
+## 9. Renommage des migrations du lot (18 novembre 2026)
+
+Les 6 migrations ont été renommées pour passer après les migrations de `main` (dont `20261105120000_tower_launch_channels_appeals_matchmaking` de #406) et avant `20261106150000_tower_fixed_arbiter` (#407) ; ordre relatif et contenu SQL inchangés. Les documents historiques de répétition (`docs/XP-ROLLOUT-DECISION-20261019.md`, `docs/XP-BALANCE-20261019.md`, `docs/XP-REPETITION-COMPLETE.md`, `docs/XP-ROLE-BARRIER-REHEARSAL.md`, `docs/MISSION-20261019.md`) gardent les anciens noms.
+
+| Ancien nom | Nouveau nom |
+|---|---|
+| `20261019190000_separate_xp_balance` | `20261105130000_separate_xp_balance` |
+| `20261020150000_session_voice_presence` | `20261105131000_session_voice_presence` |
+| `20261022120000_voice_presence_consent_coordination` | `20261105132000_voice_presence_consent_coordination` |
+| `20261022130000_voice_presence_retention_gap_bounds` | `20261105133000_voice_presence_retention_gap_bounds` |
+| `20261022140000_voice_presence_gap_history` | `20261105134000_voice_presence_gap_history` |
+| `20261022142500_shop_balance_purchase_reason` | `20261105135000_shop_balance_purchase_reason` |
+
+Une base où un ancien nom a été appliqué doit être recréée, ou ses lignes `_prisma_migrations` réconciliées sous accord séparé (checksum identique).

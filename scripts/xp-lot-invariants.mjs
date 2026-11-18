@@ -12,12 +12,12 @@ import { PrismaClient } from "@prisma/client";
 import { RefusalError, parseTarget, redact } from "./db-migrate-lib.mjs";
 
 export const LOT_MIGRATIONS = [
-  "20261019190000_separate_xp_balance",
-  "20261020150000_session_voice_presence",
-  "20261022120000_voice_presence_consent_coordination",
-  "20261022130000_voice_presence_retention_gap_bounds",
-  "20261022140000_voice_presence_gap_history",
-  "20261022142500_shop_balance_purchase_reason",
+  "20261105130000_separate_xp_balance",
+  "20261105131000_session_voice_presence",
+  "20261105132000_voice_presence_consent_coordination",
+  "20261105133000_voice_presence_retention_gap_bounds",
+  "20261105134000_voice_presence_gap_history",
+  "20261105135000_shop_balance_purchase_reason",
 ];
 const TABLES = ["SessionVoicePresenceInterval", "SessionVoicePresenceConsent", "SessionVoicePresenceControl", "SessionVoicePresenceGap"];
 const COLUMNS = [["CommunityMemberStats", "xpBalance"], ["SessionVoicePresenceInterval", "consentId"], ["SessionVoicePresenceInterval", "endedAt"],

@@ -97,7 +97,7 @@ assert.notEqual(failure.status, 0);
 assert.match(failure.stderr + failure.stdout, /CommunityMemberStats_xpBalance_nonnegative/);
 assert.equal(sql(failed, "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='CommunityMemberStats' AND column_name='xpBalance';"), "0");
 assert.equal(sql(failed, "SELECT count(*) FROM pg_constraint WHERE conname='CommunityMemberStats_xpBalance_nonnegative';"), "0");
-assert.equal(sql(failed, "SELECT count(*) FROM _prisma_migrations WHERE migration_name='20261019190000_separate_xp_balance' AND finished_at IS NULL AND rolled_back_at IS NULL;"), "1");
+assert.equal(sql(failed, "SELECT count(*) FROM _prisma_migrations WHERE migration_name='20261105130000_separate_xp_balance' AND finished_at IS NULL AND rolled_back_at IS NULL;"), "1");
 const proof = { database, restored, failed, runtimeRole, runtimeWrites: "denied, SELECT allowed (local privilege rehearsal only)", pendingMigrations, backup, sha256: createHash("sha256").update(readFileSync(backup)).digest("hex"), rows: values.length + 1,
   backupRestore: "identical", migration: "progression/equipment/cosmetics unchanged; balances equal progression", oldWriter: "30 XP drift reproduced", recovery: "baseline schema and data recovered", failure: "negative legacy XP rolls back schema changes with Prisma 6.19.3; failed migration record blocks retry", production: "never accessed" };
 writeFileSync(`logs/xp-migration-${stamp}.json`, JSON.stringify(proof, null, 2));

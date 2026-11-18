@@ -129,6 +129,16 @@ h1,h2,h3,.gn-sidebar-brand { font-family:var(--font-display),var(--font-sans),sa
 .gn-calendar-agenda { padding:22px; border:2px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:var(--gn-shadow); }.gn-calendar-agenda h3 { margin:12px 0 20px; text-transform:capitalize; font-size:20px; letter-spacing:-.035em; }.gn-agenda-event { display:block; background:var(--background); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:8px; padding:16px; margin-bottom:14px; }.gn-agenda-event.roulette { border-left-color:var(--gn-lime); }.gn-agenda-event h4 { font-weight:700; margin:9px 0 5px; font-size:15px; }.gn-agenda-event p,.gn-agenda-event small { color:var(--muted); font-size:12px; }.gn-agenda-empty { text-align:center; padding:18px 0; color:var(--muted); font-size:13px; }
 .gn-calendar-detail { display:grid; grid-template-columns:270px minmax(0,1fr); gap:22px; }.gn-calendar-filters { display:flex; flex-direction:column; gap:18px; }.gn-calendar-detail summary { cursor:pointer; font-weight:700; }.gn-calendar-detail>div { min-width:0; }
 :is(a,button,select,input,textarea):focus-visible { outline:3px solid var(--gn-lime); outline-offset:3px; }
+/* Zone tactile minimale 44 px (WCAG 2.5.8 / consignes mobiles) : un pseudo-élément
+   centré, invisible, agrandit la cible sans toucher à l'apparence ni à la mise en
+   page. Réservé aux pointeurs imprécis (écrans tactiles) : aucun effet sur desktop.
+   L'élément doit être positionné (classe `relative` à côté de `gn-touch-target`). */
+@media(pointer:coarse) {
+  .gn-touch-target::after { content:""; position:absolute; top:50%; left:50%; width:max(100%,44px); height:max(100%,44px); transform:translate(-50%,-50%); }
+  /* Variante pour une cible collée au bas d'un conteneur à overflow masqué : la zone
+     déborde de 0,5 rem sous l'élément (son padding) et le reste vers le haut. */
+  .gn-touch-target-end::after { top:auto; bottom:-.5rem; transform:translateX(-50%); }
+}
 @media(min-width:1024px) {
   .gn-authenticated .gn-main,.gn-topbar-authenticated { margin-left:250px; }
   .gn-authenticated .gn-main h1 { letter-spacing:-.04em; }

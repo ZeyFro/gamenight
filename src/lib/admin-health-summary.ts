@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isTowerOwner, towerGuildId } from "@/lib/tower-config";
 
 export const HEALTH_FLAG_NAMES = [
   "NOTIFICATION_EXECUTOR_ENABLED", "TOWER_CHALLENGES_ENABLED",
@@ -13,7 +14,7 @@ export function healthFlagStates(env: Record<string, string | undefined>) {
 
 export async function getTowerAdminHealth() {
   const community = await prisma.community.findFirst({
-    where: { discordGuildId: "553922938101825536" }, select: { id: true },
+    where: { discordGuildId: towerGuildId() }, select: { id: true },
   });
   const failed = community ? await prisma.notificationDelivery.findMany({
     where: { status: "FAILED", event: { communityId: community.id } },

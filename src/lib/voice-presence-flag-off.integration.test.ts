@@ -13,10 +13,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
  */
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const VOICE_MIGRATIONS = [
-  "20261020150000_session_voice_presence",
-  "20261022120000_voice_presence_consent_coordination",
-  "20261022130000_voice_presence_retention_gap_bounds",
-  "20261022140000_voice_presence_gap_history",
+  "20261105131000_session_voice_presence",
+  "20261105132000_voice_presence_consent_coordination",
+  "20261105133000_voice_presence_retention_gap_bounds",
+  "20261105134000_voice_presence_gap_history",
 ];
 const holder = vi.hoisted(() => ({ url: "" }));
 

@@ -79,7 +79,7 @@ export function EditGameDialog({ game }: { game: EditableGame }) {
           type="button"
           aria-label={`Modifier ${game.name}`}
           title="Modifier"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-accent/90"
+          className="gn-touch-target relative flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-accent/90"
         >
           <PencilIcon className="h-4 w-4" />
         </button>
@@ -129,7 +129,7 @@ export function EditGameDialog({ game }: { game: EditableGame }) {
 
               <label
                 htmlFor="edit-isCoop"
-                className="flex items-center gap-3 text-base text-foreground sm:text-sm"
+                className="gn-touch-target relative flex items-center gap-3 text-base text-foreground sm:text-sm"
               >
                 <input
                   id="edit-isCoop"
