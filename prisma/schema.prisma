@@ -52,6 +52,8 @@ model User {
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeProposals TowerChallengeProposal[] @relation("TowerProposalAuthor")
+  towerChallengeProposalsDecided TowerChallengeProposal[] @relation("TowerProposalDecider")
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -2881,6 +2883,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeProposals TowerChallengeProposal[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3404,6 +3407,35 @@ model TowerChallengeAttempt {
   @@index([communityId, status, submittedAt])
   @@unique([communityId, proofCode])
   @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+enum TowerChallengeProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Proposition de défi solo par un joueur Ranker / High Ranker (cahier 8.7) ; entre au catalogue seulement
+// après validation du staff (definitionId renseigné à l'approbation). Aucune IA.
+model TowerChallengeProposal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  proposerId String
+  proposer User @relation("TowerProposalAuthor", fields: [proposerId], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  instructions String @db.VarChar(1500)
+  rewardFloors Int
+  status TowerChallengeProposalStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  decidedById String?
+  decidedBy User? @relation("TowerProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decisionNote String? @db.VarChar(500)
+  definitionId String? @db.VarChar(191)
+
+  @@index([communityId, status, createdAt])
+  @@index([communityId, proposerId, createdAt])
 }
 
 enum TowerChallengeAppealStatus {
