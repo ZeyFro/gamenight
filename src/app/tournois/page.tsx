@@ -104,7 +104,9 @@ export default async function TournoisPage({
                 <Link href={`/tournois/${t.id}`}>
                   <Card className="card-glow flex items-center gap-3 transition-all duration-200">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-foreground">{t.name}</p>
+                      {/* Mobile : un titre de tournoi était coupé à 320 px ;
+                          deux lignes suffisent et restent bornées. */}
+                      <p className="line-clamp-2 font-medium text-foreground">{t.name}</p>
                       <p className="truncate text-sm text-muted">{t.game.name}</p>
                       {t.status === "DONE" && (t.champion || t.championTeam) ? (
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-accent">

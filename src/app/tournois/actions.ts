@@ -3,12 +3,9 @@
 import { resumeCreation } from "@/lib/creation-resume";
 
 import { createOnce, creationKey, lockCreationMembers } from "@/lib/creation-intent";
-import { lockCommunityProgress } from "@/lib/member-stats";
-import { statsCommunityIdForSession } from "@/lib/community-stats";
-
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -27,12 +24,12 @@ import { postToDiscord, ACCENT_COLOR } from "@/lib/discord";
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { resolveAbsoluteUrl } from "@/lib/app-url";
 import { pickCreationCommunityId, resolveTournamentAnnounceConfig } from "@/lib/community-channels";
-import { canAccessTournament } from "@/lib/community-access";
 import { communityMemberUserWhere, isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 import { registerTournamentParticipant } from "@/lib/tournament-registration";
+import { unregisterTournamentParticipant } from "@/lib/tournament-unregistration";
 import {
   createTournamentSchema,
   declareWinnerSchema,
@@ -273,31 +270,8 @@ export async function unregisterFromTournamentAction(formData: FormData) {
   if (!input.success) return;
   const tournamentId = input.data;
 
-  if (!(await canAccessTournament(user.id, tournamentId))) return;
-  const unregistered = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; status: string; communityId: string | null }[]>`
-      SELECT id, status, "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
-    `;
-    const tournament = locked[0];
-    if (!tournament || tournament.status !== "REGISTRATION") return false;
-    const communityId = await statsCommunityIdForSession(tournament.communityId);
-    if (!(await lockCommunityProgress(tx, communityId, user.id))) return false;
-    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
-
-    const deleted = await tx.tournamentParticipant.deleteMany({ where: { tournamentId, userId: user.id } });
-    // Décrémente le compteur durable SEULEMENT si une inscription a
-    // réellement été retirée (jamais sur un double appel/une inscription
-    // déjà absente) — voir le commentaire de `registerForTournamentAction`.
-    if (deleted.count > 0) {
-      // Les inscriptions historiques hors default n'ont pas de compteur attribuable.
-      await scopedDb.communityMemberStats.updateMany({
-        where: { communityId, userId: user.id, tournamentsParticipatedCount: { gt: 0 } },
-        data: { tournamentsParticipatedCount: { decrement: 1 } },
-      });
-    }
-    return true;
-  });
-
+  // Même service que `/tournoi desinscription` : une seule logique, deux surfaces.
+  const unregistered = await unregisterTournamentParticipant(user.id, tournamentId);
   if (!unregistered) return;
 
   revalidatePath(`/tournois/${tournamentId}`);

@@ -14,8 +14,8 @@ describe("tournament Discord RSVP components", () => {
   });
 
   it("parses only the bounded join action", () => {
-    expect(parseTournamentRsvpId("gn:tournament:join:tour_1")).toEqual({ tournamentId: "tour_1" });
-    expect(parseTournamentRsvpId("gn:tournament:leave:tour_1")).toBeNull();
+    expect(parseTournamentRsvpId("gn:tournament:join:tour_1")).toEqual({ kind: "join", tournamentId: "tour_1" });
+    expect(parseTournamentRsvpId("gn:tournament:leave:tour_1")).toEqual({ kind: "leave", tournamentId: "tour_1" });
     expect(parseTournamentRsvpId(`gn:tournament:join:${"x".repeat(65)}`)).toBeNull();
   });
 });

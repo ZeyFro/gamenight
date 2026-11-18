@@ -66,6 +66,11 @@ export interface InteractionOutput {
   runRsvp?: () => Promise<void>;
   runTower?: () => Promise<void>;
   runTeam?: () => Promise<void>;
+  runRole?: () => Promise<void>;
+  runCommunity?: () => Promise<void>;
+  runSession?: () => Promise<void>;
+  runTournament?: () => Promise<void>;
+  runPlayers?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -107,9 +112,44 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
   const interaction = parsed.data;
 
   if (interaction.type === 1) return { status: 200, body: { type: 1 } };
+
+  if (interaction.type === 4) {
+    // Autocomplétion (/tournoi, /soiree) : adaptateur isolé, aucune écriture.
+    const { handleSignedAutocomplete } = await import("@/lib/discord-autocomplete");
+    return handleSignedAutocomplete(json, input.timestamp);
+  }
   if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");
     return handleSignedTowerAdminInteraction(json, input.timestamp);
+  }
+  if (
+    interaction.type === 2 &&
+    (interaction.data?.name === "aide" || interaction.data?.name === "profil" || interaction.data?.name === "boost")
+  ) {
+    // /aide, /profil et /boost : lecture seule, aucune ressource Discord créée.
+    const { handleSignedCommunityInteraction } = await import("@/lib/discord-community-commands");
+    return handleSignedCommunityInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "tournoi") {
+    // /tournoi : lecture seule sur les tournois de la communauté.
+    const { handleSignedTournamentInteraction } = await import("@/lib/discord-tournament-commands");
+    return handleSignedTournamentInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "soiree") {
+    // /soiree : soirées GameNight existantes (Session/SessionInvite), aucun second système.
+    const { handleSignedSessionInteraction } = await import("@/lib/discord-session-commands");
+    return handleSignedSessionInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "role") {
+    // /role : attribution libre-service des rôles de jeu + synchro du profil.
+    // Handler isolé (aucun accès Discord avant l'ACK, cf. discord-role-command).
+    const { handleSignedRoleInteraction } = await import("@/lib/discord-role-command");
+    return handleSignedRoleInteraction(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "joueurs") {
+    // /joueurs : annonces de la page /joueurs (PlayerClassified), aucun second modèle.
+    const { handleSignedPlayerInteraction } = await import("@/lib/discord-player-commands");
+    return handleSignedPlayerInteraction(json, input.timestamp);
   }
   if (interaction.data?.custom_id?.startsWith("gn:tower:") || (interaction.type === 2 && interaction.data?.name === "tower")) {
     const { handleSignedTowerInteraction } = await import("@/lib/discord-tower-challenges");
@@ -125,6 +165,53 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const { welcomeActionUrl } = await import("@/lib/tower-onboarding-panel");
     const url = welcomeActionUrl(interaction.data.custom_id.slice("gn:welcome:".length));
     return url ? reply("Ouvre GameNight : " + url) : { status: 400 };
+  }
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith("gn:listing:")) {
+    // Boutons d'une annonce de joueur : réponse privée, aucune écriture.
+    const { parsePlayerListingComponent } = await import("@/lib/discord-player-listing-components");
+    const listingComponent = parsePlayerListingComponent(interaction.data.custom_id);
+    const listingStamp = Number(input.timestamp);
+    const applicationId = interaction.application_id;
+    const token = interaction.token;
+    const discordId = interaction.guild_id ? interaction.member?.user?.id : interaction.user?.id;
+    const { id, channel_id: channelId } = interaction;
+    if (
+      !listingComponent ||
+      interaction.data?.component_type !== 2 ||
+      !applicationId ||
+      applicationId !== process.env.DISCORD_CLIENT_ID ||
+      !token ||
+      !id ||
+      !discordId ||
+      !channelId ||
+      !interaction.guild_id ||
+      ![applicationId, id, discordId, channelId, interaction.guild_id].every((value) => /^\d+$/.test(value)) ||
+      !Number.isFinite(listingStamp) ||
+      Math.abs(Date.now() / 1000 - listingStamp) > 300
+    ) {
+      return { status: 400 };
+    }
+    return {
+      status: 200,
+      body: { type: 5, data: { flags: EPHEMERAL } },
+      runRsvp: async () => {
+        let content: string;
+        try {
+          const { respondToListingInteraction } = await import("@/lib/discord-player-listing-rsvp");
+          content = await respondToListingInteraction(listingComponent.kind, listingComponent.listingId, {
+            interactionId: id,
+            discordId,
+            guildId: interaction.guild_id!,
+            channelId,
+          });
+        } catch (error) {
+          logger.error("discord-listing", error, { customId: interaction.data?.custom_id });
+          content = "Ta demande n’a pas pu être traitée. Réessaie dans un instant.";
+        }
+        const sent = await editSetupResponse({ applicationId, token, content, deadline: new Date(Date.now() + 10_000) });
+        if (!sent.ok) logger.error("discord-listing", "Réponse privée non livrée.", { kind: sent.kind });
+      },
+    };
   }
   if (interaction.type === 3) {
     const customId = interaction.data?.custom_id ?? "";
@@ -148,7 +235,7 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
       try {
         const origin = { interactionId: id, discordId, guildId: interaction.guild_id, channelId, messageId };
         content = tournamentRsvp
-          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin)
+          ? await respondToTournamentRsvp(tournamentRsvp.tournamentId, origin, tournamentRsvp.kind)
           : isInstantRsvp
             ? await respondToInstantSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin)
             : await respondToSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin);

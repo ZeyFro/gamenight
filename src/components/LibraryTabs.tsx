@@ -28,9 +28,12 @@ export function LibraryTabs({
   toVerifyCount?: number;
 }) {
   return (
-    <div className="flex gap-4 overflow-x-auto border-b border-border">
+    // Mobile (phase 2) : six vues ne tiennent pas à 320 px. La barre défile
+    // déjà, on y ajoute un nom accessible, un défilement par onglet et un
+    // espacement plus serré pour que la coupure signale la suite.
+    <nav aria-label="Vues de la bibliothèque" className="gn-scroll-x flex gap-3 border-b border-border sm:gap-4">
       {TABS.map((tab) => (
-        <TabLink key={tab.key} href={tab.href} active={active === tab.key} layoutId="library-tabs-underline">
+        <TabLink key={tab.key} href={tab.href} active={active === tab.key} layoutId="library-tabs-underline" className="snap-start">
           {tab.label}
           {tab.key === "a-verifier" && !!toVerifyCount && toVerifyCount > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-foreground">
@@ -39,6 +42,6 @@ export function LibraryTabs({
           )}
         </TabLink>
       ))}
-    </div>
+    </nav>
   );
 }

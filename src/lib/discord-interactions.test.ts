@@ -131,7 +131,11 @@ describe("handleDiscordInteraction", () => {
     expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
     expect(responder).not.toHaveBeenCalled();
     await out.runRsvp?.();
-    expect(responder).toHaveBeenCalledWith(...args, expect.objectContaining({ interactionId: "111", discordId: "789", guildId: "123", channelId: "456", messageId: "321" }));
+    expect(responder).toHaveBeenCalledWith(
+      ...args,
+      expect.objectContaining({ interactionId: "111", discordId: "789", guildId: "123", channelId: "456", messageId: "321" }),
+      ...(customId.startsWith("gn:tournament:") ? ["join"] : [])
+    );
   });
 
   describe("/gamenight setup", () => {

@@ -2,10 +2,13 @@ import type { DiscordActionRow } from "@/lib/discord-rest";
 
 export function tournamentRsvpComponents(id: string, acceptingRegistrations: boolean): DiscordActionRow[] {
   if (!acceptingRegistrations || !/^[a-zA-Z0-9_-]{1,64}$/.test(id) || !/^[a-f0-9]{64}$/i.test(process.env.DISCORD_APP_PUBLIC_KEY ?? "") || !/^\d+$/.test(process.env.DISCORD_CLIENT_ID ?? "")) return [];
-  return [{ type: 1, components: [{ type: 2, style: 3, label: "Je viens", custom_id: `gn:tournament:join:${id}` }] }];
+  return [{ type: 1, components: [
+    { type: 2, style: 3, label: "Je viens", custom_id: `gn:tournament:join:${id}` },
+    { type: 2, style: 2, label: "Je me désinscris", custom_id: `gn:tournament:leave:${id}` },
+  ] }];
 }
 
 export function parseTournamentRsvpId(value: string) {
-  const match = /^gn:tournament:join:([a-zA-Z0-9_-]{1,64})$/.exec(value);
-  return match ? { tournamentId: match[1] } : null;
+  const match = /^gn:tournament:(join|leave):([a-zA-Z0-9_-]{1,64})$/.exec(value);
+  return match ? { kind: match[1] as "join" | "leave", tournamentId: match[2] } : null;
 }
