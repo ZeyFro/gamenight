@@ -96,7 +96,7 @@ L’état courant du projet est dans `docs/REPRISE_AUTONOME.md`. PR #227 **merg�
 | L7-10 | Livré et testé | Charte de fair-play | ✅ Livré | Aucune | code | Fait (#262, fusionnée) |
 | L7-11 | Partiellement livré | Recherche de joueurs (« il manque un quatrième ») | 🟡 MVP petites annonces | Jeu + message court, membres actifs uniquement, 24 h, suppression auteur/admin ; activation par communauté | code | Fait (#276, fusionnée) |
 | L7-12 | Livré et testé | Glossaire débutants | ✅ Livré | Aucune | code | Fait (#263, fusionnée) |
-| L7-13 | Partiellement livré | PWA hors ligne | 🟡 Fallback hors ligne | Proposition à valider : shell public uniquement; aucune donnée privée ni réponse authentifiée en cache | code | Fallback `/offline.html` livré (#265); expérience réellement utilisable hors ligne non livrée |
+| L7-13 | Livré et testé (local) | PWA hors ligne | ✅ Shell public uniquement : service worker à liste blanche (`/offline.html`, manifeste, icônes), page hors ligne à l'identité du produit avec « Réessayer », bandeau « Connexion retrouvée » sans action automatique | Recette sur un déploiement Vercel et sur un appareil mobile physique ; la règle « aucune page ni donnée privée en cache » est validée et testée | code | Livré localement (branche `agent/preflight-20261116`, non poussée) : 22 tests ciblés dont scénario appareil partagé, et recette Chrome réelle serveur coupé — voir [la note](obsidian/L7-13-hors-ligne.md) |
 | L7-14 | Livré et testé | Boutons Discord « Je viens » (tournois, parties immédiates, soirées sans capacité) | ✅ Livré | Aucune | code | Fait (#264, fusionnée) |
 | L7-15 | Livré et testé | Promotion de liste d'attente | ✅ Livré | Aucune | code | Fait (#266, fusionnée) |
 | L7-16 | Livré et testé | Guide du nouveau : règles et contacts par serveur | ✅ Règles et contacts administrables, affichés dans le guide du serveur | Migration, contenu admin et parcours authentifié à vérifier; ne pas activer l’isolation pour cette reprise | code | Fait (#267, fusionnée) |
@@ -165,6 +165,7 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 - **Tests attendus :** Vérification des liens, navigation mobile et revue des libellés.
 - **Dépendances / suivi :** #400; tâches d'audit P1-02.
 - **Décision §26 :** aucune décision ouverte identifiée pour ce lot; les décisions déjà validées sont citées dans les dépendances.
+- **État au 16/11/2026 :** partie GameNight travaillée en local seulement (branche `agent/preflight-20261116`, non poussée) — accueil dans la barre basse mobile, icônes distinctes, état actif visible, gardes de tests ; la partie Discord (salons et liens) reste à faire. Voir [la note de transmission](obsidian/P1-03-navigation.md).
 
 ### Phase 2 — Fonctionnalités sociales
 
@@ -288,3 +289,15 @@ Les lots #406, #407 et #408 existent déjà : ils sont reliés ci-dessous et ne 
 ### Ordre de reprise
 
 Les PR existantes #406–#408 restent brouillon et gardent leurs dépendances documentées. La PR #395 est abandonnée et clôturée sans fusion; ne pas la reprendre. Parmi les tâches de code ouvertes,  les tâches qui requièrent #370/#406 ou une écriture Production restent en attente de ces dépendances. Après chaque PR ouverte, reprendre la première tâche de code non bloquée et empiler sa branche sur la précédente si elle n'est pas fusionnée.
+
+## Backlog Booster Discord — ajout du 16 novembre 2026
+
+Décisions fonctionnelles : `docs/DECISIONS_BOOSTER_20261116.md`.
+
+### P6-01 — `/boost` et avantages Booster (v1 logique livrée)
+
+- **Objectif :** reconnaître les boosters depuis le statut Discord (`premium_since`) et leur offrir des avantages esthétiques ou d'accès, sans créer de second système.
+- **Critères d'acceptation :** statut lu à la source (aucune table « booster »); avantages limités à bannière, distinction, présentation, personnalisation d'équipe encadrée et salons réservés; aucun droit d'administration/modération, aucun poids de vote, aucun multiplicateur d'étages, aucun avantage de classement; révocation automatique des avantages exclusifs, données et historique conservés.
+- **Tests attendus :** `src/lib/boost-perks.test.ts` (règles et interdits), `src/lib/discord-community-commands.test.ts` (`/boost` actif/inactif/indisponible), garde d'enregistrement de la commande.
+- **Dépendances / suivi :** #400 (accord d'enregistrement), #370/#408 pour l'application effective de la personnalisation d'équipe.
+- **Bloqué :** historique persistant Booster (badge permanent, périodes) — migration, accord explicite requis; application UI web et espaces d'équipe — lots dédiés.

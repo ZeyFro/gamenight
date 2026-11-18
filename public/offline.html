@@ -3,22 +3,124 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0a0a0a">
+    <meta name="theme-color" content="#101014">
+    <meta name="robots" content="noindex">
     <title>Hors connexion · GameNight</title>
+    <!-- Page autonome : aucune police, image ni script externe. Elle doit
+         s'afficher depuis le cache du service worker sans réseau. -->
     <style>
-      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0a0a0a; color: #f4f4f5; }
-      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 1.5rem; box-sizing: border-box; }
-      main { box-sizing: border-box; width: min(100%, 32rem); padding: 2rem; border: 1px solid #333; border-radius: 1rem; background: #141414; }
-      h1 { margin-top: 0; font-size: 1.5rem; }
-      p { color: #c4c4cc; line-height: 1.6; }
-      a { display: inline-block; margin-top: 1rem; padding: .75rem 1rem; border-radius: .6rem; background: #8b5cf6; color: white; font-weight: 600; text-decoration: none; }
+      :root {
+        color-scheme: dark;
+        --background: #101014;
+        --surface: #1a1a20;
+        --border: #2a2a33;
+        --foreground: #f4f2f8;
+        --muted: #aba7b7;
+        --accent: #b99aff;
+        --accent-foreground: #16111f;
+        --lime: #d4ef80;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        padding: 28px 20px;
+        background: radial-gradient(1100px 520px at 50% -10%, #1d1a2b 0%, var(--background) 62%);
+        color: var(--foreground);
+      }
+      .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; font-size: 20px; }
+      .brand-mark { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: var(--accent); color: var(--accent-foreground); }
+      .brand-mark svg { width: 19px; height: 19px; }
+      main {
+        width: min(100%, 34rem);
+        padding: 30px 26px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 6px 6px 0 #070709;
+      }
+      h1 { margin: 0 0 12px; font-size: clamp(26px, 6vw, 34px); letter-spacing: -0.02em; }
+      p { margin: 0 0 14px; color: var(--muted); line-height: 1.6; font-size: 15px; }
+      .status { display: flex; align-items: center; gap: 8px; margin: 18px 0 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; color: var(--muted); }
+      .status::before { content: ""; width: 9px; height: 9px; flex: none; border-radius: 50%; background: #f4c96b; }
+      body[data-online="true"] .status { color: var(--foreground); border-color: var(--lime); }
+      body[data-online="true"] .status::before { background: var(--lime); }
+      .actions { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }
+      .button {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        min-height: 48px; padding: 12px 18px; border-radius: 10px;
+        border: 1px solid var(--border); background: transparent; color: var(--foreground);
+        font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
+      }
+      .button-primary { border-color: #080709; background: var(--accent); color: var(--accent-foreground); box-shadow: 3px 3px #080709; }
+      .button-primary:hover { background: #cbb3ff; }
+      .button:hover { border-color: var(--muted); }
+      .button-primary:hover { border-color: #080709; }
+      .button:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+      .button[hidden] { display: none; }
+      .footnote { margin: 18px 0 0; font-size: 12px; color: var(--muted); }
+      @media (min-width: 640px) { .actions { flex-direction: row; } .actions .button { flex: 1; } }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
     </style>
   </head>
-  <body>
+  <body data-online="false">
+    <span class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+      </span>
+      GameNight
+    </span>
+
     <main>
-      <h1>Tu es hors connexion</h1>
-      <p>GameNight ne conserve pas les pages ni les données de ton compte sur cet appareil. Rétablis ta connexion pour retrouver tes soirées et ta communauté.</p>
-      <a href="/">Réessayer</a>
+      <h1>Hors connexion</h1>
+      <p>Ta connexion internet est indisponible. GameNight ne garde sur cet appareil aucune page personnelle, aucune donnée de compte et aucune réponse d’API : rien de privé n’est lisible hors ligne.</p>
+      <p>Rétablis la connexion, puis relance la page pour retrouver tes soirées et ton serveur.</p>
+
+      <p class="status" id="status" role="status" aria-live="polite">En attente de la connexion…</p>
+
+      <div class="actions">
+        <button type="button" class="button button-primary" id="retry">Réessayer</button>
+        <a class="button" id="home" href="/" hidden>Retour à l’accueil</a>
+      </div>
+
+      <p class="footnote">Les notifications et le chat restent indisponibles sans connexion.</p>
     </main>
+
+    <script>
+      (function () {
+        var status = document.getElementById("status");
+        var home = document.getElementById("home");
+        var retry = document.getElementById("retry");
+
+        // Au chargement, on ne promet rien : `navigator.onLine` peut être vrai
+        // alors que le serveur est injoignable. L’état « retrouvée » n’est
+        // affiché qu’après un événement `online` réel, et l’accueil n’est
+        // proposé qu’à ce moment-là : aucune page HTML de l’application n’est
+        // mise en cache.
+        function showWaiting() {
+          document.body.dataset.online = "false";
+          status.textContent = "En attente de la connexion…";
+          home.hidden = true;
+        }
+
+        function showRestored() {
+          document.body.dataset.online = "true";
+          status.textContent = "Connexion retrouvée. Relance la page pour reprendre.";
+          home.hidden = false;
+        }
+
+        retry.addEventListener("click", function () { location.reload(); });
+        window.addEventListener("online", showRestored);
+        window.addEventListener("offline", showWaiting);
+        showWaiting();
+      })();
+    </script>
   </body>
 </html>

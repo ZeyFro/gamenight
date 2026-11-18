@@ -723,6 +723,19 @@ export async function createSetupChannel(input: { guildId: string; channel: Omit
     parse: (json) => { const r = setupChannelSchema.safeParse(json); return r.success && r.data.guild_id === input.guildId ? r.data : null; } });
 }
 
+export async function editGuildChannel(input: { channelId: string; name: string; deadline: Date }) {
+  return discordRequest({
+    method: "PATCH",
+    path: `/channels/${input.channelId}`,
+    body: { name: input.name },
+    deadline: input.deadline,
+    parse: (json) => {
+      const result = z.object({ id: z.string(), name: z.string() }).safeParse(json);
+      return result.success ? result.data : null;
+    },
+  });
+}
+
 export async function editSetupResponse(input: { applicationId: string; token: string; content: string; components?: DiscordActionRow[]; deadline: Date }) {
   return discordRequest({ interaction: input, method: "PATCH", path: "", deadline: input.deadline,
     body: { content: input.content, ...(input.components === undefined ? {} : { components: input.components }), allowed_mentions: { parse: [] } }, parse: parseMessage });
@@ -1392,6 +1405,180 @@ export async function getTowerProofMessage(input: { channelId: string; messageId
       const parsed = z.object({ id: z.string(), channel_id: z.string(), author: z.object({ id: z.string() }) }).safeParse(json);
       if (!parsed.success || parsed.data.id !== input.messageId || parsed.data.channel_id !== input.channelId) return null;
       return { messageId: parsed.data.id, channelId: parsed.data.channel_id, authorId: parsed.data.author.id };
+    },
+  });
+}
+
+/**
+ * Rôles Discord — commande `/role` (v1). Lecture seule pour la recherche et
+ * l'attribution ; création plafonnée en permissions nulles (un rôle de jeu
+ * ne doit jamais porter de droit Discord). `PUT`/`DELETE` membre↔rôle sont
+ * idempotents côté Discord : rejouer la même interaction ne change rien.
+ */
+const guildRoleSchema = z.object({
+  id: z.string().regex(/^\d+$/),
+  name: z.string().min(1).max(100),
+  position: z.number().int().nonnegative(),
+  permissions: permissionBits,
+  managed: z.boolean().optional(),
+});
+
+export interface GuildRole {
+  id: string;
+  name: string;
+  position: number;
+  permissions: string;
+  managed: boolean;
+}
+
+export async function listGuildRoles(input: {
+  guildId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ roles: GuildRole[] }>> {
+  return discordRequest({
+    method: "GET",
+    path: `/guilds/${input.guildId}/roles`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = z.array(guildRoleSchema).safeParse(json);
+      if (!result.success) return null;
+      return {
+        roles: result.data.map((role) => ({
+          id: role.id,
+          name: role.name,
+          position: role.position,
+          permissions: role.permissions,
+          managed: role.managed === true,
+        })),
+      };
+    },
+  });
+}
+
+export async function getGuildMemberRoles(input: {
+  guildId: string;
+  userId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ roles: string[] }>> {
+  if (![input.guildId, input.userId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de serveur ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "GET",
+    path: `/guilds/${input.guildId}/members/${input.userId}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = z.object({ roles: z.array(z.string()) }).safeParse(json);
+      return result.success ? { roles: result.data.roles } : null;
+    },
+  });
+}
+
+export async function createGuildRole(input: {
+  guildId: string;
+  name: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ id: string; name: string }>> {
+  return discordRequest({
+    method: "POST",
+    path: `/guilds/${input.guildId}/roles`,
+    deadline: input.deadline,
+    now: input.now,
+    // Aucune permission, non affiché à part, non mentionnable : un rôle de jeu
+    // cosmétique ne peut jamais élargir les droits de celui qui le porte.
+    body: { name: input.name, permissions: "0", color: 0x8b5cf6, hoist: false, mentionable: false },
+    parse: (json) => {
+      const result = z.object({ id: z.string().regex(/^\d+$/), name: z.string() }).safeParse(json);
+      return result.success ? { id: result.data.id, name: result.data.name } : null;
+    },
+  });
+}
+
+export async function addGuildMemberRole(input: {
+  guildId: string;
+  userId: string;
+  roleId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ added: true }>> {
+  if (![input.guildId, input.userId, input.roleId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de rôle ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "PUT",
+    path: `/guilds/${input.guildId}/members/${input.userId}/roles/${input.roleId}`,
+    deadline: input.deadline,
+    now: input.now,
+    // Succès attendu : 204 sans corps.
+    allowEmptyBody: true,
+    parse: () => ({ added: true as const }),
+  });
+}
+
+export async function removeGuildMemberRole(input: {
+  guildId: string;
+  userId: string;
+  roleId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ removed: true }>> {
+  if (![input.guildId, input.userId, input.roleId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de rôle ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "DELETE",
+    path: `/guilds/${input.guildId}/members/${input.userId}/roles/${input.roleId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({ removed: true as const }),
+  });
+}
+
+/**
+ * Fiche de membre Discord en LECTURE SEULE — utilisée pour le statut Booster
+ * (`premium_since`, fourni par Discord : aucune source concurrente).
+ * Aucune écriture, aucune permission.
+ */
+const guildMemberProfileSchema = z.object({
+  roles: z.array(z.string()).default([]),
+  premium_since: z.string().nullable().optional(),
+});
+
+export interface GuildMemberProfile {
+  roles: string[];
+  /** ISO 8601 fourni par Discord, `null` si le membre ne booste pas. */
+  premiumSince: string | null;
+}
+
+export async function getGuildMemberProfile(input: {
+  guildId: string;
+  userId: string;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<GuildMemberProfile>> {
+  if (![input.guildId, input.userId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de serveur ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "GET",
+    path: `/guilds/${input.guildId}/members/${input.userId}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const result = guildMemberProfileSchema.safeParse(json);
+      if (!result.success) return null;
+      const since = result.data.premium_since ?? null;
+      // Un horodatage non ISO est traité comme inconnu, jamais comme « actif ».
+      return {
+        roles: result.data.roles,
+        premiumSince: since && Number.isFinite(Date.parse(since)) ? since : null,
+      };
     },
   });
 }

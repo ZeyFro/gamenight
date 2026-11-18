@@ -180,5 +180,367 @@
         ]
       }
     ]
+  },
+  {
+    "name": "role",
+    "type": 1,
+    "description": "Rôles de jeu Discord et centres d’intérêt GameNight",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "chercher",
+        "description": "Cherche un rôle de jeu existant",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "attribuer",
+        "description": "Reçois le rôle de jeu (créé si absent et autorisé)",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "creer",
+        "description": "Crée le rôle de jeu puis te l’attribue",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "retirer",
+        "description": "Retire un de tes rôles de jeu",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 60
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "aide",
+    "type": 1,
+    "description": "Liste les commandes GameNight et leur état",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
+  },
+  {
+    "name": "profil",
+    "type": 1,
+    "description": "Ton étage, ton niveau, tes badges et tes équipes",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
+  },
+  {
+    "name": "boost",
+    "type": 1,
+    "description": "Tes avantages Booster Discord",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
+  },
+  {
+    "name": "joueurs",
+    "type": 1,
+    "description": "Annonces de joueurs et recherche de partenaires",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "annonces",
+        "description": "Voir les annonces actives"
+      },
+      {
+        "type": 1,
+        "name": "chercher",
+        "description": "Chercher des annonces par jeu",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": false,
+            "min_length": 1,
+            "max_length": 80,
+            "autocomplete": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "mes-annonces",
+        "description": "Voir mes annonces"
+      },
+      {
+        "type": 1,
+        "name": "publier",
+        "description": "Publier une annonce pendant 24 h",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Nom du jeu",
+            "required": true,
+            "min_length": 1,
+            "max_length": 80,
+            "autocomplete": true
+          },
+          {
+            "type": 3,
+            "name": "description",
+            "description": "Ce que tu cherches (240 caractères maximum)",
+            "required": true,
+            "min_length": 1,
+            "max_length": 240
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "retirer",
+        "description": "Retirer une de mes annonces",
+        "options": [
+          {
+            "type": 3,
+            "name": "annonce",
+            "description": "Référence de l’annonce",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "soiree",
+    "type": 1,
+    "description": "Soirées GameNight",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "liste",
+        "description": "Lister les soirées"
+      },
+      {
+        "type": 1,
+        "name": "voir",
+        "description": "Détail d’une soirée",
+        "options": [
+          {
+            "type": 3,
+            "name": "soiree",
+            "description": "Référence de la soirée",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "creer",
+        "description": "Créer une soirée",
+        "options": [
+          {
+            "type": 3,
+            "name": "jeu",
+            "description": "Jeu de la soirée",
+            "required": true,
+            "min_length": 1,
+            "max_length": 80,
+            "autocomplete": true
+          },
+          {
+            "type": 3,
+            "name": "date",
+            "description": "Date (AAAA-MM-JJ)",
+            "required": true,
+            "min_length": 1,
+            "max_length": 10
+          },
+          {
+            "type": 3,
+            "name": "heure",
+            "description": "Heure (HH:mm)",
+            "required": true,
+            "min_length": 1,
+            "max_length": 5
+          },
+          {
+            "type": 4,
+            "name": "places",
+            "description": "Places disponibles",
+            "required": false,
+            "min_value": 2,
+            "max_value": 100
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "rejoindre",
+        "description": "Rejoindre une soirée",
+        "options": [
+          {
+            "type": 3,
+            "name": "soiree",
+            "description": "Référence de la soirée",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "quitter",
+        "description": "Quitter une soirée",
+        "options": [
+          {
+            "type": 3,
+            "name": "soiree",
+            "description": "Référence de la soirée",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tournoi",
+    "type": 1,
+    "description": "Tournois GameNight",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "liste",
+        "description": "Lister les tournois"
+      },
+      {
+        "type": 1,
+        "name": "voir",
+        "description": "Détail d’un tournoi",
+        "options": [
+          {
+            "type": 3,
+            "name": "tournoi",
+            "description": "Référence du tournoi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "inscription",
+        "description": "S’inscrire à un tournoi",
+        "options": [
+          {
+            "type": 3,
+            "name": "tournoi",
+            "description": "Référence du tournoi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "desinscription",
+        "description": "Se désinscrire d’un tournoi",
+        "options": [
+          {
+            "type": 3,
+            "name": "tournoi",
+            "description": "Référence du tournoi",
+            "required": true,
+            "min_length": 1,
+            "max_length": 40
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "mes-inscriptions",
+        "description": "Mes tournois"
+      }
+    ]
   }
 ]

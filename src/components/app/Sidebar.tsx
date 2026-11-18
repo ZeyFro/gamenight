@@ -5,13 +5,15 @@ import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/ui/Avatar";
-import { CalendarIcon, DiceIcon, LibraryIcon, TrophyIcon, UserIcon, UsersIcon } from "@/components/icons";
+import { CalendarIcon, DiceIcon, HomeIcon, LibraryIcon, MoonIcon, TrophyIcon, UserIcon, UsersIcon } from "@/components/icons";
 import { MotionToggle } from "@/components/app/MotionBackground";
 
 export const SIDEBAR_GROUPS = [
   { label: "Jouer ensemble", links: [
-    { href: "/", label: "Accueil", icon: DiceIcon },
-    { href: "/sessions", label: "Soirées", icon: CalendarIcon },
+    // Icônes distinctes par destination (P1-03) : Accueil et Roulette
+    // partageaient le dé, Soirées et Calendrier le calendrier.
+    { href: "/", label: "Accueil", icon: HomeIcon },
+    { href: "/sessions", label: "Soirées", icon: MoonIcon },
     { href: "/roulette", label: "Roulette", icon: DiceIcon },
     { href: "/tournois", label: "Tournois", icon: TrophyIcon },
     { href: "/calendrier", label: "Calendrier", icon: CalendarIcon },

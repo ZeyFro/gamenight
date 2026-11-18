@@ -11,6 +11,7 @@ import { Toaster } from "sonner";
 import { getCurrentUser } from "@/lib/current-user";
 import { Header } from "@/components/Header";
 import { BottomNav } from "@/components/BottomNav";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { GuideFab } from "@/components/GuideFab";
 import { CelebrationConfetti } from "@/components/CelebrationConfetti";
 import { PageTransition } from "@/components/PageTransition";
@@ -90,6 +91,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <PageTransition>{children}</PageTransition>
           </main>
           {user && <BottomNav />}
+          <OfflineBanner raised={Boolean(user)} />
           {user && <GuideFab />}
           {user && onboarding && <OnboardingPrompt userId={user.id} progress={onboarding} />}
           {user && <CelebrationConfetti soundEnabled={user.soundEnabled} />}

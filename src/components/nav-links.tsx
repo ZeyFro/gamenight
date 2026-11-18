@@ -1,32 +1,34 @@
 import {
   CalendarIcon,
-  DiceIcon,
+  HomeIcon,
   LibraryIcon,
-  TrophyIcon,
+  MoonIcon,
   UserIcon,
   UsersIcon,
 } from "@/components/icons";
 
 /**
- * PR 9/9 : ajout de `/classement` en 6e item — dernière étape du chantier
- * XP/niveaux/rangs, assez centrale (consulté régulièrement, comme un
- * classement de jeu) pour mériter une place dans la nav principale plutôt
- * qu'un lien secondaire enfoui dans `/profil` (contrairement à
- * `/tierlist`, réservé à `LibraryTabs` : usage plus ponctuel). `BottomNav`
- * passe de `grid-cols-5` à `grid-cols-6` en conséquence.
+ * Navigation principale (barre basse mobile) — une seule source pour les
+ * libellés, destinations et icônes, afin que la barre basse et le tiroir
+ * `Sidebar` ne divergent plus.
  *
- * Refonte /calendrier : l'entrée "Dispos" (`/disponibilites`) devient
- * "Calendrier" (`/calendrier`), qui superpose déjà dispos, sessions et
- * votes — `/disponibilites` reste pleinement fonctionnelle et accessible
- * via les liens croisés posés à l'intérieur de `/calendrier`, mais n'a
- * plus besoin de sa propre entrée de nav principale. Même `CalendarIcon`
- * (déjà thématiquement juste), pas de 7e icône.
+ * P1-03 (navigation) :
+ * - `Accueil` entre dans la barre basse : sur mobile, le seul retour à
+ *   l'accueil était le logo du header, masqué par `.gn-topbar-with-picker`
+ *   quand le sélecteur de serveur est actif.
+ * - `Classement` sort de la barre basse (il reste dans le tiroir, sur
+ *   l'accueil et dans `/profil`) : six cibles tactiles de 56 px minimum
+ *   tiennent à 320 px de large, sept non, et `Classement` débordait déjà de
+ *   sa case à 360 px.
+ * - `shortLabel` n'existe que pour la barre basse : le libellé complet reste
+ *   la référence, le libellé court évite un débordement à 360 px. Le nom
+ *   accessible du lien contient toujours le texte visible.
  */
 export const NAV_LINKS = [
-  { href: "/bibliotheque", label: "Bibliothèque", icon: LibraryIcon },
-  { href: "/potes", label: "Potes", icon: UsersIcon },
-  { href: "/calendrier", label: "Calendrier", icon: CalendarIcon },
-  { href: "/sessions", label: "Soirées", icon: DiceIcon },
-  { href: "/classement", label: "Classement", icon: TrophyIcon },
-  { href: "/profil", label: "Profil", icon: UserIcon },
+  { href: "/", label: "Accueil", shortLabel: "Accueil", icon: HomeIcon },
+  { href: "/sessions", label: "Soirées", shortLabel: "Soirées", icon: MoonIcon },
+  { href: "/bibliotheque", label: "Bibliothèque", shortLabel: "Jeux", icon: LibraryIcon },
+  { href: "/calendrier", label: "Calendrier", shortLabel: "Calendrier", icon: CalendarIcon },
+  { href: "/potes", label: "Potes", shortLabel: "Potes", icon: UsersIcon },
+  { href: "/profil", label: "Profil", shortLabel: "Profil", icon: UserIcon },
 ] as const;
