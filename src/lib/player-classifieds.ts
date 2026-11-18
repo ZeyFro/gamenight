@@ -3,6 +3,7 @@ import { playerClassifiedFiltersSchema, playerClassifiedFilterWhere, type Player
 import { findActiveMembership } from "@/lib/community-access";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { levelKey, loadVisibleLevels } from "@/lib/game-level-filter";
 export { playerClassifiedExpiresAt, playerClassifiedSchema } from "@/lib/player-classifieds-rules";
 
 export async function getPlayerClassifiedCommunityId(userId: string): Promise<string | null> {
@@ -38,5 +39,6 @@ export async function listPlayerClassifieds(userId: string, communityId: string,
     },
     orderBy: { createdAt: "desc" },
   });
-  return listings;
+  const levels = await loadVisibleLevels(userId, listings.map((listing) => ({ userId: listing.createdBy.id, gameId: listing.game.id })));
+  return listings.map((listing) => ({ ...listing, authorLevel: levels.get(levelKey(listing.createdBy.id, listing.game.id)) ?? null }));
 }

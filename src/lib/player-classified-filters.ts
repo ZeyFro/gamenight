@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { parsePlayerClassifiedDateTime, PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS, PLAYER_CLASSIFIED_PARTY_TYPES } from "@/lib/player-classifieds-rules";
 import { PLAYER_PLATFORMS } from "./player-equipment";
+import { GAME_LEVELS, isGameLevelsEnabled } from "./game-levels-rules";
+import { GAME_LEVEL_MATCHES, gameLevelUserWhere } from "./game-level-filter";
 
 const dateField = z.string().max(10).optional().refine(value => !value || /^\d{4}-\d{2}-\d{2}$/.test(value));
 const timeField = z.string().max(5).optional().refine(value => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value));
@@ -12,11 +14,17 @@ export const playerClassifiedFiltersSchema = z.object({
   partyPlatform: z.enum(["", ...PLAYER_PLATFORMS.map(option => option.key)]).optional(),
   microphoneRequirement: z.enum(["", ...PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS.map(option => option.value)]).optional(),
   partyType: z.enum(["", ...PLAYER_CLASSIFIED_PARTY_TYPES.map(option => option.value)]).optional(),
+  level: z.enum(["", ...GAME_LEVELS]).optional(),
+  levelMatch: z.enum(["", ...GAME_LEVEL_MATCHES]).optional(),
   startsAfterDate: dateField,
   startsAfterTime: timeField,
   startsBeforeDate: dateField,
   startsBeforeTime: timeField,
 }).superRefine((filters, context) => {
+  // Niveau : exige un jeu choisi et le drapeau allumé ; sinon requête invalide (jamais élargie en silence).
+  if (filters.level && (!filters.gameId || !isGameLevelsEnabled())) {
+    context.addIssue({ code: "custom", path: ["level"], message: "Le niveau exige un jeu choisi" });
+  }
   const afterHasDate = Boolean(filters.startsAfterDate);
   const afterHasTime = Boolean(filters.startsAfterTime);
   const beforeHasDate = Boolean(filters.startsBeforeDate);
@@ -45,6 +53,8 @@ export function parsePlayerClassifiedFilters(params: PlayerClassifiedSearchParam
     partyPlatform: params.partyPlatform,
     microphoneRequirement: params.microphoneRequirement,
     partyType: params.partyType,
+    level: params.level,
+    levelMatch: params.levelMatch,
     startsAfterDate: params.startsAfterDate,
     startsAfterTime: params.startsAfterTime,
     startsBeforeDate: params.startsBeforeDate,
@@ -65,6 +75,7 @@ export function playerClassifiedFilterWhere(filters: PlayerClassifiedFilters) {
     ...(filters.partyType ? { partyType: filters.partyType } : {}),
     ...(Object.keys(startsAt).length ? { startsAt } : {}),
     createdBy: {
+      ...gameLevelUserWhere(filters),
       ...(filters.platform ? { availablePlatforms: { has: filters.platform } } : {}),
       ...(filters.microphone ? {
         microphoneAvailable: filters.microphone === "unknown" ? null : filters.microphone === "yes",

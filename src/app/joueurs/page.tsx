@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { createPlayerClassifiedAction, deletePlayerClassifiedAction } from "./actions";
 import { pageMetadata } from "@/lib/page-title";
 import { isTonightEnabled } from "@/lib/tonight-rules";
+import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Chercher un joueur");
 
@@ -114,6 +115,20 @@ export default async function PlayerClassifiedsPage({
             <option value="">Tous les jeux</option>
             {games.map(game => <option key={game.id} value={game.id}>{game.name}</option>)}
           </select>
+          {isGameLevelsEnabled() && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <legend className="px-1 text-sm font-medium">Niveau de jeu (exige un jeu choisi ci-dessus)</legend>
+            <label htmlFor="filter-level" className="text-xs text-muted">Niveau déclaré du joueur pour ce jeu</label>
+            <select id="filter-level" name="level" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.level ?? ""}>
+              <option value="">Tous les niveaux</option>
+              {GAME_LEVELS.map(level => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]}</option>)}
+            </select>
+            <label htmlFor="filter-level-match" className="text-xs text-muted">Comparaison</label>
+            <select id="filter-level-match" name="levelMatch" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.levelMatch ?? ""}>
+              <option value="">Ce niveau ou plus</option>
+              <option value="exact">Ce niveau exactement</option>
+            </select>
+            <p className="text-xs text-muted">Niveaux auto-déclarés ; les profils masqués ne sont jamais trouvés par ce filtre.</p>
+          </fieldset>}
           <label htmlFor="filter-platform">Plateforme déclarée du joueur</label>
           <select id="filter-platform" name="platform" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.platform ?? ""}>
             <option value="">Toutes les plateformes</option>
@@ -171,7 +186,7 @@ export default async function PlayerClassifiedsPage({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{listing.game.name}</p>
-                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}</p>
+                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel && <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau {GAME_LEVEL_LABELS[listing.authorLevel]}</span>}</p>
                     </div>
                     {(listing.createdBy.id === user.id || admin) && (
                       <form action={deletePlayerClassifiedAction}>
