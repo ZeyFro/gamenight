@@ -11,7 +11,7 @@ function applicationServerKey(key: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function WebPushSettings({ publicKey }: { publicKey: string | null }) {
+export function WebPushSettings({ publicKey, misconfigured = false }: { publicKey: string | null; misconfigured?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [enabled, setEnabled] = useState(false);
@@ -42,12 +42,21 @@ export function WebPushSettings({ publicKey }: { publicKey: string | null }) {
         if (permission !== "granted") throw new Error();
         const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) });
         const response = await fetch("/api/push/subscription", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(subscription.toJSON()) });
-        if (!response.ok) { await subscription.unsubscribe(); throw new Error(); }
+        if (!response.ok) {
+          await subscription.unsubscribe();
+          const error = await response.json().then((body: { error?: string }) => body.error).catch(() => undefined);
+          throw new Error(error);
+        }
         setEnabled(true);
         setMessage("Notifications push activées sur cet appareil.");
       }
-    } catch {
-      setMessage("Impossible de modifier les notifications push. Vérifie les autorisations du navigateur.");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      setMessage(
+        code === "not_configured" ? "Les notifications push ne sont pas disponibles : le serveur n’est pas configuré correctement. Préviens un administrateur."
+        : code === "device_limit" ? "Tu as déjà 5 appareils abonnés : désactive-en un avant d’en ajouter."
+        : code === "subscription_in_use" ? "Cet appareil est déjà abonné avec un autre compte."
+        : "Impossible de modifier les notifications push. Vérifie les autorisations du navigateur.");
     } finally { setBusy(false); }
   }
 
@@ -56,7 +65,9 @@ export function WebPushSettings({ publicKey }: { publicKey: string | null }) {
       <p className="text-sm text-muted">Les notifications de GameNight peuvent apparaître sur cet appareil quand le navigateur l’autorise.</p>
       {publicKey
         ? <Button type="button" variant="secondary" disabled={busy} onClick={toggle}>{busy ? "Mise à jour…" : enabled ? "Désactiver sur cet appareil" : "Activer sur cet appareil"}</Button>
-        : <p className="text-sm text-muted">Les notifications push sont désactivées par l’administrateur.</p>}
+        : <p className="text-sm text-muted">{misconfigured
+          ? "Les notifications push sont indisponibles : la configuration du serveur est incomplète ou invalide. Préviens un administrateur."
+          : "Les notifications push sont désactivées par l’administrateur."}</p>}
       {message && <p role="status" className="text-sm text-muted">{message}</p>}
     </div>
   );
