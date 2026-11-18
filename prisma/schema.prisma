@@ -52,6 +52,7 @@ model User {
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeReplacements TowerChallengeReplacement[]
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -2881,6 +2882,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeReplacements TowerChallengeReplacement[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3395,6 +3397,7 @@ model TowerChallengeAttempt {
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?
+  replacements TowerChallengeReplacement[]
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3404,6 +3407,25 @@ model TowerChallengeAttempt {
   @@index([communityId, status, submittedAt])
   @@unique([communityId, proofCode])
   @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+// Remplacement d'un défi solo qui exige un jeu non possédé (cahier 8.6) : une seule fois par attribution
+// (unicité sur attemptId), sans toucher au quota ; journal des deux définitions concernées.
+model TowerChallengeReplacement {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromDefinitionId String @db.VarChar(191)
+  toDefinitionId String @db.VarChar(191)
+  requiredGameId String @db.VarChar(191)
+  createdAt DateTime @default(now())
+
+  @@unique([attemptId])
+  @@index([communityId, userId, createdAt])
 }
 
 enum TowerChallengeAppealStatus {
