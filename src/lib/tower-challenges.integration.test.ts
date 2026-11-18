@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { TOWER_SOLO_IMPORT_PACK } from "@/lib/tower-challenge-import-packs";
 import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
+import { TOWER_SOLO_IMPORT_PACK } from "@/lib/tower-challenge-import-packs";
 
 const url = process.env.TEST_DATABASE_URL;
 // Aucun paramètre d'URL n'est nécessaire aux tests locaux ; les refuser

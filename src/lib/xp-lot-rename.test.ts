@@ -54,16 +54,19 @@ describe("plan de renommage du lot", () => {
 describe("état du dépôt", () => {
   const migrationsDir = resolve("prisma/migrations");
   const all = readdirSync(migrationsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  // 20261106150000_tower_fixed_arbiter (#407) est volontairement postérieure au lot XP (documenté dans docs/LIVRAISON-XP.md) : exclue de la comparaison.
-  const others = all.filter((name) => !batch.includes(name) && name !== "20261106150000_tower_fixed_arbiter");
+  const others = all.filter((name) => !batch.includes(name));
 
   it("le lot est complet dans le checkout", () => {
     for (const name of batch) expect(all).toContain(name);
   });
   it("XP_LOT_RENAMED est cohérent avec les horodatages réels", () => {
     if (XP_LOT_RENAMED) {
-      // Renommé : strictement postérieur à toutes les autres migrations, jamais dans le futur.
-      expect(isBatchAfterOthers(batch, others)).toBe(true);
+      // Renommé et fusionné dans main : des migrations plus récentes sont désormais légitimes (la garde « lot strictement postérieur » était une garde AVANT MERGE).
+      // On vérifie que le lot est ordonné, placé après la dernière migration qui existait au renommage (20261105120000, #406), et jamais dans le futur.
+      const stamps = batch.map(timestampOf);
+      expect([...stamps].sort()).toEqual(stamps);
+      expect(stamps[0] > "20261105120000").toBe(true);
+      expect(others.filter((name) => timestampOf(name) > stamps[0] && timestampOf(name) < stamps[stamps.length - 1])).toEqual([]);
       const last = parseTimestamp(timestampOf(batch[batch.length - 1]));
       expect(last.getTime()).toBeLessThanOrEqual(Date.now() + 60_000);
     } else {
