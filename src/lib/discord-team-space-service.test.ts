@@ -14,7 +14,7 @@ import {
   type SpaceLinkStore,
   type TeamSpaceDiscordApi,
 } from "./discord-team-space-service";
-import { spaceChannelName } from "./discord-team-spaces";
+import { spaceChannelName, spaceVoiceChannelName } from "./discord-team-spaces";
 
 const GUILD = "100000000000000001";
 const TEAM = "team_1";
@@ -49,9 +49,9 @@ function fakeApi() {
       calls.push({ op: "createRole", args: [guildId, name] });
       return "role-new";
     },
-    createChannel: async (guildId, name, overwrites) => {
-      calls.push({ op: "createChannel", args: [guildId, name, overwrites] });
-      return "chan-new";
+    createChannel: async (guildId, name, type, overwrites) => {
+      calls.push({ op: "createChannel", args: [guildId, name, type, overwrites] });
+      return type === 2 ? "voice-new" : "chan-new";
     },
     renameChannel: async (channelId, name) => {
       calls.push({ op: "renameChannel", args: [channelId, name] });
@@ -92,20 +92,33 @@ describe("provisionTeamSpace", () => {
     expect(result.status).toBe("created");
     expect(result.roleId).toBe("role-new");
     expect(result.channelId).toBe("chan-new");
+    expect(result.voiceChannelId).toBe("voice-new");
     expect(ops("createRole")[0].args).toEqual([GUILD, "GN · Les Dragons"]);
-    expect(ops("createChannel")[0].args[1]).toBe(spaceChannelName({ id: TEAM, name: "Les Dragons" }));
+    // Deux salons permanents, privés, avec les mêmes overwrites.
+    expect(ops("createChannel").map((call) => call.args.slice(1, 3))).toEqual([
+      [spaceChannelName({ id: TEAM, name: "Les Dragons" }), 0],
+      [spaceVoiceChannelName({ id: TEAM, name: "Les Dragons" }), 2],
+    ]);
+    expect(ops("createChannel")[0].args[3]).toEqual(ops("createChannel")[1].args[3]);
     expect(ops("addMemberRole")).toHaveLength(2);
-    expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-new", roleId: "role-new", archived: false });
+    expect(await store.find(TEAM)).toMatchObject({
+      channelId: "chan-new",
+      voiceChannelId: "voice-new",
+      roleId: "role-new",
+      archived: false,
+    });
     // Le salon historique et celui d'une autre équipe ne sont jamais touchés.
     expect(calls.some((call) => call.args.includes("chan-historical"))).toBe(false);
     expect(calls.some((call) => call.args.includes("chan-other"))).toBe(false);
   });
 
   it("rejoue sans créer une deuxième fois (idempotence)", async () => {
-    const store = createMemorySpaceLinkStore([{ teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", roleId: "role-1" }]);
+    const store = createMemorySpaceLinkStore([
+      { teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", voiceChannelId: "voice-1", roleId: "role-1" },
+    ]);
     const { api, calls } = fakeApi();
     const result = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
-    expect(result).toEqual({ status: "reused", roleId: "role-1", channelId: "chan-1" });
+    expect(result).toEqual({ status: "reused", roleId: "role-1", channelId: "chan-1", voiceChannelId: "voice-1" });
     expect(calls.some((call) => call.op === "createRole" || call.op === "createChannel")).toBe(false);
   });
 
@@ -309,7 +322,8 @@ describe("réconciliation", () => {
       store: linked(),
       env: enabled,
     });
-    expect(result).toEqual({ status: "partial", steps: ["channel_missing"] });
+    // Lien antérieur à l'option A : le vocal non associé est aussi signalé, sans recréation.
+    expect(result).toEqual({ status: "partial", steps: ["channel_missing", "voice_channel_unlinked"] });
     expect(calls.some((call) => call.op === "createChannel" || call.op === "renameChannel")).toBe(false);
   });
 
@@ -317,5 +331,130 @@ describe("réconciliation", () => {
     const { api } = fakeApi();
     expect((await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: createMemorySpaceLinkStore(), env: enabled })).status).toBe("unlinked");
     expect((await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: linked(), env: {} as NodeJS.ProcessEnv })).status).toBe("disabled");
+  });
+});
+
+describe("option A — salon vocal permanent", () => {
+  const linkedWithVoice = (voiceChannelId: string | null = "voice-1") =>
+    createMemorySpaceLinkStore([
+      { teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", voiceChannelId, roleId: "role-1" },
+    ]);
+
+  it("complète le vocal manquant d’un lien antérieur sans recréer texte ni rôle", async () => {
+    const store = createMemorySpaceLinkStore([
+      { teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", roleId: "role-1" },
+    ]);
+    const { api, calls, ops } = fakeApi();
+    // Le textuel et le rôle existent déjà côté Discord.
+    api.snapshot = async () => ({
+      channels: [{ id: "chan-1", name: "les-dragons-team_1", type: 0 }],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
+    const result = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(result.status).toBe("reused");
+    expect(result.voiceChannelId).toBe("voice-new");
+    expect(ops("createRole")).toHaveLength(0);
+    expect(ops("createChannel")).toHaveLength(1);
+    expect(ops("createChannel")[0].args[2]).toBe(2);
+    expect(calls.filter((call) => call.op === "addMemberRole")).toHaveLength(2);
+    expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-new" });
+  });
+
+  it("échec du vocal : partiel, textuel conservé, rejeu sans doublon", async () => {
+    const store = createMemorySpaceLinkStore();
+    const created = {
+      channels: [] as Array<{ id: string; name: string; type: number }>,
+      roles: [] as Array<{ id: string; name: string }>,
+    };
+    const { api, ops } = fakeApi();
+    api.snapshot = async () => ({ channels: [...created.channels], roles: [...created.roles] });
+    api.createRole = async (_guildId, name) => {
+      const id = `role-${created.roles.length + 1}`;
+      created.roles.push({ id, name });
+      return id;
+    };
+    let voiceFailed = false;
+    api.createChannel = async (_guildId, name, type) => {
+      if (type === 2 && !voiceFailed) {
+        voiceFailed = true;
+        throw new Error("discord_server_error");
+      }
+      const id = `${type === 2 ? "voice" : "chan"}-${created.channels.length + 1}`;
+      created.channels.push({ id, name, type });
+      return id;
+    };
+
+    const first = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(first.status).toBe("partial");
+    // Le rôle et le textuel sont persistés : le rejeu ne les recrée pas.
+    expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: null });
+    expect(ops("addMemberRole")).toHaveLength(0);
+
+    const second = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(second.status).toBe("reused");
+    expect(second.voiceChannelId).toBe("voice-2");
+    expect(created.roles).toHaveLength(1);
+    expect(created.channels.filter((channel) => channel.type === 0)).toHaveLength(1);
+    expect(created.channels.filter((channel) => channel.type === 2)).toHaveLength(1);
+    expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-2" });
+    expect(ops("addMemberRole")).toHaveLength(2);
+  });
+
+  it("refuse explicitement quand le serveur a atteint la limite de salons Discord", async () => {
+    const { api, calls } = fakeApi();
+    api.snapshot = async () => ({
+      channels: Array.from({ length: 500 }, (_, index) => ({ id: `c${index}`, name: `s${index}`, type: 0 })),
+      roles: [],
+    });
+    const result = await provisionTeamSpace({
+      teamId: TEAM,
+      communityId: "community-1",
+      api,
+      store: createMemorySpaceLinkStore(),
+      env: enabled,
+    });
+    expect(result.status).toBe("capacity");
+    expect(calls.some((call) => call.op === "createChannel" || call.op === "createRole")).toBe(false);
+  });
+
+  it("signale un vocal supprimé à la main sans le recréer, puis archive les deux salons", async () => {
+    const { api, calls, ops } = fakeApi();
+    api.snapshot = async () => ({
+      channels: [{ id: "chan-1", name: "les-dragons-team_1", type: 0 }],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
+    const result = await reconcileTeamSpace({
+      teamId: TEAM,
+      communityId: "community-1",
+      api,
+      store: linkedWithVoice(),
+      env: enabled,
+    });
+    expect(result).toEqual({ status: "partial", steps: ["voice_channel_missing"] });
+    expect(calls.some((call) => call.op === "createChannel" || call.op === "renameChannel")).toBe(false);
+
+    api.snapshot = async () => ({
+      channels: [
+        { id: "chan-1", name: "les-dragons-team_1", type: 0 },
+        { id: "voice-1", name: "vocal-les-dragons-team_1", type: 2 },
+      ],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
+    mocks.findTeam.mockResolvedValue(team({ members: [] }));
+    const store = linkedWithVoice();
+    const archived = await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
+    expect(archived.status).toBe("repaired");
+    expect(ops("renameChannel").map((call) => call.args[0])).toEqual(["chan-1", "voice-1"]);
+    expect(await store.find(TEAM)).toMatchObject({ archived: true });
+  });
+
+  it("lit le salon vocal dans l’association persistée", async () => {
+    const { readTeamSpaceLink } = await import("./discord-team-space-service");
+    expect(await readTeamSpaceLink({ teamId: TEAM, communityId: "community-1", store: linkedWithVoice() })).toMatchObject({
+      status: "linked",
+      channelId: "chan-1",
+      voiceChannelId: "voice-1",
+      archived: false,
+    });
   });
 });

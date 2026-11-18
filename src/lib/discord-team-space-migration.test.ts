@@ -18,6 +18,7 @@ const MIGRATION_DIR = "20261118121000_discord_team_space";
 const MIGRATIONS = join(process.cwd(), "prisma", "migrations");
 const SQL = readFileSync(join(MIGRATIONS, MIGRATION_DIR, "migration.sql"), "utf8");
 const SCHEMA = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
+const migrationNames = (): string[] => readdirSync(MIGRATIONS).filter((name: string) => /^\d{14}_/.test(name)).sort();
 
 /** Les commentaires SQL ne sont pas du DDL : on les retire avant d'analyser. */
 const STATEMENTS = SQL.split("\n")
@@ -57,8 +58,28 @@ describe("migration DiscordTeamSpace — bornes avant fusion", () => {
     }
   });
 
+  it("ajoute le salon vocal permanent par une migration additive séparée (option A)", () => {
+    const voiceDir = "20261118124000_discord_team_space_voice";
+    expect(migrationNames()).toContain(voiceDir);
+    expect(voiceDir > MIGRATION_DIR).toBe(true);
+    const voice = readFileSync(join(MIGRATIONS, voiceDir, "migration.sql"), "utf8")
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n")
+      .toUpperCase();
+    expect(voice).toContain('ALTER TABLE "DISCORDTEAMSPACE" ADD COLUMN "VOICECHANNELID" TEXT');
+    expect(voice).toContain('CREATE UNIQUE INDEX "DISCORDTEAMSPACE_VOICECHANNELID_KEY"');
+    for (const forbidden of ["DROP ", "\nDELETE ", "TRUNCATE", "\nUPDATE ", "ALTER COLUMN"]) {
+      expect(`\n${voice}`).not.toContain(forbidden);
+    }
+    // Aucune autre table touchée par cette migration.
+    expect(/ALTER TABLE "(?!DISCORDTEAMSPACE)/.test(voice)).toBe(false);
+    // Le modèle Prisma déclare bien la colonne, nullable et unique.
+    expect(/voiceChannelId\s+String\?\s+@unique/.test(SCHEMA)).toBe(true);
+  });
+
   it("s'applique après #370 (équipes) et sans ancien nom", () => {
-    const names = readdirSync(MIGRATIONS).filter((name) => /^\d{14}_/.test(name)).sort();
+    const names = migrationNames();
     expect(names).toContain(MIGRATION_DIR);
     expect(MIGRATION_DIR > "20261118103100_profile_visibility").toBe(true);
     const team = names.find((name) => name.endsWith("_community_teams"));

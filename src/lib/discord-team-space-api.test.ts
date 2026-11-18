@@ -36,6 +36,22 @@ describe("permissions d’espace", () => {
 });
 
 describe("adaptateur sous l’executor", () => {
+  it("crée le salon vocal (type 2) avec les overwrites privés du plan", async () => {
+    const deadline = new Date(Date.now() + 20_000);
+    rest.createSetupChannel.mockResolvedValue({ ok: true, data: { id: "voice-1", name: "vocal", type: 2, guild_id: GUILD } });
+    const api = createDiscordTeamSpaceApi(deadline);
+    expect(await api.createChannel(GUILD, "vocal-rangers", 2, [{ target: "everyone", deny: "1024" }], ROLE)).toBe("voice-1");
+    expect(rest.createSetupChannel).toHaveBeenCalledWith({
+      guildId: GUILD,
+      deadline,
+      channel: {
+        name: "vocal-rangers",
+        type: 2,
+        permission_overwrites: [{ id: GUILD, type: 0, allow: "0", deny: "1024" }],
+      },
+    });
+  });
+
   it("partage l’échéance du bail pour tous les appels et traite un retrait déjà fait comme un succès", async () => {
     const deadline = new Date(Date.now() + 20_000);
     rest.createGuildRole.mockResolvedValue({ ok: true, data: { id: ROLE, name: "GN" } });

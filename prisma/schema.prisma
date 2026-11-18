@@ -3103,20 +3103,24 @@ model TeamApplication {
   @@index([applicantId, communityId])
 }
 
-// Association fiable équipe ↔ ressources Discord gérées par GameNight (salon privé + rôle sans permission).
-// `teamId` et `channelId` sont uniques : un rejeu ne peut pas créer un second espace pour la même équipe.
-// Aucune ressource Discord n'est jamais supprimée : archiver = renommer. Les lignes suivent l'équipe (cascade),
-// pas Discord ; les ressources Discord orphelines restent à la main du staff.
+// Association fiable équipe ↔ ressources Discord gérées par GameNight (option A du 18/11/2026) :
+// salon textuel privé permanent + salon vocal privé permanent + rôle sans permission.
+// `teamId`, `channelId` et `voiceChannelId` sont uniques : un rejeu ne peut pas créer un second
+// espace pour la même équipe. `voiceChannelId` est nullable pour les liens créés avant l'option A
+// (le provisionnement suivant crée le vocal manquant). Aucune ressource Discord n'est jamais
+// supprimée : archiver = renommer. Les lignes suivent l'équipe (cascade), pas Discord ; les
+// ressources Discord orphelines restent à la main du staff.
 model DiscordTeamSpace {
-  id          String   @id @default(cuid())
-  teamId      String   @unique
-  communityId String
-  guildId     String
-  channelId   String   @unique
-  roleId      String
-  archived    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  teamId         String   @unique
+  communityId    String
+  guildId        String
+  channelId      String   @unique
+  voiceChannelId String?  @unique
+  roleId         String
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)

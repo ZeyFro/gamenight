@@ -7,7 +7,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
 import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { idSchema } from "@/lib/validations";
-import { listTeamMemberDiscordIds, requestTeamSpaceAfterDissolution, requestTeamSpaceMemberSync } from "@/lib/discord-team-space-hooks";
+import {
+  listTeamMemberDiscordIds,
+  requestTeamSpaceAfterDissolution,
+  requestTeamSpaceMemberSync,
+  requestTeamSpaceProvisionForCreator,
+} from "@/lib/discord-team-space-hooks";
 
 function done(result: string): never {
   revalidatePath("/equipes");
@@ -33,7 +38,11 @@ export async function createCommunityTeamAction(formData: FormData): Promise<voi
     maxMembers: formData.get("maxMembers"),
   });
   if (!input.success) done("invalid");
-  done(await createCommunityTeam({ userId: user.id, communityId, ...input.data }));
+  const result = await createCommunityTeam({ userId: user.id, communityId, ...input.data });
+  // Option A : une équipe créée et admissible demande tout de suite ses deux
+  // salons permanents (texte + vocal). No-op sans `DISCORD_TEAM_SPACES_ENABLED`.
+  if (result === "created") await requestTeamSpaceProvisionForCreator({ communityId, userId: user.id });
+  done(result);
 }
 
 export async function joinCommunityTeamAction(formData: FormData): Promise<void> {

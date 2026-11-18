@@ -12,9 +12,10 @@ import {
 import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { resolveTeamCommandContext } from "@/lib/discord-team-command";
 import { resolveGameId } from "@/lib/discord-game-lookup";
-import { requestTeamSpaceMemberSync } from "@/lib/discord-team-space-hooks";
+import { requestTeamSpaceMemberSync, requestTeamSpaceProvisionForCreator } from "@/lib/discord-team-space-hooks";
 import { enqueueTeamSpaceSync, teamSpaceQueueEnabled } from "@/lib/discord-team-space-queue";
-import { readTeamSpaceLink } from "@/lib/discord-team-space-service";
+import { countTeamSpaces, readTeamSpaceLink } from "@/lib/discord-team-space-service";
+import { teamSpaceLimit } from "@/lib/discord-team-spaces";
 import type { InteractionOutput } from "@/lib/discord-interactions";
 
 /**
@@ -145,7 +146,10 @@ async function createProject(userId: string, communityId: string, options: Optio
   if (game.kind === "NONE") return "Jeu introuvable : précise le nom exact.";
   if (game.kind === "AMBIGUOUS") return `Plusieurs jeux correspondent : ${game.names.join(", ")}. Précise le nom exact.`;
   // Même service que `/equipes` : aucune règle dupliquée.
-  return CREATE_MESSAGES[await createCommunityTeam({ userId, communityId, gameId: game.id, ...parsed.data })];
+  const result = await createCommunityTeam({ userId, communityId, gameId: game.id, ...parsed.data });
+  // Option A : les deux salons permanents sont demandés dès la création du projet.
+  if (result === "created") await requestTeamSpaceProvisionForCreator({ communityId, userId });
+  return CREATE_MESSAGES[result];
 }
 
 async function requestSpace(userId: string, communityId: string, team: Team): Promise<string> {
@@ -153,9 +157,29 @@ async function requestSpace(userId: string, communityId: string, team: Team): Pr
   if (!teamSpaceQueueEnabled()) return "L’espace Discord des projets n’est pas encore ouvert.";
   const link = await readTeamSpaceLink({ teamId: team.id, communityId });
   if (link.status === "migration_required") return "L’espace Discord n’est pas encore disponible (association non migrée).";
-  const result = await enqueueTeamSpaceSync({ teamId: team.id, communityId, intent: link.status === "linked" ? "reconcile" : "provision" });
+
+  // Espaces déclarés complets (texte + vocal) : on vérifie leur existence réelle
+  // au lieu d’affirmer qu’ils sont là. Une ressource supprimée à la main est
+  // signalée au staff, jamais recréée d’office.
+  if (link.status === "linked" && link.voiceChannelId && !link.archived) {
+    const result = await enqueueTeamSpaceSync({ teamId: team.id, communityId, intent: "reconcile" });
+    return result === "queued"
+      ? "✅ Les deux salons privés (texte et vocal) sont associés à ce projet. GameNight vérifie qu’ils existent toujours ; si l’un a été supprimé, le staff est prévenu (aucune recréation automatique pour éviter un doublon)."
+      : "L’espace Discord n’a pas pu être vérifié : le serveur de la communauté n’est pas relié ou les équipes sont désactivées.";
+  }
+
+  // Refus explicite avant toute écriture quand le quota produit est atteint.
+  if (link.status === "unlinked") {
+    const used = await countTeamSpaces({ communityId });
+    const limit = teamSpaceLimit();
+    if (used !== null && used >= limit) {
+      return `Capacité des espaces Discord atteinte pour cette communauté (${used}/${limit}) : aucun salon n’a été créé. Le staff doit relever \`DISCORD_TEAM_SPACES_MAX_PER_COMMUNITY\` (limites Discord : 500 salons et 250 rôles par serveur).`;
+    }
+  }
+
+  const result = await enqueueTeamSpaceSync({ teamId: team.id, communityId, intent: "provision" });
   return result === "queued"
-    ? "✅ Demande enregistrée : le salon privé et son rôle seront préparés par GameNight dans quelques minutes (rien n’est créé en direct)."
+    ? "✅ Demande enregistrée : GameNight prépare le salon textuel privé permanent et le salon vocal privé permanent du projet. Rien n’est créé en direct ; l’état sera confirmé après l’exécution."
     : "L’espace Discord n’a pas pu être demandé : le serveur de la communauté n’est pas relié ou les équipes sont désactivées.";
 }
 

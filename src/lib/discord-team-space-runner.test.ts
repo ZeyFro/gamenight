@@ -29,7 +29,7 @@ describe("runTeamSpaceAction (côté executor)", () => {
     expect(await runTeamSpaceAction({ ...base, intent: "provision" }, deadline, api)).toMatchObject({ ok: false, retryable: true });
   });
 
-  it.each(["quota", "unmanaged", "disabled", "community_not_linked", "migration_required"])("provision %s = échec définitif, jamais rejoué", async (status) => {
+  it.each(["quota", "capacity", "unmanaged", "disabled", "community_not_linked", "migration_required"])("provision %s = échec définitif, jamais rejoué", async (status) => {
     mocks.provision.mockResolvedValue({ status });
     expect(await runTeamSpaceAction({ ...base, intent: "provision" }, deadline, api)).toMatchObject({ ok: false, retryable: false });
   });

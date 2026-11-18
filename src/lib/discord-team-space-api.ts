@@ -50,14 +50,16 @@ export function createDiscordTeamSpaceApi(executorDeadline?: Date): TeamSpaceDis
     async createRole(guildId, name) {
       return unwrap(await createGuildRole({ guildId, name, deadline: deadline() })).id;
     },
-    async createChannel(guildId, name, overwrites, roleId) {
+    async createChannel(guildId, name, type, overwrites, roleId) {
+      // `type` vient du plan : 0 = salon textuel, 2 = salon vocal (option A).
+      // Les deux salons portent les MÊMES overwrites privés.
       const created = unwrap(
         await createSetupChannel({
           guildId,
           deadline: deadline(),
           channel: {
             name,
-            type: 0,
+            type,
             permission_overwrites: buildOverwrites(guildId, roleId, overwrites),
           },
         })

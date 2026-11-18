@@ -111,7 +111,7 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
 
   it("reste idempotent sur un rejeu et sous créations concurrentes, et isole par communauté", async () => {
     const store = spaceStore.createPrismaSpaceLinkStore(ids.community);
-    const link = { teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-1", roleId: "role-1" };
+    const link = { teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-1", voiceChannelId: "voice-1", roleId: "role-1" };
     await store.save(link);
     await store.save(link);
     const results = await Promise.allSettled([store.save({ ...link, channelId: "chan-2" }), store.save({ ...link, channelId: "chan-2" })]);
@@ -128,7 +128,7 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
     const restarted = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
     try {
       const row = await restarted.discordTeamSpace.findUnique({ where: { teamId: ids.team } });
-      expect(row).toMatchObject({ channelId: "chan-1", roleId: "role-1", archived: false });
+      expect(row).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-1", roleId: "role-1", archived: false });
       expect(await spaceStore.readTeamSpaceLink({ teamId: ids.team, communityId: ids.community })).toMatchObject({ status: "linked", channelId: "chan-1" });
     } finally {
       await restarted.$disconnect();
@@ -172,19 +172,22 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
   it("executor : création, adhésion, départ et archivage avec le vrai store SQL", async () => {
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
     const calls = { roles: 0, channels: 0, added: [] as string[], removed: [] as string[], renamed: [] as string[] };
+    const created: Array<{ id: string; name: string; type: number }> = [];
     const api = {
       // Reflète l'état Discord simulé : les ressources créées existent ensuite (reconcile ne recrée jamais).
       snapshot: async () => ({
-        channels: calls.channels > 0 ? [{ id: "chan-flow", name: "les-dragons", type: 0 }] : [],
+        channels: [...created],
         roles: calls.roles > 0 ? [{ id: "role-flow", name: "GN · Les Dragons" }] : [],
       }),
       createRole: async () => {
         calls.roles += 1;
         return "role-flow";
       },
-      createChannel: async () => {
+      createChannel: async (_guildId: string, name: string, type: number) => {
         calls.channels += 1;
-        return "chan-flow";
+        const id = type === 2 ? "voice-flow" : "chan-flow";
+        created.push({ id, name, type });
+        return id;
       },
       renameChannel: async (channelId: string) => {
         calls.renamed.push(channelId);
@@ -201,8 +204,15 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
 
     expect(await run({ ...base, intent: "provision" })).toEqual({ ok: true, data: {} });
     expect(await run({ ...base, intent: "provision" })).toEqual({ ok: true, data: {} });
-    expect({ roles: calls.roles, channels: calls.channels }).toEqual({ roles: 1, channels: 1 });
-    expect(await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).toMatchObject({ channelId: "chan-flow", roleId: "role-flow", guildId: GUILD });
+    // Option A : un rôle, un salon textuel ET un salon vocal par équipe.
+    expect({ roles: calls.roles, channels: calls.channels }).toEqual({ roles: 1, channels: 2 });
+    expect(created.map((channel) => channel.type).sort()).toEqual([0, 2]);
+    expect(await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).toMatchObject({
+      channelId: "chan-flow",
+      voiceChannelId: "voice-flow",
+      roleId: "role-flow",
+      guildId: GUILD,
+    });
     expect(calls.added.sort()).toEqual([CREATOR_DISCORD, MEMBER_DISCORD]);
 
     // Départ : l'état courant décide, le rôle de cette seule équipe est retiré, aucune progression écrite.
@@ -212,10 +222,10 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
     expect(calls.removed).toEqual([MEMBER_DISCORD]);
     expect(await db.xpEvent.count()).toBe(xpBefore);
 
-    // Dissolution : plus aucun membre, le salon associé (et lui seul) est archivé par renommage.
+    // Dissolution : plus aucun membre, les DEUX salons associés (et eux seuls) sont archivés par renommage.
     await db.communityTeamMember.deleteMany({ where: { teamId: ids.team } });
     expect(await run({ ...base, intent: "reconcile" })).toEqual({ ok: true, data: {} });
-    expect(calls.renamed).toEqual(["chan-flow"]);
+    expect(calls.renamed).toEqual(["chan-flow", "voice-flow"]);
     expect((await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).archived).toBe(true);
   });
 

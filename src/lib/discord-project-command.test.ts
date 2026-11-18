@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   context: vi.fn(), list: vi.fn(), create: vi.fn(), join: vi.fn(), leave: vi.fn(), recruit: vi.fn(),
   game: vi.fn(), edit: vi.fn(), memberSync: vi.fn(), enqueue: vi.fn(), queueEnabled: vi.fn(), link: vi.fn(),
+  count: vi.fn(), provisionForCreator: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/community-teams", () => ({
@@ -12,9 +13,12 @@ vi.mock("@/lib/community-teams", () => ({
 vi.mock("@/lib/discord-team-command", () => ({ resolveTeamCommandContext: mocks.context }));
 vi.mock("@/lib/discord-game-lookup", () => ({ resolveGameId: mocks.game }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit }));
-vi.mock("@/lib/discord-team-space-hooks", () => ({ requestTeamSpaceMemberSync: mocks.memberSync }));
+vi.mock("@/lib/discord-team-space-hooks", () => ({
+  requestTeamSpaceMemberSync: mocks.memberSync,
+  requestTeamSpaceProvisionForCreator: mocks.provisionForCreator,
+}));
 vi.mock("@/lib/discord-team-space-queue", () => ({ enqueueTeamSpaceSync: mocks.enqueue, teamSpaceQueueEnabled: mocks.queueEnabled }));
-vi.mock("@/lib/discord-team-space-service", () => ({ readTeamSpaceLink: mocks.link }));
+vi.mock("@/lib/discord-team-space-service", () => ({ readTeamSpaceLink: mocks.link, countTeamSpaces: mocks.count }));
 
 import { handleSignedProjectCommand } from "./discord-project-command";
 
@@ -52,6 +56,7 @@ beforeEach(() => {
   mocks.queueEnabled.mockReturnValue(true);
   mocks.link.mockResolvedValue({ status: "unlinked" });
   mocks.enqueue.mockResolvedValue("queued");
+  mocks.count.mockResolvedValue(0);
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -156,6 +161,8 @@ describe("/projet : écriture via les services de main", () => {
       userId: "user-1", communityId: "community-1", gameId: "game-1", name: "Expédition",
       description: "Construire et explorer ensemble.", platform: "PC", maxMembers: 4,
     });
+    // Option A : la création du projet demande immédiatement les deux salons permanents.
+    expect(mocks.provisionForCreator).toHaveBeenCalledWith({ communityId: "community-1", userId: "user-1" });
     mocks.create.mockClear();
     mocks.edit.mockClear();
     expect(await finish(handleSignedProjectCommand(input("creer", options(20))))).toContain("2 à 8 places");
@@ -184,13 +191,30 @@ describe("/projet : écriture via les services de main", () => {
 describe("/projet espace : demande en file, jamais en direct", () => {
   const run = () => finish(handleSignedProjectCommand(input("espace", [str("projet", "team-1")])));
 
-  it("le capitaine enfile une création, ou une réconciliation si le lien existe", async () => {
-    expect(await run()).toContain("rien n’est créé en direct");
+  it("le capitaine enfile une création, ou une vérification si les deux salons existent", async () => {
+    expect(await run()).toContain("n’est créé en direct");
     expect(mocks.enqueue).toHaveBeenCalledWith({ teamId: "team-1", communityId: "community-1", intent: "provision" });
-    mocks.link.mockResolvedValue({ status: "linked", channelId: "c", roleId: "r", archived: false });
+    // Lien complet (texte + vocal) : on vérifie, on ne recrée pas.
+    mocks.link.mockResolvedValue({ status: "linked", channelId: "c", voiceChannelId: "v", roleId: "r", archived: false });
     mocks.edit.mockClear();
-    await run();
+    expect(await run()).toContain("salons privés (texte et vocal) sont associés");
     expect(mocks.enqueue).toHaveBeenLastCalledWith({ teamId: "team-1", communityId: "community-1", intent: "reconcile" });
+    // Lien antérieur à l’option A : le vocal manquant est créé par le provisionnement.
+    mocks.enqueue.mockClear();
+    mocks.link.mockResolvedValue({ status: "linked", channelId: "c", voiceChannelId: null, roleId: "r", archived: false });
+    mocks.edit.mockClear();
+    expect(await run()).toContain("salon vocal privé permanent");
+    expect(mocks.enqueue).toHaveBeenLastCalledWith({ teamId: "team-1", communityId: "community-1", intent: "provision" });
+  });
+
+  it("refuse explicitement quand le quota d’espaces de la communauté est atteint", async () => {
+    mocks.count.mockResolvedValue(5);
+    expect(await run()).toContain("Capacité des espaces Discord atteinte");
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    mocks.count.mockResolvedValue(4);
+    mocks.edit.mockClear();
+    expect(await run()).toContain("Demande enregistrée");
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
   });
 
   it("respecte le capitaine passé (captainId prime sur createdById) et refuse un simple membre", async () => {
@@ -199,7 +223,7 @@ describe("/projet espace : demande en file, jamais en direct", () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
     mocks.list.mockResolvedValue([team({ createdById: "user-9", captainId: "user-1" })]);
     mocks.edit.mockClear();
-    expect(await run()).toContain("rien n’est créé en direct");
+    expect(await run()).toContain("n’est créé en direct");
   });
 
   it("reste fermé sans verrou de file ou sans migration", async () => {

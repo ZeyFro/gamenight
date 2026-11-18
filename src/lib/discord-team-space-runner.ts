@@ -49,6 +49,10 @@ function fromStatus(status: string): DiscordRestResult<Record<string, never>> {
     case "partial":
     case "failed":
       return retryable(`Espace d'équipe : ${status}.`);
+    // Capacité Discord insuffisante : aucune reprise automatique, le staff décide.
+    case "capacity":
+    case "quota":
+      return definitive("Capacité Discord des espaces d'équipe atteinte.");
     default:
       return definitive(`Espace d'équipe non appliqué : ${status}.`);
   }
