@@ -227,7 +227,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(closed.candidates.find(candidate => candidate.userId === "tower-a2")?.votes).toBe(1);
     expect(await db.towerSeasonVoteBallot.count({ where: { communityId: "tower-a" } })).toBe(2);
   });
-  it("ouvre le vote de l’été dès le début de S4, sans intersaison", async () => {
+  it("ouvre le vote de l’été dès le début de S3, sans intersaison", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "summer-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
       requestKey: "summer-finalist-" + index, title: "Défi été", instructions: "À réaliser",
@@ -246,7 +246,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(opened.candidates.map(candidate => candidate.userId)).toEqual(["tower-a2", "tower-a1"]);
   });
 
-  it("ouvre le vote de S4 pendant l’intersaison du 1er au 3 janvier", async () => {
+  it("ouvre le vote de S3 2026 une fois S1 2026-2027 commencée (1er décembre), sans intersaison", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-boundary-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
       requestKey: "season-boundary-" + index, title: "Défi trimestre", instructions: "À réaliser",
@@ -259,7 +259,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2027-01-01T12:00:00Z");
     const opened = await api.getTowerSeasonVote(author);
     if (opened.status !== "VOTE_OPEN") throw new Error("Scrutin du trimestre terminé attendu");
-    expect(opened.season.name).toBe("S4 · 2026");
+    expect(opened.season.name).toBe("S3 · 2026");
     expect(opened.season.active).toBe(false);
     expect(opened.closesAt).toEqual(new Date("2027-01-03T12:00:00Z"));
 
