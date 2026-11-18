@@ -83,6 +83,19 @@ describe("Vercel build safety", () => {
     expect(buildSourceProblems(real + '\nspawnSync("node", ["scripts/db-migrate.mjs"]);\n')).toEqual(["le code de build mentionne une commande de migration"]);
   });
 
+  it("la garde de schéma s'exécute entre generate et next build, en lecture seule", () => {
+    const steps = buildSteps(read("scripts/build.mjs")) ?? "";
+    const generate = steps.indexOf('"generate"');
+    const gate = steps.indexOf("scripts/assert-migrations-applied.mjs");
+    const next = steps.indexOf("next/dist/bin/next");
+    expect(generate).toBeGreaterThan(-1);
+    expect(gate).toBeGreaterThan(generate);
+    expect(next).toBeGreaterThan(gate);
+    const gateSource = read("scripts/assert-migrations-applied.mjs");
+    expect(gateSource).toContain("SET TRANSACTION READ ONLY");
+    expect(gateSource).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE|CREATE)\b\s/);
+  });
+
   it("package.json : build, postinstall et scripts npm ne migrent pas", () => {
     expect(packageProblems(JSON.parse(read("package.json")))).toEqual([]);
   });

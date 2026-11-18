@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { formatReminderTimingShort } from "@/lib/reminder-timings";
 import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
-import { filterUsersByNotificationPreference } from "@/lib/notification-preferences";
+import { filterUsersByNotificationChannelPreference } from "@/lib/notification-channel-preferences";
 import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
 import { isSessionDirectMessageEnabled, isRouletteDirectMessageEnabled } from "@/lib/discord-bot-config";
@@ -289,7 +289,7 @@ async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | 
   const creator = await prisma.user.findUnique({ where: { id: session.createdById } });
   if (!creator) return null;
   const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
-  const [allowed] = await filterUsersByNotificationPreference([creator], category);
+  const [allowed] = await filterUsersByNotificationChannelPreference([creator], category, "DISCORD_DM");
   return allowed ?? null;
 }
 
@@ -298,10 +298,17 @@ async function resolveCreatorDmRecipient(session: Pick<Session, "createdById" | 
  * des mentions (sélection, invitation active, préférence). */
 async function isDmRecipientEligible(
   session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette" | "communityId">,
-  recipient: User
+  recipient: User,
+  applyPreference = true,
 ): Promise<boolean> {
-  if (recipient.id === session.createdById) return (await resolveCreatorDmRecipient(session)) !== null;
-  return (await resolveEligibleMentions(session, [recipient])).length > 0;
+  if (recipient.id === session.createdById) {
+    if (applyPreference) return (await resolveCreatorDmRecipient(session)) !== null;
+    return isMemberOfCommunity(session.createdById, session.communityId);
+  }
+  const eligible = await resolveEligibleRecipients(session, [recipient]);
+  if (!applyPreference) return eligible.length > 0;
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  return (await filterUsersByNotificationChannelPreference(eligible, category, "DISCORD_DM")).length > 0;
 }
 
 /**
@@ -1153,7 +1160,7 @@ export function resolveInvitedCandidates<U extends { id: string }>(
  * avant le retrait — relu depuis la base à CHAQUE appel, jamais mis en
  * cache, exactement comme les deux autres filtres.
  */
-async function resolveEligibleMentions<
+async function resolveEligibleRecipients<
   T extends { id: string; discordId: string; silenceReminders: boolean },
 >(
   session: Pick<Session, "id" | "createdById" | "notifiedUserIds" | "createdViaRoulette" | "communityId">,
@@ -1161,9 +1168,7 @@ async function resolveEligibleMentions<
 ): Promise<T[]> {
   const notifiedUserIds = resolveNotifiedUserIds(session.notifiedUserIds);
   const restricted = notifiedUserIds ? candidates.filter((u) => notifiedUserIds.includes(u.id)) : candidates;
-  const invited = await filterByActiveSessionInvite(session.id, session.createdById, restricted);
-  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
-  return filterUsersByNotificationPreference(invited, category);
+  return filterByActiveSessionInvite(session.id, session.createdById, restricted);
 }
 
 function mentionContent(users: { discordId: string }[]): { text: string; userIds: string[] } {
@@ -1267,24 +1272,34 @@ async function buildMessageContent(
   // édition d'annonce (déjà notifiée in-app) — jamais deux fois la même.
   inApp = true
 ): Promise<ResolvedMessageContent> {
-  const eligible = candidateMentions ? await resolveEligibleMentions(session, candidateMentions.filter(user => user.id !== session.createdById)) : [];
+  const personalRecipients = candidateMentions
+    ? await resolveEligibleRecipients(session, candidateMentions.filter(user => user.id !== session.createdById))
+    : [];
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  const eligible = session.createdViaRoulette ? [] : await filterUsersByNotificationChannelPreference(personalRecipients, category, "DISCORD_MENTION");
   // Le créateur est destinataire de MP en plus des invités (jamais mentionné
   // dans le fil, sauf en secours si son MP est fermé) — pas pour un état sans
   // mention (annulation : `candidateMentions === null`).
   const dmActive = Boolean(dmKind) && !session.deferredRoulette &&
     (session.createdViaRoulette ? isRouletteDirectMessageEnabled() : isSessionDirectMessageEnabled());
+  const dmEligible = dmActive
+    ? await filterUsersByNotificationChannelPreference(personalRecipients, category, "DISCORD_DM")
+    : [];
   const creatorRecipient =
-    dmActive && candidateMentions !== null && !eligible.some((u) => u.id === session.createdById)
+    dmActive && candidateMentions !== null && !dmEligible.some((u) => u.id === session.createdById)
       ? await resolveCreatorDmRecipient(session)
       : null;
-  const dmTargets = creatorRecipient ? [...eligible, creatorRecipient] : eligible;
+  const dmTargets = creatorRecipient ? [...dmEligible, creatorRecipient] : dmEligible;
   const dm = dmActive && dmKind ? await enqueueSessionDirectMessages(
     session.id, dmKind, dmTargets, dmKind.startsWith("reminder:") ? reminderSchedulePayload(session) : undefined
   ) : null;
   // Double ping : TOUS les invités éligibles restent mentionnés, MP ou non.
-  const mentioned = session.createdViaRoulette ? [] : [...eligible];
+  const mentioned = [...eligible];
   // MP fermé du créateur : mentionné dans le fil comme n'importe quel pote.
-  if (!session.createdViaRoulette && creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) mentioned.push(creatorRecipient);
+  if (!session.createdViaRoulette && creatorRecipient && dm?.blocked.some((u) => u.id === creatorRecipient.id)) {
+    const [mentionAllowed] = await filterUsersByNotificationChannelPreference([creatorRecipient], category, "DISCORD_MENTION");
+    if (mentionAllowed) mentioned.push(creatorRecipient);
+  }
   const { text, userIds } = mentionContent(mentioned);
 
   // Notification interne (#98, même philosophie que le chemin webhook) —
@@ -1292,15 +1307,16 @@ async function buildMessageContent(
   // un ensemble différent, et jamais si le webhook a déjà pu les créer
   // pour cette session (impossible ici : une session `announceViaBot`
   // n'appelle jamais les fonctions webhook, voir le commentaire de fichier).
-  if (inApp && eligible.length > 0) {
+  if (inApp && personalRecipients.length > 0) {
     await createNotifications(
-      eligible.map((u) => ({
+      personalRecipients.map((u) => ({
         userId: u.id,
         communityId: session.communityId,
         type: notificationType,
         title: notificationTitle,
         message: notificationMessage,
         relatedSessionId: session.id,
+        personalCategory: category,
       }))
     );
   }
@@ -1493,7 +1509,7 @@ async function resolveSessionDirectMessage(
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
+  if (!(await isDmRecipientEligible(session, recipient, operation === "SEND"))) return { eligible: false, reason: "preference_declined" };
 
   const rendering = resolveAnnounceRendering(session);
   let body = subject;
@@ -1542,7 +1558,13 @@ async function resolveSessionDirectMessageFallback(role: string, session: Sessio
 
   const recipient = await prisma.user.findUnique({ where: { id: parsed.userId } });
   if (!recipient) return { eligible: false, reason: "unresolvable" };
-  if (!(await isDmRecipientEligible(session, recipient))) return { eligible: false, reason: "preference_declined" };
+  const category = session.createdViaRoulette ? "ROULETTE" : "SESSION";
+  if (!(await isDmRecipientEligible(session, recipient, false))) {
+    return { eligible: false, reason: "preference_declined" };
+  }
+  if ((await filterUsersByNotificationChannelPreference([recipient], category, "DISCORD_MENTION")).length === 0) {
+    return { eligible: false, reason: "preference_declined" };
+  }
 
   const action: ResolvedAction = {
     kind: "send_thread_message_verified",

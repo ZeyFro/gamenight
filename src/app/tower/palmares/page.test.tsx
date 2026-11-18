@@ -59,23 +59,31 @@ it("affiche les co-lauréats à la même place avec la mention ex æquo, sans en
   expect(screen.getAllByRole("listitem")).toHaveLength(3);
 });
 it("montre la progression du lecteur : étages gagnés, rang, saisons terminées et prochaine marche", async () => {
-  mocks.progress.mockResolvedValueOnce({ status: "PROGRESS", floorsClimbed: "42", completedSeasons: 0, rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "58", seasonMissing: true } });
+  mocks.progress.mockResolvedValueOnce({ status: "PROGRESS", floorsClimbed: "42", completedSeasons: 0, seasonChallenges: 2, rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "58", challengesMissing: 3 } });
   render(await Page());
   expect(mocks.progress).toHaveBeenCalledWith({ viewerId: "viewer", memberId: "viewer", communityId: "community" });
   expect(screen.getByRole("heading", { name: "Ta progression" })).toBeTruthy();
-  expect(screen.getByText(/42 étage\(s\) gagné\(s\) avec les défis · 0 saison\(s\) terminée\(s\)/)).toBeTruthy();
+  expect(screen.getByText(/42 étage\(s\) gagné\(s\) avec les défis · 2 défi\(s\) validé\(s\) cette saison/)).toBeTruthy();
   expect(screen.getByTitle("Rang The Tower : Ranker")).toBeTruthy();
-  expect(screen.getByText("Prochain rang, High Ranker : encore 58 étage(s) à gagner et une saison terminée.")).toBeTruthy();
+  expect(screen.getByText("Prochain rang, High Ranker : encore 58 étage(s) à gagner et 3 défi(s) validé(s) sur la saison en cours.")).toBeTruthy();
   expect(screen.getByText(/jamais de l’XP/)).toBeTruthy();
 });
 it.each([
-  [{ rank: "Ranker", floorsMissing: "3", seasonMissing: false }, "Prochain rang, Ranker : encore 3 étage(s) à gagner."],
-  [{ rank: "High Ranker", floorsMissing: "0", seasonMissing: true }, "Prochain rang, High Ranker : encore une saison terminée."],
+  [{ rank: "Ranker", floorsMissing: "3", challengesMissing: 0 }, "Prochain rang, Ranker : encore 3 étage(s) à gagner."],
+  [{ rank: "High Ranker", floorsMissing: "0", challengesMissing: 2 }, "Prochain rang, High Ranker : encore 2 défi(s) validé(s) sur la saison en cours."],
   [null, "Tu as atteint le rang le plus élevé."],
 ])("explique la prochaine marche %o", async (next, text) => {
-  mocks.progress.mockResolvedValueOnce({ status: "PROGRESS", floorsClimbed: "100", completedSeasons: 1, rank: "High Ranker", next });
+  mocks.progress.mockResolvedValueOnce({ status: "PROGRESS", floorsClimbed: "100", completedSeasons: 1, seasonChallenges: 5, rank: "High Ranker", next });
   render(await Page());
   expect(screen.getByText(text)).toBeTruthy();
+});
+it("ne propose la page d'administration du palmarès qu'aux administrateurs de la communauté", async () => {
+  render(await Page());
+  expect(screen.queryByRole("link", { name: /Proposition de palmarès/ })).toBeNull();
+  cleanup();
+  mocks.podium.mockResolvedValueOnce({ status: "PODIUM", season, canReview: true, entries: [] });
+  render(await Page());
+  expect(screen.getByRole("link", { name: "Proposition de palmarès (administration)" }).getAttribute("href")).toBe("/admin/tower-palmares");
 });
 it("n'affiche aucune progression quand la Tour est éteinte ou indisponible", async () => {
   for (const status of ["DISABLED", "UNAVAILABLE", "INVALID"]) {

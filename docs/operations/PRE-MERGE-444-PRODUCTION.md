@@ -14,7 +14,7 @@ applique automatiquement les migrations sur Neon Production (environnement
 directe, refus si l'URL contient `-pooler`).
 
 Conséquence : ce n'est plus #445 qu'il faut encadrer, mais **#444 elle-même**,
-qui apporte `prisma/migrations/20261117120000_discord_team_space/`. Merger #444
+qui apporte `prisma/migrations/20261201120000_discord_team_space/`. Merger #444
 déclenchera ce workflow. La présente procédure est donc la condition de fusion
 de #444.
 
@@ -49,7 +49,7 @@ Le build Vercel ne migre jamais (`npm run build` = `prisma generate` +
 
 ## 4. Ce que la migration fait, et ce qu'elle ne fait pas
 
-`20261117120000_discord_team_space/migration.sql` :
+`20261201120000_discord_team_space/migration.sql` :
 
 - `CREATE TABLE IF NOT EXISTS "DiscordTeamSpace"` + 3 index `IF NOT EXISTS` ;
 - aucune clé étrangère (le schéma Prisma ne déclare pas de relation, nettoyage
@@ -70,7 +70,7 @@ d'équipe.
 1. `20261104140000_tower_team_membership_policy` (#370, avec #408/#416) :
    `captainId`, backfill, index d'appartenance.
 2. `20261106150000_…` (#408/#416) selon l'ordre décidé par le propriétaire.
-3. `20261117120000_discord_team_space` (#444, cette branche).
+3. `20261201120000_discord_team_space` (#444, cette branche).
 
 Prisma applique par ordre de nom de dossier : tant que (3) est la plus récente,
 elle passe en dernier, quel que soit l'ordre de fusion des PR **antérieures**.
@@ -106,7 +106,7 @@ Deux points à respecter :
 4. Merger #444 (squash ou merge commit selon la politique du dépôt).
 5. Suivre le job `migrate-production` : heure UTC **avant** migration dans le
    résumé, `migrate status`, `migrate deploy`, `migrate status` final.
-6. Vérifier `_prisma_migrations` : une entrée `20261117120000_discord_team_space`
+6. Vérifier `_prisma_migrations` : une entrée `20261201120000_discord_team_space`
    terminée, aucune inachevée.
 7. Contrôler l'application : `/equipes` répond, les espaces d'équipe restent
    fermés tant que `DISCORD_TEAM_SPACES_ENABLED` n'est pas ouvert

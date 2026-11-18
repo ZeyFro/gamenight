@@ -10,7 +10,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
 
@@ -139,8 +139,8 @@ export interface CreateEventInput {
 
 async function eventCommunityId(input: CreateEventInput, db: NotificationDb): Promise<string | null> {
   if (input.communityId !== undefined) return input.communityId;
-  // Une transaction doit lire son propre parent non committé. Aucun appel au client global ici.
-  const scopedDb = db === prisma ? scopedPrisma(null) : scopedTransactionPrisma(db as Prisma.TransactionClient, null);
+  // Garder le client fourni pour qu'une transaction puisse lire son propre parent non committé.
+  const scopedDb = scopedTransactionPrisma(db as Prisma.TransactionClient, null);
   const source = input.category === "SESSION"
     ? await scopedDb.session.findUnique({ where: { id: input.sourceId }, select: { communityId: true } })
     : input.category === "TOURNAMENT"

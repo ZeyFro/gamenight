@@ -4,7 +4,7 @@ Conteneur dédié `gamenight-test-pg-20261117` (postgres:16-alpine, port 55440),
 aucun volume ni conteneur existant touché. Base `gamenight_test_20261117`.
 
 1. `prisma migrate deploy` (119 migrations de l'historique) : OK.
-2. `prisma/migrations/20261117120000_discord_team_space/migration.sql` : OK.
+2. `prisma/migrations/20261201120000_discord_team_space/migration.sql` : OK.
 3. Migration capitaine : fournie par #370 (`20261104140000_tower_team_membership_policy`),
    aucune migration locale (la copie préparée `20261117_team_captain` est annulée).
 4. `TEST_DATABASE_URL=… npx vitest run src/lib/discord-team-space.integration.test.ts` :
@@ -26,4 +26,4 @@ Production. Le conteneur peut être supprimé avec
 branche s'arrête à `20261029061000_tower_team_challenges`, d'où l'application
 manuelle pour la recette. Après fusion d'une de ces PR, ne **jamais** rejouer de
 migration capitaine : `docs/migrations/pending/20261117_team_captain/` est
-annulée. Seule la migration `20261117120000_discord_team_space` reste en attente.
+annulée. Seule la migration `20261201120000_discord_team_space` reste en attente.

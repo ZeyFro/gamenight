@@ -6,8 +6,8 @@ Ordre d'application après fusion, sur une base de test uniquement :
    `captainId`, backfill depuis `createdById`, FK `User`, `captainLastActivityAt`,
    `Membership.lastTeamLeftAt`.
 2. `20261106150000_tower_launch_channels_appeals_matchmaking` (#408/#416).
-3. `20261117120000_discord_team_space` : **intégrée** dans
-   `prisma/migrations/20261117120000_discord_team_space/` (elle n'est plus en
+3. `20261201120000_discord_team_space` : **intégrée** dans
+   `prisma/migrations/20261201120000_discord_team_space/` (elle n'est plus en
    attente ici). Elle doit rester appliquée après les migrations ci-dessus.
 
 Aucune migration capitaine séparée : `20261117_team_captain` est **annulée**

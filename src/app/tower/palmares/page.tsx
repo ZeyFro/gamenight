@@ -13,8 +13,8 @@ export const metadata = pageMetadata("Palmarès The Tower");
 
 function nextRankText(next: TowerRankStep): string {
   const floors = next.floorsMissing === "0" ? null : `${next.floorsMissing} étage(s) à gagner`;
-  const season = next.seasonMissing ? "une saison terminée" : null;
-  return `Prochain rang, ${next.rank} : encore ${[floors, season].filter(Boolean).join(" et ")}.`;
+  const challenges = next.challengesMissing > 0 ? `${next.challengesMissing} défi(s) validé(s) sur la saison en cours` : null;
+  return `Prochain rang, ${next.rank} : encore ${[floors, challenges].filter(Boolean).join(" et ")}.`;
 }
 
 export default async function TowerSeasonPodiumPage() {
@@ -35,15 +35,16 @@ export default async function TowerSeasonPodiumPage() {
         <h2 className="text-xl font-semibold text-foreground">Ta progression</h2>
         <TowerRankBadge rank={progress.rank} />
       </div>
-      <p className="mt-2 text-muted">{progress.floorsClimbed} étage(s) gagné(s) avec les défis · {progress.completedSeasons} saison(s) terminée(s)</p>
+      <p className="mt-2 text-muted">{progress.floorsClimbed} étage(s) gagné(s) avec les défis · {progress.seasonChallenges} défi(s) validé(s) cette saison</p>
       <p className="mt-2 text-sm text-muted">{progress.next ? nextRankText(progress.next) : "Tu as atteint le rang le plus élevé."}</p>
-      <p className="mt-2 text-sm text-muted">Le rang dépend uniquement des étages gagnés avec les défis, jamais de l’XP. Une saison compte comme terminée quand elle est finie et qu’au moins un étage t’y a été crédité.</p>
+      <p className="mt-2 text-sm text-muted">Le rang dépend uniquement des étages gagnés avec les défis, jamais de l’XP. Régulars dès l’inscription, Irregular attribué par le staff (prestige), Ranker dès 30 étages, High Ranker dès 100 étages et 5 défis validés sur la saison en cours. Aucun grade ne donne de droit de modération.</p>
     </Card> : null}
     {result?.status === "PODIUM" ? <>
       <Card>
         <h2 className="text-xl font-semibold text-foreground">{result.season.name}</h2>
         <p className="mt-2 text-sm text-muted">À partir du {date.format(result.season.startAt)}, jusqu’au {date.format(new Date(result.season.endAt.getTime() - 1))} inclus, heure de Paris.</p>
         <p className="mt-2 text-sm text-muted">Départage : étages remportés, puis défis difficiles réussis, puis premier joueur arrivé à ce total.</p>
+        {result.canReview ? <p className="mt-2 text-sm"><Link href="/admin/tower-palmares" className="text-accent underline-offset-4 hover:underline">Proposition de palmarès (administration)</Link></p> : null}
       </Card>
       {result.entries.length ? <ol className="flex flex-col gap-4" aria-label="Podium de la saison terminée">
         {result.entries.map((entry, index) => <li key={index}>

@@ -337,6 +337,7 @@ async function discordRequest<T>(opts: RequestOptions<T>): Promise<DiscordRestRe
       : opts.webhook ? process.env.DISCORD_WEBHOOK_URL! : `${API_BASE}${opts.path}`;
     const res = await fetch(url, {
       method: opts.method,
+      ...(opts.method === "GET" ? { cache: "no-store", redirect: "error" } as const : {}),
       headers: {
         ...(opts.webhook || opts.interaction ? {} : { Authorization: `Bot ${token}` }),
         "Content-Type": "application/json",
@@ -622,6 +623,7 @@ const setupChannelSchema = z.object({
 export type SetupChannel = z.infer<typeof setupChannelSchema>;
 const setupGuildSchema = z.object({
   id: z.string(), name: z.string().min(1), icon: z.string().nullable(),
+  owner_id: z.string().optional(),
   roles: z.array(z.object({ id: z.string(), permissions: permissionBits })),
 });
 
@@ -641,6 +643,79 @@ export async function getSetupBot(input: { guildId: string; deadline: Date }): P
 export async function listSetupChannels(input: { guildId: string; deadline: Date }) {
   return discordRequest({ method: "GET", path: `/guilds/${input.guildId}/channels`, deadline: input.deadline,
     parse: (json) => { const r = z.array(setupChannelSchema).safeParse(json); return r.success ? r.data : null; } });
+}
+
+const forumSnowflake = z.string().regex(/^\d{17,20}$/);
+const forumChannelSchema = setupChannelSchema.extend({
+  id: forumSnowflake,
+  type: z.literal(15),
+  guild_id: forumSnowflake.optional(),
+  permission_overwrites: z.array(z.object({ id: forumSnowflake, type: z.union([z.literal(0), z.literal(1)]), allow: permissionBits, deny: permissionBits })),
+  available_tags: z.array(z.object({ id: forumSnowflake, name: z.string() })).default([]),
+});
+const forumThreadSchema = z.object({
+  id: forumSnowflake,
+  guild_id: forumSnowflake.optional(),
+  parent_id: forumSnowflake,
+  type: z.literal(11),
+  name: z.string(),
+  applied_tags: z.array(forumSnowflake).default([]),
+});
+const channelTypes = z.array(z.object({ type: z.number() }).passthrough());
+
+type ForumReadBudget = { deadline: Date; now?: Date };
+
+const invalidForumId: DiscordRestFailure = {
+  ok: false, kind: "invalid_request", message: "Identifiant Discord invalide.", retryable: false,
+};
+
+export async function listDiscordForumChannels(input: { guildId: string } & ForumReadBudget) {
+  if (!forumSnowflake.safeParse(input.guildId).success) return invalidForumId;
+  return discordRequest({
+    ...input, method: "GET", path: `/guilds/${input.guildId}/channels`,
+    parse: (json) => {
+      const channels = channelTypes.safeParse(json);
+      if (!channels.success) return null;
+      const forums = z.array(forumChannelSchema).safeParse(channels.data.filter(({ type }) => type === 15));
+      if (!forums.success || forums.data.some(({ guild_id }) => guild_id && guild_id !== input.guildId)) return null;
+      return forums.data;
+    },
+  });
+}
+
+export async function getDiscordForumMember(input: { guildId: string; userId: string } & ForumReadBudget) {
+  if (!forumSnowflake.safeParse(input.guildId).success || !forumSnowflake.safeParse(input.userId).success) return invalidForumId;
+  return discordRequest({
+    ...input, method: "GET", path: `/guilds/${input.guildId}/members/${input.userId}`,
+    parse: (json) => {
+      const member = z.object({
+        user: z.object({ id: forumSnowflake }),
+        roles: z.array(forumSnowflake),
+        pending: z.boolean().default(false),
+      }).safeParse(json);
+      return member.success && member.data.user.id === input.userId ? member.data : null;
+    },
+  });
+}
+
+function parsePublicThreads(json: unknown) {
+  const response = z.object({ threads: channelTypes }).safeParse(json);
+  if (!response.success) return null;
+  const threads = z.array(forumThreadSchema).safeParse(response.data.threads.filter(({ type }) => type === 11));
+  return threads.success ? threads.data : null;
+}
+
+export async function listActiveDiscordThreads(input: { guildId: string } & ForumReadBudget) {
+  if (!forumSnowflake.safeParse(input.guildId).success) return invalidForumId;
+  return discordRequest({ ...input, method: "GET", path: `/guilds/${input.guildId}/threads/active`, parse: parsePublicThreads });
+}
+
+export async function listArchivedDiscordForumThreads(input: { channelId: string } & ForumReadBudget) {
+  if (!forumSnowflake.safeParse(input.channelId).success) return invalidForumId;
+  return discordRequest({
+    ...input, method: "GET", path: `/channels/${input.channelId}/threads/archived/public?limit=25`,
+    parse: parsePublicThreads,
+  });
 }
 
 export async function createSetupChannel(input: { guildId: string; channel: Omit<SetupChannel, "id" | "guild_id">; deadline: Date }) {

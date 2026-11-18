@@ -134,5 +134,5 @@ préparation. Aucune création d'équipe, de salon ou de rôle.
 La colonne `captainId` est déjà créée et backfillée par
 `20261104140000_tower_team_membership_policy` dans #370/#408/#416. Le SQL
 `20261117_team_captain` préparé localement est donc retiré. La seule migration
-en attente est `20261117120000_discord_team_space`, à ordonner après
+en attente est `20261201120000_discord_team_space`, à ordonner après
 `20261106150000_tower_launch_channels_appeals_matchmaking`.

@@ -1,7 +1,35 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { lockCommunityProgress } from "@/lib/member-stats";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
+
+// Défaut Prisma : 5 s, puis erreur 500 à l'expiration ; même marge que les autres transactions interactives.
+const SHOP_TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
+
+// Le délai de transaction de Prisma n'interrompt pas une requête en attente de verrou : sans limite, un verrou tenu par une autre
+// session (maintenance, script de recalage) ferait attendre l'achat aussi longtemps que le verrou. PostgreSQL l'annule ici
+// (« canceling statement due to lock timeout »), avant les 15 s de la transaction ; rien n'est écrit.
+const SHOP_LOCK_TIMEOUT_MS = 8_000;
+async function limitLockWait(tx: Prisma.TransactionClient) {
+  await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = ${SHOP_LOCK_TIMEOUT_MS}`);
+}
+
+/** Erreur PostgreSQL « lock_not_available » (55P03) : une autre session garde la ligne verrouillée au-delà du délai. */
+export function isShopLockTimeout(error: unknown) {
+  const e = error as { code?: string; meta?: { code?: string }; message?: string } | null;
+  return e?.meta?.code === "55P03" || e?.code === "55P03" || /lock timeout/i.test(String(e?.message ?? ""));
+}
+
+/** Transaction boutique : un délai de verrou dépassé devient le statut visible « busy » (rien n'est écrit), toute autre erreur remonte. */
+async function shopTransaction<T>(run: (tx: Prisma.TransactionClient) => Promise<T>) {
+  try {
+    return await prisma.$transaction(run, SHOP_TX_OPTIONS);
+  } catch (error) {
+    if (isShopLockTimeout(error)) return "busy" as const;
+    throw error;
+  }
+}
 
 export const XP_SHOP_ITEMS = [
   { id: "title-strategist", kind: "TITLE", name: "Stratège", value: "Stratège", price: 250 },
@@ -26,7 +54,7 @@ export async function getShopState(userId: string, communityId: string) {
     db.communityMemberCosmetic.findMany({ where: { communityId, userId }, select: { itemId: true } }),
   ]);
   return {
-    balance: stats?.xpTotal ?? 0,
+    balance: stats?.xpBalance ?? 0,
     ownedIds: new Set(owned.map((item) => item.itemId)),
     equipped: {
       TITLE: stats?.equippedTitleId ?? null,
@@ -60,7 +88,8 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
   const item = getShopItem(itemId);
   if (!item) return "invalid" as const;
 
-  return prisma.$transaction(async (tx) => {
+  return shopTransaction(async (tx) => {
+    await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR UPDATE`;
@@ -72,16 +101,16 @@ export async function buyShopItem(userId: string, communityId: string, itemId: s
 
     const stats = await tx.communityMemberStats.findUniqueOrThrow({
       where: { communityId_userId: { communityId, userId } },
-      select: { xpTotal: true },
+      select: { xpBalance: true },
     });
-    if (stats.xpTotal < item.price) return "insufficient" as const;
+    if (stats.xpBalance < item.price) return "insufficient" as const;
 
     await tx.communityMemberStats.update({
       where: { communityId_userId: { communityId, userId } },
-      data: { xpTotal: { decrement: item.price } },
+      data: { xpBalance: { decrement: item.price } },
     });
     await tx.xpEvent.create({
-      data: { communityId, userId, reason: "SHOP_PURCHASE", sourceId: itemId, amount: -item.price },
+      data: { communityId, userId, reason: "SHOP_BALANCE_PURCHASE", sourceId: itemId, amount: -item.price },
     });
     await tx.communityMemberCosmetic.create({ data: { communityId, userId, itemId } });
     return "purchased" as const;
@@ -97,7 +126,8 @@ export async function equipShopItem(
   const item = itemId ? getShopItem(itemId) : null;
   if (itemId && (!item || item.kind !== kind)) return "invalid" as const;
 
-  return prisma.$transaction(async (tx) => {
+  return shopTransaction(async (tx) => {
+    await limitLockWait(tx);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable" as const;
     await tx.communityMemberStats.createMany({ data: [{ communityId, userId }], skipDuplicates: true });
     if (item) {

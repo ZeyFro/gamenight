@@ -60,10 +60,10 @@ Point dur : ne pas fusionner `discord-team-command.ts` (singulier) et
 ## 5. Espaces Discord et capitainerie — dépend de #370 et de la migration espace
 Commits : `a642a95`, `8660d62`, `9eb8f81`, `773da73`, `76cf51c`, `ecf6d68`.
 Fichiers : `discord-team-space*.ts`, `community-team-captain*.ts`,
-`prisma/migrations/20261117120000_discord_team_space/` (migration intégrée à la
+`prisma/migrations/20261201120000_discord_team_space/` (migration intégrée à la
 branche : la CI la joue sur un PostgreSQL jetable, jamais sur Neon).
 Dépendances : migration `20261104140000_tower_team_membership_policy` (#370/
-#408/#416) pour `captainId`, puis migration espace `20261117120000`.
+#408/#416) pour `captainId`, puis migration espace `20261201120000`.
 La migration capitaine préparée est **annulée** (colonne déjà fournie).
 
 ## Ordre recommandé

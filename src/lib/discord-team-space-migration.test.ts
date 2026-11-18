@@ -16,7 +16,7 @@ import { join } from "node:path";
  * - elle est bien dans `prisma/migrations` (et non dans un dossier en attente),
  *   donc cohérente avec le modèle déclaré dans `schema.prisma`.
  */
-const MIGRATION_DIR = "20261117120000_discord_team_space";
+const MIGRATION_DIR = "20261201120000_discord_team_space";
 const SQL = readFileSync(join(process.cwd(), "prisma", "migrations", MIGRATION_DIR, "migration.sql"), "utf8");
 const SCHEMA = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
 
