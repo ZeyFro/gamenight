@@ -7,6 +7,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
 import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { idSchema } from "@/lib/validations";
+import { listTeamMemberDiscordIds, requestTeamSpaceAfterDissolution, requestTeamSpaceMemberSync } from "@/lib/discord-team-space-hooks";
 
 function done(result: string): never {
   revalidatePath("/equipes");
@@ -39,14 +40,18 @@ export async function joinCommunityTeamAction(formData: FormData): Promise<void>
   const { user, communityId } = await authorizedUser("joinCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success) done("invalid");
-  done(await joinCommunityTeam(user.id, communityId, teamId.data));
+  const result = await joinCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "joined") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
+  done(result);
 }
 
 export async function leaveCommunityTeamAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("leaveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success) done("invalid");
-  done(await leaveCommunityTeam(user.id, communityId, teamId.data));
+  const result = await leaveCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "left") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
+  done(result);
 }
 
 export async function setCommunityTeamRecruitmentAction(formData: FormData): Promise<void> {
@@ -75,5 +80,8 @@ export async function dissolveCommunityTeamAction(formData: FormData): Promise<v
   const { user, communityId } = await authorizedUser("dissolveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success || formData.get("confirm") !== "DISSOLVE") done("invalid");
-  doneManagement(await dissolveCommunityTeam(user.id, communityId, teamId.data));
+  const formerMemberDiscordIds = await listTeamMemberDiscordIds(communityId, teamId.data);
+  const result = await dissolveCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "dissolved") await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, formerMemberDiscordIds });
+  doneManagement(result);
 }

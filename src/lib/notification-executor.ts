@@ -36,6 +36,7 @@ import {
   type DiscordRestFailure,
   type DiscordRestResult,
 } from "@/lib/discord-rest";
+import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -215,6 +216,18 @@ export type ResolvedAction =
       kind: "delete_channel_message";
       channelId: string;
       messageId: string;
+    }
+  | {
+      /** Espace Discord d'une équipe (salon privé + rôle sans permission) :
+       * création/réutilisation, accès d'un membre ou réconciliation, exécutés
+       * par `discord-team-space-runner` (idempotent, jamais de suppression).
+       * Réservée au résolveur `teamSpaceSyncResolver` (ADMIN / TEAM_SPACE_SYNC),
+       * derrière `DISCORD_TEAM_SPACES_ENABLED`. */
+      kind: "sync_team_space";
+      intent: TeamSpaceIntent;
+      teamId: string;
+      communityId: string;
+      discordId?: string;
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
@@ -614,6 +627,15 @@ export async function performDiscordAction(
         return { ok: true, data: { discordThreadId: action.threadId } };
       }
       return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "sync_team_space": {
+      return mapDiscordResult(
+        await runTeamSpaceAction(
+          { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
+        () => ({})
+      );
     }
     case "delete_channel_message": {
       const result = await deleteChannelMessage({
