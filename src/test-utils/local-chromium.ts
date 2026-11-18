@@ -29,8 +29,9 @@ export class LocalChromium {
     const browser = new LocalChromium(executable);
     try {
       const portFile = join(browser.directory, "DevToolsActivePort");
+      const startupDeadline = performance.now() + 30_000;
       let endpoint: string[] | undefined;
-      for (let attempt = 0; attempt < 300; attempt++) {
+      while (performance.now() < startupDeadline) {
         if (existsSync(portFile)) {
           const parts = readFileSync(portFile, "utf8").trim().split("\n");
           if (/^\d+$/.test(parts[0]) && parts[1]?.startsWith("/devtools/browser/")) { endpoint = parts; break; }

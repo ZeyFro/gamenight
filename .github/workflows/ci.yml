@@ -46,6 +46,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Test migration runner guards
+        run: npx vitest run scripts/db-migrate-lib.test.mjs
+
       - run: npx prisma generate
 
       - name: prisma migrate deploy (base de service)
