@@ -44,6 +44,8 @@ enum FreeGameStore {
 
 model User {
   profileVisibility UserProfileVisibility?
+  teamApplications TeamApplication[] @relation("TeamApplicant")
+  teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
@@ -2871,6 +2873,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  teamApplications TeamApplication[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
@@ -3030,6 +3033,7 @@ model CommunityTeam {
   members   CommunityTeamMember[]
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
+  applications TeamApplication[]
 
   @@index([communityId, isRecruiting, createdAt])
   @@index([createdById, communityId])
@@ -3065,6 +3069,36 @@ model UserProfileVisibility {
   updatedAt  DateTime          @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Candidature à une équipe (cahier §11.1 : présenter sa candidature). Une ligne par (équipe, candidat) :
+// une nouvelle candidature après refus ou retrait réutilise la même ligne.
+enum TeamApplicationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+model TeamApplication {
+  id          String   @id @default(cuid())
+  communityId String
+  teamId      String
+  applicantId String
+  message     String   @db.VarChar(500)
+  status      TeamApplicationStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  applicant User          @relation("TeamApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  decidedBy User?         @relation("TeamApplicationDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, applicantId])
+  @@index([communityId, teamId, status])
+  @@index([applicantId, communityId])
 }
 
 model SessionGalleryMedia {

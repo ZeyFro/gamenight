@@ -141,5 +141,44 @@
         "description": "Importe une fois le pack de départ des défis d'équipe"
       }
     ]
+  },
+  {
+    "name": "equipe",
+    "type": 1,
+    "description": "Retrouve et rejoins les équipes de ce serveur",
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ],
+    "options": [
+      {
+        "type": 1,
+        "name": "liste",
+        "description": "Liste les équipes qui recrutent dans ce serveur"
+      },
+      {
+        "type": 1,
+        "name": "moi",
+        "description": "Retrouve ton équipe dans ce serveur"
+      },
+      {
+        "type": 1,
+        "name": "rejoindre",
+        "description": "Rejoins une équipe qui recrute",
+        "options": [
+          {
+            "type": 3,
+            "name": "equipe_id",
+            "description": "Identifiant affiché par /equipe liste",
+            "required": true,
+            "min_length": 1,
+            "max_length": 191
+          }
+        ]
+      }
+    ]
   }
 ]

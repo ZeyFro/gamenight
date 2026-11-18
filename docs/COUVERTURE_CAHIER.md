@@ -44,7 +44,7 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 | 10 | Annonces de réussites (consentement) | Livré désactivé | `tower-challenge-announcements.ts` (`TOWER_DISCORD_ANNOUNCE_ENABLED`) |
 | 10.3 | Récapitulatifs hebdomadaires, mise en avant | Partiel | `/recap`, `/classement` ; pas de récap Tower dédié |
 | 11.1 | Découvrir, créer, rejoindre une équipe | Livré | `/equipes`, `src/lib/community-teams.ts` |
-| 11.1 | Présenter sa candidature, recruter | PR #457 (Livré désactivé après fusion) | `team-applications.ts`, `/equipes/candidatures`, `TEAM_APPLICATIONS_ENABLED`, migration `20261201100000_team_applications` (après #416) |
+| 11.1 | Présenter sa candidature, recruter | PR #457 (Livré désactivé après fusion) | `team-applications.ts`, `/equipes/candidatures`, `TEAM_APPLICATIONS_ENABLED`, migration `20261118103000_team_applications` (après #416) |
 | 11.2 | Nom, présentation, capitaine, membres, jeux, critères de recrutement | Partiel | `CommunityTeam` (nom, description, plateforme, jeu, `isRecruiting`) ; capitaine PR #370/#406/#444 ; objectifs/critères structurés : Manquant |
 | 11.3 | Forums, tags | Livré désactivé | `src/lib/tower-forums.ts`, `/tower/forums`, `docs/TOWER_FORUM_TAGS.md` |
 | 11.3 | « Projets et aventures » | Partiel | « Lancer une aventure » sur `/equipes` (équipe persistante avec objectif) ; pas de modèle de projet distinct, volontairement non dupliqué |
