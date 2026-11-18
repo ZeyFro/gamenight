@@ -13,7 +13,7 @@ const ok = (name: string) => ({ migration_name: name, finished_at: new Date(), r
 describe("db-migrate : arguments", () => {
   it("lit les drapeaux et la liste attendue", () => {
     expect(readArgs(["--expect=a, b", "--execute", "--confirm-database=appdb", "--allow-local"]))
-      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true });
+      .toEqual({ expect: ["a", "b"], execute: true, confirm: "appdb", allowLocal: true, allowSharedRole: false });
   });
 
   it("refuse une valeur sur les drapeaux booléens", () => {
@@ -49,8 +49,8 @@ describe("db-migrate : cible", () => {
 
   it("refuse le même rôle que le runtime (URL ou nom de rôle) et avertit si le contrôle est impossible", () => {
     const base = { migrationUrl: url("gn_runtime", "x", HOST, "appdb"), expectedTarget: `${HOST}/appdb` };
-    expect(() => assertTarget({ ...base, runtimeUrl: URL_RUNTIME })).toThrow(/autre rôle/);
-    expect(() => assertTarget({ ...base, runtimeRole: "gn_runtime" })).toThrow(/autre rôle/);
+    expect(() => assertTarget({ ...base, runtimeUrl: URL_RUNTIME })).toThrow(/même rôle que le runtime/);
+    expect(() => assertTarget({ ...base, runtimeRole: "gn_runtime" })).toThrow(/même rôle que le runtime/);
     expect(assertTarget({ ...base, runtimeRole: "autre" }).warnings).toEqual([]);
     expect(assertTarget(base).warnings[0]).toMatch(/NON effectué/);
   });

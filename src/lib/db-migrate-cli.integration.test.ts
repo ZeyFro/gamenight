@@ -118,7 +118,7 @@ describe.skipIf(!TEST_DATABASE_URL)("db-migrate CLI : codes de sortie sur base n
     const url = withDatabase(NEW_DB);
     const sameUrl = run([expectAll], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
     expect(sameUrl.status).toBe(2);
-    expect(sameUrl.stderr).toContain("autre rôle");
+    expect(sameUrl.stderr).toContain("même rôle que le runtime");
     const sameRole = run([expectAll], { MIGRATION_DATABASE_URL: url, GAMENIGHT_RUNTIME_ROLE: new URL(url).username });
     expect(sameRole.status).toBe(2);
     const exec = run([expectAll, "--execute", `--confirm-database=${NEW_DB}`], { MIGRATION_DATABASE_URL: url, DATABASE_URL: url });
