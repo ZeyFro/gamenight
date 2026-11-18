@@ -52,6 +52,7 @@ model User {
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonAwards TowerSeasonAward[]
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -2881,6 +2882,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonAwards TowerSeasonAward[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3404,6 +3406,26 @@ model TowerChallengeAttempt {
   @@index([communityId, status, submittedAt])
   @@unique([communityId, proofCode])
   @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+// Titre et cadre cosmétiques saisonniers (cahier 15) attribués automatiquement aux premiers du palmarès à la
+// clôture de la saison ; purement cosmétiques (aucun XP, aucun droit), valables jusqu'à la fin de la saison
+// suivante. Une seule ligne par joueur et par saison : l'attribution est rejouable sans doublon.
+model TowerSeasonAward {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonStartAt DateTime
+  seasonName String @db.VarChar(80)
+  // Place au palmarès (1 à 3) ; les ex æquo partagent la même place.
+  place Int
+  awardedAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@unique([communityId, userId, seasonStartAt])
+  @@index([communityId, userId, expiresAt])
 }
 
 enum TowerChallengeAppealStatus {
