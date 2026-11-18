@@ -8,6 +8,9 @@ on:
     paths:
       - 'scripts/discord-commands.json'
       - 'scripts/plan-team-guild-commands.mjs'
+      - 'scripts/register-tower-guild-commands.mjs'
+      - 'src/lib/register-tower-guild-commands.test.ts'
+      - 'src/lib/discord-commands-manifest.test.ts'
       - 'src/lib/discord-team-command*.ts'
       - 'src/lib/discord-interactions*.ts'
       - 'src/lib/community-team*.ts'
@@ -58,6 +61,8 @@ jobs:
           npx vitest run --maxWorkers=1
           src/lib/discord-team-command.test.ts
           src/lib/discord-team-command-manifest.test.ts
+          src/lib/discord-commands-manifest.test.ts
+          src/lib/register-tower-guild-commands.test.ts
           src/lib/discord-interactions.test.ts
           src/lib/community-teams.integration.test.ts
           src/lib/community-teams-rules.test.ts
