@@ -173,7 +173,11 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
     const calls = { roles: 0, channels: 0, added: [] as string[], removed: [] as string[], renamed: [] as string[] };
     const api = {
-      snapshot: async () => ({ channels: [], roles: [] }),
+      // Reflète l'état Discord simulé : les ressources créées existent ensuite (reconcile ne recrée jamais).
+      snapshot: async () => ({
+        channels: calls.channels > 0 ? [{ id: "chan-flow", name: "les-dragons", type: 0 }] : [],
+        roles: calls.roles > 0 ? [{ id: "role-flow", name: "GN · Les Dragons" }] : [],
+      }),
       createRole: async () => {
         calls.roles += 1;
         return "role-flow";
