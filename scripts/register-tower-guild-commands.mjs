@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 
 export const EXPECTED_GUILD_ID = "553922938101825536";
 const NAME_PATTERN = /^[-_\p{Ll}\p{N}]{1,32}$/u;
+// Commandes contextuelles (type 3, message) : noms libres (majuscules, espaces), ni description ni options.
+const MESSAGE_COMMAND_NAME_PATTERN = /^[\p{L}\p{N} _-]{1,32}$/u;
 const OPTION_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
 const STRIPPED_FIELDS = ["integration_types", "contexts"];
 const MODES = ["--check", "--execute"];
@@ -78,9 +80,14 @@ export function validateCommand(command) {
   if (!command || typeof command !== "object") return ["entrée du manifeste invalide."];
   const problems = [];
   const where = `/${command.name ?? "?"}`;
-  if (typeof command.name !== "string" || !NAME_PATTERN.test(command.name)) problems.push(`${where} : nom invalide.`);
-  if (command.type !== 1) problems.push(`${where} : seul le type 1 (CHAT_INPUT) est géré.`);
-  if (typeof command.description !== "string" || command.description.length < 1 || command.description.length > 100) {
+  const isMessageCommand = command.type === 3;
+  const namePattern = isMessageCommand ? MESSAGE_COMMAND_NAME_PATTERN : NAME_PATTERN;
+  if (typeof command.name !== "string" || !namePattern.test(command.name)) problems.push(`${where} : nom invalide.`);
+  if (command.type !== 1 && !isMessageCommand) problems.push(`${where} : seuls les types 1 (CHAT_INPUT) et 3 (MESSAGE) sont gérés.`);
+  if (isMessageCommand) {
+    if (command.description !== undefined && command.description !== "") problems.push(`${where} : une commande de message n'a pas de description.`);
+    if (command.options !== undefined) problems.push(`${where} : une commande de message n'a pas d'options.`);
+  } else if (typeof command.description !== "string" || command.description.length < 1 || command.description.length > 100) {
     problems.push(`${where} : description invalide (1 à 100 caractères).`);
   }
   const permissions = command.default_member_permissions;
@@ -95,8 +102,8 @@ export function validateCommand(command) {
 export function validateManifest(commands) {
   if (!Array.isArray(commands) || commands.length === 0) return ["Manifeste vide ou invalide."];
   const problems = commands.flatMap((command) => validateCommand(command));
-  const names = commands.map((command) => command?.name);
-  for (const name of new Set(names.filter((n, i) => names.indexOf(n) !== i))) problems.push(`/${name} : commande déclarée deux fois.`);
+  const names = commands.map((command) => `${command?.type ?? 1}:${command?.name}`);
+  for (const name of new Set(names.filter((n, i) => names.indexOf(n) !== i))) problems.push(`/${String(name).replace(/^\d+:/, "")} : commande déclarée deux fois.`);
   return problems;
 }
 
@@ -123,14 +130,14 @@ export function normalizeCommand(command) {
   return {
     type: command.type ?? 1,
     name: command.name,
-    description: command.description,
+    description: command.description ?? "",
     default_member_permissions: command.default_member_permissions ?? null,
     options: (command.options ?? []).map(normalizeOption),
   };
 }
 
 export function classify(command, installed) {
-  const current = installed.find((c) => c.name === command.name && (c.type ?? 1) === 1);
+  const current = installed.find((c) => c.name === command.name && (c.type ?? 1) === (command.type ?? 1));
   if (!current) return "absente";
   return JSON.stringify(normalizeCommand(command)) === JSON.stringify(normalizeCommand(current)) ? "présente" : "différente";
 }
@@ -138,6 +145,7 @@ export function classify(command, installed) {
 function describePlan(command) {
   const subs = (command.options ?? []).filter((o) => o.type === 1).map((o) => o.name);
   const permission = command.default_member_permissions ? `permission ${command.default_member_permissions}` : "tous les membres";
+  if (command.type === 3) return `« ${command.name} » (commande de message, ${command.default_member_permissions ? `permission ${command.default_member_permissions}` : "tous les membres"})`;
   return `/${command.name}${subs.length ? ` [${subs.join(", ")}]` : ""} (${permission})`;
 }
 
