@@ -30,3 +30,20 @@ export function countCompletedTowerSeasons(credits: readonly TowerFloorCredit[],
   }
   return completed;
 }
+
+/**
+ * Défis validés par un joueur sur la saison EN COURS à `now` (condition High Ranker, décision du 17/11/2026).
+ * Un crédit = un défi validé (solo, ou participation créditée à un défi d'équipe). Fin de saison EXCLUSIVE ;
+ * hors saison active (intersaison), aucun défi ne compte.
+ */
+export function countValidatedChallengesInCurrentSeason(credits: readonly TowerFloorCredit[], now: Date): number {
+  const season = getTowerSchoolSeason(now);
+  if (!season.active) return 0;
+  let count = 0;
+  for (const credit of credits) {
+    const time = credit.rewardedAt.getTime();
+    if (!Number.isFinite(time)) throw new RangeError("Date de crédit invalide");
+    if (time >= season.startAt.getTime() && time < season.endAt.getTime()) count += 1;
+  }
+  return count;
+}

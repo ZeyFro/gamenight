@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { assertLocalTestDatabase } from "./test-local-database";
 
 /**
  * Offres gratuites : producteur → NotificationEvent/Delivery réels (Postgres
@@ -36,8 +37,8 @@ describe.skipIf(!TEST_DATABASE_URL)("jeux gratuits : producteur → executor →
   const produce = async () => (await import("./free-game-discord")).enqueueFreeGameAnnouncements();
   const makeDue = () => db.notificationDelivery.updateMany({ where: { status: "PENDING" }, data: { nextAttemptAt: new Date(Date.now() - 1000) } });
 
-  beforeAll(async () => { db = (await import("@/lib/prisma")).prisma as typeof db; });
-  afterAll(async () => { await db.$disconnect(); });
+  beforeAll(async () => { assertLocalTestDatabase(TEST_DATABASE_URL); db = (await import("@/lib/prisma")).prisma as typeof db; });
+  afterAll(async () => { await db?.$disconnect(); });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
     await db.$executeRawUnsafe('TRUNCATE "NotificationEvent", "Community", "User" CASCADE');
@@ -108,6 +109,28 @@ describe.skipIf(!TEST_DATABASE_URL)("jeux gratuits : producteur → executor →
     await makeDue();
     await expect(run()).resolves.toMatchObject({ sent: 1 });
     expect(posts).toHaveLength(2);
+    expect(await db.notificationDelivery.count({ where: { status: "SENT" } })).toBe(1);
+  });
+
+  it("permission refusée (403) : FAILED terminal observable, jamais réessayé ni republié", async () => {
+    await produce();
+    postStatus = [403];
+    await expect(run()).resolves.toMatchObject({ sent: 0, failed: 1 });
+    await makeDue();
+    await run();
+    expect(posts).toHaveLength(1);
+    expect(await db.notificationDelivery.count({ where: { status: "FAILED" } })).toBe(1);
+  });
+
+  it("rate limit (429) : reprise différée selon Retry-After, un seul message au final", async () => {
+    await produce();
+    postStatus = [429];
+    await expect(run()).resolves.toMatchObject({ sent: 0, retrying: 1 });
+    const row = await db.notificationDelivery.findFirstOrThrow();
+    expect(row.status).toBe("PENDING");
+    expect(row.nextAttemptAt).not.toBeNull();
+    await makeDue();
+    await expect(run()).resolves.toMatchObject({ sent: 1 });
     expect(await db.notificationDelivery.count({ where: { status: "SENT" } })).toBe(1);
   });
 
