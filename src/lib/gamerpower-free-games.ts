@@ -122,7 +122,10 @@ async function fetchStoreOffers(platform: StorePlatform): Promise<{ offers: Auto
       source: "gamerpower",
     } satisfies AutomaticFreeGameOffer : null;
   }));
-  return { offers: resolved.filter((offer): offer is AutomaticFreeGameOffer => offer !== null).slice(0, MAX_OFFERS_PER_STORE), activeOfferIds };
+  // Deux giveaways menant au même produit ne donnent qu'une annonce (le premier gagne).
+  const seenUrls = new Set<string>();
+  const unique = resolved.filter((offer): offer is AutomaticFreeGameOffer => offer !== null && !seenUrls.has(offer.storeUrl) && !!seenUrls.add(offer.storeUrl));
+  return { offers: unique.slice(0, MAX_OFFERS_PER_STORE), activeOfferIds };
 }
 
 const readFeed = unstable_cache(async (): Promise<FeedSnapshot> => {

@@ -38,6 +38,9 @@ describe.skipIf(!TEST_DATABASE_URL)("ensureDefaultCommunity (Postgres isolée)",
   });
 
   afterAll(async () => {
+    // Le dernier test suspend la communauté par défaut : ne pas la laisser aux fichiers suivants (selon l'ordre
+    // d'exécution, ils échouaient avec 401 / effets absents). `getDefaultCommunityId()` la recrée ACTIVE à la demande.
+    await db.$executeRawUnsafe(`TRUNCATE "Membership", "CommunityChannelConfig", "Community", "User" CASCADE`);
     await db.$disconnect();
   });
 

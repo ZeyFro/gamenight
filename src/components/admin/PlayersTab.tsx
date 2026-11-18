@@ -106,9 +106,10 @@ function PlayerCard({ detail, communityId, communityName }: { detail: AdminPlaye
         <div className="min-w-0">
           <h2 className="truncate text-lg font-semibold text-foreground">{detail.discordName}</h2>
           <p className="text-sm text-muted">
-            <span className="font-semibold text-accent">{detail.xpTotal.toLocaleString("fr-FR")} XP</span> · niveau{" "}
+            <span className="font-semibold text-accent">{detail.xpTotal.toLocaleString("fr-FR")} XP de progression</span> · niveau{" "}
             {detail.level} · {detail.title} · {detail.rankName}
           </p>
+          <p className="text-sm text-muted">Solde dépensable : {detail.xpBalance.toLocaleString("fr-FR")} XP</p>
         </div>
       </div>
 

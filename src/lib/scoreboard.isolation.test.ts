@@ -80,6 +80,12 @@ describe("getScoreboard — communauté", () => {
     }
   });
 
+  it("conserve les achats historiques qui réduisaient la progression, sans compter les dépenses récentes", async () => {
+    await getScoreboard("week");
+    const periodXpQuery = xpGroupBy.mock.calls.find(([args]) => args.where.reason?.not);
+    expect(periodXpQuery?.[0].where.reason).toEqual({ not: "SHOP_BALANCE_PURCHASE" });
+  });
+
   it("communauté nulle (aucune communauté) : classement vide, aucune requête", async () => {
     await expect(getScoreboard("global", { communityId: null })).resolves.toEqual([]);
     expect(userFindMany).not.toHaveBeenCalled();

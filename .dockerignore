@@ -1,0 +1,37 @@
+# Contexte de build Docker (docker/voice-worker/Dockerfile : `docker build -f docker/voice-worker/Dockerfile .`).
+# Ne jamais envoyer au démon : secrets, dépôt git, dépendances de l'hôte, artefacts de build, journaux, tests.
+# BuildKit préfère docker/voice-worker/Dockerfile.dockerignore s'il existe ; ce fichier couvre le builder classique
+# et tout autre `docker build .` depuis la racine. Le Dockerfile a besoin de : package*.json, prisma/, src/, public/,
+# scripts/ (gamenight-server.mjs), next.config.ts, tsconfig.json, postcss.config.mjs : rien de cela n'est exclu.
+
+# Secrets et environnement (le .env.example sans valeur reste envoyé)
+.env*
+!.env.example
+
+# Dépôt, outillage d'agents et CI
+.git
+.github
+.claude
+.codex-worktrees
+.claude/worktrees
+graphify-out
+
+# Dépendances et artefacts : réinstallés / reconstruits dans l'image
+node_modules
+.next
+out
+build
+coverage
+.vercel
+*.tsbuildinfo
+
+# Journaux et brouillons locaux
+logs
+scratch
+scratchpad
+*.log
+
+# Documentation et tests : inutiles à la construction (le typecheck de next build ne les requiert pas)
+docs
+**/*.test.ts
+**/*.test.tsx
