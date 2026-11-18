@@ -677,6 +677,7 @@ export interface ProcessDeliveryOptions {
  * éligibles de progresser.
  */
 export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise<ProcessedDeliveryOutcome | null> {
+  if (process.env.VERCEL_ENV === "preview") return null;
   const now = opts.now ?? new Date();
   const claimed = await claimNextDelivery(opts.owner, { now, leaseMs: opts.leaseMs, deliveryId: opts.deliveryId });
   if (!claimed) return null;

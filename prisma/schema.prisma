@@ -49,7 +49,9 @@ model User {
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
+  towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
   sessionGalleryMedia SessionGalleryMedia[]
@@ -204,6 +206,8 @@ model User {
   xpEvents              XpEvent[]
   sessionResults        SessionResult[]
   sessionAttendances    SessionAttendance[]
+  sessionVoicePresence  SessionVoicePresenceInterval[]
+  sessionVoicePresenceConsents SessionVoicePresenceConsent[]
   sessionRatings        SessionRating[]
   lifetimeStats         UserLifetimeStats?
   communityMemberStats CommunityMemberStats[]
@@ -549,6 +553,14 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum SessionVoicePresenceControlStatus {
+  ACTIVE
+  STOP_REQUESTED
+  PURGE_REQUESTED
+  FINALIZED
+  PURGED
+}
+
 // Une soirée. `date` porte la date ET l'heure visée (choisies à la
 // création) ; `decidedTime` est renseigné à la clôture (copie de `date`
 // pour l'instant — champ distinct pour une éventuelle renégociation future
@@ -685,6 +697,10 @@ model Session {
   proposals         Proposal[]
   results           SessionResult[]
   attendance        SessionAttendance[]
+  voicePresence     SessionVoicePresenceInterval[]
+  voicePresenceConsents SessionVoicePresenceConsent[]
+  voicePresenceControl SessionVoicePresenceControl?
+  voicePresenceGaps SessionVoicePresenceGap[]
   ratings           SessionRating[]
   superlativeVotes  SuperlativeVote[]
   superlativeAwards SuperlativeAward[]
@@ -1027,7 +1043,10 @@ enum XpReason {
   // reason pour les 3 montants (1er/2e/demi-finaliste), même logique que
   // `SESSION_RESULT` pour le podium de soirée.
   TOURNAMENT_RESULT
+  // Anciens achats : ils réduisaient la progression avant la séparation des soldes.
   SHOP_PURCHASE
+  // Débit du solde dépensable seulement ; exclu des agrégats de progression.
+  SHOP_BALANCE_PURCHASE
   // Correction manuelle d'un admin (onglet « Joueurs » de /admin) : écart entre
   // l'ancien et le nouveau solde, `sourceId` = identifiant du `XpAdjustment`.
   // Garde les classements par période cohérents avec le solde corrigé.
@@ -1103,6 +1122,78 @@ model SessionAttendance {
 
   @@unique([sessionId, userId])
   @@index([communityId, userId, present])
+}
+
+// Intervalles vocaux d'une soirée. La collecte reste derrière
+// VOICE_PRESENCE_ENABLED et ne doit pas être activée avant décision de
+// consentement et de rétention.
+model SessionVoicePresenceInterval {
+  id              String   @id @default(cuid())
+  sessionId       String
+  userId          String
+  consentId       String?
+  channelId       String   @db.VarChar(20)
+  startedAt       DateTime
+  endedAt         DateTime
+  durationSeconds Int
+  expiresAt       DateTime
+  partial         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  session Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consent SessionVoicePresenceConsent? @relation(fields: [consentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId, channelId, startedAt], map: "SessionVoicePresenceInterval_sessionId_userId_channelId_started")
+  @@index([sessionId, userId])
+  @@index([expiresAt])
+}
+
+model SessionVoicePresenceConsent {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  consentedAt DateTime @default(now())
+  expiresAt   DateTime?
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intervals   SessionVoicePresenceInterval[]
+
+  @@unique([sessionId, userId])
+  @@index([userId, consentedAt])
+  @@index([expiresAt])
+}
+
+model SessionVoicePresenceControl {
+  sessionId     String                              @id
+  status        SessionVoicePresenceControlStatus   @default(ACTIVE)
+  generation    Int                                 @default(0)
+  leaseOwner    String?
+  leaseExpiresAt DateTime?
+  heartbeatAt   DateTime?
+  stopAt        DateTime?
+  gapDetected   Boolean                             @default(false)
+  gapStartedAt  DateTime?
+  lastGapAt     DateTime?
+  updatedAt     DateTime                            @default(now()) @updatedAt
+  session       Session                             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, leaseExpiresAt])
+}
+
+model SessionVoicePresenceGap {
+  id         String   @id @default(cuid())
+  sessionId  String
+  generation Int
+  startedAt  DateTime
+  resumedAt  DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, generation, startedAt])
+  @@index([sessionId, startedAt])
+  @@index([expiresAt])
 }
 
 model SessionRating {
@@ -1925,7 +2016,10 @@ model UserLifetimeStats {
 model CommunityMemberStats {
   communityId String
   userId String
+  // Progression de la saison, indépendante des dépenses de boutique.
   xpTotal Int @default(0)
+  // Réserve dépensable, remise à zéro avec la saison.
+  xpBalance Int @default(0)
   streakCount Int @default(0)
   streakLastActiveAt DateTime?
   bestStreakCount Int @default(0)
@@ -2508,6 +2602,9 @@ enum UserNotificationCategory {
   // `enabled = NOT silenceReminders`, jamais une réactivation silencieuse
   // pour un compte ayant déjà demandé le silence global.
   INSTANT_SESSION
+  // Récompense individuelle déjà produite par reward-notifications.ts.
+  // Aucun canal personnel ne suit silenceReminders par défaut.
+  REWARD
 }
 
 model UserNotificationPreference {
@@ -2519,6 +2616,25 @@ model UserNotificationPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, category])
+}
+
+enum UserNotificationChannel {
+  IN_APP
+  WEB_PUSH
+  DISCORD_DM
+  DISCORD_MENTION
+}
+
+model UserNotificationChannelPreference {
+  userId    String
+  category  UserNotificationCategory
+  channel   UserNotificationChannel
+  enabled   Boolean                  @default(true)
+  updatedAt DateTime                 @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category, channel])
 }
 
 // Destination logique d'une livraison, indépendante du transport réellement
@@ -2763,6 +2879,7 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
   quickPolls CommunityQuickPoll[]
@@ -2866,6 +2983,11 @@ model PlayerClassified {
   message     String   @db.VarChar(240)
   createdAt   DateTime
   expiresAt   DateTime
+  startsAt    DateTime?
+  durationMinutes Int?
+  partyType   PartyType?
+  platform    String?  @db.VarChar(40)
+  microphoneRequirement MicrophoneRequirement?
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -2873,6 +2995,18 @@ model PlayerClassified {
 
   @@index([communityId, expiresAt])
   @@index([createdById, communityId])
+}
+
+enum PartyType {
+  CASUAL
+  COMPETITIVE
+  COOPERATIVE
+}
+
+enum MicrophoneRequirement {
+  REQUIRED
+  OPTIONAL
+  NONE
 }
 
 model CommunityTeam {
@@ -3007,6 +3141,7 @@ model CommunityGameEpitaph {
   updatedAt DateTime @updatedAt
 
   @@unique([communityId, gameId])
+  @@index([communityId, createdAt])
 }
 
 model CommunityExpression {
@@ -3234,10 +3369,15 @@ model TowerChallengeAttempt {
   proofText String? @db.VarChar(1500)
   proofChannelId String? @db.VarChar(20)
   proofMessageId String? @db.VarChar(20)
+  proofCode String? @db.VarChar(12)
   publicationConsent Boolean @default(false)
   rewardedAt DateTime?
+  rejectedAt DateTime?
+  staffReportedAt DateTime?
+  archivedAt DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
+  appeal TowerChallengeAppeal?
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3245,6 +3385,37 @@ model TowerChallengeAttempt {
   @@index([communityId, userId, rewardedAt])
   @@index([communityId, teamId, status])
   @@index([communityId, status, submittedAt])
+  @@unique([communityId, proofCode])
+  @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+enum TowerChallengeAppealStatus {
+  OPEN
+  UPHELD
+  OVERTURNED
+}
+
+model TowerChallengeAppeal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: NoAction)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: NoAction)
+  authorUserId String
+  reason String @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  dueAt DateTime
+  status TowerChallengeAppealStatus @default(OPEN)
+  reviewerUserId String?
+  arbiterUserId String?
+  arbiterUser User? @relation("TowerChallengeAppealArbiter", fields: [arbiterUserId], references: [id], onDelete: NoAction)
+  decisionReason String? @db.VarChar(1000)
+  decidedAt DateTime?
+
+  @@unique([attemptId, communityId])
+  @@index([communityId, status, createdAt])
+  @@index([communityId, status, dueAt])
+  @@index([communityId, status, arbiterUserId])
 }
 
 model TowerChallengeAttemptParticipant {

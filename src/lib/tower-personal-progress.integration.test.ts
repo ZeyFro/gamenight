@@ -101,33 +101,34 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
   const read = (member = "member", viewer = "viewer", target = communityId, current = now) =>
     lib.getTowerPersonalProgress({ viewerId: id(viewer), memberId: id(member), communityId: target }, current);
 
-  it("un membre sans aucun défi est Irregular à 0 étage, quelle que soit son XP", async () => {
+  it("un membre sans aucun défi est Régulars à 0 étage, quelle que soit son XP", async () => {
     expect(await read()).toEqual({
-      status: "PROGRESS", floorsClimbed: "0", completedSeasons: 0, rank: "Irregular",
-      next: { rank: "Ranker", floorsMissing: "30", seasonMissing: false },
+      status: "PROGRESS", floorsClimbed: "0", completedSeasons: 0, seasonChallenges: 0, rank: "Régulars",
+      next: { rank: "Ranker", floorsMissing: "30", challengesMissing: 0 },
     });
   });
 
-  it("le rang suit les étages gagnés (floorsClimbed) : 29 = Irregular, 30 = Ranker", async () => {
+  it("le rang suit les étages gagnés (floorsClimbed) : 29 = Régulars, 30 = Ranker", async () => {
     await floors("member", 29);
-    expect(await read()).toMatchObject({ floorsClimbed: "29", rank: "Irregular", next: { rank: "Ranker", floorsMissing: "1" } });
+    expect(await read()).toMatchObject({ floorsClimbed: "29", rank: "Régulars", next: { rank: "Ranker", floorsMissing: "1" } });
     await db.towerChallengeProgress.update({ where: { communityId_userId: { communityId, userId: id("member") } }, data: { floorsClimbed: BigInt(30) } });
-    expect(await read()).toMatchObject({ floorsClimbed: "30", rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "70", seasonMissing: true } });
+    expect(await read()).toMatchObject({ floorsClimbed: "30", rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "70", challengesMissing: 5 } });
   });
 
-  it("100 étages sans saison terminée reste Ranker ; une saison finie avec un étage crédité donne High Ranker", async () => {
+  it("100 étages et moins de 5 défis validés sur la saison en cours reste Ranker ; le 5e donne High Ranker", async () => {
     await floors("member", 100);
-    await solo("member", 3, "2027-07-05T10:00:00Z"); // Été en cours : pas terminée.
-    expect(await read()).toMatchObject({ completedSeasons: 0, rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "0", seasonMissing: true } });
-    await solo("member", 1, "2027-05-05T10:00:00Z"); // S2 2027, finie le 1er juillet.
-    expect(await read()).toEqual({ status: "PROGRESS", floorsClimbed: "100", completedSeasons: 1, rank: "High Ranker", next: null });
+    for (const day of ["02", "03", "04", "05"]) await solo("member", 1, "2027-07-" + day + "T10:00:00Z"); // Été en cours.
+    expect(await read()).toMatchObject({ seasonChallenges: 4, rank: "Ranker", next: { rank: "High Ranker", floorsMissing: "0", challengesMissing: 1 } });
+    await solo("member", 1, "2027-07-06T10:00:00Z");
+    expect(await read()).toEqual({ status: "PROGRESS", floorsClimbed: "100", completedSeasons: 0, seasonChallenges: 5, rank: "High Ranker", next: null });
   });
 
-  it("la même saison d'été devient terminée à sa fin exclusive (1er septembre 00:00 Paris)", async () => {
+  it("les défis d'une saison précédente ne comptent pas pour la saison en cours (fin exclusive à 1er juillet 00:00 Paris)", async () => {
     await floors("member", 100);
-    await solo("member", 3, "2027-07-05T10:00:00Z");
-    expect(await read("member", "viewer", communityId, iso("2027-08-31T21:59:59.999Z"))).toMatchObject({ completedSeasons: 0, rank: "Ranker" });
-    expect(await read("member", "viewer", communityId, iso("2027-08-31T22:00:00.000Z"))).toMatchObject({ completedSeasons: 1, rank: "High Ranker" });
+    for (const day of ["01", "02", "03", "04"]) await solo("member", 1, "2027-05-" + day + "T10:00:00Z"); // S2 2027.
+    await solo("member", 1, "2027-06-30T21:59:59.999Z"); // Dernier instant de S2.
+    expect(await read()).toMatchObject({ completedSeasons: 1, seasonChallenges: 0, rank: "Ranker" });
+    expect(await read("member", "viewer", communityId, iso("2027-06-15T12:00:00Z"))).toMatchObject({ completedSeasons: 0, seasonChallenges: 5, rank: "High Ranker" });
   });
 
   it("compte les crédits d'équipe à la date du participant, et seulement s'il a été crédité", async () => {
@@ -135,9 +136,9 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
     // Tentative datée de S1, mais le membre n'est crédité qu'en été (saison en cours) : S1 ne compte pas.
     await team("viewer", 2, [{ name: "member", rewardedAt: "2027-07-06T10:00:00Z" }]);
     await team("viewer", 2, [{ name: "member", rewardedAt: null }]);
-    expect(await read()).toMatchObject({ completedSeasons: 0 });
+    expect(await read()).toMatchObject({ completedSeasons: 0, seasonChallenges: 1 });
     await team("viewer", 2, [{ name: "member", rewardedAt: "2027-02-10T10:00:00Z" }]);
-    expect(await read()).toMatchObject({ completedSeasons: 1, rank: "High Ranker" });
+    expect(await read()).toMatchObject({ completedSeasons: 1, seasonChallenges: 1, rank: "Ranker" });
   });
 
   it("ignore les tentatives refusées, les crédits d'intersaison et le crédit d'auteur d'un défi d'équipe", async () => {
@@ -145,7 +146,7 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
     await solo("member", 3, null);
     await solo("member", 3, "2027-03-30T10:00:00Z"); // Intersaison du 29 au 31 mars.
     await team("member", 3, [{ name: "viewer", rewardedAt: "2027-02-10T10:00:00Z" }]); // Auteur non participant.
-    expect(await read()).toMatchObject({ completedSeasons: 0, rank: "Ranker" });
+    expect(await read()).toMatchObject({ completedSeasons: 0, seasonChallenges: 0, rank: "Ranker" });
   });
 
   it("ne mélange pas les communautés : étages et saisons d'un autre serveur ne comptent pas", async () => {
@@ -155,10 +156,10 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
     await floors("dual", 150, otherId);
     await solo("dual", 3, "2027-02-10T10:00:00Z", otherId);
     expect(await read("dual")).toEqual({
-      status: "PROGRESS", floorsClimbed: "5", completedSeasons: 0, rank: "Irregular",
-      next: { rank: "Ranker", floorsMissing: "25", seasonMissing: false },
+      status: "PROGRESS", floorsClimbed: "5", completedSeasons: 0, seasonChallenges: 0, rank: "Régulars",
+      next: { rank: "Ranker", floorsMissing: "25", challengesMissing: 0 },
     });
-    expect(await read("dual", "otherviewer", otherId)).toMatchObject({ floorsClimbed: "150", completedSeasons: 1, rank: "High Ranker" });
+    expect(await read("dual", "otherviewer", otherId)).toMatchObject({ floorsClimbed: "150", completedSeasons: 1, seasonChallenges: 0, rank: "Ranker" });
   });
 
   it("refuse un lecteur qui n'est pas membre actif de la communauté, isolation éteinte comprise", async () => {

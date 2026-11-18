@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'src/lib/session-announce.ts'
+      - 'src/lib/session-dm.integration.test.ts'
+      - 'src/lib/community-teams*.ts'
       - 'src/lib/tower-challenge-*.ts'
       - 'src/lib/tower-challenges*.ts'
       - 'src/lib/discord-tower-*.ts'
@@ -35,7 +38,7 @@ jobs:
           cache: npm
       # Ces tests purs n'utilisent ni Prisma ni les scripts d'installation.
       - run: npm ci --ignore-scripts
-      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenge-rules.test.ts src/lib/tower-challenge-voting.test.ts src/lib/discord-tower-challenges.test.ts src/lib/discord-tower-season-vote.test.ts src/lib/discord-tower-rest.test.ts src/lib/tower-challenge-announcements.test.ts src/app/api/cron/notification-executor/route.test.ts
+      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenge-rules.test.ts src/lib/tower-challenge-voting.test.ts src/lib/discord-tower-challenges.test.ts src/lib/discord-tower-season-vote.test.ts src/lib/discord-tower-rest.test.ts src/lib/tower-challenge-announcements.test.ts src/app/api/cron/notification-executor/route.test.ts src/lib/notification-channel-preferences.test.ts src/lib/discord-session-created.preferences.test.ts src/lib/notifications.web-push.test.ts
 
   storage:
     runs-on: ubuntu-latest
@@ -63,7 +66,7 @@ jobs:
       - run: npx prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/tower_test
-      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenges.integration.test.ts src/lib/community-scoped-client.test.ts src/lib/community-scope.test.ts --maxWorkers=1
+      - run: node node_modules/vitest/vitest.mjs run src/lib/tower-challenges.integration.test.ts src/lib/community-teams.integration.test.ts src/lib/session-dm.integration.test.ts src/lib/community-scoped-client.test.ts src/lib/community-scope.test.ts --maxWorkers=1
         env:
           TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/tower_test
       - run: npx next typegen

@@ -12,6 +12,14 @@ import path from "node:path";
 import process from "node:process";
 import permissions from "./tower-layout-permissions.cjs";
 
+// Sans --apply : diff DRY-RUN lisible (GET uniquement, aucun fichier ni écriture), puis arrêt.
+// Le mode --apply historique n'est pas lancé par le plan PLAN_SERVEUR_DISCORD ; il reste protégé par TOWER_DISCORD_APPLY.
+if (!process.argv.includes("--apply")) {
+  const { main } = await import("./tower-discord-dryrun.mjs");
+  const args = process.argv.slice(2);
+  process.exit(await main({ argv: args.includes("--inventory") ? args : [...args, "--live"], env: process.env }));
+}
+
 const API = "https://discord.com/api/v10";
 const guild = process.env.DISCORD_BOT_GUILD_ID;
 if (!guild) throw new Error("Missing DISCORD_BOT_GUILD_ID.");
