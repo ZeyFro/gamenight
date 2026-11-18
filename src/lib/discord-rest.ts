@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { isVercelPreview } from "@/lib/preview-safety";
+import { stripEveryoneParse } from "@/lib/notification-policy";
 
 /**
  * Client Discord REST (bot) — fondations pour les futurs salons/fils/MP
@@ -122,7 +123,8 @@ export const NO_MENTIONS: AllowedMentions = { parse: [] };
 
 function toDiscordAllowedMentions(input: AllowedMentions) {
   return {
-    parse: input.parse ?? [],
+    // Jamais @everyone/@here (sujet I) : retiré ici, quel que soit l'appelant.
+    parse: stripEveryoneParse(input.parse),
     roles: input.roles,
     users: input.users,
     replied_user: input.repliedUser,

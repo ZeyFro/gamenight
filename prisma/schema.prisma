@@ -43,6 +43,7 @@ enum FreeGameStore {
 }
 
 model User {
+  gamePingOptIns GamePingOptIn[]
   profileVisibility UserProfileVisibility?
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
@@ -368,6 +369,7 @@ enum GameSource {
 }
 
 model Game {
+  pingOptIns GamePingOptIn[]
   epitaphs CommunityGameEpitaph[]
   // Relevé de préparation déclaré, indépendant des prix Steam consultés.
   preparationCost       String? @db.VarChar(10)
@@ -2873,6 +2875,7 @@ enum CommunityChannelCategory {
 }
 
 model Community {
+  gamePingOptIns GamePingOptIn[]
   teamApplications TeamApplication[]
   discordTeamSpaces DiscordTeamSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
@@ -3547,4 +3550,20 @@ model TowerArbiterConfigurationChange {
   createdAt DateTime @default(now())
 
   @@index([communityId, id(sort: Desc)])
+}
+
+// Centre de notifications (sujet I, 18/11/2026) : abonnement explicite d'un membre aux pings d'un
+// jeu. Opt-in uniquement : aucune ligne par défaut, aucune mention sans cette ligne, jamais @everyone.
+model GamePingOptIn {
+  userId      String
+  communityId String
+  gameId      String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId, gameId])
+  @@index([communityId, gameId])
 }
