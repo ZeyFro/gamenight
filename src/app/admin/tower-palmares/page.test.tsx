@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 import Page from "./page";
 
 const S2 = { name: "S2 · 2027", startAt: new Date("2027-03-31T22:00:00.000Z"), endAt: new Date("2027-06-30T22:00:00.000Z") };
-const S1 = { name: "S1 · 2027", startAt: new Date("2027-01-03T23:00:00.000Z"), endAt: new Date("2027-03-28T22:00:00.000Z") };
+const S1 = { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00.000Z"), endAt: new Date("2027-03-31T22:00:00.000Z") };
 const base = {
   status: "PROPOSAL", communityName: "The Tower", computedAt: new Date("2027-07-10T12:00:00Z"), seasons: [S2, S1], season: S2,
   completed: true, creditedFloors: "9", creditedPlayers: 4, truncated: false, candidates: [], formerMembers: [],
@@ -59,8 +59,8 @@ describe("proposition de palmarès (page d'administration)", () => {
     render(await open());
     expect(mocks.proposal).toHaveBeenLastCalledWith({ userId: "admin", communityId: "community" });
     cleanup();
-    render(await open("2027-01-03T23:00:00.000Z"));
-    expect(mocks.proposal).toHaveBeenLastCalledWith({ userId: "admin", communityId: "community", seasonStart: "2027-01-03T23:00:00.000Z" });
+    render(await open("2026-11-30T23:00:00.000Z"));
+    expect(mocks.proposal).toHaveBeenLastCalledWith({ userId: "admin", communityId: "community", seasonStart: "2026-11-30T23:00:00.000Z" });
     cleanup();
     // Paramètre répété ou vide : ignoré plutôt que transmis tel quel.
     render(await open(["a", "b"]));
@@ -74,7 +74,7 @@ describe("proposition de palmarès (page d'administration)", () => {
     const links = within(screen.getByRole("navigation", { name: "Saisons terminées" })).getAllByRole("link");
     expect(links.map(link => [link.textContent, link.getAttribute("aria-current"), link.getAttribute("href")])).toEqual([
       ["S2 · 2027", "page", "/admin/tower-palmares?saison=2027-03-31T22%3A00%3A00.000Z"],
-      ["S1 · 2027", null, "/admin/tower-palmares?saison=2027-01-03T23%3A00%3A00.000Z"],
+      ["S1 · 2026-2027", null, "/admin/tower-palmares?saison=2026-11-30T23%3A00%3A00.000Z"],
     ]);
   });
 
