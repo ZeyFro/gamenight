@@ -23,7 +23,7 @@ import { towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announceme
  */
 export const DISPATCH_RESOLVER: DeliveryResolver = {
   async resolve(input) {
-    if (input.event.category === "ACHIEVEMENT" && ["TOWER_PROOF_SUBMITTED", "TOWER_CHALLENGE_APPROVED"].includes(input.event.eventType)) return towerChallengeAnnounceResolver.resolve(input);
+    if (input.event.category === "ACHIEVEMENT" && ["TOWER_PROOF_SUBMITTED", "TOWER_CHALLENGE_APPROVED", "TOWER_CHALLENGE_REJECTED"].includes(input.event.eventType)) return towerChallengeAnnounceResolver.resolve(input);
     if (input.event.category === "SESSION") return sessionAnnounceResolver.resolve(input);
     if (input.event.category === "TOURNAMENT") return tournamentAnnounceResolver.resolve(input);
     if (input.event.category === "INSTANT_SESSION") return instantSessionInviteResolver.resolve(input);
