@@ -25,7 +25,9 @@ describe.skipIf(!url)("remplacement de défi Tower (PostgreSQL)", () => {
   const communityId = scope + "-c";
   const otherId = scope + "-o";
   const id = (name: string) => scope + "-" + name;
-  const future = () => new Date(Date.now() + 40 * 3600000);
+  // Contrainte TowerChallengeAttempt_duration_check : expiresAt = assignedAt + 48 h exactement.
+  const HOUR = 3600000;
+  const window = (assignedAt: Date) => ({ assignedAt, expiresAt: new Date(assignedAt.getTime() + 48 * HOUR) });
   const lastClaim = new Date("2026-12-01T10:00:00Z");
 
   beforeAll(async () => {
@@ -50,7 +52,7 @@ describe.skipIf(!url)("remplacement de défi Tower (PostgreSQL)", () => {
     const definition = await db.towerChallengeDefinition.findUniqueOrThrow({ where: { id: definitionId } });
     return db.towerChallengeAttempt.create({
       data: { id: id("attempt"), communityId, userId: id("player"), requestKey: "req-" + randomUUID(), definitionId, title: definition.title,
-        instructions: definition.instructions, rewardFloors: definition.rewardFloors, assignedAt: new Date(Date.now() - 3600000), expiresAt: future(), ...extra },
+        instructions: definition.instructions, rewardFloors: definition.rewardFloors, ...window(new Date(Date.now() - HOUR)), ...extra },
     });
   }
   const replace = (attemptId = id("attempt"), community = communityId, user = id("player")) =>
@@ -133,7 +135,7 @@ describe.skipIf(!url)("remplacement de défi Tower (PostgreSQL)", () => {
     await def("needs", 2, id("missing"));
     await attempt(id("needs"), { status: "SUBMITTED" });
     expect(await replace()).toMatchObject({ status: "BLOCKED", block: "not_assigned" });
-    await db.towerChallengeAttempt.update({ where: { id: id("attempt") }, data: { status: "ASSIGNED", expiresAt: new Date(Date.now() - 1000) } });
+    await db.towerChallengeAttempt.update({ where: { id: id("attempt") }, data: { status: "ASSIGNED", ...window(new Date(Date.now() - 49 * HOUR)) } });
     expect(await replace()).toMatchObject({ status: "BLOCKED", block: "expired" });
     expect(await db.towerChallengeReplacement.count()).toBe(0);
   });
