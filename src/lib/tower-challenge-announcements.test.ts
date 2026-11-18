@@ -69,6 +69,18 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("annonces The Tower", () => {
+  it("annonce un refus au salon de preuve, sans texte privé ni mention", async () => {
+    mocks.attempt.mockResolvedValueOnce(makeAttempt({ status: "REJECTED", publicationConsent: false }));
+    const request = input("proof");
+    request.event.eventType = "TOWER_CHALLENGE_REJECTED";
+    request.delivery.targetSlot = guildId + ":TOWER:" + attemptId + ":rejection";
+    const result = await towerChallengeAnnounceResolver.resolve(request);
+    if (!result.eligible || result.action.kind !== "send_channel_message_verified") throw new Error("Annonce de refus attendue");
+    expect(result.action.channelId).toBe(proofChannelId);
+    expect(result.action.message.content).toContain("24 heures");
+    expect(result.action.message.content).not.toContain(description);
+    expect(result.action.message.allowedMentions).toEqual({ parse: [] });
+  });
   it("ne publie pas la description dans le salon de vote avant la réussite", async () => {
     const result = await towerChallengeAnnounceResolver.resolve(input("proof"));
     if (!result.eligible) throw new Error("La preuve consentie et encore ouverte doit être proposée au vote.");

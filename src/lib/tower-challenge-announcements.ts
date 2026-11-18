@@ -4,14 +4,14 @@ import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-del
 import type { DeliveryResolver } from "@/lib/notification-executor";
 import type { DiscordActionRow } from "@/lib/discord-rest";
 
-type Kind = "proof" | "success";
-const types = { proof: "TOWER_PROOF_SUBMITTED", success: "TOWER_CHALLENGE_APPROVED" } as const;
+type Kind = "proof" | "success" | "rejection";
+const types = { proof: "TOWER_PROOF_SUBMITTED", success: "TOWER_CHALLENGE_APPROVED", rejection: "TOWER_CHALLENGE_REJECTED" } as const;
 const numericId = (value: string | undefined): value is string => /^[0-9]{16,20}$/.test(value ?? "");
 function config(kind: Kind) {
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true" || process.env.TOWER_DISCORD_ANNOUNCE_ENABLED !== "true") return null;
   const guildId = process.env.TOWER_DISCORD_GUILD_ID;
   const proofChannelId = process.env.TOWER_DISCORD_CHANNEL_ID;
-  const channelId = kind === "proof" ? proofChannelId : process.env.TOWER_DISCORD_GENERAL_CHANNEL_ID;
+  const channelId = kind !== "success" ? proofChannelId : process.env.TOWER_DISCORD_GENERAL_CHANNEL_ID;
   return numericId(guildId) && numericId(proofChannelId) && numericId(channelId) ? { guildId, channelId, proofChannelId } : null;
 }
 const slot = (guildId: string, attemptId: string, kind: Kind) => guildId + ":TOWER:" + attemptId + ":" + kind;
@@ -19,24 +19,49 @@ const slot = (guildId: string, attemptId: string, kind: Kind) => guildId + ":TOW
 // Écriture dans la même transaction que le dépôt ou le gain ; aucun appel Discord ici.
 export async function enqueueTowerChallengeEvent(scopedDb: Prisma.TransactionClient, communityId: string, attemptId: string, kind: Kind) {
   const destination = config(kind);
-  if (!destination) return;
+  if (!destination && kind !== "rejection") return;
+  if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return;
   const community = await scopedDb.community.findUnique({ where: { id: communityId }, select: { status: true, towerChallengesEnabled: true, discordGuildId: true } });
-  if (community?.status !== "ACTIVE" || !community.towerChallengesEnabled || community.discordGuildId !== destination.guildId) return;
+  if (community?.status !== "ACTIVE" || !community.towerChallengesEnabled) return;
+  if (kind !== "rejection" && community.discordGuildId !== destination?.guildId) return;
   const event = await createNotificationEvent({ communityId, category: "ACHIEVEMENT", eventType: types[kind], sourceId: attemptId }, scopedDb);
+  if (!destination || community.discordGuildId !== destination.guildId) return;
   await enqueueDelivery({ eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND",
     recipientKey: destination.channelId, targetSlot: slot(destination.guildId, attemptId, kind),
   }, scopedDb);
+  return true;
+}
+
+/** Recover durable rejection intents after configuration returns; never resend an existing delivery. */
+export async function requeueTowerRejectionNotices(scopedDb: Prisma.TransactionClient, communityId: string, deadline: Date) {
+  if (!config("rejection")) return 0;
+  const candidates = await scopedDb.$queryRaw<{ id: string }[]>`
+    SELECT a.id FROM "TowerChallengeAttempt" a
+    JOIN "Membership" m ON m."communityId" = a."communityId" AND m."userId" = a."userId" AND m.status = 'ACTIVE'
+    WHERE a."communityId" = ${communityId} AND a.status = 'REJECTED' AND a."archivedAt" IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "NotificationEvent" e JOIN "NotificationDelivery" d ON d."eventId" = e.id
+        WHERE e."communityId" = a."communityId" AND e."sourceId" = a.id AND e."eventType" = 'TOWER_CHALLENGE_REJECTED'
+      )
+    ORDER BY a."rejectedAt", a.id LIMIT 25
+  `;
+  let queued = 0;
+  for (const candidate of candidates) {
+    if (Date.now() >= deadline.getTime()) break;
+    if (await enqueueTowerChallengeEvent(scopedDb, communityId, candidate.id, "rejection")) queued++;
+  }
+  return queued;
 }
 
 const plain = (value: string, max: number) => value.slice(0, max).replace(/([\\\x60*_~|>\[\]()])/g, "\\$1");
 
 export const towerChallengeAnnounceResolver: DeliveryResolver = {
   async resolve({ event, delivery, now }) {
-    const kind: Kind | null = event.eventType === types.proof ? "proof" : event.eventType === types.success ? "success" : null;
+    const kind: Kind | null = event.eventType === types.proof ? "proof" : event.eventType === types.success ? "success" : event.eventType === types.rejection ? "rejection" : null;
     if (!kind || event.category !== "ACHIEVEMENT" || !event.communityId
       || delivery.channel !== "DISCORD_CHANNEL" || delivery.transport !== "BOT" || delivery.operation !== "SEND") return { eligible: false, reason: "unresolvable" };
     const destination = config(kind);
-    if (!destination || process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true") return { eligible: false, reason: "not_configured" };
+    if (!destination || process.env.NOTIFICATION_EXECUTOR_ENABLED !== "true") return { eligible: false, reason: kind === "rejection" ? "configuration_unavailable" : "not_configured" };
     if (delivery.recipientKey !== destination.channelId || delivery.targetSlot !== slot(destination.guildId, event.sourceId, kind)) return { eligible: false, reason: "unresolvable" };
     const scopedDb = scopedPrisma({ communityIds: [event.communityId], includesDefault: false });
     const community = await scopedDb.community.findUnique({ where: { id: event.communityId }, select: { status: true, towerChallengesEnabled: true, discordGuildId: true } });
@@ -68,6 +93,11 @@ export const towerChallengeAnnounceResolver: DeliveryResolver = {
         { type: 2, style: 3, label: "Valider", custom_id: "gn:tower:vote:" + attempt.id + ":yes" },
         { type: 2, style: 4, label: "Refuser", custom_id: "gn:tower:vote:" + attempt.id + ":no" },
         ] }];
+    } else if (kind === "rejection") {
+      if (attempt.status !== "REJECTED") return { eligible: false, reason: "expired" };
+      content = "⚖️ **Vote terminé : preuve refusée**\n" + plain(attempt.user.discordName, 80)
+        + " · **" + plain(attempt.title, 120) + "**. Le délai de contestation de 24 heures commence avec cette annonce. "
+        + "Retrouve la contestation dans GameNight → The Tower.\n[Voir la preuve](" + url + ")";
     } else {
       if (attempt.status !== "APPROVED" || !attempt.rewardedAt) return { eligible: false, reason: "expired" };
       content = attempt.team

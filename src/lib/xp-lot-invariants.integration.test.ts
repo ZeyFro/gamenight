@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -46,9 +46,15 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
   let db: PrismaClient;
   let workdir: string;
   const url = () => { const u = new URL(TEST_DATABASE_URL!); if (!["127.0.0.1", "localhost"].includes(u.hostname)) throw new Error("PostgreSQL local uniquement"); u.pathname = `/${NEW_DB}`; return u.toString(); };
-  const run = (script: string, args: string[], env: Record<string, string> = {}) => {
+  const run = (script: string, args: string[], env: Record<string, string> = {}, cwd?: string) => {
     const clean: NodeJS.ProcessEnv = { ...process.env }; delete clean.DATABASE_URL;
-    return spawnSync(process.execPath, [resolve(script), ...args], { env: { ...clean, ...env }, encoding: "utf8" });
+    return spawnSync(process.execPath, [resolve(script), ...args], { env: { ...clean, ...env }, encoding: "utf8", ...(cwd ? { cwd } : {}) });
+  };
+  // db-migrate lit prisma/migrations relativement au dossier courant : on lui donne le jalon « baseline + lot » (sans les migrations postérieures).
+  const runMigrate = (args: string[], env: Record<string, string>) => {
+    if (!existsSync(join(workdir, "node_modules"))) symlinkSync(resolve("node_modules"), join(workdir, "node_modules"), "dir"); // db-migrate appelle node_modules/prisma relativement au dossier courant
+    for (const name of LOT_MIGRATIONS) cpSync(join("prisma/migrations", name), join(workdir, "prisma", "migrations", name), { recursive: true, force: true });
+    return run(join(process.cwd(), "scripts/db-migrate.mjs"), args, env, workdir);
   };
   const check = (phase: string, extra: string[] = []) => run("scripts/xp-lot-invariants.mjs", [`--phase=${phase}`, ...extra], { XP_INVARIANTS_DATABASE_URL: url() });
   const fingerprint = (out: string) => /EMPREINTE (\w{32})/.exec(out)![1];
@@ -65,7 +71,8 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
     mkdirSync(join(workdir, "prisma", "migrations"), { recursive: true });
     cpSync("prisma/schema.prisma", join(workdir, "prisma", "schema.prisma"));
     cpSync("prisma/migrations/migration_lock.toml", join(workdir, "prisma", "migrations", "migration_lock.toml"));
-    for (const name of ALL.filter((n) => !LOT_MIGRATIONS.includes(n))) cpSync(join("prisma/migrations", name), join(workdir, "prisma", "migrations", name), { recursive: true });
+    // Seules les migrations antérieures au lot : la garde chronologique de db-migrate refuse un lot « ancien » ajouté après une migration plus récente (ex. #407).
+    for (const name of ALL.filter((n) => !LOT_MIGRATIONS.includes(n) && n < LOT_MIGRATIONS[0])) cpSync(join("prisma/migrations", name), join(workdir, "prisma", "migrations", name), { recursive: true });
     const baseline = spawnSync(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy", `--schema=${join(workdir, "prisma", "schema.prisma")}`],
       { env: { ...process.env, DATABASE_URL: url() }, encoding: "utf8" });
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0);
@@ -116,11 +123,11 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
   it("dry-run puis exécution réelle des 6 migrations : phase after OK, empreinte identique, xpBalance = xpTotal", () => {
     const env = { MIGRATION_DATABASE_URL: url(), GAMENIGHT_RUNTIME_ROLE: "gn_runtime_absent" };
     const expectArg = `--expect=${LOT_MIGRATIONS.join(",")}`;
-    const dry = run("scripts/db-migrate.mjs", ["--allow-local", expectArg], env);
+    const dry = runMigrate(["--allow-local", expectArg], env);
     expect(dry.status, dry.stdout + dry.stderr).toBe(0);
     expect(dry.stdout).toContain("DRY-RUN");
     expect(check("before").status).toBe(0);
-    const exec = run("scripts/db-migrate.mjs", ["--allow-local", expectArg, "--execute", `--confirm-database=${NEW_DB}`], env);
+    const exec = runMigrate(["--allow-local", expectArg, "--execute", `--confirm-database=${NEW_DB}`], env);
     expect(exec.status, exec.stdout + exec.stderr).toBe(0);
     const after = check("after", [`--expect-fingerprint=${before}`]);
     expect(after.status, after.stdout + after.stderr).toBe(0);
