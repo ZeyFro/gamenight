@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 /**
  * Recette SQL isolée : PostgreSQL jetable (`TEST_DATABASE_URL`), jamais Neon ni
  * Production. Prérequis : `prisma migrate deploy` (migration
- * `20261118121000_discord_team_space`). Ignorée sans `TEST_DATABASE_URL`, ce qui
+ * `20261118110000_discord_team_space`). Ignorée sans `TEST_DATABASE_URL`, ce qui
  * doit alors être signalé comme « skipped », jamais présenté comme passé.
  *
  * Aucun appel Discord : l'adaptateur est un double de test ; la file passe par les

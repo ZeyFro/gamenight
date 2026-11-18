@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Garde de la migration `DiscordTeamSpace` (`20261118121000_discord_team_space`).
+ * Garde de la migration `DiscordTeamSpace` (`20261118110000_discord_team_space`).
  *
  * Une migration présente dans `main` est appliquée automatiquement à Neon
  * Production par `migrate-production.yml` : la fusion vaut accord. Ce test fige
@@ -14,7 +14,7 @@ import { join } from "node:path";
  * - alignée avec le modèle déclaré dans `schema.prisma` ;
  * - postérieure à #370 et à la dernière migration de main au moment de sa création.
  */
-const MIGRATION_DIR = "20261118121000_discord_team_space";
+const MIGRATION_DIR = "20261118110000_discord_team_space";
 const MIGRATIONS = join(process.cwd(), "prisma", "migrations");
 const SQL = readFileSync(join(MIGRATIONS, MIGRATION_DIR, "migration.sql"), "utf8");
 const SCHEMA = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
@@ -59,7 +59,7 @@ describe("migration DiscordTeamSpace — bornes avant fusion", () => {
   });
 
   it("ajoute le salon vocal permanent par une migration additive séparée (option A)", () => {
-    const voiceDir = "20261118124000_discord_team_space_voice";
+    const voiceDir = "20261118110100_discord_team_space_voice";
     expect(migrationNames()).toContain(voiceDir);
     expect(voiceDir > MIGRATION_DIR).toBe(true);
     const voice = readFileSync(join(MIGRATIONS, voiceDir, "migration.sql"), "utf8")

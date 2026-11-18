@@ -24,7 +24,7 @@ import {
  * reste fermé par défaut : sans lui, aucune écriture Discord n'est tentée.
  *
  * Persistance : `DiscordTeamSpace` n'existe en base qu'après application de la
- * migration `prisma/migrations/20261118121000_discord_team_space` (jouée par la
+ * migration `prisma/migrations/20261118110000_discord_team_space` (jouée par la
  * CI sur un PostgreSQL jetable, jamais sur Neon).
  *
  * Aucun appelant n'écrit directement sur Discord : les actions passent par la
