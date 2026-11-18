@@ -115,7 +115,8 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
 
   it("dry-run puis exécution réelle des 6 migrations : phase after OK, empreinte identique, xpBalance = xpTotal", () => {
     const env = { MIGRATION_DATABASE_URL: url(), GAMENIGHT_RUNTIME_ROLE: "gn_runtime_absent" };
-    const expectArg = `--expect=${LOT_MIGRATIONS.join(",")}`;
+    // Lot + migrations ultérieures du dépôt (postérieures à sa fusion), toutes en attente sur cette base.
+    const expectArg = `--expect=${[...LOT_MIGRATIONS, ...ALL.filter((n) => n > LOT_MIGRATIONS[LOT_MIGRATIONS.length - 1])].join(",")}`;
     const dry = run("scripts/db-migrate.mjs", ["--allow-local", expectArg], env);
     expect(dry.status, dry.stdout + dry.stderr).toBe(0);
     expect(dry.stdout).toContain("DRY-RUN");
