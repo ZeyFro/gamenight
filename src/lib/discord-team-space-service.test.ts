@@ -14,7 +14,7 @@ import {
   type SpaceLinkStore,
   type TeamSpaceDiscordApi,
 } from "./discord-team-space-service";
-import { spaceChannelName, spaceVoiceChannelName } from "./discord-team-spaces";
+import { spaceChannelName, spaceVoiceChannelName, TEXT_CHANNEL_ALLOW, VIEW_CHANNEL, VOICE_CHANNEL_ALLOW } from "./discord-team-spaces";
 
 const GUILD = "100000000000000001";
 const TEAM = "team_1";
@@ -99,7 +99,15 @@ describe("provisionTeamSpace", () => {
       [spaceChannelName({ id: TEAM, name: "Les Dragons" }), 0],
       [spaceVoiceChannelName({ id: TEAM, name: "Les Dragons" }), 2],
     ]);
-    expect(ops("createChannel")[0].args[3]).toEqual(ops("createChannel")[1].args[3]);
+    // Mêmes règles de confidentialité, permissions d'usage adaptées au type de salon.
+    expect(ops("createChannel")[0].args[3]).toEqual([
+      { target: "everyone", deny: VIEW_CHANNEL },
+      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
+    ]);
+    expect(ops("createChannel")[1].args[3]).toEqual([
+      { target: "everyone", deny: VIEW_CHANNEL },
+      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
+    ]);
     expect(ops("addMemberRole")).toHaveLength(2);
     expect(await store.find(TEAM)).toMatchObject({
       channelId: "chan-new",

@@ -13,6 +13,8 @@ import {
   CHANNEL_TYPE_VOICE,
   GUILD_CHANNEL_LIMIT,
   VIEW_CHANNEL,
+  TEXT_CHANNEL_ALLOW,
+  VOICE_CHANNEL_ALLOW,
   type TeamSpaceClient,
   type TeamSpaceInput,
 } from "./discord-team-spaces";
@@ -246,10 +248,25 @@ describe("capitaine, membres et permissions", () => {
     expect(plan.status).toBe("planned");
     if (plan.status !== "planned") return;
     expect(plan.rolePermissions).toBe("0");
-    expect(plan.overwrites).toEqual([
+    // @everyone ne voit rien ; le rôle d'équipe reçoit le strict nécessaire.
+    expect(plan.textOverwrites).toEqual([
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: VIEW_CHANNEL },
+      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
     ]);
+    expect(plan.voiceOverwrites).toEqual([
+      { target: "everyone", deny: VIEW_CHANNEL },
+      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
+    ]);
+    // Aucune permission d'administration (bit 3 = 8) ni de gestion du serveur dans les deux salons.
+    for (const allow of [TEXT_CHANNEL_ALLOW, VOICE_CHANNEL_ALLOW]) {
+      expect(Number(allow) & 8).toBe(0);
+      expect(Number(allow) & 32).toBe(0);
+    }
+    // Le vocal autorise connexion et parole ; le texte non.
+    expect(Number(VOICE_CHANNEL_ALLOW) & Number(1024)).toBe(1024);
+    expect(Number(VOICE_CHANNEL_ALLOW) & 1048576).toBe(1048576);
+    expect(Number(VOICE_CHANNEL_ALLOW) & 2097152).toBe(2097152);
+    expect(Number(TEXT_CHANNEL_ALLOW) & 1048576).toBe(0);
     // Les deux salons sont planifiés avec les mêmes overwrites privés.
     const channels = plan.steps.filter((step) => step.kind === "channel");
     expect(channels.map((step) => step.kind === "channel" && step.channelType)).toEqual([0, 2]);
@@ -346,7 +363,7 @@ describe("application", () => {
       type: 0,
       overwrites: [
         { target: "everyone", deny: VIEW_CHANNEL },
-        { target: "team-role", allow: VIEW_CHANNEL },
+        { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
       ],
       reason: "gn-team-space",
     });
@@ -355,7 +372,7 @@ describe("application", () => {
       type: 2,
       overwrites: [
         { target: "everyone", deny: VIEW_CHANNEL },
-        { target: "team-role", allow: VIEW_CHANNEL },
+        { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
       ],
       reason: "gn-team-space",
     });

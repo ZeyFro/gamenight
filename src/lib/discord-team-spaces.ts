@@ -20,7 +20,20 @@ export const DEFAULT_MAX_SPACES_PER_COMMUNITY = 5;
 /** Plafond dur de sécurité du quota produit (jamais la limite Discord elle-même). */
 export const MAX_SPACES_PER_COMMUNITY_LIMIT = 200;
 export const MAX_MEMBERS_PER_SPACE = 50;
-export const VIEW_CHANNEL = "1024";
+/** Bits Discord (2^position). Les autorisations sont cumulées sans jamais inclure d'administration. */
+const permissionBit = (position: number): string => (2 ** position).toString();
+const allow = (...bits: string[]): string => bits.reduce((total, bit) => total + Number(bit), 0).toString();
+
+/** Voir le salon — le seul bit refusé à @everyone : les deux salons restent invisibles au public. */
+export const VIEW_CHANNEL = permissionBit(10);
+export const SEND_MESSAGES = permissionBit(11);
+export const READ_MESSAGE_HISTORY = permissionBit(16);
+export const CONNECT = permissionBit(20);
+export const SPEAK = permissionBit(21);
+/** Salon textuel : voir, envoyer, lire l'historique. Rien d'autre. */
+export const TEXT_CHANNEL_ALLOW = allow(VIEW_CHANNEL, SEND_MESSAGES, READ_MESSAGE_HISTORY);
+/** Salon vocal : voir, se connecter, parler. Rien d'autre (pas de priorité, pas de mute). */
+export const VOICE_CHANNEL_ALLOW = allow(VIEW_CHANNEL, CONNECT, SPEAK);
 export const CHANNEL_TYPE_TEXT = 0;
 export const CHANNEL_TYPE_VOICE = 2;
 /**
@@ -139,7 +152,10 @@ export type TeamSpacePlan =
       channelName: string;
       voiceChannelName: string;
       rolePermissions: "0";
-      overwrites: OverwritePlan[];
+      /** @everyone sans VIEW_CHANNEL ; rôle d'équipe autorisé à voir/envoyer/lire (texte). */
+      textOverwrites: OverwritePlan[];
+      /** @everyone sans VIEW_CHANNEL ; rôle d'équipe autorisé à voir/rejoindre/parler (vocal). */
+      voiceOverwrites: OverwritePlan[];
       steps: TeamSpaceStep[];
       archived: boolean;
       /** Capacité du serveur proche d'une limite Discord : à signaler au staff. */
@@ -362,10 +378,15 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
     channelName,
     voiceChannelName,
     rolePermissions: "0",
-    // Les deux salons sont privés : @everyone n'y voit rien, le rôle d'équipe voit.
-    overwrites: [
+    // Les deux salons sont privés : @everyone n'y voit rien. Le rôle d'équipe
+    // reçoit uniquement les permissions d'usage de chaque type de salon.
+    textOverwrites: [
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: VIEW_CHANNEL },
+      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
+    ],
+    voiceOverwrites: [
+      { target: "everyone", deny: VIEW_CHANNEL },
+      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
     ],
     steps,
     archived,
@@ -469,7 +490,7 @@ export async function applyTeamSpacePlan(
         const created = await client.createChannel({
           name: step.name,
           type: step.channelType,
-          overwrites: plan.overwrites,
+          overwrites: step.channelType === CHANNEL_TYPE_VOICE ? plan.voiceOverwrites : plan.textOverwrites,
           reason: "gn-team-space",
         });
         if (step.channelType === CHANNEL_TYPE_VOICE) voiceChannelId = created.id;

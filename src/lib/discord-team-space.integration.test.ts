@@ -124,7 +124,7 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
   });
 
   it("conserve l'association après un nouveau client (redémarrage)", async () => {
-    await spaceStore.createPrismaSpaceLinkStore(ids.community).save({ teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-1", roleId: "role-1" });
+    await spaceStore.createPrismaSpaceLinkStore(ids.community).save({ teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-1", voiceChannelId: "voice-1", roleId: "role-1" });
     const restarted = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL });
     try {
       const row = await restarted.discordTeamSpace.findUnique({ where: { teamId: ids.team } });
