@@ -8,11 +8,11 @@ import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
  * Correction manuelle de l'XP d'un joueur (onglet « Joueurs » de /admin).
  *
  * L'XP vit PAR COMMUNAUTÉ (`CommunityMemberStats.xpTotal`) ; le niveau et le rang
- * se calculent à la volée depuis ce solde (`levelForXp`), rien d'autre à mettre à
- * jour. Une correction :
- *  - remplace le solde de la communauté ACTUELLE de l'admin (jamais une autre),
+ * se calculent à la volée depuis cette progression (`levelForXp`). Une correction :
+ *  - remplace la progression de la communauté ACTUELLE de l'admin (jamais une autre),
+ *  - applique le même écart au solde dépensable, plafonné à zéro,
  *  - ajoute un `XpEvent` ADMIN_ADJUSTMENT de l'écart, pour que les classements par
- *    période (qui additionnent le ledger) restent cohérents avec le solde,
+ *    période (hors achats) restent cohérents avec la progression,
  *  - est journalisée dans `XpAdjustment` (qui, quand, avant, après, raison).
  */
 
@@ -84,6 +84,7 @@ export interface AdminPlayerAdjustment {
 }
 
 export interface AdminPlayerDetail extends AdminPlayerSummary {
+  xpBalance: number;
   level: number;
   rankName: string;
   title: string;
@@ -104,7 +105,7 @@ export async function getAdminPlayerDetail(communityId: string, userId: string):
   const [stats, events, creationEvents, adjustments] = await Promise.all([
     scopedDb.communityMemberStats.findUnique({
       where: { communityId_userId: { communityId, userId } },
-      select: { xpTotal: true },
+      select: { xpTotal: true, xpBalance: true },
     }),
     scopedDb.xpEvent.findMany({
       where: { communityId, userId },
@@ -132,6 +133,7 @@ export async function getAdminPlayerDetail(communityId: string, userId: string):
   return {
     ...user,
     xpTotal,
+    xpBalance: stats?.xpBalance ?? 0,
     level,
     rankName: rankForLevel(level).name,
     title: titleForLevel(level),
@@ -173,7 +175,7 @@ export type ApplyXpAdjustmentResult =
 /**
  * Applique la correction dans UNE transaction : verrou de la communauté et du
  * membre (comme les gains d'XP), puis verrou de la ligne de stats. `expectedOldXp`
- * est le solde que l'admin a vu avant de confirmer : s'il a bougé entre-temps (gain
+ * est la progression que l'admin a vue avant de confirmer : si elle a bougé entre-temps (gain
  * simultané, autre admin), rien n'est écrit (`stale`) et l'admin revoit la valeur.
  */
 export async function applyXpAdjustment(input: {
@@ -200,7 +202,7 @@ export async function applyXpAdjustment(input: {
     await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${communityId} AND "userId" = ${userId} FOR UPDATE`;
     const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({
       where: { communityId_userId: { communityId, userId } },
-      select: { xpTotal: true },
+      select: { xpTotal: true, xpBalance: true },
     });
     if (stats.xpTotal !== expectedOldXp) return { ok: false, reason: "stale" };
     if (stats.xpTotal === newXp) return { ok: false, reason: "unchanged" };
@@ -214,7 +216,7 @@ export async function applyXpAdjustment(input: {
     });
     await scopedDb.communityMemberStats.update({
       where: { communityId_userId: { communityId, userId } },
-      data: { xpTotal: newXp },
+      data: { xpTotal: newXp, xpBalance: Math.max(0, stats.xpBalance + newXp - stats.xpTotal) },
     });
     return { ok: true, oldXp: stats.xpTotal, newXp };
   });

@@ -42,7 +42,7 @@ describe.skipIf(!TEST_DATABASE_URL)("correction d'XP par un admin, Postgres sans
   const setXp = (user: string, community: string, xpTotal: number) =>
     db.communityMemberStats.upsert({
       where: { communityId_userId: { communityId: ids[community], userId: ids[user] } },
-      create: { communityId: ids[community], userId: ids[user], xpTotal }, update: { xpTotal },
+      create: { communityId: ids[community], userId: ids[user], xpTotal, xpBalance: xpTotal }, update: { xpTotal, xpBalance: xpTotal },
     });
   const xpOf = async (user: string, community: string) =>
     (await db.communityMemberStats.findUnique({ where: { communityId_userId: { communityId: ids[community], userId: ids[user] } } }))?.xpTotal ?? null;
@@ -53,6 +53,16 @@ describe.skipIf(!TEST_DATABASE_URL)("correction d'XP par un admin, Postgres sans
     });
 
   describe("application", () => {
+    it("corrige la progression après achat avec le même delta de solde, plafonné à zéro", async () => {
+      await setXp("alice", "a", 1_000);
+      const { buyShopItem } = await import("./xp-shop");
+      expect(await buyShopItem(ids.alice, ids.a, "title-strategist")).toBe("purchased");
+      expect(await adjust({ expectedOldXp: 1_000, newXp: 1_100 })).toMatchObject({ ok: true });
+      expect(await lib.getAdminPlayerDetail(ids.a, ids.alice)).toMatchObject({ xpTotal: 1_100, xpBalance: 850 });
+      expect(await adjust({ expectedOldXp: 1_100, newXp: 100 })).toMatchObject({ ok: true });
+      expect(await lib.getAdminPlayerDetail(ids.a, ids.alice)).toMatchObject({ xpTotal: 100, xpBalance: 0 });
+    });
+
     it("remplace le solde, écrit l'écart dans le ledger et journalise (qui, avant, après, raison)", async () => {
       await setXp("alice", "a", 1596);
       expect(await adjust()).toEqual({ ok: true, oldXp: 1596, newXp: 500 });
@@ -149,6 +159,18 @@ describe.skipIf(!TEST_DATABASE_URL)("correction d'XP par un admin, Postgres sans
   });
 
   describe("concurrence", () => {
+    it("achat et correction simultanés conservent le débit et le delta administratif", async () => {
+      await setXp("alice", "a", 1_000);
+      const { buyShopItem } = await import("./xp-shop");
+      const [result, purchase] = await Promise.all([
+        adjust({ expectedOldXp: 1_000, newXp: 500 }),
+        buyShopItem(ids.alice, ids.a, "title-strategist"),
+      ]);
+      expect(result).toMatchObject({ ok: true });
+      expect(purchase).toBe("purchased");
+      expect(await lib.getAdminPlayerDetail(ids.a, ids.alice)).toMatchObject({ xpTotal: 500, xpBalance: 250 });
+    });
+
     it("deux corrections simultanées avec le même solde vu : une seule s'applique", async () => {
       await setXp("alice", "a", 1596);
       const results = await Promise.all([adjust({ newXp: 500 }), adjust({ newXp: 900 })]);

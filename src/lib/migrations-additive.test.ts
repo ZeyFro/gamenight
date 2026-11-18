@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Garde-fou : les migrations Prisma sont appliquées automatiquement au build
- * Vercel (`prisma migrate deploy`) sur la base Neon de production. Une
+ * Garde-fou : les migrations Prisma sont appliquées sur la base Neon de production
+ * par l'opération `scripts/db-migrate.mjs` (plus par le build Vercel). Une
  * migration destructive (DROP TABLE/COLUMN, TRUNCATE, DELETE FROM, changement
  * de type) y détruirait des données sans retour. Seules les migrations
  * historiques listées ci-dessous (déjà appliquées) sont tolérées ; toute

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { TOWER_SOLO_IMPORT_PACK } from "@/lib/tower-challenge-import-packs";
 import { TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -796,7 +797,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
   it("importe le pack de départ une seule fois sans réactiver un défi désactivé", async () => {
     await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId } });
     const first = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(first).toEqual({ status: "IMPORTED", added: 26, alreadyPresent: 0 });
+    expect(first).toEqual({ status: "IMPORTED", added: TOWER_SOLO_IMPORT_PACK.length, alreadyPresent: 0 });
 
     const starterChallenge = await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
@@ -804,8 +805,8 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     });
     await db.towerChallengeDefinition.update({ where: { id: starterChallenge.id }, data: { active: false } });
     const second = await api.importSoloTowerChallengeStarterPack({ guildId: towerTestGuildId });
-    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: 26 });
-    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(27);
+    expect(second).toEqual({ status: "IMPORTED", added: 0, alreadyPresent: TOWER_SOLO_IMPORT_PACK.length });
+    expect(await db.towerChallengeDefinition.count({ where: { communityId: "tower-a", mode: "SOLO" } })).toBe(TOWER_SOLO_IMPORT_PACK.length + 1);
     expect(await db.towerChallengeDefinition.findFirstOrThrow({
       where: { communityId: "tower-a", title: "Le guide touristique du chaos" },
       select: { active: true },

@@ -31,7 +31,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { saveGameStyleProfile } from "@/app/profil/game-style-actions";
 import { WebPushSettings } from "@/components/WebPushSettings";
-import { webPushConfig } from "@/lib/web-push-config";
+import { webPushConfig, webPushConfigIssue } from "@/lib/web-push-config";
 import { leadingGameStyles } from "@/lib/game-style-quiz";
 import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
 
@@ -205,7 +205,7 @@ export default async function ProfilParametresPage({
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold text-foreground">Notifications push</h2>
-          <WebPushSettings publicKey={webPushConfig(process.env)?.publicKey ?? null} />
+          <WebPushSettings publicKey={webPushConfig(process.env)?.publicKey ?? null} misconfigured={webPushConfigIssue(process.env)?.code === "invalid" || webPushConfigIssue(process.env)?.code === "incomplete"} />
         </Card>
       </StaggerItem>
 

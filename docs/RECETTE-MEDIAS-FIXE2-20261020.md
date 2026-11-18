@@ -2,6 +2,8 @@
 
 Base : `main` 3e0731b. Vrai Edge headless, vrai Next dev (`--webpack`, 127.0.0.1:3117), PostgreSQL Docker dédié `gamenight-fixe2-browser-pg` (127.0.0.1:55447, base `gamenight_fixe2_browser`, 111/111 migrations appliquées, cible revérifiée par `current_database()` et l'IP du conteneur avant toute écriture). Cette cible est historique et contaminée; elle ne doit plus être réutilisée. Comptes fictifs, JWT Auth.js signés avec un secret éphémère.
 
+Le constat ci-dessus décrit l'exécution historique sous Edge. Le lanceur actuel de `recette-parcours.mjs` utilise Chrome Google headless avec des contextes Playwright temporaires; il ne lit ni n'utilise le profil personnel. Les résultats historiques ci-dessous ne constituent pas une nouvelle preuve Chrome.
+
 ## Lancement
 
 ```powershell
