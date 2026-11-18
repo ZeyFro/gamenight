@@ -32,7 +32,7 @@ describe("progression Tower pour une fiche de profil : coût nul tant que la Tou
     mocks.community.mockResolvedValue("community");
     mocks.transaction.mockResolvedValueOnce({ status: "UNAVAILABLE" });
     expect(await getTowerProgressForProfile("viewer", "member")).toBeNull();
-    const progress = { status: "PROGRESS", floorsClimbed: "30", completedSeasons: 0, rank: "Ranker", next: null };
+    const progress = { status: "PROGRESS", floorsClimbed: "30", completedSeasons: 0, seasonChallenges: 0, rank: "Ranker", next: null };
     mocks.transaction.mockResolvedValueOnce(progress);
     expect(await getTowerProgressForProfile("viewer", "member")).toBe(progress);
     expect(mocks.community).toHaveBeenCalledWith("viewer");

@@ -27,8 +27,8 @@ describe("rang The Tower sur la fiche d'un pote", () => {
     expect(html).not.toContain("Rang The Tower");
     expect(mocks.tower).toHaveBeenCalledWith("viewer", "friend");
   });
-  it.each(["Irregular", "Ranker", "High Ranker"] as const)("affiche le rang %s issu des étages gagnés", async rank => {
-    mocks.tower.mockResolvedValue({ status: "PROGRESS", floorsClimbed: "30", completedSeasons: 1, rank, next: null });
+  it.each(["Régulars", "Irregular", "Ranker", "High Ranker"] as const)("affiche le rang %s issu des étages gagnés", async rank => {
+    mocks.tower.mockResolvedValue({ status: "PROGRESS", floorsClimbed: "30", completedSeasons: 1, seasonChallenges: 5, rank, next: null });
     const html = renderToStaticMarkup(await PoteLayout(props));
     expect(html).toContain(`title="Rang The Tower : ${rank}"`);
   });
