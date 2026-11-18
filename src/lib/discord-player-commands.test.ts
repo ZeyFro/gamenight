@@ -45,8 +45,8 @@ const listing = (over: Record<string, unknown> = {}) => ({
   message: "Cherche deux joueurs pour du coop",
   authorName: "Maxime",
   authorId: "user-1",
-  createdAt: new Date("2026-11-17T08:00:00.000Z"),
-  expiresAt: new Date("2026-11-18T08:00:00.000Z"),
+  createdAt: new Date(Date.now() - 60 * 60 * 1000),
+  expiresAt: new Date(Date.now() + 23 * 60 * 60 * 1000),
   expired: false,
   ...over,
 });

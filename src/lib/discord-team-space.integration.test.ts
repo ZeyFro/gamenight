@@ -155,6 +155,8 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces et capitaine"
   });
 
   it("parcours A/B/C : création, adhésion et départ avec le vrai store SQL", async () => {
+    // Règle de main : une seule équipe principale par joueur — on libère les deux joueurs de l'équipe du fixture.
+    await db.communityTeamMember.deleteMany({ where: { teamId: ids.team } });
     const teams = await import("./community-teams");
     const created = await teams.createCommunityTeamWithId({
       userId: ids.creator,

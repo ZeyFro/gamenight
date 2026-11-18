@@ -60,12 +60,12 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
     }
     await admin.$executeRawUnsafe(`CREATE DATABASE "${NEW_DB}"`);
-    // État « main » : toutes les migrations sauf les 6 du lot, appliquées par Prisma depuis une copie du dossier prisma/.
+    // État « main » : toutes les migrations antérieures au lot (les plus récentes, postérieures, sont hors périmètre), appliquées par Prisma depuis une copie du dossier prisma/.
     workdir = mkdtempSync(join(tmpdir(), "gn-xpinv-"));
     mkdirSync(join(workdir, "prisma", "migrations"), { recursive: true });
     cpSync("prisma/schema.prisma", join(workdir, "prisma", "schema.prisma"));
     cpSync("prisma/migrations/migration_lock.toml", join(workdir, "prisma", "migrations", "migration_lock.toml"));
-    for (const name of ALL.filter((n) => !LOT_MIGRATIONS.includes(n))) cpSync(join("prisma/migrations", name), join(workdir, "prisma", "migrations", name), { recursive: true });
+    for (const name of ALL.filter((n) => !LOT_MIGRATIONS.includes(n) && n < LOT_MIGRATIONS[0])) cpSync(join("prisma/migrations", name), join(workdir, "prisma", "migrations", name), { recursive: true });
     const baseline = spawnSync(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy", `--schema=${join(workdir, "prisma", "schema.prisma")}`],
       { env: { ...process.env, DATABASE_URL: url() }, encoding: "utf8" });
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0);

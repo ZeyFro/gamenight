@@ -54,7 +54,8 @@ describe("plan de renommage du lot", () => {
 describe("état du dépôt", () => {
   const migrationsDir = resolve("prisma/migrations");
   const all = readdirSync(migrationsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  const others = all.filter((name) => !batch.includes(name));
+  // Migrations antérieures au lot : celles qui lui sont postérieures (ajoutées après sa fusion) sont légitimes.
+  const others = all.filter((name) => !batch.includes(name) && name < batch[0]);
 
   it("le lot est complet dans le checkout", () => {
     for (const name of batch) expect(all).toContain(name);
