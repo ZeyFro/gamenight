@@ -62,7 +62,7 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
     expect(result).toEqual({ ok: false, error: "confidentialite_soirees_webhook_public_desactive" });
   });
 
-  it("aucune notification interne pour un refus de préférence SESSION", async () => {
+  it("transmet la catégorie SESSION à la notification interne pour filtrage des préférences", async () => {
     userFindMany.mockResolvedValue([
       { id: "u-refuse", discordId: "discord-refuse", silenceReminders: false },
     ]);
@@ -80,7 +80,9 @@ describe("annonce webhook de création — supprimée par confidentialité, noti
       { id: "creator", discordId: "discord-creator" }
     );
 
-    expect(createNotifications).toHaveBeenCalledWith([]);
+    expect(createNotifications).toHaveBeenCalledWith([
+      expect.objectContaining({ userId: "u-refuse", personalCategory: "SESSION" }),
+    ]);
   });
 
   it("aucune notification interne pour un invité dont l'invitation n'est plus active (révoquée)", async () => {
