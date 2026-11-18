@@ -2874,6 +2874,7 @@ enum CommunityChannelCategory {
 
 model Community {
   teamApplications TeamApplication[]
+  teamRecruitmentCriteria TeamRecruitmentCriteria[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
@@ -3034,6 +3035,7 @@ model CommunityTeam {
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
   applications TeamApplication[]
+  recruitmentCriteria TeamRecruitmentCriteria?
 
   @@index([communityId, isRecruiting, createdAt])
   @@index([createdById, communityId])
@@ -3099,6 +3101,49 @@ model TeamApplication {
   @@unique([teamId, applicantId])
   @@index([communityId, teamId, status])
   @@index([applicantId, communityId])
+}
+
+// Objectifs et critères de recrutement structurés d'une équipe (cahier §11.2). Une ligne au plus par équipe,
+// éditée par le capitaine ; pas de ligne = aucun critère renseigné. Aucun envoi de notification.
+enum TeamGoal {
+  DETENTE
+  COMPETITIF
+  PROGRESSION
+  DECOUVERTE
+  SOCIAL
+}
+
+enum TeamMicRequirement {
+  REQUIRED
+  PREFERRED
+  NOT_NEEDED
+}
+
+enum TeamAvailabilitySlot {
+  WEEKDAY_DAY
+  WEEKDAY_EVENING
+  WEEKEND_DAY
+  WEEKEND_EVENING
+  NIGHT
+}
+
+model TeamRecruitmentCriteria {
+  teamId        String   @id
+  communityId   String
+  goals         TeamGoal[]
+  minLevel      String?  @db.VarChar(20)
+  mic           TeamMicRequirement?
+  slots         TeamAvailabilitySlot[]
+  platforms     String[]
+  note          String?  @db.VarChar(300)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+
+  @@unique([teamId, communityId])
+  @@index([communityId])
 }
 
 model SessionGalleryMedia {
