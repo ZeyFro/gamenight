@@ -191,7 +191,7 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
               : "Aucun étage gagné sur cette période pour le moment.";
             const period = "<t:" + Math.floor(board.season.startAt.getTime() / 1000) + ":D> — <t:" + Math.floor(board.season.endAt.getTime() / 1000) + ":D>";
             response.content = "🏆 **Classement The Tower — " + board.season.name + "**\n"
-              + (board.season.active ? "Trimestre en cours" : "Intersaison · dernier classement") + " · " + period + "\n\n" + rows;
+              + (board.season.active ? "Saison en cours" : "Saison terminée · dernier classement") + " · " + period + "\n\n" + rows;
           }
         } else if (action?.[1] === "season-vote") {
           response = renderSeasonVote(await getTowerSeasonVote(actor), actor.userId);

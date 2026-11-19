@@ -1,4 +1,4 @@
-# The Tower — workflow de défi d'équipe quotidien à 09:00 Europe/Paris
+# The Tower — workflow de défi d'équipe quotidien à 18:00 Europe/Paris
 
 ## État
 
@@ -13,10 +13,10 @@ Les tests du contrat YAML sont multiplateformes. Les tests qui exécutent réell
 - Route appelée : `GET /api/cron/tower-team-daily`.
 - Authentification : `Authorization: Bearer` avec le secret GitHub Actions `CRON_SECRET`, dont la valeur devra correspondre à celle déjà acceptée par l'endpoint.
 - Hôte : variable GitHub Actions `GAMENIGHT_CRON_BASE_URL`, origine HTTPS uniquement; aucun hôte n'est codé en dur.
-- Calendrier GitHub, en UTC : `0 7,8 * * *`.
-  - été : 07:00 UTC correspond à 09:00 Paris; 08:00 UTC est ignoré;
-  - hiver : 08:00 UTC correspond à 09:00 Paris; 07:00 UTC est ignoré.
-- Le workflow vérifie l'heure Europe/Paris et appelle l'endpoint uniquement pendant l'heure locale 09.
+- Calendrier GitHub, en UTC : `0 16,17 * * *`.
+  - été (CEST) : 16:00 UTC correspond à 18:00 Paris; 17:00 UTC (19:00 Paris) est ignoré;
+  - hiver (CET) : 17:00 UTC correspond à 18:00 Paris; 16:00 UTC (17:00 Paris) est ignoré.
+- Le workflow vérifie l'heure Europe/Paris et appelle l'endpoint uniquement pendant l'heure locale 18 (décision du 17/11/2026 : 18:00 au lieu de 09:00).
 - Deux déclencheurs UTC couvrent les changements CET/CEST. La clé d'idempotence de l'endpoint est fondée sur la date Europe/Paris; elle évite une nouvelle attribution si un appel est rejoué ou si deux exécutions atteignent le même jour.
 - HTTP 503 signifie que le lot est incomplet ou qu’au moins une attribution a échoué : le workflow retente jusqu'à 3 appels au total, avec une attente croissante. Tout statut différent de 200 ou toute réponse non confirmée `enabled=true, failed=0, complete=true` fait échouer l'exécution.
 - Une route désactivée renvoie 200 avec `enabled=false`; le workflow traite ce cas comme un échec visible, sans le présenter comme une attribution réussie.
@@ -28,7 +28,7 @@ Les tests du contrat YAML sont multiplateformes. Les tests qui exécutent réell
 2. Créer la variable Actions `GAMENIGHT_CRON_BASE_URL` avec l'origine HTTPS de l'application prise depuis la source de déploiement autorisée; ne pas la mettre dans le code.
 3. Confirmer séparément que les interrupteurs d'application sont déjà activés et que l'endpoint est disponible. Si ce n'est pas le cas, arrêter ici : cela requiert une décision de configuration distincte.
 4. Après l'accord distinct de fusion, la présence du workflow sur la branche par défaut ne suffit pas à appeler la route. Après l'accord distinct d'activation, définir la variable Actions `TOWER_TEAM_DAILY_ENABLED` à `true`. Aucun réglage réel n'est effectué par cette PR. Supprimer cette variable ou la mettre à `false` arrête les prochains appels ; cela n'annule pas un appel déjà en cours.
-5. Contrôler la première exécution planifiée : un seul slot doit appeler l'endpoint à 09:00 Paris, le résultat doit confirmer `enabled=true`, `failed=0` et `complete=true`, et l'autre slot UTC doit être ignoré. Examiner tout échec avant de modifier une configuration.
+5. Contrôler la première exécution planifiée : un seul slot doit appeler l'endpoint à 18:00 Paris, le résultat doit confirmer `enabled=true`, `failed=0` et `complete=true`, et l'autre slot UTC doit être ignoré. Examiner tout échec avant de modifier une configuration.
 
 Aucun workflow n'est déclenché manuellement par cette PR. Aucun secret, hôte de production, changement de configuration, appel HTTP réel, action Discord ou migration n'est effectué pendant sa préparation.
 
@@ -39,3 +39,7 @@ Chaque appel sélectionne au plus 101 équipes sans attribution pour la date Eur
 Le budget restant borne l’attente de connexion et la transaction Prisma ; PostgreSQL reçoit aussi un statement_timeout réactualisé avant chaque instruction de l’attribution. Aucun Promise.race ne laisse une écriture continuer après retour. Les appels interactifs sans échéance conservent leurs budgets précédents.
 
 Le workflow retente les HTTP 503/504 et les erreurs de transport, trois appels au total, sans dupliquer les attributions déjà effectuées. Il n’accepte un succès que si enabled=true, failed=0 et complete=true. Au-delà de trois lots ou d’un échec persistant, il échoue explicitement ; aucun succès partiel silencieux. Aucune activation externe n’est réalisée par ce changement.
+
+## Garde horaire côté application
+
+Le cron `notification-executor` appelle aussi `assignDailyTowerTeamChallenges` via `settleDueTowerChallenges`. Pour que l'attribution ne parte jamais avant 18:00 Paris (décision du 17/11/2026), `settleDueTowerChallenges` n'appelle l'attribution que si `isTowerTeamDailyDue(maintenant)` (`src/lib/tower-challenge-rules.ts`) est vrai, c'est-à-dire à partir de 18:00:00 Europe/Paris (CET et CEST) jusqu'à minuit Paris. Avant 18:00, le passage de l'executor ne fait aucune attribution et n'est pas compté en échec. Une attribution tardive après 18:00 reste valable jusqu'à minuit ; la clé `team-<jour de Paris>` garantit un seul défi d'équipe par jour. La route `/api/cron/tower-team-daily` n'a pas cette garde : l'horaire de son appel est porté par le workflow.

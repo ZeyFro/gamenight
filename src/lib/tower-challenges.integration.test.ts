@@ -227,7 +227,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(closed.candidates.find(candidate => candidate.userId === "tower-a2")?.votes).toBe(1);
     expect(await db.towerSeasonVoteBallot.count({ where: { communityId: "tower-a" } })).toBe(2);
   });
-  it("ouvre le vote de l’été dès le début de S4, sans intersaison", async () => {
+  it("ouvre le vote de l’été dès le début de S3, sans intersaison", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "summer-finalist-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
       requestKey: "summer-finalist-" + index, title: "Défi été", instructions: "À réaliser",
@@ -246,7 +246,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(opened.candidates.map(candidate => candidate.userId)).toEqual(["tower-a2", "tower-a1"]);
   });
 
-  it("ouvre le vote de S4 pendant l’intersaison du 1er au 3 janvier", async () => {
+  it("ouvre le vote de S3 2026 une fois S1 2026-2027 commencée (1er décembre), sans intersaison", async () => {
     await db.towerChallengeAttempt.createMany({ data: ["tower-a1", "tower-a2"].map((userId, index) => ({
       id: "season-boundary-" + index, communityId: "tower-a", userId, definitionId: "tower-a-easy",
       requestKey: "season-boundary-" + index, title: "Défi trimestre", instructions: "À réaliser",
@@ -259,7 +259,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2027-01-01T12:00:00Z");
     const opened = await api.getTowerSeasonVote(author);
     if (opened.status !== "VOTE_OPEN") throw new Error("Scrutin du trimestre terminé attendu");
-    expect(opened.season.name).toBe("S4 · 2026");
+    expect(opened.season.name).toBe("S3 · 2026");
     expect(opened.season.active).toBe(false);
     expect(opened.closesAt).toEqual(new Date("2027-01-03T12:00:00Z"));
 
@@ -566,6 +566,36 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(results.every(r => r.status === "APPROVED")).toBe(true);
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(1));
     expect(await db.towerChallengeAttempt.count({ where: { rewardedAt: { not: null } } })).toBe(1);
+  });
+  it("l'executor n'attribue le défi d'équipe qu'à partir de 18:00 Paris, une seule fois par jour de Paris", async () => {
+    vi.stubEnv("TOWER_DISCORD_GUILD_ID", towerTestGuildId);
+    await db.community.update({ where: { id: "tower-a" }, data: { discordGuildId: towerTestGuildId, communityTeamsEnabled: true } });
+    const game = await db.game.create({ data: { id: "tower-team-game", name: "Tower Team Game", source: "MANUAL", addedById: "tower-author" } });
+    const team = await db.communityTeam.create({ data: {
+      id: "tower-team-a", communityId: "tower-a", gameId: game.id, createdById: "tower-author",
+      name: "Les grimpeurs", description: "Défis partagés", platform: "PC", maxMembers: 5,
+    } });
+    await db.communityTeamMember.createMany({ data: ["tower-author", "tower-a1"].map(userId => ({
+      communityId: "tower-a", teamId: team.id, userId,
+    })) });
+    await db.towerChallengeDefinition.create({ data: {
+      id: "tower-a-team", communityId: "tower-a", mode: "TEAM", title: "Le défi collectif",
+      instructions: "Jouez ensemble.", rewardFloors: 2, active: true,
+    } });
+    const attempts = () => db.towerChallengeAttempt.count({ where: { teamId: team.id } });
+    const settleAt = async (iso: string) => {
+      clock.now = new Date(iso);
+      return api.settleDueTowerChallenges(new Date(clock.now.getTime() + 5000));
+    };
+    // 29 octobre 2026 : CET, 18:00 Paris = 17:00 UTC.
+    expect(await settleAt("2026-10-29T00:00:00Z")).toMatchObject({ failed: 0 });
+    expect(await settleAt("2026-10-29T16:59:59Z")).toMatchObject({ failed: 0 });
+    expect(await attempts()).toBe(0);
+    expect(await settleAt("2026-10-29T17:00:00Z")).toMatchObject({ failed: 0 });
+    expect(await attempts()).toBe(1);
+    // Rejeu tardif le même jour de Paris (jusqu'à minuit) : aucun second défi.
+    expect(await settleAt("2026-10-29T22:59:59Z")).toMatchObject({ failed: 0 });
+    expect(await attempts()).toBe(1);
   });
   it("attribue un seul défi quotidien par équipe et crédite ses participants sous le quota solo/équipe partagé", async () => {
     await db.community.update({ where: { id: "tower-a" }, data: { communityTeamsEnabled: true } });

@@ -7,7 +7,7 @@ import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-d
 import { logger } from "@/lib/logger";
 import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "@/lib/tower-challenge-rules";
+import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
 import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, TOWER_CHALLENGE_VOTE_QUORUM } from "@/lib/tower-challenge-voting";
 import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
 import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
@@ -870,10 +870,13 @@ export async function settleDueTowerChallenges(deadline: Date) {
   const guildId = process.env.TOWER_DISCORD_GUILD_ID;
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true" || !/^[0-9]{16,20}$/.test(guildId ?? "")
     || !Number.isFinite(deadline.getTime()) || Date.now() >= deadline.getTime()) return summary;
-  const assignments = await assignDailyTowerTeamChallenges(deadline);
+  const current = now();
+  // Décision du 17/11/2026 : pas d'attribution du défi d'équipe avant 18:00 Europe/Paris, même depuis l'executor.
+  const assignments = isTowerTeamDailyDue(current)
+    ? await assignDailyTowerTeamChallenges(deadline)
+    : { checked: 0, failed: 0, complete: true };
   summary.failed += assignments.failed;
   if (!assignments.complete && !assignments.failed) summary.failed++;
-  const current = now();
   const candidates = await prisma.$transaction(async tx => {
     const community = await tx.community.findFirst({
       where: { discordGuildId: guildId, status: "ACTIVE", towerChallengesEnabled: true }, select: { id: true },

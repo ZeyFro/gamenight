@@ -14,18 +14,18 @@ beforeEach(() => {
   mocks.community.mockResolvedValue("community");
   mocks.redirect.mockImplementation(() => { throw new Error("REDIRECT"); });
   mocks.progress.mockResolvedValue({ status: "DISABLED" });
-  mocks.podium.mockResolvedValue({ status: "PODIUM", season: { name: "S1 · 2027", startAt: new Date("2027-01-03T23:00:00Z"), endAt: new Date("2027-03-28T22:00:00Z") }, entries: [] });
+  mocks.podium.mockResolvedValue({ status: "PODIUM", season: { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00Z"), endAt: new Date("2027-03-31T22:00:00Z") }, entries: [] });
 });
 afterEach(cleanup);
 it("affiche les dates de Paris et un état vide sans faux gagnant", async () => {
   render(await Page());
-  expect(screen.getByText(/4 janvier 2027/)).toBeTruthy();
-  expect(screen.getByText(/28 mars 2027/)).toBeTruthy();
+  expect(screen.getByText(/1(er)? décembre 2026/)).toBeTruthy();
+  expect(screen.getByText(/31 mars 2027/)).toBeTruthy();
   expect(screen.getByText(/Aucune récompense créditée/)).toBeTruthy();
   expect(screen.queryByRole("list", { name: "Podium de la saison terminée" })).toBeNull();
 });
 it("présente le podium calculé et échappe les noms des membres", async () => {
-  mocks.podium.mockResolvedValueOnce({ status: "PODIUM", season: { name: "S1 · 2027", startAt: new Date("2027-01-03T23:00:00Z"), endAt: new Date("2027-03-28T22:00:00Z") }, entries: [{ rank: 1, displayName: "<img src=x>", rewardFloors: "6", difficultWins: "2" }] });
+  mocks.podium.mockResolvedValueOnce({ status: "PODIUM", season: { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00Z"), endAt: new Date("2027-03-31T22:00:00Z") }, entries: [{ rank: 1, displayName: "<img src=x>", rewardFloors: "6", difficultWins: "2" }] });
   const { container } = render(await Page());
   expect(screen.getByRole("list", { name: "Podium de la saison terminée" })).toBeTruthy();
   expect(screen.getByText(/6 étage/)).toBeTruthy();
@@ -46,7 +46,7 @@ it("ne lit aucune communauté de repli si aucune n'est sélectionnée", async ()
   expect(mocks.podium).not.toHaveBeenCalled();
   expect(mocks.progress).not.toHaveBeenCalled();
 });
-const season = { name: "S1 · 2027", startAt: new Date("2027-01-03T23:00:00Z"), endAt: new Date("2027-03-28T22:00:00Z") };
+const season = { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00Z"), endAt: new Date("2027-03-31T22:00:00Z") };
 it("affiche les co-lauréats à la même place avec la mention ex æquo, sans en écarter un seul", async () => {
   mocks.podium.mockResolvedValueOnce({ status: "PODIUM", season, entries: [
     { rank: 1, exAequo: true, displayName: "Alpha", rewardFloors: "6", difficultWins: "2" },
