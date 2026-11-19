@@ -219,6 +219,9 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  coOrganizedSessions Session[] @relation("SessionCoOrganizer")
+  sessionApplications SessionApplication[] @relation("SessionApplicant")
+  sessionApplicationsDecided SessionApplication[] @relation("SessionApplicationDecider")
   sessionPreparations SessionPreparation[]
   sessionSeats SessionSeat[]
   sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
@@ -685,6 +688,17 @@ model Session {
   communityTeamId String?
   communityTeam CommunityTeam? @relation(fields: [communityTeamId], references: [id], onDelete: SetNull)
 
+  // Visibilité (flag SESSION_VISIBILITY_ENABLED) : PRIVATE = comportement historique
+  // (créateur + invités actifs, jamais listée aux autres). PUBLIC / APPLICATION rendent la
+  // soirée découvrable par les membres actifs de sa communauté ; l'ACCÈS au contenu reste
+  // celui des invitations (voir src/lib/session-access.ts), jamais élargi par cette colonne.
+  visibility SessionVisibility @default(PRIVATE)
+  // Coorganisateur unique, optionnel : gère invitations/candidatures et le créneau, jamais la suppression.
+  coOrganizerId String?
+  coOrganizer   User?  @relation("SessionCoOrganizer", fields: [coOrganizerId], references: [id], onDelete: SetNull)
+  applications  SessionApplication[]
+  discordSpace  SessionDiscordSpace?
+
   // Sessions créées comme occurrences d'une même création récurrente. Null
   // pour les anciennes séries et quand la gestion groupée est désactivée.
   recurrenceGroupId String?
@@ -692,6 +706,8 @@ model Session {
   @@index([communityId])
   @@index([communityTeamId])
   @@index([recurrenceGroupId])
+  @@index([coOrganizerId])
+  @@index([visibility, status, date])
 
   createdBy         User               @relation(fields: [createdById], references: [id])
   decidedGame       Game?              @relation(fields: [decidedGameId], references: [id])
@@ -778,6 +794,63 @@ model SessionInvite {
 enum SessionInviteStatus {
   ACTIVE
   REVOKED
+}
+
+enum SessionVisibility {
+  PRIVATE
+  PUBLIC
+  APPLICATION
+}
+
+enum SessionApplicationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+// Candidature à une soirée « sur candidature » : acceptée par le créateur ou le coorganisateur,
+// elle crée alors une SessionInvite ACTIVE (l'accès reste celui des invitations). Une seule ligne par
+// (soirée, candidat). La communauté est héritée de Session, comme SessionSeat.
+model SessionApplication {
+  id          String   @id @default(cuid())
+  sessionId   String
+  applicantId String
+  message     String?  @db.VarChar(300)
+  status      SessionApplicationStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  applicant User    @relation("SessionApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  decidedBy User?   @relation("SessionApplicationDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, applicantId])
+  @@index([sessionId, status])
+  @@index([applicantId])
+}
+
+// Espace Discord temporaire d'une soirée (flag SESSION_VISIBILITY_ENABLED) : fil privé + salon vocal
+// privé créés 30 min avant, supprimés une fois le vocal vide après la fin. Écrit uniquement par
+// l'executor (file SESSION_SPACE_SYNC), jamais par une action web.
+model SessionDiscordSpace {
+  id              String    @id @default(cuid())
+  sessionId       String    @unique
+  communityId     String
+  guildId         String
+  parentChannelId String
+  threadId        String?   @unique
+  voiceChannelId  String?   @unique
+  cleanedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId])
+  @@index([cleanedAt])
 }
 
 // Sprint 4 (FEATURE 1, Pronostics) — avant une soirée SCHEDULED, chaque
@@ -2875,6 +2948,7 @@ enum CommunityChannelCategory {
 model Community {
   teamApplications TeamApplication[]
   discordTeamSpaces DiscordTeamSpace[]
+  sessionDiscordSpaces SessionDiscordSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
