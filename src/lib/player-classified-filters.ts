@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parsePlayerClassifiedDateTime, PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS, PLAYER_CLASSIFIED_PARTY_TYPES } from "@/lib/player-classifieds-rules";
 import { PLAYER_PLATFORMS } from "./player-equipment";
+import { GAME_LEVELS } from "./game-levels-rules";
 
 const dateField = z.string().max(10).optional().refine(value => !value || /^\d{4}-\d{2}-\d{2}$/.test(value));
 const timeField = z.string().max(5).optional().refine(value => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value));
@@ -12,6 +13,8 @@ export const playerClassifiedFiltersSchema = z.object({
   partyPlatform: z.enum(["", ...PLAYER_PLATFORMS.map(option => option.key)]).optional(),
   microphoneRequirement: z.enum(["", ...PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS.map(option => option.value)]).optional(),
   partyType: z.enum(["", ...PLAYER_CLASSIFIED_PARTY_TYPES.map(option => option.value)]).optional(),
+  // Niveau minimum de l'auteur pour le jeu de l'annonce (GAME_LEVELS_MATCHMAKING_ENABLED) ; appliqué après lecture, pas en SQL.
+  level: z.enum(["", ...GAME_LEVELS]).optional(),
   startsAfterDate: dateField,
   startsAfterTime: timeField,
   startsBeforeDate: dateField,
@@ -45,6 +48,7 @@ export function parsePlayerClassifiedFilters(params: PlayerClassifiedSearchParam
     partyPlatform: params.partyPlatform,
     microphoneRequirement: params.microphoneRequirement,
     partyType: params.partyType,
+    level: params.level,
     startsAfterDate: params.startsAfterDate,
     startsAfterTime: params.startsAfterTime,
     startsBeforeDate: params.startsBeforeDate,

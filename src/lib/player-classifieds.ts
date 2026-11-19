@@ -3,6 +3,7 @@ import { playerClassifiedFiltersSchema, playerClassifiedFilterWhere, type Player
 import { findActiveMembership } from "@/lib/community-access";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getScopedPrisma } from "@/lib/community-scoped-client";
+import { withPosterLevels } from "@/lib/game-levels-matchmaking";
 export { playerClassifiedExpiresAt, playerClassifiedSchema } from "@/lib/player-classifieds-rules";
 
 export async function getPlayerClassifiedCommunityId(userId: string): Promise<string | null> {
@@ -38,5 +39,6 @@ export async function listPlayerClassifieds(userId: string, communityId: string,
     },
     orderBy: { createdAt: "desc" },
   });
-  return listings;
+  const parsedFilters = playerClassifiedFiltersSchema.parse(filters);
+  return withPosterLevels(listings, parsedFilters.level || null);
 }
