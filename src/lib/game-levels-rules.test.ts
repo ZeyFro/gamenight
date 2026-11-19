@@ -14,16 +14,16 @@ describe("drapeau GAME_LEVELS_ENABLED", () => {
 
 describe("schéma d'un niveau", () => {
   it("accepte les quatre niveaux et rogne l'identifiant", () => {
-    for (const level of ["DEBUTANT", "INTERMEDIAIRE", "AVANCE", "EXPERT"]) {
+    for (const level of ["DEBUTANT", "INTERMEDIAIRE", "CONFIRME", "COMPETITIF"]) {
       expect(gameLevelSchema.parse({ gameId: " g1 ", level })).toEqual({ gameId: "g1", level });
     }
   });
   it.each([
     ["niveau inconnu", { gameId: "g", level: "DIEU" }],
     ["niveau en minuscules", { gameId: "g", level: "expert" }],
-    ["jeu vide", { gameId: "  ", level: "EXPERT" }],
-    ["jeu absent", { level: "EXPERT" }],
-    ["champ inconnu (userId forgé)", { gameId: "g", level: "EXPERT", userId: "autre" }],
+    ["jeu vide", { gameId: "  ", level: "COMPETITIF" }],
+    ["jeu absent", { level: "COMPETITIF" }],
+    ["champ inconnu (userId forgé)", { gameId: "g", level: "COMPETITIF", userId: "autre" }],
   ])("refuse : %s", (_label, input) => {
     expect(gameLevelSchema.safeParse(input).success).toBe(false);
   });
@@ -36,17 +36,17 @@ describe("schéma d'un niveau", () => {
 
 describe("comparaison des niveaux", () => {
   it("ordonne du débutant à l'expert", () => {
-    expect(gameLevelAtLeast("AVANCE", "INTERMEDIAIRE")).toBe(true);
+    expect(gameLevelAtLeast("CONFIRME", "INTERMEDIAIRE")).toBe(true);
     expect(gameLevelAtLeast("INTERMEDIAIRE", "INTERMEDIAIRE")).toBe(true);
     expect(gameLevelAtLeast("DEBUTANT", "INTERMEDIAIRE")).toBe(false);
   });
   it("liste les niveaux qui satisfont un minimum", () => {
-    expect(gameLevelsFrom("DEBUTANT")).toEqual(["DEBUTANT", "INTERMEDIAIRE", "AVANCE", "EXPERT"]);
-    expect(gameLevelsFrom("AVANCE")).toEqual(["AVANCE", "EXPERT"]);
-    expect(gameLevelsFrom("EXPERT")).toEqual(["EXPERT"]);
+    expect(gameLevelsFrom("DEBUTANT")).toEqual(["DEBUTANT", "INTERMEDIAIRE", "CONFIRME", "COMPETITIF"]);
+    expect(gameLevelsFrom("CONFIRME")).toEqual(["CONFIRME", "COMPETITIF"]);
+    expect(gameLevelsFrom("COMPETITIF")).toEqual(["COMPETITIF"]);
   });
   it("reconnaît une valeur valide", () => {
-    expect(isGameLevel("EXPERT")).toBe(true);
+    expect(isGameLevel("COMPETITIF")).toBe(true);
     expect(isGameLevel("expert")).toBe(false);
     expect(isGameLevel(undefined)).toBe(false);
   });

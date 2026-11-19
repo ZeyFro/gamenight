@@ -33,23 +33,23 @@ describe("actions des niveaux par jeu", () => {
 
   it("refuse un visiteur", async () => {
     mocks.getCurrentUser.mockResolvedValue(null);
-    await expect(setGameLevelAction(form({ gameId: "g", level: "EXPERT" }))).rejects.toThrow("REDIRECT:/");
+    await expect(setGameLevelAction(form({ gameId: "g", level: "COMPETITIF" }))).rejects.toThrow("REDIRECT:/");
     expect(mocks.setLevel).not.toHaveBeenCalled();
   });
 
   it("est inerte flag éteint", async () => {
     vi.stubEnv("GAME_LEVELS_ENABLED", "false");
-    await expect(setGameLevelAction(form({ gameId: "g", level: "EXPERT" }))).rejects.toThrow("niveaux=indisponible");
+    await expect(setGameLevelAction(form({ gameId: "g", level: "COMPETITIF" }))).rejects.toThrow("niveaux=indisponible");
     await expect(removeGameLevelAction(form({ gameId: "g" }))).rejects.toThrow("niveaux=indisponible");
     expect(mocks.setLevel).not.toHaveBeenCalled();
     expect(mocks.removeLevel).not.toHaveBeenCalled();
   });
 
   it("n'écrit que pour la session : un userId forgé est ignoré", async () => {
-    await expect(setGameLevelAction(form({ gameId: "g", level: "AVANCE" }))).rejects.toThrow("niveaux=saved");
-    expect(mocks.setLevel).toHaveBeenCalledWith("me", "g", "AVANCE");
-    await expect(setGameLevelAction(form({ gameId: "g2", level: "EXPERT", userId: "autre" }))).rejects.toThrow("niveaux=saved");
-    expect(mocks.setLevel).toHaveBeenLastCalledWith("me", "g2", "EXPERT");
+    await expect(setGameLevelAction(form({ gameId: "g", level: "CONFIRME" }))).rejects.toThrow("niveaux=saved");
+    expect(mocks.setLevel).toHaveBeenCalledWith("me", "g", "CONFIRME");
+    await expect(setGameLevelAction(form({ gameId: "g2", level: "COMPETITIF", userId: "autre" }))).rejects.toThrow("niveaux=saved");
+    expect(mocks.setLevel).toHaveBeenLastCalledWith("me", "g2", "COMPETITIF");
   });
 
   it("refuse un niveau hors énumération sans écrire", async () => {
@@ -61,10 +61,10 @@ describe("actions des niveaux par jeu", () => {
 
   it("applique la limite de débit et relaie la limite par utilisateur", async () => {
     mocks.rateLimit.mockReturnValue(false);
-    await expect(setGameLevelAction(form({ gameId: "g", level: "EXPERT" }))).rejects.toThrow("niveaux=rate_limited");
+    await expect(setGameLevelAction(form({ gameId: "g", level: "COMPETITIF" }))).rejects.toThrow("niveaux=rate_limited");
     mocks.rateLimit.mockReturnValue(true);
     mocks.setLevel.mockResolvedValue("limit");
-    await expect(setGameLevelAction(form({ gameId: "g", level: "EXPERT" }))).rejects.toThrow("niveaux=limit");
+    await expect(setGameLevelAction(form({ gameId: "g", level: "COMPETITIF" }))).rejects.toThrow("niveaux=limit");
   });
 
   it("retire le niveau de la session", async () => {

@@ -8,13 +8,18 @@ import { GET } from "./route";
 
 describe("GET /api/cron/tower-team-daily", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-19T17:30:00.000Z")); // 18:30 Europe/Paris
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("CRON_SECRET", "cron-test-secret");
     vi.stubEnv("TOWER_TEAM_DAILY_ENABLED", "false");
     mocks.assign.mockReset().mockResolvedValue({ checked: 3, failed: 0, complete: true });
     mocks.error.mockReset();
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
 
   const request = (secret = "cron-test-secret") => new Request("https://example.invalid/api/cron/tower-team-daily", {
     headers: { authorization: `Bearer ${secret}` },
@@ -38,6 +43,15 @@ describe("GET /api/cron/tower-team-daily", () => {
     vi.stubEnv("TOWER_TEAM_DAILY_ENABLED", "true");
     const response = await GET(request());
     expect(response.status).toBe(503);
+    expect(mocks.assign).not.toHaveBeenCalled();
+  });
+
+  it("n'attribue rien avant 18:00 Europe/Paris, même appelée à la main", async () => {
+    vi.stubEnv("TOWER_TEAM_DAILY_ENABLED", "true");
+    vi.setSystemTime(new Date("2026-11-19T16:59:59.000Z")); // 17:59:59 à Paris
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ enabled: true, due: false, checked: 0, failed: 0, complete: true });
     expect(mocks.assign).not.toHaveBeenCalled();
   });
 

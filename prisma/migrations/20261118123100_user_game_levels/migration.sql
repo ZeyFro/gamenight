@@ -1,6 +1,6 @@
 -- Niveaux de jeu auto-déclarés par jeu (cahier §12.4). Migration additive : une enum et une nouvelle table,
 -- aucune table existante modifiée. À appliquer après #416.
-CREATE TYPE "GameLevel" AS ENUM ('DEBUTANT', 'INTERMEDIAIRE', 'AVANCE', 'EXPERT');
+CREATE TYPE "GameLevel" AS ENUM ('DEBUTANT', 'INTERMEDIAIRE', 'CONFIRME', 'COMPETITIF');
 
 CREATE TABLE "UserGameLevel" (
     "userId" TEXT NOT NULL,
