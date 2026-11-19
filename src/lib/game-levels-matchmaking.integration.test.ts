@@ -39,10 +39,10 @@ describe.skipIf(!TEST_DATABASE_URL)("niveau par jeu : appariement de tournoi (Po
 
   it("apparie le plus fort avec le plus faible selon le niveau du jeu du tournoi", async () => {
     await db.userGameLevel.createMany({ data: [
-      { userId: ids.pro, gameId: ids.game, level: "EXPERT" }, { userId: ids.good, gameId: ids.game, level: "AVANCE" },
+      { userId: ids.pro, gameId: ids.game, level: "COMPETITIF" }, { userId: ids.good, gameId: ids.game, level: "CONFIRME" },
       { userId: ids.mid, gameId: ids.game, level: "INTERMEDIAIRE" }, { userId: ids.newbie, gameId: ids.game, level: "DEBUTANT" },
       // Un niveau sur un autre jeu ne compte pas.
-      { userId: ids.newbie, gameId: ids.other, level: "EXPERT" },
+      { userId: ids.newbie, gameId: ids.other, level: "COMPETITIF" },
     ] });
     await db.$transaction((tx) => lib.buildBracketInTransaction(tx, ids.tournament));
     expect(await teamsByName()).toEqual([["good", "mid"], ["newbie", "pro"]]);
@@ -59,7 +59,7 @@ describe.skipIf(!TEST_DATABASE_URL)("niveau par jeu : appariement de tournoi (Po
     vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
     await db.userProfileVisibility.create({ data: { userId: ids.pro, visibility: "HIDDEN" } });
     await db.userGameLevel.createMany({ data: [
-      { userId: ids.pro, gameId: ids.game, level: "EXPERT" }, { userId: ids.newbie, gameId: ids.game, level: "DEBUTANT" },
+      { userId: ids.pro, gameId: ids.game, level: "COMPETITIF" }, { userId: ids.newbie, gameId: ids.game, level: "DEBUTANT" },
     ] });
     const { loadGameLevels } = await import("./game-levels-matchmaking");
     const levels = await loadGameLevels([ids.pro, ids.newbie], ids.game);

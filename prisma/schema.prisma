@@ -53,6 +53,11 @@ model User {
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  towerIrregularGrants TowerIrregularGrant[] @relation("TowerIrregularHolder")
+  towerIrregularGrantsGiven TowerIrregularGrant[] @relation("TowerIrregularGranter")
+  towerIrregularGrantsRevoked TowerIrregularGrant[] @relation("TowerIrregularRevoker")
+  towerIrregularLogs TowerIrregularLog[] @relation("TowerIrregularLogHolder")
+  towerIrregularLogsActed TowerIrregularLog[] @relation("TowerIrregularLogActor")
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -2884,6 +2889,8 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerIrregularGrants TowerIrregularGrant[]
+  towerIrregularLogs TowerIrregularLog[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3105,6 +3112,29 @@ model TeamApplication {
   @@index([applicantId, communityId])
 }
 
+// Niveau de jeu auto-déclaré (cahier §12.4), un par utilisateur et par jeu. Donnée personnelle du profil (comme
+// UserGame) : pas de communauté dans la clé, la lecture par un tiers passe par canViewPote (membres de ses
+// communautés, profil non masqué). Pas de ligne = niveau non déclaré.
+enum GameLevel {
+  DEBUTANT
+  INTERMEDIAIRE
+  CONFIRME
+  COMPETITIF
+}
+
+model UserGameLevel {
+  userId    String
+  gameId    String
+  level     GameLevel
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@index([gameId, level])
+}
+
 // Association fiable équipe ↔ ressources Discord gérées par GameNight (option A du 18/11/2026) :
 // salon textuel privé permanent + salon vocal privé permanent + rôle sans permission.
 // `teamId`, `channelId` et `voiceChannelId` sont uniques : un rejeu ne peut pas créer un second
@@ -3128,29 +3158,6 @@ model DiscordTeamSpace {
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
 
   @@index([communityId])
-}
-
-// Niveau de jeu auto-déclaré (cahier §12.4), un par utilisateur et par jeu. Donnée personnelle du profil (comme
-// UserGame) : pas de communauté dans la clé, la lecture par un tiers passe par canViewPote (membres de ses
-// communautés, profil non masqué). Pas de ligne = niveau non déclaré.
-enum GameLevel {
-  DEBUTANT
-  INTERMEDIAIRE
-  AVANCE
-  EXPERT
-}
-
-model UserGameLevel {
-  userId    String
-  gameId    String
-  level     GameLevel
-  updatedAt DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
-
-  @@id([userId, gameId])
-  @@index([gameId, level])
 }
 
 model SessionGalleryMedia {
@@ -3444,6 +3451,10 @@ model TowerChallengeAttempt {
   rejectedAt DateTime?
   staffReportedAt DateTime?
   archivedAt DateTime?
+  // Sans quorum à 24 h : prolongation unique de 24 h, puis rejet sans pénalité et une resoumission.
+  voteExtendedAt DateTime?
+  quorumResubmissions Int @default(0)
+  resubmitUntil DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?
@@ -3527,6 +3538,43 @@ model TowerChallengeProgress {
 
   @@id([communityId, userId])
 }
+// Irregular (cahier 6.1) : grade de prestige attribué À LA MAIN par le staff communautaire (OWNER/ADMIN),
+// sans aucun droit. Une ligne par joueur et par communauté ; révoquée = revokedAt renseigné.
+model TowerIrregularGrant {
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularHolder", fields: [userId], references: [id], onDelete: Cascade)
+  grantedById String?
+  grantedBy User? @relation("TowerIrregularGranter", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+  revokedById String?
+  revokedBy User? @relation("TowerIrregularRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@id([communityId, userId])
+}
+
+enum TowerIrregularAction {
+  GRANTED
+  REVOKED
+}
+
+// Journal append-only des attributions et retraits d'Irregular.
+model TowerIrregularLog {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularLogHolder", fields: [userId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor User? @relation("TowerIrregularLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action TowerIrregularAction
+  createdAt DateTime @default(now())
+
+  @@index([communityId, userId, createdAt])
+}
+
 model TowerSeasonVote {
   id String @id @default(cuid())
   communityId String

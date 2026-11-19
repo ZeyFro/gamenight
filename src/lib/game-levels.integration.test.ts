@@ -36,40 +36,40 @@ describe.skipIf(!TEST_DATABASE_URL)("niveaux par jeu : PostgreSQL isolé", () =>
 
   it("est inactif sans le drapeau : rien n'est écrit ni lu", async () => {
     vi.stubEnv("GAME_LEVELS_ENABLED", "false");
-    expect(await lib.setUserGameLevel(ids.me, ids.game, "EXPERT")).toBe("unavailable");
+    expect(await lib.setUserGameLevel(ids.me, ids.game, "COMPETITIF")).toBe("unavailable");
     expect(await db.userGameLevel.count()).toBe(0);
-    await db.userGameLevel.create({ data: { userId: ids.friend, gameId: ids.game, level: "EXPERT" } });
+    await db.userGameLevel.create({ data: { userId: ids.friend, gameId: ids.game, level: "COMPETITIF" } });
     expect(await lib.listVisibleGameLevels(ids.me, ids.friend)).toEqual([]);
     expect(await lib.listOwnGameLevels(ids.friend)).toEqual([]);
   });
 
   it("déclare, modifie (une seule ligne) et retire son niveau", async () => {
     expect(await lib.setUserGameLevel(ids.me, ids.game, "DEBUTANT")).toBe("saved");
-    expect(await lib.setUserGameLevel(ids.me, ids.game, "AVANCE")).toBe("saved");
+    expect(await lib.setUserGameLevel(ids.me, ids.game, "CONFIRME")).toBe("saved");
     expect(await db.userGameLevel.count()).toBe(1);
-    expect(await lib.listOwnGameLevels(ids.me)).toEqual([{ gameId: ids.game, gameName: "Valheim", level: "AVANCE" }]);
+    expect(await lib.listOwnGameLevels(ids.me)).toEqual([{ gameId: ids.game, gameName: "Valheim", level: "CONFIRME" }]);
     expect(await lib.removeUserGameLevel(ids.me, ids.game)).toBe("removed");
     expect(await db.userGameLevel.count()).toBe(0);
   });
 
   it("refuse un jeu inconnu et applique la limite par utilisateur", async () => {
-    expect(await lib.setUserGameLevel(ids.me, "inconnu", "EXPERT")).toBe("invalid_game");
+    expect(await lib.setUserGameLevel(ids.me, "inconnu", "COMPETITIF")).toBe("invalid_game");
     const { MAX_GAME_LEVELS_PER_USER } = await import("./game-levels-rules");
     const games = await Promise.all(Array.from({ length: MAX_GAME_LEVELS_PER_USER }, (_, i) =>
       db.game.create({ data: { name: `Jeu ${i}`, source: "MANUAL", addedById: ids.me }, select: { id: true } })));
-    for (const game of games) expect(await lib.setUserGameLevel(ids.me, game.id, "EXPERT")).toBe("saved");
-    expect(await lib.setUserGameLevel(ids.me, ids.game, "EXPERT")).toBe("limit");
+    for (const game of games) expect(await lib.setUserGameLevel(ids.me, game.id, "COMPETITIF")).toBe("saved");
+    expect(await lib.setUserGameLevel(ids.me, ids.game, "COMPETITIF")).toBe("limit");
     expect(await lib.setUserGameLevel(ids.me, games[0].id, "DEBUTANT")).toBe("saved"); // modification toujours permise
   });
 
   it("un membre de la même communauté voit les niveaux, pas un membre d'un autre serveur", async () => {
-    await lib.setUserGameLevel(ids.friend, ids.game, "EXPERT");
-    expect(await lib.listVisibleGameLevels(ids.me, ids.friend)).toEqual([{ gameId: ids.game, gameName: "Valheim", level: "EXPERT" }]);
+    await lib.setUserGameLevel(ids.friend, ids.game, "COMPETITIF");
+    expect(await lib.listVisibleGameLevels(ids.me, ids.friend)).toEqual([{ gameId: ids.game, gameName: "Valheim", level: "COMPETITIF" }]);
     expect(await lib.listVisibleGameLevels(ids.stranger, ids.friend)).toEqual([]);
   });
 
   it("un profil masqué ne fuit pas ses niveaux, sauf à lui-même ; démasqué ils reviennent", async () => {
-    await lib.setUserGameLevel(ids.friend, ids.game, "EXPERT");
+    await lib.setUserGameLevel(ids.friend, ids.game, "COMPETITIF");
     await db.userProfileVisibility.create({ data: { userId: ids.friend, visibility: "HIDDEN" } });
     expect(await lib.listVisibleGameLevels(ids.me, ids.friend)).toEqual([]);
     expect(await lib.listVisibleGameLevels(ids.friend, ids.friend)).toHaveLength(1);
@@ -78,13 +78,13 @@ describe.skipIf(!TEST_DATABASE_URL)("niveaux par jeu : PostgreSQL isolé", () =>
   });
 
   it("propose les jeux de la bibliothèque et ceux déjà notés, sans doublon", async () => {
-    await lib.setUserGameLevel(ids.me, ids.game2, "AVANCE");
-    await lib.setUserGameLevel(ids.me, ids.game, "AVANCE");
+    await lib.setUserGameLevel(ids.me, ids.game2, "CONFIRME");
+    await lib.setUserGameLevel(ids.me, ids.game, "CONFIRME");
     expect((await lib.listGameLevelChoices(ids.me)).map((game) => game.name)).toEqual(["Apex", "Valheim"]);
   });
 
   it("la suppression du jeu ou de l'utilisateur supprime ses niveaux en cascade", async () => {
-    await lib.setUserGameLevel(ids.friend, ids.game, "EXPERT");
+    await lib.setUserGameLevel(ids.friend, ids.game, "COMPETITIF");
     await db.game.delete({ where: { id: ids.game } });
     expect(await db.userGameLevel.count()).toBe(0);
   });

@@ -5,18 +5,12 @@ export function isGameLevelsEnabled(): boolean {
   return process.env.GAME_LEVELS_ENABLED === "true";
 }
 
-/**
- * Les libellés décidés le 18/11/2026 sont Débutant / Intermédiaire / Confirmé / Compétitif. Les valeurs stockées par #468
- * (DEBUTANT / INTERMEDIAIRE / AVANCE / EXPERT) ne changent pas, donc aucune migration : AVANCE s'affiche « Confirmé » et
- * EXPERT « Compétitif ».
- */
-
 /** Du plus faible au plus fort : l'ordre sert aux comparaisons « niveau minimum ». */
-export const GAME_LEVELS = ["DEBUTANT", "INTERMEDIAIRE", "AVANCE", "EXPERT"] as const;
+export const GAME_LEVELS = ["DEBUTANT", "INTERMEDIAIRE", "CONFIRME", "COMPETITIF"] as const;
 export type GameLevel = (typeof GAME_LEVELS)[number];
 
 export const GAME_LEVEL_LABELS: Record<GameLevel, string> = {
-  DEBUTANT: "Débutant", INTERMEDIAIRE: "Intermédiaire", AVANCE: "Confirmé", EXPERT: "Compétitif",
+  DEBUTANT: "Débutant", INTERMEDIAIRE: "Intermédiaire", CONFIRME: "Confirmé", COMPETITIF: "Compétitif",
 };
 
 /** Nombre maximal de jeux avec un niveau déclaré, par utilisateur. */

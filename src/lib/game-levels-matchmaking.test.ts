@@ -28,8 +28,8 @@ describe("libellés et drapeau", () => {
 
 describe("rang importé (interface prête)", () => {
   it("le niveau déclaré est DECLARED ; un niveau importé primerait", () => {
-    expect(resolveGameLevel("AVANCE")).toEqual({ level: "AVANCE", source: "DECLARED" });
-    expect(resolveGameLevel("DEBUTANT", "EXPERT")).toEqual({ level: "EXPERT", source: "IMPORTED" });
+    expect(resolveGameLevel("CONFIRME")).toEqual({ level: "CONFIRME", source: "DECLARED" });
+    expect(resolveGameLevel("DEBUTANT", "COMPETITIF")).toEqual({ level: "COMPETITIF", source: "IMPORTED" });
     expect(resolveGameLevel(null)).toBeNull();
   });
 });
@@ -37,7 +37,7 @@ describe("rang importé (interface prête)", () => {
 describe("équilibrage pur", () => {
   it("apparie le plus fort avec le plus faible, stable", () => {
     const pairs = pairByLevel([
-      { player: "a", level: "EXPERT" }, { player: "b", level: "DEBUTANT" }, { player: "c", level: "AVANCE" }, { player: "d", level: "INTERMEDIAIRE" },
+      { player: "a", level: "COMPETITIF" }, { player: "b", level: "DEBUTANT" }, { player: "c", level: "CONFIRME" }, { player: "d", level: "INTERMEDIAIRE" },
     ]);
     expect(pairs).toEqual([["a", "b"], ["c", "d"]]);
   });
@@ -50,7 +50,7 @@ describe("équilibrage pur", () => {
     expect(pairByLevel(Array.from({ length: 5 }, (_, i) => ({ player: i, level: null })))).toBeNull();
   });
   it("répartit en serpentin des équipes de niveau comparable", () => {
-    const players = (["EXPERT", "AVANCE", "AVANCE", "INTERMEDIAIRE", "INTERMEDIAIRE", "DEBUTANT"] as const).map((level, i) => ({ player: `p${i}`, level }));
+    const players = (["COMPETITIF", "CONFIRME", "CONFIRME", "INTERMEDIAIRE", "INTERMEDIAIRE", "DEBUTANT"] as const).map((level, i) => ({ player: `p${i}`, level }));
     const teams = balanceTeamsByLevel(players, 2);
     expect(teams.map(team => team.length)).toEqual([3, 3]);
     const score = (team: string[]) => team.reduce((sum, name) => sum + [4, 3, 3, 2, 2, 1][Number(name.slice(1))], 0);
@@ -60,7 +60,7 @@ describe("équilibrage pur", () => {
   it("classe les têtes de série par niveau moyen décroissant", () => {
     expect(averageLevelScore([])).toBe(2.5);
     expect(seedByAverageLevel([
-      { group: "faibles", levels: ["DEBUTANT", "DEBUTANT"] }, { group: "forts", levels: ["EXPERT", "AVANCE"] }, { group: "inconnus", levels: [null, null] },
+      { group: "faibles", levels: ["DEBUTANT", "DEBUTANT"] }, { group: "forts", levels: ["COMPETITIF", "CONFIRME"] }, { group: "inconnus", levels: [null, null] },
     ])).toEqual(["forts", "inconnus", "faibles"]);
   });
 });
@@ -69,7 +69,7 @@ describe("loadGameLevels / withPosterLevels", () => {
   const listing = (id: string, userId: string, gameId = "g1") => ({ id, game: { id: gameId }, createdBy: { id: userId } });
 
   it("flag éteint : aucune lecture, annonces inchangées", async () => {
-    const result = await withPosterLevels([listing("l1", "u1")], "AVANCE");
+    const result = await withPosterLevels([listing("l1", "u1")], "CONFIRME");
     expect(result).toEqual([{ ...listing("l1", "u1"), posterLevel: null }]);
     expect(mocks.findMany).not.toHaveBeenCalled();
     expect((await loadGameLevels(["u1"], "g1")).size).toBe(0);
@@ -77,11 +77,11 @@ describe("loadGameLevels / withPosterLevels", () => {
 
   it("annote avec le niveau de l'auteur pour son jeu et filtre le minimum", async () => {
     enable();
-    mocks.findMany.mockResolvedValue([{ userId: "u1", level: "EXPERT" }, { userId: "u2", level: "DEBUTANT" }]);
+    mocks.findMany.mockResolvedValue([{ userId: "u1", level: "COMPETITIF" }, { userId: "u2", level: "DEBUTANT" }]);
     const all = await withPosterLevels([listing("l1", "u1"), listing("l2", "u2"), listing("l3", "u3")]);
-    expect(all.map(l => l.posterLevel?.level ?? null)).toEqual(["EXPERT", "DEBUTANT", null]);
+    expect(all.map(l => l.posterLevel?.level ?? null)).toEqual(["COMPETITIF", "DEBUTANT", null]);
     expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ gameId: "g1" }) }));
-    const filtered = await withPosterLevels([listing("l1", "u1"), listing("l2", "u2"), listing("l3", "u3")], "AVANCE");
+    const filtered = await withPosterLevels([listing("l1", "u1"), listing("l2", "u2"), listing("l3", "u3")], "CONFIRME");
     expect(filtered.map(l => l.id)).toEqual(["l1"]);
   });
 
@@ -98,7 +98,7 @@ describe("loadGameLevels / withPosterLevels", () => {
     enable();
     const tx = { userGameLevel: { findMany: vi.fn().mockResolvedValue([]) } };
     expect(await pairParticipantsByLevel(tx as never, "g1", people)).toBeNull();
-    tx.userGameLevel.findMany.mockResolvedValue([{ userId: "a", level: "EXPERT" }, { userId: "d", level: "DEBUTANT" }, { userId: "b", level: "AVANCE" }, { userId: "c", level: "INTERMEDIAIRE" }]);
+    tx.userGameLevel.findMany.mockResolvedValue([{ userId: "a", level: "COMPETITIF" }, { userId: "d", level: "DEBUTANT" }, { userId: "b", level: "CONFIRME" }, { userId: "c", level: "INTERMEDIAIRE" }]);
     expect(await pairParticipantsByLevel(tx as never, "g1", people)).toEqual([[people[0], people[3]], [people[1], people[2]]]);
   });
 });
