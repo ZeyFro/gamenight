@@ -115,6 +115,8 @@ model User {
   switchFriendCode         String?   @db.VarChar(100)
   epicDisplayName          String?   @db.VarChar(100)
   battleTag                String?   @db.VarChar(100)
+  riotId                   String?   @db.VarChar(100)
+  platformSuggestions      PlatformConnectionSuggestion[]
   steamPublic              Boolean   @default(false)
   preferredGameCategories  String[]  @default([])
   refusedGameCategories    String[]  @default([])
@@ -368,6 +370,9 @@ enum GameSource {
 }
 
 model Game {
+  // Plateformes déclarées (clés de PLAYER_PLATFORMS) ; tableau vide = inconnu, jamais exclu. crossplay null = inconnu.
+  platforms String[] @default([])
+  crossplay Boolean?
   epitaphs CommunityGameEpitaph[]
   // Relevé de préparation déclaré, indépendant des prix Steam consultés.
   preparationCost       String? @db.VarChar(10)
@@ -3547,4 +3552,17 @@ model TowerArbiterConfigurationChange {
   createdAt DateTime @default(now())
 
   @@index([communityId, id(sort: Desc)])
+}
+
+// Suggestions d identifiants issues de la connexion Discord (scope OAuth `connections`, optionnel,
+// consentement explicite). Jamais appliquées sans accord du membre ; le jeton OAuth nest pas conservé.
+model PlatformConnectionSuggestion {
+  userId    String
+  platform  String   @db.VarChar(20)
+  value     String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, platform])
 }

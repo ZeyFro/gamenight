@@ -148,7 +148,7 @@ const feedback: Record<string, string> = {
   CONFLICT: "Une autre preuve est déjà enregistrée pour ce défi.",
   CLOSED: "Cette action est fermée pour ce défi.",
   PROOF_CODE_UNAVAILABLE: "Le code de preuve n’est pas disponible. Actualise ta fiche avant de déposer la preuve.",
-  PROOF_CODE_REQUIRED: "Ajoute le code TWR dans la description de ta preuve. Si le jeu ne peut pas l’afficher, écris-le dans la composition GameNight avec la capture.",
+  PROOF_CODE_REQUIRED: "Ajoute le code TWR dans la description de ta preuve. Si le jeu ne peut pas l’afficher, écris-le dans la composition GameNight avec la capture. Sur console, une photo de l’écran TV où le code est lisible est acceptée : écris « photo TV » dans la description.",
   ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 
