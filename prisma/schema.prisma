@@ -3127,8 +3127,6 @@ model TeamApplication {
 enum GameLevel {
   DEBUTANT
   INTERMEDIAIRE
-  AVANCE
-  EXPERT
   CONFIRME
   COMPETITIF
 }

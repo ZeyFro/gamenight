@@ -46,7 +46,7 @@ beforeEach(() => {
   mocks.user.mockResolvedValue({ id: "user-1" });
   mocks.membership.mockResolvedValue({ status: "ACTIVE" });
   mocks.communityId.mockResolvedValue("community-1");
-  mocks.list.mockResolvedValue([listing({ authorLevel: "AVANCE" })]);
+  mocks.list.mockResolvedValue([listing({ authorLevel: "CONFIRME" })]);
   mocks.game.mockResolvedValue({ kind: "FOUND", id: "game-1", name: "Valheim" });
   mocks.edit.mockResolvedValue({ ok: true });
 });
@@ -57,16 +57,16 @@ afterEach(() => {
 
 describe("/joueurs chercher niveau:", () => {
   it("transmet jeu résolu + niveau minimum au service partagé, avec tag niveau", async () => {
-    const content = await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "AVANCE" }]);
+    const content = await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "CONFIRME" }]);
     expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({
       userId: "user-1", communityId: "community-1",
-      filters: { gameId: "game-1", level: "AVANCE", levelMatch: "min" },
+      filters: { gameId: "game-1", level: "CONFIRME", levelMatch: "min" },
     }));
     expect(content).toContain("niveau Avancé");
   });
 
   it("refuse un niveau sans jeu, sans élargir la recherche", async () => {
-    const content = await run([{ name: "niveau", value: "AVANCE" }]);
+    const content = await run([{ name: "niveau", value: "CONFIRME" }]);
     expect(content).toContain("Précise le jeu");
     expect(mocks.list).not.toHaveBeenCalled();
   });
@@ -74,15 +74,15 @@ describe("/joueurs chercher niveau:", () => {
   it("refuse un niveau inconnu et un drapeau éteint", async () => {
     expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "DIEU" }])).toContain("Niveau inconnu");
     vi.stubEnv("GAME_LEVELS_ENABLED", "false");
-    expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "AVANCE" }])).toContain("pas activés");
+    expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "CONFIRME" }])).toContain("pas activés");
     expect(mocks.list).not.toHaveBeenCalled();
   });
 
   it("demande de préciser un jeu introuvable ou ambigu", async () => {
     mocks.game.mockResolvedValue({ kind: "NONE" });
-    expect(await run([{ name: "jeu", value: "zzz" }, { name: "niveau", value: "AVANCE" }])).toContain("Jeu introuvable");
+    expect(await run([{ name: "jeu", value: "zzz" }, { name: "niveau", value: "CONFIRME" }])).toContain("Jeu introuvable");
     mocks.game.mockResolvedValue({ kind: "AMBIGUOUS", names: ["Apex", "Apex 2"] });
-    expect(await run([{ name: "jeu", value: "ap" }, { name: "niveau", value: "AVANCE" }])).toContain("Plusieurs jeux");
+    expect(await run([{ name: "jeu", value: "ap" }, { name: "niveau", value: "CONFIRME" }])).toContain("Plusieurs jeux");
     expect(mocks.list).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,7 @@ describe("/joueurs chercher niveau:", () => {
 
 describe("rendu des annonces", () => {
   it("n'ajoute le tag que si le niveau est visible", () => {
-    expect(renderListings([listing({ authorLevel: "EXPERT" })] as never, "Tower", false)).toContain("niveau Expert");
+    expect(renderListings([listing({ authorLevel: "COMPETITIF" })] as never, "Tower", false)).toContain("niveau Expert");
     expect(renderListings([listing({ authorLevel: null })] as never, "Tower", false)).not.toContain("niveau");
   });
 });

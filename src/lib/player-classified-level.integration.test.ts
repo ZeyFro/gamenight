@@ -39,8 +39,8 @@ describe.skipIf(!TEST_DATABASE_URL)("recherche de joueurs par niveau : PostgreSQ
     }
     ids.game = (await db.game.create({ data: { name: "Valheim", source: "MANUAL", addedById: ids.viewer } })).id;
     ids.other = (await db.game.create({ data: { name: "Apex", source: "MANUAL", addedById: ids.viewer } })).id;
-    const levels: [string, string, "DEBUTANT" | "INTERMEDIAIRE" | "AVANCE" | "EXPERT"][] = [
-      ["novice", "game", "DEBUTANT"], ["pro", "game", "AVANCE"], ["expert", "game", "EXPERT"], ["hidden", "game", "EXPERT"], ["elsewhere", "game", "EXPERT"],
+    const levels: [string, string, "DEBUTANT" | "INTERMEDIAIRE" | "CONFIRME" | "COMPETITIF"][] = [
+      ["novice", "game", "DEBUTANT"], ["pro", "game", "CONFIRME"], ["expert", "game", "COMPETITIF"], ["hidden", "game", "COMPETITIF"], ["elsewhere", "game", "COMPETITIF"],
       ["pro", "other", "DEBUTANT"],
     ];
     for (const [user, game, level] of levels) await db.userGameLevel.create({ data: { userId: ids[user], gameId: ids[game], level } });
@@ -53,25 +53,25 @@ describe.skipIf(!TEST_DATABASE_URL)("recherche de joueurs par niveau : PostgreSQ
   });
 
   it("niveau minimum : ce niveau et plus, sans profil masqué ni autre serveur", async () => {
-    expect(names(await search("viewer", { gameId: ids.game, level: "AVANCE" }))).toEqual(["expert", "pro"]);
+    expect(names(await search("viewer", { gameId: ids.game, level: "CONFIRME" }))).toEqual(["expert", "pro"]);
     expect(names(await search("viewer", { gameId: ids.game, level: "DEBUTANT" }))).toEqual(["expert", "novice", "pro"]);
   });
 
   it("niveau exact", async () => {
-    expect(names(await search("viewer", { gameId: ids.game, level: "AVANCE", levelMatch: "exact" }))).toEqual(["pro"]);
+    expect(names(await search("viewer", { gameId: ids.game, level: "CONFIRME", levelMatch: "exact" }))).toEqual(["pro"]);
     expect(names(await search("viewer", { gameId: ids.game, level: "INTERMEDIAIRE", levelMatch: "exact" }))).toEqual([]);
   });
 
   it("le niveau est celui du jeu choisi, pas d'un autre jeu", async () => {
     expect(names(await search("viewer", { gameId: ids.other, level: "DEBUTANT" }))).toEqual([]); // aucune annonce sur Apex
-    expect(names(await search("viewer", { gameId: ids.game, level: "EXPERT" }))).toEqual(["expert"]);
+    expect(names(await search("viewer", { gameId: ids.game, level: "COMPETITIF" }))).toEqual(["expert"]);
   });
 
   it("sans filtre de niveau, tout le monde reste listé (hors autre serveur) avec le tag visible", async () => {
     const rows = await search("viewer", {});
     expect(names(rows)).toEqual(["expert", "hidden", "nolevel", "novice", "pro"]);
     const level = (name: string) => rows.find((row) => row.createdBy.discordName === name)?.authorLevel;
-    expect(level("expert")).toBe("EXPERT");
+    expect(level("expert")).toBe("COMPETITIF");
     expect(level("novice")).toBe("DEBUTANT");
     expect(level("nolevel")).toBeNull();
     expect(level("hidden")).toBeNull(); // profil masqué : niveau jamais révélé
