@@ -9,6 +9,21 @@ function timestamp(date: Date): number {
   return value;
 }
 
+const parisHourFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23" });
+
+/** Heure de Paris (0–23) à laquelle le défi d'équipe du jour devient attribuable (décision du 17/11/2026). */
+export const TOWER_TEAM_DAILY_HOUR = 18;
+
+/**
+ * Règle pure : l'attribution du défi d'équipe n'est permise qu'à partir de 18:00:00 Europe/Paris
+ * (CET et CEST) et reste permise jusqu'à minuit Paris ; l'unicité par jour de Paris est garantie
+ * ailleurs par la clé `team-<jour de Paris>`.
+ */
+export function isTowerTeamDailyDue(date: Date): boolean {
+  timestamp(date);
+  return Number(parisHourFormatter.format(date)) >= TOWER_TEAM_DAILY_HOUR;
+}
+
 export function getTowerParisDayKey(date: Date): string {
   timestamp(date);
   return parisDayFormatter.format(date);
