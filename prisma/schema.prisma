@@ -44,6 +44,7 @@ enum FreeGameStore {
 
 model User {
   profileVisibility UserProfileVisibility?
+  boosterSupports BoosterSupport[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
@@ -2875,6 +2876,8 @@ enum CommunityChannelCategory {
 model Community {
   teamApplications TeamApplication[]
   discordTeamSpaces DiscordTeamSpace[]
+  boosterSupports BoosterSupport[]
+  boosterSupportSpace BoosterSupportSpace?
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
@@ -3126,6 +3129,48 @@ model DiscordTeamSpace {
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
 
   @@index([communityId])
+}
+
+// Soutien Nitro (DISCORD_BOOSTERS_ENABLED) : état lu par le cron REST (premium_since), sans gateway. Purement
+// cosmétique : rôle « Soutien de la Tour » sans permission, badge, Mur des soutiens, salons réservés. Aucun
+// avantage de jeu (ni XP, ni étages, ni vote). `roleGranted` = dernier état de rôle confirmé par l'executor ;
+// quand `boosting` passe à false, le rôle est retiré automatiquement.
+model BoosterSupport {
+  id          String    @id @default(cuid())
+  communityId String
+  userId      String
+  discordId   String
+  boosting    Boolean   @default(false)
+  since       DateTime?
+  endedAt     DateTime?
+  roleGranted Boolean   @default(false)
+  checkedAt   DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([communityId, boosting, since])
+  @@index([communityId, checkedAt])
+}
+
+// Ressources Discord des soutiens d'une communauté : un rôle sans permission + un salon écrit et un salon
+// vocal visibles uniquement par ce rôle. Jamais supprimées par le code (créées une fois, retrouvées par nom).
+model BoosterSupportSpace {
+  id             String   @id @default(cuid())
+  communityId    String
+  guildId        String
+  roleId         String
+  channelId      String   @unique
+  voiceChannelId String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId])
 }
 
 model SessionGalleryMedia {

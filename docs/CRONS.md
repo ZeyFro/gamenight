@@ -22,6 +22,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/retention-cleanup` | GET | Nettoyage de rétention |
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
+| `/api/cron/booster-sync` | GET | Lecture REST de `premium_since` (soutiens Nitro) ; OFF si `DISCORD_BOOSTERS_ENABLED` absent ; aucun cron créé |
 | `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
 | `/api/backfill/game-news` | POST | Backfill des nouvelles de jeux |
 | `/api/backfill/igdb-coop` | GET, POST | Backfill des données coop IGDB |
@@ -39,6 +40,8 @@ Converties en 202 :
 | `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s ; règle aussi la clôture des défis Tower quand `TOWER_CHALLENGES_ENABLED=true` (échéance de 15 s, lots de 25 tentatives, dans le même budget de 50 s) | 60 |
 | `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
 | `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
+
+Aussi en 202 : `/api/cron/booster-sync` (un appel REST Discord par membre, lots de 100, budget 40 s, `maxDuration` 60).
 
 Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
 

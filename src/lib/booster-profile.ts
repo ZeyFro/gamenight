@@ -39,6 +39,10 @@ export async function loadViewerBoosterState(input: {
   userId: string;
   communityId: string;
 }): Promise<ViewerBoosterState> {
+  // Soutiens Nitro (DISCORD_BOOSTERS_ENABLED) : état tenu par le cron REST, sans appel Discord.
+  const { readStoredBoosterState } = await import("@/lib/booster-support");
+  const stored = await readStoredBoosterState(input);
+  if (stored?.boosting) return { kind: "ACTIVE", since: stored.since ? stored.since.toISOString() : null };
   if (!boosterFeatureEnabled()) return { kind: "DISABLED" };
 
   const [user, community] = await Promise.all([

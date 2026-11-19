@@ -7,6 +7,7 @@ import { communitySystemAnnounceResolver } from "@/lib/community-announce";
 import { onboardingReminderResolver } from "@/lib/onboarding-reminder";
 import { towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
 import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-space-queue";
+import { BOOSTER_SYNC_EVENT, boosterSyncResolver } from "@/lib/booster-support";
 
 /**
  * Dispatche par catégorie d'événement — SESSION vers le résolveur du
@@ -31,6 +32,7 @@ export const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
     if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TEAM_SPACE_EVENT) return teamSpaceSyncResolver.resolve(input);
+    if (input.event.category === "ADMIN" && input.event.eventType === BOOSTER_SYNC_EVENT) return boosterSyncResolver.resolve(input);
     if (input.event.category === "ADMIN") return onboardingReminderResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
   },

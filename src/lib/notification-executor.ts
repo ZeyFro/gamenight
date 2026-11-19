@@ -37,6 +37,7 @@ import {
   type DiscordRestResult,
 } from "@/lib/discord-rest";
 import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
+import { runBoosterSyncAction } from "@/lib/booster-support-runner";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -226,6 +227,15 @@ export type ResolvedAction =
       kind: "sync_team_space";
       intent: TeamSpaceIntent;
       teamId: string;
+      communityId: string;
+      discordId?: string;
+    }
+  | {
+      /** Soutiens Nitro (DISCORD_BOOSTERS_ENABLED) : création unique du rôle « Soutien de la Tour »
+       * (sans permission) et des salons réservés, ou attribution/retrait du rôle d'un membre, par
+       * `runBoosterSyncAction`. Réservée au résolveur `boosterSyncResolver` (ADMIN / BOOSTER_SUPPORT_SYNC). */
+      kind: "sync_booster_support";
+      intent: "provision" | "member";
       communityId: string;
       discordId?: string;
     };
@@ -634,6 +644,12 @@ export async function performDiscordAction(
           { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId },
           deadline
         ),
+        () => ({})
+      );
+    }
+    case "sync_booster_support": {
+      return mapDiscordResult(
+        await runBoosterSyncAction({ intent: action.intent, communityId: action.communityId, discordId: action.discordId }, deadline, undefined, now),
         () => ({})
       );
     }
