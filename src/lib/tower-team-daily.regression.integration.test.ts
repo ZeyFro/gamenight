@@ -64,6 +64,8 @@ describe.skipIf(!url)("#396 — contre-tests du lot, des reprises et du budget",
     await cleanup();
     clock.jumpAfterCommit = false;
     clock.inserted = false;
+    // 18:30 Europe/Paris (CET) : l'attribution du défi d'équipe est autorisée à partir de 18:00.
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-19T17:30:00.000Z").getTime());
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     vi.stubEnv("TOWER_TEAM_DAILY_ENABLED", "true");
     vi.stubEnv("TOWER_DISCORD_GUILD_ID", guildId);

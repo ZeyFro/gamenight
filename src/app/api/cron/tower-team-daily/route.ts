@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   // Décision du 17/11/2026 : la route ne peut rien attribuer avant 18:00 Europe/Paris,
   // même appelée à la main ou par un ordonnanceur mal réglé.
-  if (!isTowerTeamDailyDue(new Date())) {
+  if (!isTowerTeamDailyDue(new Date(Date.now()))) {
     return NextResponse.json({ enabled: true, due: false, checked: 0, failed: 0, complete: true });
   }
 
