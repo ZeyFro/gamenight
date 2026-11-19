@@ -13,7 +13,7 @@ export async function assignDailyTowerTeamChallenges(deadline: Date): Promise<To
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return summary;
   if (!/^[0-9]{16,20}$/.test(guildId ?? "")) return summary;
   if (!Number.isFinite(deadline.getTime()) || Date.now() >= deadline.getTime() - 5) return summary;
-  const requestKey = "team-" + getTowerParisDayKey(new Date());
+  const requestKey = "team-" + getTowerParisDayKey(new Date(Date.now()));
 
   const teams = await prisma.$transaction(async (tx) => {
     await setTowerStatementDeadline(tx, deadline);
