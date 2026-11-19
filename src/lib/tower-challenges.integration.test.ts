@@ -633,7 +633,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       assignedAt: new Date("2026-10-28T00:00:00Z"), expiresAt: new Date("2026-10-30T00:00:00Z"),
       status: "APPROVED" as const, rewardedAt: new Date(rewardedAt),
     })) });
-    clock.now = new Date("2026-10-30T12:00:00Z");
+    clock.now = new Date("2026-10-29T18:00:00Z");
     expect(await api.settleTowerChallenge({ ...author, attemptId: first.attempt.id })).toMatchObject({
       status: "APPROVED", rewardedMembers: 1, pendingRewards: 1, userRewarded: false,
     });
