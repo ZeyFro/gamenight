@@ -77,7 +77,7 @@ describe("annonces The Tower", () => {
     const result = await towerChallengeAnnounceResolver.resolve(request);
     if (!result.eligible || result.action.kind !== "send_channel_message_verified") throw new Error("Annonce de refus attendue");
     expect(result.action.channelId).toBe(proofChannelId);
-    expect(result.action.message.content).toContain("24 heures");
+    expect(result.action.message.content).toContain("48 heures");
     expect(result.action.message.content).not.toContain(description);
     expect(result.action.message.allowedMentions).toEqual({ parse: [] });
   });
