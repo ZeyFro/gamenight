@@ -132,6 +132,7 @@ const feedback: Record<string, string> = {
   SEASON_VOTE_SELF: "Tu ne peux pas voter pour toi-même.",
   SEASON_VOTE_CLOSED: "Le vote de saison est terminé.",
   SEASON_VOTE_NOT_OPEN: "Le vote de saison n’est pas encore ouvert.",
+  NOT_YET: "Le défi d’équipe du jour est attribué à 18:00 (heure de Paris). Reviens après 18:00.",
   COOLDOWN: "Tu as déjà reçu un défi récemment. Le prochain sera disponible 12 heures après son attribution.",
   NO_CHALLENGE: "Aucun défi n’est disponible pour tes jeux pour le moment.",
   SUBMITTED: "Ta preuve est enregistrée.",

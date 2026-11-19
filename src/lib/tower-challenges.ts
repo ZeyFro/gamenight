@@ -241,6 +241,8 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
       where: { communityId, teamId, requestKey },
       select: { id: true, userId: true, title: true, instructions: true, rewardFloors: true, status: true, assignedAt: true, expiresAt: true, submittedAt: true },
     });
+    // Chemin commande (bouton Discord) : aucun défi d'équipe créé avant 18:00 Europe/Paris.
+    if (!attempt && !isTowerTeamDailyDue(current)) return { status: "NOT_YET" } as const;
     if (!attempt) {
       await setTowerStatementDeadline(transaction, deadline);
       const candidates = await scopedDb.towerChallengeDefinition.findMany({
