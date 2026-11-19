@@ -627,19 +627,19 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     for (const userId of ["tower-a2", "tower-a3", "tower-a4"]) {
       expect((await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId: first.attempt.id, approve: true })).status).toBe("VOTED");
     }
-    await db.towerChallengeAttempt.createMany({ data: ["2026-10-29T09:00:00Z", "2026-10-29T10:00:00Z"].map((rewardedAt, index) => ({
+    await db.towerChallengeAttempt.createMany({ data: ["2026-10-30T08:00:00Z", "2026-10-30T09:00:00Z"].map((rewardedAt, index) => ({
       id: "solo-cap-" + index, communityId: "tower-a", userId: "tower-author", definitionId: "tower-a-easy",
       requestKey: "solo-cap-" + index, title: "Réussite solo", instructions: "Déjà validée.", rewardFloors: 1,
-      assignedAt: new Date("2026-10-28T00:00:00Z"), expiresAt: new Date("2026-10-30T00:00:00Z"),
+      assignedAt: new Date("2026-10-30T06:00:00Z"), expiresAt: new Date("2026-11-01T06:00:00Z"),
       status: "APPROVED" as const, rewardedAt: new Date(rewardedAt),
     })) });
-    clock.now = new Date("2026-10-29T18:00:00Z");
+    clock.now = new Date("2026-10-30T18:00:00Z");
     expect(await api.settleTowerChallenge({ ...author, attemptId: first.attempt.id })).toMatchObject({
       status: "APPROVED", rewardedMembers: 1, pendingRewards: 1, userRewarded: false,
     });
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a1" } } })).floorsClimbed).toBe(BigInt(2));
     expect((await db.towerChallengeProgress.findUnique({ where: { communityId_userId: author } }))?.floorsClimbed ?? BigInt(0)).toBe(BigInt(0));
-    clock.now = new Date("2026-10-30T12:00:00Z");
+    clock.now = new Date("2026-10-31T12:00:00Z");
     expect(await api.settleTowerChallenge({ ...author, attemptId: first.attempt.id })).toMatchObject({
       status: "APPROVED", rewardedMembers: 1, pendingRewards: 0, userRewarded: true, replayed: true,
     });
