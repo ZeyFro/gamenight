@@ -13,6 +13,7 @@ import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/
 import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
+import { isCoherentMeasure, isTowerSteamAutovalidateEnabled, towerChallengeMeasureSchema } from "@/lib/tower-steam-measure-rules";
 import { getPendingProofAgingAction } from "@/lib/tower-challenge-aging-rules";
 import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen, TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "@/lib/tower-challenge-appeal-rules";
 
@@ -34,7 +35,7 @@ const appealDecisionSchema = z.object({
   decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(1).max(1000),
 });
 const arbiterConfigurationSchema = actorSchema.extend({ arbiterUserId: id });
-type Actor = z.infer<typeof actorSchema>;
+export type Actor = z.infer<typeof actorSchema>;
 const now = () => new Date(Date.now());
 
 type ChallengeMeta = {
@@ -131,7 +132,7 @@ async function reportAndArchiveUnquorateProofs(scopedDb: Prisma.TransactionClien
 }
 
 // Entrées internes : l'adaptateur Discord doit authentifier l'acteur et l'origine du bouton.
-async function withTower<T>(actor: Actor, work: (scopedDb: Prisma.TransactionClient, transaction: Prisma.TransactionClient) => Promise<T>, deadline?: Date) {
+export async function withTower<T>(actor: Actor, work: (scopedDb: Prisma.TransactionClient, transaction: Prisma.TransactionClient) => Promise<T>, deadline?: Date) {
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return { status: "DISABLED" } as const;
   const budget = towerTransactionBudget(deadline);
   return prisma.$transaction(async tx => {
@@ -152,7 +153,7 @@ async function withTower<T>(actor: Actor, work: (scopedDb: Prisma.TransactionCli
   }, budget);
 }
 
-async function lockProgress(scopedDb: Prisma.TransactionClient, actor: Actor) {
+export async function lockProgress(scopedDb: Prisma.TransactionClient, actor: Actor) {
   await scopedDb.towerChallengeProgress.createMany({ data: [actor], skipDuplicates: true });
   await scopedDb.$queryRaw`
     SELECT "userId" FROM "TowerChallengeProgress"
@@ -161,7 +162,7 @@ async function lockProgress(scopedDb: Prisma.TransactionClient, actor: Actor) {
   return scopedDb.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: actor } });
 }
 
-async function rewardedTowerCompletions(scopedDb: Prisma.TransactionClient, actor: Actor, current: Date) {
+export async function rewardedTowerCompletions(scopedDb: Prisma.TransactionClient, actor: Actor, current: Date) {
   const since = new Date(current.getTime() - 48 * 3600000);
   const [solo, team] = await Promise.all([
     scopedDb.towerChallengeAttempt.findMany({
@@ -174,12 +175,22 @@ async function rewardedTowerCompletions(scopedDb: Prisma.TransactionClient, acto
   return [...solo, ...team].flatMap(row => row.rewardedAt ? [row.rewardedAt] : []);
 }
 
+/** Appids Steam mesurables pour ce joueur : compte Steam lié et jeu possédé. */
+async function towerMeasurableAppIds(transaction: Prisma.TransactionClient, scopedDb: Prisma.TransactionClient, userId: string, appIds: number[]) {
+  const user = await transaction.user.findUnique({ where: { id: userId }, select: { steamId64: true } });
+  if (!user?.steamId64) return new Set<number>();
+  const ownedGames = await scopedDb.userGame.findMany({
+    where: { userId, owned: true, game: { steamAppId: { in: appIds } } }, select: { game: { select: { steamAppId: true } } },
+  });
+  return new Set(ownedGames.flatMap(row => row.game.steamAppId === null ? [] : [row.game.steamAppId]));
+}
+
 export async function claimSoloTowerChallenge(input: unknown) {
   const parsed = claimSchema.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, requestKey } = parsed.data;
   const actor = { communityId, userId };
-  return withTower(actor, async scopedDb => {
+  return withTower(actor, async (scopedDb, transaction) => {
     const progress = await lockProgress(scopedDb, actor);
     const existing = await scopedDb.towerChallengeAttempt.findUnique({
       where: { communityId_userId_requestKey: { ...actor, requestKey } }, select: { id: true },
@@ -191,10 +202,17 @@ export async function claimSoloTowerChallenge(input: unknown) {
     const assignedAt = now();
     if (!canClaimSoloChallenge(progress.lastSoloClaimAt, assignedAt)) return { status: "COOLDOWN" } as const;
     const owned = await scopedDb.userGame.findMany({ where: { userId, owned: true }, select: { gameId: true } });
-    const candidates = await scopedDb.towerChallengeDefinition.findMany({
+    const allCandidates = await scopedDb.towerChallengeDefinition.findMany({
       where: { communityId, active: true, mode: "SOLO", OR: [{ gameId: null }, { gameId: { in: owned.map(game => game.gameId) } }] },
-      select: { id: true, title: true, instructions: true, rewardFloors: true },
+      select: { id: true, title: true, instructions: true, rewardFloors: true,
+        measureKind: true, measureAppId: true, measureTarget: true, measureAchievement: true },
     });
+    // Un défi mesurable Steam n'est proposé qu'à un joueur dont le compte Steam est lié et qui possède le jeu mesuré,
+    // jamais quand la validation automatique est éteinte : il ne peut pas être « impossible » pour lui.
+    const measuredAppIds = allCandidates.flatMap(candidate => candidate.measureAppId ? [candidate.measureAppId] : []);
+    const measurable = isTowerSteamAutovalidateEnabled() && measuredAppIds.length
+      ? await towerMeasurableAppIds(transaction, scopedDb, userId, measuredAppIds) : new Set<number>();
+    const candidates = allCandidates.filter(candidate => !candidate.measureKind || (candidate.measureAppId !== null && measurable.has(candidate.measureAppId)));
     if (!candidates.length) return { status: "NO_CHALLENGE" } as const;
     const played = await scopedDb.towerChallengeAttempt.findMany({
       where: { communityId, userId, definitionId: { in: candidates.map(candidate => candidate.id) } },
@@ -207,12 +225,15 @@ export async function claimSoloTowerChallenge(input: unknown) {
     const chosen = pool[randomInt(pool.length)];
     const attempt = await scopedDb.towerChallengeAttempt.create({
       data: { ...actor, requestKey, definitionId: chosen.id, title: chosen.title, instructions: chosen.instructions,
-        rewardFloors: chosen.rewardFloors, assignedAt, expiresAt: new Date(assignedAt.getTime() + 48 * 3600000) },
+        rewardFloors: chosen.rewardFloors, assignedAt, expiresAt: new Date(assignedAt.getTime() + 48 * 3600000),
+        // Instantané de la mesure : une modification du catalogue ne change pas un défi attribué.
+        ...(chosen.measureKind ? { measureKind: chosen.measureKind, measureAppId: chosen.measureAppId, measureTarget: chosen.measureTarget,
+          measureAchievement: chosen.measureAchievement, measureStatus: "WATCHING" } : {}) },
       select: { id: true },
     });
     await loadChallengeMeta(scopedDb, communityId, attempt.id);
     await scopedDb.towerChallengeProgress.update({ where: { communityId_userId: actor }, data: { lastSoloClaimAt: assignedAt } });
-    return { status: "CLAIMED", attemptId: attempt.id, replayed: false } as const;
+    return { status: "CLAIMED", attemptId: attempt.id, replayed: false, measured: Boolean(chosen.measureKind) } as const;
   });
 }
 
@@ -776,7 +797,8 @@ export async function getTowerChallengeState(input: unknown) {
         where: { communityId, userId, ...(attemptId ? { id: attemptId } : {}) },
         orderBy: [{ assignedAt: "desc" }, { id: "desc" }], take: 5,
         select: { id: true, title: true, instructions: true, status: true, rewardFloors: true,
-          assignedAt: true, expiresAt: true, submittedAt: true, proofChannelId: true, proofMessageId: true },
+          assignedAt: true, expiresAt: true, submittedAt: true, proofChannelId: true, proofMessageId: true,
+          measureKind: true, measureStatus: true, measureValue: true, measureTarget: true, autoValidatedAt: true },
       }),
     ]);
     const metadata = await Promise.all(attempts.map(attempt => loadChallengeMeta(scopedDb, communityId, attempt.id)));
@@ -934,12 +956,13 @@ export async function settleDueTowerChallenges(deadline: Date) {
 
 const towerGuildId = z.string().regex(/^[0-9]{16,20}$/);
 const towerDefinitionId = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
-const soloDefinitionInput = z.object({ guildId: towerGuildId }).merge(towerChallengeDefinitionContentSchema);
+const soloDefinitionInput = z.object({ guildId: towerGuildId }).merge(towerChallengeDefinitionContentSchema).merge(towerChallengeMeasureSchema)
+  .refine(isCoherentMeasure, { message: "Mesure Steam incomplète ou incohérente" });
 
 export async function addSoloTowerChallengeDefinition(input: unknown) {
   const parsed = soloDefinitionInput.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
-  const { guildId, title, instructions, rewardFloors } = parsed.data;
+  const { guildId, title, instructions, rewardFloors, measureKind, measureAppId, measureTarget, measureAchievement } = parsed.data;
   return prisma.$transaction(async tx => {
     const community = await tx.community.findFirst({
       where: { discordGuildId: guildId, status: "ACTIVE" }, select: { id: true },
@@ -953,7 +976,8 @@ export async function addSoloTowerChallengeDefinition(input: unknown) {
     });
     if (duplicate) return { status: "DUPLICATE" } as const;
     const definition = await scopedDb.towerChallengeDefinition.create({
-      data: { communityId: community.id, mode: "SOLO", title, instructions, rewardFloors, active: true },
+      data: { communityId: community.id, mode: "SOLO", title, instructions, rewardFloors, active: true,
+        ...(measureKind ? { measureKind, measureAppId, measureTarget, measureAchievement: measureAchievement ?? null } : {}) },
       select: { id: true },
     });
     return { status: "CREATED", id: definition.id } as const;

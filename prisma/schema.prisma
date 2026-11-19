@@ -3366,6 +3366,12 @@ enum TowerChallengeMode {
   TEAM
 }
 
+// Défis « mesurables Steam » : validés par le cron (TOWER_STEAM_AUTOVALIDATE_ENABLED), sans IA.
+enum TowerChallengeMeasureKind {
+  STEAM_PLAYTIME
+  STEAM_ACHIEVEMENT
+}
+
 enum TowerChallengeAttemptStatus {
   ASSIGNED
   SUBMITTED
@@ -3385,6 +3391,11 @@ model TowerChallengeDefinition {
   gameId String? @db.VarChar(191)
   active Boolean @default(false)
   createdAt DateTime @default(now())
+  // Mesure Steam facultative (défis solo) : minutes de jeu depuis l'attribution, ou succès débloqués depuis l'attribution.
+  measureKind TowerChallengeMeasureKind?
+  measureAppId Int?
+  measureTarget Int?
+  measureAchievement String? @db.VarChar(100)
   attempts TowerChallengeAttempt[]
 
   @@unique([id, communityId])
@@ -3419,6 +3430,21 @@ model TowerChallengeAttempt {
   rejectedAt DateTime?
   staffReportedAt DateTime?
   archivedAt DateTime?
+  // Instantané de la mesure Steam à l'attribution (une modification du catalogue ne change pas un défi attribué).
+  measureKind TowerChallengeMeasureKind?
+  measureAppId Int?
+  measureTarget Int?
+  measureAchievement String? @db.VarChar(100)
+  measureBaseline Int?
+  measureBaselineAt DateTime?
+  // Dernière valeur mesurée : minutes jouées depuis l'attribution, ou nombre de succès débloqués depuis l'attribution.
+  measureValue Int?
+  measureCheckedAt DateTime?
+  // WATCHING | PRIVATE (profil Steam privé : repli sur la preuve et le vote) | ACHIEVED (mesure atteinte, fenêtre de doute ouverte).
+  measureStatus String? @db.VarChar(16)
+  autoValidatedAt DateTime?
+  doubtReportedAt DateTime?
+  doubtReportedByUserId String?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?

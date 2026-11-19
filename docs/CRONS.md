@@ -11,6 +11,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
 | `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 07:00/08:00 avec garde 09:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
+| `/api/cron/tower-steam-autovalidate` | GET, POST | Validation automatique des défis Tower mesurables Steam (temps de jeu, succès) ; 202 + `after()` ; OFF si `TOWER_STEAM_AUTOVALIDATE_ENABLED` absent ; aucun déclencheur créé, cadence externe (10 min conseillées) |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
@@ -39,6 +40,7 @@ Converties en 202 :
 | `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s ; règle aussi la clôture des défis Tower quand `TOWER_CHALLENGES_ENABLED=true` (échéance de 15 s, lots de 25 tentatives, dans le même budget de 50 s) | 60 |
 | `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
 | `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
+| `/api/cron/tower-steam-autovalidate` | au plus 25 lectures de l’API Steam par passage, budget interne 50 s ; une tentative n’est pas relue avant 10 minutes | 60 |
 
 Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
 
