@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { getIsolationScope, isMemberOfCommunity } from "@/lib/community-isolation";
-import { inviteToSession } from "@/lib/session-access";
+import { accessibleSessionWhereFor, inviteToSession } from "@/lib/session-access";
 import { enqueueSessionInviteSync } from "@/lib/session-announce";
 import { changeSessionSeat } from "@/lib/session-seats";
 import { requestSessionSpaceMemberSyncForUser } from "@/lib/session-space-queue";
@@ -181,7 +181,8 @@ export async function setSessionCoOrganizer(actorId: string, sessionId: string, 
   const enabled = sessionVisibilityEnabled();
   if (!enabled) return { ok: false, reason: "disabled" };
   const scopedDb = await getScopedPrisma(actorId);
-  const session = await scopedDb.session.findFirst({ where: { id: sessionId }, select: SESSION_SELECT });
+  // Accès d'abord : une soirée hors de portée du demandeur reste « introuvable », jamais « interdite » (aucune fuite d'existence).
+  const session = await scopedDb.session.findFirst({ where: { id: sessionId, ...(await accessibleSessionWhereFor(actorId)) }, select: SESSION_SELECT });
   if (!session) return { ok: false, reason: "not_found" };
   if (session.createdById !== actorId) return { ok: false, reason: "forbidden" };
   if (coOrganizerId !== null) {
@@ -204,7 +205,8 @@ export async function setSessionVisibility(actorId: string, sessionId: string, r
   if (!enabled) return { ok: false, reason: "disabled" };
   const visibility = parseSessionVisibility(raw);
   const scopedDb = await getScopedPrisma(actorId);
-  const session = await scopedDb.session.findFirst({ where: { id: sessionId }, select: SESSION_SELECT });
+  // Accès d'abord : une soirée hors de portée du demandeur reste « introuvable », jamais « interdite » (aucune fuite d'existence).
+  const session = await scopedDb.session.findFirst({ where: { id: sessionId, ...(await accessibleSessionWhereFor(actorId)) }, select: SESSION_SELECT });
   if (!session) return { ok: false, reason: "not_found" };
   if (session.createdById !== actorId) return { ok: false, reason: "forbidden" };
   if (session.status === "DONE" || session.status === "CANCELLED") return { ok: false, reason: "invalid" };
