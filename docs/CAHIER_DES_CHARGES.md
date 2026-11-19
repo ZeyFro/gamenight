@@ -1154,6 +1154,132 @@ Les choix ordinaires de présentation et d'ergonomie peuvent être proposés et 
 
 ---
 
+## 27. Parcours Discord et personnalisation v1.1
+
+Décisions de Maxime du 18/11/2026. Elles complètent les décisions du 17/11/2026 (§26, `docs/DECISIONS_TOWER.md`) sans les modifier. Chaque point est marqué **v1** (v1.1 prévue, en cours de réalisation), **v2** ou **plus tard** (documentation seulement). Statut d'avancement : `docs/COUVERTURE_CAHIER.md` ; activation : `docs/ACTIVATION_TOUR.md`. Rien de ce qui suit n'est livré à la date de rédaction.
+
+### 27.1. Décisions v1 (thèmes)
+
+- **Console** — **v1** (sujets J) : À la connexion Discord, demander le scope OAuth `connections` (consentement explicite, optionnel) ; préremplir plateformes et identifiants (xbox, playstation, epicgames, battlenet, riotgames, steam) dans les identifiants existants (L3-01), modifiables. Ajout rapide de jeux par plateforme (PC/PS/Xbox/Switch) et liste « populaires sur ta plateforme ». Champ crossplay sur la fiche jeu. Défis : ne jamais proposer à un joueur un défi impossible sur ses plateformes ; photo d'écran TV avec code de preuve acceptée.
+- **Validation automatique** — **v1** (sujets C) : Défis « mesurables Steam » (delta de playtime depuis l'attribution, succès Steam) validés automatiquement par cron ; profil privé = repli sur le vote. Bouton « Signaler un doute » (membres éligibles) qui bascule en vote communautaire. MP au joueur à la validation.
+- **Notifications** — **v1** (sujets I) : MP uniquement pour ce qui vise personnellement le joueur (invitation, candidature, son défi, contestation). Le reste : pings de rôle de jeu dans les salons (opt-in) + centre de notifications dans l'app (+ Web Push existant). Jamais @everyone. Annonces publiques seulement pour moments marquants (nouveau Ranker/High Ranker, victoire de tournoi, record).
+- **Niveau par jeu** — **v1** (sujets K) : Niveau déclaratif (Débutant/Intermédiaire/Confirmé/Compétitif) sur le profil, utilisé par matchmaking et équilibrage de tournoi. Prévoir l'interface pour un rang importé plus tard.
+- **Groupes** — **v1** (sujets A, D, E, G) : 1 équipe principale ; projets et soirées illimités ; participation à un tournoi comme invité d'une autre équipe autorisée.
+- **Modération** — **v1** (sujets L) : Commande contextuelle « Signaler » sur un message → ticket privé staff (contexte, liens), aucune sanction auto, journalisé.
+- **Boosters** — **v1** (sujets M) : Cron qui lit `premium_since` des membres (REST, sans gateway) ; rôle « Soutien de la Tour » sans permission, couleur, badge + cadre GameNight, page/salon « Mur des soutiens », accès à un salon écrit + vocal boosters ; retrait automatique à la fin du boost. Uniquement cosmétique (cahier : aucun avantage injuste).
+
+### 27.2. Sujets de réalisation A à O (v1)
+
+#### A. Équipes : recruteurs et invités — v1
+
+L'option A est déjà faite (#469 : rôle, salon écrit et salon vocal privés permanents). Candidatures acceptées par le capitaine ou par 2 recruteurs nommés au plus ; MP seulement à eux ; relance unique à 48 h ; expiration à 7 jours ; accès synchronisés (acceptation, départ, bannissement, dissolution) ; 8 joueurs maximum avec protection contre la concurrence. 1 seule équipe principale ; projets et soirées illimités ; participation à un tournoi comme invité d'une autre équipe autorisée (modèle d'invité d'équipe). S'appuie sur #457 (candidatures) et #469 (espaces d'équipe).
+
+- Branche prévue : `claude/equipes-recruteurs-invites`. Interrupteur : `TEAM_RECRUITERS_ENABLED`. Migration : `20261118130000_team_recruiters_guest`.
+
+#### B. Votes de preuves dans Discord — v1
+
+Message public à boutons ✅/❌ mis à jour, plus un fil par preuve. Votants : compte GameNight actif et présent sur le serveur depuis 7 jours au moins. Ni auto-vote ni double vote ; vote modifiable jusqu'à l'échéance (24 h, plus prolongation unique de 24 h, règles du lot Tower 2.0 à ne pas casser).
+
+- Branche prévue : `claude/votes-discord-fils`. Interrupteur : `TOWER_DISCORD_VOTES_ENABLED`. Migration : `20261118130100_tower_vote_messages`.
+
+#### C. Validation automatique Steam — v1
+
+Défis « mesurables Steam » (delta de temps de jeu depuis l'attribution, succès Steam) validés automatiquement par un cron protégé. Profil Steam privé : repli sur le vote. Bouton « Signaler un doute » (membres éligibles) qui bascule en vote communautaire. MP au joueur à la validation. Réutilise la synchro Steam existante. Aucune IA (cahier §20).
+
+- Branche prévue : `claude/validation-auto-steam`. Interrupteur : `TOWER_STEAM_AUTOVALIDATE_ENABLED`. Migration : `20261118130200_tower_challenge_measure`.
+
+#### D. Soirées : visibilité et liste d'attente — v1
+
+Soirée publique, sur candidature ou privée. Une soirée privée est invisible aux non-invités ; fil privé et vocal temporaire créés 30 min avant, supprimés une fois vides après la fin (via file et executor). Coorganisateur ; liste d'attente.
+
+- Branche prévue : `claude/soirees-visibilite`. Interrupteur : `SESSION_VISIBILITY_ENABLED`. Migration : `20261118130300_session_visibility_waitlist`.
+
+#### E. Tournois par équipes — v1
+
+Tournoi solo ou par équipes, public ou privé, par jeu (exemple : 5 équipes sur Deadlock). Score confirmé par les 2 capitaines ; désaccord tranché par l'organisateur ou l'arbitre. Rappels, verrouillage, annonces ciblées. Équilibrage par niveau déclaratif (sujet K) en option.
+
+- Branche prévue : `claude/tournois-equipes`. Interrupteur : `TOURNAMENT_TEAMS_ENABLED`. Migration : `20261118130400_tournament_teams`.
+
+#### F. /role : création automatique de rôles — v1
+
+Recherche avec noms normalisés ; création automatique d'un rôle sans permission (via file et executor) ; 1 création par joueur et par semaine ; plafond configurable ; refus et alerte staff à 80 % de 250 rôles. La commande /role existe déjà (#460). **Prérequis : suppression préalable des 134 rôles Étage** (voir rappel ci-dessous).
+
+- Branche prévue : `claude/role-creation-auto`. Interrupteur : `DISCORD_ROLE_AUTOCREATE_ENABLED`. Migration : `20261118130500_discord_role_requests`.
+
+#### G. /projet : organisateur et clôture — v1
+
+L'organisateur valide les entrées ; date de fin ; fil public et espace privé ; archivage 7 jours après la clôture. Réutilise le modèle d'équipe et d'espace (#469) si possible.
+
+- Branche prévue : `claude/projets-organisateur`. Interrupteur : `PROJECT_ORGANIZER_ENABLED`. Migration : `20261118130600_project_entries`.
+
+#### H. Jouer maintenant et rivalités d'équipes — v1
+
+« Jouer maintenant » (Rejoindre / Intéressé, expiration 2 h) étend l'existant (partie immédiate). Rivalités : défi accepté par le capitaine adverse, résultat confirmé par les 2 capitaines, historique sur la fiche d'équipe.
+
+- Branche prévue : `claude/rivalites-equipes`. Interrupteur : `TEAM_RIVALRIES_ENABLED`. Migration : `20261118130700_team_rivalries`.
+
+#### I. Notifications : MP ciblés et centre in-app — v1
+
+MP uniquement pour ce qui vise personnellement le joueur (invitation, candidature, son défi, contestation). Le reste : pings de rôle de jeu dans les salons (opt-in) et centre de notifications dans l'application, plus le Web Push existant. Jamais @everyone. Annonces publiques seulement pour les moments marquants (nouveau Ranker ou High Ranker, victoire de tournoi, record). S'appuie sur les préférences existantes (#406).
+
+- Branche prévue : `claude/centre-notifications`. Interrupteur : `NOTIFICATION_CENTER_ENABLED`. Migration : `20261118130800_notification_center`.
+
+#### J. Console : connexions de plateformes et crossplay — v1
+
+Scope OAuth `connections` demandé à la connexion Discord, optionnel et avec consentement explicite (la connexion fermée S0 et les gardes d'authentification ne sont pas affaiblies, aucun secret affiché). Préremplissage modifiable des identifiants xbox, playstation, epicgames, battlenet, riotgames, steam (L3-01). Ajout rapide de jeux par plateforme (PC/PS/Xbox/Switch) et liste « populaires sur ta plateforme ». Champ crossplay sur la fiche jeu. Aucun défi impossible n'est proposé sur les plateformes du joueur ; photo d'écran TV avec code de preuve acceptée.
+
+- Branche prévue : `claude/console-connexions-plateformes`. Interrupteur : `DISCORD_CONNECTIONS_SCOPE_ENABLED` et `GAME_PLATFORMS_ENABLED`. Migration : `20261118130900_platform_identities_crossplay`.
+
+#### K. Niveau par jeu et matchmaking — v1
+
+Niveau déclaratif Débutant / Intermédiaire / Confirmé / Compétitif sur le profil, utilisé par le matchmaking (#408) et l'équilibrage de tournoi. Interface prévue pour un rang importé plus tard (source DECLARED ou IMPORTED, rien d'importé). Écart connu : #468 stocke DEBUTANT / INTERMEDIAIRE / AVANCE / EXPERT ; les libellés décidés sont ceux ci-dessus. À fusionner après #468.
+
+- Branche prévue : `claude/niveau-jeu-matchmaking`. Interrupteur : `GAME_LEVELS_MATCHMAKING_ENABLED`. Migration : aucune (si possible).
+
+#### L. Modération : signalement contextuel — v1
+
+Commande contextuelle sur un message (type 3) « Signaler » qui ouvre un ticket privé pour le staff (contexte, liens). Aucune sanction automatique ; opération journalisée ; manifeste de commandes : ajout seulement, rien n'est enregistré.
+
+- Branche prévue : `claude/signalement-contextuel`. Interrupteur : `DISCORD_REPORT_COMMAND_ENABLED`. Migration : `20261118131100_moderation_reports`.
+
+#### M. Boosters : Soutien de la Tour — v1
+
+Cron REST lisant `premium_since` des membres (sans gateway). Rôle « Soutien de la Tour » sans permission, avec couleur, badge et cadre GameNight, page ou salon « Mur des soutiens », accès à un salon écrit et un vocal boosters ; retrait automatique à la fin du boost. Uniquement cosmétique (aucun avantage de jeu, cahier §15). Écritures Discord via file et executor.
+
+- Branche prévue : `claude/boosters-nitro`. Interrupteur : `DISCORD_BOOSTERS_ENABLED`. Migration : `20261118131200_booster_support`.
+
+#### N. Personnalisation du profil — v1
+
+Couleurs et dégradés du pseudo, thèmes de carte, cadres et bannières animés, effets (brillance, flammes, particules), titre sous le pseudo, vitrine de 3 à 6 badges, effets d'entrée. Obtention : gagnés (étages, grades, saisons, tournois, défis ; non achetables), boutique XP existante étendue, exclusifs boosters. Effets désactivables par le spectateur, `prefers-reduced-motion` respecté, léger sur mobile. Champ ou table d'entitlement prévu, sans aucun paiement implémenté.
+
+- Branche prévue : `claude/profil-personnalisation`. Interrupteur : `PROFILE_CUSTOMIZATION_ENABLED`. Migration : `20261118131300_profile_customization`.
+
+#### O. Tableau de bord staff v2 — v1
+
+/admin : candidatures en attente, opérations Discord échouées, espaces à nettoyer, contestations, compteurs de rôles et de salons face aux limites Discord. Lecture seule d'abord.
+
+- Branche prévue : `claude/admin-tableau-bord-v2`. Interrupteur : `ADMIN_DASHBOARD_V2_ENABLED`. Migration : aucune.
+
+### 27.3. V2 — documenter seulement
+
+- **v2** : bot gateway permanent (activité Discord PC/Xbox/PS, temps en vocal, « 3 membres jouent à X ») ; rangs importés via API officielles (Riot, Hypixel).
+
+### 27.4. Plus tard — documenter seulement
+
+- **plus tard** : VIP payant = cosmétique + confort (effets/thèmes exclusifs, plus de créations dans les limites Discord, stats détaillées, historique illimité) ; JAMAIS étages, XP, priorité, vote renforcé ni badges gagnés ; essentiel gratuit ; prérequis : statut, CGV/mentions légales, prestataire de paiement, TVA, rétractation, politique mineurs. Prévoir dans le modèle un champ d'entitlement sans aucun paiement implémenté.
+
+### 27.5. Rappel : 134 rôles Étage
+
+- **v1 (prérequis du sujet F)** : La création automatique de rôles (sujet F) exige d'abord la suppression des 134 rôles Étage (inventaire en lecture seule : `scripts/audit-tower-etage-roles.mjs`, `docs/TOWER_ROLE_REVIEW.md`). Aucune suppression n'est faite par le dépôt : elle reste une action manuelle du propriétaire.
+
+### 27.6. Principes transverses
+
+- Tous les interrupteurs sont OFF par défaut. Les écritures Discord passent par la file de notifications et l'executor, jamais en direct.
+- Aucune IA ne valide une preuve (§20). Les récompenses restent cosmétiques (§15).
+- Les écarts avec les décisions du 17/11 sont suivis dans `docs/COUVERTURE_CAHIER.md`, jamais réécrits à l'aveugle.
+
+---
+
 # CONCLUSION
 
 The Tower 2.0 doit devenir une plateforme communautaire multigaming complète, combinant :
