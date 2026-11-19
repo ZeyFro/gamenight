@@ -9,6 +9,12 @@ import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { idSchema } from "@/lib/validations";
 import { getTeamRecruitmentCriteriaCommunityId, saveTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
 import { parseTeamRecruitmentCriteriaForm } from "@/lib/team-recruitment-criteria-rules";
+import {
+  listTeamMemberDiscordIds,
+  requestTeamSpaceAfterDissolution,
+  requestTeamSpaceMemberSync,
+  requestTeamSpaceProvisionForCreator,
+} from "@/lib/discord-team-space-hooks";
 
 function done(result: string): never {
   revalidatePath("/equipes");
@@ -34,21 +40,29 @@ export async function createCommunityTeamAction(formData: FormData): Promise<voi
     maxMembers: formData.get("maxMembers"),
   });
   if (!input.success) done("invalid");
-  done(await createCommunityTeam({ userId: user.id, communityId, ...input.data }));
+  const result = await createCommunityTeam({ userId: user.id, communityId, ...input.data });
+  // Option A : une équipe créée et admissible demande tout de suite ses deux
+  // salons permanents (texte + vocal). No-op sans `DISCORD_TEAM_SPACES_ENABLED`.
+  if (result === "created") await requestTeamSpaceProvisionForCreator({ communityId, userId: user.id });
+  done(result);
 }
 
 export async function joinCommunityTeamAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("joinCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success) done("invalid");
-  done(await joinCommunityTeam(user.id, communityId, teamId.data));
+  const result = await joinCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "joined") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
+  done(result);
 }
 
 export async function leaveCommunityTeamAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("leaveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success) done("invalid");
-  done(await leaveCommunityTeam(user.id, communityId, teamId.data));
+  const result = await leaveCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "left") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
+  done(result);
 }
 
 export async function setCommunityTeamRecruitmentAction(formData: FormData): Promise<void> {
@@ -88,5 +102,8 @@ export async function dissolveCommunityTeamAction(formData: FormData): Promise<v
   const { user, communityId } = await authorizedUser("dissolveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success || formData.get("confirm") !== "DISSOLVE") done("invalid");
-  doneManagement(await dissolveCommunityTeam(user.id, communityId, teamId.data));
+  const formerMemberDiscordIds = await listTeamMemberDiscordIds(communityId, teamId.data);
+  const result = await dissolveCommunityTeam(user.id, communityId, teamId.data);
+  if (result === "dissolved") await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, formerMemberDiscordIds });
+  doneManagement(result);
 }

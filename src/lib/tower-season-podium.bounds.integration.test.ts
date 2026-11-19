@@ -108,19 +108,19 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
 
   describe("bornes à 00:00 Europe/Paris, fin exclusive à la milliseconde", () => {
     it.each([
-      { label: "S4 2026 (septembre–décembre, début en heure d'été, fin au 1er janvier)", current: "2027-02-01T12:00:00Z", season: "S4 · 2026",
-        included: ["2026-08-31T22:00:00.000Z", "2026-12-31T22:59:59.999Z"],
-        excluded: ["2026-08-31T21:59:59.999Z", "2026-12-31T23:00:00.000Z", "2027-01-02T12:00:00.000Z"] },
-      { label: "S4 2026 vu pendant l'intersaison du 1er au 3 janvier", current: "2027-01-02T12:00:00Z", season: "S4 · 2026",
-        included: ["2026-12-31T22:59:59.999Z"], excluded: ["2026-12-31T23:00:00.000Z", "2027-01-02T11:00:00.000Z"] },
-      { label: "S1 2026 : le 29 mars 2026 est le jour du changement d'heure", current: "2026-05-01T12:00:00Z", season: "S1 · 2026",
-        included: ["2026-01-03T23:00:00.000Z", "2026-03-28T22:59:59.999Z"],
-        excluded: ["2026-01-03T22:59:59.999Z", "2026-03-28T23:00:00.000Z", "2026-03-30T12:00:00.000Z"] },
-      { label: "S1 2027 : le changement d'heure du 28 mars précède la fin exclusive", current: "2027-04-10T12:00:00Z", season: "S1 · 2027",
-        included: ["2027-01-03T23:00:00.000Z", "2027-03-28T21:59:59.999Z"],
-        excluded: ["2027-01-03T22:59:59.999Z", "2027-03-28T22:00:00.000Z", "2027-03-28T22:30:00.000Z", "2027-03-30T12:00:00.000Z"] },
-      { label: "S1 2027 vu pile à sa fin exclusive (la date de lecture elle-même est hors saison)", current: "2027-03-28T22:00:00Z", season: "S1 · 2027",
-        included: ["2027-03-28T21:59:59.999Z"], excluded: ["2027-03-28T22:00:00.000Z"] },
+      { label: "S3 2026 (septembre–novembre, début en heure d'été, fin au 1er décembre 00:00 en heure d'hiver)", current: "2027-02-01T12:00:00Z", season: "S3 · 2026",
+        included: ["2026-08-31T22:00:00.000Z", "2026-11-30T22:59:59.999Z"],
+        excluded: ["2026-08-31T21:59:59.999Z", "2026-11-30T23:00:00.000Z", "2027-01-02T12:00:00.000Z"] },
+      { label: "S3 2026 vu la semaine du lancement (1er décembre 2026)", current: "2026-12-03T12:00:00Z", season: "S3 · 2026",
+        included: ["2026-11-30T22:59:59.999Z"], excluded: ["2026-11-30T23:00:00.000Z", "2026-12-02T11:00:00.000Z"] },
+      { label: "S1 2025-2026 : le 29 mars 2026 est le jour du changement d'heure, la fin est le 1er avril", current: "2026-05-01T12:00:00Z", season: "S1 · 2025-2026",
+        included: ["2025-11-30T23:00:00.000Z", "2026-03-31T21:59:59.999Z"],
+        excluded: ["2025-11-30T22:59:59.999Z", "2026-03-31T22:00:00.000Z", "2026-04-02T12:00:00.000Z"] },
+      { label: "S1 2026-2027 : le changement d'heure du 28 mars précède la fin exclusive du 1er avril", current: "2027-04-10T12:00:00Z", season: "S1 · 2026-2027",
+        included: ["2026-11-30T23:00:00.000Z", "2027-03-31T21:59:59.999Z"],
+        excluded: ["2026-11-30T22:59:59.999Z", "2027-03-31T22:00:00.000Z", "2027-03-31T22:30:00.000Z", "2027-04-02T12:00:00.000Z"] },
+      { label: "S1 2026-2027 vu pile à sa fin exclusive (la date de lecture elle-même est hors saison)", current: "2027-03-31T22:00:00Z", season: "S1 · 2026-2027",
+        included: ["2027-03-31T21:59:59.999Z"], excluded: ["2027-03-31T22:00:00.000Z"] },
       { label: "S2 2027 (avril–juin)", current: "2027-07-05T12:00:00Z", season: "S2 · 2027",
         included: ["2027-03-31T22:00:00.000Z", "2027-06-30T21:59:59.999Z"],
         excluded: ["2027-03-31T21:59:59.999Z", "2027-06-30T22:00:00.000Z"] },
@@ -152,10 +152,10 @@ describe.skipIf(!url)("podium saisonnier : bornes, isolation et départage (requ
       await player("reader");
       await player("old");
       await player("live");
-      await solo("old", 1, "2026-12-31T22:59:59.999Z");
+      await solo("old", 1, "2026-11-30T22:59:59.999Z");
       await solo("live", 3, "2027-03-10T12:00:00.000Z");
-      const result = await read("2027-03-28T21:59:59.999Z");
-      expect(result.season.name).toBe("S4 · 2026");
+      const result = await read("2027-03-31T21:59:59.999Z");
+      expect(result.season.name).toBe("S3 · 2026");
       expect(names(result)).toEqual(["old"]);
     });
 

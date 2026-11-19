@@ -132,18 +132,23 @@ const feedback: Record<string, string> = {
   SEASON_VOTE_SELF: "Tu ne peux pas voter pour toi-même.",
   SEASON_VOTE_CLOSED: "Le vote de saison est terminé.",
   SEASON_VOTE_NOT_OPEN: "Le vote de saison n’est pas encore ouvert.",
+  NOT_YET: "Le défi d’équipe du jour est attribué à 18:00 (heure de Paris). Reviens après 18:00.",
   COOLDOWN: "Tu as déjà reçu un défi récemment. Le prochain sera disponible 12 heures après son attribution.",
   NO_CHALLENGE: "Aucun défi n’est disponible pour tes jeux pour le moment.",
   SUBMITTED: "Ta preuve est enregistrée.",
   VOTED: "Ton vote est enregistré.",
   ALREADY_VOTED: "Tu as déjà voté pour cette preuve.",
+  VOTE_CHANGED: "Ton vote est modifié. Tu peux encore le changer jusqu’à l’échéance.",
+  VOTER_TOO_RECENT: "Pour voter, ton compte GameNight doit être actif depuis au moins 7 jours.",
+  VOTER_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent voter.",
   SELF_VOTE: "Tu ne peux pas voter pour ta propre preuve.",
-  OPEN: "Le vote est encore ouvert pendant sa fenêtre de 24 heures.",
+  OPEN: "Le vote est encore ouvert (24 heures, prolongées une fois de 24 heures sans quorum).",
+  NO_QUORUM_RESUBMIT: "Moins de trois votants : preuve rejetée sans pénalité. Tu peux déposer une nouvelle preuve une seule fois, sous 48 heures.",
   TEAM_NEEDS_PARTICIPANTS: "Il faut au moins deux membres confirmés avant de déposer la preuve d'équipe.",
   JOINED: "Tu participes à ce défi d'équipe.",
   DAILY_LIMIT: "Tu as atteint tes deux réussites récompensées pour cette journée.",
   APPROVED: "Défi validé ! Ton étage a été mis à jour.",
-  REJECTED: "La preuve n’a pas obtenu trois votes et une majorité favorable dans les 24 heures.",
+  REJECTED: "La preuve n’a pas obtenu trois votes et une majorité favorable dans le délai de vote.",
   EXPIRED: "Le délai de 48 heures pour déposer cette preuve est terminé.",
   CONFLICT: "Une autre preuve est déjà enregistrée pour ce défi.",
   CLOSED: "Cette action est fermée pour ce défi.",
@@ -190,7 +195,7 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
               : "Aucun étage gagné sur cette période pour le moment.";
             const period = "<t:" + Math.floor(board.season.startAt.getTime() / 1000) + ":D> — <t:" + Math.floor(board.season.endAt.getTime() / 1000) + ":D>";
             response.content = "🏆 **Classement The Tower — " + board.season.name + "**\n"
-              + (board.season.active ? "Trimestre en cours" : "Intersaison · dernier classement") + " · " + period + "\n\n" + rows;
+              + (board.season.active ? "Saison en cours" : "Saison terminée · dernier classement") + " · " + period + "\n\n" + rows;
           }
         } else if (action?.[1] === "season-vote") {
           response = renderSeasonVote(await getTowerSeasonVote(actor), actor.userId);

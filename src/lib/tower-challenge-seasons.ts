@@ -16,22 +16,21 @@ function season(name: string, start: [number, number, number], end: [number, num
   return { name, startAt: parisMidnight(...start), endAt: parisMidnight(...end), active };
 }
 
-/** End dates are EXCLUSIVE. A day without an active season cannot award seasonal points.
- * July–August is an active summer season. Jan 1–3 and Mar 29–31 are inactive.
+/** Calendrier décidé le 17/11/2026 (docs/DECISIONS_TOWER.md). Fins EXCLUSIVES, minuit Europe/Paris.
+ * - S1 : 1er décembre → 1er avril (S1 · 2026-2027 = 1er déc. 2026 → 31 mars 2027 inclus) ;
+ * - S2 : 1er avril → 1er juillet (S2 · année) ; Été : 1er juillet → 1er septembre (Été · année) ;
+ * - S3 : 1er septembre → 1er décembre (S3 · année).
+ * Les quatre périodes couvrent toute l'année : il n'y a plus d'intersaison, `active` vaut toujours true
+ * (champ conservé pour les consommateurs). Le calendrier s'applique de la même façon avant le lancement.
  */
 export function getTowerSchoolSeason(now = new Date()): TowerSchoolSeason {
   if (!Number.isFinite(now.getTime())) throw new RangeError("Date de saison invalide");
-  const day = parts(parisDay, now);
-  const { year, month } = day;
-  const dayOfMonth = day.day;
-  if (month === 1 && dayOfMonth <= 3) return season(`S4 · ${year - 1}`, [year - 1, 9, 1], [year, 1, 1], false);
-  if (month === 1 || month === 2 || (month === 3 && dayOfMonth <= 28)) {
-    return season(`S1 · ${year}`, [year, 1, 4], [year, 3, 29], true);
-  }
-  if (month === 3) return season(`S1 · ${year}`, [year, 1, 4], [year, 3, 29], false);
+  const { year, month } = parts(parisDay, now);
+  if (month === 12) return season(`S1 · ${year}-${year + 1}`, [year, 12, 1], [year + 1, 4, 1], true);
+  if (month <= 3) return season(`S1 · ${year - 1}-${year}`, [year - 1, 12, 1], [year, 4, 1], true);
   if (month <= 6) return season(`S2 · ${year}`, [year, 4, 1], [year, 7, 1], true);
   if (month <= 8) return season(`Été · ${year}`, [year, 7, 1], [year, 9, 1], true);
-  return season(`S4 · ${year}`, [year, 9, 1], [year + 1, 1, 1], true);
+  return season(`S3 · ${year}`, [year, 9, 1], [year, 12, 1], true);
 }
 
 export function daysLeftInTowerSeason(now = new Date()): number {

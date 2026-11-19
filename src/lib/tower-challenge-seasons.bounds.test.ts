@@ -25,15 +25,14 @@ function referenceMidnight(y: number, m: number, d: number): Date {
   return hits[0]!;
 }
 function expectedFor(date: Date) {
-  const { y, m, d } = local(date);
-  if (m === 1 && d <= 3) return { name: `S4 · ${y - 1}`, active: false, start: [y - 1, 9, 1], end: [y, 1, 1] };
-  if (m === 1 || m === 2 || (m === 3 && d <= 28)) return { name: `S1 · ${y}`, active: true, start: [y, 1, 4], end: [y, 3, 29] };
-  if (m === 3) return { name: `S1 · ${y}`, active: false, start: [y, 1, 4], end: [y, 3, 29] };
+  const { y, m } = local(date);
+  if (m === 12) return { name: `S1 · ${y}-${y + 1}`, active: true, start: [y, 12, 1], end: [y + 1, 4, 1] };
+  if (m <= 3) return { name: `S1 · ${y - 1}-${y}`, active: true, start: [y - 1, 12, 1], end: [y, 4, 1] };
   if (m <= 6) return { name: `S2 · ${y}`, active: true, start: [y, 4, 1], end: [y, 7, 1] };
   if (m <= 8) return { name: `Été · ${y}`, active: true, start: [y, 7, 1], end: [y, 9, 1] };
-  return { name: `S4 · ${y}`, active: true, start: [y, 9, 1], end: [y + 1, 1, 1] };
+  return { name: `S3 · ${y}`, active: true, start: [y, 9, 1], end: [y, 12, 1] };
 }
-const ends = (y: number) => [referenceMidnight(y, 1, 1), referenceMidnight(y, 3, 29), referenceMidnight(y, 7, 1), referenceMidnight(y, 9, 1)];
+const ends = (y: number) => [referenceMidnight(y, 4, 1), referenceMidnight(y, 7, 1), referenceMidnight(y, 9, 1), referenceMidnight(y, 12, 1)];
 
 describe("calendrier The Tower : balayage horaire 2026–2030 contre une référence indépendante", () => {
   // Balayage de 5 ans heure par heure : le délai par défaut de 5 s est trop court.

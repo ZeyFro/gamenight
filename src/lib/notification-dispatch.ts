@@ -5,7 +5,8 @@ import { instantSessionInviteResolver } from "@/lib/instant-session-announce";
 import { rouletteDmResolver } from "@/lib/roulette-dm";
 import { communitySystemAnnounceResolver } from "@/lib/community-announce";
 import { onboardingReminderResolver } from "@/lib/onboarding-reminder";
-import { towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
+import { TOWER_VOTE_EVENT_TYPES, towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
+import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-space-queue";
 
 /**
  * Dispatche par catégorie d'événement — SESSION vers le résolveur du
@@ -23,12 +24,13 @@ import { towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announceme
  */
 export const DISPATCH_RESOLVER: DeliveryResolver = {
   async resolve(input) {
-    if (input.event.category === "ACHIEVEMENT" && ["TOWER_PROOF_SUBMITTED", "TOWER_CHALLENGE_APPROVED", "TOWER_CHALLENGE_REJECTED"].includes(input.event.eventType)) return towerChallengeAnnounceResolver.resolve(input);
+    if (input.event.category === "ACHIEVEMENT" && TOWER_VOTE_EVENT_TYPES.includes(input.event.eventType)) return towerChallengeAnnounceResolver.resolve(input);
     if (input.event.category === "SESSION") return sessionAnnounceResolver.resolve(input);
     if (input.event.category === "TOURNAMENT") return tournamentAnnounceResolver.resolve(input);
     if (input.event.category === "INSTANT_SESSION") return instantSessionInviteResolver.resolve(input);
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
     if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
+    if (input.event.category === "ADMIN" && input.event.eventType === TEAM_SPACE_EVENT) return teamSpaceSyncResolver.resolve(input);
     if (input.event.category === "ADMIN") return onboardingReminderResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
   },
