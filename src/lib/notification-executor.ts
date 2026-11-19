@@ -37,6 +37,7 @@ import {
   type DiscordRestResult,
 } from "@/lib/discord-rest";
 import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
+import { runProjectSpaceAction, type ProjectSpaceIntent } from "@/lib/project-space-runner";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -226,6 +227,16 @@ export type ResolvedAction =
       kind: "sync_team_space";
       intent: TeamSpaceIntent;
       teamId: string;
+      communityId: string;
+      discordId?: string;
+    }
+  | {
+      /** Fils Discord d'un projet à organisateur (public d'annonce + privé des participants) :
+       * création, accès d'un participant, archivage 7 jours après la clôture. Réservée au
+       * résolveur `projectSyncResolver` (ADMIN / PROJECT_SYNC), derrière `PROJECT_ORGANIZER_ENABLED`. */
+      kind: "sync_project_space";
+      intent: ProjectSpaceIntent;
+      projectId: string;
       communityId: string;
       discordId?: string;
     };
@@ -627,6 +638,15 @@ export async function performDiscordAction(
         return { ok: true, data: { discordThreadId: action.threadId } };
       }
       return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
+    }
+    case "sync_project_space": {
+      return mapDiscordResult(
+        await runProjectSpaceAction(
+          { intent: action.intent, projectId: action.projectId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
+        () => ({})
+      );
     }
     case "sync_team_space": {
       return mapDiscordResult(

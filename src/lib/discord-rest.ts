@@ -992,6 +992,27 @@ export async function startThreadFromMessage(input: StartThreadInput): Promise<D
   });
 }
 
+/**
+ * Fil PUBLIC sans message source (`POST /channels/{id}/threads`, type 11) : annonce d'un projet.
+ * Réservé aux projets (`project-space-api.ts`, via l'executor) ; aucun contenu privé n'y transite.
+ */
+export async function startPublicThread(input: {
+  channelId: string;
+  name: string;
+  autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<ThreadInfo>> {
+  return discordRequest({
+    method: "POST",
+    path: `/channels/${input.channelId}/threads`,
+    body: { name: normalizeThreadName(input.name), type: 11, auto_archive_duration: input.autoArchiveDuration ?? 10080 },
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseThread,
+  });
+}
+
 export interface SendThreadMessageInput extends MessageContentInput {
   threadId: string;
   deadline: Date;
