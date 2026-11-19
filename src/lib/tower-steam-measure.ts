@@ -122,7 +122,7 @@ async function creditAutoValidated(communityId: string, userId: string, attemptI
     await scopedDb.towerChallengeProgress.update({ where: { communityId_userId: actor }, data: { floorsClimbed: { increment: BigInt(attempt.rewardFloors) } } });
     await scopedDb.towerChallengeAttempt.update({
       where: { id: attemptId },
-      data: { status: "APPROVED", rewardedAt: current, submittedAt: attempt.autoValidatedAt,
+      data: { status: "APPROVED", rewardedAt: current, // submittedAt reste nul : la contrainte proof_check exigerait aussi un salon et un message de preuve.
         proofText: measureSummary({ kind: attempt.measureKind, value: attempt.measureValue ?? 0, target: attempt.measureTarget, achievement: attempt.measureAchievement }) },
     });
     await enqueueTowerAutoValidationEvent(scopedDb, communityId, attemptId, "validated");
