@@ -130,9 +130,9 @@ export default async function TowerPage() {
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Saison communautaire</p>
         <h2 className="text-xl font-semibold text-foreground">{season.name}</h2>
-        <p className="text-sm text-muted">{season.active ? "Trimestre en cours" : "Intersaison · dernier classement"}</p>
+        <p className="text-sm text-muted">{season.active ? "Saison en cours" : "Saison terminée · dernier classement"}</p>
         <p className="text-sm text-muted">Du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" }).format(season.startAt)} au {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" }).format(season.endAt)} · fuseau Europe/Paris.</p>
-        <p className="text-xs text-muted">Convention Tower commune inspirée du rythme scolaire parisien (septembre–décembre, janvier–mars, avril–juin). Ce ne sont pas les dates officielles d’un lycée ; les calendriers de vacances varient par académie, et les dates de l’établissement ne sont pas paramétrées.</p>
+        <p className="text-xs text-muted">Calendrier Tower commun : S1 de décembre à mars, S2 d’avril à juin, Été en juillet-août, S3 de septembre à novembre. Chaque saison se termine à minuit (Paris) le premier jour de la suivante ; il n’y a pas d’intersaison.</p>
       </Card>
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">

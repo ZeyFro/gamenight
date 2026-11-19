@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getTowerPersonalRank, nextTowerRankStep } from "@/lib/tower-ranks";
+import { isTowerIrregularGrantsEnabled } from "@/lib/tower-irregular-rules";
 import { countCompletedTowerSeasons, countValidatedChallengesInCurrentSeason } from "@/lib/tower-personal-progress-rules";
 
 const id = z.string().min(1).max(191);
@@ -35,6 +36,11 @@ export async function getTowerPersonalProgress(input: unknown, current = new Dat
     const progress = await scopedDb.towerChallengeProgress.findUnique({
       where: { communityId_userId: { communityId, userId: memberId } }, select: { floorsClimbed: true },
     });
+    // Irregular manuel (cahier 6.1) : lu seulement si son drapeau est allumé ; un grade gagné l'emporte (tower-ranks.ts).
+    const irregularGrant = isTowerIrregularGrantsEnabled()
+      ? await scopedDb.towerIrregularGrant.findFirst({ where: { communityId, userId: memberId, revokedAt: null }, select: { userId: true } })
+      : null;
+    const irregularGranted = irregularGrant !== null;
     const credits = await scopedDb.$queryRaw<{ rewardedAt: Date; floors: number }[]>`
       SELECT a."rewardedAt", a."rewardFloors" AS floors
       FROM "TowerChallengeAttempt" a
@@ -55,8 +61,8 @@ export async function getTowerPersonalProgress(input: unknown, current = new Dat
       floorsClimbed: floorsClimbed.toString(),
       completedSeasons,
       seasonChallenges,
-      rank: getTowerPersonalRank(floorsClimbed, seasonChallenges),
-      next: nextTowerRankStep(floorsClimbed, seasonChallenges),
+      rank: getTowerPersonalRank(floorsClimbed, seasonChallenges, { irregularGranted }),
+      next: nextTowerRankStep(floorsClimbed, seasonChallenges, { irregularGranted }),
     } as const;
   }, { isolationLevel: "RepeatableRead", timeout: 5000, maxWait: 1000 });
 }
