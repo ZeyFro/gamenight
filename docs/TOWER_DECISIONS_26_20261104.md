@@ -1,5 +1,7 @@
 # The Tower 2.0 — décisions §26 et écarts constatés (04/11/2026)
 
+> **Calendrier des saisons remplacé le 17/11/2026** : S1 du 1er décembre au 31 mars, puis avril–juin, été, septembre–novembre, sans intersaison (voir `docs/DECISIONS_TOWER.md`). Les lignes « Saison 1 », « Saisons suivantes » et « intersaisons » ci-dessous sont historiques.
+
 > **Décisions validées par le propriétaire. Document d'alignement, aucune règle du serveur ni code déployé par cette PR.** Toute mise en service nécessite un audit puis accord spécifique. Ne pas modifier une autre branche pendant sa relecture par Claude.
 
 ## Décisions finales / provisoires
