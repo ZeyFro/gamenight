@@ -2875,6 +2875,7 @@ enum CommunityChannelCategory {
 
 model Community {
   teamApplications TeamApplication[]
+  discordTeamSpaces DiscordTeamSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
@@ -3036,6 +3037,7 @@ model CommunityTeam {
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
   applications TeamApplication[]
+  discordSpaces DiscordTeamSpace[]
 
   @@index([communityId, isRecruiting, createdAt])
   @@index([createdById, communityId])
@@ -3101,6 +3103,31 @@ model TeamApplication {
   @@unique([teamId, applicantId])
   @@index([communityId, teamId, status])
   @@index([applicantId, communityId])
+}
+
+// Association fiable équipe ↔ ressources Discord gérées par GameNight (option A du 18/11/2026) :
+// salon textuel privé permanent + salon vocal privé permanent + rôle sans permission.
+// `teamId`, `channelId` et `voiceChannelId` sont uniques : un rejeu ne peut pas créer un second
+// espace pour la même équipe. `voiceChannelId` est nullable pour les liens créés avant l'option A
+// (le provisionnement suivant crée le vocal manquant). Aucune ressource Discord n'est jamais
+// supprimée : archiver = renommer. Les lignes suivent l'équipe (cascade), pas Discord ; les
+// ressources Discord orphelines restent à la main du staff.
+model DiscordTeamSpace {
+  id             String   @id @default(cuid())
+  teamId         String   @unique
+  communityId    String
+  guildId        String
+  channelId      String   @unique
+  voiceChannelId String?  @unique
+  roleId         String
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+
+  @@index([communityId])
 }
 
 model SessionGalleryMedia {
@@ -3394,6 +3421,10 @@ model TowerChallengeAttempt {
   rejectedAt DateTime?
   staffReportedAt DateTime?
   archivedAt DateTime?
+  // Sans quorum à 24 h : prolongation unique de 24 h, puis rejet sans pénalité et une resoumission.
+  voteExtendedAt DateTime?
+  quorumResubmissions Int @default(0)
+  resubmitUntil DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?

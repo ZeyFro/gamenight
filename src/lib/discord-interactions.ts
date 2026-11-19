@@ -256,6 +256,11 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     const { handleSignedTeamCommand } = await import("@/lib/discord-team-command");
     return handleSignedTeamCommand(json);
   }
+  if (interaction.data?.name === "projet") {
+    // Façade « projet » sur les mêmes équipes et services que /equipe ; réponse différée par `runTeam`.
+    const { handleSignedProjectCommand } = await import("@/lib/discord-project-command");
+    return handleSignedProjectCommand(json);
+  }
 
   if (interaction.data?.name !== "gamenight" || interaction.data.options?.[0]?.name !== "setup") {
     return reply("Commande inconnue.");
