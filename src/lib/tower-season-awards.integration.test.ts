@@ -38,6 +38,10 @@ describe.skipIf(!url)("distinctions saisonnières Tower (PostgreSQL)", () => {
     lib = await import("./tower-season-awards");
   });
   async function cleanup() {
+    // `TowerChallengeAppeal` référence la communauté et sa tentative en `NoAction` : la
+    // supprimer explicitement avant la communauté, sinon le nettoyage casse dès qu'un
+    // scénario a créé une contestation.
+    await db.towerChallengeAppeal.deleteMany({ where: { communityId: { in: [communityId, otherId] } } });
     await db.community.deleteMany({ where: { id: { in: [communityId, otherId] } } });
     await db.user.deleteMany({ where: { id: { startsWith: scope } } });
   }
