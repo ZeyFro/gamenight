@@ -2,7 +2,7 @@
 
 Méthode : chaque section de `docs/CAHIER_DES_CHARGES.md` et chaque décision de `docs/DECISIONS_TOWER.md` comparées à `main` (23f58a8d) et aux branches des PR ouvertes #370, #406, #407, #408, #416, #444, #325 (lues, jamais modifiées). Au moment de l'analyse aucune de ces PR n'était fusionnée ; #370 l'a été ensuite (be688d18) : les lignes « PR #370 » ci-dessous sont désormais sur main.
 
-Statuts : **Livré** (sur main, actif) · **Livré désactivé** (sur main ou dans une PR, derrière un flag OFF ou une migration non appliquée) · **Partiel** · **Manquant**. « PR » = présent seulement dans la branche d'une PR ouverte (donc pas sur main).
+Statuts : **Livré** (sur main, actif) · **Livré désactivé** (sur main ou dans une PR, derrière un flag OFF ou une migration non appliquée) · **Partiel** · **Manquant** · **Prévu v1.1** (cahier v1.1 ci-dessous). « PR » = présent seulement dans la branche d'une PR ouverte (donc pas sur main).
 
 Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qui ne correspondent pas à ce cahier. Correspondance retenue : recherche de joueurs = §12, candidatures d'équipe = §11.1, projets = §11.3 (forum « Projets et aventures »), visibilité du profil = §12.3-12.4.
 
@@ -86,3 +86,30 @@ Numérotation : le brief de tâche renvoie à des §6-7, §8.2-8.3, §9, §10 qu
 - Remplacement d'un défi quand le jeu n'est pas possédé (§8.6), proposition de défis par grade (§8.7).
 - Écarts qui vivent dans les PR #407/#408 (18:00, quorum, contestation 48 h) : à corriger dans leurs branches, non touchées ici.
 - Classement d'équipes Tower, cadres/titres cosmétiques automatisés, récapitulatif hebdomadaire Tower.
+
+## Cahier v1.1 — décisions du 18/11/2026 (`docs/CAHIER_DES_CHARGES.md` §27)
+
+Statut **Prévu v1.1** : décidé, non implémenté ; la PR à venir est nommée par sa branche (numéro à compléter à l'ouverture). Une ligne ne passe à « Livré désactivé » qu'après fusion sur `main`. Les PR du lot précédent (#462–#468, #470–#472) ne sont pas modifiées ici.
+
+| Sujet | Exigence | Statut | PR à venir | Flag | Migration |
+| --- | --- | --- | --- | --- | --- |
+| A | Équipes : recruteurs et invités : Candidatures par capitaine ou ≤ 2 recruteurs, accès synchronisés, 8 max, invité d'équipe en tournoi | Prévu v1.1 | `claude/equipes-recruteurs-invites` | `TEAM_RECRUITERS_ENABLED` | `20261118130000_team_recruiters_guest` |
+| B | Votes de preuves dans Discord : Vote public ✅/❌ et fil par preuve, votants ≥ 7 jours sur le serveur | Prévu v1.1 | `claude/votes-discord-fils` | `TOWER_DISCORD_VOTES_ENABLED` | `20261118130100_tower_vote_messages` |
+| C | Validation automatique Steam : Défis mesurables Steam validés par cron, repli vote, « Signaler un doute », MP | Prévu v1.1 | `claude/validation-auto-steam` | `TOWER_STEAM_AUTOVALIDATE_ENABLED` | `20261118130200_tower_challenge_measure` |
+| D | Soirées : visibilité et liste d'attente : Soirées publique / sur candidature / privée, fil et vocal temporaires, liste d'attente | Prévu v1.1 | `claude/soirees-visibilite` | `SESSION_VISIBILITY_ENABLED` | `20261118130300_session_visibility_waitlist` |
+| E | Tournois par équipes : Tournois solo ou équipes, score confirmé par les 2 capitaines, équilibrage par niveau | Prévu v1.1 | `claude/tournois-equipes` | `TOURNAMENT_TEAMS_ENABLED` | `20261118130400_tournament_teams` |
+| F | /role : création automatique de rôles : /role : recherche, création auto sans permission, 1/joueur/semaine, alerte 80 % de 250 rôles ; prérequis : 134 rôles Étage supprimés | Prévu v1.1 | `claude/role-creation-auto` | `DISCORD_ROLE_AUTOCREATE_ENABLED` | `20261118130500_discord_role_requests` |
+| G | /projet : organisateur et clôture : /projet : organisateur, date de fin, fil et espace privé, archivage 7 j | Prévu v1.1 | `claude/projets-organisateur` | `PROJECT_ORGANIZER_ENABLED` | `20261118130600_project_entries` |
+| H | Jouer maintenant et rivalités d'équipes : « Jouer maintenant » (Rejoindre / Intéressé, 2 h) et rivalités d'équipes | Prévu v1.1 | `claude/rivalites-equipes` | `TEAM_RIVALRIES_ENABLED` | `20261118130700_team_rivalries` |
+| I | Notifications : MP ciblés et centre in-app : MP ciblés seulement, pings de rôle opt-in, centre de notifications, jamais @everyone | Prévu v1.1 | `claude/centre-notifications` | `NOTIFICATION_CENTER_ENABLED` | `20261118130800_notification_center` |
+| J | Console : connexions de plateformes et crossplay : Scope OAuth `connections`, identifiants préremplis, ajout par plateforme, crossplay, pas de défi impossible, photo TV | Prévu v1.1 | `claude/console-connexions-plateformes` | `DISCORD_CONNECTIONS_SCOPE_ENABLED` et `GAME_PLATFORMS_ENABLED` | `20261118130900_platform_identities_crossplay` |
+| K | Niveau par jeu et matchmaking : Niveau Débutant / Intermédiaire / Confirmé / Compétitif, matchmaking et tournoi, source DECLARED|IMPORTED | Prévu v1.1 | `claude/niveau-jeu-matchmaking` | `GAME_LEVELS_MATCHMAKING_ENABLED` | aucune (si possible) |
+| L | Modération : signalement contextuel : Commande contextuelle « Signaler », ticket privé staff, aucune sanction auto | Prévu v1.1 | `claude/signalement-contextuel` | `DISCORD_REPORT_COMMAND_ENABLED` | `20261118131100_moderation_reports` |
+| M | Boosters : Soutien de la Tour : Rôle « Soutien de la Tour » via `premium_since` (REST), mur des soutiens, salons boosters, retrait auto | Prévu v1.1 | `claude/boosters-nitro` | `DISCORD_BOOSTERS_ENABLED` | `20261118131200_booster_support` |
+| N | Personnalisation du profil : Couleurs, thèmes, cadres, effets, vitrine de badges, entitlement sans paiement | Prévu v1.1 | `claude/profil-personnalisation` | `PROFILE_CUSTOMIZATION_ENABLED` | `20261118131300_profile_customization` |
+| O | Tableau de bord staff v2 : /admin : candidatures, opérations échouées, espaces à nettoyer, contestations, compteurs rôles/salons | Prévu v1.1 | `claude/admin-tableau-bord-v2` | `ADMIN_DASHBOARD_V2_ENABLED` | aucune |
+| V2 | Bot gateway permanent (activité, temps en vocal), rangs importés Riot / Hypixel | Prévu v2 (documentation seulement) | aucune | aucun | aucune |
+| Plus tard | VIP payant cosmétique + confort, jamais étages, XP, priorité ni vote ; champ d'entitlement sans paiement | Prévu plus tard (documentation seulement) | aucune (l'entitlement est porté par le sujet N) | aucun | `20261118131300_profile_customization` (sujet N) |
+| Rappel | Suppression des 134 rôles Étage avant la création auto de rôles (F) | Prévu v1.1 (prérequis, action manuelle du propriétaire) | aucune | aucun | aucune |
+
+Écart de libellé à trancher : #468 stocke `DEBUTANT / INTERMEDIAIRE / AVANCE / EXPERT`, le libellé décidé est Débutant / Intermédiaire / Confirmé / Compétitif (sujet K).

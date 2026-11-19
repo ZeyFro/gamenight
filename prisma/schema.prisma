@@ -53,6 +53,14 @@ model User {
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
   towerSeasonAwards TowerSeasonAward[]
+  towerChallengeProposals TowerChallengeProposal[] @relation("TowerProposalAuthor")
+  towerChallengeProposalsDecided TowerChallengeProposal[] @relation("TowerProposalDecider")
+  towerChallengeReplacements TowerChallengeReplacement[]
+  towerIrregularGrants TowerIrregularGrant[] @relation("TowerIrregularHolder")
+  towerIrregularGrantsGiven TowerIrregularGrant[] @relation("TowerIrregularGranter")
+  towerIrregularGrantsRevoked TowerIrregularGrant[] @relation("TowerIrregularRevoker")
+  towerIrregularLogs TowerIrregularLog[] @relation("TowerIrregularLogHolder")
+  towerIrregularLogsActed TowerIrregularLog[] @relation("TowerIrregularLogActor")
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -2884,6 +2892,10 @@ model Community {
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
   towerSeasonAwards TowerSeasonAward[]
+  towerChallengeProposals TowerChallengeProposal[]
+  towerChallengeReplacements TowerChallengeReplacement[]
+  towerIrregularGrants TowerIrregularGrant[]
+  towerIrregularLogs TowerIrregularLog[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3428,6 +3440,7 @@ model TowerChallengeAttempt {
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?
+  replacements TowerChallengeReplacement[]
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3457,6 +3470,54 @@ model TowerSeasonAward {
 
   @@unique([communityId, userId, seasonStartAt])
   @@index([communityId, userId, expiresAt])
+}
+
+enum TowerChallengeProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Proposition de défi solo par un joueur Ranker / High Ranker (cahier 8.7) ; entre au catalogue seulement
+// après validation du staff (definitionId renseigné à l'approbation). Aucune IA.
+model TowerChallengeProposal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  proposerId String
+  proposer User @relation("TowerProposalAuthor", fields: [proposerId], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  instructions String @db.VarChar(1500)
+  rewardFloors Int
+  status TowerChallengeProposalStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  decidedById String?
+  decidedBy User? @relation("TowerProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decisionNote String? @db.VarChar(500)
+  definitionId String? @db.VarChar(191)
+
+  @@index([communityId, status, createdAt])
+  @@index([communityId, proposerId, createdAt])
+}
+
+// Remplacement d'un défi solo qui exige un jeu non possédé (cahier 8.6) : une seule fois par attribution
+// (unicité sur attemptId), sans toucher au quota ; journal des deux définitions concernées.
+model TowerChallengeReplacement {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromDefinitionId String @db.VarChar(191)
+  toDefinitionId String @db.VarChar(191)
+  requiredGameId String @db.VarChar(191)
+  createdAt DateTime @default(now())
+
+  @@unique([attemptId])
+  @@index([communityId, userId, createdAt])
 }
 
 enum TowerChallengeAppealStatus {
@@ -3528,6 +3589,43 @@ model TowerChallengeProgress {
 
   @@id([communityId, userId])
 }
+// Irregular (cahier 6.1) : grade de prestige attribué À LA MAIN par le staff communautaire (OWNER/ADMIN),
+// sans aucun droit. Une ligne par joueur et par communauté ; révoquée = revokedAt renseigné.
+model TowerIrregularGrant {
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularHolder", fields: [userId], references: [id], onDelete: Cascade)
+  grantedById String?
+  grantedBy User? @relation("TowerIrregularGranter", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+  revokedById String?
+  revokedBy User? @relation("TowerIrregularRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@id([communityId, userId])
+}
+
+enum TowerIrregularAction {
+  GRANTED
+  REVOKED
+}
+
+// Journal append-only des attributions et retraits d'Irregular.
+model TowerIrregularLog {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularLogHolder", fields: [userId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor User? @relation("TowerIrregularLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action TowerIrregularAction
+  createdAt DateTime @default(now())
+
+  @@index([communityId, userId, createdAt])
+}
+
 model TowerSeasonVote {
   id String @id @default(cuid())
   communityId String
