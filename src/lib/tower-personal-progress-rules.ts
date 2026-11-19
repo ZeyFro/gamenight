@@ -9,7 +9,7 @@ export type TowerFloorCredit = { rewardedAt: Date; floors: number };
  * la date de fin de la saison est passée ET au moins un étage lui a été crédité pendant cette saison.
  *
  * - Un crédit appartient à la saison qui contient son `rewardedAt` (Q7, crédit tardif), fin EXCLUSIVE.
- * - Un crédit daté d'une intersaison (1er–3 janvier, 29–31 mars) n'appartient à aucune saison.
+ * - Le calendrier (décision du 17/11/2026) couvre toute l'année : tout crédit valide appartient à une saison.
  * - L'été est une saison comme les autres (le calendrier de `tower-challenge-seasons.ts` fait foi).
  */
 export function countCompletedTowerSeasons(credits: readonly TowerFloorCredit[], now: Date): number {
@@ -34,7 +34,7 @@ export function countCompletedTowerSeasons(credits: readonly TowerFloorCredit[],
 /**
  * Défis validés par un joueur sur la saison EN COURS à `now` (condition High Ranker, décision du 17/11/2026).
  * Un crédit = un défi validé (solo, ou participation créditée à un défi d'équipe). Fin de saison EXCLUSIVE ;
- * hors saison active (intersaison), aucun défi ne compte.
+ * la saison est toujours active (plus d'intersaison depuis la décision du 17/11/2026).
  */
 export function countValidatedChallengesInCurrentSeason(credits: readonly TowerFloorCredit[], now: Date): number {
   const season = getTowerSchoolSeason(now);

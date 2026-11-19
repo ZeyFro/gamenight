@@ -96,7 +96,7 @@ Une annonce de soirée peut te mentionner ; tu règles tes notifications dans to
 • **2 réussites validées par jour au maximum** (solo + équipe confondus).
 
 **Défi d'équipe**
-• **1 par jour et par équipe**, attribué à **18:00 (heure de Paris)**. [PRÉVUE : le code actuel attribue à 09:00]
+• **1 par jour et par équipe**, attribué à **18:00 (heure de Paris)** par le workflow `tower-team-daily` (deux slots UTC 16:00/17:00 avec garde).
 
 **Équipes**
 • **2 à 8 joueurs**, **1 seule équipe principale** par joueur et par communauté.
@@ -131,7 +131,7 @@ Preuves : captures de jeu et descriptions. Aucune IA ne valide une preuve : ce s
 
 **Saisons**
 • **Saison 1 : du 1er décembre 2026 au 31 mars 2027.**
-• Puis : avril–juin · **saison d'été juillet–août** · septembre–novembre. [PRÉVUE : le code actuel place S1 du 4 janvier au 28 mars]
+• Puis : avril–juin · **saison d'été juillet–août** · septembre–novembre, puis S1 recommence le 1er décembre. [EN VIGUEUR dans le code : `src/lib/tower-challenge-seasons.ts`]
 
 **Classement** — départage dans cet ordre :
 1) le nombre d'étages gagnés,
@@ -230,13 +230,13 @@ Pas dans la première version. [PRÉVUE, hors périmètre v1]
 
 | Règle | Décidée (17/11/2026) | Code actuel | Fichier |
 | --- | --- | --- | --- |
-| Défi d'équipe | 18:00 Europe/Paris | 09:00 | `docs/TOWER_TEAM_DAILY_CRON.md`, `src/lib/tower-team-daily.ts` |
+| Défi d’équipe | 18:00 Europe/Paris | aligné (18:00) | `docs/TOWER_TEAM_DAILY_CRON.md`, `src/lib/tower-team-daily.ts` |
 | Équipes | 2 à 8 | 2 à 20, plusieurs équipes possibles | `src/lib/community-teams-rules.ts` (#370 le corrige, non fusionnée) |
 | High Ranker | 100 étages + 5 défis validés sur la saison | 100 + une saison terminée | `src/lib/tower-ranks.ts` |
 | Irregular | attribution manuelle du staff | rang par défaut en dessous de 30 | `src/lib/tower-ranks.ts` |
 | Couleurs | gris / violet / or / rouge | non décrites dans le code comme décidé (ancienne décision : bleu / violet / or) | `docs/TOWER_DECISIONS_26_20261104.md` |
-| Saison 1 | 1/12/2026 → 31/03/2027 | 4/01 → 28/03 | `src/lib/tower-challenge-seasons.ts` |
-| Saisons suivantes | avril–juin, juillet–août, septembre–novembre | S4 septembre–décembre | `src/lib/tower-challenge-seasons.ts` |
+| Saison 1 | 1/12/2026 → 31/03/2027 | aligné (S1 · 2026-2027) | `src/lib/tower-challenge-seasons.ts` |
+| Saisons suivantes | avril–juin, juillet–août, septembre–novembre | aligné (S2, Été, S3 septembre–novembre) | `src/lib/tower-challenge-seasons.ts` |
 | Vote sans quorum | prolongation 24 h puis rejet | vote reste ouvert | `src/lib/tower-challenge-voting.ts` |
 | Contestation | 48 h après décision, arbitre fixe | non livrée (#407) | — |
 | Départage | étages, défis difficiles, date | conforme | `src/lib/tower-standings.ts` |

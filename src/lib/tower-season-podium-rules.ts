@@ -1,6 +1,6 @@
 import { getTowerSchoolSeason, type TowerSchoolSeason } from "./tower-challenge-seasons";
 
-/** Intersaisons keep the completed season; an active season exposes its predecessor. */
+/** Le calendrier n'a plus d'intersaison : la saison courante est toujours active, on expose sa prédécesseure. */
 export function getLastCompletedTowerSeason(current = new Date()): TowerSchoolSeason {
   const season = getTowerSchoolSeason(current);
   const completed = season.endAt.getTime() <= current.getTime()
