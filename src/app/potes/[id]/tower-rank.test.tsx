@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ user: vi.fn(), canView: vi.fn(), find: vi.fn(), tower: vi.fn() }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), canView: vi.fn(), find: vi.fn(), tower: vi.fn(), awards: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
 vi.mock("@/lib/community-isolation", () => ({ canViewPote: mocks.canView }));
 vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: async () => "community" }));
@@ -8,6 +8,7 @@ vi.mock("@/lib/xp-shop", () => ({ getEquippedShopItems: async () => ({ TITLE: nu
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: mocks.find } } }));
 vi.mock("@/lib/member-stats", () => ({ getMemberStatsForViewer: async () => ({}), projectUserProgress: (user: unknown) => user }));
 vi.mock("@/lib/tower-personal-progress", () => ({ getTowerProgressForProfile: mocks.tower }));
+vi.mock("@/lib/tower-season-awards", () => ({ getTowerSeasonAwardsForProfile: mocks.awards }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/components/RankAvatar", () => ({ RankAvatar: () => null }));
 vi.mock("@/components/PoteTabs", () => ({ PoteTabs: () => null }));
@@ -20,6 +21,7 @@ beforeEach(() => {
   // XP très élevée : le rang Tower ne doit dépendre que de la progression Tower renvoyée.
   mocks.find.mockResolvedValue({ id: "friend", discordName: "Pote", discordAvatar: null, color: "#ffffff", xpTotal: 999999, steamId64: null });
   mocks.tower.mockResolvedValue(null);
+  mocks.awards.mockResolvedValue([]);
 });
 describe("rang The Tower sur la fiche d'un pote", () => {
   it("n'affiche aucun rang Tower quand la Tour est éteinte ou indisponible, quelle que soit l'XP", async () => {
@@ -31,6 +33,12 @@ describe("rang The Tower sur la fiche d'un pote", () => {
     mocks.tower.mockResolvedValue({ status: "PROGRESS", floorsClimbed: "30", completedSeasons: 1, seasonChallenges: 5, rank, next: null });
     const html = renderToStaticMarkup(await PoteLayout(props));
     expect(html).toContain(`title="Rang The Tower : ${rank}"`);
+  });
+  it("affiche les distinctions saisonnières valables, et rien quand il n'y en a pas", async () => {
+    expect(renderToStaticMarkup(await PoteLayout(props))).not.toContain("Champion");
+    mocks.awards.mockResolvedValue([{ place: 1, seasonName: "S1 · 2027", title: "Champion · S1 · 2027", frameHex: "#f59e0b", frameColorName: "or", expiresAt: new Date() }]);
+    expect(renderToStaticMarkup(await PoteLayout(props))).toContain("Champion · S1 · 2027");
+    expect(mocks.awards).toHaveBeenCalledWith("viewer", "friend");
   });
   it("ne lit aucune progression Tower avant les contrôles d'accès", async () => {
     mocks.user.mockResolvedValue(null);
