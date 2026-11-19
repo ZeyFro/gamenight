@@ -46,6 +46,7 @@ model User {
   profileVisibility UserProfileVisibility?
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
+  tournamentMatchReports TournamentMatchReport[] @relation("TournamentMatchReporter")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
@@ -2263,6 +2264,9 @@ model Tournament {
   teamMembers  TournamentTeamMember[]
   matches      TournamentMatch[]
   predictions  TournamentPrediction[]
+  teamSettings TournamentTeamSettings?
+  teamEntries  TournamentTeamEntry[]
+  matchReports TournamentMatchReport[]
 
   // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
   // — même contrat que `Session.announceViaBot` (voir son commentaire pour
@@ -2373,6 +2377,7 @@ model TournamentTeam {
   matchesAsTeam1 TournamentMatch[] @relation("TournamentMatchTeam1")
   matchesAsTeam2 TournamentMatch[] @relation("TournamentMatchTeam2")
   wonMatches  TournamentMatch[] @relation("TournamentMatchTeamWinner")
+  registeredEntry TournamentTeamEntry?
 
   @@unique([tournamentId, position])
 }
@@ -2426,8 +2431,82 @@ model TournamentMatch {
   team1      TournamentTeam? @relation("TournamentMatchTeam1", fields: [team1Id], references: [id], onDelete: SetNull)
   team2      TournamentTeam? @relation("TournamentMatchTeam2", fields: [team2Id], references: [id], onDelete: SetNull)
   winnerTeam TournamentTeam? @relation("TournamentMatchTeamWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
+  reports    TournamentMatchReport[]
 
   @@unique([tournamentId, round, position])
+}
+
+// Tournois par équipes inscrites (TOURNAMENT_TEAMS_ENABLED). Aucune colonne ajoutée à Tournament : une ligne
+// TournamentTeamSettings marque un tournoi dont les compétiteurs sont des CommunityTeam inscrites (les lectures du
+// reste de l'application ne dépendent donc pas de la migration). Au lancement, chaque équipe inscrite devient un
+// TournamentTeam (avec ses membres actifs comme TournamentParticipant) : le bracket, l'avancement, l'XP et la clôture
+// existants sont réutilisés tels quels.
+model TournamentTeamSettings {
+  tournamentId        String    @id
+  communityId         String
+  isPrivate           Boolean   @default(false)
+  maxTeams            Int
+  registrationClosesAt DateTime?
+  createdAt           DateTime  @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  community  Community  @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId])
+}
+
+enum TournamentTeamEntryStatus {
+  INVITED
+  REGISTERED
+  DECLINED
+  WITHDRAWN
+}
+
+// Une équipe dans un tournoi : INVITED (tournoi privé, invitation de l'organisateur) ou REGISTERED (inscrite par son
+// capitaine). `tournamentTeamId` est posé au lancement (équipe de bracket figée).
+model TournamentTeamEntry {
+  id               String                    @id @default(cuid())
+  communityId      String
+  tournamentId     String
+  teamId           String
+  status           TournamentTeamEntryStatus
+  tournamentTeamId String?                   @unique
+  createdAt        DateTime                  @default(now())
+  decidedAt        DateTime?
+
+  community      Community       @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  tournament     Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team           CommunityTeam   @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  tournamentTeam TournamentTeam? @relation(fields: [tournamentTeamId], references: [id], onDelete: SetNull)
+
+  @@unique([tournamentId, teamId])
+  @@index([communityId, teamId])
+}
+
+// Résultat déclaré par UN des deux capitaines d'un match (immuable : verrouillé dès l'envoi). Deux déclarations
+// concordantes valident le match ; discordantes = désaccord, tranché par l'organisateur ou un ADMIN/OWNER.
+// `teamId` = équipe de bracket (TournamentTeam) de la déclarante, `winnerTeamId` = équipe désignée gagnante.
+model TournamentMatchReport {
+  id           String    @id @default(cuid())
+  communityId  String
+  tournamentId String
+  matchId      String
+  teamId       String
+  winnerTeamId String
+  score1       Int?
+  score2       Int?
+  reportedById String?
+  remindedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  community  Community       @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  tournament Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  match      TournamentMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  reportedBy User?           @relation("TournamentMatchReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, teamId])
+  @@index([tournamentId])
+  @@index([remindedAt, createdAt])
 }
 
 // Sprint 5 (FEATURE 2, Chat in-app) — messagerie POLLING (PAS de
@@ -2874,6 +2953,9 @@ enum CommunityChannelCategory {
 
 model Community {
   teamApplications TeamApplication[]
+  tournamentTeamSettings TournamentTeamSettings[]
+  tournamentTeamEntries TournamentTeamEntry[]
+  tournamentMatchReports TournamentMatchReport[]
   discordTeamSpaces DiscordTeamSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
@@ -3035,6 +3117,7 @@ model CommunityTeam {
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
   applications TeamApplication[]
+  tournamentEntries TournamentTeamEntry[]
   discordSpaces DiscordTeamSpace[]
 
   @@index([communityId, isRecruiting, createdAt])
