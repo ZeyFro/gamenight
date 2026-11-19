@@ -11,7 +11,7 @@ vi.mock("@/lib/prisma", () => ({
     community: { findFirst: mocks.communityFindFirst },
     tag: { upsert: vi.fn(), findUnique: vi.fn() },
     userTag: { upsert: vi.fn(), deleteMany: vi.fn() },
-    cronLock: { upsert: vi.fn(), updateMany: vi.fn(async () => ({ count: 1 })) },
+    cronLock: { upsert: vi.fn(), createMany: vi.fn(async () => ({ count: 1 })), updateMany: vi.fn(async () => ({ count: 1 })) },
   },
 }));
 vi.mock("@/lib/discord-role-autocreate", async (importOriginal) => ({
