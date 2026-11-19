@@ -3453,6 +3453,10 @@ model TowerChallengeAttempt {
   rejectedAt DateTime?
   staffReportedAt DateTime?
   archivedAt DateTime?
+  // Sans quorum à 24 h : prolongation unique de 24 h, puis rejet sans pénalité et une resoumission.
+  voteExtendedAt DateTime?
+  quorumResubmissions Int @default(0)
+  resubmitUntil DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?

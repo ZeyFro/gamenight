@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen } from "./tower-challenge-appeal-rules";
+import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen, TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "./tower-challenge-appeal-rules";
 
 describe("délai de contestation Tower", () => {
   const resultAnnouncedAt = new Date("2026-11-01T12:00:00.000Z");
 
-  it("accepte jusqu'à la milliseconde précédant les 24 heures et ferme à l'échéance", () => {
-    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-02T11:59:59.999Z"))).toBe(true);
-    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-02T12:00:00.000Z"))).toBe(false);
+  it("accepte jusqu'à la milliseconde précédant les 48 heures et ferme à l'échéance (décision du 17/11)", () => {
+    expect(TOWER_CHALLENGE_APPEAL_WINDOW_MS).toBe(48 * 3600000);
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-02T12:00:00.000Z"))).toBe(true);
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-03T11:59:59.999Z"))).toBe(true);
+    expect(isTowerChallengeAppealWindowOpen(resultAnnouncedAt, new Date("2026-11-03T12:00:00.000Z"))).toBe(false);
   });
 
   it("ferme si les dates sont invalides ou inversées", () => {
@@ -36,6 +38,10 @@ describe("arbitrage indépendant", () => {
 
   it("refuse un participant comme réviseur", () => {
     expect(canReviewTowerChallengeAppeal({ ...base, isParticipant: true })).toBe(false);
+  });
+
+  it("refuse l'auteur même s'il est l'arbitre désigné", () => {
+    expect(canReviewTowerChallengeAppeal({ ...base, reviewerId: "author", reviewerRole: "MEMBER", authorRole: "OWNER", arbiterId: "author" })).toBe(false);
   });
 
   it("refuse un votant comme réviseur", () => {
