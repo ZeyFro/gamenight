@@ -17,8 +17,8 @@ describe("distinctions saisonnières : règles pures", () => {
     it.each([
       ["2027-02-10T12:00:00Z", "S2 · 2027"],
       ["2027-05-10T12:00:00Z", "Été · 2027"],
-      ["2027-08-10T12:00:00Z", "S4 · 2027"],
-      ["2027-11-10T12:00:00Z", "S1 · 2028"],
+      ["2027-08-10T12:00:00Z", "S3 · 2027"],
+      ["2027-11-10T12:00:00Z", "S1 · 2027-2028"],
     ])("après la saison de %s vient %s", (date, expected) => {
       expect(nextTowerSeason(getTowerSchoolSeason(new Date(date))).name).toBe(expected);
     });
