@@ -25,9 +25,12 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — tableau de bord staff
   });
   afterAll(async () => {
     await db?.$disconnect();
+    vi.unstubAllEnvs();
   });
 
   beforeEach(async () => {
+    // Faux jeton : le chargeur ne lit les compteurs que si le bot est configuré ; les compteurs sont injectés, aucun appel Discord.
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
     await db.$executeRawUnsafe(
       `TRUNCATE "TeamApplication", "DiscordTeamSpace", "NotificationDelivery", "NotificationEvent", "CommunityTeamMember", "CommunityTeam", "Membership", "User", "Game", "Community" CASCADE`
     );
