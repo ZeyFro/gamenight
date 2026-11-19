@@ -172,7 +172,8 @@ describe.skipIf(!url)("#396 — contre-tests du lot, des reprises et du budget",
       await pause(600);
       releaseCommunity();
       await firstLock;
-      await pause(600);
+      // Marge large : le budget de 1 s doit avoir coupé l'attente, même sous charge CI.
+      await pause(1_800);
       const bounded = settled;
       releaseDefinition();
       await secondLock;
