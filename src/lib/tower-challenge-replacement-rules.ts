@@ -26,9 +26,10 @@ export function towerReplacementBlock(attempt: ReplaceableAttempt, ownedGameIds:
   if (attempt.teamId !== null) return "team";
   if (attempt.status !== "ASSIGNED") return "not_assigned";
   if (attempt.expiresAt.getTime() <= current.getTime()) return "expired";
+  // Avant le jeu exigé : un défi déjà remplacé n'exige souvent plus aucun jeu, le message utile est « déjà remplacé ».
+  if (attempt.alreadyReplaced) return "already_replaced";
   if (attempt.requiredGameId === null) return "no_game_required";
   if (ownedGameIds.has(attempt.requiredGameId)) return "game_owned";
-  if (attempt.alreadyReplaced) return "already_replaced";
   return null;
 }
 
