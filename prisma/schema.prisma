@@ -44,6 +44,7 @@ enum FreeGameStore {
 
 model User {
   profileVisibility UserProfileVisibility?
+  gameLevels UserGameLevel[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
@@ -378,6 +379,7 @@ enum GameSource {
 
 model Game {
   epitaphs CommunityGameEpitaph[]
+  userLevels UserGameLevel[]
   // Relevé de préparation déclaré, indépendant des prix Steam consultés.
   preparationCost       String? @db.VarChar(10)
   preparationPrice      String? @db.VarChar(120)
@@ -3117,6 +3119,29 @@ model TeamApplication {
   @@unique([teamId, applicantId])
   @@index([communityId, teamId, status])
   @@index([applicantId, communityId])
+}
+
+// Niveau de jeu auto-déclaré (cahier §12.4), un par utilisateur et par jeu. Donnée personnelle du profil (comme
+// UserGame) : pas de communauté dans la clé, la lecture par un tiers passe par canViewPote (membres de ses
+// communautés, profil non masqué). Pas de ligne = niveau non déclaré.
+enum GameLevel {
+  DEBUTANT
+  INTERMEDIAIRE
+  CONFIRME
+  COMPETITIF
+}
+
+model UserGameLevel {
+  userId    String
+  gameId    String
+  level     GameLevel
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@index([gameId, level])
 }
 
 // Objectifs et critères de recrutement structurés d'une équipe (cahier §11.2). Une ligne au plus par équipe,

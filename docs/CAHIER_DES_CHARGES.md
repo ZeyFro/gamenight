@@ -1232,7 +1232,7 @@ Scope OAuth `connections` demandé à la connexion Discord, optionnel et avec co
 
 #### K. Niveau par jeu et matchmaking — v1
 
-Niveau déclaratif Débutant / Intermédiaire / Confirmé / Compétitif sur le profil, utilisé par le matchmaking (#408) et l'équilibrage de tournoi. Interface prévue pour un rang importé plus tard (source DECLARED ou IMPORTED, rien d'importé). Écart connu : #468 stocke DEBUTANT / INTERMEDIAIRE / AVANCE / EXPERT ; les libellés décidés sont ceux ci-dessus. À fusionner après #468.
+Niveau déclaratif Débutant / Intermédiaire / Confirmé / Compétitif sur le profil, utilisé par le matchmaking (#408) et l'équilibrage de tournoi. Interface prévue pour un rang importé plus tard (source DECLARED ou IMPORTED, rien d'importé). Écart résolu le 19/11/2026 : l’enum de #468 est renommée DEBUTANT / INTERMEDIAIRE / CONFIRME / COMPETITIF (migration d’origine corrigée, appliquée sur aucune base partagée). À fusionner après #468.
 
 - Branche prévue : `claude/niveau-jeu-matchmaking`. Interrupteur : `GAME_LEVELS_MATCHMAKING_ENABLED`. Migration : aucune (si possible).
 
