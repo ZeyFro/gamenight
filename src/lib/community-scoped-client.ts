@@ -40,7 +40,7 @@ import {
 
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
-  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog",
+  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
   "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
@@ -61,7 +61,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
-  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog",
+  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
   "CalendarFeedToken",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
