@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { getTeamDailyTowerChallenge } from "@/lib/tower-challenges";
-import { getTowerParisDayKey } from "@/lib/tower-challenge-rules";
+import { getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
 import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-deadline";
 import { logger } from "@/lib/logger";
 
@@ -13,7 +13,9 @@ export async function assignDailyTowerTeamChallenges(deadline: Date): Promise<To
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return summary;
   if (!/^[0-9]{16,20}$/.test(guildId ?? "")) return summary;
   if (!Number.isFinite(deadline.getTime()) || Date.now() >= deadline.getTime() - 5) return summary;
-  const requestKey = "team-" + getTowerParisDayKey(new Date(Date.now()));
+  const current = new Date(Date.now());
+  if (!isTowerTeamDailyDue(current)) return { ...summary, complete: true };
+  const requestKey = "team-" + getTowerParisDayKey(current);
 
   const teams = await prisma.$transaction(async (tx) => {
     await setTowerStatementDeadline(tx, deadline);

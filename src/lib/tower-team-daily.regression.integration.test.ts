@@ -11,6 +11,7 @@ if (url) {
   }
 }
 const applicationName = "gamenight-reg396-" + randomUUID();
+const realDateNow = Date.now.bind(Date);
 const clock = vi.hoisted(() => ({ now: 0, jumpAfterCommit: false, inserted: false }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
@@ -62,6 +63,9 @@ describe.skipIf(!url)("#396 — contre-tests du lot, des reprises et du budget",
   });
   beforeEach(async () => {
     await cleanup();
+    // Exercer les budgets après l'ouverture du défi, en conservant le temps écoulé réel.
+    const offset = Date.parse("2027-01-15T17:00:00Z") - realDateNow();
+    vi.spyOn(Date, "now").mockImplementation(() => realDateNow() + offset);
     clock.jumpAfterCommit = false;
     clock.inserted = false;
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");

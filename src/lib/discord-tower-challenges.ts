@@ -127,6 +127,7 @@ function renderSeasonVote(result: Awaited<ReturnType<typeof getTowerSeasonVote>>
 }
 
 const feedback: Record<string, string> = {
+  NOT_DUE: "Le défi de ton équipe sera disponible à 18 h (heure de Paris).",
   SEASON_VOTE_SAVED: "Ton vote de saison est enregistré.",
   SEASON_VOTE_ALREADY_CAST: "Tu as déjà voté pour cette saison.",
   SEASON_VOTE_SELF: "Tu ne peux pas voter pour toi-même.",

@@ -594,6 +594,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await attempts()).toBe(1);
   });
   it("attribue un seul défi quotidien par équipe et crédite ses participants sous le quota solo/équipe partagé", async () => {
+    clock.now = new Date("2026-10-28T17:00:00Z");
     await db.community.update({ where: { id: "tower-a" }, data: { communityTeamsEnabled: true } });
     const game = await db.game.create({ data: { id: "tower-team-game", name: "Tower Team Game", source: "MANUAL", addedById: "tower-author" } });
     const team = await db.communityTeam.create({ data: {
@@ -627,7 +628,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
       assignedAt: new Date("2026-10-28T00:00:00Z"), expiresAt: new Date("2026-10-30T00:00:00Z"),
       status: "APPROVED" as const, rewardedAt: new Date(rewardedAt),
     })) });
-    clock.now = new Date("2026-10-29T12:00:00Z");
+    clock.now = new Date("2026-10-29T17:00:00Z");
     expect(await api.settleTowerChallenge({ ...author, attemptId: first.attempt.id })).toMatchObject({
       status: "APPROVED", rewardedMembers: 1, pendingRewards: 1, userRewarded: false,
     });

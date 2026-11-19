@@ -242,6 +242,7 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
       select: { id: true, userId: true, title: true, instructions: true, rewardFloors: true, status: true, assignedAt: true, expiresAt: true, submittedAt: true },
     });
     if (!attempt) {
+      if (!isTowerTeamDailyDue(current)) return { status: "NOT_DUE" } as const;
       await setTowerStatementDeadline(transaction, deadline);
       const candidates = await scopedDb.towerChallengeDefinition.findMany({
         where: { communityId, active: true, mode: "TEAM" },

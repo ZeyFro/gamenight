@@ -175,6 +175,13 @@ describe("parcours Discord The Tower signé", () => {
     expect(content).toContain("récompense sera créditée demain");
     expect(content).not.toContain("Ton étage a été mis à jour");
   });
+  it("explique que le défi d'équipe n'est pas encore attribuable avant 18 h", async () => {
+    mocks.teamChallenge.mockResolvedValueOnce({ status: "NOT_DUE" });
+    const out = await run(payload("gn:tower:team:team_1"));
+    await out.runTower?.();
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("18 h");
+    expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("Paris");
+  });
   it("ouvre et rejoint le défi quotidien partagé de l'équipe", async () => {
     const out = await run(payload("", { type: 2, message: undefined,
       data: { name: "tower", options: [{ type: 1, name: "equipe" }] } }));

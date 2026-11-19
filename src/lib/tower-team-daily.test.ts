@@ -25,6 +25,7 @@ import { assignDailyTowerTeamChallenges } from "./tower-team-daily";
 
 describe("attribution quotidienne des défis équipe", () => {
   beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2027-01-15T17:00:00Z"));
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     vi.stubEnv("TOWER_DISCORD_GUILD_ID", "553922938101825536");
     mocks.community.mockReset().mockResolvedValue({ id: "tower-community" });
@@ -36,7 +37,16 @@ describe("attribution quotidienne des défis équipe", () => {
     mocks.error.mockReset();
     mocks.transaction.mockReset().mockImplementation(async (work) => work({ community: { findFirst: mocks.community }, $queryRaw: vi.fn().mockResolvedValue([]) }));
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+
+  it("avant 18 h Paris, termine sans erreur ni accès à la base", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2027-01-15T16:59:59.999Z"));
+    try {
+      expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0, complete: true });
+      expect(mocks.transaction).not.toHaveBeenCalled();
+      expect(mocks.daily).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+  });
 
   it("ne fait rien si les défis Tower sont désactivés", async () => {
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "false");
@@ -65,13 +75,14 @@ describe("attribution quotidienne des défis équipe", () => {
   });
 
   it("arrête les attributions suivantes quand le budget expire pendant une équipe", async () => {
-    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const baseline = Date.parse("2027-01-15T17:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(baseline + 1_000);
     try {
       mocks.daily.mockImplementationOnce(async () => {
-        clock.mockReturnValue(6_000);
+        clock.mockReturnValue(baseline + 6_000);
         return { status: "TEAM_CHALLENGE" };
       });
-      expect(await assignDailyTowerTeamChallenges(new Date(6_000))).toEqual({ checked: 1, failed: 0, complete: false });
+      expect(await assignDailyTowerTeamChallenges(new Date(baseline + 6_000))).toEqual({ checked: 1, failed: 0, complete: false });
       expect(mocks.daily).toHaveBeenCalledTimes(1);
     } finally {
       clock.mockRestore();
