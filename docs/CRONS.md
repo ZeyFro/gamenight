@@ -10,7 +10,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
-| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 07:00/08:00 avec garde 09:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
+| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 16:00/17:00 avec garde 18:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
