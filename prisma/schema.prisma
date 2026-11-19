@@ -219,6 +219,10 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  teamChallengesProposed TeamChallenge[] @relation("TeamChallengeProposer")
+  teamChallengesResponded TeamChallenge[] @relation("TeamChallengeResponder")
+  teamChallengesReported TeamChallenge[] @relation("TeamChallengeReporter")
+  instantSessionInterests InstantSessionInterest[]
   sessionPreparations SessionPreparation[]
   sessionSeats SessionSeat[]
   sessionInvitesSent     SessionInvite[] @relation("SessionInviteInvitedBy")
@@ -1840,6 +1844,7 @@ model InstantSession {
   createdBy User                             @relation("InstantSessionCreatedBy", fields: [createdById], references: [id])
   game      Game                             @relation(fields: [gameId], references: [id])
   presence  InstantSessionPresenceInterval[]
+  interests InstantSessionInterest[]
 
   // Sert la liste "sessions actives" ET le passage périodique
   // (cron + paresseux) qui règle les sessions dont l'échéance est dépassée.
@@ -1883,6 +1888,76 @@ model InstantSessionPresenceInterval {
 
   @@index([instantSessionId, userId])
   @@index([instantSessionId, endedAt])
+}
+
+// « Intéressé » (flag TEAM_RIVALRIES_ENABLED) : signal léger sur une session « Jouer maintenant » sans la rejoindre.
+// Valable tant que la session est ACTIVE (elle expire 2 h après sa création quand le flag est allumé) ; supprimé
+// quand la personne rejoint. La communauté est héritée de InstantSession.
+model InstantSessionInterest {
+  id               String   @id @default(cuid())
+  instantSessionId String
+  userId           String
+  createdAt        DateTime @default(now())
+
+  instantSession InstantSession @relation(fields: [instantSessionId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([instantSessionId, userId])
+  @@index([userId])
+}
+
+enum TeamChallengeStatus {
+  PROPOSED
+  ACCEPTED
+  RESULT_REPORTED
+  COMPLETED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum TeamChallengeOutcome {
+  CHALLENGER_WON
+  OPPONENT_WON
+  DRAW
+}
+
+// Rivalité entre équipes (flag TEAM_RIVALRIES_ENABLED) : défi proposé par le capitaine d'une équipe, accepté ou
+// refusé par le capitaine adverse ; résultat déclaré par un capitaine puis confirmé par l'AUTRE capitaine
+// (désaccord : le résultat est rejeté et peut être redéclaré). Historique et bilan affichés sur la fiche
+// d'équipe. Aucun XP, aucun étage, aucun classement officiel.
+model TeamChallenge {
+  id                String               @id @default(cuid())
+  communityId       String
+  challengerTeamId  String
+  opponentTeamId    String
+  proposedById      String
+  gameName          String?              @db.VarChar(80)
+  message           String?              @db.VarChar(300)
+  status            TeamChallengeStatus  @default(PROPOSED)
+  expiresAt         DateTime
+  respondedAt       DateTime?
+  respondedById     String?
+  reportedOutcome   TeamChallengeOutcome?
+  reportedByTeamId  String?
+  reportedById      String?
+  reportedAt        DateTime?
+  disputeCount      Int                  @default(0)
+  outcome           TeamChallengeOutcome?
+  completedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  community      Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  challengerTeam CommunityTeam @relation("ChallengerTeam", fields: [challengerTeamId, communityId], references: [id, communityId], onDelete: Cascade)
+  opponentTeam   CommunityTeam @relation("OpponentTeam", fields: [opponentTeamId, communityId], references: [id, communityId], onDelete: Cascade)
+  proposedBy     User          @relation("TeamChallengeProposer", fields: [proposedById], references: [id], onDelete: Cascade)
+  respondedBy    User?         @relation("TeamChallengeResponder", fields: [respondedById], references: [id], onDelete: SetNull)
+  reportedBy     User?         @relation("TeamChallengeReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+
+  @@index([communityId, status])
+  @@index([challengerTeamId, status])
+  @@index([opponentTeamId, status])
 }
 
 // Défi hebdo (Sprint 3 suite) — UNE ligne par semaine calendaire pour tout
@@ -2875,6 +2950,7 @@ enum CommunityChannelCategory {
 model Community {
   teamApplications TeamApplication[]
   discordTeamSpaces DiscordTeamSpace[]
+  teamChallenges TeamChallenge[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
   towerChallengeDefinitions TowerChallengeDefinition[]
@@ -3036,6 +3112,8 @@ model CommunityTeam {
   sessions  Session[]
   applications TeamApplication[]
   discordSpaces DiscordTeamSpace[]
+  challengesSent TeamChallenge[] @relation("ChallengerTeam")
+  challengesReceived TeamChallenge[] @relation("OpponentTeam")
 
   @@index([communityId, isRecruiting, createdAt])
   @@index([createdById, communityId])
