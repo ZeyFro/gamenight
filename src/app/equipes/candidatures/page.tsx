@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
+import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { TeamCriteriaSummary } from "../TeamCriteria";
 import { applyToTeamAction, decideTeamApplicationAction, withdrawTeamApplicationAction } from "./actions";
 
 export const metadata = pageMetadata("Candidatures d’équipe");
@@ -38,6 +40,7 @@ export default async function TeamApplicationsPage({ searchParams }: { searchPar
   ]);
   const pendingTeamIds = new Set(mine.filter(item => item.status === "PENDING").map(item => item.teamId));
   const openTeams = teams.filter(team => team.isRecruiting && team._count.members < team.maxMembers && !team.members.some(member => member.userId === user.id));
+  const criteriaByTeam = await listTeamRecruitmentCriteria(user.id, communityId, openTeams.map((team) => team.id));
   const dateFormat = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" });
 
   return (
@@ -69,6 +72,7 @@ export default async function TeamApplicationsPage({ searchParams }: { searchPar
         {openTeams.length === 0 ? <EmptyState icon="🧭" title="Aucune équipe ne recrute pour le moment." /> : openTeams.map(team => <Card key={team.id} className="grid gap-2">
           <div><p className="font-semibold text-foreground">{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
           <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
+          <TeamCriteriaSummary criteria={criteriaByTeam.get(team.id)} />
           {pendingTeamIds.has(team.id) ? <p className="text-xs text-muted">Candidature en attente.</p> : <form action={applyToTeamAction} className="grid gap-2">
             <input type="hidden" name="teamId" value={team.id} />
             <label className="grid gap-1 text-sm text-foreground">Ta candidature<textarea name="message" required maxLength={TEAM_APPLICATION_MESSAGE_MAX} rows={3} placeholder="Qui es-tu, à quoi joues-tu, quand es-tu disponible ?" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>

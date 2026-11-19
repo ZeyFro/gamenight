@@ -2,12 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
-import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction } from "../actions";
+import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction, saveTeamRecruitmentCriteriaAction } from "../actions";
+import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { isTeamRecruitmentCriteriaEnabled } from "@/lib/team-recruitment-criteria-rules";
+import { TeamCriteriaForm } from "../TeamCriteria";
 import { pageMetadata } from "@/lib/page-title";
 
 export const metadata = pageMetadata("Gérer mes équipes");
 
 const RESULTS: Record<string, string> = {
+  saved: "Critères de recrutement enregistrés.", cleared: "Critères de recrutement effacés.", forbidden: "Seul le responsable de l’équipe peut modifier ses critères.", missing: "Équipe introuvable.",
+  rate: "Trop de demandes, réessaie dans une minute.",
   transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
   active_challenges: "Impossible : un défi de cette équipe est encore en cours.",
   invalid: "Action non autorisée ou informations invalides.", unavailable: "Fonctionnalité indisponible.",
@@ -20,6 +25,7 @@ export default async function CommunityTeamManagementPage({ searchParams }: { se
   if (!communityId) redirect("/equipes");
   const [{ result }, teams] = await Promise.all([searchParams, listCommunityTeams(user.id, communityId)]);
   const captained = teams.filter(team => (team.captainId ?? team.createdById) === user.id);
+  const criteriaByTeam = await listTeamRecruitmentCriteria(user.id, communityId, captained.map(team => team.id));
 
   return <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
     <h1 className="text-2xl font-semibold">Gérer mes équipes</h1>
@@ -28,6 +34,7 @@ export default async function CommunityTeamManagementPage({ searchParams }: { se
     {captained.length === 0 && <p>Tu n’es capitaine d’aucune équipe active.</p>}
     {captained.map(team => <section key={team.id} className="rounded-lg border border-border p-4">
       <h2 className="font-semibold">{team.name}</h2>
+      {isTeamRecruitmentCriteriaEnabled() && <TeamCriteriaForm teamId={team.id} action={saveTeamRecruitmentCriteriaAction} criteria={criteriaByTeam.get(team.id)} />}
       <form action={transferCommunityTeamCaptainAction} className="mt-4 grid gap-3">
         <input type="hidden" name="teamId" value={team.id} />
         <label className="grid gap-1">Transmettre le capitanat

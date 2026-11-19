@@ -10,6 +10,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
 import { GamePicker } from "./GamePicker";
 import { isTeamApplicationsEnabled } from "@/lib/team-applications-rules";
+import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { TeamCriteriaSummary } from "./TeamCriteria";
 
 export const metadata = pageMetadata("Équipes et aventures");
 
@@ -36,6 +38,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
     prisma.game.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     listCommunityTeams(user.id, communityId),
   ]);
+  const criteriaByTeam = await listTeamRecruitmentCriteria(user.id, communityId, teams.map((team) => team.id));
   const hasCaptainedTeam = teams.some((team) => (team.captainId ?? team.createdById) === user.id);
 
   return (
@@ -77,6 +80,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
               <span className="text-xs text-muted">{team.isRecruiting ? "Recrutement ouvert" : "Recrutement fermé"}</span>
             </div>
             <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
+            <TeamCriteriaSummary criteria={criteriaByTeam.get(team.id)} />
             <p className="text-xs text-muted">Responsable : {leaderName}</p>
             {isMember && <div className="grid gap-2 border-t border-border pt-3">
               <div className="flex items-center justify-between gap-3">

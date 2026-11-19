@@ -7,6 +7,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
 import { communityTeamSchema } from "@/lib/community-teams-rules";
 import { idSchema } from "@/lib/validations";
+import { getTeamRecruitmentCriteriaCommunityId, saveTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { parseTeamRecruitmentCriteriaForm } from "@/lib/team-recruitment-criteria-rules";
 import {
   listTeamMemberDiscordIds,
   requestTeamSpaceAfterDissolution,
@@ -83,6 +85,17 @@ export async function transferCommunityTeamCaptainAction(formData: FormData): Pr
   const successorId = idSchema.safeParse(formData.get("successorId"));
   if (!teamId.success || !successorId.success) done("invalid");
   doneManagement(await transferCommunityTeamCaptain(user.id, communityId, teamId.data, successorId.data));
+}
+
+export async function saveTeamRecruitmentCriteriaAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  const communityId = await getTeamRecruitmentCriteriaCommunityId(user.id);
+  if (!communityId) doneManagement("unavailable");
+  if (!checkRateLimit(user.id, "saveTeamRecruitmentCriteria")) doneManagement("rate");
+  const input = parseTeamRecruitmentCriteriaForm(formData);
+  if (!input.success) doneManagement("invalid");
+  doneManagement(await saveTeamRecruitmentCriteria(user.id, communityId, input.data));
 }
 
 export async function dissolveCommunityTeamAction(formData: FormData): Promise<void> {
