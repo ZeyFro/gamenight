@@ -10,8 +10,8 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
-| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 07:00/08:00 avec garde 09:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/tower-steam-autovalidate` | GET, POST | Validation automatique des défis Tower mesurables Steam (temps de jeu, succès) ; 202 + `after()` ; OFF si `TOWER_STEAM_AUTOVALIDATE_ENABLED` absent ; aucun déclencheur créé, cadence externe (10 min conseillées) |
+| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 16:00/17:00 avec garde 18:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |

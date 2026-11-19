@@ -2,9 +2,9 @@ name: Tower team daily challenge
 
 on:
   schedule:
-    # 07:00 UTC is 09:00 CEST; 08:00 UTC is 09:00 CET.
-    # The job calls the endpoint only during 09:00 Europe/Paris.
-    - cron: "0 7,8 * * *"
+    # 16:00 UTC is 18:00 CEST; 17:00 UTC is 18:00 CET.
+    # The job calls the endpoint only during 18:00 Europe/Paris.
+    - cron: "0 16,17 * * *"
 
 permissions:
   contents: read
@@ -43,8 +43,8 @@ jobs:
           fi
 
           paris_hour="$(TZ=Europe/Paris date +%H)"
-          if [[ "$paris_hour" != "09" ]]; then
-            echo "Skipping UTC schedule slot outside 09:00 Europe/Paris."
+          if [[ "$paris_hour" != "18" ]]; then
+            echo "Skipping UTC schedule slot outside 18:00 Europe/Paris."
             exit 0
           fi
 
