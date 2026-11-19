@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { assignDailyTowerTeamChallenges } from "@/lib/tower-team-daily";
+import { isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
 import { logger } from "@/lib/logger";
 
 export const maxDuration = 30;
@@ -16,6 +17,12 @@ export async function GET(request: Request) {
 
   if (process.env.TOWER_TEAM_DAILY_ENABLED !== "true") {
     return NextResponse.json({ enabled: false, checked: 0, failed: 0 });
+  }
+
+  // Décision du 17/11/2026 : la route ne peut rien attribuer avant 18:00 Europe/Paris,
+  // même appelée à la main ou par un ordonnanceur mal réglé.
+  if (!isTowerTeamDailyDue(new Date())) {
+    return NextResponse.json({ enabled: true, due: false, checked: 0, failed: 0, complete: true });
   }
 
   let summary;

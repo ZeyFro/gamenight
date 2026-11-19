@@ -23,8 +23,13 @@ vi.mock("@/lib/logger", () => ({
 
 import { assignDailyTowerTeamChallenges } from "./tower-team-daily";
 
+// 18:30 Europe/Paris (CET) : heure à laquelle l'attribution est autorisée.
+const DUE_INSTANT = new Date("2026-11-19T17:30:00.000Z");
+
 describe("attribution quotidienne des défis équipe", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(DUE_INSTANT);
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "true");
     vi.stubEnv("TOWER_DISCORD_GUILD_ID", "553922938101825536");
     mocks.community.mockReset().mockResolvedValue({ id: "tower-community" });
@@ -36,7 +41,10 @@ describe("attribution quotidienne des défis équipe", () => {
     mocks.error.mockReset();
     mocks.transaction.mockReset().mockImplementation(async (work) => work({ community: { findFirst: mocks.community }, $queryRaw: vi.fn().mockResolvedValue([]) }));
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
 
   it("ne fait rien si les défis Tower sont désactivés", async () => {
     vi.stubEnv("TOWER_CHALLENGES_ENABLED", "false");
@@ -57,6 +65,23 @@ describe("attribution quotidienne des défis équipe", () => {
     expect(mocks.daily).not.toHaveBeenCalled();
   });
 
+  it("n'attribue rien avant 18:00 Europe/Paris, même avec un budget valide", async () => {
+    vi.setSystemTime(new Date("2026-11-19T16:59:59.000Z")); // 17:59:59 à Paris
+    expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0, complete: true });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.daily).not.toHaveBeenCalled();
+  });
+
+  it("respecte l'heure d'été : rien à 17:59 Paris et attribution à 18:00 Paris (CEST)", async () => {
+    vi.setSystemTime(new Date("2026-07-14T15:59:59.000Z")); // 17:59:59 à Paris
+    expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0, complete: true });
+    expect(mocks.daily).not.toHaveBeenCalled();
+    vi.setSystemTime(new Date("2026-07-14T16:00:00.000Z")); // 18:00 à Paris
+    mocks.daily.mockClear();
+    expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 2, failed: 0, complete: true });
+    expect(mocks.daily).toHaveBeenCalledTimes(2);
+  });
+
   it("n'attribue rien sans communauté active éligible", async () => {
     mocks.community.mockResolvedValue(null);
     expect(await assignDailyTowerTeamChallenges(new Date(Date.now() + 5_000))).toEqual({ checked: 0, failed: 0, complete: true });
@@ -65,13 +90,14 @@ describe("attribution quotidienne des défis équipe", () => {
   });
 
   it("arrête les attributions suivantes quand le budget expire pendant une équipe", async () => {
-    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const base = DUE_INSTANT.getTime();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(base);
     try {
       mocks.daily.mockImplementationOnce(async () => {
-        clock.mockReturnValue(6_000);
+        clock.mockReturnValue(base + 6_000);
         return { status: "TEAM_CHALLENGE" };
       });
-      expect(await assignDailyTowerTeamChallenges(new Date(6_000))).toEqual({ checked: 1, failed: 0, complete: false });
+      expect(await assignDailyTowerTeamChallenges(new Date(base + 6_005))).toEqual({ checked: 1, failed: 0, complete: false });
       expect(mocks.daily).toHaveBeenCalledTimes(1);
     } finally {
       clock.mockRestore();
