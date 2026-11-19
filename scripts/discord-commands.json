@@ -321,6 +321,30 @@
             "min_length": 1,
             "max_length": 80,
             "autocomplete": true
+          },
+          {
+            "type": 3,
+            "name": "niveau",
+            "description": "Niveau de jeu minimum de l'auteur pour ce jeu (exige le jeu)",
+            "required": false,
+            "choices": [
+              {
+                "name": "Débutant ou plus",
+                "value": "DEBUTANT"
+              },
+              {
+                "name": "Intermédiaire ou plus",
+                "value": "INTERMEDIAIRE"
+              },
+              {
+                "name": "Avancé ou plus",
+                "value": "AVANCE"
+              },
+              {
+                "name": "Expert",
+                "value": "EXPERT"
+              }
+            ]
           }
         ]
       },
