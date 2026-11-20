@@ -12,6 +12,7 @@ vi.mock("@/lib/discord-session-rsvp", () => ({ respondToSessionRsvp: vi.fn() }))
 vi.mock("@/lib/discord-instant-session-rsvp", () => ({ respondToInstantSessionRsvp: vi.fn() }));
 vi.mock("@/lib/discord-tournament-rsvp", () => ({ respondToTournamentRsvp: vi.fn() }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit, getTowerProofMessage: mocks.readProof }));
+vi.mock("@/lib/tower-steam-measure", () => ({ captureTowerMeasureBaseline: vi.fn(), reportTowerChallengeDoubt: vi.fn() }));
 vi.mock("@/lib/tower-challenges", () => ({
   resolveTowerDiscordActor: mocks.actor, claimSoloTowerChallenge: mocks.claim, getTowerChallengeState: mocks.state,
   submitTowerChallengeProof: mocks.proof, voteTowerChallenge: mocks.vote, settleTowerChallenge: mocks.settle,

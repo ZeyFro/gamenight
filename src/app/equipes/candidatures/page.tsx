@@ -4,10 +4,15 @@ import { getCurrentUser } from "@/lib/current-user";
 import { listCommunityTeams } from "@/lib/community-teams";
 import { getTeamApplicationsCommunityId, listMyTeamApplications, listPendingApplicationsForLeader } from "@/lib/team-applications";
 import { TEAM_APPLICATION_MESSAGE_MAX } from "@/lib/team-applications-rules";
+import { isTeamRecruitersEnabled } from "@/lib/team-recruiters-rules";
+import { listMyGuestInvitations } from "@/lib/team-recruiters";
+import { respondTeamGuestAction } from "../recruteurs/actions";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
+import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { TeamCriteriaSummary } from "../TeamCriteria";
 import { applyToTeamAction, decideTeamApplicationAction, withdrawTeamApplicationAction } from "./actions";
 
 export const metadata = pageMetadata("Candidatures d’équipe");
@@ -17,11 +22,12 @@ const RESULTS: Record<string, string> = {
   declined: "Candidature refusée.", withdrawn: "Candidature retirée.", already_member: "Tu fais déjà partie de cette équipe.",
   already_team: "Ce joueur fait déjà partie d’une autre équipe : une seule équipe par joueur.", cooldown: "Ce joueur a quitté une équipe il y a moins de 7 jours : il doit attendre avant d’en rejoindre une autre.",
   pending: "Tu as déjà une candidature en attente pour cette équipe.", closed: "Le recrutement est fermé.", full: "Cette équipe est complète.",
-  missing: "Candidature ou équipe introuvable.", forbidden: "Seul le responsable de l’équipe peut décider.",
+  missing: "Candidature ou équipe introuvable.", forbidden: "Seuls le responsable de l’équipe et ses recruteurs peuvent décider.",
+  guest_accepted: "Invitation acceptée : tu joueras ce tournoi avec cette équipe, sans quitter la tienne.", guest_declined: "Invitation refusée.", guest_missing: "Invitation introuvable ou tournoi déjà lancé.",
   invalid: "Écris un message de 1 à 500 caractères.", rate: "Trop de demandes, réessaie dans une minute.",
   unavailable: "Les candidatures ne sont pas disponibles dans ta communauté.",
 };
-const STATUS_LABELS = { PENDING: "En attente", ACCEPTED: "Acceptée", DECLINED: "Refusée", WITHDRAWN: "Retirée" } as const;
+const STATUS_LABELS = { PENDING: "En attente", ACCEPTED: "Acceptée", DECLINED: "Refusée", WITHDRAWN: "Retirée", EXPIRED: "Expirée" } as const;
 
 export default async function TeamApplicationsPage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
   const user = await getCurrentUser();
@@ -30,14 +36,17 @@ export default async function TeamApplicationsPage({ searchParams }: { searchPar
   if (!communityId) {
     return <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8"><h1 className="text-2xl font-semibold">📨 Candidatures d’équipe</h1><Card className="text-sm text-muted">Les candidatures ne sont pas disponibles dans ta communauté.</Card><Link className="text-sm text-accent" href="/equipes">Voir les équipes →</Link></main>;
   }
-  const [{ result }, teams, mine, received] = await Promise.all([
+  const recruiters = isTeamRecruitersEnabled();
+  const [{ result }, teams, mine, received, guestInvitations] = await Promise.all([
     searchParams,
     listCommunityTeams(user.id, communityId),
     listMyTeamApplications(user.id, communityId),
     listPendingApplicationsForLeader(user.id, communityId),
+    recruiters ? listMyGuestInvitations(user.id, communityId) : Promise.resolve([]),
   ]);
   const pendingTeamIds = new Set(mine.filter(item => item.status === "PENDING").map(item => item.teamId));
   const openTeams = teams.filter(team => team.isRecruiting && team._count.members < team.maxMembers && !team.members.some(member => member.userId === user.id));
+  const criteriaByTeam = await listTeamRecruitmentCriteria(user.id, communityId, openTeams.map((team) => team.id));
   const dateFormat = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" });
 
   return (
@@ -45,7 +54,7 @@ export default async function TeamApplicationsPage({ searchParams }: { searchPar
       <header>
         <Link href="/equipes" className="text-sm text-accent underline-offset-4 hover:underline">← Équipes et aventures</Link>
         <h1 className="mt-2 text-2xl font-semibold text-foreground">📨 Candidatures d’équipe</h1>
-        <p className="mt-2 text-sm text-muted">Présente-toi au responsable d’une équipe qui recrute. Aucun ping ni message Discord n’est envoyé.</p>
+        <p className="mt-2 text-sm text-muted">Présente-toi au responsable d’une équipe qui recrute. {recruiters ? "Le responsable et les recruteurs de l’équipe sont prévenus par message privé Discord ; sans réponse, ta candidature expire après 7 jours." : "Aucun ping ni message Discord n’est envoyé."}</p>
       </header>
       {result && RESULTS[result] && <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{RESULTS[result]}</p>}
 
@@ -64,11 +73,26 @@ export default async function TeamApplicationsPage({ searchParams }: { searchPar
         </Card>)}
       </section>}
 
+      {guestInvitations.length > 0 && <section aria-labelledby="guest-title" className="grid gap-3">
+        <h2 id="guest-title" className="font-semibold text-foreground">Invitations à un tournoi ({guestInvitations.length})</h2>
+        <p className="text-sm text-muted">Tu peux jouer un tournoi comme invité d’une autre équipe sans quitter la tienne.</p>
+        {guestInvitations.map(item => <Card key={item.id} className="grid gap-2">
+          <p className="text-sm font-semibold text-foreground">{item.team.name} → {item.tournament.name}</p>
+          {item.status === "ACCEPTED" ? <p className="text-xs text-muted">Invitation acceptée.</p> : <div className="flex flex-wrap gap-2">
+            {(["accept", "decline"] as const).map(decision => <form key={decision} action={respondTeamGuestAction}>
+              <input type="hidden" name="guestId" value={item.id} /><input type="hidden" name="decision" value={decision} />
+              <Button type="submit" size="sm" variant={decision === "accept" ? "primary" : undefined}>{decision === "accept" ? "Accepter" : "Refuser"}</Button>
+            </form>)}
+          </div>}
+        </Card>)}
+      </section>}
+
       <section aria-labelledby="open-title" className="grid gap-3">
         <h2 id="open-title" className="font-semibold text-foreground">Équipes qui recrutent ({openTeams.length})</h2>
         {openTeams.length === 0 ? <EmptyState icon="🧭" title="Aucune équipe ne recrute pour le moment." /> : openTeams.map(team => <Card key={team.id} className="grid gap-2">
           <div><p className="font-semibold text-foreground">{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
           <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
+          <TeamCriteriaSummary criteria={criteriaByTeam.get(team.id)} />
           {pendingTeamIds.has(team.id) ? <p className="text-xs text-muted">Candidature en attente.</p> : <form action={applyToTeamAction} className="grid gap-2">
             <input type="hidden" name="teamId" value={team.id} />
             <label className="grid gap-1 text-sm text-foreground">Ta candidature<textarea name="message" required maxLength={TEAM_APPLICATION_MESSAGE_MAX} rows={3} placeholder="Qui es-tu, à quoi joues-tu, quand es-tu disponible ?" className="rounded-lg border border-border bg-background px-3 py-3 text-base" /></label>

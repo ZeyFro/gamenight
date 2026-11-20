@@ -18,6 +18,13 @@ import {
   retrySessionCreatorThreadSyncAction,
   resyncSessionThreadMembersAction,
 } from "../../actions/invites";
+import {
+  decideSessionApplicationAction,
+  setSessionCoOrganizerAction,
+  setSessionVisibilityAction,
+} from "../../actions/visibility";
+import { canManageSession, sessionVisibilityEnabled } from "@/lib/session-visibility";
+import { listPendingSessionApplications } from "@/lib/session-applications";
 import { pageMetadata } from "@/lib/page-title";
 
 export const metadata = pageMetadata("Invités de la soirée");
@@ -86,12 +93,15 @@ export default async function SessionInvitesPage({
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, date: true, createdById: true, announceViaBot: true, communityId: true },
+    select: { id: true, date: true, createdById: true, coOrganizerId: true, visibility: true, announceViaBot: true, communityId: true },
   });
-  // Page de gestion réservée au créateur — un invité (même actif) n'a pas
-  // à savoir qui d'autre est invité, ni à modifier la liste (règle
-  // produit explicite : "seul le créateur gère les invitations").
-  if (!session || session.createdById !== user.id) notFound();
+  // Page de gestion réservée au créateur (et au coorganisateur désigné quand
+  // SESSION_VISIBILITY_ENABLED est allumé) — un invité simple n'a pas à savoir
+  // qui d'autre est invité, ni à modifier la liste.
+  if (!session || !canManageSession(user.id, session)) notFound();
+  const visibilityEnabled = sessionVisibilityEnabled();
+  const isCreator = session.createdById === user.id;
+  const pendingApplications = visibilityEnabled ? await listPendingSessionApplications(user.id, sessionId) : [];
   // Un créateur sans Membership ACTIVE dans la communauté de la soirée n'y gère plus rien.
   if (!(await canAccessSession(user.id, sessionId))) notFound();
 
@@ -100,7 +110,7 @@ export default async function SessionInvitesPage({
     prisma.user.findMany({
       // Multi-communautés (PR4) : seuls les membres de la communauté de CETTE
       // soirée sont invitables (aucun filtre si l'isolation est éteinte).
-      where: { AND: [{ id: { not: user.id } }, await communityMemberUserWhere(session.communityId)] },
+      where: { AND: [{ id: { notIn: [user.id, session.createdById] } }, await communityMemberUserWhere(session.communityId)] },
       select: { id: true, discordName: true, discordAvatar: true, color: true },
       orderBy: { discordName: "asc" },
     }),
@@ -150,6 +160,68 @@ export default async function SessionInvitesPage({
           soirée (site et Discord).
         </p>
       </div>
+
+      {visibilityEnabled && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-semibold text-foreground">Visibilité et organisation</h2>
+          {isCreator ? (
+            <form action={setSessionVisibilityAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="sessionId" value={sessionId} />
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Visibilité
+                <select name="visibility" defaultValue={session.visibility} className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+                  <option value="PRIVATE">Privée — sur invitation uniquement</option>
+                  <option value="PUBLIC">Publique — tout membre peut rejoindre</option>
+                  <option value="APPLICATION">Sur candidature — tu valides les demandes</option>
+                </select>
+              </label>
+              <Button type="submit" variant="secondary" size="sm">Enregistrer</Button>
+            </form>
+          ) : (
+            <p className="text-sm text-muted">Visibilité : {session.visibility === "PUBLIC" ? "publique" : session.visibility === "APPLICATION" ? "sur candidature" : "privée"}.</p>
+          )}
+          {isCreator && (
+            <form action={setSessionCoOrganizerAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="sessionId" value={sessionId} />
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Coorganisateur (gère invitations, candidatures et créneau)
+                <select name="coOrganizerId" defaultValue={session.coOrganizerId ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+                  <option value="">Aucun</option>
+                  {activeInvites.map((invite) => <option key={invite.userId} value={invite.userId}>{invite.user.discordName}</option>)}
+                </select>
+              </label>
+              <Button type="submit" variant="secondary" size="sm">Désigner</Button>
+            </form>
+          )}
+          {pendingApplications.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium text-foreground">Candidatures en attente ({pendingApplications.length})</h3>
+              <ul className="flex flex-col gap-2">
+                {pendingApplications.map((application) => (
+                  <li key={application.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                    <p className="text-sm font-medium text-foreground">{application.applicant.discordName}</p>
+                    {application.message && <p className="text-sm text-muted">{application.message}</p>}
+                    <div className="flex gap-2">
+                      <form action={decideSessionApplicationAction}>
+                        <input type="hidden" name="sessionId" value={sessionId} />
+                        <input type="hidden" name="applicationId" value={application.id} />
+                        <input type="hidden" name="decision" value="ACCEPT" />
+                        <Button type="submit" variant="secondary" size="sm">Accepter</Button>
+                      </form>
+                      <form action={decideSessionApplicationAction}>
+                        <input type="hidden" name="sessionId" value={sessionId} />
+                        <input type="hidden" name="applicationId" value={application.id} />
+                        <input type="hidden" name="decision" value="DECLINE" />
+                        <Button type="submit" variant="destructive" size="sm">Refuser</Button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
 
       {session.announceViaBot && !botConfigured && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">

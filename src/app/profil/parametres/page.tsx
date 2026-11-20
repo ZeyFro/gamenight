@@ -34,6 +34,8 @@ import { WebPushSettings } from "@/components/WebPushSettings";
 import { webPushConfig, webPushConfigIssue } from "@/lib/web-push-config";
 import { leadingGameStyles } from "@/lib/game-style-quiz";
 import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
+import { GameLevelsSettings } from "@/components/GameLevelsSettings";
+import { isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -116,13 +118,14 @@ export default async function ProfilParametresPage({
     gouts?: string;
     materiel?: string;
     identifiants?: string;
+    niveaux?: string;
     style?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, style } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, niveaux, style } = await searchParams;
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
@@ -171,6 +174,7 @@ export default async function ProfilParametresPage({
       </Card></StaggerItem>
       <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
       <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
+      {isGameLevelsEnabled() && <StaggerItem><GameLevelsSettings userId={user.id} feedback={niveaux} /></StaggerItem>}
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold">Mes identifiants de jeu</h2>

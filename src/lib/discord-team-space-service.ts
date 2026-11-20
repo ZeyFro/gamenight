@@ -298,9 +298,13 @@ export async function provisionTeamSpace(input: {
 
   try {
     const link = await store.find(team.id);
-    // Espace complet (texte + vocal) : rejeu strictement sans écriture. Un lien
-    // sans vocal (créé avant l'option A) continue vers le plan pour le créer.
+    // Les ressources complètes ne sont jamais recréées, mais leur persistance
+    // ne prouve pas que les accès membres ont tous réussi au premier passage.
     if (link?.voiceChannelId && !input.dryRun) {
+      const reconciled = await reconcileTeamSpace({ ...input, store, env });
+      if (reconciled.status !== "consistent" && reconciled.status !== "repaired") {
+        return { status: reconciled.status === "unlinked" ? "failed" : reconciled.status };
+      }
       return { status: "reused", roleId: link.roleId, channelId: link.channelId, voiceChannelId: link.voiceChannelId };
     }
     const links = await store.listByCommunity(team.communityId);
