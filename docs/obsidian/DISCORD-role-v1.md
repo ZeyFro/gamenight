@@ -10,7 +10,7 @@ Quatre sous-commandes : `chercher`, `attribuer`, `creer`, `retirer`.
 - **Idempotence** : `PUT /guilds/{g}/members/{u}/roles/{r}` et `DELETE` sont idempotents ; la création est précédée d'une relecture de la liste des rôles, donc rejouer l'interaction ne crée pas de doublon. Un rôle déjà porté renvoie « Tu as déjà le rôle » sans appel d'écriture.
 - **Rôles sensibles refusés** : noms réservés (admin, modo, staff, bot, gérant…), permissions élevées (Administrateur, Gérer les rôles, Gérer le serveur, Bannir/Expulser, webhooks, exclusion temporaire), rôles gérés par une intégration, `@everyone`.
 - **Hiérarchie** : un rôle n'est attribué que s'il est strictement sous le rôle le plus haut du bot.
-- **Création** : autorisée avec « Gérer les rôles », ou pour tous si `DISCORD_ROLE_SELF_CREATION_ENABLED=true` ; rôle créé sans aucune permission, non mentionnable, non affiché à part ; plafond `DISCORD_ROLE_MAX_GUILD_ROLES` (défaut 200).
+- **Création** : fermée par défaut ; ouverte par `DISCORD_ROLE_SELF_CREATION_ENABLED=true` (création directe, pour tout joueur, le bot devant avoir « Gérer les rôles ») ou par `DISCORD_ROLE_AUTOCREATE_ENABLED=true` (création par la file) ; rôle créé sans aucune permission, non mentionnable, non affiché à part ; plafond `DISCORD_ROLE_MAX_GUILD_ROLES` (défaut 200).
 - **Synchronisation GameNight** : le jeu obtenu devient un centre d'intérêt (`Tag` + `UserTag`, modèles existants) — `UserTag` a une clé composite, donc aucun doublon. Compte non relié : message invitant à connecter Discord, jamais de profil fantôme.
 - **Erreurs Discord traduites** : permission manquante du bot, limite de débit, réseau incertain (jamais présenté comme un succès).
 
@@ -27,7 +27,7 @@ Fichiers : `src/lib/discord-guild-roles.ts` (décisions pures), `src/lib/discord
 
 1. Mettre `DISCORD_CLIENT_ID` / `DISCORD_BOT_TOKEN` dans l'environnement d'exécution.
 2. `node scripts/register-discord-commands.mjs --execute` (le script conserve les autres commandes globales ; simulation vérifiée : `gamenight, tower, tower-admin, role`).
-3. Passer `DISCORD_ROLE_COMMAND_ENABLED=true` (et éventuellement `DISCORD_ROLE_SELF_CREATION_ENABLED=true`).
+3. Passer `DISCORD_ROLE_COMMAND_ENABLED=true` (et, pour autoriser la création d'un rôle absent, `DISCORD_ROLE_SELF_CREATION_ENABLED=true` ; sans elle `/role` n'attribue que les rôles existants).
 4. Vérifier sur le serveur : rôle du bot au-dessus des rôles de jeu, permission « Gérer les rôles ».
 5. Recette réelle : `/role chercher`, `/role attribuer` deux fois de suite (aucun doublon), `/role retirer`.
 
@@ -87,8 +87,8 @@ propriétaire de #416 ; le code accepte les deux formes sans redéploiement.
   reste pris, elle répond « création en cours » sans créer.
 - **Permission** : « Gérer les rôles » est calculée sur **les rôles du bot**
   (`botCanManageRoles`), jamais sur les permissions du joueur. Un membre
-  ordinaire peut donc utiliser `/role` ; le flag
-  `DISCORD_ROLE_SELF_CREATION_ENABLED=false` ferme la création d'un serveur.
+  ordinaire peut donc utiliser `/role` quand la création est ouverte ; elle est
+  fermée tant que `DISCORD_ROLE_SELF_CREATION_ENABLED` ne vaut pas exactement `true`.
 - **Ne plus suivre un jeu** : `/role retirer` enlève le rôle Discord **et**
   l'association `UserTag` (le `Tag` partagé reste).
 - **Rôles obsolètes** : `listObsoleteGameRoles` liste seulement les rôles de jeu

@@ -2,6 +2,8 @@
 
 Décision du propriétaire du 17 novembre 2026. Elle remplace « un interrupteur par jour » : les 4 interrupteurs sont conservés mais activés le même soir.
 
+> **Pas-à-pas détaillé, pour quelqu'un qui n'a jamais ouvert Vercel ni Neon :** [SOIREE_ACTIVATION.md](SOIREE_ACTIVATION.md) (ordre de la soirée, gestes exacts, vérifications et retours arrière en une minute).
+
 ## Prérequis
 
 - Migrations Tower appliquées en Production (voir [MIGRATIONS.md](MIGRATIONS.md)).
@@ -227,9 +229,9 @@ Retour arrière : retirer la variable ; les fils, salons et rôles déjà créé
 
 Retour arrière : retirer la variable ; les rôles créés restent sur Discord (suppression manuelle, sur ID exact).
 
-## Point d'attention : interrupteur ACTIF par défaut
+## Point d'attention : création de rôle par /role (corrigé)
 
-`DISCORD_ROLE_SELF_CREATION_ENABLED` n'est **pas** un interrupteur « OFF par défaut » : `src/lib/discord-role-command.ts` ne le coupe que si la valeur vaut exactement `false` (`!== "false"`). Absent ou vide, la création d'un rôle de jeu par un joueur reste donc **autorisée** dès que `/role` est active. Garde en place : `/role` ne répond que si `DISCORD_ROLE_COMMAND_ENABLED=true` (OFF par défaut), et le rôle créé est toujours sans permission, plafonné par `DISCORD_ROLE_MAX_GUILD_ROLES`. Aucune création n'est donc possible aujourd'hui. Avant d'activer `DISCORD_ROLE_COMMAND_ENABLED`, décider : laisser ainsi, ou fixer explicitement `DISCORD_ROLE_SELF_CREATION_ENABLED=false`. Les commentaires de `.env.example` et de `CLAUDE.md` décrivent cet interrupteur comme « OFF par défaut » : c'est inexact pour la création ; le comportement n'a pas été modifié ici (hors périmètre « aucune nouvelle fonctionnalité »).
+`DISCORD_ROLE_SELF_CREATION_ENABLED` est **fermé par défaut** : seule la valeur exacte `true` ouvre la création directe d'un rôle de jeu absent par `/role` (`roleCreationAllowed` dans `src/lib/discord-role-command.ts`). `DISCORD_ROLE_AUTOCREATE_ENABLED=true` ouvre aussi la création, mais par la file et l'executor. Fermé, `/role` n'attribue que les rôles qui existent déjà. `/role` reste muette tant que `DISCORD_ROLE_COMMAND_ENABLED` n'est pas `true`.
 
 ## Contrôles après chaque groupe
 

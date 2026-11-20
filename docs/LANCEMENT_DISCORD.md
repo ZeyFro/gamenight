@@ -75,6 +75,7 @@ Une annonce de soirée peut te mentionner ; tu règles tes notifications dans to
 **Étages**
 • Défi facile : **+1 étage** · moyen : **+2** · difficile : **+3**.
 • Les étages sont **permanents** : tu ne les perds jamais. [DISPONIBLE APRÈS ACTIVATION]
+• Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower repart avec eux. [DISPONIBLE APRÈS ACTIVATION]
 
 **Grades**
 • **Régulars** : dès ton inscription (gris).
@@ -203,6 +204,9 @@ Irregular : prestige donné par le staff. Ranker : 30 étages. High Ranker : 100
 
 **Puis-je perdre mes étages ?**
 Non, ils sont permanents. Seules les distinctions de saison expirent à la saison suivante.
+
+**Mes anciens étages (rôles « Étage ») sont-ils repris ?**
+Non : le compteur Tower démarre de zéro (décision du cahier §7.2). Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.
 
 **Combien de joueurs dans une équipe ?**
 2 à 8, une seule équipe principale, 7 jours d'attente avant d'en rejoindre une autre. [PRÉVUE]

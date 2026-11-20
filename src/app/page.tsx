@@ -2,6 +2,7 @@ import { withCommunityReadContext } from "@/lib/community-read-context";
 import Image from "next/image";
 import Link from "next/link";
 import { signIn, signOut } from "@/auth";
+import { authErrorView } from "@/lib/auth-error-messages";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { prisma } from "@/lib/prisma";
@@ -55,14 +56,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 // — un vrai navigateur (Safari/Chrome) n'a pas ce problème. Message
 // explicite plutôt que générique, pour donner une action concrète aux
 // utilisateurs concernés sans qu'ils aient besoin de nous contacter.
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  Configuration:
-    "La connexion a échoué (erreur serveur pendant l'aller-retour avec Discord). Si tu as cliqué sur le lien depuis l'appli Discord ou une autre appli, réessaie en ouvrant ce site dans ton navigateur (Safari, Chrome…) plutôt que dans leur fenêtre intégrée. Sinon, réessaie dans un instant — si ça persiste, préviens l'admin.",
-  AccessDenied: "La connexion a été refusée.",
-  OAuthCallbackError:
-    "La connexion Discord a échoué (lien de connexion expiré ou déjà utilisé). Réessaie.",
-  Verification: "Le lien de connexion n'est plus valide. Réessaie.",
-};
+// Les messages sont dans src/lib/auth-error-messages.ts (testés).
 
 // Fix UX (PR 9/9) : ne matche que la forme exacte `/potes/<id>` — jamais
 // une URL absolue ni un autre chemin — pour que `redirectTo` ne puisse
@@ -89,10 +83,7 @@ async function HomeContent({
   // but de la feature.
   const user = await getCurrentUser({ allowCommunitySelection: true });
   const { error, redirect: redirectParam } = await searchParams;
-  const errorMessage = error
-    ? (AUTH_ERROR_MESSAGES[error] ??
-      "La connexion a échoué. Réessaie dans un instant.")
-    : null;
+  const errorView = error ? authErrorView(error) : null;
 
   if (!user) {
     let redirectTarget: { path: string; pseudo: string } | null = null;
@@ -108,9 +99,17 @@ async function HomeContent({
     return (
       <LoginLanding>
 
-          {errorMessage && (
-            <p className="w-full rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              {errorMessage}
+          {errorView && (
+            <p role="alert" className="w-full rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              {errorView.message}
+              {errorView.inviteUrl && (
+                <>
+                  {" "}
+                  <a href={errorView.inviteUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                    Rejoindre le serveur Discord The Tower
+                  </a>
+                </>
+              )}
             </p>
           )}
 
