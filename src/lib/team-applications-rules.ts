@@ -34,7 +34,7 @@ export function teamApplicationBlock(input: {
   isRecruiting: boolean;
   activeMembers: number;
   maxMembers: number;
-  existingStatus: "PENDING" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | null;
+  existingStatus: "PENDING" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED" | null;
 }): ApplyBlock | null {
   if (input.isMember) return "already_member";
   if (!input.isRecruiting) return "closed";
