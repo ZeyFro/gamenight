@@ -16,6 +16,8 @@ import {
 } from "@/lib/instant-session-announce";
 import { logger } from "@/lib/logger";
 import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
+import { dropInterestOnJoin, instantSessionDurationMs, listInstantSessionInterest } from "@/lib/instant-session-interest";
+import { teamRivalriesEnabled } from "@/lib/team-rivalries-rules";
 export { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
 
 /**
@@ -165,7 +167,8 @@ export async function createInstantSession(input: {
   if (stale) await settleInstantSessionIfDue(stale.instantSessionId);
 
   const now = wallClockNow();
-  const expiresAt = new Date(now.getTime() + INSTANT_SESSION_MAX_DURATION_MS);
+  // 3 h par défaut ; 2 h quand TEAM_RIVALRIES_ENABLED est allumé (échéance posée une fois, jamais recalculée).
+  const expiresAt = new Date(now.getTime() + instantSessionDurationMs());
   // Le serveur fait autorité sur la liste des invités : le créateur n'est
   // jamais invité à sa propre session (règle de ping « créateur sans
   // mention »), et un id en double (formulaire forgé) ferait échouer toute
@@ -246,6 +249,8 @@ export async function joinInstantSession(
       await tx.instantSessionPresenceInterval.create({
         data: { instantSessionId, userId, startedAt: wallClockNow() },
       });
+      // Rejoindre remplace « Intéressé ». Flag éteint : aucune requête (la table peut ne pas exister encore).
+      await dropInterestOnJoin(tx, instantSessionId, userId);
       return { ok: true };
     });
   } catch (error) {
@@ -530,6 +535,10 @@ export interface InstantSessionView {
   participants: InstantSessionParticipantView[];
   viewerIsParticipant: boolean;
   viewerIsCreator: boolean;
+  /** « Intéressé » (TEAM_RIVALRIES_ENABLED) : vide et faux quand le flag est éteint. */
+  interested: Array<{ userId: string; discordName: string }>;
+  viewerIsInterested: boolean;
+  interestEnabled: boolean;
 }
 
 /**
@@ -623,6 +632,7 @@ export async function getInstantSessionView(
     }))
     .sort((a, b) => b.coPresenceMs - a.coPresenceMs);
 
+  const interest = await listInstantSessionInterest(instantSessionId, viewerId);
   return {
     id: session.id,
     status: session.status,
@@ -636,6 +646,9 @@ export async function getInstantSessionView(
     participants,
     viewerIsParticipant: openByUser.has(viewerId),
     viewerIsCreator: session.createdBy.id === viewerId,
+    interested: interest.interested,
+    viewerIsInterested: interest.viewerIsInterested,
+    interestEnabled: teamRivalriesEnabled(),
   };
 }
 

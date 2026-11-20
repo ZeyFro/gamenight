@@ -7,6 +7,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { idSchema } from "@/lib/validations";
 import { teamApplicationSchema } from "@/lib/team-applications-rules";
 import { applyToTeam, decideTeamApplication, getTeamApplicationsCommunityId, withdrawTeamApplication } from "@/lib/team-applications";
+import { notifyApproversOfApplication } from "@/lib/team-application-approvers";
 
 function done(result: string): never {
   revalidatePath("/equipes/candidatures");
@@ -26,7 +27,9 @@ export async function applyToTeamAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorizedUser("applyToTeam");
   const input = teamApplicationSchema.safeParse({ teamId: formData.get("teamId"), message: formData.get("message") });
   if (!input.success) done("invalid");
-  done(await applyToTeam(user.id, communityId, input.data));
+  const result = await applyToTeam(user.id, communityId, input.data);
+  if (result === "applied") await notifyApproversOfApplication(communityId, input.data.teamId, user.id);
+  done(result);
 }
 
 export async function withdrawTeamApplicationAction(formData: FormData): Promise<void> {

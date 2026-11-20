@@ -21,6 +21,7 @@ import {
 } from "@/lib/instant-sessions";
 import type { InstantSessionActionState } from "@/app/jouer-maintenant/action-state";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
+import { clearInstantSessionInterest, markInstantSessionInterest } from "@/lib/instant-session-interest";
 import {
   changeInstantSessionGameSchema,
   createInstantSessionSchema,
@@ -99,6 +100,24 @@ export async function getInstantSessionViewAction(
   if (!user) return null;
   const view = await getInstantSessionView(instantSessionId, user.id);
   return view ? toInstantSessionViewDTO(view) : null;
+}
+
+/** « Intéressé » (TEAM_RIVALRIES_ENABLED) : bascule le signal du lecteur sur cette session. */
+export async function toggleInstantSessionInterestAction(
+  _prevState: InstantSessionActionState,
+  formData: FormData
+): Promise<InstantSessionActionState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  const parsed = idSchema.safeParse(String(formData.get("instantSessionId") ?? ""));
+  if (!parsed.success) return { status: "error", errorReason: "validation" };
+  if (!checkRateLimit(user.id, "toggleInstantSessionInterest")) return { status: "error", errorReason: "rate_limited" };
+  const remove = String(formData.get("remove") ?? "") === "1";
+  const ok = remove
+    ? (await clearInstantSessionInterest(parsed.data, user.id), true)
+    : (await markInstantSessionInterest(parsed.data, user.id)).ok;
+  revalidatePath(`/jouer-maintenant/${parsed.data}`);
+  return ok ? { status: "success" } : { status: "error", errorReason: "ended" };
 }
 
 export async function joinInstantSessionAction(

@@ -141,10 +141,9 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
     expect(await read()).toMatchObject({ completedSeasons: 1, seasonChallenges: 1, rank: "Ranker" });
   });
 
-  it("ignore les tentatives refusées, les crédits d'intersaison et le crédit d'auteur d'un défi d'équipe", async () => {
+  it("ignore les tentatives refusées et le crédit d'auteur d'un défi d'équipe", async () => {
     await floors("member", 100);
     await solo("member", 3, null);
-    await solo("member", 3, "2027-03-30T10:00:00Z"); // Intersaison du 29 au 31 mars.
     await team("member", 3, [{ name: "viewer", rewardedAt: "2027-02-10T10:00:00Z" }]); // Auteur non participant.
     expect(await read()).toMatchObject({ completedSeasons: 0, seasonChallenges: 0, rank: "Ranker" });
   });

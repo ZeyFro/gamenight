@@ -3,8 +3,8 @@
  * Les dates et compteurs sont fournis par l'appelant.
  *
  * Alignement sur le code existant (ne pas modifier ces fichiers) : les bornes de fin de saison sont
- * EXCLUSIVES (src/lib/tower-challenge-seasons.ts:19 ; `rewardedAt >= startAt AND rewardedAt < endAt`
- * dans src/lib/tower-season-podium.ts:32). L'été est une saison active (tower-challenge-seasons.ts:33).
+ * EXCLUSIVES (src/lib/tower-challenge-seasons.ts ; `rewardedAt >= startAt AND rewardedAt < endAt`
+ * dans src/lib/tower-season-podium.ts:32). L'été est une saison active (tower-challenge-seasons.ts).
  */
 
 function assertDate(value: Date, label: string): void {

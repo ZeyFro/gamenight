@@ -1,6 +1,8 @@
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
+import type { PlayerClassifiedFilters } from "@/lib/player-classified-filters";
+import type { GameLevel } from "@/lib/game-levels-rules";
 import {
   listPlayerClassifieds,
   playerClassifiedExpiresAt,
@@ -133,6 +135,8 @@ export interface PlayerListing {
   message: string;
   authorName: string;
   authorId: string;
+  /** Niveau auto-déclaré de l'auteur pour ce jeu, seulement s'il est visible du lecteur. */
+  authorLevel?: GameLevel | null;
   createdAt: Date;
   expiresAt: Date;
   expired: boolean;
@@ -146,6 +150,7 @@ const toListing = (
     expiresAt: Date;
     game: { name: string };
     createdBy: { id: string; discordName: string };
+    authorLevel?: GameLevel | null;
   },
   now: Date
 ): PlayerListing => ({
@@ -154,6 +159,7 @@ const toListing = (
   message: row.message,
   authorName: row.createdBy.discordName,
   authorId: row.createdBy.id,
+  authorLevel: row.authorLevel ?? null,
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
   expired: row.expiresAt <= now,
@@ -164,9 +170,10 @@ export async function listCommunityListings(input: {
   userId: string;
   communityId: string;
   now?: Date;
+  filters?: PlayerClassifiedFilters;
 }): Promise<PlayerListing[]> {
   const now = input.now ?? wallClockNow();
-  const rows = await listPlayerClassifieds(input.userId, input.communityId, now);
+  const rows = await listPlayerClassifieds(input.userId, input.communityId, now, input.filters);
   return rows.map((row) => toListing(row, now));
 }
 

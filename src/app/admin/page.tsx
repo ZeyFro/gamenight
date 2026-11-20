@@ -14,6 +14,7 @@ import { isCommunityAdminEnabled } from "@/lib/community-admin";
 import { pageMetadata } from "@/lib/page-title";
 import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 import Link from "next/link";
+import { adminDashboardV2Enabled } from "@/lib/admin-dashboard-v2";
 
 export const metadata = pageMetadata("Admin");
 
@@ -52,6 +53,11 @@ export default async function AdminPage({
         <p className="mt-1 text-sm text-muted">
           Réservé aux admins du groupe.
         </p>
+        {adminDashboardV2Enabled() && (
+          <Link href="/admin/tableau-de-bord" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
+            Tableau de bord staff →
+          </Link>
+        )}
         {isVoicePresenceEnabled() && (
           <Link href="/admin/voice-presence" className="mt-2 inline-block text-sm font-medium text-accent hover:underline">
             Consulter les durées vocales →

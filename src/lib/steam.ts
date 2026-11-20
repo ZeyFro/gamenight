@@ -202,6 +202,91 @@ export async function getRecentlyPlayedGames(
   return data.response?.games ?? [];
 }
 
+export type GamePlaytimeResult =
+  | { ok: true; minutes: number }
+  | { ok: false; reason: "private" };
+
+/**
+ * Temps de jeu cumulé (`playtime_forever`, en minutes) d'UN jeu — un seul appel `GetOwnedGames` filtré sur
+ * l'appid (réponse légère, sans `include_appinfo`). Même règle de confidentialité que `getOwnedGames` :
+ * pas de `game_count` = profil ou détails de jeu privés. Un jeu absent de la réponse compte 0 minute.
+ * Utilisé par la validation automatique des défis Tower (delta depuis l'attribution).
+ */
+export async function getGamePlaytimeMinutes(
+  steamId64: string,
+  appid: number,
+  options?: SteamCallOptions
+): Promise<GamePlaytimeResult> {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) throw new Error("STEAM_API_KEY n'est pas configurée.");
+  if (!Number.isInteger(appid) || appid <= 0) throw new RangeError("Appid Steam invalide");
+
+  const url = new URL("https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/");
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("steamid", steamId64);
+  url.searchParams.set("include_played_free_games", "true");
+  url.searchParams.set("appids_filter[0]", String(appid));
+  url.searchParams.set("format", "json");
+
+  const res = await fetch(url, { cache: "no-store", signal: options?.signal });
+  if (!res.ok) throw new Error(`Steam GetOwnedGames a répondu ${res.status}`);
+  const data = (await res.json()) as {
+    response?: { game_count?: number; games?: Array<{ appid: number; playtime_forever?: number }> };
+  };
+  if (typeof data.response?.game_count !== "number") return { ok: false, reason: "private" };
+  const game = data.response.games?.find((candidate) => candidate.appid === appid);
+  return { ok: true, minutes: Math.max(0, game?.playtime_forever ?? 0) };
+}
+
+export interface SteamAchievement {
+  apiname: string;
+  achieved: boolean;
+  /** Secondes Unix du déblocage (0 si non débloqué). */
+  unlocktime: number;
+}
+
+export type PlayerAchievementsResult =
+  | { ok: true; achievements: SteamAchievement[] }
+  | { ok: false; reason: "private" | "no_achievements" };
+
+/**
+ * Succès d'un joueur pour un jeu (`ISteamUserStats/GetPlayerAchievements`). Steam répond 403 « Profile is not
+ * public » pour un profil ou des détails privés, et 400 pour un jeu sans succès : ces deux cas sont des issues
+ * normales, jamais des erreurs. Tout autre statut HTTP lève.
+ */
+export async function getPlayerAchievements(
+  steamId64: string,
+  appid: number,
+  options?: SteamCallOptions
+): Promise<PlayerAchievementsResult> {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) throw new Error("STEAM_API_KEY n'est pas configurée.");
+  if (!Number.isInteger(appid) || appid <= 0) throw new RangeError("Appid Steam invalide");
+
+  const url = new URL("https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/");
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("steamid", steamId64);
+  url.searchParams.set("appid", String(appid));
+  url.searchParams.set("format", "json");
+
+  const res = await fetch(url, { cache: "no-store", signal: options?.signal });
+  if (res.status === 403) return { ok: false, reason: "private" };
+  if (res.status === 400) return { ok: false, reason: "no_achievements" };
+  if (!res.ok) throw new Error(`Steam GetPlayerAchievements a répondu ${res.status}`);
+  const data = (await res.json()) as {
+    playerstats?: { success?: boolean; error?: string; achievements?: Array<{ apiname: string; achieved: number; unlocktime?: number }> };
+  };
+  if (data.playerstats?.success !== true) return { ok: false, reason: "private" };
+  return {
+    ok: true,
+    achievements: (data.playerstats.achievements ?? []).map((achievement) => ({
+      apiname: achievement.apiname,
+      achieved: achievement.achieved === 1,
+      unlocktime: achievement.unlocktime ?? 0,
+    })),
+  };
+}
+
 /** Jeu avec le `rtime_last_played` le plus récent (> 0), ou `undefined` si aucun n'est exploitable. Pure, extraite pour être testable sans mock Prisma/réseau. */
 export function selectMostRecentByTimestamp(
   games: SteamOwnedGame[]

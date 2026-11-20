@@ -40,14 +40,14 @@ import {
 
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
-  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot",
+  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
   "CalendarFeedToken", "GamePingOptIn",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
   "FreeGameOffer",
   "PlayerClassified",
-  "CommunityTeam", "CommunityTeamMember", "TeamApplication", "DiscordTeamSpace",
+  "CommunityTeam", "CommunityTeamMember", "CommunityTeamRecruiter", "TeamTournamentGuest", "TeamApplication", "TeamRecruitmentCriteria", "DiscordTeamSpace", "SessionDiscordSpace", "TournamentTeamSettings", "TournamentTeamEntry", "TournamentMatchReport", "DiscordRoleRequest", "Project", "TeamChallenge",
   "Session", "Tournament", "ChatMessage", "Debt", "GameWishlist", "Roulette", "InstantSession",
   "WeeklyChallenge", "MonthlyRecap", "Season", "SuperlativeAward", "Pronostic", "XpBet", "GroupAchievement", "GroupSessionStats",
   "GroupGameStat", "GroupActiveWeek",
@@ -61,14 +61,14 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  * `communityId: null` sur une colonne requise (garde : `community-scoped-client.test.ts` ↔ schema.prisma).
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
-  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot",
+  "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
   "CalendarFeedToken", "GamePingOptIn",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
   "FreeGameOffer",
   "PlayerClassified",
-  "CommunityTeam", "CommunityTeamMember", "TeamApplication", "DiscordTeamSpace",
+  "CommunityTeam", "CommunityTeamMember", "CommunityTeamRecruiter", "TeamTournamentGuest", "TeamApplication", "TeamRecruitmentCriteria", "DiscordTeamSpace", "SessionDiscordSpace", "TournamentTeamSettings", "TournamentTeamEntry", "TournamentMatchReport", "DiscordRoleRequest", "Project", "TeamChallenge",
   "GameWishlist", "GroupAchievement", "GroupSessionStats", "GroupGameStat", "GroupActiveWeek",
   "WeeklyChallenge", "MonthlyRecap", "Season",
   "CommunityMemberStats", "CommunityMemberCosmetic", "GameStyleProfile", "CommunityDate", "XpEvent", "LevelUpEvent", "UserBadge", "XpAdjustment", "SessionVeto", "RouletteVeto", "SessionAvailabilityPoll", "TournamentPrediction", "SessionAttendance",

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), seasonVote: vi.fn(), edit: vi.fn() }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit, getTowerProofMessage: vi.fn() }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock("@/lib/tower-steam-measure", () => ({ captureTowerMeasureBaseline: vi.fn(), reportTowerChallengeDoubt: vi.fn() }));
 vi.mock("@/lib/tower-challenges", () => ({
   claimSoloTowerChallenge: vi.fn(), getTowerChallengeState: vi.fn(), resolveTowerDiscordActor: mocks.actor,
   settleTowerChallenge: vi.fn(), submitTowerChallengeProof: vi.fn(), voteTowerChallenge: vi.fn(),

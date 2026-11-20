@@ -1,4 +1,4 @@
-export const TOWER_CHALLENGE_APPEAL_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const TOWER_CHALLENGE_APPEAL_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type TowerCommunityRole = "MEMBER" | "ADMIN" | "OWNER";
 

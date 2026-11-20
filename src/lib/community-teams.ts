@@ -5,6 +5,7 @@ import { getScopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
+import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
 
 export async function getCommunityTeamsCommunityId(userId: string): Promise<string | null> {
   const communityId = await resolveActiveCommunityId(userId);
@@ -218,6 +219,7 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
     }
     const deleted = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId, userId } });
     if (!deleted.count) throw new Error("team_leave_member_missing"); // annule aussi la passation éventuelle
+    await clearTeamRecruiterRoles(tx, communityId, teamId, userId);
     await tx.membership.update({
       where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
     });
@@ -314,6 +316,7 @@ export async function dissolveCommunityTeam(
       where: { id: teamId }, data: { isRecruiting: false },
     });
     await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
+    await clearTeamRecruiterRoles(tx, communityId, teamId);
     await tx.membership.update({
       where: { communityId_userId: { communityId, userId } },
       data: { lastTeamLeftAt: new Date() },
