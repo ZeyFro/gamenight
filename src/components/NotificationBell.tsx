@@ -75,9 +75,12 @@ const TYPE_DOT_COLORS: Record<NotificationType, string> = {
 export function NotificationBell({
   initialUnreadCount,
   notifications,
+  centerHref,
 }: {
   initialUnreadCount: number;
   notifications: NotificationItem[];
+  /** Lien vers le centre complet (`NOTIFICATION_CENTER_ENABLED`), absent sinon. */
+  centerHref?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
@@ -191,6 +194,11 @@ export function NotificationBell({
                 })
               )}
             </div>
+            {centerHref && (
+              <Link href={centerHref} onClick={() => setOpen(false)} className="text-center text-xs font-medium text-accent hover:underline">
+                Ouvrir le centre de notifications
+              </Link>
+            )}
           </motion.div>
         </Dialog.Content>
       </Dialog.Portal>

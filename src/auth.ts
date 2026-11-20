@@ -8,6 +8,7 @@ import { parseAdminDiscordIds } from "@/lib/admin-rules";
 import { listOAuthUserGuildIds } from "@/lib/discord-user-guilds";
 import { syncOAuthMemberships } from "@/lib/community-oauth";
 import { ensureDefaultCommunityRecord } from "@/lib/default-community";
+import { importConnectionSuggestionsAtLogin, scopeIncludesConnections } from "@/lib/discord-connections";
 /** Refus normal (compte sans communauté ACTIVE) : annule la transaction sans pile ni erreur applicative. */
 class NotAdmitted extends Error {
   constructor() {
@@ -116,6 +117,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return false;
       }
 
+      // Connexions Discord (sujet J) : lecture unique, seulement si le scope optionnel a été accordé,
+      // APRÈS l'admission ci-dessus (aucune garde S0 modifiée) ; ne bloque jamais la connexion.
+      await importConnectionSuggestionsAtLogin({ discordId: profile.id as string, accessToken: account?.access_token, scope: account?.scope });
+
       return true;
     },
     async jwt({ token, profile, account }) {
@@ -154,7 +159,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // persistées chiffrées, soit rien n'est écrit (`getEncryptionKey`
         // lève si la clé est absente/invalide — capturé par le catch
         // ci-dessous comme n'importe quelle autre erreur best-effort).
-        if (profile?.id && account.refresh_token) {
+        // Un jeton portant le scope `connections` n'est jamais conservé : il a servi une lecture, à la connexion.
+        if (profile?.id && account.refresh_token && !scopeIncludesConnections(account.scope)) {
           try {
             const key = getEncryptionKey();
             await prisma.user.update({

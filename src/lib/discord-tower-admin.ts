@@ -10,7 +10,7 @@ const values = z.array(z.object({
   type: z.number().int(),
   name: z.string().min(1).max(32),
   value: z.union([z.string().max(1500), z.number().int()]),
-})).max(3);
+})).max(7);
 const inputSchema = z.object({
   type: z.literal(2),
   id: snowflake,
@@ -26,7 +26,7 @@ const inputSchema = z.object({
     name: z.literal("tower-admin"),
     options: z.array(z.object({
       type: z.literal(1),
-      name: z.enum(["ajouter", "defis", "desactiver", "importer", "importer-equipe"]),
+      name: z.enum(["ajouter", "ajouter-mesure", "defis", "desactiver", "importer", "importer-equipe"]),
       options: values.optional(),
     })).length(1),
   }),
@@ -36,6 +36,13 @@ const addSchema = z.object({
   consigne: z.string().trim().min(1).max(1500),
   etages: z.number().int().min(1).max(20),
 });
+// Défi mesurable Steam : `cible` = minutes de jeu (mesure « temps ») ou nombre de succès (mesure « succes », sans nom de succès).
+const addMeasuredSchema = addSchema.extend({
+  mesure: z.enum(["temps", "succes"]),
+  appid: z.number().int().min(1).max(2_000_000_000),
+  cible: z.number().int().min(1).max(100_000),
+  succes: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/).optional(),
+}).refine(input => input.mesure === "succes" || input.succes === undefined, { message: "Un nom de succès exige la mesure « succes »" });
 const deactivateSchema = z.object({ id: z.string().min(1).max(64) });
 const MANAGE_GUILD = BigInt(0x20);
 const ADMINISTRATOR = BigInt(0x8);
@@ -82,6 +89,9 @@ export function handleSignedTowerAdminInteraction(body: unknown, timestamp: stri
   if (command.name === "ajouter") {
     const input = addSchema.safeParse(parsedArgs);
     if (!input.success || args.length !== 3 || args.some(option => option.type !== 3 && option.type !== 4)) return { status: 400 };
+  } else if (command.name === "ajouter-mesure") {
+    const input = addMeasuredSchema.safeParse(parsedArgs);
+    if (!input.success || args.length < 6 || args.some(option => option.type !== 3 && option.type !== 4)) return { status: 400 };
   } else if (command.name === "desactiver") {
     const input = deactivateSchema.safeParse(parsedArgs);
     if (!input.success || args.length !== 1 || args[0].type !== 3) return { status: 400 };
@@ -100,6 +110,16 @@ export function handleSignedTowerAdminInteraction(body: unknown, timestamp: stri
           guildId: interaction.guild_id, title: input.titre, instructions: input.consigne, rewardFloors: input.etages,
         });
         content = messageFor(result.status);
+      } else if (command.name === "ajouter-mesure") {
+        const input = addMeasuredSchema.parse(parsedArgs);
+        const result = await addSoloTowerChallengeDefinition({
+          guildId: interaction.guild_id, title: input.titre, instructions: input.consigne, rewardFloors: input.etages,
+          measureKind: input.mesure === "temps" ? "STEAM_PLAYTIME" : "STEAM_ACHIEVEMENT", measureAppId: input.appid, measureTarget: input.cible,
+          ...(input.succes ? { measureAchievement: input.succes } : {}),
+        });
+        content = result.status === "CREATED"
+          ? "✅ Défi mesurable Steam ajouté. Il n’est proposé qu’aux joueurs avec un compte Steam lié qui possèdent le jeu, et seulement si la validation automatique est activée."
+          : messageFor(result.status);
       } else if (command.name === "desactiver") {
         const input = deactivateSchema.parse(parsedArgs);
         const result = await deactivateSoloTowerChallengeDefinition({ guildId: interaction.guild_id, definitionId: input.id });

@@ -281,6 +281,40 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     clock.now = new Date("2026-10-29T00:00:00Z");
     expect((await api.claimSoloTowerChallenge(claimInput(2))).status).toBe("CLAIMED");
   });
+  it("ne propose jamais un défi impossible sur les plateformes du joueur (GAME_PLATFORMS_ENABLED)", async () => {
+    await db.game.upsert({
+      where: { id: "tower-plat-ps" }, update: { platforms: ["PLAYSTATION"] },
+      create: { id: "tower-plat-ps", name: "Jeu PlayStation", source: "MANUAL", addedById: "tower-author", platforms: ["PLAYSTATION"] },
+    });
+    try {
+      await db.userGame.create({ data: { userId: "tower-author", gameId: "tower-plat-ps", owned: true } });
+      await db.towerChallengeDefinition.updateMany({ where: { communityId: "tower-a" }, data: { active: false } });
+      await db.towerChallengeDefinition.create({ data: {
+        id: "tower-a-ps", communityId: "tower-a", title: "Défi PlayStation", instructions: "À réaliser sur PlayStation.",
+        rewardFloors: 1, active: true, gameId: "tower-plat-ps",
+      } });
+      await db.user.update({ where: { id: "tower-author" }, data: { availablePlatforms: ["XBOX", "WINDOWS"] } });
+      vi.stubEnv("GAME_PLATFORMS_ENABLED", "true");
+      expect((await api.claimSoloTowerChallenge(claimInput())).status).toBe("NO_CHALLENGE");
+      await db.user.update({ where: { id: "tower-author" }, data: { availablePlatforms: ["PLAYSTATION"] } });
+      expect((await api.claimSoloTowerChallenge(claimInput())).status).toBe("CLAIMED");
+    } finally {
+      vi.stubEnv("GAME_PLATFORMS_ENABLED", "false");
+      await db.towerChallengeAttempt.deleteMany({ where: { communityId: "tower-a" } });
+      await db.towerChallengeDefinition.deleteMany({ where: { id: "tower-a-ps" } });
+      await db.game.deleteMany({ where: { id: "tower-plat-ps" } });
+    }
+  });
+  it("flag éteint : le filtre de plateformes ne change rien", async () => {
+    await db.user.update({ where: { id: "tower-author" }, data: { availablePlatforms: ["XBOX"] } });
+    expect((await api.claimSoloTowerChallenge(claimInput())).status).toBe("CLAIMED");
+  });
+  it("accepte la photo d’écran TV annoncée sans code dans le texte, mais refuse une preuve sans code ni mention", async () => {
+    const id = await claim();
+    const base = await proof(id);
+    expect((await api.submitTowerChallengeProof({ ...base, proofText: "Capture jointe" })).status).toBe("PROOF_CODE_REQUIRED");
+    expect((await api.submitTowerChallengeProof({ ...base, proofText: "Photo TV : le code est sur l’écran" })).status).toBe("SUBMITTED");
+  });
   it("génère et affiche le code dès l’attribution, puis l’exige dans la description de la preuve", async () => {
     const id = await claim();
     const state = await api.getTowerChallengeState({ ...author, attemptId: id });

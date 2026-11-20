@@ -16,6 +16,9 @@ import { getEquippedShopItems } from "@/lib/xp-shop";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { getTowerProgressForProfile } from "@/lib/tower-personal-progress";
 import { TowerRankBadge } from "@/components/TowerRankBadge";
+import { loadProfilePresentation } from "@/lib/profile-customization";
+import { BadgeShowcase, ProfileBanner, ProfileCosmeticsRoot, ProfileTitle, StyledName } from "@/components/ProfileCosmetics";
+import { getTowerSeasonAwardsForProfile } from "@/lib/tower-season-awards";
 
 /**
  * En-tête + onglets partagés par les 5 sous-routes de `/potes/[id]`
@@ -59,25 +62,31 @@ export default async function PoteLayout({
     ? await getEquippedShopItems(id, communityId)
     : { TITLE: null, FRAME: null, COLOR: null };
 
+  // Personnalisation (PROFILE_CUSTOMIZATION_ENABLED) : lue seulement après le contrôle d'accès ci-dessus ; `null` si éteinte.
+  const presentation = await loadProfilePresentation(user.id, id);
+
   const level = levelForXp(pote.xpTotal);
   const rank = rankForLevel(level);
   // Rang The Tower : étages gagnés avec les défis (jamais l'XP) ; `null` tant que la Tour est éteinte.
   const tower = await getTowerProgressForProfile(user.id, id);
+  // Titres et cadres saisonniers Tower (cosmétiques, limités dans le temps) ; vide tant que leur drapeau est éteint.
+  const towerAwards = await getTowerSeasonAwardsForProfile(user.id, id);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <div>
+      <ProfileCosmeticsRoot view={presentation}>
         <Link
           href="/potes"
           className="text-sm text-muted hover:text-foreground hover:underline"
         >
           ← Potes
         </Link>
+        <ProfileBanner view={presentation} />
         <div className="mt-2 flex items-center gap-3">
-          <RankAvatar src={pote.discordAvatar} alt={pote.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} size={48} />
+          <RankAvatar src={pote.discordAvatar} alt={pote.discordName} level={level} rank={rank} frameColor={cosmetics.FRAME?.value} frameFxId={presentation?.frameFx?.id} size={48} />
           <div>
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground sm:text-2xl">
-              {pote.discordName}
+              <StyledName name={pote.discordName} view={presentation} />
               <ColorDot color={cosmetics.COLOR?.value ?? pote.color} title={`Couleur de ${pote.discordName}`} />
             </h1>
             <div className="flex flex-wrap items-center gap-2">
@@ -87,14 +96,16 @@ export default async function PoteLayout({
                 {rank.name}
               </span>
               {tower && <TowerRankBadge rank={tower.rank} />}
+              {towerAwards.map(award => <span key={award.seasonName} className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold text-foreground" style={{ borderColor: award.frameHex }} title={`Distinction Tower valable jusqu’à la fin de la saison suivante`}>{award.title}</span>)}
               <Badge tone={pote.steamId64 ? "accent" : "neutral"}>
                 {pote.steamId64 ? "Steam lié" : "Steam non lié"}
               </Badge>
-              {cosmetics.TITLE && <span className="text-xs text-muted">{cosmetics.TITLE.value}</span>}
+              {presentation?.title ? <ProfileTitle view={presentation} /> : cosmetics.TITLE && <span className="text-xs text-muted">{cosmetics.TITLE.value}</span>}
             </div>
           </div>
         </div>
-      </div>
+        <BadgeShowcase view={presentation} />
+      </ProfileCosmeticsRoot>
 
       <PlayerEquipment user={pote} />
       <GamingIdentifiers user={pote} />

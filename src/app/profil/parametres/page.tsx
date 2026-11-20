@@ -21,6 +21,8 @@ import { visiblePreferenceGames } from "@/lib/game-suggestions";
 import { PlayerEquipmentForm } from "@/components/PlayerEquipmentForm";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { GAMING_IDENTIFIER_FIELDS } from "@/lib/gaming-identifiers";
+import { CONNECTION_LABELS, CONNECTION_TARGETS, isDiscordConnectionsScopeEnabled, prefillIdentifier, type ConnectionPlatform } from "@/lib/discord-connections";
+import { clearConnectionSuggestionsAction, requestDiscordConnectionsAction } from "@/app/profil/discord-connections-actions";
 import { updateGamingIdentifiersAction } from "@/app/profil/gaming-identifiers-actions";
 import {
   AVAILABLE_NOTIFICATION_CATEGORIES,
@@ -34,6 +36,8 @@ import { WebPushSettings } from "@/components/WebPushSettings";
 import { webPushConfig, webPushConfigIssue } from "@/lib/web-push-config";
 import { leadingGameStyles } from "@/lib/game-style-quiz";
 import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
+import { GameLevelsSettings } from "@/components/GameLevelsSettings";
+import { isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -97,6 +101,13 @@ const FAMILY_FEEDBACK: Record<string, { text: string; className: string }> = {
   rate_limited: { text: RATE_LIMIT_MESSAGE, className: "bg-warning/10 text-warning" },
 };
 
+const CONNECTIONS_FEEDBACK: Record<string, string> = {
+  ok: "Import terminé : consulte les suggestions dans tes identifiants de jeu.",
+  consentement: "Coche la case d’accord pour lancer l’import.",
+  effacees: "Suggestions effacées.",
+  rate_limited: RATE_LIMIT_MESSAGE,
+};
+
 const IDENTIFIERS_FEEDBACK: Record<string, string> = {
   ok: "Tes identifiants de jeu ont été enregistrés.",
   invalide: "Utilise au maximum 100 caractères par identifiant, sur une seule ligne.",
@@ -116,13 +127,24 @@ export default async function ProfilParametresPage({
     gouts?: string;
     materiel?: string;
     identifiants?: string;
+    connexions?: string;
+    niveaux?: string;
     style?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, style } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, connexions, niveaux, style } = await searchParams;
+  const connectionsEnabled = isDiscordConnectionsScopeEnabled();
+  const suggestions = connectionsEnabled
+    ? await prisma.platformConnectionSuggestion.findMany({ where: { userId: user.id }, select: { platform: true, value: true } })
+    : [];
+  const suggestionByField = new Map<string, string>();
+  for (const suggestion of suggestions) {
+    const field = CONNECTION_TARGETS[suggestion.platform as ConnectionPlatform];
+    if (field) suggestionByField.set(field, suggestion.value);
+  }
   const uploadFeedback = upload ? UPLOAD_FEEDBACK[upload] : undefined;
   const familyFeedback = family ? FAMILY_FEEDBACK[family] : undefined;
 
@@ -171,6 +193,22 @@ export default async function ProfilParametresPage({
       </Card></StaggerItem>
       <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
       <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
+      {connectionsEnabled && <StaggerItem>
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-semibold">Importer mes comptes de jeu depuis Discord</h2>
+          {connexions && CONNECTIONS_FEEDBACK[connexions] && <p role="status" className="text-sm">{CONNECTIONS_FEEDBACK[connexions]}</p>}
+          <p className="text-sm text-muted">Facultatif. Discord te redemandera ton accord pour partager la liste de tes comptes liés (Xbox, PlayStation, Epic Games, Battle.net, Riot Games, Steam). GameNight ne s’en sert que pour te proposer de préremplir tes identifiants ci-dessous : rien n’est enregistré sans ta validation, et le jeton Discord n’est pas conservé.</p>
+          <form action={requestDiscordConnectionsAction} className="flex flex-col gap-3">
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="consent" className="mt-1" /><span>J’accepte que GameNight lise mes comptes liés sur Discord, une fois, pour me suggérer mes identifiants.</span></label>
+            <Button type="submit" variant="secondary">Autoriser et importer</Button>
+          </form>
+          {suggestions.length > 0 && <div className="flex flex-col gap-2">
+            <p className="text-sm">Comptes trouvés : {suggestions.map(suggestion => CONNECTION_LABELS[suggestion.platform as ConnectionPlatform] ?? suggestion.platform).join(", ")}. Les champs vides ci-dessous sont préremplis.</p>
+            <form action={clearConnectionSuggestionsAction}><Button type="submit" variant="ghost" size="sm">Effacer ces suggestions</Button></form>
+          </div>}
+        </Card>
+      </StaggerItem>}
+      {isGameLevelsEnabled() && <StaggerItem><GameLevelsSettings userId={user.id} feedback={niveaux} /></StaggerItem>}
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold">Mes identifiants de jeu</h2>
@@ -181,7 +219,8 @@ export default async function ProfilParametresPage({
           <form action={updateGamingIdentifiersAction} className="flex flex-col gap-4">
             {GAMING_IDENTIFIER_FIELDS.map(({ key, label }) => <div key={key}>
               <label htmlFor={`gaming-${key}`} className="mb-1 block text-sm font-medium">{label}</label>
-              <input id={`gaming-${key}`} name={key} type="text" maxLength={100} autoComplete="off" defaultValue={user[key] ?? ""} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-accent" />
+              <input id={`gaming-${key}`} name={key} type="text" maxLength={100} autoComplete="off" defaultValue={prefillIdentifier(user[key], suggestionByField.get(key)).value} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-accent" />
+              {prefillIdentifier(user[key], suggestionByField.get(key)).suggested && <p className="mt-1 text-xs text-muted">Suggéré par ta connexion Discord : modifie-le si besoin, il n’est enregistré que si tu valides le formulaire.</p>}
             </div>)}
             <Button type="submit" variant="primary">Enregistrer mes identifiants</Button>
           </form>

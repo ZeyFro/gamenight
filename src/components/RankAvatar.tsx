@@ -52,6 +52,7 @@ export function RankAvatar({
   level,
   rank,
   frameColor,
+  frameFxId,
   size = 96,
 }: {
   src: string | null;
@@ -59,6 +60,8 @@ export function RankAvatar({
   level: number;
   rank: Rank;
   frameColor?: string | null;
+  /** Cadre animé de la personnalisation (identifiant du catalogue) ; décoratif, coupé par la préférence du spectateur. */
+  frameFxId?: string | null;
   size?: number;
 }) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -80,6 +83,7 @@ export function RankAvatar({
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       {rank.glowing && <LegendaryGlow />}
+      {frameFxId && <span aria-hidden className={`pc-frame pc-${frameFxId}`} />}
       {frameColor && <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-full border-2" style={{ borderColor: frameColor }} />}
       <button
         type="button"

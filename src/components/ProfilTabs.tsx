@@ -30,12 +30,15 @@ const TABS = [
  * composant sert toutes les sous-routes de `/profil` sans que chacune
  * ait à se souvenir de son propre nom d'onglet).
  */
-export function ProfilTabs() {
+export function ProfilTabs({ showCustomization = false }: { showCustomization?: boolean }) {
   const pathname = usePathname();
+  const tabs = showCustomization
+    ? [...TABS.slice(0, -1), { href: "/profil/personnalisation", label: "Personnalisation" }, TABS[TABS.length - 1]]
+    : TABS;
 
   return (
     <div className="flex gap-4 overflow-x-auto border-b border-border">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <TabLink key={tab.href} href={tab.href} active={pathname === tab.href} layoutId="profil-tabs-underline">
           {tab.label}
         </TabLink>

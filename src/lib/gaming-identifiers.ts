@@ -6,6 +6,7 @@ export const GAMING_IDENTIFIER_FIELDS = [
   { key: "switchFriendCode", label: "Code ami Nintendo Switch" },
   { key: "epicDisplayName", label: "Pseudo Epic Games" },
   { key: "battleTag", label: "BattleTag Battle.net" },
+  { key: "riotId", label: "Riot ID (Riot Games)" },
 ] as const;
 
 // Pseudonymes déclarés, pas une validation des règles ou de l'existence d'un
@@ -21,6 +22,8 @@ export const gamingIdentifiersSchema = z.object({
   switchFriendCode: identifier,
   epicDisplayName: identifier,
   battleTag: identifier,
+  // Facultatif côté formulaire : absent = valeur conservée (anciens formulaires, tests).
+  riotId: identifier.optional(),
 });
 
 export type GamingIdentifiers = z.output<typeof gamingIdentifiersSchema>;

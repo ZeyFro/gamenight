@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ findTeam: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  findTeam: vi.fn(), findSpace: vi.fn(), listSpaces: vi.fn(), saveSpace: vi.fn(), updateSpaces: vi.fn(),
+}));
 
-vi.mock("@/lib/community-scoped-client", () => ({ scopedPrisma: () => ({ communityTeam: { findFirst: mocks.findTeam } }) }));
+vi.mock("@/lib/community-scoped-client", () => ({ scopedPrisma: () => ({
+  communityTeam: { findFirst: mocks.findTeam },
+  discordTeamSpace: {
+    findUnique: mocks.findSpace, findMany: mocks.listSpaces, upsert: mocks.saveSpace, updateMany: mocks.updateSpaces,
+  },
+}) }));
 
 import {
   archiveInactiveTeamSpace,
@@ -15,6 +22,7 @@ import {
   type TeamSpaceDiscordApi,
 } from "./discord-team-space-service";
 import { spaceChannelName, spaceVoiceChannelName, TEXT_CHANNEL_ALLOW, VIEW_CHANNEL, VOICE_CHANNEL_ALLOW } from "./discord-team-spaces";
+import { runTeamSpaceAction } from "./discord-team-space-runner";
 
 const GUILD = "100000000000000001";
 const TEAM = "team_1";
@@ -74,7 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  mocks.findTeam.mockReset();
+  Object.values(mocks).forEach(mock => mock.mockReset());
 });
 
 describe("provisionTeamSpace", () => {
@@ -125,6 +133,13 @@ describe("provisionTeamSpace", () => {
       { teamId: TEAM, communityId: "community-1", guildId: GUILD, channelId: "chan-1", voiceChannelId: "voice-1", roleId: "role-1" },
     ]);
     const { api, calls } = fakeApi();
+    api.snapshot = async () => ({
+      channels: [
+        { id: "chan-1", name: "les-dragons-team_1", type: 0 },
+        { id: "voice-1", name: "vocal-les-dragons-team_1", type: 2 },
+      ],
+      roles: [{ id: "role-1", name: "GN · Les Dragons" }],
+    });
     const result = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
     expect(result).toEqual({ status: "reused", roleId: "role-1", channelId: "chan-1", voiceChannelId: "voice-1" });
     expect(calls.some((call) => call.op === "createRole" || call.op === "createChannel")).toBe(false);
@@ -406,6 +421,52 @@ describe("option A — salon vocal permanent", () => {
     expect(created.channels.filter((channel) => channel.type === 2)).toHaveLength(1);
     expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-2" });
     expect(ops("addMemberRole")).toHaveLength(2);
+  });
+
+  it.each([1, 2])("reprend les accès après %i échec(s) membre sans recréer les salons, et ne confirme pas l'exécution avant réparation", async failures => {
+    vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
+    const store = createMemorySpaceLinkStore();
+    mocks.findSpace.mockImplementation(({ where }) => store.find(where.teamId));
+    mocks.listSpaces.mockImplementation(({ where }) => store.listByCommunity(where.communityId));
+    mocks.saveSpace.mockImplementation(({ create }) => store.save(create));
+    mocks.updateSpaces.mockImplementation(({ where, data }) => store.setArchived(where.teamId, data.archived));
+
+    const resources = {
+      channels: [] as Array<{ id: string; name: string; type: number }>,
+      roles: [] as Array<{ id: string; name: string }>,
+    };
+    const { api } = fakeApi();
+    api.snapshot = async () => resources;
+    api.createRole = async (_guild, name) => {
+      const id = `role-${resources.roles.length + 1}`;
+      resources.roles.push({ id, name });
+      return id;
+    };
+    api.createChannel = async (_guild, name, type) => {
+      const id = `${type === 2 ? "voice" : "text"}-${resources.channels.length + 1}`;
+      resources.channels.push({ id, name, type });
+      return id;
+    };
+    const granted = new Set<string>();
+    let remainingFailures = failures;
+    api.addMemberRole = async (_guild, userId) => {
+      if (userId === "100000000000000012" && remainingFailures-- > 0) throw new Error("discord_server_error");
+      granted.add(userId);
+    };
+
+    const action = { intent: "provision" as const, teamId: TEAM, communityId: "community-1" };
+    const deadline = new Date(Date.now() + 20_000);
+    for (let attempt = 0; attempt < failures; attempt++) {
+      // Véritable runner + service + adaptateur de stockage : un accès manquant
+      // doit rester retentable, même lorsque les deux salons sont déjà persistés.
+      expect(await runTeamSpaceAction(action, deadline, api)).toMatchObject({ ok: false, retryable: true });
+      expect(granted.has("100000000000000012")).toBe(false);
+      expect(await store.find(TEAM)).toMatchObject({ roleId: "role-1", channelId: "text-1", voiceChannelId: "voice-2" });
+    }
+    expect(await runTeamSpaceAction(action, deadline, api)).toEqual({ ok: true, data: {} });
+    expect([...granted].sort()).toEqual(["100000000000000011", "100000000000000012"]);
+    expect(resources.roles).toHaveLength(1);
+    expect(resources.channels.map(channel => channel.type).sort()).toEqual([0, 2]);
   });
 
   it("refuse explicitement quand le serveur a atteint la limite de salons Discord", async () => {
