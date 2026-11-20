@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { towerTvPhotoReviewHint } from "@/lib/tower-challenge-proof-rules";
 import { scopedPrisma } from "@/lib/community-scoped-client";
 import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
 import type { DeliveryResolver, Resolution } from "@/lib/notification-executor";
@@ -213,7 +214,7 @@ export const towerChallengeAnnounceResolver: DeliveryResolver = {
     if (community?.status !== "ACTIVE" || !community.towerChallengesEnabled || community.discordGuildId !== destination.guildId) return { eligible: false, reason: "expired" };
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({
       where: { id: event.sourceId, communityId: event.communityId },
-      select: { id: true, userId: true, quorumResubmissions: true, voteExtendedAt: true, title: true, proofText: true, proofChannelId: true, proofMessageId: true,
+      select: { id: true, userId: true, quorumResubmissions: true, voteExtendedAt: true, title: true, proofText: true, proofCode: true, proofChannelId: true, proofMessageId: true,
         teamId: true, team: { select: { name: true } },
         participants: { select: { rewardedAt: true } },
         publicationConsent: true, submittedAt: true, status: true, rewardedAt: true, rewardFloors: true,
@@ -229,10 +230,12 @@ export const towerChallengeAnnounceResolver: DeliveryResolver = {
     let content: string;
     let components: DiscordActionRow[] = [];
     if (kind === "proof") {
+      const tvHint = attempt.proofCode ? towerTvPhotoReviewHint(attempt.proofText, attempt.proofCode) : null;
       const endsAt = challengeVoteDeadline(attempt.submittedAt, Boolean(attempt.voteExtendedAt)).getTime();
       if (attempt.status !== "SUBMITTED" || now.getTime() >= endsAt) return { eligible: false, reason: "expired" };
       content = "🧪 **Preuve à juger : " + plain(attempt.title, 120) + "**\n"
         + (attempt.team ? "L’équipe **" + plain(attempt.team.name, 80) + "** propose sa réalisation au vote :" : plain(attempt.user.discordName, 80) + " propose sa réalisation au vote :") + "\n"
+        + (tvHint ? "\n" + tvHint : "")
         + "\n[Voir la preuve](" + url + ")\nVote jusqu’à <t:" + Math.floor(endsAt / 1000)
         + ":f> · 3 votants minimum, majorité favorable, aucun vote pour soi.";
       components = voteButtons(attempt.id);

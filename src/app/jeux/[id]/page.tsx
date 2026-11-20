@@ -16,6 +16,8 @@ import { GamePreparation, GameSteamPrice } from "@/components/GamePreparation";
 import { GamePreparationForm } from "@/components/GamePreparationForm";
 import { GameWarnings } from "@/components/GameWarnings";
 import { GameWarningsForm } from "@/components/GameWarningsForm";
+import { GamePlatformsForm } from "@/components/GamePlatformsForm";
+import { isGamePlatformsEnabled } from "@/lib/game-platforms";
 import { GameDescription } from "@/components/GameDescription";
 import { ApiErrorBanner } from "@/components/ApiErrorBanner";
 import { refreshGameDetails } from "../actions";
@@ -291,6 +293,7 @@ export default async function GameDetailPage({
       <GamePreparation game={game} />
       {owns?.owned && <GamePreparationForm estimatedTimeEnabled={process.env.GAME_PREPARATION_TIME_ENABLED === "true"} game={{ id: game.id, preparationCost: game.preparationCost, preparationPrice: game.preparationPrice, downloadSizeGb: game.downloadSizeGb, preparationPlatform: game.preparationPlatform, preparationSourceUrl: game.preparationSourceUrl, preparationTimeMinutes: game.preparationTimeMinutes }} />}
       {game.steamAppId && <Suspense fallback={<p className="text-sm text-muted">Lecture du prix Steam…</p>}><GameSteamPrice appId={game.steamAppId} /></Suspense>}
+      {isGamePlatformsEnabled() && <GamePlatformsForm game={{ id: game.id, platforms: game.platforms, crossplay: game.crossplay }} canEdit={Boolean(owns?.owned)} />}
       <GameWarnings game={game} />
       {owns?.owned && <GameWarningsForm game={{ id: game.id, jumpscares: game.jumpscares, motionSickness: game.motionSickness, textLanguages: game.textLanguages, audioLanguages: game.audioLanguages }} />}
 

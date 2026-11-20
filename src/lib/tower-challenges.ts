@@ -13,7 +13,8 @@ import { enqueueTowerChallengeEvent, refreshTowerProofMessage, requeueTowerRejec
 import { isTowerDiscordVotesEnabled, towerVoterEligibility } from "@/lib/tower-vote-eligibility";
 import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
-import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
+import { filterChallengesPlayable, isGamePlatformsEnabled, isPlayableByGroup, isPlayableOnPlayerPlatforms, loadGamePlatforms } from "@/lib/game-platforms";
+import { createTowerChallengeProofCode, towerProofSatisfiesCodeRule } from "@/lib/tower-challenge-proof-rules";
 import { isCoherentMeasure, isTowerSteamAutovalidateEnabled, towerChallengeMeasureSchema } from "@/lib/tower-steam-measure-rules";
 import { getPendingProofAgingAction } from "@/lib/tower-challenge-aging-rules";
 import { canReviewTowerChallengeAppeal, isTowerChallengeAppealWindowOpen, TOWER_CHALLENGE_APPEAL_WINDOW_MS } from "@/lib/tower-challenge-appeal-rules";
@@ -205,7 +206,7 @@ export async function claimSoloTowerChallenge(input: unknown) {
     const owned = await scopedDb.userGame.findMany({ where: { userId, owned: true }, select: { gameId: true } });
     const allCandidates = await scopedDb.towerChallengeDefinition.findMany({
       where: { communityId, active: true, mode: "SOLO", OR: [{ gameId: null }, { gameId: { in: owned.map(game => game.gameId) } }] },
-      select: { id: true, title: true, instructions: true, rewardFloors: true,
+      select: { id: true, title: true, instructions: true, rewardFloors: true, gameId: true,
         measureKind: true, measureAppId: true, measureTarget: true, measureAchievement: true },
     });
     // Un défi mesurable Steam n'est proposé qu'à un joueur dont le compte Steam est lié et qui possède le jeu mesuré,
@@ -214,15 +215,23 @@ export async function claimSoloTowerChallenge(input: unknown) {
     const measurable = isTowerSteamAutovalidateEnabled() && measuredAppIds.length
       ? await towerMeasurableAppIds(transaction, scopedDb, userId, measuredAppIds) : new Set<number>();
     const candidates = allCandidates.filter(candidate => !candidate.measureKind || (candidate.measureAppId !== null && measurable.has(candidate.measureAppId)));
-    if (!candidates.length) return { status: "NO_CHALLENGE" } as const;
+    // Aucun défi impossible sur les plateformes du joueur (GAME_PLATFORMS_ENABLED) : jamais proposé.
+    const playable = isGamePlatformsEnabled()
+      ? await (async () => {
+          const me = await scopedDb.user.findUnique({ where: { id: userId }, select: { availablePlatforms: true } });
+          const byGame = await loadGamePlatforms(candidates.flatMap(candidate => candidate.gameId ? [candidate.gameId] : []));
+          return filterChallengesPlayable(candidates, byGame, gamePlatforms => isPlayableOnPlayerPlatforms(gamePlatforms, me?.availablePlatforms ?? []));
+        })()
+      : candidates;
+    if (!playable.length) return { status: "NO_CHALLENGE" } as const;
     const played = await scopedDb.towerChallengeAttempt.findMany({
-      where: { communityId, userId, definitionId: { in: candidates.map(candidate => candidate.id) } },
+      where: { communityId, userId, definitionId: { in: playable.map(candidate => candidate.id) } },
       select: { definitionId: true },
       distinct: ["definitionId"],
     });
     const playedIds = new Set(played.map(attempt => attempt.definitionId));
-    const unseen = candidates.filter(candidate => !playedIds.has(candidate.id));
-    const pool = unseen.length ? unseen : candidates;
+    const unseen = playable.filter(candidate => !playedIds.has(candidate.id));
+    const pool = unseen.length ? unseen : playable;
     const chosen = pool[randomInt(pool.length)];
     const attempt = await scopedDb.towerChallengeAttempt.create({
       data: { ...actor, requestKey, definitionId: chosen.id, title: chosen.title, instructions: chosen.instructions,
@@ -269,10 +278,18 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
       await setTowerStatementDeadline(transaction, deadline);
       const candidates = await scopedDb.towerChallengeDefinition.findMany({
         where: { communityId, active: true, mode: "TEAM" },
-        select: { id: true, title: true, instructions: true, rewardFloors: true },
+        select: { id: true, title: true, instructions: true, rewardFloors: true, gameId: true },
       });
-      if (!candidates.length) return { status: "NO_CHALLENGE" } as const;
-      const chosen = candidates[randomInt(candidates.length)];
+      // Aucun défi d'équipe impossible : au moins deux membres doivent pouvoir jouer le jeu (GAME_PLATFORMS_ENABLED).
+      const playable = isGamePlatformsEnabled()
+        ? await (async () => {
+            const members = await scopedDb.user.findMany({ where: { id: { in: team.members.map(member => member.userId) } }, select: { availablePlatforms: true } });
+            const byGame = await loadGamePlatforms(candidates.flatMap(candidate => candidate.gameId ? [candidate.gameId] : []));
+            return filterChallengesPlayable(candidates, byGame, gamePlatforms => isPlayableByGroup(gamePlatforms, members.map(member => member.availablePlatforms)));
+          })()
+        : candidates;
+      if (!playable.length) return { status: "NO_CHALLENGE" } as const;
+      const chosen = playable[randomInt(playable.length)];
       const assignedAt = current;
       await setTowerStatementDeadline(transaction, deadline);
       const result = await scopedDb.towerChallengeAttempt.upsert({
@@ -403,7 +420,7 @@ export async function submitTowerChallengeProof(input: unknown) {
     if (attempt.status !== "ASSIGNED") return { status: "CLOSED" } as const;
     const metadata = await loadChallengeMeta(scopedDb, communityId, attemptId);
     if (!metadata.proofCode) return { status: "PROOF_CODE_UNAVAILABLE" } as const;
-    if (!proofTextIncludesTowerCode(proofText, metadata.proofCode)) return { status: "PROOF_CODE_REQUIRED" } as const;
+    if (!towerProofSatisfiesCodeRule(proofText, metadata.proofCode)) return { status: "PROOF_CODE_REQUIRED" } as const;
     const submittedAt = now();
     // Resoumission après un rejet sans quorum : nouvelle fenêtre de 48 h (resubmitUntil), l'attribution initiale reste inchangée.
     const inWindow = attempt.quorumResubmissions > 0 && attempt.resubmitUntil
