@@ -45,6 +45,7 @@ enum FreeGameStore {
 model User {
   gamePingOptIns GamePingOptIn[]
   profileVisibility UserProfileVisibility?
+  boosterSupports BoosterSupport[]
   gameLevels UserGameLevel[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
@@ -3135,6 +3136,8 @@ model Community {
   teamTournamentGuests TeamTournamentGuest[]
   teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
+  boosterSupports BoosterSupport[]
+  boosterSupportSpace BoosterSupportSpace?
   moderationReports ModerationReport[]
   teamChallenges TeamChallenge[]
   projects Project[]
@@ -3526,6 +3529,48 @@ model DiscordTeamSpace {
 
   @@unique([teamId, communityId])
   @@index([communityId])
+}
+
+// Soutien Nitro (DISCORD_BOOSTERS_ENABLED) : état lu par le cron REST (premium_since), sans gateway. Purement
+// cosmétique : rôle « Soutien de la Tour » sans permission, badge, Mur des soutiens, salons réservés. Aucun
+// avantage de jeu (ni XP, ni étages, ni vote). `roleGranted` = dernier état de rôle confirmé par l'executor ;
+// quand `boosting` passe à false, le rôle est retiré automatiquement.
+model BoosterSupport {
+  id          String    @id @default(cuid())
+  communityId String
+  userId      String
+  discordId   String
+  boosting    Boolean   @default(false)
+  since       DateTime?
+  endedAt     DateTime?
+  roleGranted Boolean   @default(false)
+  checkedAt   DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([communityId, boosting, since])
+  @@index([communityId, checkedAt])
+}
+
+// Ressources Discord des soutiens d'une communauté : un rôle sans permission + un salon écrit et un salon
+// vocal visibles uniquement par ce rôle. Jamais supprimées par le code (créées une fois, retrouvées par nom).
+model BoosterSupportSpace {
+  id             String   @id @default(cuid())
+  communityId    String
+  guildId        String
+  roleId         String
+  channelId      String   @unique
+  voiceChannelId String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId])
 }
 
 // Signalement d'un message par un membre (commande contextuelle « Signaler », DISCORD_REPORT_COMMAND_ENABLED).

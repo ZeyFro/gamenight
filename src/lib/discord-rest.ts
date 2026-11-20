@@ -1591,6 +1591,8 @@ export async function getGuildMemberRoles(input: {
 export async function createGuildRole(input: {
   guildId: string;
   name: string;
+  /** Couleur du rôle (RGB) ; défaut violet historique. */
+  color?: number;
   deadline: Date;
   now?: Date;
 }): Promise<DiscordRestResult<{ id: string; name: string }>> {
@@ -1601,7 +1603,7 @@ export async function createGuildRole(input: {
     now: input.now,
     // Aucune permission, non affiché à part, non mentionnable : un rôle de jeu
     // cosmétique ne peut jamais élargir les droits de celui qui le porte.
-    body: { name: input.name, permissions: "0", color: 0x8b5cf6, hoist: false, mentionable: false },
+    body: { name: input.name, permissions: "0", color: input.color ?? 0x8b5cf6, hoist: false, mentionable: false },
     parse: (json) => {
       const result = z.object({ id: z.string().regex(/^\d+$/), name: z.string() }).safeParse(json);
       return result.success ? { id: result.data.id, name: result.data.name } : null;

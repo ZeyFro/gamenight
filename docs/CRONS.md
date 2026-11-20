@@ -23,6 +23,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/retention-cleanup` | GET | Nettoyage de rétention |
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
+| `/api/cron/booster-sync` | GET | Lecture REST de `premium_since` (soutiens Nitro) ; OFF si `DISCORD_BOOSTERS_ENABLED` absent ; aucun cron créé |
 | `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
 | `/api/cron/tournament-teams` | GET | Relance des confirmations de résultat (12 h) et lancement des tournois d’équipes à l’échéance d’inscription ; OFF sans `TOURNAMENT_TEAMS_ENABLED` ; 503 sans `CRON_SECRET` |
 | `/api/cron/team-applications` | GET | Relance (48 h) et expiration (7 j) des candidatures d’équipe, retrait des accès Discord des membres non actifs ; OFF sans `TEAM_RECRUITERS_ENABLED` ; 503 sans `CRON_SECRET` |
@@ -43,6 +44,8 @@ Converties en 202 :
 | `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
 | `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
 | `/api/cron/tower-steam-autovalidate` | au plus 25 lectures de l’API Steam par passage, budget interne 50 s ; une tentative n’est pas relue avant 10 minutes | 60 |
+
+Aussi en 202 : `/api/cron/booster-sync` (un appel REST Discord par membre, lots de 100, budget 40 s, `maxDuration` 60).
 
 Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
 
