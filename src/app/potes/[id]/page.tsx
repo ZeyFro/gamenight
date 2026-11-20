@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { todayDateOnly } from "@/lib/wallclock";
 import { AvailabilityView } from "@/components/AvailabilityView";
+import { listVisibleGameLevels } from "@/lib/game-levels";
+import { GAME_LEVEL_LABELS } from "@/lib/game-levels-rules";
 import type { Metadata } from "next";
 import { dynamicPageMetadata } from "@/lib/dynamic-page-title";
 
@@ -38,7 +40,8 @@ export default async function PoteDisposPage({
   if (!(await canViewPote(user.id, id))) notFound();
 
   const today = todayDateOnly();
-  const [weeklySlots, overrides] = await Promise.all([
+  const [gameLevels, weeklySlots, overrides] = await Promise.all([
+    listVisibleGameLevels(user.id, id),
     prisma.weeklyAvailability.findMany({
       where: { userId: id },
       orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
@@ -52,5 +55,13 @@ export default async function PoteDisposPage({
     }),
   ]);
 
-  return <AvailabilityView weeklySlots={weeklySlots} overrides={overrides} />;
+  return <>
+    <AvailabilityView weeklySlots={weeklySlots} overrides={overrides} />
+    {gameLevels.length > 0 && <section aria-labelledby="game-levels-title" className="mt-6 grid gap-2">
+      <h2 id="game-levels-title" className="font-semibold text-foreground">Niveaux par jeu</h2>
+      <ul className="grid gap-1 text-sm">
+        {gameLevels.map((entry) => <li key={entry.gameId}>{entry.gameName} · <strong>{GAME_LEVEL_LABELS[entry.level]}</strong></li>)}
+      </ul>
+    </section>}
+  </>;
 }

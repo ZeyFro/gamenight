@@ -7,6 +7,8 @@ import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { canAccessSession, inviteToSession, revokeSessionInvite } from "@/lib/session-access";
 import { changeSessionSeat } from "@/lib/session-seats";
+import { canManageSession } from "@/lib/session-visibility";
+import { requestSessionSpaceMemberSyncForUser } from "@/lib/session-space-queue";
 import {
   enqueueSessionInviteSync,
   enqueueSessionCreatorThreadMembership,
@@ -29,9 +31,10 @@ async function assertOwnsSession(sessionId: string, userId: string) {
   if (!(await canAccessSession(userId, sessionId))) return null;
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { createdById: true, announceViaBot: true, attendanceCapacity: true },
+    select: { createdById: true, coOrganizerId: true, communityId: true, announceViaBot: true, attendanceCapacity: true },
   });
-  if (!session || session.createdById !== userId) return null;
+  // Créateur, ou coorganisateur désigné quand SESSION_VISIBILITY_ENABLED est allumé.
+  if (!session || !canManageSession(userId, session)) return null;
   return session;
 }
 
@@ -61,6 +64,7 @@ export async function addSessionInviteAction(formData: FormData) {
   if (invite && session.announceViaBot) {
     await enqueueSessionInviteSync(invite.id);
   }
+  if (invite) await requestSessionSpaceMemberSyncForUser({ sessionId, communityId: session.communityId, userId: guestUserId });
 
   revalidatePath(`/sessions/${sessionId}/invites`);
 }
@@ -87,6 +91,11 @@ export async function revokeSessionInviteAction(formData: FormData) {
 
   const revoked = await revokeSessionInvite(sessionId, guestUserId, user.id);
   if (session.attendanceCapacity != null) await changeSessionSeat(user.id, sessionId, { kind: "refresh" });
+  // Retirer l'invité qui est coorganisateur lui retire aussi ce rôle (plus d'accès = plus de gestion).
+  if (revoked && session.coOrganizerId === guestUserId) {
+    await prisma.session.update({ where: { id: sessionId }, data: { coOrganizerId: null } });
+  }
+  if (revoked) await requestSessionSpaceMemberSyncForUser({ sessionId, communityId: session.communityId, userId: guestUserId });
   if (revoked && session.announceViaBot) {
     const invite = await prisma.sessionInvite.findUnique({
       where: { sessionId_userId: { sessionId, userId: guestUserId } },

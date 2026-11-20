@@ -86,6 +86,15 @@ export async function GET(request: Request) {
           logger.error("cron:tower", error, { owner });
         }
       }
+      if (towerEnabled && process.env.TOWER_SEASON_AWARDS_ENABLED === "true") {
+        try {
+          const { awardTowerSeasonTitles } = await import("@/lib/tower-season-awards");
+          const awards = await awardTowerSeasonTitles(new Date(), new Date(startedAt + 25000));
+          logger.info("cron:notification-executor", "Distinctions de saison Tower.", awards);
+        } catch (error) {
+          logger.error("cron:tower-awards", error, { owner });
+        }
+      }
       // Le travail Tower et les livraisons partagent le budget existant de 50 s.
       const summary = await runExecutorBatch({
         resolver: DISPATCH_RESOLVER, owner,

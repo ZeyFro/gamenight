@@ -26,6 +26,8 @@ import { pageMetadata } from "@/lib/page-title";
 import { getProfileVisibility, isProfileVisibilityEnabled, profileVisibilityWhere } from "@/lib/profile-visibility";
 import { Button } from "@/components/ui/Button";
 import { setProfileVisibilityAction } from "./visibility-actions";
+import { gameLevelUserWhere, levelKey, loadVisibleLevels, parseGameLevelFilter } from "@/lib/game-level-filter";
+import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Potes");
 
@@ -38,15 +40,20 @@ function QuickStat({ value, label }: { value: ReactNode; label: string }) {
   );
 }
 
-export default async function PotesPage() {
+export default async function PotesPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> } = {}) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  const levelsEnabled = isGameLevelsEnabled();
+  const levelFilterParse = levelsEnabled ? parseGameLevelFilter((await searchParams) ?? {}) : null;
+  const levelFilter = levelFilterParse?.success ? levelFilterParse.data : {};
+  const levelFilterInvalid = levelFilterParse !== null && !levelFilterParse.success;
+  const levelGames = levelsEnabled ? await prisma.game.findMany({ where: { userLevels: { some: {} } }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 300 }) : [];
 
   const scopedDb = await getActiveScopedPrisma(user.id);
   const rawPotes = await prisma.user.findMany({
     // Multi-communautés (PR4) : uniquement les membres de mes communautés
     // (aucun filtre si l'isolation est éteinte).
-    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere()] },
+    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere(), levelFilterInvalid ? { id: { in: [] } } : gameLevelUserWhere(levelFilter)] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,
@@ -63,6 +70,9 @@ export default async function PotesPage() {
       userTags: { select: { tag: { select: { id: true, name: true } } } },
     },
   });
+  const levelByPote = levelFilter.gameId && levelFilter.level
+    ? await loadVisibleLevels(user.id, rawPotes.map((pote) => ({ userId: pote.id, gameId: levelFilter.gameId! })))
+    : new Map<string, import("@/lib/game-levels-rules").GameLevel>();
   const communityId = await writeCommunityIdForUser(user.id);
   const progress = await scopedDb.communityMemberStats.findMany({ where: { communityId: { in: communityId ? [communityId] : [] }, userId: { in: rawPotes.map((p) => p.id) } } });
   const progressById = new Map(progress.map((p) => [p.userId, p]));
@@ -129,6 +139,23 @@ export default async function PotesPage() {
         </Card>
       )}
 
+      {levelsEnabled && <Card>
+        <form action="/potes" method="get" className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-sm">Jeu
+            <select name="gameId" defaultValue={levelFilter.gameId ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Choisir un jeu</option>{levelGames.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}</select>
+          </label>
+          <label className="grid gap-1 text-sm">Niveau
+            <select name="level" defaultValue={levelFilter.level ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Tous</option>{GAME_LEVELS.map((level) => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]}</option>)}</select>
+          </label>
+          <label className="grid gap-1 text-sm">Comparaison
+            <select name="levelMatch" defaultValue={levelFilter.levelMatch ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Ce niveau ou plus</option><option value="exact">Ce niveau exactement</option></select>
+          </label>
+          <Button type="submit" size="sm">Filtrer par niveau</Button>
+          <Link href="/potes" className="text-sm text-accent">Réinitialiser</Link>
+        </form>
+        {levelFilterInvalid && <p role="alert" className="mt-2 text-sm text-destructive">Choisis un jeu pour filtrer par niveau.</p>}
+      </Card>}
+
       {potes.length === 0 ? (
         <Card>
           <p className="text-sm text-muted">Personne d&apos;autre n&apos;a encore rejoint le groupe.</p>
@@ -181,6 +208,9 @@ export default async function PotesPage() {
                         <p className="flex items-center gap-2 truncate font-medium text-foreground">
                           <span className="truncate">{pote.discordName}</span>
                           <ColorDot color={pote.color} />
+                          {levelByPote.get(levelKey(pote.id, levelFilter.gameId ?? "")) && (
+                            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">Niveau {GAME_LEVEL_LABELS[levelByPote.get(levelKey(pote.id, levelFilter.gameId ?? ""))!]}</span>
+                          )}
                           {activeDebtorIds.has(pote.id) && (
                             <span title="Dette de gage active">💀</span>
                           )}

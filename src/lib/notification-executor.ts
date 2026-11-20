@@ -37,6 +37,8 @@ import {
   type DiscordRestResult,
 } from "@/lib/discord-rest";
 import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
+import { runSessionSpaceAction } from "@/lib/session-space-runner";
+import type { SessionSpaceIntent } from "@/lib/session-space-plan";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -226,6 +228,17 @@ export type ResolvedAction =
       kind: "sync_team_space";
       intent: TeamSpaceIntent;
       teamId: string;
+      communityId: string;
+      discordId?: string;
+    }
+  | {
+      /** Espace temporaire d'une soirée (fil privé + vocal privé) : création à T-30 min,
+       * accès d'un participant, nettoyage une fois le vocal vide. Réservée au résolveur
+       * `sessionSpaceSyncResolver` (ADMIN / SESSION_SPACE_SYNC), derrière
+       * `SESSION_VISIBILITY_ENABLED`. Exécutée par `session-space-runner` (idempotent). */
+      kind: "sync_session_space";
+      intent: SessionSpaceIntent;
+      sessionId: string;
       communityId: string;
       discordId?: string;
     };
@@ -632,6 +645,15 @@ export async function performDiscordAction(
       return mapDiscordResult(
         await runTeamSpaceAction(
           { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
+        () => ({})
+      );
+    }
+    case "sync_session_space": {
+      return mapDiscordResult(
+        await runSessionSpaceAction(
+          { intent: action.intent, sessionId: action.sessionId, communityId: action.communityId, discordId: action.discordId },
           deadline
         ),
         () => ({})
