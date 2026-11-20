@@ -1,4 +1,5 @@
 import { postToCommunity } from "@/lib/community-announce";
+import { isRegisteredTeamTournament, privateTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { pairParticipantsByLevel } from "@/lib/game-levels-matchmaking";
 import { Prisma, type TournamentStatus } from "@prisma/client";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
@@ -151,7 +152,7 @@ export function computeNextSlot(
  * effets post-commit (XP/badges/Discord, voir
  * `announceTournamentFinalization`) une fois SA transaction committée.
  */
-async function advanceWinner(
+export async function advanceWinner(
   tx: Prisma.TransactionClient,
   tournamentId: string,
   round: number,
@@ -390,7 +391,7 @@ export function getActiveTournamentStatusLabel(status: "REGISTRATION" | "IN_PROG
 export async function getActiveTournament(viewerId: string): Promise<{ id: string; name: string; gameName: string; status: "REGISTRATION" | "IN_PROGRESS" } | null> {
   const scopedDb = await getActiveScopedPrisma(viewerId);
   const tournament = await scopedDb.tournament.findFirst({
-    where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] } },
+    where: { status: { in: ["REGISTRATION", "IN_PROGRESS"] }, ...privateTeamTournamentWhere(viewerId) },
     orderBy: { createdAt: "desc" },
     select: { id: true, name: true, status: true, game: { select: { name: true } } },
   });
@@ -440,7 +441,8 @@ export async function declareWinner(
   matchId: string,
   winnerId: string,
   actorUserId: string,
-  scores?: { score1: number; score2: number }
+  scores?: { score1: number; score2: number },
+  options?: { viaTeamConfirmation?: boolean }
 ): Promise<DeclareWinnerResult> {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
@@ -451,6 +453,9 @@ export async function declareWinner(
   // périmé (page pas rafraîchie). Ne garantit rien à lui seul contre la
   // course — la vraie protection est le claim transactionnel plus bas.
   if (match.completedAt) return { ok: false, tournamentDone: false };
+  // Tournoi d'équipes inscrites (TOURNAMENT_TEAMS_ENABLED) : le résultat n'est valide que confirmé par les deux capitaines
+  // (ou tranché par l'organisateur), via `tournament-teams.ts`. Aucune déclaration unilatérale par ce chemin.
+  if (!options?.viaTeamConfirmation && await isRegisteredTeamTournament(match.tournamentId)) return { ok: false, tournamentDone: false };
   const teamMode = match.tournament.format === "TEAMS";
   const winnerInMatch = teamMode
     ? winnerId === match.team1Id || winnerId === match.team2Id
