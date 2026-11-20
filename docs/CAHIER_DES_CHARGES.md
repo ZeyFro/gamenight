@@ -1180,7 +1180,7 @@ L'option A est déjà faite (#469 : rôle, salon écrit et salon vocal privés p
 
 Message public à boutons ✅/❌ mis à jour, plus un fil par preuve. Votants : compte GameNight actif et présent sur le serveur depuis 7 jours au moins. Ni auto-vote ni double vote ; vote modifiable jusqu'à l'échéance (24 h, plus prolongation unique de 24 h, règles du lot Tower 2.0 à ne pas casser).
 
-- Branche prévue : `claude/votes-discord-fils`. Interrupteur : `TOWER_DISCORD_VOTES_ENABLED`. Migration : `20261118130100_tower_vote_messages`.
+- Branche prévue : `claude/votes-discord-fils`. Interrupteur : `TOWER_DISCORD_VOTES_ENABLED`. Migration : aucune (le dossier `20261118130100_tower_vote_messages` prévu n'existe pas dans `prisma/migrations/`).
 
 #### C. Validation automatique Steam — v1
 

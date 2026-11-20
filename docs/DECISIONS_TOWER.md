@@ -40,7 +40,7 @@ Sujets de réalisation (v1) :
 | Sujet | Branche prévue | Interrupteur | Migration |
 | --- | --- | --- | --- |
 | A. Équipes : recruteurs et invités | `claude/equipes-recruteurs-invites` | `TEAM_RECRUITERS_ENABLED` | `20261118130000_team_recruiters_guest` |
-| B. Votes de preuves dans Discord | `claude/votes-discord-fils` | `TOWER_DISCORD_VOTES_ENABLED` | `20261118130100_tower_vote_messages` |
+| B. Votes de preuves dans Discord | `claude/votes-discord-fils` | `TOWER_DISCORD_VOTES_ENABLED` | aucune (la migration `20261118130100_tower_vote_messages` prévue n'a pas été créée) |
 | C. Validation automatique Steam | `claude/validation-auto-steam` | `TOWER_STEAM_AUTOVALIDATE_ENABLED` | `20261118130200_tower_challenge_measure` |
 | D. Soirées : visibilité et liste d'attente | `claude/soirees-visibilite` | `SESSION_VISIBILITY_ENABLED` | `20261118130300_session_visibility_waitlist` |
 | E. Tournois par équipes | `claude/tournois-equipes` | `TOURNAMENT_TEAMS_ENABLED` | `20261118130400_tournament_teams` |
