@@ -1,3 +1,4 @@
+import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled, isGameLevelsMatchmakingEnabled } from "@/lib/game-levels-rules";
 import { parsePlayerClassifiedFilters, type PlayerClassifiedSearchParams } from "@/lib/player-classified-filters";
 import { PLAYER_PLATFORMS } from "@/lib/player-equipment";
 import { PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS, PLAYER_CLASSIFIED_PARTY_TYPES } from "@/lib/player-classifieds-rules";
@@ -14,7 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { createPlayerClassifiedAction, deletePlayerClassifiedAction } from "./actions";
 import { pageMetadata } from "@/lib/page-title";
 import { isTonightEnabled } from "@/lib/tonight-rules";
-import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Chercher un joueur");
 
@@ -156,6 +156,14 @@ export default async function PlayerClassifiedsPage({
             <option value="">Tous</option>
             {PLAYER_CLASSIFIED_PARTY_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
+          {isGameLevelsMatchmakingEnabled() && <>
+            <label htmlFor="filter-level">Niveau minimum du joueur pour le jeu</label>
+            <select id="filter-level" name="level" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.level ?? ""}>
+              <option value="">Tous les niveaux</option>
+              {GAME_LEVELS.map(level => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]} ou plus</option>)}
+            </select>
+            <p className="text-xs text-muted">Niveau auto-déclaré sur le profil ; un joueur sans niveau déclaré est écarté quand ce filtre est actif.</p>
+          </>}
           <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-medium">Horaire de la partie (heure de Paris)</legend>
             <label htmlFor="filter-starts-after-date" className="text-xs text-muted">À partir du</label>
@@ -186,7 +194,7 @@ export default async function PlayerClassifiedsPage({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{listing.game.name}</p>
-                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel && <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau {GAME_LEVEL_LABELS[listing.authorLevel]}</span>}</p>
+                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel ? <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau {GAME_LEVEL_LABELS[listing.authorLevel]}</span> : listing.posterLevel && ` · ${GAME_LEVEL_LABELS[listing.posterLevel.level]}`}</p>
                     </div>
                     {(listing.createdBy.id === user.id || admin) && (
                       <form action={deletePlayerClassifiedAction}>

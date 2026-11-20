@@ -14,6 +14,7 @@ export const playerClassifiedFiltersSchema = z.object({
   partyPlatform: z.enum(["", ...PLAYER_PLATFORMS.map(option => option.key)]).optional(),
   microphoneRequirement: z.enum(["", ...PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS.map(option => option.value)]).optional(),
   partyType: z.enum(["", ...PLAYER_CLASSIFIED_PARTY_TYPES.map(option => option.value)]).optional(),
+  // Niveau minimum de l'auteur pour le jeu de l'annonce (GAME_LEVELS_MATCHMAKING_ENABLED) ; appliqué après lecture, pas en SQL.
   level: z.enum(["", ...GAME_LEVELS]).optional(),
   levelMatch: z.enum(["", ...GAME_LEVEL_MATCHES]).optional(),
   startsAfterDate: dateField,
