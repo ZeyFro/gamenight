@@ -8,27 +8,27 @@ Une **exigence** = une ligne du tableau : un sous-paragraphe du cahier, découp�
 
 | Statut | Nombre |
 | --- | ---: |
-| Implémentée dans le code : **oui** | 77 |
-| Implémentée dans le code : **partielle** | 12 |
+| Implémentée dans le code : **oui** | 78 |
+| Implémentée dans le code : **partielle** | 11 |
 | Implémentée dans le code : **non** | 5 |
 | **Reportée** (v2, plus tard, option future ou exclue) | 9 |
 | **Sans livrable code** (principe, contenu éditorial, action Discord ou humaine) | 24 |
 | **Total des lignes** | **127** |
 
-Calcul : 77 oui + 12 partielles + 5 non = **94 exigences logicielles** ; 94 + 9 reportées + 24 sans livrable code = **127**.
+Calcul : 78 oui + 11 partielles + 5 non = **94 exigences logicielles** ; 94 + 9 reportées + 24 sans livrable code = **127**.
 
-Tests : sur les 89 exigences implémentées (77 oui + 12 partielles), **82 sont testées** et **7 ne le sont pas** (89 = 82 + 7). Les 7 non testées sont signalées « non » dans la colonne Testée.
+Tests : sur les 89 exigences implémentées (78 oui + 11 partielles), **83 sont testées** et **6 ne le sont pas** (89 = 83 + 6). Les 6 non testées sont signalées « non » dans la colonne Testée.
 
 Non comptés pour éviter les doubles comptes : §23 (phases de réalisation, qui reprennent des exigences déjà listées), §25 (les 17 conditions de livraison, suivies dans [CONDITIONS_REUSSITE_LANCEMENT.md](CONDITIONS_REUSSITE_LANCEMENT.md) : 0 cochée), §26 (décisions ouvertes, toutes tranchées dans `docs/DECISIONS_TOWER.md`), §27.1 (reprend les sujets A à O) et §27.5 (même sujet que la ligne §6.3 « suppression des 134 rôles Étage »).
 
 Les estimations de temps sont des **estimations de développement, non mesurées** (en jours d'une personne, hors revue et CI).
 
-## Trous trouvés dans le code (à décider, aucun corrigé ici)
+## Trous trouvés dans le code
 
-1. **`DISCORD_ROLE_SELF_CREATION_ENABLED` est actif par défaut** (§27.6, « tous les interrupteurs sont OFF par défaut ») : `src/lib/discord-role-command.ts` ne le coupe que pour la valeur `false`. Sans effet tant que `/role` est éteint (`DISCORD_ROLE_COMMAND_ENABLED`), mais à corriger avant d'ouvrir `/role` : comparer à `true`, avec un test (~0,25 j).
-2. **`/role` écrit sur Discord en direct** (§27.6, « jamais en direct ») quand `DISCORD_ROLE_AUTOCREATE_ENABLED` est éteint : création et attribution de rôles sans passer par la file. Le chemin est borné (3 créations par heure et par joueur, verrou, plafond de rôles) et antérieur au lot v1.1 (#460). Faire tout passer par la file : 1–2 j.
+1. **`DISCORD_ROLE_SELF_CREATION_ENABLED` était actif par défaut** (§27.6) : **corrigé**. Il est maintenant fermé tant que la valeur n'est pas exactement `true` (`roleCreationAllowed`, `src/lib/discord-role-command.ts`), avec des tests (`discord-role-command.test.ts`) ; `.env.example`, `CLAUDE.md` et `docs/obsidian/DISCORD-role-v1.md` sont alignés.
+2. **`/role` écrit sur Discord en direct** (§27.6, « jamais en direct ») : l'attribution d'un rôle existant (PUT idempotent) reste directe, et la création directe n'est possible que si `DISCORD_ROLE_SELF_CREATION_ENABLED=true` et `DISCORD_ROLE_AUTOCREATE_ENABLED` éteint ; le chemin est borné (3 créations par heure et par joueur, verrou, plafond de rôles). Faire passer tout par la file : 1–2 j.
 
-Aucune PR de code n'a été ouverte : ces deux points ne touchent rien tant que `/role` reste éteint.
+Aucune autre PR de code n'a été ouverte : le point 2 ne touche rien tant que `/role` reste éteint.
 
 ## Exigences logicielles (oui / partielle / non)
 
@@ -125,11 +125,11 @@ Aucune PR de code n'a été ouverte : ces deux points ne touchent rien tant que 
 | 27 M | Boosters : rôle « Soutien de la Tour », mur des soutiens, salons boosters, retrait automatique [#483] | **oui** | DISCORD_BOOSTERS_ENABLED (migration booster_support) | oui | `booster-support.ts`, `booster-support.test.ts` |
 | 27 N | Personnalisation du profil (couleurs, thèmes, cadres, effets, vitrine, entitlement sans paiement) [#477] | **oui** | PROFILE_CUSTOMIZATION_ENABLED (migration profile_customization) | oui | `profile-customization.ts`, `profile-customization.test.ts` |
 | 27 O | Tableau de bord staff v2 en lecture seule [#486] | **oui** | ADMIN_DASHBOARD_V2_ENABLED (sans migration) | oui | `src/app/admin/tableau-de-bord/page.tsx` |
-| 27.6 | Tous les interrupteurs sont OFF par défaut | **partielle** | DISCORD_ROLE_SELF_CREATION_ENABLED | non | `discord-role-command.ts` |
+| 27.6 | Tous les interrupteurs sont OFF par défaut | **oui** | DISCORD_ROLE_SELF_CREATION_ENABLED (fermé sauf `true`) | oui | `discord-role-command.ts`, `discord-role-command.test.ts` |
 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | **partielle** | DISCORD_ROLE_COMMAND_ENABLED | oui | `discord-role-command.ts`, `discord-role-command.test.ts` |
 | 27.6 | Aucune IA ne valide une preuve ; récompenses cosmétiques | **oui** | aucun | non | `tower-challenges.ts`, `profile-customization.ts` |
 
-### Ce qui manque (17 lignes « partielle » ou « non »)
+### Ce qui manque (16 lignes « partielle » ou « non »)
 
 | § | Statut | Ce qui manque | Estimation |
 | --- | :---: | --- | --- |
@@ -148,8 +148,7 @@ Aucune PR de code n'a été ouverte : ces deux points ne touchent rien tant que 
 | 21.2 — Bot : commandes, boutons, menus, défis, preuves, votes, progression… | partielle | Aucun menu déroulant (select menu) : boutons et modales seulement | ~1 j |
 | 21.4 — Migrations : structure vérifiée, sauvegarde, tests, retour arrière,… | partielle | Aucune preuve de restauration dans le dépôt (la copie de branche n'est pas une restauration, `NEON_TEST_APPLY_REVIEW.md`) | 0,5–1 j (action propriétaire sur Neon) |
 | 22.2 — Test : bascule depuis les anciens étages | non | Sans objet depuis la décision §7.2 (compteur à zéro) : aucune bascule n'est codée, donc rien à tester | 0 (sauf reprise des anciens étages : voir `SOIREE_ACTIVATION.md` §4 bis) |
-| 27.6 — Tous les interrupteurs sont OFF par défaut | partielle | `DISCORD_ROLE_SELF_CREATION_ENABLED` n'est coupé que par la valeur `false` (actif par défaut, mais derrière `DISCORD_ROLE_COMMAND_ENABLED` éteint) | ~0,25 j (comparer à `true` + test) |
-| 27.6 — Les écritures Discord passent par la file et l'executor, jamais en … | partielle | `/role` crée et attribue des rôles directement quand `DISCORD_ROLE_AUTOCREATE_ENABLED` est éteint (borné : 3 créations par heure et par joueur, verrou, plafond de rôles) | 1–2 j |
+| 27.6 — Les écritures Discord passent par la file et l'executor, jamais en … | partielle | L'attribution d'un rôle existant reste directe ; la création directe n'est possible que si `DISCORD_ROLE_SELF_CREATION_ENABLED=true` et la création automatique est éteinte (borné : 3 par heure et par joueur, verrou, plafond de rôles) | 1–2 j |
 
 ## Reportées (explicitement en v2, plus tard, option future ou exclues)
 

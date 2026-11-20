@@ -6,7 +6,7 @@
 
 - `main` = `6c0b25b` : les 33 PR du lot Tower 2.0 et du cahier v1.1 sont fusionnées, **aucune PR ouverte**. Chaque migration fusionnée pendant la chaîne des 19-20/11 a eu un run « Migrations Production » vert. Les paragraphes ci-dessous (6 novembre) sont **historiques**.
 - Statut par sujet : [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md) ; conditions de lancement : [CONDITIONS_REUSSITE_LANCEMENT.md](CONDITIONS_REUSSITE_LANCEMENT.md) (0 / 17 cochées) ; ordre d'activation : [ACTIVATION_TOUR.md](ACTIVATION_TOUR.md) ; plan : [PLAN-J14-20261201.md](PLAN-J14-20261201.md) (ouverture la semaine du 1er décembre 2026).
-- **Interrupteurs : 85 variables `*_ENABLED` dans le code, toutes présentes dans `.env.example`, toutes OFF par défaut** (actives seulement si la valeur vaut exactement `true`), à une exception près : `DISCORD_ROLE_SELF_CREATION_ENABLED` n'est coupé que par la valeur `false`. Il reste sans effet tant que `DISCORD_ROLE_COMMAND_ENABLED` (OFF) n'est pas activé : voir « Point d'attention » dans [ACTIVATION_TOUR.md](ACTIVATION_TOUR.md). Aucun interrupteur n'est activé par le dépôt, aucun n'est vérifié en Production depuis ce dépôt.
+- **Interrupteurs : 85 variables `*_ENABLED` dans le code, toutes présentes dans `.env.example`, toutes OFF par défaut** (actives seulement si la valeur vaut exactement `true`). Aucun interrupteur n'est activé par le dépôt, aucun n'est vérifié en Production depuis ce dépôt.
 
 Inventaire (ajouté le 20/11 : `ADMIN_DASHBOARD_V2_ENABLED`, `TEAM_RECRUITMENT_CRITERIA_ENABLED` et tous les interrupteurs v1.1 ne figuraient pas dans ce fichier) :
 

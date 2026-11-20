@@ -103,6 +103,16 @@ const inputSchema = z.object({
   }),
 });
 
+/**
+ * Création d'un rôle de jeu absent par `/role` : FERMÉE par défaut (aucune valeur,
+ * valeur vide ou autre que `true` = fermée). Ouverte seulement par
+ * `DISCORD_ROLE_SELF_CREATION_ENABLED=true` (création directe, bornée) ou par
+ * `DISCORD_ROLE_AUTOCREATE_ENABLED=true` (création demandée puis exécutée par la file).
+ */
+export function roleCreationAllowed(env: Record<string, string | undefined> = process.env): boolean {
+  return env.DISCORD_ROLE_SELF_CREATION_ENABLED === "true" || env.DISCORD_ROLE_AUTOCREATE_ENABLED === "true";
+}
+
 export type RoleCommandSub = "chercher" | "attribuer" | "creer" | "retirer";
 
 export interface RoleCommandInput {
@@ -354,9 +364,9 @@ export async function runRoleCommand(
   const botTopPosition = topRolePosition(roles, bot.data.roles);
   // La permission « Gérer les rôles » est celle du BOT (et sa position dans la
   // hiérarchie), jamais celle du joueur : un membre ordinaire peut utiliser une
-  // création autorisée. Le flag ne sert qu'à fermer la création d'un serveur.
-  const canCreate =
-    botCanManageRoles(roles, bot.data.roles) && process.env.DISCORD_ROLE_SELF_CREATION_ENABLED !== "false";
+  // création autorisée. La création est FERMÉE tant qu'elle n'est pas ouverte
+  // explicitement (voir `roleCreationAllowed`).
+  const canCreate = botCanManageRoles(roles, bot.data.roles) && roleCreationAllowed();
   const plan = planRoleGrant({
     roles,
     query: input.query,

@@ -20,7 +20,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { handleSignedRoleInteraction, runRoleCommand } from "./discord-role-command";
+import { handleSignedRoleInteraction, roleCreationAllowed, runRoleCommand } from "./discord-role-command";
 
 const APP = "100000000000000001";
 const GUILD = "100000000000000002";
@@ -70,7 +70,9 @@ beforeEach(() => {
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_CLIENT_ID", APP);
   vi.stubEnv("DISCORD_ROLE_COMMAND_ENABLED", "true");
-  vi.stubEnv("DISCORD_ROLE_SELF_CREATION_ENABLED", "");
+  // Création fermée par défaut : les tests de création l'ouvrent explicitement.
+  vi.stubEnv("DISCORD_ROLE_SELF_CREATION_ENABLED", "true");
+  vi.stubEnv("DISCORD_ROLE_AUTOCREATE_ENABLED", "");
   vi.stubEnv("DISCORD_ROLE_MAX_GUILD_ROLES", "");
   vi.stubEnv("VERCEL_ENV", "");
   vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: { method?: string; body?: string }) => {
@@ -213,6 +215,50 @@ describe("/role creer", () => {
     const message = await command("creer", "Hades II", MANAGE_ROLES);
     expect(message).toContain("rôles autorisé");
     expect(count("POST")).toBe(0);
+  });
+});
+
+describe("/role : création de rôle fermée tant qu'elle n'est pas ouverte", () => {
+  it.each([
+    ["absent", undefined],
+    ["vide", ""],
+    ["false", "false"],
+    ["TRUE (casse différente)", "TRUE"],
+    ["1", "1"],
+  ])("refuse de créer et n'écrit rien sur Discord quand DISCORD_ROLE_SELF_CREATION_ENABLED est %s", async (_label, value) => {
+    if (value === undefined) delete process.env.DISCORD_ROLE_SELF_CREATION_ENABLED;
+    else vi.stubEnv("DISCORD_ROLE_SELF_CREATION_ENABLED", value);
+    for (const sub of ["attribuer", "creer"] as const) {
+      const message = await command(sub, "Hades II", MANAGE_ROLES);
+      expect(message).toContain("création est désactivée");
+    }
+    expect(count("POST")).toBe(0);
+    expect(count("PUT")).toBe(0);
+  });
+
+  it("attribue toujours un rôle déjà existant quand la création est fermée", async () => {
+    vi.stubEnv("DISCORD_ROLE_SELF_CREATION_ENABLED", "");
+    const message = await command("attribuer", "Deep Rock Galactic");
+    expect(message).toContain("Rôle **Deep Rock Galactic** ajouté");
+    expect(count("PUT")).toBe(1);
+    expect(count("POST")).toBe(0);
+  });
+
+  it("n'ouvre la création directe que pour la valeur exacte true", async () => {
+    vi.stubEnv("DISCORD_ROLE_SELF_CREATION_ENABLED", "true");
+    const message = await command("attribuer", "Hades II");
+    expect(message).toContain("Hades II");
+    expect(count("POST")).toBe(1);
+  });
+
+  it("roleCreationAllowed : fermée par défaut, ouverte par true ou par la création automatique", () => {
+    expect(roleCreationAllowed({})).toBe(false);
+    expect(roleCreationAllowed({ DISCORD_ROLE_SELF_CREATION_ENABLED: "" })).toBe(false);
+    expect(roleCreationAllowed({ DISCORD_ROLE_SELF_CREATION_ENABLED: "false" })).toBe(false);
+    expect(roleCreationAllowed({ DISCORD_ROLE_SELF_CREATION_ENABLED: "TRUE" })).toBe(false);
+    expect(roleCreationAllowed({ DISCORD_ROLE_SELF_CREATION_ENABLED: "true" })).toBe(true);
+    expect(roleCreationAllowed({ DISCORD_ROLE_AUTOCREATE_ENABLED: "true" })).toBe(true);
+    expect(roleCreationAllowed({ DISCORD_ROLE_AUTOCREATE_ENABLED: "yes" })).toBe(false);
   });
 });
 
