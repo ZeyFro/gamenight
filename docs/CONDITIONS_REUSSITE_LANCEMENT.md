@@ -12,7 +12,7 @@ Légende : `[x]` livré et activé, prouvé · `[ ]` non rempli. Colonne État :
 | 3 | Tickets, rôles et modération réutilisés ou remplacés | [ ] | Non vérifié | Deux panneaux Ticket Tool non départagés (`docs/TOWER_TICKET_TOOL_AUDIT.md`) ; YAGPDB et Appy conservés, aucune vérification en conditions réelles. Le signalement contextuel (sujet L, `DISCORD_REPORT_COMMAND_ENABLED`) est fusionné mais éteint et non enregistré sur Discord. |
 | 4 | Grades et permissions cohérents | [ ] | Partiel | Grades alignés sur §26 dans le code (`src/lib/tower-ranks.ts` : High Ranker, Irregular manuel, couleurs). Rangs affichés dans l'application seulement : aucun rôle Discord de grade n'est créé ; Irregular manuel derrière `TOWER_IRREGULAR_GRANTS_ENABLED` (éteint). |
 | 5 | Ascension sans double progression | [ ] | Non vérifié | Atlas non prouvé éteint (`docs/TOWER_ATLAS_ARRET.md`, `docs/TOWER_PHASE1_RECETTE_PUBLIQUE.md`). |
-| 6 | Anciens rôles Étage retirés après migration | [ ] | Non livré | 134 rôles : action manuelle du propriétaire, aucune suppression sans inventaire ni accord sur ID exact (`docs/PLAN-J14-20261201.md`, `docs/TOWER_ROLE_REVIEW.md`) ; prérequis de `DISCORD_ROLE_AUTOCREATE_ENABLED`. |
+| 6 | Anciens rôles Étage retirés après migration | [ ] | Non vérifié | **Les 134 rôles ont été supprimés à la main** (déclaration du propriétaire, 20/11/2026) ; le dépôt n'a pas pu le constater. **Sans migration d'étages** : le compteur démarre de zéro (cahier §7.2), donc aucune donnée de GameNight n'en dépendait ; seul l'étage d'Atlas par membre, jamais copié en base, a pu être perdu (voir [SOIREE_ACTIVATION.md](SOIREE_ACTIVATION.md), section 4 bis). Prérequis de `DISCORD_ROLE_AUTOCREATE_ENABLED` levé côté Discord. Pour cocher : relevé daté de la liste des rôles du serveur (aucun rôle « Étage ») et compteur de rôles actuel. |
 | 7 | Défis solo et collectifs fonctionnent | [ ] | Livré non activé | Code et tests sur `main` (`src/lib/tower-challenges.ts`, commandes `/tower` et `/tower-admin` dans `scripts/discord-commands.json`). `TOWER_CHALLENGES_ENABLED` éteint par défaut, commandes non enregistrées (`docs/TOWER_COMMANDES_GUILD.md`), catalogue non importé. |
 | 8 | Preuves, votes et contestations conformes | [ ] | Livré non activé | Sur `main` : vote 24 h, 3 votants distincts, majorité stricte, pas d'auto-vote, prolongation unique de 24 h puis rejet sans pénalité et une resoumission (`src/lib/tower-challenge-voting.ts`) ; contestation sous 48 h avec arbitre fixe (`tower-challenge-appeal-rules.ts`, migration `20261106150000_tower_fixed_arbiter`) ; votes dans Discord (`TOWER_DISCORD_VOTES_ENABLED`, sans migration). Rien n'est activé ; arbitre indépendant à désigner avant d'annoncer les contestations. |
 | 9 | Quotas et anti-abus testés | [ ] | Livré non activé | 12 h, 48 h, 2 réussites/jour : `src/lib/tower-challenge-rules.ts` et tests unitaires ; tests d'intégration Postgres exécutés en CI ; pas de test de bout en bout avec de vrais comptes, pas d'activation. |
@@ -32,8 +32,8 @@ Légende : `[x]` livré et activé, prouvé · `[ ]` non rempli. Colonne État :
 ## Décompte
 
 - Cochées : **0 / 17**.
-- Livré non activé : 4 (2, 7, 8, 9) ; livré, activation non vérifiable : 1 (11) ; partiel : 7 (1, 4, 10, 12, 13, 14, 16) ; non livré : 2 (6, 15) ; non vérifié : 2 (3, 5) ; en cours : 1 (17).
-- Bloquants du lancement : commandes Discord à enregistrer, interrupteurs Tower à activer, arbitre indépendant, suppression des 134 rôles Étage (pour F), catalogue à valider et importer, parcours compte neuf.
+- Livré non activé : 4 (2, 7, 8, 9) ; livré, activation non vérifiable : 1 (11) ; partiel : 7 (1, 4, 10, 12, 13, 14, 16) ; non livré : 1 (15) ; non vérifié : 3 (3, 5, 6) ; en cours : 1 (17).
+- Bloquants du lancement : commandes Discord à enregistrer, interrupteurs Tower à activer, arbitre indépendant, preuve datée de la suppression des 134 rôles Étage, catalogue à valider et importer, parcours compte neuf.
 
 ## Comment cocher
 
