@@ -47,6 +47,10 @@ model User {
   gameLevels UserGameLevel[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
+  teamRecruiterRoles CommunityTeamRecruiter[] @relation("TeamRecruiterUser")
+  teamRecruitersNamed CommunityTeamRecruiter[] @relation("TeamRecruiterNamer")
+  teamTournamentGuests TeamTournamentGuest[] @relation("TeamGuestUser")
+  teamTournamentGuestsInvited TeamTournamentGuest[] @relation("TeamGuestInviter")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
@@ -2274,6 +2278,7 @@ model Tournament {
   teamMembers  TournamentTeamMember[]
   matches      TournamentMatch[]
   predictions  TournamentPrediction[]
+  teamGuests   TeamTournamentGuest[]
 
   // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
   // — même contrat que `Session.announceViaBot` (voir son commentaire pour
@@ -2885,6 +2890,8 @@ enum CommunityChannelCategory {
 
 model Community {
   teamApplications TeamApplication[]
+  teamRecruiters CommunityTeamRecruiter[]
+  teamTournamentGuests TeamTournamentGuest[]
   teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
@@ -3052,6 +3059,8 @@ model CommunityTeam {
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
   applications TeamApplication[]
+  recruiters CommunityTeamRecruiter[]
+  tournamentGuests TeamTournamentGuest[]
   recruitmentCriteria TeamRecruitmentCriteria?
   discordSpaces DiscordTeamSpace[]
 
@@ -3098,6 +3107,8 @@ enum TeamApplicationStatus {
   ACCEPTED
   DECLINED
   WITHDRAWN
+  // Sans décision après 7 jours (TEAM_RECRUITERS_ENABLED) : aucune pénalité, le candidat peut repostuler.
+  EXPIRED
 }
 
 model TeamApplication {
@@ -3110,6 +3121,8 @@ model TeamApplication {
   createdAt   DateTime @default(now())
   decidedAt   DateTime?
   decidedById String?
+  // Relance unique envoyée 48 h après le dépôt (TEAM_RECRUITERS_ENABLED) ; remis à null à chaque nouvelle candidature.
+  reminderSentAt DateTime?
 
   community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
@@ -3119,6 +3132,59 @@ model TeamApplication {
   @@unique([teamId, applicantId])
   @@index([communityId, teamId, status])
   @@index([applicantId, communityId])
+  @@index([status, createdAt])
+}
+
+// Recruteurs nommés par le capitaine (TEAM_RECRUITERS_ENABLED) : 2 au plus par équipe, membres de l'équipe.
+// Ils peuvent accepter ou refuser les candidatures et reçoivent les MP de candidature, rien d'autre
+// (ni passation, ni dissolution, ni gestion des recruteurs). La ligne est retirée au départ du membre.
+model CommunityTeamRecruiter {
+  id          String   @id @default(cuid())
+  communityId String
+  teamId      String
+  userId      String
+  namedById   String?
+  createdAt   DateTime @default(now())
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  user      User          @relation("TeamRecruiterUser", fields: [userId], references: [id], onDelete: Cascade)
+  namedBy   User?         @relation("TeamRecruiterNamer", fields: [namedById], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, userId])
+  @@index([communityId, userId])
+}
+
+// Invité d'une autre équipe pour UN tournoi (TEAM_RECRUITERS_ENABLED) : le joueur garde son équipe principale
+// (une seule par communauté), l'invitation ne crée aucune appartenance. Une seule invitation par
+// (tournoi, joueur). Le capitaine invite ; l'invité accepte ou refuse.
+enum TeamGuestStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+model TeamTournamentGuest {
+  id           String          @id @default(cuid())
+  communityId  String
+  teamId       String
+  tournamentId String
+  userId       String
+  invitedById  String?
+  status       TeamGuestStatus @default(INVITED)
+  createdAt    DateTime        @default(now())
+  decidedAt    DateTime?
+
+  community  Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team       CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  tournament Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User          @relation("TeamGuestUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy  User?         @relation("TeamGuestInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([tournamentId, userId])
+  @@index([teamId, tournamentId, status])
+  @@index([communityId, userId])
 }
 
 // Niveau de jeu auto-déclaré (cahier §12.4), un par utilisateur et par jeu. Donnée personnelle du profil (comme
