@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey } from "./tower-challenge-rules";
+import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey, isTowerTeamDailyDue } from "./tower-challenge-rules";
 import * as m_p10 from "./tower-challenge-rules";
 import * as m_p11 from "./tower-challenge-rules";
 import * as m_p12 from "./tower-challenge-rules";
@@ -7,6 +7,37 @@ import * as m_p13 from "./tower-challenge-rules";
 
 const date = (value: string) => new Date(value);
 const assigned = date("2026-10-24T12:00:00Z");
+
+describe("défi d'équipe : attribuable à partir de 18:00 Europe/Paris", () => {
+  it.each([
+    // Hiver (CET, UTC+1) : 18:00 Paris = 17:00 UTC.
+    ["2027-01-15T16:59:59.999Z", false],
+    ["2027-01-15T17:00:00.000Z", true],
+    ["2027-01-15T22:59:59.999Z", true],
+    ["2027-01-15T23:00:00.000Z", false], // minuit Paris : jour suivant, avant 18:00
+    // Été (CEST, UTC+2) : 18:00 Paris = 16:00 UTC.
+    ["2027-07-15T15:59:59.999Z", false],
+    ["2027-07-15T16:00:00.000Z", true],
+    ["2027-07-15T21:59:59.999Z", true],
+    ["2027-07-15T22:00:00.000Z", false],
+    // Passage à l'heure d'été (28 mars 2027, 01:00 UTC) : 18:00 CEST = 16:00 UTC.
+    ["2027-03-28T15:59:59.999Z", false],
+    ["2027-03-28T16:00:00.000Z", true],
+    // Retour à l'heure d'hiver (31 octobre 2027, 01:00 UTC) : 18:00 CET = 17:00 UTC.
+    ["2027-10-31T16:59:59.999Z", false],
+    ["2027-10-31T17:00:00.000Z", true],
+    // Veille des changements d'heure.
+    ["2027-03-27T16:59:59.999Z", false],
+    ["2027-03-27T17:00:00.000Z", true],
+    ["2027-10-30T15:59:59.999Z", false],
+    ["2027-10-30T16:00:00.000Z", true],
+  ])("à %s : %s", (iso, due) => {
+    expect(isTowerTeamDailyDue(date(iso))).toBe(due);
+  });
+  it("rejette une date invalide", () => {
+    expect(() => isTowerTeamDailyDue(new Date(NaN))).toThrow(RangeError);
+  });
+});
 
 describe("délais des défis The Tower", () => {
   it("autorise une première attribution", () => {

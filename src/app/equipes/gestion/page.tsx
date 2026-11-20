@@ -2,7 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
-import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction } from "../actions";
+import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction, saveTeamRecruitmentCriteriaAction } from "../actions";
+import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
+import { isTeamRecruitmentCriteriaEnabled } from "@/lib/team-recruitment-criteria-rules";
+import { TeamCriteriaForm } from "../TeamCriteria";
 import { pageMetadata } from "@/lib/page-title";
 import { isTeamRecruitersEnabled, MAX_TEAM_RECRUITERS } from "@/lib/team-recruiters-rules";
 import { listGuestInviteOptions, listTeamGuests, listTeamRecruiters } from "@/lib/team-recruiters";
@@ -11,6 +14,8 @@ import { addTeamRecruiterAction, inviteTeamGuestAction, removeTeamRecruiterActio
 export const metadata = pageMetadata("Gérer mes équipes");
 
 const RESULTS: Record<string, string> = {
+  saved: "Critères de recrutement enregistrés.", cleared: "Critères de recrutement effacés.", forbidden: "Seul le responsable de l’équipe peut modifier ses critères.", missing: "Équipe introuvable.",
+  rate: "Trop de demandes, réessaie dans une minute.",
   transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
   active_challenges: "Impossible : un défi de cette équipe est encore en cours.",
   recruiter_added: "Recruteur nommé.", recruiter_removed: "Recruteur retiré.", recruiter_limit: `Deux recruteurs au plus par équipe.`,
@@ -19,7 +24,6 @@ const RESULTS: Record<string, string> = {
   guest_invited: "Invitation envoyée : le joueur doit l’accepter.", guest_revoked: "Invitation retirée.", guest_forbidden: "Seul le capitaine invite.",
   guest_tournament_closed: "Ce tournoi n’accepte plus d’inscriptions.", guest_already_member: "Ce joueur fait déjà partie de ton équipe.", guest_not_active: "Ce joueur n’est pas un membre actif de la communauté.",
   guest_already_guest: "Ce joueur est déjà invité à ce tournoi.", guest_roster_full: "Effectif complet (8 joueurs, invités compris).", guest_missing: "Équipe, tournoi ou invitation introuvable.",
-  rate: "Trop de demandes, réessaie dans une minute.",
   invalid: "Action non autorisée ou informations invalides.", unavailable: "Fonctionnalité indisponible.",
 };
 
@@ -36,6 +40,7 @@ export default async function CommunityTeamManagementPage({ searchParams }: { se
     guests: await listTeamGuests(user.id, communityId, team.id),
     options: await listGuestInviteOptions(user.id, communityId, team.id),
   } : null] as const)));
+  const criteriaByTeam = await listTeamRecruitmentCriteria(user.id, communityId, captained.map(team => team.id));
 
   return <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
     <h1 className="text-2xl font-semibold">Gérer mes équipes</h1>
@@ -45,6 +50,7 @@ export default async function CommunityTeamManagementPage({ searchParams }: { se
     {captained.map(team => <section key={team.id} className="rounded-lg border border-border p-4">
       <h2 className="font-semibold">{team.name}</h2>
       {extras.get(team.id) && <RecruiterAndGuestSections teamId={team.id} members={team.members.filter(member => member.userId !== user.id)} extra={extras.get(team.id)!} />}
+      {isTeamRecruitmentCriteriaEnabled() && <TeamCriteriaForm teamId={team.id} action={saveTeamRecruitmentCriteriaAction} criteria={criteriaByTeam.get(team.id)} />}
       <form action={transferCommunityTeamCaptainAction} className="mt-4 grid gap-3">
         <input type="hidden" name="teamId" value={team.id} />
         <label className="grid gap-1">Transmettre le capitanat
