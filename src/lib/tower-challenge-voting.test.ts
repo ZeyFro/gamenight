@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateChallengeVote, type ChallengeVote } from "./tower-challenge-voting";
+import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, type ChallengeVote } from "./tower-challenge-voting";
 import * as m_p14 from "./tower-challenge-voting";
 import * as m_p15 from "./tower-challenge-voting";
 
@@ -18,8 +18,15 @@ describe("vote communautaire des défis", () => {
   it("refuse avec une majorité défavorable", () => {
     expect(evaluate([vote("a", false), vote("b", false), vote("c", true)])).toMatchObject({ status: "REJECTED" });
   });
-  it.each([0, 1, 2])("laisse la preuve en attente à l'échéance si le quorum de trois votants manque (%i votes)", count => {
-    expect(evaluate(Array.from({ length: count }, (_,i) => vote(String(i), true)))).toEqual({ status: "OPEN", approvals: count, rejections: 0 });
+  it.each([0, 1, 2])("demande l'unique prolongation de 24 h à l'échéance si le quorum de trois votants manque (%i votes)", count => {
+    expect(evaluate(Array.from({ length: count }, (_,i) => vote(String(i), true)))).toEqual({ status: "EXTEND", approvals: count, rejections: 0 });
+  });
+  it("ne compte jamais deux fois le même votant pour atteindre le quorum", () => {
+    expect(() => evaluate([vote("a", true), vote("a", true), vote("b", true)])).toThrow(RangeError);
+  });
+  it("décide dès 24 h avec exactement trois votants et une majorité stricte, sans prolonger", () => {
+    expect(evaluate([vote("a", true), vote("b", true), vote("c", false)])).toMatchObject({ status: "APPROVED" });
+    expect(evaluate([vote("a", false), vote("b", false), vote("c", true)])).toMatchObject({ status: "REJECTED" });
   });
   it("refuse à l'échéance si les votes sont à égalité", () => {
     expect(evaluate([vote("a", true), vote("b", true), vote("c", false), vote("d", false)])).toMatchObject({ status: "REJECTED" });
@@ -47,6 +54,39 @@ describe("vote communautaire des défis", () => {
   it("compte 24 heures réelles au changement d'heure", () => {
     const start = new Date("2026-10-24T12:00:00Z");
     expect(evaluateChallengeVote({ authorId: "author", openedAt: start, votes: [], now: new Date("2026-10-25T11:00:00Z") })).toMatchObject({ status: "OPEN" });
+  });
+});
+
+describe("prolongation unique et rejet sans quorum", () => {
+  const extendedEnd = new Date(openedAt.getTime() + 48 * 3600000);
+  const evaluateExtended = (votes: ChallengeVote[], now: Date) => evaluateChallengeVote({ authorId: "author", openedAt, votes, now, extended: true });
+  it("garde le vote ouvert entre 24 h et 48 h une fois prolongé, et accepte les votes de la prolongation", () => {
+    const late = vote("c", true, new Date(closedAt.getTime() + 3600000));
+    expect(evaluateExtended([vote("a", true), late], new Date(extendedEnd.getTime() - 1))).toEqual({ status: "OPEN", approvals: 2, rejections: 0 });
+  });
+  it("valide à 48 h avec trois votants dont un arrivé pendant la prolongation", () => {
+    const late = vote("c", true, new Date(closedAt.getTime() + 3600000));
+    expect(evaluateExtended([vote("a", true), vote("b", false), late], extendedEnd)).toMatchObject({ status: "APPROVED" });
+  });
+  it.each([0, 1, 2])("rejette sans quorum à 48 h (%i votes), jamais une seconde prolongation", count => {
+    expect(evaluateExtended(Array.from({ length: count }, (_, i) => vote(String(i), true)), extendedEnd)).toEqual({ status: "NO_QUORUM", approvals: count, rejections: 0 });
+  });
+  it("traite l'égalité à 48 h comme non validée", () => {
+    const late = new Date(closedAt.getTime() + 1000);
+    expect(evaluateExtended([vote("a", true), vote("b", false), vote("c", true, late), vote("d", false, late)], extendedEnd)).toMatchObject({ status: "REJECTED" });
+  });
+  it("refuse un vote à 48 h exactement", () => {
+    expect(() => evaluateExtended([vote("a", true, extendedEnd)], extendedEnd)).toThrow(RangeError);
+  });
+  it("calcule les échéances 24 h puis 48 h", () => {
+    expect(challengeVoteDeadline(openedAt).toISOString()).toBe("2026-10-29T12:00:00.000Z");
+    expect(challengeVoteDeadline(openedAt, true).toISOString()).toBe("2026-10-30T12:00:00.000Z");
+  });
+  it("autorise une seule resoumission après un rejet sans quorum", () => {
+    expect(canResubmitAfterNoQuorum(0)).toBe(true);
+    expect(canResubmitAfterNoQuorum(1)).toBe(false);
+    expect(() => canResubmitAfterNoQuorum(-1)).toThrow(RangeError);
+    expect(() => canResubmitAfterNoQuorum(0.5)).toThrow(RangeError);
   });
 });
 

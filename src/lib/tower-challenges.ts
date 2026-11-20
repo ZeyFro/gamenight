@@ -8,8 +8,9 @@ import { logger } from "@/lib/logger";
 import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
-import { evaluateChallengeVote } from "@/lib/tower-challenge-voting";
-import { enqueueTowerChallengeEvent, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
+import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, TOWER_CHALLENGE_VOTE_QUORUM } from "@/lib/tower-challenge-voting";
+import { enqueueTowerChallengeEvent, refreshTowerProofMessage, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
+import { isTowerDiscordVotesEnabled, towerVoterEligibility } from "@/lib/tower-vote-eligibility";
 import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { createTowerChallengeProofCode, proofTextIncludesTowerCode } from "@/lib/tower-challenge-proof-rules";
@@ -262,6 +263,8 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
       where: { communityId, teamId, requestKey },
       select: { id: true, userId: true, title: true, instructions: true, rewardFloors: true, status: true, assignedAt: true, expiresAt: true, submittedAt: true },
     });
+    // Chemin commande (bouton Discord) : aucun défi d'équipe créé avant 18:00 Europe/Paris.
+    if (!attempt && !isTowerTeamDailyDue(current)) return { status: "NOT_YET" } as const;
     if (!attempt) {
       await setTowerStatementDeadline(transaction, deadline);
       const candidates = await scopedDb.towerChallengeDefinition.findMany({
@@ -402,7 +405,11 @@ export async function submitTowerChallengeProof(input: unknown) {
     if (!metadata.proofCode) return { status: "PROOF_CODE_UNAVAILABLE" } as const;
     if (!proofTextIncludesTowerCode(proofText, metadata.proofCode)) return { status: "PROOF_CODE_REQUIRED" } as const;
     const submittedAt = now();
-    if (!canSubmitChallengeProof(attempt.assignedAt, submittedAt) || submittedAt >= attempt.expiresAt) return { status: "EXPIRED" } as const;
+    // Resoumission après un rejet sans quorum : nouvelle fenêtre de 48 h (resubmitUntil), l'attribution initiale reste inchangée.
+    const inWindow = attempt.quorumResubmissions > 0 && attempt.resubmitUntil
+      ? submittedAt < attempt.resubmitUntil
+      : canSubmitChallengeProof(attempt.assignedAt, submittedAt) && submittedAt < attempt.expiresAt;
+    if (!inWindow) return { status: "EXPIRED" } as const;
     if (attempt.teamId && await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId } }) < 2) {
       return { status: "TEAM_NEEDS_PARTICIPANTS" } as const;
     }
@@ -429,12 +436,43 @@ export async function voteTowerChallenge(input: unknown) {
       where: { attemptId_userId: { attemptId, userId } }, select: { userId: true },
     })) return { status: "SELF_VOTE" } as const;
     const createdAt = now();
-    if (attempt.status !== "SUBMITTED" || !attempt.submittedAt || createdAt < attempt.submittedAt
-      || createdAt.getTime() >= attempt.submittedAt.getTime() + 24 * 3600000) return { status: "CLOSED" } as const;
+    const discordVotes = isTowerDiscordVotesEnabled();
+    if (discordVotes) {
+      // Votants : compte GameNight actif depuis au moins 7 jours (Membership.joinedAt de la communauté).
+      const voter = await scopedDb.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { status: true, joinedAt: true } });
+      const eligibility = towerVoterEligibility({ status: voter?.status, joinedAt: voter?.joinedAt, now: createdAt });
+      if (eligibility === "NOT_ACTIVE") return { status: "VOTER_NOT_ACTIVE" } as const;
+      if (eligibility === "TOO_RECENT") return { status: "VOTER_TOO_RECENT" } as const;
+    }
+    if (attempt.status !== "SUBMITTED" || !attempt.submittedAt || createdAt < attempt.submittedAt) return { status: "CLOSED" } as const;
+    let extended = attempt.voteExtendedAt !== null;
+    const initialDeadline = challengeVoteDeadline(attempt.submittedAt);
+    if (!extended && createdAt >= initialDeadline && createdAt < challengeVoteDeadline(attempt.submittedAt, true)) {
+      // Prolongation unique de 24 h, enregistrée sous le verrou de la tentative, seulement sans quorum.
+      const participants = attempt.teamId
+        ? (await scopedDb.towerChallengeAttemptParticipant.findMany({ where: { communityId, attemptId }, select: { userId: true } })).map(p => p.userId)
+        : [];
+      const qualifying = await scopedDb.towerChallengeVote.count({ where: {
+        communityId, attemptId, userId: { notIn: [attempt.userId, ...participants] }, createdAt: { gte: attempt.submittedAt, lt: initialDeadline },
+      } });
+      if (qualifying < TOWER_CHALLENGE_VOTE_QUORUM) {
+        await scopedDb.towerChallengeAttempt.update({ where: { id: attemptId }, data: { voteExtendedAt: initialDeadline } });
+        extended = true;
+        await refreshTowerProofMessage(scopedDb, communityId, attemptId); // nouvelle échéance affichée
+      }
+    }
+    if (createdAt >= challengeVoteDeadline(attempt.submittedAt, extended)) return { status: "CLOSED" } as const;
     const existing = await scopedDb.towerChallengeVote.findUnique({ where: { attemptId_userId: { attemptId, userId } } });
-    if (existing) return existing.approve === approve
-      ? { status: "VOTED", replayed: true } as const : { status: "ALREADY_VOTED" } as const;
+    if (existing && existing.approve === approve) return { status: "VOTED", replayed: true } as const;
+    if (existing) {
+      if (!discordVotes) return { status: "ALREADY_VOTED" } as const;
+      // Vote modifiable jusqu'à l'échéance : createdAt d'origine conservé (le décompte du quorum ne bouge pas), un seul vote par personne.
+      await scopedDb.towerChallengeVote.update({ where: { attemptId_userId: { attemptId, userId } }, data: { approve } });
+      await refreshTowerProofMessage(scopedDb, communityId, attemptId);
+      return { status: "VOTE_CHANGED" } as const;
+    }
     await scopedDb.towerChallengeVote.create({ data: { communityId, userId, attemptId, approve, createdAt } });
+    await refreshTowerProofMessage(scopedDb, communityId, attemptId);
     return { status: "VOTED", replayed: false } as const;
   });
 }
@@ -725,10 +763,44 @@ export async function settleTowerChallenge(input: unknown) {
     if (!attempt.submittedAt) return { status: "NO_PROOF" } as const;
     const current = now();
     const votes = await scopedDb.towerChallengeVote.findMany({ where: { attemptId, communityId, ...(participants.length ? { userId: { notIn: participants.map(participant => participant.userId) } } : {}) }, select: { userId: true, approve: true, createdAt: true } });
-    const result = evaluateChallengeVote({ authorId: attempt.userId, openedAt: attempt.submittedAt, now: current,
-      votes: votes.map(vote => ({ voterId: vote.userId, approve: vote.approve, votedAt: vote.createdAt })),
-    });
+    const ballots = votes.map(vote => ({ voterId: vote.userId, approve: vote.approve, votedAt: vote.createdAt }));
+    let extended = attempt.voteExtendedAt !== null;
+    let result = evaluateChallengeVote({ authorId: attempt.userId, openedAt: attempt.submittedAt, now: current, votes: ballots, extended });
+    if (result.status === "EXTEND") {
+      // Sans quorum à 24 h : une seule prolongation de 24 h, jamais renouvelée.
+      await scopedDb.$executeRaw`
+        UPDATE "TowerChallengeAttempt" SET "voteExtendedAt" = ${challengeVoteDeadline(attempt.submittedAt)}
+        WHERE id = ${attemptId} AND "communityId" = ${communityId} AND status = 'SUBMITTED' AND "voteExtendedAt" IS NULL
+      `;
+      extended = true;
+      result = evaluateChallengeVote({ authorId: attempt.userId, openedAt: attempt.submittedAt, now: current, votes: ballots, extended });
+      await refreshTowerProofMessage(scopedDb, communityId, attemptId); // nouvelle échéance affichée
+    }
     if (result.status === "OPEN") return result;
+    if (result.status === "EXTEND") throw new Error("Prolongation du vote incohérente");
+    if (result.status === "NO_QUORUM") {
+      // Rejet sans pénalité : ni étage retiré, ni quota consommé (lastSoloClaimAt et assignedAt intacts), ni blocage.
+      if (canResubmitAfterNoQuorum(attempt.quorumResubmissions)) {
+        await scopedDb.towerChallengeVote.deleteMany({ where: { communityId, attemptId } });
+        const resubmitUntil = new Date(current.getTime() + 48 * 3600000);
+        const reset = await scopedDb.$executeRaw`
+          UPDATE "TowerChallengeAttempt" SET status = 'ASSIGNED', "submittedAt" = NULL, "proofText" = NULL,
+            "proofChannelId" = NULL, "proofMessageId" = NULL, "proofCode" = NULL, "publicationConsent" = false,
+            "voteExtendedAt" = NULL, "quorumResubmissions" = "quorumResubmissions" + 1, "resubmitUntil" = ${resubmitUntil}
+          WHERE id = ${attemptId} AND "communityId" = ${communityId} AND status = 'SUBMITTED' AND "quorumResubmissions" = ${attempt.quorumResubmissions}
+        `;
+        if (!reset) return { status: "CLOSED" } as const;
+        await loadChallengeMeta(scopedDb, communityId, attemptId); // nouveau code TWR dès la resoumission ouverte
+        await refreshTowerProofMessage(scopedDb, communityId, attemptId, attempt.quorumResubmissions); // ancien message : vote clos sans quorum
+        return { status: "NO_QUORUM_RESUBMIT", resubmitUntil } as const;
+      }
+      await scopedDb.$executeRaw`
+        UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = COALESCE("rejectedAt", ${current})
+        WHERE id = ${attemptId} AND "communityId" = ${communityId} AND status = 'SUBMITTED'
+      `;
+      await enqueueTowerChallengeEvent(scopedDb, communityId, attemptId, "rejection");
+      return { status: "REJECTED", noQuorum: true } as const;
+    }
     if (result.status === "REJECTED") {
       await scopedDb.$executeRaw`
         UPDATE "TowerChallengeAttempt" SET status = 'REJECTED', "rejectedAt" = COALESCE("rejectedAt", ${current})
@@ -848,7 +920,6 @@ export async function settleDueTowerChallenges(deadline: Date) {
     : { checked: 0, failed: 0, complete: true };
   summary.failed += assignments.failed;
   if (!assignments.complete && !assignments.failed) summary.failed++;
-  const cutoff = new Date(current.getTime() - 24 * 3600000).toISOString();
   const candidates = await prisma.$transaction(async tx => {
     const community = await tx.community.findFirst({
       where: { discordGuildId: guildId, status: "ACTIVE", towerChallengesEnabled: true }, select: { id: true },
@@ -866,12 +937,13 @@ export async function settleDueTowerChallenges(deadline: Date) {
       ) team_member ON a."teamId" IS NOT NULL
       LEFT JOIN "TowerChallengeVote" v ON v."attemptId" = a.id AND v."communityId" = a."communityId"
         AND v."userId" <> a."userId" AND v."createdAt" >= a."submittedAt"
-        AND v."createdAt" < a."submittedAt" + interval '24 hours'
+        AND v."createdAt" < a."submittedAt" + interval '24 hours' * (CASE WHEN a."voteExtendedAt" IS NULL THEN 1 ELSE 2 END)
         AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAttemptParticipant" p WHERE p."attemptId" = a.id AND p."communityId" = a."communityId" AND p."userId" = v."userId")
-      WHERE a."communityId" = ${community.id} AND a.status = 'SUBMITTED' AND a."submittedAt" <= ${cutoff}::timestamp
+      WHERE a."communityId" = ${community.id} AND a.status = 'SUBMITTED'
+        AND a."submittedAt" + interval '24 hours' * (CASE WHEN a."voteExtendedAt" IS NULL THEN 1 ELSE 2 END) <= ${current.toISOString()}::timestamp
         AND ((a."teamId" IS NULL AND m.status = 'ACTIVE') OR (a."teamId" IS NOT NULL AND team_member."userId" IS NOT NULL))
       GROUP BY a.id, a."userId", a."communityId", a."teamId", a."submittedAt", team_member."userId"
-      HAVING COUNT(v.id) >= 3 AND (
+      HAVING COUNT(v.id) < 3 OR (
         COUNT(v.id) FILTER (WHERE v.approve) = COUNT(v.id) FILTER (WHERE NOT v.approve)
         OR COUNT(v.id) FILTER (WHERE NOT v.approve) * 2 > COUNT(v.id)
         OR a."teamId" IS NOT NULL
