@@ -8,6 +8,7 @@ import { claimSoloTowerChallenge, getTowerChallengeState, resolveTowerDiscordAct
   settleTowerChallenge, submitTowerChallengeProof, voteTowerChallenge, getTowerSeasonLeaderboard,
   getTowerSeasonVote, castTowerSeasonVote, getTeamDailyTowerChallenge, listDiscordTowerTeams,
   joinTowerTeamChallenge } from "@/lib/tower-challenges";
+import { captureTowerMeasureBaseline, reportTowerChallengeDoubt } from "@/lib/tower-steam-measure";
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
 const commonSchema = z.object({
@@ -70,7 +71,15 @@ function renderState(state: State) {
   const history = state.attempts.map(attempt => `**${attempt.title}** — ${attempt.status === "ASSIGNED" ? "à réaliser" : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé"}`).join("\n");
   const proofCode = latest?.proofCode
     ? `\nCode de preuve : **${latest.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il associe les éléments, mais ne prouve pas la date de capture.` : "";
-  const details = latest ? `\n\n${proofCode}\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}\nGain : +${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.`
+  const measure = latest?.measureKind && latest.status === "ASSIGNED"
+    ? latest.measureStatus === "PRIVATE"
+      ? "\n🔒 Mesure Steam impossible (profil privé ou non lié) : dépose une preuve, la communauté votera."
+      : latest.autoValidatedAt
+        ? "\n🤖 Objectif Steam atteint : validation automatique après la fenêtre de doute, sauf signalement."
+        : "\n🤖 Mesuré automatiquement sur Steam" + (latest.measureKind === "STEAM_PLAYTIME" && latest.measureTarget !== null
+          ? " : " + (latest.measureValue ?? 0) + "/" + latest.measureTarget + " min" : "") + ". Garde ton profil Steam public ; aucune preuve à déposer."
+    : "";
+  const details = latest ? `\n\n${proofCode}\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}${measure}\nGain :+${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.`
     : "\nAucun défi attribué pour le moment.";
   const buttons = [button("Actualiser", "gn:tower:mine")];
   if (latest?.status === "ASSIGNED") buttons.push(button("Déposer ma preuve", `gn:tower:proof:${latest.id}`, 1));
@@ -154,6 +163,10 @@ const feedback: Record<string, string> = {
   CLOSED: "Cette action est fermée pour ce défi.",
   PROOF_CODE_UNAVAILABLE: "Le code de preuve n’est pas disponible. Actualise ta fiche avant de déposer la preuve.",
   PROOF_CODE_REQUIRED: "Ajoute le code TWR dans la description de ta preuve. Si le jeu ne peut pas l’afficher, écris-le dans la composition GameNight avec la capture.",
+  DOUBT_RECORDED: "Ton doute est enregistré : la validation automatique est suspendue et le défi passe au vote communautaire.",
+  SELF_DOUBT: "Tu ne peux pas signaler un doute sur ton propre défi.",
+  DOUBT_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent signaler un doute.",
+  DOUBT_TOO_RECENT: "Pour signaler un doute, ton compte GameNight doit être actif depuis au moins 7 jours.",
   ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 
@@ -174,12 +187,14 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
   const proof = /^gn:tower:proof:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const view = /^gn:tower:view:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const vote = /^gn:tower:vote:([a-zA-Z0-9_-]{1,64}):(yes|no)$/.exec(customId);
+  const doubt = /^gn:tower:doubt:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const settle = /^gn:tower:settle:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const team = /^gn:tower:team:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const joinTeam = /^gn:tower:join:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
-  if ((!action && !proof && !view && !vote && !settle && !seasonBallot && !team && !joinTeam) || (i.type === 5 && !proof) || (i.type === 3 && i.data.component_type !== 2)) return { status: 400 };
+  if ((!action && !proof && !view && !vote && !doubt && !settle && !seasonBallot && !team && !joinTeam) || (i.type === 5 && !proof) || (i.type === 3 && i.data.component_type !== 2)) return { status: 400 };
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return quiet("Les défis de la Tour ne sont pas encore ouverts.");
   if (i.type === 3 && proof) return { status: 200, body: proofModal(proof[1]) };
+  const messageId = i.type === 3 ? i.message.id : null;
   const submittedProof = i.type === 5 ? proofInput(i.data, i.guild_id, i.channel_id) : null;
   if (i.type === 5 && !submittedProof) return { status: 400 };
   return { status: 200, body: { type: 5, data: { flags: 64 } }, runTower: async () => {
@@ -236,6 +251,8 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
             const state = await getTowerChallengeState({ ...actor, ...(view ? { attemptId: view[1] } : claim?.status === "CLAIMED" ? { attemptId: claim.attemptId } : {}) });
             if (state.status === "STATE") response = renderState(state);
           } else response.content = feedback[claim.status] ?? response.content;
+          // Défi mesuré Steam : départ du temps de jeu relevé dès l'attribution (le cron prend le relais en cas d'échec).
+          if (claim?.status === "CLAIMED" && !claim.replayed && claim.measured) await captureTowerMeasureBaseline({ ...actor, attemptId: claim.attemptId });
         } else if (submittedProof && proof) {
           const source = await getTowerProofMessage({ channelId: submittedProof.proofChannelId, messageId: submittedProof.proofMessageId, deadline: new Date(Date.now() + 10000) });
           if (!source.ok || source.data.authorId !== i.member.user.id) response.content = "Je ne peux pas confirmer que ce message de preuve t’appartient.";
@@ -245,6 +262,9 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
           }
         } else if (vote) {
           const result = await voteTowerChallenge({ ...actor, attemptId: vote[1], approve: vote[2] === "yes" });
+          response.content = feedback[result.status] ?? response.content;
+        } else if (doubt && messageId) {
+          const result = await reportTowerChallengeDoubt({ ...actor, attemptId: doubt[1], channelId: i.channel_id, messageId });
           response.content = feedback[result.status] ?? response.content;
         } else if (settle) {
           const result = await settleTowerChallenge({ ...actor, attemptId: settle[1] });

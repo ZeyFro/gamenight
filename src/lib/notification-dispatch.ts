@@ -6,6 +6,7 @@ import { rouletteDmResolver } from "@/lib/roulette-dm";
 import { communitySystemAnnounceResolver } from "@/lib/community-announce";
 import { onboardingReminderResolver } from "@/lib/onboarding-reminder";
 import { TOWER_VOTE_EVENT_TYPES, towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
+import { TOWER_STEAM_EVENT_TYPES, towerSteamAnnounceResolver } from "@/lib/tower-steam-announcements";
 import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-space-queue";
 import { TEAM_APPLICATION_NOTIFY, teamApplicationNoticeResolver } from "@/lib/team-application-notify";
 
@@ -28,6 +29,7 @@ export const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "ACHIEVEMENT" && TOWER_VOTE_EVENT_TYPES.includes(input.event.eventType)) return towerChallengeAnnounceResolver.resolve(input);
     if (input.event.category === "SESSION") return sessionAnnounceResolver.resolve(input);
     if (input.event.category === "TOURNAMENT") return tournamentAnnounceResolver.resolve(input);
+    if (input.event.category === "ACHIEVEMENT" && TOWER_STEAM_EVENT_TYPES.includes(input.event.eventType)) return towerSteamAnnounceResolver.resolve(input);
     if (input.event.category === "INSTANT_SESSION") return instantSessionInviteResolver.resolve(input);
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
     if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
