@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { isVercelPreview } from "@/lib/preview-safety";
+import { stripEveryoneParse } from "@/lib/notification-policy";
 
 /**
  * Client Discord REST (bot) — fondations pour les futurs salons/fils/MP
@@ -122,7 +123,8 @@ export const NO_MENTIONS: AllowedMentions = { parse: [] };
 
 function toDiscordAllowedMentions(input: AllowedMentions) {
   return {
-    parse: input.parse ?? [],
+    // Jamais @everyone/@here (sujet I) : retiré ici, quel que soit l'appelant.
+    parse: stripEveryoneParse(input.parse),
     roles: input.roles,
     users: input.users,
     replied_user: input.repliedUser,
@@ -992,6 +994,27 @@ export async function startThreadFromMessage(input: StartThreadInput): Promise<D
   });
 }
 
+/**
+ * Fil PUBLIC sans message source (`POST /channels/{id}/threads`, type 11) : annonce d'un projet.
+ * Réservé aux projets (`project-space-api.ts`, via l'executor) ; aucun contenu privé n'y transite.
+ */
+export async function startPublicThread(input: {
+  channelId: string;
+  name: string;
+  autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<ThreadInfo>> {
+  return discordRequest({
+    method: "POST",
+    path: `/channels/${input.channelId}/threads`,
+    body: { name: normalizeThreadName(input.name), type: 11, auto_archive_duration: input.autoArchiveDuration ?? 10080 },
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseThread,
+  });
+}
+
 export interface SendThreadMessageInput extends MessageContentInput {
   threadId: string;
   deadline: Date;
@@ -1360,6 +1383,93 @@ export async function deleteThreadPermanently(
     allowEmptyBody: true,
     parse: () => ({ threadId: input.threadId }),
   });
+}
+
+/**
+ * Suppression d'un salon (textuel ou vocal) créé PAR GameNight — réservée aux
+ * espaces temporaires de soirée (`session-space-service.ts`, via l'executor).
+ * Mêmes règles que `deleteThreadPermanently` : un `404` n'est pas reclassé ici,
+ * c'est à l'appelant de juger que « déjà absent » atteint l'état cible. Requiert
+ * `MANAGE_CHANNELS` ; jamais utilisée sur un salon dont l'identifiant ne vient pas
+ * d'une référence persistée.
+ */
+export async function deleteGuildChannel(
+  input: { channelId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<{ channelId: string }>> {
+  if (!/^\d{16,20}$/.test(input.channelId)) {
+    return { ok: false, kind: "invalid_request", message: "Identifiant de salon invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "DELETE",
+    path: `/channels/${input.channelId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({ channelId: input.channelId }),
+  });
+}
+
+/**
+ * Autorisation d'un membre sur un salon géré (`PUT /channels/{id}/permissions/{user}`,
+ * type 1 = membre) ; `allow` vient du plan (voir, se connecter, parler), jamais de gestion.
+ * Idempotent côté Discord (204). Retrait : `deleteChannelMemberPermission`.
+ */
+export async function putChannelMemberPermission(
+  input: { channelId: string; userId: string; allow: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<Record<string, never>>> {
+  if (![input.channelId, input.userId].every((value) => /^\d{16,20}$/.test(value)) || !/^\d+$/.test(input.allow)) {
+    return { ok: false, kind: "invalid_request", message: "Référence de salon, de membre ou de permission invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "PUT",
+    path: `/channels/${input.channelId}/permissions/${input.userId}`,
+    body: { type: 1, allow: input.allow, deny: "0" },
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({}),
+  });
+}
+
+export async function deleteChannelMemberPermission(
+  input: { channelId: string; userId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<Record<string, never>>> {
+  if (![input.channelId, input.userId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de salon ou de membre invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "DELETE",
+    path: `/channels/${input.channelId}/permissions/${input.userId}`,
+    deadline: input.deadline,
+    now: input.now,
+    allowEmptyBody: true,
+    parse: () => ({}),
+  });
+}
+
+/**
+ * Salon vocal actuel d'un membre (`GET /guilds/{guild}/voice-states/{user}`, REST, sans
+ * gateway). `channelId: null` = pas en vocal (Discord répond 404 « Unknown Voice State »).
+ * Sert uniquement à vérifier qu'un vocal temporaire est vide avant sa suppression.
+ */
+export async function getGuildMemberVoiceChannel(
+  input: { guildId: string; userId: string; deadline: Date; now?: Date }
+): Promise<DiscordRestResult<{ channelId: string | null }>> {
+  if (![input.guildId, input.userId].every((value) => /^\d{16,20}$/.test(value))) {
+    return { ok: false, kind: "invalid_request", message: "Référence de serveur ou de membre invalide.", retryable: false };
+  }
+  const result = await discordRequest<{ channelId: string | null }>({
+    method: "GET",
+    path: `/guilds/${input.guildId}/voice-states/${input.userId}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const parsed = z.object({ channel_id: z.string().nullable() }).safeParse(json);
+      return parsed.success ? { channelId: parsed.data.channel_id } : null;
+    },
+  });
+  if (!result.ok && result.kind === "not_found") return { ok: true, data: { channelId: null } };
+  return result;
 }
 
 /**

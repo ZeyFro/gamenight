@@ -71,6 +71,7 @@ export interface InteractionOutput {
   runSession?: () => Promise<void>;
   runTournament?: () => Promise<void>;
   runPlayers?: () => Promise<void>;
+  runReport?: () => Promise<void>;
 }
 
 const reply = (content: string): InteractionOutput => ({
@@ -117,6 +118,11 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
     // Autocomplétion (/tournoi, /soiree) : adaptateur isolé, aucune écriture.
     const { handleSignedAutocomplete } = await import("@/lib/discord-autocomplete");
     return handleSignedAutocomplete(json, input.timestamp);
+  }
+  if (interaction.type === 2 && interaction.data?.name === "Signaler") {
+    // Commande contextuelle « Signaler » (message, type 3) : ticket privé staff, aucune sanction.
+    const { handleSignedReportInteraction } = await import("@/lib/discord-report-command");
+    return handleSignedReportInteraction(json, input.timestamp);
   }
   if (interaction.type === 2 && interaction.data?.name === "tower-admin") {
     const { handleSignedTowerAdminInteraction } = await import("@/lib/discord-tower-admin");

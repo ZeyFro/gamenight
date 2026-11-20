@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
@@ -191,7 +192,7 @@ export async function loadTournaments(input: {
   filter?: string;
 }): Promise<TournamentView[]> {
   const rows = await prisma.tournament.findMany({
-    where: { communityId: input.communityId, status: { in: statusesForFilter(input.filter ?? "") } },
+    where: { communityId: input.communityId, status: { in: statusesForFilter(input.filter ?? "") }, ...publicTeamTournamentWhere() },
     select: tournamentSelect,
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     take: MAX_LISTED,
@@ -205,7 +206,7 @@ export async function loadTournamentDetail(input: {
 }): Promise<TournamentView | null> {
   if (!z.string().min(1).max(40).safeParse(input.tournamentId).success) return null;
   const row = await prisma.tournament.findFirst({
-    where: { id: input.tournamentId, communityId: input.communityId },
+    where: { id: input.tournamentId, communityId: input.communityId, ...publicTeamTournamentWhere() },
     select: tournamentSelect,
   });
   return row ? toView(row as TournamentRow) : null;

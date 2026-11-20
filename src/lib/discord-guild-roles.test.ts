@@ -188,3 +188,14 @@ describe("permissions du bot et rôles obsolètes", () => {
     expect(obsolete.map((entry) => entry.name)).toEqual(["Jeu oublié"]);
   });
 });
+
+describe("tokenRoleMatches", () => {
+  it("retrouve un rôle malgré l'ordre des mots, les accents et la ponctuation", async () => {
+    const { tokenRoleMatches } = await import("./discord-guild-roles");
+    const roles = [role("r1", "Zelda : Breath of the Wild", 3), role("r2", "Valheim", 3), role("r3", "Admin Zelda", 20, { permissions: "8" })];
+    expect(tokenRoleMatches(roles, "wild breath zelda").map((entry) => entry.id)).toEqual(["r1"]);
+    expect(tokenRoleMatches(roles, "ZELDA").map((entry) => entry.id)).toEqual(["r1"]);
+    expect(tokenRoleMatches(roles, "inconnu")).toEqual([]);
+    expect(tokenRoleMatches(roles, "")).toEqual([]);
+  });
+});

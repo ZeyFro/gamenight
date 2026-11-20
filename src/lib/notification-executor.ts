@@ -38,6 +38,10 @@ import {
 } from "@/lib/discord-rest";
 import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-space-runner";
 import { runBoosterSyncAction } from "@/lib/booster-support-runner";
+import { runProjectSpaceAction, type ProjectSpaceIntent } from "@/lib/project-space-runner";
+import { runRoleCreationAction } from "@/lib/discord-role-autocreate";
+import { runSessionSpaceAction } from "@/lib/session-space-runner";
+import type { SessionSpaceIntent } from "@/lib/session-space-plan";
 
 /**
  * Exécuteur de notifications (PR 3/N) — relie les fondations de livraison
@@ -236,6 +240,36 @@ export type ResolvedAction =
        * `runBoosterSyncAction`. Réservée au résolveur `boosterSyncResolver` (ADMIN / BOOSTER_SUPPORT_SYNC). */
       kind: "sync_booster_support";
       intent: "provision" | "member";
+      communityId: string;
+      discordId?: string;
+    }
+  | {
+      /** Fils Discord d'un projet à organisateur (public d'annonce + privé des participants) :
+       * création, accès d'un participant, archivage 7 jours après la clôture. Réservée au
+       * résolveur `projectSyncResolver` (ADMIN / PROJECT_SYNC), derrière `PROJECT_ORGANIZER_ENABLED`. */
+      kind: "sync_project_space";
+      intent: ProjectSpaceIntent;
+      projectId: string;
+      communityId: string;
+      discordId?: string;
+    }
+  | {
+      /** Rôle de jeu demandé par /role (DISCORD_ROLE_AUTOCREATE_ENABLED) : création SANS
+       * permission (ou réutilisation par nom normalisé) puis attribution au demandeur,
+       * par `runRoleCreationAction`. Réservée au résolveur `roleCreationResolver`
+       * (ADMIN / ROLE_AUTOCREATE). */
+      kind: "create_game_role";
+      requestId: string;
+      communityId: string;
+    }
+  | {
+      /** Espace temporaire d'une soirée (fil privé + vocal privé) : création à T-30 min,
+       * accès d'un participant, nettoyage une fois le vocal vide. Réservée au résolveur
+       * `sessionSpaceSyncResolver` (ADMIN / SESSION_SPACE_SYNC), derrière
+       * `SESSION_VISIBILITY_ENABLED`. Exécutée par `session-space-runner` (idempotent). */
+      kind: "sync_session_space";
+      intent: SessionSpaceIntent;
+      sessionId: string;
       communityId: string;
       discordId?: string;
     };
@@ -638,6 +672,15 @@ export async function performDiscordAction(
       }
       return mapDiscordResult(result, () => ({ discordThreadId: action.threadId }));
     }
+    case "sync_project_space": {
+      return mapDiscordResult(
+        await runProjectSpaceAction(
+          { intent: action.intent, projectId: action.projectId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
+        () => ({})
+      );
+    }
     case "sync_team_space": {
       return mapDiscordResult(
         await runTeamSpaceAction(
@@ -650,6 +693,21 @@ export async function performDiscordAction(
     case "sync_booster_support": {
       return mapDiscordResult(
         await runBoosterSyncAction({ intent: action.intent, communityId: action.communityId, discordId: action.discordId }, deadline, undefined, now),
+        () => ({})
+      );
+    }
+    case "create_game_role": {
+      return mapDiscordResult(
+        await runRoleCreationAction({ requestId: action.requestId, communityId: action.communityId }, deadline, undefined, now),
+        () => ({})
+      );
+    }
+    case "sync_session_space": {
+      return mapDiscordResult(
+        await runSessionSpaceAction(
+          { intent: action.intent, sessionId: action.sessionId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
         () => ({})
       );
     }

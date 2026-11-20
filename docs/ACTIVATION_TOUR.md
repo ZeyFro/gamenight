@@ -102,7 +102,7 @@ Pourquoi cet ordre : 1 et 2 partent ensemble (un seul redéploiement) mais ne se
 
 ### Condition de l'interrupteur 4 (défi d'équipe quotidien)
 
-À ne pas activer tant que : l'attribution à **18:00 Europe/Paris** (décision) n'est pas alignée avec le code (09:00, voir `docs/TOWER_TEAM_DAILY_CRON.md`) ; les règles d'équipe 2–8 / équipe unique (#370) ne sont pas fusionnées ; la cadence externe n'a pas été constatée en lecture. Sinon, laisser OFF et garder la ligne « défi d'équipe » en [PRÉVUE] dans les textes. Le workflow `.github/workflows/tower-team-daily.yml` est fusionné (#396) ; le fonctionnement reste à observer.
+À ne pas activer tant que : l'attribution à **18:00 Europe/Paris** (décision) n'est pas alignée avec le code (le code de `main` planifie encore 09:00, voir `docs/TOWER_TEAM_DAILY_CRON.md` ; la PR du lot du 18/11 le passe à 18:00 : ne pas activer avant sa fusion) ; les règles d'équipe 2–8 / équipe unique (#370) ne sont pas fusionnées ; la cadence externe n'a pas été constatée en lecture. Sinon, laisser OFF et garder la ligne « défi d'équipe » en [PRÉVUE] dans les textes. Le workflow `.github/workflows/tower-team-daily.yml` est fusionné (#396) ; le fonctionnement reste à observer.
 
 ## Contrôles supplémentaires
 
@@ -125,3 +125,77 @@ Arrêt immédiat si : donnée d'une autre communauté, récompense double, annon
 | 5 | Catalogue, étages et preuves conservés (aucune suppression) |
 
 Les migrations ne se défont pas par ce plan : suivre [MIGRATIONS.md](MIGRATIONS.md) et [TOWER_SNAPSHOT_RESTORE_PROCEDURE.md](TOWER_SNAPSHOT_RESTORE_PROCEDURE.md).
+
+---
+
+# Interrupteurs v1.1 (décisions du 18/11/2026)
+
+> Document de préparation : rien n'est activé, aucune variable Vercel n'est modifiée. Tous les interrupteurs ci-dessous sont **OFF par défaut** (actifs seulement si la valeur vaut exactement `true`). **Rien ne s'active sur une Preview** : l'activation se fait en Production par Maxime, jamais par Claude. Détail des sujets A à O : [CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md) §27 ; statut : [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md). Un interrupteur n'est utilisable qu'après la fusion de sa PR et l'application de sa migration.
+
+## Prérequis généraux
+
+1. Migrations appliquées en Production avant tout interrupteur qui en dépend ([MIGRATIONS.md](MIGRATIONS.md)). Sans elles, les fonctions répondent `migration_required` et n'écrivent rien.
+2. `NOTIFICATION_EXECUTOR_ENABLED=true` et `CRON_SECRET` défini : toute écriture Discord (rôles, salons, messages) passe par la file et l'executor.
+3. **Création automatique de rôles (`DISCORD_ROLE_AUTOCREATE_ENABLED`) : prérequis explicite, ne pas l'activer tant que les 134 rôles Étage ne sont pas supprimés.** Le serveur est proche du plafond Discord de 250 rôles ; la suppression est une action manuelle du propriétaire, jamais faite par le dépôt (inventaire : `scripts/audit-tower-etage-roles.mjs`, [TOWER_ROLE_REVIEW.md](TOWER_ROLE_REVIEW.md)).
+4. Bot avec les droits nécessaires : gestion des salons et des rôles, **placé au-dessus des rôles d'équipe** dans la hiérarchie (sinon Discord refuse la synchronisation).
+
+## Flags du lot Tower 2.0 (PR #462–#472 et fusionnées)
+
+| Interrupteur | Rôle | Conditions et notes |
+| --- | --- | --- |
+| `TEAM_APPLICATIONS_ENABLED` | Candidatures d'équipe | Exige `communityTeamsEnabled` ; migration `team_applications` |
+| `PROFILE_VISIBILITY_ENABLED` | Visibilité du profil | Migration `profile_visibility` |
+| `DISCORD_PROJECT_COMMAND_ENABLED` | Commande `/projet` (lecture) | Commande enregistrée par le propriétaire |
+| `DISCORD_PROJECT_WRITE_ENABLED` | `/projet` : écritures | Après `DISCORD_PROJECT_COMMAND_ENABLED` |
+| `DISCORD_TEAM_SPACES_ENABLED` | Espaces d'équipe, option A (rôle, salon écrit et vocal privés permanents) | Plus `DISCORD_TEAM_SPACES_MAX_PER_COMMUNITY` (quota produit, défaut 5) ; bot avec droits salons et rôles **au-dessus des rôles d'équipe** ; `NOTIFICATION_EXECUTOR_ENABLED` requis ; migrations `discord_team_space` puis `discord_team_space_voice` |
+| `TOWER_TEAM_DAILY_ENABLED` | Défi d'équipe quotidien à **18:00 Europe/Paris** | Cron `GET /api/cron/tower-team-daily` : variable de dépôt GitHub `GAMENIGHT_CRON_BASE_URL` et secret GitHub `CRON_SECRET` ; exige aussi `TOWER_CHALLENGES_ENABLED` et le drapeau communautaire |
+| `TOWER_IRREGULAR_GRANTS_ENABLED` | Attribution manuelle d'Irregular par le staff | Prestige, aucun droit |
+| `TOWER_CHALLENGE_REPLACEMENT_ENABLED` | Remplacement d'un défi (jeu non possédé) | |
+| `TOWER_CHALLENGE_PROPOSALS_ENABLED` | Propositions de défis par les grades élevés | |
+| `TOWER_SEASON_AWARDS_ENABLED` | Titres et cadres de distinctions saisonnières | Cosmétique, durée = saison suivante |
+| `TEAM_RECRUITMENT_CRITERIA_ENABLED` | Critères de recrutement des équipes | |
+| `GAME_LEVELS_ENABLED` | Niveaux par jeu (#468) | Base du sujet K |
+
+## Flags v1.1 (nouveaux)
+
+| Interrupteur | Sujet | Migration |
+| --- | --- | --- |
+| `NOTIFICATION_CENTER_ENABLED` | I | `20261118130800_notification_center` |
+| `ADMIN_DASHBOARD_V2_ENABLED` | O | aucune |
+| `TOWER_DISCORD_VOTES_ENABLED` | B | `20261118130100_tower_vote_messages` |
+| `TOWER_STEAM_AUTOVALIDATE_ENABLED` | C | `20261118130200_tower_challenge_measure` |
+| `TEAM_RECRUITERS_ENABLED` | A | `20261118130000_team_recruiters_guest` |
+| `TOURNAMENT_TEAMS_ENABLED` | E | `20261118130400_tournament_teams` |
+| `TEAM_RIVALRIES_ENABLED` | H | `20261118130700_team_rivalries` |
+| `SESSION_VISIBILITY_ENABLED` | D | `20261118130300_session_visibility_waitlist` |
+| `PROJECT_ORGANIZER_ENABLED` | G | `20261118130600_project_entries` |
+| `DISCORD_REPORT_COMMAND_ENABLED` | L | `20261118131100_moderation_reports` |
+| `DISCORD_ROLE_AUTOCREATE_ENABLED` | F | `20261118130500_discord_role_requests` |
+| `DISCORD_BOOSTERS_ENABLED` | M | `20261118131200_booster_support` |
+| `DISCORD_CONNECTIONS_SCOPE_ENABLED` | J | `20261118130900_platform_identities_crossplay` |
+| `GAME_PLATFORMS_ENABLED` | J | même migration |
+| `GAME_LEVELS_MATCHMAKING_ENABLED` | K | aucune (si possible) |
+| `PROFILE_CUSTOMIZATION_ENABLED` | N | `20261118131300_profile_customization` |
+
+## Ordre d'activation recommandé (à confirmer par Maxime)
+
+Un groupe à la fois, avec observation (logs Vercel, executor, `failed=0`) avant le suivant. Retour arrière : retirer l'interrupteur ou le passer à une valeur différente de `true`, redéploiement ; les données restent.
+
+| Ordre | Interrupteurs | Pourquoi |
+| --- | --- | --- |
+| 0 | Fusion des PR puis application des migrations (CI, environnement `production-migrations`) ; aucun interrupteur | Une migration non appliquée rend la fonction inopérante ; rien n'est activé sur Preview |
+| 1 | Flags du lot Tower 2.0 : `TEAM_APPLICATIONS_ENABLED`, `PROFILE_VISIBILITY_ENABLED`, `DISCORD_TEAM_SPACES_ENABLED` (avec `DISCORD_TEAM_SPACES_MAX_PER_COMMUNITY`), `DISCORD_PROJECT_COMMAND_ENABLED` puis `DISCORD_PROJECT_WRITE_ENABLED`, `GAME_LEVELS_ENABLED`, `TEAM_RECRUITMENT_CRITERIA_ENABLED`, puis `TOWER_IRREGULAR_GRANTS_ENABLED`, `TOWER_CHALLENGE_REPLACEMENT_ENABLED`, `TOWER_CHALLENGE_PROPOSALS_ENABLED`, `TOWER_SEASON_AWARDS_ENABLED` ; `TOWER_TEAM_DAILY_ENABLED` en dernier (18:00, cadence externe constatée) | Socle déjà conçu : les sujets v1.1 s'appuient dessus (#457, #469, #468) |
+| 2 | `NOTIFICATION_CENTER_ENABLED`, puis `ADMIN_DASHBOARD_V2_ENABLED` | Notifications et centre **avant** tout ping : les pings de rôle de jeu en dépendent. Le tableau de bord est en lecture seule et sert à surveiller la suite |
+| 3 | `TOWER_DISCORD_VOTES_ENABLED`, puis `TOWER_STEAM_AUTOVALIDATE_ENABLED` | La validation automatique se replie sur le vote communautaire (profil privé, « Signaler un doute ») : le vote Discord doit exister d'abord |
+| 4 | `TEAM_RECRUITERS_ENABLED`, `TOURNAMENT_TEAMS_ENABLED`, `TEAM_RIVALRIES_ENABLED`, `SESSION_VISIBILITY_ENABLED`, `PROJECT_ORGANIZER_ENABLED` | Parcours de groupes ; leurs MP et annonces passent par le centre déjà actif. `SESSION_VISIBILITY_ENABLED` crée fils et vocaux temporaires via l'executor |
+| 5 | `DISCORD_REPORT_COMMAND_ENABLED` | Nouvelle commande contextuelle : enregistrement du manifeste par Maxime d'abord (rien n'est enregistré par le dépôt) ; ticket privé staff, aucune sanction automatique |
+| 6 | `DISCORD_ROLE_AUTOCREATE_ENABLED` | **Seulement après la suppression des 134 rôles Étage** (prérequis explicite ci-dessus), après les notifications (alerte staff à 80 % de 250 rôles) |
+| 7 | `DISCORD_BOOSTERS_ENABLED` | **Après la création du salon (écrit + vocal) dédié aux boosters** et du « Mur des soutiens » ; le rôle « Soutien de la Tour » est créé sans permission, uniquement cosmétique |
+| 8 | `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `GAME_PLATFORMS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` | Scope OAuth `connections` : à activer quand le reste est stable (la connexion fermée S0 n'est pas modifiée). Le matchmaking par niveau exige `GAME_LEVELS_ENABLED` |
+| 9 | `PROFILE_CUSTOMIZATION_ENABLED` | En dernier : s'appuie sur grades, saisons, titres et cadres, tournois et boosters pour l'obtention ; purement cosmétique |
+
+## Contrôles après chaque groupe
+
+- Aucune erreur dans les logs Vercel ni dans l'executor ; `failed=0` sur les crons concernés.
+- Aucune écriture Discord hors file ; aucun `@everyone`.
+- Un compte d'une autre communauté ne voit aucune donnée de The Tower.

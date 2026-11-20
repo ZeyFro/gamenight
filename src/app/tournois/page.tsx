@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { isTournamentTeamsEnabled } from "@/lib/tournament-teams-rules";
+import { privateTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { tournamentEmptyTitle } from "./empty-state";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
@@ -53,7 +55,7 @@ export default async function TournoisPage({
   const tournamentsAll = await prisma.tournament.findMany({
     // Multi-communautés (PR4) : uniquement les tournois des communautés de
     // l'utilisateur (aucun filtre si l'isolation est éteinte).
-    where: { status: statusForTab[activeTab], ...communityIdFilter(await resolveActiveCommunityScope(user.id)) },
+    where: { status: statusForTab[activeTab], ...communityIdFilter(await resolveActiveCommunityScope(user.id)), ...privateTeamTournamentWhere(user.id) },
     orderBy: { createdAt: "desc" },
     include: {
       game: { select: { name: true, coverUrl: true } },
@@ -76,6 +78,7 @@ export default async function TournoisPage({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🏆 Tournois</h1>
+          {isTournamentTeamsEnabled() && <ButtonLink href="/tournois/equipes" size="sm">Tournois d’équipes</ButtonLink>}
           <ButtonLink href="/tournois/creer" variant="primary" size="sm">
             + Créer
           </ButtonLink>

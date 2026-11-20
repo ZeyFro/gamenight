@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { canManageSession } from "@/lib/session-visibility";
 import { notFound, redirect } from "next/navigation";
 import { SessionChronicle } from "@/components/SessionChronicle";
 import { isSessionChroniclesEnabled } from "@/lib/session-chronicle-input";
@@ -697,6 +698,15 @@ export default async function SessionDetailPage({
           </ButtonLink>
           <DeleteSessionDialog sessionId={session.id} hasThread={session.announceViaBot} />
           {isRecurringSeriesCancellationEnabled() && session.recurrenceGroupId && <CancelRecurringSessionsDialog sessionId={session.id} />}
+        </div>
+      )}
+
+      {!isCreator && canManageSession(user.id, session) && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <span className="text-xs text-muted">Tu coorganises cette soirée —</span>
+          <ButtonLink href={`/sessions/${session.id}/invites`} variant="secondary" size="sm">
+            👥 Gérer les invités et candidatures
+          </ButtonLink>
         </div>
       )}
 

@@ -14,7 +14,7 @@ export async function updateGamingIdentifiersAction(formData: FormData) {
     redirect("/profil/parametres?identifiants=rate_limited");
   }
   const parsed = gamingIdentifiersSchema.safeParse(Object.fromEntries(
-    GAMING_IDENTIFIER_FIELDS.map(({ key }) => [key, formData.get(key)])
+    GAMING_IDENTIFIER_FIELDS.filter(({ key }) => key !== "riotId" || formData.has(key)).map(({ key }) => [key, formData.get(key)])
   ));
   if (!parsed.success) redirect("/profil/parametres?identifiants=invalide");
 

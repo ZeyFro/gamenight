@@ -21,6 +21,7 @@ import { deleteSessionGalleryBlobs } from "@/lib/session-gallery";
 import { requireAdmin } from "@/lib/admin";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { isRecurringSeriesCancellationEnabled, recurringSessionDates, type SessionRecurrence } from "@/lib/session-recurrence";
+import { canManageSession, effectiveVisibility } from "@/lib/session-visibility";
 import { announceSessionCreated } from "@/lib/discord-session-created";
 import { announceSessionModified } from "@/lib/discord-session-modified";
 import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityAndRecipients } from "@/lib/community-channels";
@@ -166,6 +167,7 @@ export async function createSession(formData: FormData) {
           communityId,
           communityTeamId,
           recurrenceGroupId,
+          visibility: effectiveVisibility(formData.get("visibility")),
         }));
       }
       return sessions[0];
@@ -279,7 +281,8 @@ export async function editSessionAction(formData: FormData) {
 
   const scopedDb = await getScopedPrisma(user.id);
   const existing = await scopedDb.session.findUnique({ where: { id: sessionId } });
-  if (!existing || existing.createdById !== user.id) return;
+  // Créateur, ou coorganisateur désigné (flag SESSION_VISIBILITY_ENABLED) : le créneau seulement.
+  if (!existing || !canManageSession(user.id, existing)) return;
   if (existing.status === "DONE" || existing.status === "CANCELLED") return;
   // Chemin figé à la création de CETTE session (jamais relu depuis l'env
   // ici) — voir le commentaire du champ dans schema.prisma.
