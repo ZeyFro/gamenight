@@ -3135,6 +3135,7 @@ model Community {
   teamTournamentGuests TeamTournamentGuest[]
   teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
+  moderationReports ModerationReport[]
   teamChallenges TeamChallenge[]
   projects Project[]
   discordRoleRequests DiscordRoleRequest[]
@@ -3525,6 +3526,31 @@ model DiscordTeamSpace {
 
   @@unique([teamId, communityId])
   @@index([communityId])
+}
+
+// Signalement d'un message par un membre (commande contextuelle « Signaler », DISCORD_REPORT_COMMAND_ENABLED).
+// AUCUNE sanction automatique : la ligne sert de journal et de ticket pour le staff. Le contenu n'est conservé
+// que sous forme d'extrait borné (500 caractères). Un membre ne signale un même message qu'une fois.
+model ModerationReport {
+  id              String    @id @default(cuid())
+  communityId     String
+  guildId         String
+  channelId       String
+  messageId       String
+  authorDiscordId String
+  reporterDiscordId String
+  messageUrl      String
+  excerpt         String    @db.Text
+  attachmentCount Int       @default(0)
+  ticketQueuedAt  DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, messageId, reporterDiscordId])
+  @@index([communityId, closedAt, createdAt])
+  @@index([reporterDiscordId, createdAt])
 }
 
 enum ProjectStatus {

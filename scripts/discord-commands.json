@@ -778,5 +778,16 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Signaler",
+    "type": 3,
+    "default_member_permissions": null,
+    "integration_types": [
+      0
+    ],
+    "contexts": [
+      0
+    ]
   }
 ]
