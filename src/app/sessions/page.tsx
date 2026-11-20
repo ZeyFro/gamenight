@@ -29,6 +29,9 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { ReminderTimingsField } from "@/components/ReminderTimingsField";
 import { SessionPlanningFields } from "@/components/sessions/SessionPlanningFields";
 import { SessionRow } from "@/components/sessions/SessionRow";
+import { DiscoverableSessions } from "@/components/sessions/DiscoverableSessions";
+import { listDiscoverableSessions } from "@/lib/session-applications";
+import { sessionVisibilityEnabled } from "@/lib/session-visibility";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
@@ -179,6 +182,10 @@ export default async function SessionsPage({
     pastAll.filter((s) => s.status === "DONE").map((s) => s.id)
   );
 
+  // Soirées ouvertes (SESSION_VISIBILITY_ENABLED) : liste distincte, jamais mêlée à la précédente.
+  const visibilityEnabled = sessionVisibilityEnabled();
+  const discoverable = visibilityEnabled ? await listDiscoverableSessions(user.id) : [];
+
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
@@ -233,6 +240,18 @@ export default async function SessionsPage({
               </select>
               <span>La soirée reste privée selon ses invitations habituelles.</span>
             </label>}
+
+            {visibilityEnabled && (
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                Visibilité
+                <select name="visibility" defaultValue="PRIVATE" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground">
+                  <option value="PRIVATE">Privée — sur invitation uniquement</option>
+                  <option value="PUBLIC">Publique — tout membre peut rejoindre</option>
+                  <option value="APPLICATION">Sur candidature — tu valides les demandes</option>
+                </select>
+                <span>Une soirée privée reste invisible à toute personne non invitée.</span>
+              </label>
+            )}
 
             {preselectedGame && (
               <div className="flex flex-col gap-2 rounded-lg bg-accent/10 p-3 text-sm text-accent">
@@ -325,6 +344,8 @@ export default async function SessionsPage({
               { key: "history", label: "Historique", href: "/sessions?tab=history" },
             ]}
           />
+
+          {activeTab === "upcoming" && <DiscoverableSessions sessions={discoverable} />}
 
           {activeTab === "upcoming" ? (
             <section className="flex flex-col gap-3">

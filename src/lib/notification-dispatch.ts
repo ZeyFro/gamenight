@@ -8,6 +8,8 @@ import { onboardingReminderResolver } from "@/lib/onboarding-reminder";
 import { TOWER_VOTE_EVENT_TYPES, towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
 import { TOWER_STEAM_EVENT_TYPES, towerSteamAnnounceResolver } from "@/lib/tower-steam-announcements";
 import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-space-queue";
+import { sessionSpaceSyncResolver } from "@/lib/session-space-queue";
+import { SESSION_SPACE_EVENT } from "@/lib/session-space-plan";
 import { TEAM_APPLICATION_NOTIFY, teamApplicationNoticeResolver } from "@/lib/team-application-notify";
 
 /**
@@ -34,6 +36,7 @@ export const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
     if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TEAM_SPACE_EVENT) return teamSpaceSyncResolver.resolve(input);
+    if (input.event.category === "ADMIN" && input.event.eventType === SESSION_SPACE_EVENT) return sessionSpaceSyncResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TEAM_APPLICATION_NOTIFY) return teamApplicationNoticeResolver.resolve(input);
     if (input.event.category === "ADMIN") return onboardingReminderResolver.resolve(input);
     return NOT_CONFIGURED_RESOLVER.resolve(input);
