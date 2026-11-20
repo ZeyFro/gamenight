@@ -614,6 +614,19 @@ describe("discord-rest", () => {
       expect(body.allowed_mentions).toEqual({ parse: [], roles: undefined, users: ["123"], replied_user: undefined });
     });
 
+    it("ne transmet JAMAIS parse=everyone, même demandé par l'appelant (sujet I)", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", channel_id: "c1" }));
+      await sendChannelMessage({
+        channelId: "c1",
+        content: "@everyone",
+        allowedMentions: { parse: ["everyone", "users"], users: ["123"] },
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.allowed_mentions.parse).toEqual(["users"]);
+    });
+
     it("transmet aussi allowed_mentions (désactivées par défaut) lors d'une ÉDITION, pas seulement à la création", async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", channel_id: "c1" }));
       await editChannelMessage({

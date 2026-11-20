@@ -41,7 +41,7 @@ import {
 /** Modèles Prisma portant `communityId` (garde : `community-scoped-client.test.ts` ↔ schema.prisma). */
 export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
-  "CalendarFeedToken",
+  "CalendarFeedToken", "GamePingOptIn",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
@@ -62,7 +62,7 @@ export const COMMUNITY_SCOPED_MODELS: ReadonlySet<string> = new Set([
  */
 export const COMMUNITY_REQUIRED_MODELS: ReadonlySet<string> = new Set([
   "TowerArbiterConfigurationChange", "TowerChallengeDefinition", "TowerChallengeAttempt", "TowerChallengeAttemptParticipant", "TowerChallengeVote", "TowerChallengeProgress", "TowerChallengeAppeal", "TowerSeasonVote", "TowerSeasonVoteBallot", "TowerChallengeProposal", "TowerChallengeReplacement", "TowerIrregularGrant", "TowerIrregularLog", "TowerSeasonAward",
-  "CalendarFeedToken",
+  "CalendarFeedToken", "GamePingOptIn",
   "CommunityQuickPoll", "CommunityQuickPollVote", "CommunityGameEpitaph",
   "CommunityExpression",
   "CommunityHighlight",
