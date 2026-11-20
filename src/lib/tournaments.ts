@@ -1,4 +1,5 @@
 import { postToCommunity } from "@/lib/community-announce";
+import { pairParticipantsByLevel } from "@/lib/game-levels-matchmaking";
 import { Prisma, type TournamentStatus } from "@prisma/client";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { isMemberOfCommunity } from "@/lib/community-isolation";
@@ -207,6 +208,7 @@ interface LockedTournamentRow {
   maxPlayers: number;
   announceViaBot: boolean;
   format: "INDIVIDUAL" | "TEAMS";
+  gameId: string;
 }
 
 /**
@@ -246,7 +248,7 @@ export async function buildBracketInTransaction(
   tournamentId: string
 ): Promise<void> {
   const locked = await tx.$queryRaw<LockedTournamentRow[]>`
-    SELECT id, status, "maxPlayers", "announceViaBot", format FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
+    SELECT id, status, "maxPlayers", "announceViaBot", format, "gameId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE
   `;
   const tournament = locked[0];
   if (!tournament || tournament.status !== "REGISTRATION") return;
@@ -272,7 +274,8 @@ export async function buildBracketInTransaction(
   // séquentiel naïf).
   let competitors: { id: string; memberIds: string[] }[];
   if (tournament.format === "TEAMS") {
-    const pairs = pairTournamentParticipants(shuffled)!;
+    // Équilibrage par niveau déclaré (GAME_LEVELS_MATCHMAKING_ENABLED) ; sinon, ou sans aucun niveau, tirage aléatoire.
+    const pairs = (await pairParticipantsByLevel(tx, tournament.gameId, shuffled)) ?? pairTournamentParticipants(shuffled)!;
     competitors = [];
     for (const [i, pair] of pairs.entries()) {
       const team = await tx.tournamentTeam.create({

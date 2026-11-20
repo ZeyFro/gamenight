@@ -44,14 +44,28 @@ enum FreeGameStore {
 
 model User {
   profileVisibility UserProfileVisibility?
+  gameLevels UserGameLevel[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
   teamApplicationsDecided TeamApplication[] @relation("TeamApplicationDecider")
+  teamRecruiterRoles CommunityTeamRecruiter[] @relation("TeamRecruiterUser")
+  teamRecruitersNamed CommunityTeamRecruiter[] @relation("TeamRecruiterNamer")
+  teamTournamentGuests TeamTournamentGuest[] @relation("TeamGuestUser")
+  teamTournamentGuestsInvited TeamTournamentGuest[] @relation("TeamGuestInviter")
   captainTeams CommunityTeam[] @relation("CommunityTeamCaptain")
   towerChallengeAttempts TowerChallengeAttempt[]
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeAppealsArbitrated TowerChallengeAppeal[] @relation("TowerChallengeAppealArbiter")
   towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonAwards TowerSeasonAward[]
+  towerChallengeProposals TowerChallengeProposal[] @relation("TowerProposalAuthor")
+  towerChallengeProposalsDecided TowerChallengeProposal[] @relation("TowerProposalDecider")
+  towerChallengeReplacements TowerChallengeReplacement[]
+  towerIrregularGrants TowerIrregularGrant[] @relation("TowerIrregularHolder")
+  towerIrregularGrantsGiven TowerIrregularGrant[] @relation("TowerIrregularGranter")
+  towerIrregularGrantsRevoked TowerIrregularGrant[] @relation("TowerIrregularRevoker")
+  towerIrregularLogs TowerIrregularLog[] @relation("TowerIrregularLogHolder")
+  towerIrregularLogsActed TowerIrregularLog[] @relation("TowerIrregularLogActor")
   notificationChannelPreferences UserNotificationChannelPreference[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[] @relation("TowerSeasonVoter")
   towerSeasonVoteCandidates TowerSeasonVoteBallot[] @relation("TowerSeasonCandidate")
@@ -372,6 +386,7 @@ enum GameSource {
 
 model Game {
   epitaphs CommunityGameEpitaph[]
+  userLevels UserGameLevel[]
   // Relevé de préparation déclaré, indépendant des prix Steam consultés.
   preparationCost       String? @db.VarChar(10)
   preparationPrice      String? @db.VarChar(120)
@@ -2336,6 +2351,7 @@ model Tournament {
   teamMembers  TournamentTeamMember[]
   matches      TournamentMatch[]
   predictions  TournamentPrediction[]
+  teamGuests   TeamTournamentGuest[]
 
   // Chantier annonces Discord tournois (#🏆-tournois, après #95/#96/#97/#98/#99)
   // — même contrat que `Session.announceViaBot` (voir son commentaire pour
@@ -2947,6 +2963,9 @@ enum CommunityChannelCategory {
 
 model Community {
   teamApplications TeamApplication[]
+  teamRecruiters CommunityTeamRecruiter[]
+  teamTournamentGuests TeamTournamentGuest[]
+  teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
   sessionDiscordSpaces SessionDiscordSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
@@ -2956,6 +2975,11 @@ model Community {
   towerChallengeParticipations TowerChallengeAttemptParticipant[]
   towerChallengeVotes TowerChallengeVote[]
   towerChallengeProgress TowerChallengeProgress[]
+  towerSeasonAwards TowerSeasonAward[]
+  towerChallengeProposals TowerChallengeProposal[]
+  towerChallengeReplacements TowerChallengeReplacement[]
+  towerIrregularGrants TowerIrregularGrant[]
+  towerIrregularLogs TowerIrregularLog[]
   towerChallengeAppeals TowerChallengeAppeal[]
   towerSeasonVotes TowerSeasonVote[]
   towerSeasonVoteBallots TowerSeasonVoteBallot[]
@@ -3109,6 +3133,9 @@ model CommunityTeam {
   towerChallengeAttempts TowerChallengeAttempt[]
   sessions  Session[]
   applications TeamApplication[]
+  recruiters CommunityTeamRecruiter[]
+  tournamentGuests TeamTournamentGuest[]
+  recruitmentCriteria TeamRecruitmentCriteria?
   discordSpaces DiscordTeamSpace[]
 
   @@index([communityId, isRecruiting, createdAt])
@@ -3154,6 +3181,8 @@ enum TeamApplicationStatus {
   ACCEPTED
   DECLINED
   WITHDRAWN
+  // Sans décision après 7 jours (TEAM_RECRUITERS_ENABLED) : aucune pénalité, le candidat peut repostuler.
+  EXPIRED
 }
 
 model TeamApplication {
@@ -3166,6 +3195,8 @@ model TeamApplication {
   createdAt   DateTime @default(now())
   decidedAt   DateTime?
   decidedById String?
+  // Relance unique envoyée 48 h après le dépôt (TEAM_RECRUITERS_ENABLED) ; remis à null à chaque nouvelle candidature.
+  reminderSentAt DateTime?
 
   community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
@@ -3175,6 +3206,125 @@ model TeamApplication {
   @@unique([teamId, applicantId])
   @@index([communityId, teamId, status])
   @@index([applicantId, communityId])
+  @@index([status, createdAt])
+}
+
+// Recruteurs nommés par le capitaine (TEAM_RECRUITERS_ENABLED) : 2 au plus par équipe, membres de l'équipe.
+// Ils peuvent accepter ou refuser les candidatures et reçoivent les MP de candidature, rien d'autre
+// (ni passation, ni dissolution, ni gestion des recruteurs). La ligne est retirée au départ du membre.
+model CommunityTeamRecruiter {
+  id          String   @id @default(cuid())
+  communityId String
+  teamId      String
+  userId      String
+  namedById   String?
+  createdAt   DateTime @default(now())
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  user      User          @relation("TeamRecruiterUser", fields: [userId], references: [id], onDelete: Cascade)
+  namedBy   User?         @relation("TeamRecruiterNamer", fields: [namedById], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, userId])
+  @@index([communityId, userId])
+}
+
+// Invité d'une autre équipe pour UN tournoi (TEAM_RECRUITERS_ENABLED) : le joueur garde son équipe principale
+// (une seule par communauté), l'invitation ne crée aucune appartenance. Une seule invitation par
+// (tournoi, joueur). Le capitaine invite ; l'invité accepte ou refuse.
+enum TeamGuestStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+model TeamTournamentGuest {
+  id           String          @id @default(cuid())
+  communityId  String
+  teamId       String
+  tournamentId String
+  userId       String
+  invitedById  String?
+  status       TeamGuestStatus @default(INVITED)
+  createdAt    DateTime        @default(now())
+  decidedAt    DateTime?
+
+  community  Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team       CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+  tournament Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User          @relation("TeamGuestUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy  User?         @relation("TeamGuestInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([tournamentId, userId])
+  @@index([teamId, tournamentId, status])
+  @@index([communityId, userId])
+}
+
+// Niveau de jeu auto-déclaré (cahier §12.4), un par utilisateur et par jeu. Donnée personnelle du profil (comme
+// UserGame) : pas de communauté dans la clé, la lecture par un tiers passe par canViewPote (membres de ses
+// communautés, profil non masqué). Pas de ligne = niveau non déclaré.
+enum GameLevel {
+  DEBUTANT
+  INTERMEDIAIRE
+  CONFIRME
+  COMPETITIF
+}
+
+model UserGameLevel {
+  userId    String
+  gameId    String
+  level     GameLevel
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@index([gameId, level])
+}
+
+// Objectifs et critères de recrutement structurés d'une équipe (cahier §11.2). Une ligne au plus par équipe,
+// éditée par le capitaine ; pas de ligne = aucun critère renseigné. Aucun envoi de notification.
+enum TeamGoal {
+  DETENTE
+  COMPETITIF
+  PROGRESSION
+  DECOUVERTE
+  SOCIAL
+}
+
+enum TeamMicRequirement {
+  REQUIRED
+  PREFERRED
+  NOT_NEEDED
+}
+
+enum TeamAvailabilitySlot {
+  WEEKDAY_DAY
+  WEEKDAY_EVENING
+  WEEKEND_DAY
+  WEEKEND_EVENING
+  NIGHT
+}
+
+model TeamRecruitmentCriteria {
+  teamId        String   @id
+  communityId   String
+  goals         TeamGoal[]
+  minLevel      String?  @db.VarChar(20)
+  mic           TeamMicRequirement?
+  slots         TeamAvailabilitySlot[]
+  platforms     String[]
+  note          String?  @db.VarChar(300)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
+
+  @@unique([teamId, communityId])
+  @@index([communityId])
 }
 
 // Association fiable équipe ↔ ressources Discord gérées par GameNight (option A du 18/11/2026) :
@@ -3199,6 +3349,7 @@ model DiscordTeamSpace {
   community Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
   team      CommunityTeam @relation(fields: [teamId, communityId], references: [id, communityId], onDelete: Cascade)
 
+  @@unique([teamId, communityId])
   @@index([communityId])
 }
 
@@ -3440,6 +3591,12 @@ enum TowerChallengeMode {
   TEAM
 }
 
+// Défis « mesurables Steam » : validés par le cron (TOWER_STEAM_AUTOVALIDATE_ENABLED), sans IA.
+enum TowerChallengeMeasureKind {
+  STEAM_PLAYTIME
+  STEAM_ACHIEVEMENT
+}
+
 enum TowerChallengeAttemptStatus {
   ASSIGNED
   SUBMITTED
@@ -3459,6 +3616,11 @@ model TowerChallengeDefinition {
   gameId String? @db.VarChar(191)
   active Boolean @default(false)
   createdAt DateTime @default(now())
+  // Mesure Steam facultative (défis solo) : minutes de jeu depuis l'attribution, ou succès débloqués depuis l'attribution.
+  measureKind TowerChallengeMeasureKind?
+  measureAppId Int?
+  measureTarget Int?
+  measureAchievement String? @db.VarChar(100)
   attempts TowerChallengeAttempt[]
 
   @@unique([id, communityId])
@@ -3493,9 +3655,29 @@ model TowerChallengeAttempt {
   rejectedAt DateTime?
   staffReportedAt DateTime?
   archivedAt DateTime?
+  // Instantané de la mesure Steam à l'attribution (une modification du catalogue ne change pas un défi attribué).
+  measureKind TowerChallengeMeasureKind?
+  measureAppId Int?
+  measureTarget Int?
+  measureAchievement String? @db.VarChar(100)
+  measureBaseline Int?
+  measureBaselineAt DateTime?
+  // Dernière valeur mesurée : minutes jouées depuis l'attribution, ou nombre de succès débloqués depuis l'attribution.
+  measureValue Int?
+  measureCheckedAt DateTime?
+  // WATCHING | PRIVATE (profil Steam privé : repli sur la preuve et le vote) | ACHIEVED (mesure atteinte, fenêtre de doute ouverte).
+  measureStatus String? @db.VarChar(16)
+  autoValidatedAt DateTime?
+  doubtReportedAt DateTime?
+  doubtReportedByUserId String?
+  // Sans quorum à 24 h : prolongation unique de 24 h, puis rejet sans pénalité et une resoumission.
+  voteExtendedAt DateTime?
+  quorumResubmissions Int @default(0)
+  resubmitUntil DateTime?
   votes TowerChallengeVote[]
   participants TowerChallengeAttemptParticipant[]
   appeal TowerChallengeAppeal?
+  replacements TowerChallengeReplacement[]
 
   @@unique([id, communityId])
   @@unique([communityId, userId, requestKey])
@@ -3505,6 +3687,74 @@ model TowerChallengeAttempt {
   @@index([communityId, status, submittedAt])
   @@unique([communityId, proofCode])
   @@index([communityId, status, submittedAt, staffReportedAt, archivedAt], map: "TowerChallengeAttempt_communityId_status_submittedAt_staffRepor")
+}
+
+// Titre et cadre cosmétiques saisonniers (cahier 15) attribués automatiquement aux premiers du palmarès à la
+// clôture de la saison ; purement cosmétiques (aucun XP, aucun droit), valables jusqu'à la fin de la saison
+// suivante. Une seule ligne par joueur et par saison : l'attribution est rejouable sans doublon.
+model TowerSeasonAward {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seasonStartAt DateTime
+  seasonName String @db.VarChar(80)
+  // Place au palmarès (1 à 3) ; les ex æquo partagent la même place.
+  place Int
+  awardedAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@unique([communityId, userId, seasonStartAt])
+  @@index([communityId, userId, expiresAt])
+}
+
+enum TowerChallengeProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Proposition de défi solo par un joueur Ranker / High Ranker (cahier 8.7) ; entre au catalogue seulement
+// après validation du staff (definitionId renseigné à l'approbation). Aucune IA.
+model TowerChallengeProposal {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  proposerId String
+  proposer User @relation("TowerProposalAuthor", fields: [proposerId], references: [id], onDelete: Cascade)
+  title String @db.VarChar(120)
+  instructions String @db.VarChar(1500)
+  rewardFloors Int
+  status TowerChallengeProposalStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  decidedById String?
+  decidedBy User? @relation("TowerProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decisionNote String? @db.VarChar(500)
+  definitionId String? @db.VarChar(191)
+
+  @@index([communityId, status, createdAt])
+  @@index([communityId, proposerId, createdAt])
+}
+
+// Remplacement d'un défi solo qui exige un jeu non possédé (cahier 8.6) : une seule fois par attribution
+// (unicité sur attemptId), sans toucher au quota ; journal des deux définitions concernées.
+model TowerChallengeReplacement {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  attemptId String
+  attempt TowerChallengeAttempt @relation(fields: [attemptId, communityId], references: [id, communityId], onDelete: Cascade)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromDefinitionId String @db.VarChar(191)
+  toDefinitionId String @db.VarChar(191)
+  requiredGameId String @db.VarChar(191)
+  createdAt DateTime @default(now())
+
+  @@unique([attemptId])
+  @@index([communityId, userId, createdAt])
 }
 
 enum TowerChallengeAppealStatus {
@@ -3576,6 +3826,43 @@ model TowerChallengeProgress {
 
   @@id([communityId, userId])
 }
+// Irregular (cahier 6.1) : grade de prestige attribué À LA MAIN par le staff communautaire (OWNER/ADMIN),
+// sans aucun droit. Une ligne par joueur et par communauté ; révoquée = revokedAt renseigné.
+model TowerIrregularGrant {
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularHolder", fields: [userId], references: [id], onDelete: Cascade)
+  grantedById String?
+  grantedBy User? @relation("TowerIrregularGranter", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+  revokedById String?
+  revokedBy User? @relation("TowerIrregularRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@id([communityId, userId])
+}
+
+enum TowerIrregularAction {
+  GRANTED
+  REVOKED
+}
+
+// Journal append-only des attributions et retraits d'Irregular.
+model TowerIrregularLog {
+  id String @id @default(cuid())
+  communityId String
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("TowerIrregularLogHolder", fields: [userId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor User? @relation("TowerIrregularLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action TowerIrregularAction
+  createdAt DateTime @default(now())
+
+  @@index([communityId, userId, createdAt])
+}
+
 model TowerSeasonVote {
   id String @id @default(cuid())
   communityId String

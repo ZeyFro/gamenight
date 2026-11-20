@@ -10,6 +10,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
+| `/api/cron/tower-steam-autovalidate` | GET, POST | Validation automatique des défis Tower mesurables Steam (temps de jeu, succès) ; 202 + `after()` ; OFF si `TOWER_STEAM_AUTOVALIDATE_ENABLED` absent ; aucun déclencheur créé, cadence externe (10 min conseillées) |
 | `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 16:00/17:00 avec garde 18:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
@@ -23,6 +24,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
 | `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
+| `/api/cron/team-applications` | GET | Relance (48 h) et expiration (7 j) des candidatures d’équipe, retrait des accès Discord des membres non actifs ; OFF sans `TEAM_RECRUITERS_ENABLED` ; 503 sans `CRON_SECRET` |
 | `/api/backfill/game-news` | POST | Backfill des nouvelles de jeux |
 | `/api/backfill/igdb-coop` | GET, POST | Backfill des données coop IGDB |
 | `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed |
@@ -39,6 +41,7 @@ Converties en 202 :
 | `/api/cron/notification-executor` | lot d’appels Discord, budget interne 50 s ; règle aussi la clôture des défis Tower quand `TOWER_CHALLENGES_ENABLED=true` (échéance de 15 s, lots de 25 tentatives, dans le même budget de 50 s) | 60 |
 | `/api/cron/retention-cleanup` | purges et programmations, budget interne 45 s | 60 |
 | `/api/cron/refresh-discord-profiles` | un appel HTTP Discord par compte, sans budget propre | 300 |
+| `/api/cron/tower-steam-autovalidate` | au plus 25 lectures de l’API Steam par passage, budget interne 50 s ; une tentative n’est pas relue avant 10 minutes | 60 |
 
 Déjà en 202 : `steam-library-full-sync` et les backfills (`igdb-coop`, `seed-reconcile`, `steam-store`, `game-news`).
 
@@ -54,6 +57,7 @@ Laissées synchrones (travail court ou budget interne) :
 | `close-sessions` | requêtes et écritures en base, les annonces sont mises en file ; budget de 45 s (#354), arrêt signalé par `budgetExhausted: true` | 60 |
 | `reminders` | idem, avec verrou ; à surveiller si le volume de sessions grossit | 60 |
 | `team-captain-handover` | au plus 25 équipes préfiltrées ; dry-run sauf `TEAM_CAPTAIN_HANDOVER_MODE=execute` | 60 |
+| `team-applications` | au plus 100 candidatures et 50 retraits d’accès par communauté et par passage ; le reste est repris au passage suivant | 60 |
 
 Un budget atteint n’est pas une erreur : le travail restant est repris au passage suivant (étapes idempotentes). Au-delà de 30 s, cron-job.org coupe la connexion mais la fonction continue jusqu’à son budget.
 
