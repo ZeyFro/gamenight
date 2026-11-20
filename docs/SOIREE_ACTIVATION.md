@@ -39,6 +39,7 @@ Le 1 et le 2 ne servent à rien sans le 3, et le 3 ne sert à rien sans le 1. Ta
 - [ ] Dernier run « Migrations Production » (onglet **Actions** de GitHub) **vert** sur le dernier commit de `main`.
 - [ ] Commandes du bot enregistrées (section 8) : sans elles `/tower` et `/tower-admin` n'existent pas sur Discord.
 - [ ] Un arbitre indépendant est désigné pour les contestations.
+- [ ] Les deux requêtes de contrôle de la section 4 bis (progression et défis existants) donnent `0` avant la première activation.
 - [ ] Tu as noté, sans secret, les valeurs actuelles de `TOWER_CHALLENGES_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED` (absentes ou valeur) pour pouvoir revenir en arrière.
 - [ ] Ces variables **existent déjà** dans Vercel Production (ne rien changer, juste vérifier la présence) : `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_APP_PUBLIC_KEY`, `CRON_SECRET`, `TOWER_DISCORD_GUILD_ID`, `TOWER_DISCORD_CHANNEL_ID` (salon des preuves), `TOWER_DISCORD_GENERAL_CHANNEL_ID` (salon des réussites). Sans les deux salons, aucune annonce ne part.
 - [ ] Dans le **Developer Portal** Discord, l'**Interactions Endpoint URL** de l'application pointe sur `https://<ton domaine de production>/api/discord/interactions` (Portal → ton application → General Information). Sans elle, les commandes enregistrées répondent « L'application ne répond pas ».
@@ -147,7 +148,7 @@ Sur le serveur The Tower, avec un compte qui a « Gérer le serveur » :
 
 1. **Photographie ou exporte** les réglages actuels d'Atlas (règles d'attribution des rôles Étage, permissions, position du rôle d'Atlas dans la hiérarchie). C'est ton retour arrière.
 2. **Mets en pause la génération des rôles Étage**, sans retirer les rôles existants.
-3. **Ne supprime aucun des 134 rôles Étage** ce soir : leur retrait est une décision séparée, et il conditionne `DISCORD_ROLE_AUTOCREATE_ENABLED`.
+3. **Les 134 rôles Étage ont déjà été supprimés à la main** (déclaration du 20/11). Si Atlas est encore actif, il peut les **recréer** ou continuer à compter : c'est une raison de plus de le mettre en pause **avant** l'activation, puis de relire la liste des rôles du serveur pour vérifier qu'aucun rôle « Étage » n'est réapparu (comportement d'Atlas non vérifié depuis le dépôt). Voir la section 4 bis pour ce que cette suppression change.
 4. Contrôle dans le **journal d'audit** du serveur Discord (Paramètres du serveur) qu'aucun nouveau changement de rôle Étage n'est fait par Atlas après la pause. L'absence d'événement récent ne prouve pas à elle seule l'arrêt : surveille pendant la période d'essai.
 
 **Retour arrière :** rétablis les réglages d'Atlas que tu as sauvegardés ; ne recrée jamais les 134 rôles « à l'aveugle ».
@@ -155,8 +156,95 @@ Sur le serveur The Tower, avec un compte qui a « Gérer le serveur » :
 ### Si on l'oublie
 
 - **Deux sources de progression en parallèle** : Atlas continue d'attribuer ses rôles Étage selon ses propres règles pendant que GameNight compte les étages gagnés par les défis. Les membres voient deux échelles qui ne concordent pas. C'est précisément la condition 5 de [CONDITIONS_REUSSITE_LANCEMENT.md](CONDITIONS_REUSSITE_LANCEMENT.md) (« Ascension sans double progression ») qui n'est alors pas remplie.
-- **Risque sur le plafond de rôles** : le serveur comptait 197 rôles dont 134 « Étage » (audit du 26/10) pour un plafond Discord de 250. Si Atlas crée encore des rôles, tu t'approches du plafond que respectent les espaces d'équipe et la création automatique de rôles (non vérifié : dépend du comportement d'Atlas).
+- **Plafond de rôles** : le serveur comptait 197 rôles dont 134 « Étage » (audit du 26/10) pour un plafond Discord de 250. Avec les 134 rôles supprimés, le prérequis de `DISCORD_ROLE_AUTOCREATE_ENABLED` est levé côté Discord ; relève le **nombre de rôles actuel** (tableau de bord staff v2 si `ADMIN_DASHBOARD_V2_ENABLED` est actif, sinon Paramètres du serveur → Rôles). Si Atlas recrée des rôles, tu te rapproches à nouveau du plafond que respectent les espaces d'équipe et la création automatique de rôles.
 - **Rien ne casse côté GameNight** : le code n'écrit aucun rôle Discord de grade, et les étages gagnés restent. Ce n'est donc **ni bloquant ni irréversible** : mets Atlas en pause dès que tu t'en aperçois ; les écarts déjà créés entre les deux échelles se rattrapent à la main.
+
+## 4 bis. Les rôles « Étage » ont été supprimés : ce que ça change
+
+> Suppression à la main **déclarée par le propriétaire le 20/11/2026** ; elle n'est pas vérifiable depuis le dépôt. Les réponses ci-dessous viennent du code de `main` et des cahiers, avec le fichier à l'appui.
+
+### Où est stocké l'étage d'un joueur
+
+| Donnée | Où | Dépend des rôles Discord ? |
+| --- | --- | --- |
+| **Étages gagnés par les défis** (nouvelle Ascension, base du grade) | Table `TowerChallengeProgress`, colonne `floorsClimbed`, une ligne par communauté et par joueur. Elle augmente de `rewardFloors` (1, 2 ou 3) à chaque défi validé (`src/lib/tower-challenges.ts`, `src/lib/tower-steam-measure.ts`). L'historique de chaque défi est dans `TowerChallengeAttempt` (`rewardFloors`, `status` = `APPROVED`) et `TowerChallengeAttemptParticipant` pour les défis d'équipe | **Non** |
+| **Étage « XP »** affiché sur `/ascension`, `/tower` et dans le profil Discord | Calculé à la lecture par `getTowerProgress(xpTotal, towerLevelsPerFloor)` (`src/lib/tower-progression.ts`) à partir de `CommunityMemberStats.xpTotal` (progression de la saison) et de `Community.towerLevelsPerFloor` | **Non** |
+| **Grade** (Régulars, Irregular, Ranker, High Ranker) | Calculé à la lecture depuis `floorsClimbed` et les défis de la saison (`src/lib/tower-ranks.ts`) ; Irregular = ligne `TowerIrregularGrant` posée à la main par le staff | **Non** : aucun rôle Discord de grade |
+| **Ancien étage d'Atlas** | Rôles Discord « Étage N » et base interne d'Atlas | **Oui** : cette donnée n'a **jamais été copiée dans GameNight** |
+
+Aucune fonction du dépôt ne lit les rôles Discord d'un joueur pour calculer un étage. Le script `scripts/audit-tower-etage-roles.mjs` ne fait que lister les rôles et les salons (deux `GET`, aucune suppression ni écriture) et marque lui-même les membres de chaque rôle « non vérifié ».
+
+### GameNight recrée-t-il les rôles d'étage à l'activation ?
+
+**Non, jamais.** Rien dans le code ne crée ni n'attribue de rôle « Étage » :
+
+- Les seuls appels qui créent des rôles Discord sont : le rôle « Soutien de la Tour » (`booster-support-runner.ts`, interrupteur `DISCORD_BOOSTERS_ENABLED`), le rôle d'une équipe (`discord-team-space-api.ts`, `DISCORD_TEAM_SPACES_ENABLED`) et le rôle de jeu de `/role` (`discord-role-autocreate.ts`, `DISCORD_ROLE_AUTOCREATE_ENABLED`). Aucun n'est activé par les 4 interrupteurs Tower.
+- Activer `TOWER_CHALLENGES_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED` et le drapeau de la communauté ne déclenche aucun script : ils ouvrent les défis, et les annonces passent par la file.
+- Le grade est « dans l'app uniquement » (`src/lib/tower-ranks.ts` : « aucun grade ne donne de droit de modération ni de rôle Discord ») et le cahier §6.3 interdit tout nouveau rôle permanent par étage.
+- `scripts/provision-tower-layout.mjs` n'écrit aucun rôle (simulation).
+
+### Peut-on « resynchroniser » ou importer les étages ?
+
+**Il n'existe aucun import d'étages**, et il n'en existait pas avant la suppression non plus :
+
+- `/tower-admin importer` et `/tower-admin importer-equipe` importent le **catalogue de défis** (titres, consignes, barème), **pas les étages des joueurs**.
+- `audit-tower-etage-roles.mjs` est en lecture seule : il ne peut rien resynchroniser.
+- Décision du cahier §7.2 : « le nouveau compteur démarre de zéro sans effacer les profils GameNight, les soirées ou les autres historiques ». Ce que chaque joueur retrouve donc : son **étage « XP » et son grade tels quels** (en base, intacts) ; ses **étages Tower repartent à 0** et se gagnent par les défis.
+
+### Qu'est-ce qui a pu être perdu ?
+
+- **Rien dans GameNight** : aucune donnée de la base ne dépendait des rôles supprimés.
+- **Possiblement perdu : l'étage d'Atlas de chaque membre.** Il vivait dans les rôles Discord (supprimés) et dans la base d'Atlas (non inspectable depuis le dépôt). Les attributions n'ont jamais été relevées : l'export du 26/10 contient les rôles mais **pas les membres** ([TOWER_ROLE_REVIEW.md](TOWER_ROLE_REVIEW.md)), et leur relevé était à faire à la main ([PLAN-J14-20261201.md](PLAN-J14-20261201.md)). Recréer un rôle crée un rôle **vide** : il ne restitue pas ses membres. Il n'y a donc **pas de sauvegarde connue** de « qui avait quel étage » côté Discord.
+- Ce n'est **pas bloquant pour l'activation** (la décision du cahier est un départ à zéro), mais c'est une perte d'historique à assumer ou à reconstruire.
+
+### Reconstruction, si tu veux honorer les anciens étages
+
+1. **Ne supprime pas Atlas ni ses données** : il peut encore connaître le niveau de chaque membre. Cherche dans son tableau de bord ou ses commandes un classement ou un export (non vérifié : ce dépôt ne contient rien sur ses écrans).
+2. **Journal d'audit Discord** (Paramètres du serveur) : il conserve les entrées **45 jours** seulement (documentation Discord). Il peut montrer les derniers changements de rôles faits par Atlas, **pas l'état complet** : au mieux une reconstruction partielle. Je peux écrire, à ta demande, un script **en lecture seule** pour l'extraire.
+3. **Décide avant d'écrire quoi que ce soit** : écrire directement `floorsClimbed` contournerait la preuve, le vote et les plafonds, et fausserait le grade High Ranker. Pour honorer des vétérans, la voie prévue est le grade **Irregular posé à la main** (`/admin/tower-irregular`, interrupteur `TOWER_IRREGULAR_GRANTS_ENABLED`, prestige sans aucun droit).
+4. Toute écriture en Production passe par une PR dédiée, avec simulation d'abord et ton accord explicite.
+
+### Contrôle en lecture seule à faire avant d'activer (Neon, section 2.1)
+
+Dans l'éditeur SQL (une requête à la fois) :
+
+```sql
+SELECT COUNT(*) AS lignes, COALESCE(SUM("floorsClimbed"), 0) AS etages_total
+FROM "TowerChallengeProgress";
+```
+
+```sql
+SELECT status, COUNT(*) FROM "TowerChallengeAttempt" GROUP BY status;
+```
+
+Attendu **avant la première activation** : `0` ligne, `0` étage, aucune ligne de défi. Si ce n'est pas le cas, la Tour a déjà servi : lance la requête de cohérence ci-dessous. **Zéro ligne en sortie = tout est cohérent** (chaque `floorsClimbed` égale la somme des défis validés ; `TowerChallengeAttempt` permet de le reconstruire).
+
+```sql
+WITH solo AS (
+  SELECT "communityId", "userId", SUM("rewardFloors")::bigint AS f
+  FROM "TowerChallengeAttempt"
+  WHERE status = 'APPROVED' AND "teamId" IS NULL
+  GROUP BY 1, 2
+), equipe AS (
+  SELECT p."communityId", p."userId", SUM(a."rewardFloors")::bigint AS f
+  FROM "TowerChallengeAttemptParticipant" p
+  JOIN "TowerChallengeAttempt" a ON a.id = p."attemptId" AND a."communityId" = p."communityId"
+  WHERE p."rewardedAt" IS NOT NULL
+  GROUP BY 1, 2
+), calc AS (
+  SELECT "communityId", "userId", SUM(f)::bigint AS f
+  FROM (SELECT * FROM solo UNION ALL SELECT * FROM equipe) u
+  GROUP BY 1, 2
+)
+SELECT COALESCE(c."communityId", g."communityId") AS "communityId",
+       COALESCE(c."userId", g."userId") AS "userId",
+       COALESCE(c.f, 0) AS recalcule, COALESCE(g."floorsClimbed", 0) AS stocke
+FROM calc c
+FULL JOIN "TowerChallengeProgress" g ON g."communityId" = c."communityId" AND g."userId" = c."userId"
+WHERE COALESCE(c.f, 0) <> COALESCE(g."floorsClimbed", 0);
+```
+
+(Requêtes de lecture seule : relis-les avant de les lancer ; elles n'ont pas été exécutées pour écrire ce document.)
 
 ## 5. Étape 4 — Interrupteur 4 (défi d'équipe quotidien), **facultatif**
 
