@@ -23,12 +23,19 @@ import {
   planRoleGrant,
   queryKey,
   suggestRoleMatches,
+  tokenRoleMatches,
   topRolePosition,
   type GuildRoleSummary,
   type RoleRefusalReason,
 } from "@/lib/discord-guild-roles";
 import { syncGameRoleToProfile, unsyncGameRoleFromProfile, type RoleProfileSync } from "@/lib/discord-role-sync";
 import { withRoleCreationLock } from "@/lib/discord-role-lock";
+import {
+  requestRoleCreation,
+  roleAutocreateEnabled,
+  roleCreationCap,
+  type RoleRequestResult,
+} from "@/lib/discord-role-autocreate";
 
 /**
  * Commande `/role` — attribution libre-service des rôles de JEU Discord et
@@ -119,6 +126,7 @@ function deadline() {
 const ROLE_CREATION_QUOTA = { limit: 3, windowMs: 60 * 60 * 1000 };
 
 function maxGuildRoles(): number {
+  if (roleAutocreateEnabled()) return roleCreationCap();
   const configured = Number(process.env.DISCORD_ROLE_MAX_GUILD_ROLES);
   return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_GUILD_ROLES;
 }
@@ -185,9 +193,47 @@ async function describeSearch(roles: GuildRoleSummary[], query: string): Promise
   if (exact.length > 1) return `Plusieurs rôles portent ce nom : ${listNames(exact.slice(0, 5))}. Précise lequel tu veux.`;
   const suggestions = suggestRoleMatches(roles, query, 8);
   if (suggestions.length === 0) {
+    const reordered = tokenRoleMatches(roles, query, 8);
+    if (reordered.length > 0) return `Rôles trouvés : ${listNames(reordered)}. Utilise \`/role attribuer jeu:<nom exact>\`.`;
+    if (roleAutocreateEnabled()) {
+      return `Aucun rôle de jeu ne correspond à « ${canonicalRoleName(query)} ». \`/role creer jeu:${canonicalRoleName(query)}\` en demande la création (sans permission, une demande par semaine et par joueur).`;
+    }
     return `Aucun rôle de jeu ne correspond à « ${canonicalRoleName(query)} ». \`/role attribuer jeu:${canonicalRoleName(query)}\` le créera si ta communauté l’autorise.`;
   }
   return `Rôles trouvés : ${listNames(suggestions)}. Utilise \`/role attribuer jeu:<nom exact>\`.`;
+}
+
+function describeAutoRequest(result: RoleRequestResult, name: string): string {
+  switch (result.status) {
+    case "queued":
+      return `🕐 Demande enregistrée : le rôle **${name}** sera créé (sans aucune permission) puis ajouté à ton compte dans quelques instants. Une création par semaine et par joueur.`;
+    case "already_pending":
+      return `Une demande pour **${name}** est déjà en cours : le rôle arrive dans quelques instants. Relance \`/role attribuer\` ensuite si tu ne l'as pas.`;
+    case "quota":
+      return `Tu as déjà demandé la création d'un rôle cette semaine (une par joueur et par semaine). Prochaine demande possible le ${result.nextAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}.`;
+    case "guild_full":
+      return describeRefusal("guild_full", []);
+    case "busy":
+      return "Une autre demande de rôle est en cours pour ton compte. Réessaie dans quelques secondes.";
+    default:
+      return "La création automatique de rôle n'est pas disponible pour le moment. Un administrateur peut créer le rôle manuellement.";
+  }
+}
+
+async function requestAutoCreation(input: { guildId: string; invokerId: string; name: string; roleCount: number }): Promise<string> {
+  const community = await prisma.community.findFirst({
+    where: { discordGuildId: input.guildId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!community) return describeAutoRequest({ status: "unavailable" }, input.name);
+  const result = await requestRoleCreation({
+    communityId: community.id,
+    guildId: input.guildId,
+    discordId: input.invokerId,
+    name: input.name,
+    roleCount: input.roleCount,
+  });
+  return describeAutoRequest(result, input.name);
 }
 
 async function assignRole(input: {
@@ -326,6 +372,11 @@ export async function runRoleCommand(
     case "already":
       return `Tu as déjà le rôle **${plan.role.name}**.`;
     case "create": {
+      // Création automatique (DISCORD_ROLE_AUTOCREATE_ENABLED) : aucune écriture ici, la
+      // demande est enfilée et exécutée par l'executor (quota 1/semaine, plafond, alerte 80 %).
+      if (roleAutocreateEnabled()) {
+        return requestAutoCreation({ guildId: input.guildId, invokerId: input.invokerId, name: plan.name, roleCount: roles.length });
+      }
       // Création bornée : permission du bot, quota horaire par joueur, plafond de
       // rôles de la guilde (vérifié dans planRoleGrant), et verrou partagé.
       if (!checkRateLimit(input.invokerId, "discord-role-create", ROLE_CREATION_QUOTA)) {

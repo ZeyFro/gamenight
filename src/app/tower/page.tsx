@@ -9,6 +9,8 @@ import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { getTowerProgress } from "@/lib/tower-progression";
 import { prisma } from "@/lib/prisma";
 import { pageMetadata } from "@/lib/page-title";
+import { getTowerReplacementOffer } from "@/lib/tower-challenge-replacement";
+import { replaceTowerChallengeAction } from "./actions";
 import { TowerChallengeAppealForm } from "@/components/tower/TowerChallengeAppealForm";
 import { isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
 
@@ -18,7 +20,15 @@ const challengeStatus: Record<string, string> = {
   ASSIGNED: "À réaliser", SUBMITTED: "En vote", APPROVED: "Réussi", REJECTED: "Refusé",
 };
 
-export default async function TowerPage() {
+const replacementResult: Record<string, string> = {
+  REPLACED: "Défi remplacé par un défi équivalent. Ton quota et ton échéance ne changent pas.",
+  NO_EQUIVALENT: "Aucun défi équivalent n’est disponible pour le moment.",
+  BLOCKED: "Ce défi ne peut pas être remplacé (déjà remplacé, plus à réaliser ou jeu possédé).",
+  NOT_FOUND: "Défi introuvable.", RATE: "Trop de demandes, réessaie dans une minute.",
+};
+
+export default async function TowerPage({ searchParams }: { searchParams: Promise<{ remplacement?: string }> }) {
+  const { remplacement } = await searchParams;
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
 
@@ -30,7 +40,7 @@ export default async function TowerPage() {
     </main>;
   }
 
-  const [community, membership, stats, challenges, leaderboard, teamStates, appealable] = await Promise.all([
+  const [community, membership, stats, challenges, leaderboard, teamStates, appealable, replacementOffer] = await Promise.all([
     prisma.community.findUnique({ where: { id: communityId }, select: {
       name: true, towerLevelsPerFloor: true, towerChallengesEnabled: true, communityTeamsEnabled: true, discordGuildId: true,
     } }),
@@ -40,6 +50,7 @@ export default async function TowerPage() {
     getTowerSeasonLeaderboard({ communityId, userId: user.id }),
     getTowerTeamDailyStates({ communityId, userId: user.id }),
     getTowerChallengeAppealableAttempts({ communityId, userId: user.id }),
+    getTowerReplacementOffer({ communityId, userId: user.id }),
   ]);
   const ascension = getTowerProgress(stats?.xpTotal ?? 0, community?.towerLevelsPerFloor ?? 10);
   const season = leaderboard.status === "LEADERBOARD" ? leaderboard.season : getTowerSchoolSeason();
@@ -66,6 +77,11 @@ export default async function TowerPage() {
       </Link>}
       {membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER")
         && <Link href="/admin/tower-appeals" className="mt-3 inline-flex rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-surface-hover">Ouvrir la file de modération</Link>}
+      {process.env.TOWER_CHALLENGE_PROPOSALS_ENABLED === "true" && <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <Link href="/tower/propositions" className="font-medium text-accent underline-offset-4 hover:underline">Proposer un défi (Ranker et plus)</Link>
+        {membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER")
+          && <Link href="/admin/tower-propositions" className="font-medium text-accent underline-offset-4 hover:underline">Valider les propositions</Link>}
+      </div>}
     </header>
 
     <section className="grid gap-4 md:grid-cols-2" aria-label="Progression personnelle">
@@ -82,6 +98,8 @@ export default async function TowerPage() {
       </Card>
     </section>
 
+    {remplacement && replacementResult[remplacement] ? <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{replacementResult[remplacement]}</p> : null}
+
     <section className="grid gap-4 lg:grid-cols-2" aria-label="Défis en cours">
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Défi solo</p>
@@ -94,13 +112,18 @@ export default async function TowerPage() {
             <p className="mt-1 text-xs text-muted">Inscris-le dans le jeu si possible. Sinon, ajoute-le à la composition GameNight qui accompagne la capture. Il associe les éléments de preuve, mais ne prouve pas la date de la capture.</p>
           </div>}
           <p className="text-xs text-muted">Échéance : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(currentChallenge.expiresAt)} (Paris)</p>
+          {replacementOffer.status === "OFFER" && replacementOffer.attemptId === currentChallenge.id && <form action={replaceTowerChallengeAction} className="flex flex-col gap-2 rounded-lg bg-surface-hover p-3">
+            <p className="text-sm text-foreground">Ce défi demande {replacementOffer.gameName ? `« ${replacementOffer.gameName} »` : "un jeu"}, absent de ta bibliothèque. Aucun achat n’est obligatoire : tu peux le remplacer une fois par un défi équivalent, sans perdre ton quota.</p>
+            <input type="hidden" name="attemptId" value={currentChallenge.id} />
+            <button type="submit" className="min-h-11 self-start rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface">Remplacer ce défi</button>
+          </form>}
         </> : <p className="text-sm text-muted">{community?.towerChallengesEnabled ? "Aucun défi solo en cours. Choisis-en un avec /tower defi sur Discord." : "Les défis ne sont pas encore activés pour cette communauté."}</p>}
       </Card>
       {appealableAttempts.length > 0 && <Card className="flex flex-col gap-3 lg:col-span-2">
         <h2 className="text-lg font-semibold text-foreground">Contester un refus</h2>
         {appealableAttempts.map(attempt => <div key={attempt.id} className="border-t border-border pt-3 first:border-0 first:pt-0">
           <p className="font-medium text-foreground">{attempt.title}{attempt.teamName ? ` · ${attempt.teamName}` : ""}</p>
-          <p className="text-sm text-muted">Une contestation motivée est possible dans les 24 heures qui suivent l’annonce du résultat du vote.</p>
+          <p className="text-sm text-muted">Une contestation motivée est possible dans les 48 heures qui suivent l’annonce du résultat du vote.</p>
           <TowerChallengeAppealForm attemptId={attempt.id} />
         </div>)}
       </Card>}

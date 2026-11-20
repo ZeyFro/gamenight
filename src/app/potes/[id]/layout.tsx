@@ -18,6 +18,7 @@ import { getTowerProgressForProfile } from "@/lib/tower-personal-progress";
 import { TowerRankBadge } from "@/components/TowerRankBadge";
 import { loadProfilePresentation } from "@/lib/profile-customization";
 import { BadgeShowcase, ProfileBanner, ProfileCosmeticsRoot, ProfileTitle, StyledName } from "@/components/ProfileCosmetics";
+import { getTowerSeasonAwardsForProfile } from "@/lib/tower-season-awards";
 
 /**
  * En-tête + onglets partagés par les 5 sous-routes de `/potes/[id]`
@@ -68,6 +69,8 @@ export default async function PoteLayout({
   const rank = rankForLevel(level);
   // Rang The Tower : étages gagnés avec les défis (jamais l'XP) ; `null` tant que la Tour est éteinte.
   const tower = await getTowerProgressForProfile(user.id, id);
+  // Titres et cadres saisonniers Tower (cosmétiques, limités dans le temps) ; vide tant que leur drapeau est éteint.
+  const towerAwards = await getTowerSeasonAwardsForProfile(user.id, id);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -93,6 +96,7 @@ export default async function PoteLayout({
                 {rank.name}
               </span>
               {tower && <TowerRankBadge rank={tower.rank} />}
+              {towerAwards.map(award => <span key={award.seasonName} className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold text-foreground" style={{ borderColor: award.frameHex }} title={`Distinction Tower valable jusqu’à la fin de la saison suivante`}>{award.title}</span>)}
               <Badge tone={pote.steamId64 ? "accent" : "neutral"}>
                 {pote.steamId64 ? "Steam lié" : "Steam non lié"}
               </Badge>

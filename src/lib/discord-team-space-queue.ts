@@ -37,10 +37,11 @@ const slotFor = (guildId: string, teamId: string, intent: TeamSpaceIntent, disco
   `${guildId}:ADMIN:${teamId}:team-space-${intent}${intent === "member" ? `-${discordId}` : ""}`;
 
 /**
- * Idempotent par fenêtre de 10 minutes (mêmes intention, équipe et membre) ; une
- * demande plus récente sur le même créneau remplace une demande encore en
- * attente (`supersedeStaleDeliveries`), donc « rejoint puis quitte » converge
- * vers l'état final, relu au moment de l'exécution.
+ * Idempotent par fenêtre de 10 minutes pour `provision` et `reconcile`. Une demande
+ * `member` (accès d'un membre) est distincte à chaque appel : « rejoint puis quitte »
+ * en moins de 10 minutes doit encore produire le retrait du rôle, même si la livraison
+ * d'ajout est déjà envoyée. Une demande plus récente sur le même créneau remplace une
+ * demande encore en attente (`supersedeStaleDeliveries`) ; l'état final est relu à l'exécution.
  */
 export async function enqueueTeamSpaceSync(
   input: { teamId: string; communityId: string; intent: TeamSpaceIntent; discordId?: string },
@@ -59,7 +60,9 @@ export async function enqueueTeamSpaceSync(
       category: "ADMIN",
       eventType: TEAM_SPACE_EVENT,
       sourceId: input.teamId,
-      occurrence: `${input.intent}:${input.discordId ?? "-"}:${Math.floor(now.getTime() / BUCKET_MS)}`,
+      occurrence: input.intent === "member"
+        ? `member:${input.discordId}:${now.getTime()}`
+        : `${input.intent}:${input.discordId ?? "-"}:${Math.floor(now.getTime() / BUCKET_MS)}`,
       payload: { intent: input.intent, ...(input.discordId ? { discordId: input.discordId } : {}) },
     });
     await enqueueDelivery({

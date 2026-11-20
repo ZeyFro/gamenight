@@ -106,7 +106,7 @@ describe("register-tower-guild-commands : simulation", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     const all = c.out.join("\n");
     expect(all).toContain("Simulation");
-    for (const name of manifestNames) expect(all).toContain(`POST (upsert) /${name}`);
+    for (const command of manifest) expect(all).toContain(command.type === 3 ? `POST (upsert) « ${command.name} » (commande de message` : `POST (upsert) /${command.name}`);
     expect(all).toContain("permission 32");
     expect(all).toContain("/gamenight setup");
     expect(all).toContain("Aucun PUT global");
@@ -174,7 +174,7 @@ describe("register-tower-guild-commands : --check", () => {
     expect(c.out).toContain("/role : différente");
     expect(c.out).toContain("/gamenight : absente");
     expect(c.out.at(-1)).toBe("1 commande(s) du serveur hors manifeste : non touchées.");
-    expect(c.out.filter((l) => /^\/[a-z-]+ : /.test(l))).toHaveLength(manifest.length);
+    expect(c.out.filter((l) => /^\/[A-Za-z-]+ : /.test(l))).toHaveLength(manifest.length);
   });
 
   it("toutes présentes quand Discord renvoie les commandes avec ses champs ajoutés", async () => {

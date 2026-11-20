@@ -6,6 +6,7 @@ import { Logo } from "@/components/Logo";
 import { Sidebar } from "@/components/app/Sidebar";
 import { Avatar } from "@/components/ui/Avatar";
 import { levelForXp } from "@/lib/xp";
+import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { CommunitySwitcher } from "@/components/CommunitySwitcher";
@@ -79,7 +80,7 @@ async function renderHeader() {
                 initialMessages={initialChatMessages}
               />
             )}
-            <NotificationBell key={`notifications:${communityId ?? "none"}`} initialUnreadCount={unreadCount} notifications={notifications} />
+            <NotificationBell key={`notifications:${communityId ?? "none"}`} initialUnreadCount={unreadCount} notifications={notifications} centerHref={isNotificationCenterEnabled() ? "/notifications" : undefined} />
             <Link href="/profil" aria-label="Ouvrir mon profil" className="hidden sm:block"><Avatar src={user.discordAvatar} alt="" size={32} /></Link>
           </div>
         )}
