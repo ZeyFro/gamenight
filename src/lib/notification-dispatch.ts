@@ -8,6 +8,7 @@ import { onboardingReminderResolver } from "@/lib/onboarding-reminder";
 import { TOWER_VOTE_EVENT_TYPES, towerChallengeAnnounceResolver } from "@/lib/tower-challenge-announcements";
 import { TOWER_STEAM_EVENT_TYPES, towerSteamAnnounceResolver } from "@/lib/tower-steam-announcements";
 import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-space-queue";
+import { ROLE_AUTOCREATE_EVENT, roleCreationResolver } from "@/lib/discord-role-autocreate";
 import { TOURNAMENT_TEAM_NOTIFY, teamTournamentNoticeResolver } from "@/lib/tournament-team-notify";
 import { sessionSpaceSyncResolver } from "@/lib/session-space-queue";
 import { SESSION_SPACE_EVENT } from "@/lib/session-space-plan";
@@ -37,6 +38,7 @@ export const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "ROULETTE") return rouletteDmResolver.resolve(input);
     if (input.event.category === "REWARD") return communitySystemAnnounceResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TEAM_SPACE_EVENT) return teamSpaceSyncResolver.resolve(input);
+    if (input.event.category === "ADMIN" && input.event.eventType === ROLE_AUTOCREATE_EVENT) return roleCreationResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TOURNAMENT_TEAM_NOTIFY) return teamTournamentNoticeResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === SESSION_SPACE_EVENT) return sessionSpaceSyncResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TEAM_APPLICATION_NOTIFY) return teamApplicationNoticeResolver.resolve(input);

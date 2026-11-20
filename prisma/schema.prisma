@@ -3049,6 +3049,7 @@ model Community {
   teamTournamentGuests TeamTournamentGuest[]
   teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
+  discordRoleRequests DiscordRoleRequest[]
   sessionDiscordSpaces SessionDiscordSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
   towerChallengesEnabled Boolean @default(false)
@@ -3434,6 +3435,39 @@ model DiscordTeamSpace {
 
   @@unique([teamId, communityId])
   @@index([communityId])
+}
+
+// Demande de création d'un rôle de jeu Discord par /role (flag DISCORD_ROLE_AUTOCREATE_ENABLED).
+// Aucune écriture Discord directe : la ligne PENDING est exécutée par l'executor (création d'un rôle SANS
+// permission, attribution au demandeur). Une ligne par (serveur, nom normalisé) : une nouvelle demande après
+// échec ou suppression manuelle du rôle réutilise la ligne. Quota : 1 demande par joueur et par semaine
+// (hors demandes en échec), compté sur requestedAt.
+enum DiscordRoleRequestStatus {
+  PENDING
+  CREATED
+  FAILED
+}
+
+model DiscordRoleRequest {
+  id                 String                   @id @default(cuid())
+  communityId        String
+  guildId            String
+  requesterDiscordId String
+  nameKey            String
+  name               String
+  status             DiscordRoleRequestStatus @default(PENDING)
+  roleId             String?
+  failureReason      String?
+  requestedAt        DateTime                 @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, nameKey])
+  @@index([requesterDiscordId, requestedAt])
+  @@index([communityId, status])
 }
 
 model SessionGalleryMedia {

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ upsert: vi.fn(), updateMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createMany: vi.fn(), updateMany: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: { cronLock: { upsert: mocks.upsert, updateMany: mocks.updateMany } },
+  prisma: { cronLock: { createMany: mocks.createMany, updateMany: mocks.updateMany } },
 }));
 
 import { withRoleCreationLock } from "./discord-role-lock";
@@ -16,9 +16,9 @@ beforeEach(() => {
   locked = false;
   active = 0;
   maxActive = 0;
-  mocks.upsert.mockReset();
+  mocks.createMany.mockReset();
   mocks.updateMany.mockReset();
-  mocks.upsert.mockResolvedValue({});
+  mocks.createMany.mockResolvedValue({ count: 1 });
   mocks.updateMany.mockImplementation(async ({ data }: { data: { lockedAt: Date | null } }) => {
     if (data.lockedAt === null) {
       locked = false;
