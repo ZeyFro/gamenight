@@ -36,6 +36,8 @@ import { WebPushSettings } from "@/components/WebPushSettings";
 import { webPushConfig, webPushConfigIssue } from "@/lib/web-push-config";
 import { leadingGameStyles } from "@/lib/game-style-quiz";
 import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
+import { GameLevelsSettings } from "@/components/GameLevelsSettings";
+import { isGameLevelsEnabled } from "@/lib/game-levels-rules";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -126,13 +128,14 @@ export default async function ProfilParametresPage({
     materiel?: string;
     identifiants?: string;
     connexions?: string;
+    niveaux?: string;
     style?: string;
   }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, connexions, style } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, connexions, niveaux, style } = await searchParams;
   const connectionsEnabled = isDiscordConnectionsScopeEnabled();
   const suggestions = connectionsEnabled
     ? await prisma.platformConnectionSuggestion.findMany({ where: { userId: user.id }, select: { platform: true, value: true } })
@@ -205,6 +208,7 @@ export default async function ProfilParametresPage({
           </div>}
         </Card>
       </StaggerItem>}
+      {isGameLevelsEnabled() && <StaggerItem><GameLevelsSettings userId={user.id} feedback={niveaux} /></StaggerItem>}
       <StaggerItem>
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold">Mes identifiants de jeu</h2>

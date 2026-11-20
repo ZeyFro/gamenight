@@ -42,4 +42,11 @@ Le workflow retente les HTTP 503/504 et les erreurs de transport, trois appels a
 
 ## Garde horaire côté application
 
-Le cron `notification-executor` appelle aussi `assignDailyTowerTeamChallenges` via `settleDueTowerChallenges`. Pour que l'attribution ne parte jamais avant 18:00 Paris (décision du 17/11/2026), `settleDueTowerChallenges` n'appelle l'attribution que si `isTowerTeamDailyDue(maintenant)` (`src/lib/tower-challenge-rules.ts`) est vrai, c'est-à-dire à partir de 18:00:00 Europe/Paris (CET et CEST) jusqu'à minuit Paris. Avant 18:00, le passage de l'executor ne fait aucune attribution et n'est pas compté en échec. Une attribution tardive après 18:00 reste valable jusqu'à minuit ; la clé `team-<jour de Paris>` garantit un seul défi d'équipe par jour. La route `/api/cron/tower-team-daily` n'a pas cette garde : l'horaire de son appel est porté par le workflow.
+Le cron `notification-executor` appelle aussi `assignDailyTowerTeamChallenges` via `settleDueTowerChallenges`. Pour que l'attribution ne parte jamais avant 18:00 Paris (décision du 17/11/2026), `settleDueTowerChallenges` n'appelle l'attribution que si `isTowerTeamDailyDue(maintenant)` (`src/lib/tower-challenge-rules.ts`) est vrai, c'est-à-dire à partir de 18:00:00 Europe/Paris (CET et CEST) jusqu'à minuit Paris. Avant 18:00, le passage de l'executor ne fait aucune attribution et n'est pas compté en échec. Une attribution tardive après 18:00 reste valable jusqu'à minuit ; la clé `team-<jour de Paris>` garantit un seul défi d'équipe par jour.
+
+La garde est portée par le service lui-même (`assignDailyTowerTeamChallenges`, avant toute lecture) et par les deux points d'entrée qui pourraient être appelés hors horaire :
+
+- la route `/api/cron/tower-team-daily` répond `{ enabled: true, due: false, checked: 0, failed: 0, complete: true }` sans rien attribuer avant 18:00 Paris, même appelée à la main ou par un ordonnanceur mal réglé ;
+- la commande/bouton Discord (`getTeamDailyTowerChallenge`) répond `NOT_YET` (« Le défi d'équipe du jour est attribué à 18:00 (heure de Paris) ») et ne crée aucune tentative avant 18:00 Paris. Une tentative déjà créée reste consultable.
+
+Les tests `tower-team-daily.test.ts`, `tower-team-daily-command-guard.test.ts` et `route.test.ts` couvrent 17:59:59/18:00:00 à Paris en CET et en CEST.

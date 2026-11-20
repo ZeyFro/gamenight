@@ -213,7 +213,8 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
       roleId: "role-flow",
       guildId: GUILD,
     });
-    expect(calls.added.sort()).toEqual([CREATOR_DISCORD, MEMBER_DISCORD]);
+    // Le second passage réconcilie les accès (PUT de rôle idempotent) : on compare les membres distincts.
+    expect([...new Set(calls.added)].sort()).toEqual([CREATOR_DISCORD, MEMBER_DISCORD]);
 
     // Départ : l'état courant décide, le rôle de cette seule équipe est retiré, aucune progression écrite.
     await db.communityTeamMember.deleteMany({ where: { teamId: ids.team, userId: ids.member } });

@@ -26,6 +26,7 @@ import { isTournamentPredictionsEnabled } from "@/lib/tournament-prediction-rule
 import { TournamentPredictions } from "@/components/tournaments/TournamentPredictions";
 import { findActiveMembership } from "@/lib/community-access";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
+import { isRegisteredTeamTournament } from "@/lib/tournament-team-guards";
 
 export const metadata = pageMetadata("Tournoi");
 
@@ -106,6 +107,8 @@ export default async function TournoiDetailPage({
     },
   });
   if (!tournament) notFound();
+  // Tournoi d'équipes inscrites : page dédiée (confirmation des résultats par les capitaines).
+  if (await isRegisteredTeamTournament(tournament.id)) redirect(`/tournois/equipes/${tournament.id}`);
 
   const predictionsEnabled = tournament.format === "INDIVIDUAL" && isTournamentPredictionsEnabled() && !!(await findActiveMembership(user.id, await statsCommunityIdForSession(tournament.communityId)));
   const scopedDb = predictionsEnabled ? await getScopedPrisma(user.id) : null;

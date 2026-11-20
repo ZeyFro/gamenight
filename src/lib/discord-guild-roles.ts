@@ -133,6 +133,26 @@ export function suggestRoleMatches(roles: GuildRoleSummary[], query: string, lim
   return scored.slice(0, limit).map((entry) => entry.role);
 }
 
+/**
+ * Recherche tolérante à l'ordre des mots : tous les mots de la saisie (normalisés, sans accents ni
+ * ponctuation) doivent figurer dans le nom du rôle. « breath wild zelda » retrouve
+ * « Zelda : Breath of the Wild ». Lecture seule, rôles sensibles exclus.
+ */
+export function tokenRoleMatches(roles: GuildRoleSummary[], query: string, limit = 5): GuildRoleSummary[] {
+  const key = queryKey(query);
+  if (!key) return [];
+  const tokens = key.split(" ").filter((token) => token.length > 1);
+  if (tokens.length === 0) return [];
+  return roles
+    .filter((role) => !isSensitiveRole(role))
+    .filter((role) => {
+      const words = new Set(comparableKey(role.name).split(" "));
+      return tokens.every((token) => words.has(token));
+    })
+    .sort((a, b) => a.name.length - b.name.length || a.position - b.position)
+    .slice(0, limit);
+}
+
 export type RoleRefusalReason =
   | "invalid_name"
   | "sensitive"

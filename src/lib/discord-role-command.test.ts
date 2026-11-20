@@ -16,7 +16,7 @@ vi.mock("@/lib/prisma", () => ({
     community: { findFirst: prismaMocks.communityFindFirst },
     tag: { upsert: prismaMocks.tagUpsert, findUnique: prismaMocks.tagFindUnique },
     userTag: { upsert: prismaMocks.userTagUpsert, deleteMany: prismaMocks.userTagDeleteMany },
-    cronLock: { upsert: prismaMocks.cronUpsert, updateMany: prismaMocks.cronUpdateMany },
+    cronLock: { upsert: prismaMocks.cronUpsert, createMany: prismaMocks.cronUpsert, updateMany: prismaMocks.cronUpdateMany },
   },
 }));
 
