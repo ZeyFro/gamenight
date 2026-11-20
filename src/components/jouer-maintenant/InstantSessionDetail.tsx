@@ -13,6 +13,7 @@ import {
   getInstantSessionViewAction,
   joinInstantSessionAction,
   leaveInstantSessionAction,
+  toggleInstantSessionInterestAction,
 } from "@/app/jouer-maintenant/actions";
 import { INITIAL_INSTANT_SESSION_ACTION_STATE } from "@/app/jouer-maintenant/action-state";
 
@@ -75,6 +76,11 @@ export function InstantSessionDetail({
     INITIAL_INSTANT_SESSION_ACTION_STATE
   );
 
+  const [interestState, interestAction, interestPending] = useActionState(
+    toggleInstantSessionInterestAction,
+    INITIAL_INSTANT_SESSION_ACTION_STATE
+  );
+
   const refreshRef = useRef(false);
   async function refresh() {
     if (refreshRef.current || document.hidden) return;
@@ -97,7 +103,7 @@ export function InstantSessionDetail({
   // serveur avant d'appeler `setView`) — jamais un `setState` synchrone
   // dans le corps de l'effet lui-même.
   useEffect(() => {
-    if (joinState.status !== "success" && leaveState.status !== "success") return;
+    if (joinState.status !== "success" && leaveState.status !== "success" && interestState.status !== "success") return;
     let cancelled = false;
     getInstantSessionViewAction(instantSessionId).then((fresh) => {
       if (cancelled) return;
@@ -112,7 +118,7 @@ export function InstantSessionDetail({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [joinState, leaveState]);
+  }, [joinState, leaveState, interestState]);
 
   // Polling 30s conscient de la visibilité — voir le commentaire de
   // fichier ci-dessus, identique à `ChatMessages`.
@@ -225,6 +231,20 @@ export function InstantSessionDetail({
             {joinPending ? "…" : "Rejoindre 🎮"}
           </Button>
         </form>
+      )}
+      {!isEnded && view.interestEnabled && !view.viewerIsParticipant && !view.viewerIsCreator && (
+        <form action={interestAction}>
+          <input type="hidden" name="instantSessionId" value={instantSessionId} />
+          {view.viewerIsInterested && <input type="hidden" name="remove" value="1" />}
+          <Button type="submit" variant="secondary" fullWidthOnMobile disabled={interestPending}>
+            {interestPending ? "…" : view.viewerIsInterested ? "Plus intéressé" : "Intéressé 👀"}
+          </Button>
+        </form>
+      )}
+      {!isEnded && view.interestEnabled && view.interested.length > 0 && (
+        <p className="text-sm text-muted">
+          Intéressés ({view.interested.length}) : {view.interested.map((person) => person.discordName).join(", ")}. Cette session expire 2 h après sa création.
+        </p>
       )}
       {joinState.status === "error" && (
         <p className="text-sm text-destructive">

@@ -42,8 +42,10 @@ export async function withRoleCreationLock<T>(input: {
   const now = input.now ?? Date.now;
   const waitMs = input.waitMs ?? 3_000;
 
-  // La ligne peut ne pas exister : `upsert` idempotent, sans écraser un verrou.
-  await prisma.cronLock.upsert({ where: { name }, update: {}, create: { name } });
+  // La ligne peut ne pas exister. `createMany … skipDuplicates` (INSERT … ON CONFLICT DO NOTHING)
+  // est sûr sous concurrence, contrairement à `upsert` qui peut lever P2002 quand deux
+  // demandes créent la même ligne au même instant.
+  await prisma.cronLock.createMany({ data: [{ name }], skipDuplicates: true });
 
   const deadline = now() + waitMs;
   for (;;) {

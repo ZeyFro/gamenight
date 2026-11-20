@@ -38,6 +38,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("@/lib/session-access", () => ({ canAccessSession, inviteToSession, revokeSessionInvite }));
 vi.mock("@/lib/session-announce", () => ({ enqueueSessionInviteSync }));
+vi.mock("@/lib/session-space-queue", () => ({ requestSessionSpaceMemberSyncForUser: vi.fn() }));
 
 import { addSessionInviteAction, revokeSessionInviteAction, retrySessionInviteSyncAction } from "./invites";
 

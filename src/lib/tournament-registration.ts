@@ -4,6 +4,7 @@ import { lockCommunityProgress } from "@/lib/member-stats";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { buildBracketInTransaction } from "@/lib/tournaments";
+import { isRegisteredTeamTournament } from "@/lib/tournament-team-guards";
 import { enqueueTournamentThreadMember } from "@/lib/tournament-announce";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
 
@@ -14,6 +15,8 @@ export async function registerTournamentParticipant(userId: string, tournamentId
       { id: string; status: string; maxPlayers: number; announceViaBot: boolean; communityId: string | null }[]
     >`SELECT id, status, "maxPlayers", "announceViaBot", "communityId" FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE`;
     if (!tournament || tournament.status !== "REGISTRATION") return "unavailable";
+    // Tournoi d'équipes inscrites : on s'inscrit par son équipe (capitaine), jamais individuellement.
+    if (await isRegisteredTeamTournament(tournamentId, tx)) return "unavailable";
     const communityId = await statsCommunityIdForSession(tournament.communityId);
     if (!(await lockCommunityProgress(tx, communityId, userId))) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
