@@ -1,12 +1,50 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import type { TowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { getLastCompletedTowerSeason } from "@/lib/tower-season-podium-rules";
 import { groupCoWinners } from "@/lib/tower-standings";
 
 const actorSchema = z.object({ userId: z.string().min(1).max(191), communityId: z.string().min(1).max(191) });
 
 const PODIUM_PLACES = 3;
+
+export type TowerPodiumRow = { userId: string; displayName: string; rewardFloors: bigint; difficultWins: bigint; reachedAt: Date };
+
+/** Podium d'une saison : membres ACTIFS, trois premières places ex æquo compris (même requête pour la lecture et les distinctions). */
+export async function readTowerSeasonPodiumRows(scopedDb: Prisma.TransactionClient, communityId: string, season: TowerSchoolSeason): Promise<TowerPodiumRow[]> {
+  return scopedDb.$queryRaw<{
+    userId: string; displayName: string; rewardFloors: bigint; difficultWins: bigint; reachedAt: Date;
+  }[]>`
+    WITH earned AS (
+      SELECT a."userId", a."rewardFloors", a."rewardedAt" AS "earnedAt"
+      FROM "TowerChallengeAttempt" a
+      WHERE a."communityId" = ${communityId} AND a."teamId" IS NULL AND a.status = 'APPROVED'
+        AND a."rewardedAt" >= ${season.startAt} AND a."rewardedAt" < ${season.endAt}
+      UNION ALL
+      SELECT p."userId", a."rewardFloors", p."rewardedAt" AS "earnedAt"
+      FROM "TowerChallengeAttemptParticipant" p
+      JOIN "TowerChallengeAttempt" a ON a.id = p."attemptId" AND a."communityId" = p."communityId"
+      WHERE p."communityId" = ${communityId} AND a."teamId" IS NOT NULL AND a.status = 'APPROVED'
+        AND p."rewardedAt" >= ${season.startAt} AND p."rewardedAt" < ${season.endAt}
+    ), totals AS (
+      SELECT e."userId", u."discordName" AS "displayName", SUM(e."rewardFloors")::bigint AS "rewardFloors",
+        COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins", MAX(e."earnedAt") AS "reachedAt"
+      FROM earned e
+      JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
+      JOIN "User" u ON u.id = e."userId"
+      GROUP BY e."userId", u."discordName"
+    ), ranked AS (
+      SELECT *, RANK() OVER (ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC) AS "podiumRank"
+      FROM totals
+    )
+    SELECT "userId", "displayName", "rewardFloors", "difficultWins", "reachedAt"
+    FROM ranked
+    WHERE "podiumRank" <= ${PODIUM_PLACES}
+    ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC, "userId" ASC
+  `;
+}
 
 /**
  * Read-only podium; eligibility is rechecked even when community isolation is OFF.
@@ -33,36 +71,7 @@ export async function getTowerSeasonPodium(input: unknown, current = new Date())
     `;
     if (!access.length) return { status: "UNAVAILABLE" } as const;
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
-    const rows = await scopedDb.$queryRaw<{
-      userId: string; displayName: string; rewardFloors: bigint; difficultWins: bigint; reachedAt: Date;
-    }[]>`
-      WITH earned AS (
-        SELECT a."userId", a."rewardFloors", a."rewardedAt" AS "earnedAt"
-        FROM "TowerChallengeAttempt" a
-        WHERE a."communityId" = ${communityId} AND a."teamId" IS NULL AND a.status = 'APPROVED'
-          AND a."rewardedAt" >= ${season.startAt} AND a."rewardedAt" < ${season.endAt}
-        UNION ALL
-        SELECT p."userId", a."rewardFloors", p."rewardedAt" AS "earnedAt"
-        FROM "TowerChallengeAttemptParticipant" p
-        JOIN "TowerChallengeAttempt" a ON a.id = p."attemptId" AND a."communityId" = p."communityId"
-        WHERE p."communityId" = ${communityId} AND a."teamId" IS NOT NULL AND a.status = 'APPROVED'
-          AND p."rewardedAt" >= ${season.startAt} AND p."rewardedAt" < ${season.endAt}
-      ), totals AS (
-        SELECT e."userId", u."discordName" AS "displayName", SUM(e."rewardFloors")::bigint AS "rewardFloors",
-          COUNT(*) FILTER (WHERE e."rewardFloors" = 3)::bigint AS "difficultWins", MAX(e."earnedAt") AS "reachedAt"
-        FROM earned e
-        JOIN "Membership" m ON m."userId" = e."userId" AND m."communityId" = ${communityId} AND m.status = 'ACTIVE'
-        JOIN "User" u ON u.id = e."userId"
-        GROUP BY e."userId", u."discordName"
-      ), ranked AS (
-        SELECT *, RANK() OVER (ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC) AS "podiumRank"
-        FROM totals
-      )
-      SELECT "userId", "displayName", "rewardFloors", "difficultWins", "reachedAt"
-      FROM ranked
-      WHERE "podiumRank" <= ${PODIUM_PLACES}
-      ORDER BY "rewardFloors" DESC, "difficultWins" DESC, "reachedAt" ASC, "userId" ASC
-    `;
+    const rows = await readTowerSeasonPodiumRows(scopedDb, communityId, season);
     const names = new Map(rows.map(row => [row.userId, row.displayName]));
     const groups = groupCoWinners(rows.map(row => ({
       userId: row.userId, floors: row.rewardFloors, hardWins: Number(row.difficultWins), reachedAt: row.reachedAt,

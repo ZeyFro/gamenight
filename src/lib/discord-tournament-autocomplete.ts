@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { prisma } from "@/lib/prisma";
 import { resolveTournamentContext } from "@/lib/discord-tournament-commands";
 
@@ -85,6 +86,7 @@ export async function listAutocompleteCandidates(input: {
     where: {
       communityId: input.communityId,
       status: "REGISTRATION",
+      ...publicTeamTournamentWhere(),
       participants: input.mode === "inscription" ? { none: { userId: input.userId } } : { some: { userId: input.userId } },
     },
     select: {

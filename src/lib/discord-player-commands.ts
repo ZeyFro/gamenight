@@ -17,6 +17,7 @@ import { playerListingComponents } from "@/lib/discord-player-listing-components
 import type { DiscordActionRow } from "@/lib/discord-rest";
 import { resolveGameId } from "@/lib/discord-game-lookup";
 import type { InteractionOutput } from "@/lib/discord-interactions";
+import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevel, isGameLevelsEnabled, type GameLevel } from "@/lib/game-levels-rules";
 
 /**
  * `/joueurs` — recherche de partenaires.
@@ -126,10 +127,16 @@ export async function loadPlayerListings(input: {
   communityId: string;
   onlyMine: boolean;
   gameQuery?: string;
+  /** Niveau minimum déclaré pour un jeu déjà résolu (`/joueurs chercher jeu: niveau:`). */
+  levelFilter?: { gameId: string; level: GameLevel };
 }): Promise<PlayerListing[]> {
   const rows = input.onlyMine
     ? await listOwnListings({ userId: input.userId, communityId: input.communityId })
-    : await listCommunityListings({ userId: input.userId, communityId: input.communityId });
+    : await listCommunityListings({
+      userId: input.userId,
+      communityId: input.communityId,
+      ...(input.levelFilter ? { filters: { gameId: input.levelFilter.gameId, level: input.levelFilter.level, levelMatch: "min" as const } } : {}),
+    });
   return filterListings(rows, {
     query: input.gameQuery,
     includeExpired: input.onlyMine,
@@ -148,7 +155,8 @@ export function renderListings(listings: PlayerListing[], communityName: string,
       const when = listing.expired
         ? "⏳ expirée"
         : `expire le ${listing.expiresAt.toLocaleDateString("fr-FR")}`;
-      return `• **${listing.game}** — ${listing.message.slice(0, 140)} · ${listing.authorName} · ${when} · \`${listing.id}\``;
+      const level = listing.authorLevel ? ` · niveau ${GAME_LEVEL_LABELS[listing.authorLevel]}` : "";
+      return `• **${listing.game}** — ${listing.message.slice(0, 140)} · ${listing.authorName}${level} · ${when} · \`${listing.id}\``;
     }),
     onlyMine
       ? "Retire une annonce avec `/joueurs retirer`."
@@ -242,21 +250,37 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
                 : removed === "rate_limited"
                   ? RATE_LIMIT_MESSAGE
                   : "Annonce introuvable ou déjà retirée : rien n’a été modifié.";
+        } else if (subName === "chercher" && text("niveau") && !(isGameLevelsEnabled() && text("jeu") && isGameLevel(text("niveau")))) {
+          // Jamais d'élargissement silencieux : un niveau sans jeu, inconnu ou drapeau éteint est refusé.
+          content = !isGameLevelsEnabled()
+            ? "Les niveaux de jeu ne sont pas activés."
+            : !text("jeu")
+              ? "Précise le jeu pour filtrer par niveau."
+              : `Niveau inconnu : choisis parmi ${GAME_LEVELS.map((level) => GAME_LEVEL_LABELS[level]).join(", ")}.`;
         } else {
-          const listings = await loadPlayerListings({
-            userId: context.userId,
-            communityId: context.communityId,
-            onlyMine: subName === "mes-annonces",
-            gameQuery: subName === "chercher" ? text("jeu") : "",
-          });
-          content = withGameNightLink(
-            renderListings(listings, context.communityName, subName === "mes-annonces"),
-            "/joueurs"
-          );
-          // Discord plafonne à 5 rangées : 4 annonces au maximum, et jamais une
-          // annonce expirée (aucun bouton actif sur une annonce morte).
-          for (const listing of listings.filter((candidate) => !candidate.expired).slice(0, 4)) {
-            components.push(...playerListingComponents({ listingId: listing.id }));
+          const levelText = subName === "chercher" ? text("niveau") : "";
+          const levelGame = levelText ? await resolveGameId(text("jeu")) : null;
+          if (levelGame?.kind === "NONE") {
+            content = "Jeu introuvable : précise le nom exact du jeu.";
+          } else if (levelGame?.kind === "AMBIGUOUS") {
+            content = `Plusieurs jeux correspondent : ${levelGame.names.join(", ")}. Précise le nom exact.`;
+          } else {
+            const listings = await loadPlayerListings({
+              userId: context.userId,
+              communityId: context.communityId,
+              onlyMine: subName === "mes-annonces",
+              gameQuery: subName === "chercher" && !levelGame ? text("jeu") : "",
+              ...(levelGame?.kind === "FOUND" && isGameLevel(levelText) ? { levelFilter: { gameId: levelGame.id, level: levelText } } : {}),
+            });
+            content = withGameNightLink(
+              renderListings(listings, context.communityName, subName === "mes-annonces"),
+              "/joueurs"
+            );
+            // Discord plafonne à 5 rangées : 4 annonces au maximum, et jamais une
+            // annonce expirée (aucun bouton actif sur une annonce morte).
+            for (const listing of listings.filter((candidate) => !candidate.expired).slice(0, 4)) {
+              components.push(...playerListingComponents({ listingId: listing.id }));
+            }
           }
         }
       } catch (error) {

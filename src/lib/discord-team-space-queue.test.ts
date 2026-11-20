@@ -70,6 +70,24 @@ describe("enqueueTeamSpaceSync", () => {
     });
   });
 
+  it("rejoindre puis quitter dans la même fenêtre de 10 minutes produit deux événements distincts", async () => {
+    enableAll();
+    const join = new Date("2026-11-18T12:00:00.000Z");
+    const leave = new Date("2026-11-18T12:03:00.000Z");
+    await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "community-1", intent: "member", discordId: DISCORD }, join);
+    await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "community-1", intent: "member", discordId: DISCORD }, leave);
+    const [first, second] = mocks.event.mock.calls.map(([arg]) => arg.occurrence);
+    expect(first).not.toBe(second);
+  });
+
+  it("garde la fenêtre de 10 minutes pour la création et la réconciliation", async () => {
+    enableAll();
+    await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "community-1", intent: "provision" }, new Date("2026-11-18T12:00:00.000Z"));
+    await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "community-1", intent: "provision" }, new Date("2026-11-18T12:03:00.000Z"));
+    const [first, second] = mocks.event.mock.calls.map(([arg]) => arg.occurrence);
+    expect(first).toBe(second);
+  });
+
   it("refuse une communauté inactive, sans équipes ou sans serveur relié, et un membre invalide", async () => {
     enableAll();
     for (const community of [null, { ...open, status: "PENDING" }, { ...open, communityTeamsEnabled: false }, { ...open, discordGuildId: null }]) {
