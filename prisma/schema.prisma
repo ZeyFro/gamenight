@@ -234,6 +234,9 @@ model User {
   // relations distinctes vers `User` (invité, invitant, révocateur),
   // jamais confondues.
   sessionInvitesReceived SessionInvite[] @relation("SessionInviteUser")
+  projectsOrganized Project[] @relation("ProjectOrganizer")
+  projectEntries ProjectEntry[] @relation("ProjectEntryUser")
+  projectEntriesDecided ProjectEntry[] @relation("ProjectEntryDecider")
   coOrganizedSessions Session[] @relation("SessionCoOrganizer")
   sessionApplications SessionApplication[] @relation("SessionApplicant")
   sessionApplicationsDecided SessionApplication[] @relation("SessionApplicationDecider")
@@ -3049,6 +3052,7 @@ model Community {
   teamTournamentGuests TeamTournamentGuest[]
   teamRecruitmentCriteria TeamRecruitmentCriteria[]
   discordTeamSpaces DiscordTeamSpace[]
+  projects Project[]
   discordRoleRequests DiscordRoleRequest[]
   sessionDiscordSpaces SessionDiscordSpace[]
   towerArbiterConfigurationChanges TowerArbiterConfigurationChange[]
@@ -3435,6 +3439,72 @@ model DiscordTeamSpace {
 
   @@unique([teamId, communityId])
   @@index([communityId])
+}
+
+enum ProjectStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum ProjectEntryStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+// Projet à organisateur (flag PROJECT_ORGANIZER_ENABLED) : distinct des équipes (un joueur peut participer à
+// autant de projets qu'il veut, contrairement à l'équipe principale unique). L'organisateur valide chaque
+// entrée ; le projet se clôture à sa date de fin (wall clock Paris, comme Session.date) ou par l'organisateur,
+// puis ses fils Discord sont archivés 7 jours après la clôture (renommage/archivage, jamais de suppression).
+// Les fils (public d'annonce + privé des participants) ne sont écrits que par l'executor (file PROJECT_SYNC).
+model Project {
+  id              String        @id @default(cuid())
+  communityId     String
+  organizerId     String
+  name            String        @db.VarChar(80)
+  description     String        @db.VarChar(1000)
+  gameName        String?       @db.VarChar(80)
+  maxEntries      Int?
+  endsAt          DateTime
+  status          ProjectStatus @default(OPEN)
+  closedAt        DateTime?
+  archivedAt      DateTime?
+  guildId         String?
+  parentChannelId String?
+  publicThreadId  String?       @unique
+  privateThreadId String?       @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  community Community      @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  organizer User           @relation("ProjectOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  entries   ProjectEntry[]
+
+  @@index([communityId, status, endsAt])
+  @@index([organizerId])
+}
+
+// Entrée d'un joueur dans un projet : PENDING jusqu'à la décision de l'organisateur. La communauté est
+// héritée de Project, comme SessionApplication.
+model ProjectEntry {
+  id          String             @id @default(cuid())
+  projectId   String
+  userId      String
+  message     String?            @db.VarChar(300)
+  status      ProjectEntryStatus @default(PENDING)
+  createdAt   DateTime           @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation("ProjectEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy User?   @relation("ProjectEntryDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, userId])
+  @@index([projectId, status])
+  @@index([userId])
 }
 
 // Demande de création d'un rôle de jeu Discord par /role (flag DISCORD_ROLE_AUTOCREATE_ENABLED).

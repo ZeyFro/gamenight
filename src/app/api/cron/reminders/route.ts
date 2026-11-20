@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sendSessionReminder } from "@/lib/discord-reminder";
 import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
 import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
+import { runProjectLifecycle } from "@/lib/project-space-queue";
 import { scheduleSessionSpaces } from "@/lib/session-space-queue";
 import { logger } from "@/lib/logger";
 import { verifyCronRequest } from "@/lib/cron-auth";
@@ -273,11 +274,17 @@ export async function GET(request: Request) {
       return null;
     });
 
+    // Projets à organisateur (PROJECT_ORGANIZER_ENABLED) : clôture à la date de fin, archivage à J+7 (file seulement).
+    const projects = await runProjectLifecycle(now).catch((error: unknown) => {
+      logger.error("cron:reminders", error, { step: "project-lifecycle" });
+      return null;
+    });
+
     logger.info(
       "cron:reminders",
       `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s), ${staleSkipped.length} seuil(s) obsolète(s) consommé(s) sans envoi, sur ${sessions.length} session(s) vérifiée(s).`
     );
-    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}) });
+    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}), ...(projects?.enabled ? { projects } : {}) });
   } catch (error) {
     // Ne jamais laisser une erreur inattendue remonter en 500 non
     // capturé — cron-job.org compte ça comme un échec et finit par
