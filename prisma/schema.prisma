@@ -45,6 +45,9 @@ enum FreeGameStore {
 model User {
   gamePingOptIns GamePingOptIn[]
   profileVisibility UserProfileVisibility?
+  profileEffectsPreference UserProfileEffectsPreference?
+  profileEntitlements ProfileEntitlement[]
+  profileCustomizations ProfileCustomization[]
   boosterSupports BoosterSupport[]
   gameLevels UserGameLevel[]
   teamApplications TeamApplication[] @relation("TeamApplicant")
@@ -3129,6 +3132,8 @@ enum CommunityChannelCategory {
 model Community {
   gamePingOptIns GamePingOptIn[]
   teamApplications TeamApplication[]
+  profileEntitlements ProfileEntitlement[]
+  profileCustomizations ProfileCustomization[]
   tournamentTeamSettings TournamentTeamSettings[]
   tournamentTeamEntries TournamentTeamEntry[]
   tournamentMatchReports TournamentMatchReport[]
@@ -4252,6 +4257,68 @@ model TowerArbiterConfigurationChange {
   createdAt DateTime @default(now())
 
   @@index([communityId, id(sort: Desc)])
+}
+
+// Personnalisation du profil (PROFILE_CUSTOMIZATION_ENABLED) : DONNÉES DE PRÉSENTATION UNIQUEMENT, aucun avantage de jeu.
+// Source d'une clé de cosmétique ou d'un drapeau d'éligibilité : EARNED (gagné : étages, grades, saisons, tournois, défis),
+// BOOSTER (drapeau d'éligibilité aux exclusifs boosters, attribué par une autre PR), GRANT (attribution staff),
+// PREMIUM (réservé : aucun paiement ni attribution n'est implémenté). Les achats en XP restent dans CommunityMemberCosmetic.
+enum ProfileEntitlementSource {
+  EARNED
+  BOOSTER
+  GRANT
+  PREMIUM
+}
+
+// Droit d'usage d'une clé du catalogue (src/lib/profile-cosmetics.ts) pour un membre d'une communauté.
+// Actif si startsAt <= maintenant, expiresAt vide ou futur, revokedAt vide.
+model ProfileEntitlement {
+  communityId String
+  userId      String
+  key         String   @db.VarChar(64)
+  source      ProfileEntitlementSource
+  reason      String?  @db.VarChar(120)
+  startsAt    DateTime @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId, key, source])
+  @@index([communityId, key])
+  @@index([userId])
+}
+
+// Choix de présentation d'un membre dans une communauté : uniquement des identifiants du catalogue, jamais de CSS ni d'URL libres.
+// showcaseBadgeIds : 0 (vitrine vide) ou 3 à 6 identifiants de Badge réellement débloqués (contrôlé à l'écriture et à la lecture).
+model ProfileCustomization {
+  communityId      String
+  userId           String
+  nameStyleId      String?  @db.VarChar(64)
+  cardThemeId      String?  @db.VarChar(64)
+  frameFxId        String?  @db.VarChar(64)
+  bannerFxId       String?  @db.VarChar(64)
+  effectId         String?  @db.VarChar(64)
+  titleId          String?  @db.VarChar(64)
+  entranceId       String?  @db.VarChar(64)
+  showcaseBadgeIds String[]
+  updatedAt        DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+}
+
+// Préférence du SPECTATEUR : voir ou non les effets animés des profils (sans ligne = effets activés).
+model UserProfileEffectsPreference {
+  userId         String   @id
+  effectsEnabled Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Suggestions d identifiants issues de la connexion Discord (scope OAuth `connections`, optionnel,

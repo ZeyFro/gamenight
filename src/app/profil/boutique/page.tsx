@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
+import Link from "next/link";
 import { getShopState, XP_SHOP_ITEMS } from "@/lib/xp-shop";
+import { PROFILE_COSMETIC_KINDS, PROFILE_KIND_LABELS, getProfileCosmetic, isProfileCustomizationEnabled, profileShopItems } from "@/lib/profile-cosmetics";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { buyShopItemAction, equipShopItemAction } from "./actions";
@@ -35,6 +37,9 @@ export default async function XpShopPage({
     getShopState(user.id, communityId),
     searchParams,
   ]);
+
+  const profileEnabled = isProfileCustomizationEnabled();
+  const profileItems = profileEnabled ? profileShopItems() : [];
 
   return (
     <section className="flex flex-col gap-5">
@@ -88,6 +93,46 @@ export default async function XpShopPage({
           )}
         </section>
       ))}
+      {profileItems.length > 0 && (
+        <section className="flex flex-col gap-4" aria-labelledby="shop-profile">
+          <div>
+            <h3 id="shop-profile" className="text-lg font-semibold text-foreground">Personnalisation du profil</h3>
+            <p className="mt-1 text-sm text-muted">
+              Décoratif uniquement, sans avantage de jeu. Les éléments gagnés (étages, grades, saisons, tournois, défis) et les exclusifs
+              boosters ne s’achètent pas. Équipe-les depuis <Link href="/profil/personnalisation" className="text-accent hover:underline">Personnalisation</Link>.
+            </p>
+          </div>
+          {PROFILE_COSMETIC_KINDS.map((kind) => {
+            const items = profileItems.filter((item) => item.kind === kind);
+            if (items.length === 0) return null;
+            return (
+              <div key={kind} className="flex flex-col gap-2">
+                <h4 className="font-medium text-foreground">{PROFILE_KIND_LABELS[kind]}</h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {items.map((item) => {
+                    const owned = ownedIds.has(item.id);
+                    return (
+                      <Card key={item.id} className="flex items-center justify-between gap-4 p-4">
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground">{item.name}</p>
+                          <p className="text-sm text-muted">{getProfileCosmetic(item.id)?.description}</p>
+                          <p className="text-sm text-muted">{owned ? "Possédé" : `${item.price} XP`}</p>
+                        </div>
+                        {!owned && (
+                          <form action={buyShopItemAction} className="shrink-0">
+                            <input type="hidden" name="itemId" value={item.id} />
+                            <Button type="submit" size="sm" variant="secondary" aria-label={`Acheter ${item.name} pour ${item.price} XP`}>Acheter</Button>
+                          </form>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
     </section>
   );
 }
