@@ -63,14 +63,14 @@ import { Stagger, StaggerItem } from "@/components/motion";
 // jamais devenir un open redirect, même avant la vérification en base.
 const POTE_REDIRECT_PATTERN = /^\/potes\/([a-zA-Z0-9]+)$/;
 
-export default function Home(props: { searchParams: Promise<{ error?: string; redirect?: string }> }) {
+export default function Home(props: { searchParams: Promise<{ error?: string; redirect?: string; compte?: string }> }) {
   return withCommunityReadContext(() => HomeContent(props));
 }
 
 async function HomeContent({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; redirect?: string }>;
+  searchParams: Promise<{ error?: string; redirect?: string; compte?: string }>;
 }) {
   // Feature "forcer la reconnexion globale" (PR 75) — un ancien code
   // utilisait `auth()` directement ici pour décider d'afficher la page de
@@ -82,7 +82,7 @@ async function HomeContent({
   // rendu une page blanche au lieu du bouton de connexion, l'inverse du
   // but de la feature.
   const user = await getCurrentUser({ allowCommunitySelection: true });
-  const { error, redirect: redirectParam } = await searchParams;
+  const { error, redirect: redirectParam, compte } = await searchParams;
   const errorView = error ? authErrorView(error) : null;
 
   if (!user) {
@@ -98,6 +98,12 @@ async function HomeContent({
 
     return (
       <LoginLanding>
+
+          {compte === "supprime" && (
+            <p role="status" className="w-full rounded-lg bg-accent/10 p-3 text-sm text-accent">
+              Ton compte a été supprimé. Merci d’avoir joué avec nous.
+            </p>
+          )}
 
           {errorView && (
             <p role="alert" className="w-full rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

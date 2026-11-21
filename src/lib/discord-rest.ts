@@ -2,6 +2,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { isVercelPreview } from "@/lib/preview-safety";
 import { stripEveryoneParse } from "@/lib/notification-policy";
+import { isTombstoneDiscordId } from "@/lib/account-deletion-plan";
 
 /**
  * Client Discord REST (bot) — fondations pour les futurs salons/fils/MP
@@ -1084,6 +1085,8 @@ export interface OpenDmChannelInput {
  * ses MP — le refus effectif ne se manifeste qu'à l'envoi
  * (`sendChannelMessage` avec `isDirectMessage: true`), jamais ici. */
 export async function openDmChannel(input: OpenDmChannelInput): Promise<DiscordRestResult<DmChannel>> {
+  // Compte supprimé et anonymisé (docs/SUPPRESSION_COMPTE.md) : aucun appel réseau pour un identifiant qui n'est plus Discord.
+  if (isTombstoneDiscordId(input.userId)) return { ok: false, kind: "invalid_request", message: "Identifiant Discord invalide.", retryable: false };
   return discordRequest({
     method: "POST",
     path: `/users/@me/channels`,
