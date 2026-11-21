@@ -1,0 +1,40 @@
+# Mises à jour automatiques proposées par Dependabot (constat V4-01 de docs/AUDIT_APP_20261120.md).
+# Dependabot n'ouvre que des PULL REQUESTS : rien n'est fusionné ni déployé sans revue (CLAUDE.md :
+# « Aucune nouvelle dépendance sans demander »). Les alertes et les mises à jour de SÉCURITÉ
+# s'activent dans GitHub → Settings → Code security (voir docs/SOIREE_ACTIVATION.md § 9 quinquies).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Un seul PR pour les montées mineures et correctifs de développement, pour limiter le bruit.
+      dev-minor-patch:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+    ignore:
+      # Versions épinglées volontairement : une montée majeure se décide à la main.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
