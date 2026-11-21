@@ -28,6 +28,8 @@ https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20a
 
 ## Procédure
 
+> **Variante sans PC** : la route serveur `POST /api/admin/discord-commands` exécute la même logique avec le jeton de Vercel (voir `docs/SOIREE_ACTIVATION.md` § 9 sexies).
+
 Dans un environnement autorisé qui possède déjà `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN` et `TOWER_DISCORD_GUILD_ID` :
 
 1. Inviter l'application avec le lien ci-dessus (scope `applications.commands`).

@@ -220,6 +220,7 @@ Ordre : le centre de notifications **avant** tout ping ; le vote Discord **avant
 | --- | --- | --- | --- |
 | `DISCORD_PROJECT_COMMAND_ENABLED` puis `DISCORD_PROJECT_WRITE_ENABLED` | `/projet` : lecture, puis écritures (créer, rejoindre, quitter, recrutement, espace) | commande enregistrée par Maxime | aucune |
 | `PROJECT_ORGANIZER_ENABLED` | `/projets` à organisateur : entrées validées, date de fin, fil public et privé, archivage 7 jours après clôture | executor, bot | `20261118130600_project_entries` |
+| `DISCORD_COMMAND_REGISTRATION_ENABLED` + `DISCORD_COMMAND_REGISTRATION_SECRET` | Route serveur `POST /api/admin/discord-commands` : vérifie ou enregistre les 13 commandes avec le jeton du bot de Vercel (le jeton ne sort jamais) ; admin connecté + secret en en-tête ; **à éteindre après usage** ([SOIREE_ACTIVATION.md](SOIREE_ACTIVATION.md) § 9 sexies) | `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN`, `TOWER_DISCORD_GUILD_ID` | aucune |
 | `DISCORD_REPORT_COMMAND_ENABLED` | Commande contextuelle « Signaler » : ticket privé dans le salon staff `DISCORD_REPORT_STAFF_CHANNEL_ID`, **aucune sanction automatique** | manifeste enregistré à la main (`scripts/discord-commands.json`) ; executor, bot | `20261118131100_moderation_reports` |
 
 Retour arrière : retirer la variable ; la commande reste visible sur Discord tant qu'elle n'est pas retirée du manifeste (action manuelle) mais répond « désactivé ».
